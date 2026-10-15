@@ -60,7 +60,9 @@ scopeBoundary: >
   API surface that a future UI (or MCP client) will consume.
   Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view (epics.md), is built by Claude at
   Ralph's request, including its own accessibility (VoiceOver semantics); the rest of the Flutter
-  UI stays Ralph's.
+  UI stays Ralph's. Changed 2026-10-14 (Ralph): the rest of the Flutter UI is built by Claude too
+  (epics.md Epic 11, the floating app shell), including its accessibility; Ralph accompanies and
+  reviews.
 ---
 
 # Product Requirements Document — Zanshin (Backend & Infrastructure)
@@ -74,7 +76,7 @@ scopeBoundary: >
 
 ## 1. Project Context
 
-Zanshin's user-facing form is a macOS-native Flutter desktop GUI client for [JJ VCS (Jujutsu)](https://github.com/jj-vcs/jj) with a bundled MCP server binary. This PRD covers everything **except** the Flutter UI itself (*one dated exception, Epic 10 — see below*):
+Zanshin's user-facing form is a macOS-native Flutter desktop GUI client for [JJ VCS (Jujutsu)](https://github.com/jj-vcs/jj) with a bundled MCP server binary. This PRD covers everything **except** the Flutter UI itself (*dated exceptions: Epic 10 (2026-09-26) and Epic 11 (2026-10-14) — see below*):
 
 - A Cargo workspace with `zanshin-jj` (jj-lib adapter), `zanshin-ffi` (cdylib bridge), `zanshin-diff` (word-level diff + syntax-highlight), `zanshin-graph` (DAG lane-assignment) and future crates
 - A `zanshin-mcp` Rust binary using `rmcp`, sharing the workspace crates
@@ -82,7 +84,7 @@ Zanshin's user-facing form is a macOS-native Flutter desktop GUI client for [JJ 
 - Codesign / notarization / Sparkle-based auto-update / GitHub-Releases automation
 - A minimal Dart-side bootstrap (long-running worker isolate, FFI handle management) — *just enough* for the author's UI to plug in later; no widgets, no layout
 
-The Flutter UI (graph painter widget, diff viewer, navigation, theming, terminology choices, accessibility) is **Ralph's own work, outside this PRD's scope**. *Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view ([epics.md](./epics.md)), is built by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's.*
+The Flutter UI (graph painter widget, diff viewer, navigation, theming, terminology choices, accessibility) is **Ralph's own work, outside this PRD's scope**. *Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view ([epics.md](./epics.md)), is built by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's.* *Changed 2026-10-14 (Ralph): the rest of the Flutter UI is built by Claude too — Epic 11, the floating app shell ([epics.md](./epics.md)); Ralph accompanies and reviews.*
 
 **Authoritative reference documents** (do not duplicate here):
 - Technical research: [`research/technical-zanshin-jj-flutter-dart-hooks-mcp-research-2026-05-15.md`](./research/technical-zanshin-jj-flutter-dart-hooks-mcp-research-2026-05-15.md)
@@ -150,13 +152,13 @@ Adoption, stars, contributors — welcome side-effects, none required.
 - Long-running worker isolate spawned at app start via manual `Isolate.spawn` + SendPort/ReceivePort
 - Worker holds FFI handles for app lifetime
 - Command-bus pattern: UI sends typed messages to worker, worker dispatches FFI calls, returns results / streams events
-- *No widgets, no UI, no navigation* — just the substrate Ralph will plug his Flutter UI into (*exception 2026-09-26 (Ralph): Epic 10, the commit-graph view ([epics.md](./epics.md)), is built by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's*)
+- *No widgets, no UI, no navigation* — just the substrate Ralph will plug his Flutter UI into (*exception 2026-09-26 (Ralph): Epic 10, the commit-graph view ([epics.md](./epics.md)), is built by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's*; *changed 2026-10-14 (Ralph): the rest of the Flutter UI is built by Claude too — Epic 11, the floating app shell*)
 
 ### 3.2 Out of Scope (explicit non-goals)
 
-- **No Flutter widgets, layouts, or navigation.** Ralph builds these separately. *Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view ([epics.md](./epics.md)), is built by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's.*
+- **No Flutter widgets, layouts, or navigation.** Ralph builds these separately. *Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view ([epics.md](./epics.md)), is built by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's.* *Changed 2026-10-14 (Ralph): the rest of the Flutter UI is built by Claude too — Epic 11, the floating app shell ([epics.md](./epics.md)); Ralph accompanies and reviews.*
 - **No UX terminology decision.** JJ-native vs. Git-skin happens in Ralph's UI spec.
-- **No accessibility work.** UI concern, out of this PRD. *Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view built by Claude at Ralph's request, adds VoiceOver semantics to its own view; the rest stays Ralph's.*
+- **No accessibility work.** UI concern, out of this PRD. *Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view built by Claude at Ralph's request, adds VoiceOver semantics to its own view; the rest stays Ralph's.* *Changed 2026-10-14 (Ralph): Epic 11's surfaces, built by Claude too, carry their own VoiceOver semantics.*
 - **No i18n / l10n.** UI concern.
 - **No Windows / Linux build.** macOS-only.
 - **No Git-only repo support.** Zanshin works against jj-init'd repos (which may use jj's Git backend).

@@ -567,7 +567,7 @@ _Ralph showed a mockup of the main view (commit cards at (row, lane), elbow line
 - **The graph view supersedes the mock UI** [`app/lib/src/features/commits/commit_card.dart` (`BranchPanel`, a `ListView`), `app/lib/src/features/history/history_column.dart` (a `ListView` with lane dots), `app/lib/src/features/branches/branches_panel.dart`, `app/lib/src/shared/data/mock_data.dart`, and `AppShell`'s branch columns (`app/lib/src/features/shell/app_shell.dart:144-164`)] — retiring these is Ralph's call. 10.8 builds a real-data panel modelled on the mock `commit_detail.dart` / `diff_block.dart`, which stay. Severity none.
 - **Ralph's own note (2026-09-26): clean up the demo entry points** [`app/lib/main2.dart`, `main3.dart`, `main4.dart` (the graph POC)] — 10.1 needs one fake-data demo host for visual review, and which file hosts it is part of that cleanup. Severity none.
 - **Story 9.25's backend item 1 is stale** [epics.md Story 9.25 item 1; `packages/zanshin_core/lib/src/worker/isolate.dart:1537-1543`] — it says "No generic repo-config writer exists yet", but Story 9.28 shipped `configSet(ConfigScope.repo, …)`, which 10.7's Save uses. Re-scope 9.25 when it is refined. Severity low.
-- **No capability query without a drop target** [epics.md Story 9.31, Non-goals] — the target-less "what can I do with S" query is marked "own story if wanted". Without it, 10.6's context menu cannot grey out verbs with the CLI's reason. Severity low.
+- **No capability query without a drop target** [epics.md Story 9.31, Non-goals] — the target-less "what can I do with S" query is marked "own story if wanted". Without it, 10.6's context menu cannot grey out verbs with the CLI's reason. Severity low. **Update 2026-10-14:** severity raised to medium. 10.15's card menu now exists, and its recommended tooltips (a disabled row shows the backend's refusal reason) need this query; 9.31's dated note proposes it as a variant.
 - **No identity-remedy UI** — a `jj.identity_missing` warning ("set your identity", 9.32's motivating example) has no story. 10.9 only surfaces warnings. Severity low.
 - **No golden-test setup** — the repo has no golden tests, and Inter / JetBrainsMono would need to load in tests. Epic 10's visual review is therefore manual, in the demo host. Add a golden setup only if Ralph wants one. Severity none.
 
@@ -586,7 +586,7 @@ _Added the same day after Ralph's answers and his near-final HTML design (`_bmad
   - Modified and uncommitted (`M`): `design/app.jsx` and `design/JJ Desktop Client.html`. So every APP:line citation also fails to reproduce at HEAD.
   - Every re-planned Epic 10 story cites these files by file:line.
   - **Follow-up:** commit them with the re-plan, by explicit path, or drop the mockup. That is Ralph's call.
-- **Epic 10's thin detail panel drops the design's review workflow; no story owns it** [design APP:69-89, :736-757, :804-807, :835-838, :865; GV:475; tweak "Diff mode" APP:7-16]. Low.
+- **Epic 10's thin detail panel drops the design's review workflow; no story owns it** — **MOVED 2026-10-14 → Story 10.24** (the inspector's diff view: ±, Unified / Side by side, Viewed per repository with Mark all / Reset; the floating client itself drops the review meter, auto-advance and the V shortcut). Original entry: [design APP:69-89, :736-757, :804-807, :835-838, :865; GV:475; tweak "Diff mode" APP:7-16]. Low.
   - The dropped parts:
     - the "x / N viewed" review meter with Mark all / Reset;
     - the per-file Viewed state, persisted per change id;
@@ -612,7 +612,7 @@ _Added the same day after Ralph's answers and his near-final HTML design (`_bmad
   - `:555` says "10.5 opens an explicitly given path". The real-repo dev host moved to 10.12.
   - `:568` says 9.28 shipped `configSet(ConfigScope.repo, …)`, "which 10.7's Save uses". The design's toolbar has no Save (see the Save bullet below).
   - **Follow-up:** re-point these notes.
-- **No executing verb for `jj new --insert-before` / `--insert-after`** [GV:436-437; `packages/zanshin_core/lib/src/worker/handle.dart:242` `newChange(parents)` only; Story 9.31's preview matrix already models `new` at `DropLocation{insert_after, insert_before}`]. Medium (parity; now a designed affordance).
+- **No executing verb for `jj new --insert-before` / `--insert-after`** — **MOVED 2026-10-14 → Story 9.48** (`9-48-new-insert-after-before`; the card menu's Insert after / Insert before, 10.15). Original entry: [GV:436-437; `packages/zanshin_core/lib/src/worker/handle.dart:242` `newChange(parents)` only; Story 9.31's preview matrix already models `new` at `DropLocation{insert_after, insert_before}`]. Medium (parity; now a designed affordance).
   - The design's bottom "+" chip on every card ("Insert new change before") needs it. 10.15 ships the chip disabled.
   - The 2026-09-26 bullet "the shipped verbs lack CLI parameters" already lists `-A`/`-B` as a gap.
   - **Follow-up:** a `new -A/-B` backend story would complete 9.31's matrix.
@@ -655,7 +655,7 @@ _Added the same day after Ralph's answers and his near-final HTML design (`_bmad
   - The design's revset control has exactly two presets (`jj log`, `all()`), with no free-text field and no Apply/Save.
   - The first Epic 10 plan's Save to `revsets.log`, and 9.25's presets, Apply and Save, have no UI consumer until Ralph answers 10.7 design question (a).
   - **Follow-up:** re-scope 9.25 accordingly.
-- **The quick-action list "will later come from user settings"** [GV:356]. Severity none. No settings story exists, and 10.15 ships a static list.
+- ~~**The quick-action list "will later come from user settings"**~~ — **MOOT 2026-10-14:** the floating client retires the quick-action fan (AF:16; DS readme.md:148-150); a card's actions are 10.15's card menu. Original entry: [GV:356]. Severity none. No settings story exists, and 10.15 ships a static list.
 
 ## Surfaced 2026-09-26 while re-planning Stories 4.10–4.12 after the layout A/B (console session, Ralph)
 
@@ -727,7 +727,7 @@ _Ralph used the spike viewer (`spikes/graph-layout-ab/viewer/`) on a copy of the
   - At 10k+ commits the budget truncates the search. On synth-10k in compact mode it stops inside the first sweep and ends wider than greedy; on synth-100k only the leftmost dozen columns move. Candidates: a larger or time-based budget, or greedy painted first and `compact` swapped in (4.11 open question 8).
   - Stability under edits (SPEC §11.6): a new commit can re-cut a window. 4.11 item 7's seeded rule covers only `optimized`.
   - **Follow-up:** each one as a dated SPEC amendment with goldens, after the default is decided.
-- **Go-to-change needs a backend path for anything but full ids.** Low; after 10.6 design question (d).
+- **Go-to-change needs a backend path for anything but full ids.** — **MOVED 2026-10-14 → Stories 9.25 and 10.21:** 9.25 item 2 (`find_changes`) is that path, and 10.21 resolves the input in the view first. The follow-up's last sentence ("The UI passes the input through and never composes the revset itself") is superseded for structured filters: 10.21's builder writes the revset text (decision (g) of the Epic 10 header's design update 2026-10-14). Original entry: Low; after 10.6 design question (d).
   - The viewer searches what its bundle holds: 12-character change-id and commit-id prefixes and the first description line.
   - In the product, full ids resolve through 4.12's lookups, but descriptions are lazy content (10.11). A description search over the whole revset would load every commit: the same object loads as the timestamps, 6.7 ms on the real repo, 33.6 ms on a packed 10k and ~1.2 s on the loose-object 10k fixture.
   - CLI parity suggests resolving the input on the worker the way the CLI resolves `-r` (id prefixes with jj's refusal of an ambiguous prefix, bookmarks, `description(...)`), then revealing the result.
@@ -772,7 +772,7 @@ _Ralph re-downloaded the Claude Design export (`a399daf`). It adds a callout bes
 - **The spike's JS oracle reads the live design folder.** Medium, because the drift is silent. `spikes/graph-layout-ab/tools/design-input.mjs:27` evaluates the current `graph-data.js`, which now has 36 commits. SPEC §7.2's expected results (π = [0, 2, 3, 1]; free rows 209 / 377 with 4 lanes), Epic 10's prototype defect 15 ("13 of the 22 commits") and 10.1 item 13's CLI-faithful variant were all derived on the 22-commit sample.
   - **Follow-up:** pin the oracle to the sample of `57f259c` (a copy under the spike, or `git show`) before 4.11's goldens are generated (4.11's dated note). 4.13 uses the 36-commit sample for its run-rule oracle.
   - **Resolved 2026-09-30** (console session): `tools/design-source.mjs` pins the export at `57f259c`, and `design-input.mjs`, `js_oracle.mjs` and `viewer-bundle.mjs` read it with `git show`, never the live folder. The regenerated inputs are byte-identical, and the oracle passes again with SPEC §7.2's expectations. It had failed its staleness check since `a399daf`. Another export converts with `--rev <commit>` (SPEC §7.2's dated note).
-- **8 new icons in the export.** Low. `icons/ui/` has abandon, bookmark, bookmark-filled, describe, squash, stack-collapse, stacked-on and working-copy-at, which `app/assets/icons/svg/` lacks. The prototype does not use `stacked-on` yet.
+- **8 new icons in the export.** — **SUPERSEDED 2026-10-14 → Story 11.1 item 11** (the icon rule: the design system has 48 SVGs plus 17 inline glyphs, and `app/assets/icons/svg/` lacks 11; one mechanism, SVG recommended, so nothing is added to the icon font). Original entry: Low. `icons/ui/` has abandon, bookmark, bookmark-filled, describe, squash, stack-collapse, stacked-on and working-copy-at, which `app/assets/icons/svg/` lacks. The prototype does not use `stacked-on` yet.
   - **Follow-up:** the story that first draws one copies it into `app/assets/icons/svg/` and the `ZI` mapping (`app/lib/src/shared/widgets/zanshin_icon.dart`); Ralph adds it to the icon font.
 - **`rive/` is back in the export.** None; a record. The re-download restores `rive/` (the Nami wave SVG, its README and `nami_wave.dart`), which `57f259c`'s re-download had dropped. It belongs to the splash, not the graph.
 - **Old design citations.** None; a record. GV and GC citations written before 2026-09-28 refer to `57f259c`; from GV:225 on they no longer match the current file. The Epic 10 header says so; the stories are not rewritten.
@@ -924,3 +924,195 @@ _The bump absorbed the API churn inside `zanshin-jj` and ported the CLI behavior
 _The analysis and POC live on branch `poc/jj-cli-reuse` under `spikes/jj-cli-reuse/`. The differential parity oracle there (`poc/tests/parity_zanshin.rs`) runs the same operation through `zanshin-jj` and the stock jj CLI and compares repo state._
 
 - **`describe` and `new` never apply `templates.commit_trailers`** [`crates/zanshin-jj/src/op_support.rs::apply_trailers` (called only from its inline tests); CLI `cli/src/commands/describe.rs:153-161` and `new.rs:234` @ v0.46.0, already present @ v0.44.0] — with `templates.commit_trailers = 'format_signed_off_by_trailer(self)'`, `jj describe -m T` stores `T` + a blank line + `Signed-off-by: …`, while Zanshin stores `T`. This predates 0.46. Found by reading the code; the parity oracle confirmed it for `describe`. `new` is the same pattern but was not run through the oracle. The not-yet-ported `commit`, `squash`, `split` and `workspace add` apply trailers too (`add_trailers`). No story covers it. Severity medium: a silent divergence on shipped verbs.
+
+## Surfaced 2026-10-14 while folding the floating client and its design system into Epics 10 and 11 (console session, Ralph)
+
+_Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now `JJ Desktop Client Floating.html`, and a new design-system project sits in `_bmad-output/implementation-artifacts/design_system/` (synced through #9). He decided that the export wins where it explicitly changed a recorded decision, that motion follows the client's FLIP model, that the inspector, the card menu, the Bookmarks rail, the search and the Configurations dialog are built to the design, and that Claude now builds the whole Flutter UI (new Epic 11; Story 11.0 recorded the scope change). The stories were updated the same day: the Epic 10 header ("Design update 2026-10-14", decisions (a)–(g), prototype defects 25–76, amendments to defects 2, 8, 16, 17 and 21–23, the house rules Theme and Design-system sync), new Stories 4.14, 4.15, 9.48–9.50, 10.21–10.27 and 11.0–11.10, the refined 9.25, and dated notes in 4.11, 4.13, 5.1, 5.6, 9.15–9.17, 9.19, 9.31 and most Epic 10 stories. Six older entries above are marked as moved, moot or superseded. The items below fall outside those stories:_
+
+### Graph layout and lines
+
+- **The spike's design-input tool cannot read `e74ced3`.** Low: no recording needs it.
+  - `node tools/design-input.mjs --rev e74ced3` throws "no top-level declaration of G". It extracts six declarations by name from `graph-view.jsx` (design-input.mjs:33-54), which now imports them from `graph-layout.jsx` (GV:6-7).
+  - GD and the gap walk are unchanged (GL:435-460 = GV@e243dd2:145-170), so the `e243dd2` inputs stand for this export too.
+  - **Follow-up:** 4.14 and 4.15 add a loader that evaluates `graph-layout.jsx` whole. It is plain JS: stub `revsetMatch` as LSH:54 does, and stub `placeGapMarkers` or extract it.
+- **The joint column packing may widen the graph.** Medium: unmeasured.
+  - Chains may share a lane only when they are apart in both layouts, so 4.14's packing can need more columns than either per-mode packing.
+  - The export compensates with an exact chain colouring for small graphs and with its whole-lane optimizer (GL:492-568). 4.14 ports neither.
+  - **Follow-up:** 4.14's measurements on the real 1.4k-commit repo and the scale inputs. If the width grows noticeably, port the exact colouring for small graphs.
+- **Router B's cost on the UI isolate is unknown.** Medium.
+  - The geometry stage runs per layout and per card size, and track assignment is quadratic in a cluster's size (GL:87-112).
+  - **Follow-up:** 4.15's timings at large-10k and synth-100k set the `Isolate.run` threshold (its item 4).
+- **Free detours use a unit threshold.** Low.
+  - The export's pixel test leaves room from 13 units at H 62 and from 12 at H 40 (GL:162-172). 4.15's unit rule (12) detours a little more often with compact cards.
+  - **Follow-up:** 4.15's oracle lists the cases; tune the rule if they show.
+- **Day dividers can cross cards around midnight.** Low; accepted in 10.2.
+  - Commits on either side of midnight less than about 25 min apart (about 11 min with compact cards) overlap vertically. So SYNC #8's "the band around a divider never holds cards" fails there (GL:597-602; prototype defect 45).
+  - **Follow-up:** none, unless real repos show it often.
+- **Equal timestamps sort differently from the export.** Low; a record.
+  - A rebase gives many commits the same committer time. GL orders ties by generation depth, priority and design index (GL:395); the engine orders them by index (D3; LE:324-329). Both keep parents first.
+  - Only unrelated commits with identical timestamps can end up at different heights.
+  - **Follow-up:** none.
+- **Gutter overflow.** Low.
+  - More than 9 lines on one gutter × step ±6 px each into the neighbouring cards (GL:193-197).
+  - **Follow-up:** 4.15 reports it. Widen the gutter's budget only if real repos show it.
+
+### Cards, motion and the minimap
+
+- **Compact's minimap labels need a day per node.** Medium.
+  - The design labels a Compact row with the local calendar day of its newest commit, shown only when that day is older than the row above's (GV:438-449).
+  - 4.11 emits day buckets only for Free (4.11 open question 9), and the view never computes days.
+  - **Follow-up:** 4.11 (or 4.14) emits a local day key per node in both modes; 10.16 labels Compact rows from it.
+- **The Animation Show Case is superseded.** None; a record.
+  - AS stays in the export as a playground.
+  - Its values are no longer planned (decision (c)): the 250 ms stack slide, the 1.8 px/ms tracing, the 600 ms leave with a 16 px blur and a 16 px rise.
+  - **Follow-up:** none. 10.20's demo host keeps the slow-motion switch.
+- **The design system's id-length rule disagrees with its card.** Low; a record.
+  - DS readme.md:65 says change ids have 5 characters on cards.
+  - DS ChangeCard and the client show 8 on detailed non-@ cards, and 5 on compact cards and on @ (DS components/graph/ChangeCard.jsx:25; GV:278).
+  - **Follow-up:** the next design-system sync. 10.3 keeps 8/5.
+- **The design system's legend chip is wider than the decided pill.** Low; a record.
+  - DS components/graph/graph.css:22 gives the card's chip `max-width: calc(100% − 20px)`.
+  - Decision (g) keeps W/2 − 34 px, painted above the edges (prototype defect 26).
+  - **Follow-up:** mention it at the next design-system sync.
+- **Nothing shows or sets the horizontal position.** Low.
+  - The graph has no scrollbars (FC:18-19), and the minimap moves only vertically (GV:496-499).
+  - Only a pan and the @ pill's left or right arrow reach a far column.
+  - **Follow-up:** watch it on wide repos in the demo host; add a horizontal hint only if Ralph asks.
+
+### Search
+
+- **The search matches text over every change.** None; a record.
+  - 10.21's Change scope and Any's Changes group match subjects and descriptions across all changes (SR:94-126), while 10.11 loads content only for the visible range.
+  - **Follow-up:** covered: 9.25 item 2 (`find_changes` over `description(substring-i:)` / `subject()`) is the backend path.
+- **Path suggestions see only `@`'s files.** Low.
+  - The design gives every mock commit the inspector's changed paths and indexes the paths and folders of all commits (SR:14-20, :94-107). So it also finds deleted and historical paths.
+  - 10.21 lists the files of `@`, as the CLI's `jj log` completion does (`cli/src/complete.rs:1143-1152` @ v0.46.0). A typed path or glob still filters the whole history.
+  - **Follow-up:** only if it is missed: a backend listing of changed paths over jj-lib's changed-path index (`src/default_index/changed_path.rs`; `files()` already reads it, `revset_engine.rs:1361-1371`).
+- **Author suggestions come only from loaded content.** Low.
+  - The design lists every author of the repository (SR:96-98, :131-137). Neither Zanshin nor the CLI has an author list.
+  - "Authors containing “x”" and typed patterns still reach every author.
+  - **Follow-up:** only if it is missed: an op-pinned distinct-author read. It loads every commit, like 4.10's timestamps.
+- **Counts on large repositories are unmeasured.** Medium.
+  - Without a changed-path index, a single `files()` count diffs every commit. At 100k it can hold the serial worker for seconds and delay a reload queued behind it.
+  - The cap bounds dense matches only.
+  - **Follow-up:** measure 9.25's counts on large-10k (loose and packed) and on the synthetic inputs once 9.25 lands. If they are too slow: count File rows only when they are highlighted, or rely on the changed-path index where the repo has one.
+- **Global configurations name one repository's paths and people.** Low.
+  - Decision (g) keeps configurations and the default search global, as designed (RC:23, :40). A `files()` or author rule names one repository; in another it matches nothing.
+  - A configuration chosen as the default search then opens other repositories on an empty graph, and ✕ leads back to it.
+  - **Follow-up:** revisit after use. The options: per-repository configurations, or a default search per repository.
+- **No raw revset in the floating client.** Low; deferred (decision (g), Claude's default).
+  - The six rule functions cannot express `trunk()..@`, `bookmarks()`, `conflicts()` or a user's own `[revset-aliases]`. Only `revsets.log`, set outside Zanshin, reaches such a revset (as the `jj log` built-in).
+  - **Follow-up:** 10.22's design question (b). If it is built, 9.25's `NoSuchFunction` candidates gain a consumer.
+- **Design debris around the search.** None; a record for citations.
+  - FC:68-72, :301 and :303 still style the retired `.gtb-select` inside the capsule.
+  - AF:5 still describes SYNC #5's variant segment.
+  - RC:2 and RC:116 describe the narrowing model that #6 removed.
+  - The docked client (`JJ Desktop Client.html`) keeps a `RevsetSelect` with configurations and the docked dialog shell (RC:129-180). It is not the reference (`design/CLAUDE.md:3`).
+  - **Follow-up:** none; a later export may clean them up.
+
+### Actions, drag-and-drop and the toast
+
+- **No non-drag path for rebase, bookmark moves and hunk moves.** Medium (accessibility).
+  - The design moves changes, bookmarks, files and hunks only by drag, and the panel's "Rebase…" button is gone, so keyboard and VoiceOver users cannot rebase (10.10, 10.27, 10.15; GV:792-930; IN:193-206).
+  - Deferred by decision (g). The bookmark popover's "Move to…" (10.15) is the one non-drag move.
+  - **Follow-up:** a later story once Ralph wants it.
+- **⌘Z works only while a toast is visible.** Low.
+  - An app-wide Edit › Undo and Redo (⇧⌘Z = `jj redo`, 9.21) is not designed (GV:757-762; 10.23).
+  - **Follow-up:** with 9.21, if Ralph wants a menu-bar Undo.
+- **The DS UI kit deviates from the client on drag-and-drop.** None; a record.
+  - The kit rests 520 ms before the menu (the client: 260 ms), places the menu below the card first (the client: above), and binds ⌘Z always (the client: only while a toast is visible) (DS ui_kits/desktop/app.jsx:272, :305; GV:819, :842, :757-762).
+  - **Follow-up:** the client is the reference; raise it at the next design-system sync.
+
+### The inspector and the diff
+
+- **Viewed state needs a per-repository store.** Low.
+  - The design keeps "viewed" in `localStorage` per change id and path (SH:56-76). Decision (g) keys it per repository by (change id, path, diff fingerprint), and no store holds that kind of per-repository UI state yet.
+  - **Follow-up:** 10.24 picks the store, next to 10.17's per-repository stack toggles (Claude's proposal).
+- **jj prints no hunk-header symbol for Dart.** Low.
+  - The design shows a symbol on Dart hunks (DF:14, :26). jj's symbol patterns have no Dart (`../jj` v0.46.0 `cli/src/source_symbol.rs:57-93`), so CLI parity shows none.
+  - **Follow-up:** none in Zanshin: a Zanshin-only pattern would diverge from the CLI, and an upstream pattern arrives with a pin bump.
+- **Line-level selection inside a hunk.** Low.
+  - jj's builtin editor toggles single lines (scm-record); the design selects whole hunks. 9.50's ranges could express single lines.
+  - **Follow-up:** a later story, if Ralph wants it.
+- **Conflicted files have no designed diff view.** Low.
+  - `jj diff` materializes conflict markers into the diff text (`cli/src/diff_util.rs:1884`); the design shows only the "Conflict" flag (IN:233).
+  - **Follow-up:** 10.24 shows jj's text; a designed conflict view comes with 9.17's `resolve`.
+- **Word-level and syntax marks have no consumer story.** Low.
+  - With line-level first (decision (g)), 5.2–5.4 come later, and no Epic 10 story renders segments.
+  - **Follow-up:** a follow-up story to 10.24 when 5.2–5.4 are scheduled.
+- **No commit affordance on an empty @.** Low.
+  - The composer needs files on @ (IN:177). `jj commit -m` on an empty @ is `describe` plus `new` in one operation (`cli/src/commands/commit.rs:35-36`).
+  - **Follow-up:** Ralph decides whether 10.25 shows the composer on an empty @ (Claude's proposal: no; describe and "New change" cover it, in two operations).
+- **9.47's ledger row `describe_gui_text` retires with 10.8's Save.** Low.
+  - The row exists because the GUI was assumed to send the text without the CLI's trailing newline (`crates/zanshin-parity/tests/oracle/ledger.rs:71-78`).
+  - **Follow-up:** when 10.8 lands, its scenario sends "S\n\nD\n" and the row goes.
+- **A hunk selection's staleness under constant snapshots.** Medium.
+  - Every verb snapshots @ first (9.26), so an editor that autosaves changes @ between selecting hunks and running the composer. If staleness were judged by @'s commit id, commits would keep failing.
+  - **Follow-up:** 9.50 judges staleness by the left side, the revision's parent tree (Claude's proposal); confirm it in 9.50's spec.
+- **The combined description must be known before squash runs.** Medium.
+  - The CLI decides it inside the command and opens an editor (`cli/src/commands/squash.rs:363-396`); the GUI has to ask first (10.25, 10.27).
+  - **Follow-up:** 9.15's plan phase returns the combined text when needed (its note); 9.31's `diff` source can carry the flag.
+- **10.8's and 10.9's `handle.dart` citations are stale.** Low.
+  - 10.8 cites `handle.dart:690` for `show`; 10.9 cites :228, :242, :257, :271, :284, :861 and :891. The file is `packages/zanshin_core/lib/src/worker/handle.dart`: describe :344, newChange :358, edit :373, abandon :387, undo :407, show :813, bookmarkCreate :986, bookmarkDelete :1016.
+  - **Follow-up:** re-point them when each story is refined.
+
+### The floating chrome and the shell
+
+- **Workstreams and Reviews have no backend.** Low; a record.
+  - The export's rail lists both (AF:22-23), and its empty state names `jj workstream new` (AF:124). jj v0.46.0 has no `workstream` command, and reviews exist only as `jj gerrit` (`cli/src/commands/` at v0.46.0).
+  - 11.3 hides both items (decision (g)).
+  - **Follow-up:** Ralph decides what each should mean, for example Gerrit or forge reviews. Backend stories follow, and then 11.3 shows the items.
+- **Remote management has no surface.** Low.
+  - 9.5's `git remote add`, `remove`, `rename` and `set-url` (done) have no UI consumer.
+  - The Projects dialog's Remotes tab is inert (SH:2067), and 11.6 proposes to drop it. 11.7's Project tab only picks the fetch and push remotes.
+  - **Follow-up:** a "Remotes" group in 11.7's Project tab (add, rename, remove, set URL), when Ralph wants it.
+- **Bookmark tracking has no surface.** Low.
+  - 9.29's untracked rows and 9.11's `track` and `untrack` (backlog) are outside 10.14 (its non-goals).
+  - **Follow-up:** a row action in 10.14's panel, through 10.15 and 10.9, once 9.11 and 9.29 land.
+- **Raw config editing has no surface.** Low.
+  - 9.28's `configFileRead` and `configFileWrite` (done), the GUI split of `jj config edit`, have no consumer. 11.7 edits only its own rows.
+  - **Follow-up:** an "Open config file…" link per tab, if Ralph wants one.
+- **The docked client's command palette and help button are gone.** None; a record.
+  - The old status bar advertised a ⌘K palette, and the window had a "?" button (APP@e243dd2:972, :2492).
+  - The floating client has neither, and no story plans them.
+
+### The design system
+
+- **macOS never reports Reduce motion to Flutter.** Medium: every reduce-motion rule in Epic 10 (10.6 item 12, 10.17, 10.19, 10.20) and the splash (`app/lib/src/features/bootstrap/splash_card.dart:54`) is inert on macOS today.
+  - Only the iOS embedder sets the flag (`engine/src/flutter/shell/platform/darwin/ios/framework/Source/AccessibilityFeatures.swift`). Nothing under `darwin/macos` or `darwin/common` calls `FlutterEngineUpdateAccessibilityFeatures` (checked in the local SDK checkout `flutter-3.47-candidate.0`, 2026-10-14).
+  - Reduce transparency has no Flutter flag at all.
+  - **Follow-up:** 11.1 item 7 feeds `MediaQuery.disableAnimations` from `zanshin_shell`, and 11.2 reads `reduceTransparency` from the same place. An upstream Flutter issue only if Ralph wants one.
+- **The DS icon files lost `currentColor`.** Low.
+  - 46 of the 48 SVGs in `DS assets/icons/ui/`, and all 46 in `design/icons/ui/`, stroke with `#000` and embed a C2PA manifest of about 7.8 KB. Only `change.svg` and `description.svg` keep `currentColor`.
+  - `DS components/brand/Icon.jsx:4-72` holds the same geometry with `currentColor`. `ZanshinIcon`'s srcIn tint hides the difference; an icon-font generator or an untinted `SvgPicture` would not.
+  - **Follow-up:** 11.1's icon rule copies from `Icon.jsx`. Ask Claude Design to keep `currentColor` only if Ralph wants the files themselves fixed.
+- **Some component values have no token.** Low.
+  - `DS readme.md:90` lists radius 13 for glass menus, and `DS components/menus/menus.css:18`, `:36` use it, but `DS tokens/effects.css:5-17` has no such token.
+  - The radii 4.5, 5 and 7, the glass field well rgba(8,10,22,.45) and the gold primary's mixes are literals too (`DS components/forms/forms.css:31`, `:38`, `:45-46`; `DS components/graph/graph.css:51`, `:97`; `DS components/actions/actions.css:8-12`).
+  - **Follow-up:** 11.1 names them in the token layer, marked as untokenised; the parity test cannot cover them. A DS sync request if Ralph wants them tokenised.
+- **The dialog entrance differs between the DS and the client.** Low.
+  - The DS's `Dialog` enters with `zs-pop` in 160 ms (`DS components/surfaces/surfaces.css:28`).
+  - The client's Settings and Configurations dialogs use `gset-in` in 240 ms (`STC:28`, `FC:271`), and so does the DS's own `RevsetDialog` (`DS components/search/search.css:99`). There is no duration token for it.
+  - **Follow-up:** 11.2 uses 240 ms (Claude's proposal). The next DS sync can align `Dialog`.
+- **The dot grid survives in the DS.** None; a record.
+  - `--grid-dot` (`DS tokens/colors.css:38`, `:70`), `--grid-step` (`DS tokens/spacing.css:19`) and `.zs-dots` (`DS components/base.css:7`) remain, although the floating client dropped the grid (`FC:20`; `DS readme.md:84`).
+  - **Follow-up:** the token layer carries them for the parity test only; nothing paints them.
+- **The shadow names are crossed.** Low.
+  - `--shadow-popover` is the context menu's shadow (`DS components/menus/menus.css:2`), while `--shadow-menu` belongs to popovers and glass menus (`DS components/surfaces/surfaces.css:10`; `DS components/menus/menus.css:36`).
+  - `DS guidelines/elevation.html:11` labels them that way; `DS readme.md:94` calls the latter "menus".
+  - **Follow-up:** 11.1 names the Flutter shadows by role (context menu, popover, callout, dialog) and keeps the CSS name beside each.
+- **`nami_loader_pulse.json` is not in the app.** None; a record.
+  - `DS assets/motion/` and `design/lottie/` have it. `app/assets/lottie/` has the other two loaders, byte-identical to the DS's.
+  - **Follow-up:** the story that first shows the pulse loader copies it.
+- **The app icon is an older Nami variant.** Low.
+  - The app uses `app/macos/Runner/NamiIndigo.icon` (`ASSETCATALOG_COMPILER_APPICON_NAME = NamiIndigo` in `app/macos/Runner.xcodeproj/project.pbxproj`). It has one `waves.svg` layer on a Display P3 gradient, with translucency .5.
+  - The DS's bundle has three wave layers, #f4cf80, #dca85b and #b58346, on #1d2540 → #131831 (`DS assets/app-icon/README.txt`). Its `icon.json` uses a hand-written schema (angle and stops), not Icon Composer's, so it cannot be dropped in as it is.
+  - **Follow-up:** 11.10 item 6 re-authors the bundle with the three layers in Icon Composer's format. Ralph checks it in the Dock.
+- **DS prompt examples show retired parts.** Low.
+  - `DS components/surfaces/Island.prompt.md:5` still uses `CommandField`, retired in syncs #5 and #6.
+  - `DS components/surfaces/Popover.prompt.md:6` offers the Layout "Compact, Time"; Time is gone since #7.
+  - **Follow-up:** mention it with the next DS sync. Stories cite the components' code, not these examples.
+- **Density has no tokens.** Low.
+  - The DS's Settings card has a Density row, Compact · Balanced · Comfy (`DS components/settings/settings.card.html:30`), and its UI kit defaults to compact.
+  - No DS component reads it. In the client it changes only the body font size (`AC:69-71`, `:80`).
+  - **Follow-up:** 11.7's design question (a) asks Ralph whether the row stays. The token layer carries the DS's compact sizes only.

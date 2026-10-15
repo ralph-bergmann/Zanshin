@@ -236,6 +236,8 @@ This document provides the WIP-scoped epic and story breakdown for Zanshin, deco
 > Not applicable. Per PRD §3.2 and `feedback_scaffolding_scope`, Flutter UI is explicitly OUT OF SCOPE. No UX design document exists. The Dart-side bootstrap (worker isolate, FFI handle management, command bus) is the only Dart-side scope and is captured under FR-FFI / AR-AD-4 / AR-P-3.
 >
 > *Exception 2026-09-26 (Ralph): Epic 10, the commit-graph view, is built by Claude at Ralph's request; the rest of the Flutter UI stays Ralph's.*
+>
+> *Changed 2026-10-14 (Ralph): the rest of the Flutter UI is built by Claude too — Epic 11, the floating app shell; Ralph accompanies and reviews (Story 11.0). There is still no UX document: the UI's design input is the floating-client export and the design-system export (Epic 10 header, "Design update 2026-10-14").*
 
 ### FR Coverage Map
 
@@ -500,7 +502,7 @@ FR-GR-4 / NFR-P-2 were amended on 2026-09-26: no windowing, but complete geometr
 
 **Precedence / scope:** **Post-WIP-minimal build-out — scheduling is Ralph's call.** Stories are at backlog granularity; full acceptance criteria are authored per story (via bmad-create-story) when scheduled. Each verb follows the surfacing chain: `.fbs` → `zanshin-jj` typed op (tx Rust-side) → `zanshin-ffi` `extern "C"` + `cargo make codegen` → Dart `WorkerCommand` → optional MCP tool → tests (zanshin-jj integration + FFI-path Dart test for coverage attribution + Verifier + ratchet).
 
-**Sequencing:** Step 9.0 (pin bump 0.41→0.42) precedes all operation work; Story 9.1 (operation-support layer) unblocks Tier C. Then Tier A (cheap) → Tier B (medium) → Tier C (thick) by feasibility-map thickness. Reuses Epic 6's `mutate.rs` (6.1) + FFI mutation surface (6.5) patterns; the interactive thick verbs additionally need the Flutter diff/merge editor (Ralph's UI scope) to supply a selected `TreeId`.
+**Sequencing:** Step 9.0 (pin bump 0.41→0.42) precedes all operation work; Story 9.1 (operation-support layer) unblocks Tier C. Then Tier A (cheap) → Tier B (medium) → Tier C (thick) by feasibility-map thickness. Reuses Epic 6's `mutate.rs` (6.1) + FFI mutation surface (6.5) patterns; the interactive thick verbs additionally need the Flutter diff/merge editor (Ralph's UI scope) to supply a selected `TreeId`. *(Changed 2026-10-14 (Ralph): the UI is Claude's now (Story 11.0); the inspector's hunk selection is Story 10.26, and the tree comes from Story 9.50.)*
 
 ---
 
@@ -565,6 +567,16 @@ Squash, rebase, bookmark rename/move and drag-and-drop follow when their backend
   - Ralph's line-behind-card finding is the Time layout's defect 3; it cannot occur in Free or Compact.
 - **New stories:** 10.19 (hidden history: markers, end stubs, the gap callout, the legend, "Show in all()") and 10.20 (graph animations). 10.19 takes over 10.4's elided marker. Earlier stories keep the doors open for 10.20, and 10.17 drops its fade.
 
+**Design update 2026-10-14** (Ralph, console session; the exports at `e74ced3`; details in the Epic 10 header below):
+- **What changed:** the reference is now `JJ Desktop Client Floating.html`, and a separate design-system project (tokens, components, a UI kit) is exported next to it. The graph owns the window and every control floats above it: a top bar (Place · View · Action), a rail with pinnable panels, the @ pill, the minimap and calm scrolling. The search field replaces the revset dropdown and comes with a jj log Configurations dialog. The inspector replaces the detail panel, with describe in place, hunks and a commit/split composer. Cards get a ••• and right-click menu instead of the fan and the "+" chips. Drag-and-drop moves changes, bookmarks, files and hunks. Free and Compact share their columns, and line router B draws one line per parent → child pair.
+- **Decided (Ralph):**
+  - the export wins where it explicitly changed a recorded decision: router B instead of the top-centre exit, the day axis on dividers without a gutter, gap markers with 12 px of line to cards, and the drag-and-drop interaction (a dwell menu, a plain drop runs the default row, ⌥ = "Move only this change", cards only);
+  - kept: the `compact` lane order without a control, 4.13's stack columns, expanded runs under @, bridges, the go-to pulse (now moon);
+  - motion is the client's FLIP model, not the Animation Show Case's;
+  - the inspector, the card menu, the Bookmarks rail content, the search field and the Configurations dialog are built to the design; only the bookmark popover stays thin;
+  - **scope change:** Claude now builds the whole Flutter UI, and Ralph accompanies and reviews. The app shell becomes Epic 11.
+- **New stories:** 4.14 (shared columns), 4.15 (router B), 9.48–9.50 (`new -A/-B`, `commit`, hunk selection → tree), 10.21 (search), 10.22 (the Configurations dialog), 10.23 (the operation toast), 10.24–10.26 (the inspector's diff, composer and hunk selection), 10.27 (diff drags), and Epic 11. 9.25 is refined; most Epic 10 stories carry dated notes.
+
 **FRs covered:** none formally. PRD §3.2 keeps the Flutter UI out of the PRD, and there is no UX document (§ UX Design Requirements). The epic consumes:
 - FR-GR-4 and NFR-P-2 as amended 2026-09-26: complete geometry plus lazy content;
 - Story 4.11's layout, not FR-GR-1 / FR-GR-2. Those two describe the `jj log` lane model (pvigier lanes; rows with `lane`, `edges_below`, `color_idx`) that the view no longer draws; both carry a dated amendment (2026-09-26) that points at 4.10–4.12;
@@ -573,7 +585,7 @@ Squash, rebase, bookmark rename/move and drag-and-drop follow when their backend
 
 The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Epic 9 uses it): CLI parameters are pre-filled from the effective config and passed explicitly, never baked in. The layered layout is presentation. What the view shows (which commits and edges, @, bookmarks) and every verb stay CLI-exact.
 
-**Scope note:** This epic is a dated exception to "the Flutter UI is Ralph's" (PRD §3.2; `project-context.md`; `CLAUDE.md`). Story 10.0 recorded it (done). Ralph reviews every story, and the rest of the UI stays his. The design's dialogs, popups and panels are not final. So the card popups (10.15), the detail panel (10.8) and the bookmark panel (10.14) are thin placeholders, unless Ralph exempts one of the panels. *(2026-09-28: the hover callouts of the design update are interaction, not decoration, so their mechanism is built for real: the commit callout (10.6) and the stack popover (10.17). The bookmark popover stays a placeholder apart from its hover opening and its position (10.15).)*
+**Scope note:** This epic is a dated exception to "the Flutter UI is Ralph's" (PRD §3.2; `project-context.md`; `CLAUDE.md`). Story 10.0 recorded it (done). Ralph reviews every story, and the rest of the UI stays his. *(Changed 2026-10-14 (Ralph): the rest of the UI is Claude's too — Epic 11; Story 11.0 recorded it. The placeholder rule below ends for the inspector, the card menu, the Bookmarks rail content, the search field and the Configurations dialog; only the bookmark popover stays thin.)* The design's dialogs, popups and panels are not final. So the card popups (10.15), the detail panel (10.8) and the bookmark panel (10.14) are thin placeholders, unless Ralph exempts one of the panels. *(2026-09-28: the hover callouts of the design update are interaction, not decoration, so their mechanism is built for real: the commit callout (10.6) and the stack popover (10.17). The bookmark popover stays a placeholder apart from its hover opening and its position (10.15).)*
 
 **Sequencing:**
 - 10.0 is done. 10.1 comes first: the viewport, `GraphLayout`, the vertical mapping, the recorded layouts from the spike and the demo host.
@@ -594,6 +606,21 @@ The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Ep
 - 10.19 (hidden history, added 2026-09-30) follows 10.4, 10.5, 10.6 and 10.7, on recordings of the `e243dd2` sample. Real gaps come with 10.12.
 - 10.20 (graph animations, added 2026-09-30) follows 10.1, 10.3, 10.4, 10.5 and 10.17. Real triggers come with 10.9 and 10.12.
 - 10.10 comes last. It is a placeholder that needs 9.31 and 9.16.
+- *Added 2026-10-14:* 11.1 (the design-system tokens) comes before 10.1. 10.21 (search) and 10.22 (the Configurations dialog) follow 10.5, 10.6 and 10.11, with 9.25 for counts. 10.23 (the toast) follows 10.9. 10.24 follows 10.8 and Epic 5's line-level diff; 10.25 follows 10.8, 10.9, 9.15 and 9.49; 10.26 follows 10.24, 10.25 and 9.50; 10.27 follows 10.10 and 10.26. 10.10 no longer comes last: it runs on a fake `drop_actions` port after 10.9 and 10.15. 4.14 and 4.15 precede 10.4's real geometry and 10.12.
+
+---
+
+### Epic 11: Floating app shell (Flutter UI)
+
+**Goal:** Build the app around the graph from the floating-client export (`JJ Desktop Client Floating.html`, `e74ced3`) and the design-system export: the design-system foundation in Flutter, the glass material, the floating overlay host (top bar, rail, pinned panels, calm scrolling), the window chrome, projects and the Projects dialog, the Settings window, sync (Fetch, Push, the auto-fetch poll), the Undo Timeline, and the retirement of the docked mock UI.
+
+**User outcome:** A user launches Zanshin, picks or adds a project, and works in one window where the graph fills the space and every control floats above it. They switch projects from the capsule, change settings in one window, fetch and push from the top bar, and step back through the operation log.
+
+**Scope note:** Added 2026-10-14 (Ralph) with the scope change: Claude builds the Flutter UI, and Ralph accompanies and reviews. Story 11.0 recorded the change in the canonical rules (done). Epic 10 keeps everything graph-semantic (the View capsule's contents, the inspector, the minimap, the toast, the Bookmarks content, the search); Epic 11 owns the frame they sit in.
+
+**Backed by:** the design export (`design/`, the floating client) and the design-system export (`design_system/`); the shipped bridge (open, detect, convert, clone, status, bookmarks, remotes, fetch, the op log, the config surface); Epic 9's backlog verbs for push (9.20), the remote poll (9.24), bookmark state (9.29), fetch parity (9.30) and the op-log surface (9.21).
+
+**Sequencing:** 11.0 is done. 11.1 and 11.2 come first, before Epic 10's first visual story. 11.3 and 11.4 follow; 11.5–11.9 follow 11.3; 11.10 comes last. Details in the Epic 11 header below.
 
 ---
 
@@ -606,7 +633,7 @@ These are reviewed in every epic's acceptance criteria rather than implemented o
 - **NFR-ST-1, NFR-ST-2** — FFI-contract stability. Inactive in WIP (0.x); breaking changes allowed. Review gate when release-phase begins.
 - **AR-P-2** (snake_case JSON), **AR-P-7** (test layout), **AR-AP-3..AP-10** — enforced by tool configs and lint/CI gates set up in Epic 1; passive thereafter.
 
-> **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns. Epic 9 (the ADR-0003 operation build-out) follows Epic 6 and is post-WIP-minimal (scheduling TBD). **2026-09-26:** Epic 4 is reopened for Stories 4.10–4.12 (topology/content split, the Dart layout engine on the worker isolate, the topology wire); Epic 10 (the commit-graph view — Flutter UI built by Claude at Ralph's request) runs 10.1–10.4 on fake data and adopts 4.10–4.12 in 10.11 / 10.12. **2026-09-28:** the design update adds Story 4.13 (commit stacks in the engine) and Story 10.17 (commit stacks in the view). **2026-09-30:** the gaps study and the animation showcase add Stories 10.19 (hidden history) and 10.20 (graph animations).
+> **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns. Epic 9 (the ADR-0003 operation build-out) follows Epic 6 and is post-WIP-minimal (scheduling TBD). **2026-09-26:** Epic 4 is reopened for Stories 4.10–4.12 (topology/content split, the Dart layout engine on the worker isolate, the topology wire); Epic 10 (the commit-graph view — Flutter UI built by Claude at Ralph's request) runs 10.1–10.4 on fake data and adopts 4.10–4.12 in 10.11 / 10.12. **2026-09-28:** the design update adds Story 4.13 (commit stacks in the engine) and Story 10.17 (commit stacks in the view). **2026-09-30:** the gaps study and the animation showcase add Stories 10.19 (hidden history) and 10.20 (graph animations). **2026-10-14:** the floating-client export and the design system add Stories 4.14, 4.15, 9.48–9.50 and 10.21–10.27, and Epic 11, the floating app shell, which Claude builds after Ralph's scope change.
 
 ---
 
@@ -3623,6 +3650,16 @@ So that a user who has customized `trunk()` or `immutable_heads()` — or define
 > - **No stack logic here.** Commit stacks are Story 4.13, which extends this engine after the port. The port and its goldens stay as specified.
 > - **The design sample grew from 22 to 36 commits** (`graph-data.js` at `a399daf`). The spike's JS oracle reads the live design folder (`spikes/graph-layout-ab/tools/design-input.mjs:27`), so SPEC §7.2's expected results and the design goldens below would drift. Pin the oracle to the 22-commit sample of `57f259c` (a copy under the spike, or `git show 57f259c:_bmad-output/implementation-artifacts/design/graph-data.js`) before the goldens are generated. *(Done 2026-09-30: `tools/design-source.mjs` pins it through `git show`, and the oracle passes again; the spike SPEC §7.2's dated note.)* `computeLayout` itself is unchanged by the update (GV:140-225 at both commits). The 36-commit sample serves 4.13's run-rule oracle.
 
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** the floating client has its own layout engine, `graph-layout.jsx` (GL). This story stays done; what the export changed goes to two new stories.
+> - **Free y is unchanged.** GL's Free rows equal this engine's: the clamped time, U = 16, the gap curve, the cap of 48 units and one pitch per edge (GL:27-33, :376-406 = `layout_engine.dart:50-56`, :294-348 = GLD §4.2). Decision (b) keeps the constants, so open question 4's constants part is answered.
+>   - Ties on equal T fall to (generation depth, priority, design index) in GL (:395) and to the index here (D3). Both keep parents first; it stays.
+>   - GL's days are DST-aware local days; this engine's use the fixed offset (D7; open question 6).
+> - **Shared columns → 4.14.** GL packs one set of lanes for both layouts (GL:473-575; SYNC #8). This engine packs and orders per mode (`layout_engine.dart:415-420`; `compact_order.dart:200-247`), so a Free ↔ Compact switch can change width and column order. With 4.14 every request loads timestamps; the worker test "a `compact` request asks for no timestamps" changes there.
+> - **The lane order is kept** (decision (b)): `compact` (the default) and greedy. The export's `laneOrder:"optimized"` (AF:16) is a leftover. Its optimizer scores pixel routes, so its columns depend on card width and height (GL:312-374, :535-547; its cache key, GL:570; prototype defect 41). This engine stays independent of W and H.
+> - **Route geometry → 4.15.** Decision (a1) adopts the export's router B. It supersedes the dated note "**Route geometry:** every edge now leaves the parent's top at the centre" above and GLD §12's planned change; 4.15 replaces GLD §4.5's geometry text. The `route` and `blocked` outputs and every golden stay unchanged.
+> - **Item 8's kept defects:** router B fixes D9 (prototype defect 2): a lane-blocked line climbs the gutter between columns (GL:181-190). Its Free detours soften D8 (GL:162-177). Both move to 4.15, and so does open question 4's "buses behind cards" part.
+> - **Oracle tools.** GD is unchanged at `e74ced3` (52 commits), so the pinned oracle (`57f259c`) and the `e243dd2` inputs stay valid. `node tools/design-input.mjs --rev e74ced3` fails: it extracts `G`, `LADDER`, `timeBucket`, `routeEdges`, `optimizeLanes` and `computeLayout` by name from `graph-view.jsx` (`design-input.mjs:33-54`), which now imports them from GL (GV:6-7). 4.14 and 4.15 add a loader that evaluates `graph-layout.jsx` whole; it is plain JS, and LSH:54 shows the one stub it needs, `revsetMatch`.
+
 **Motivation.** Ralph's near-final HTML design (`_bmad-output/implementation-artifacts/design/JJ Desktop Client.html`, GV:140-225) lays commits out in rows shared by several commits:
 - Compact rows are the generation depth, Time rows are time buckets, and an experimental Free mode places each node at a time-proportional y;
 - lanes come from greedy interval packing with a first-parent continuation, optionally permuted to reduce crossings;
@@ -4025,6 +4062,18 @@ Which modes the product exposes is 10.13's question. It does not gate this story
 ### Story 4.13: Commit stacks in the layout engine — linear runs grouped into stack nodes, columns from the ungrouped layout, vertical compaction only [bridge]
 *(Added 2026-09-28, Ralph — console session on the design update, export at `a399daf`. Bridge scope: pure Dart in `packages/zanshin_core`, after 4.11's port; first in the spike's Dart, which is the reference and the recorder. The view side is 10.17. Refined enough to build from; ACs to be written when scheduled.)*
 
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** this story stays done.
+> - **The export changed its stack columns again.**
+>   - With at least one run expanded, it takes the columns of the all-collapsed graph and gives every member its stack's column (GV:580-588).
+>   - It keeps that freeze only while it is valid in both layouts; otherwise it re-packs, so columns can still move (GL:548-568; GV:581; prototype defect 31).
+>   - With nothing expanded it lays out the collapsed graph's own packing, and with "Group stacks" off the ungrouped graph's, so that switch can move columns too (GV:583).
+> - **Decision (b) keeps this story's columns.** They come from the ungrouped layout, and a toggle never moves a column (2026-09-28 decision (a); deviation (f)). I7 is unchanged.
+>   - The recorded price stays: collapsing never makes the graph narrower (item 3), while the export's collapsed view can be narrower.
+>   - Split runs (item 3) do not occur in the export, because its members always share their stack's column; it pays for that with the fallback above.
+> - **With 4.14** the ungrouped columns become the joint Free + Compact packing, and I7 holds across modes too (4.14's I8).
+> - **Unchanged in the export:** the run rule (GL:615-662 = GV@e243dd2:260-306), whose revset filter now goes through `revsetMatch` (RC:122-127); a stack in Free at its newest member's place, with the hidden members' gaps carried over (GL:376-406). That is §4.8's (F) constraint; the export has no (C), because it re-packs instead.
+> - **Kept** (decision (b)): runs of mutable ancestors of @ start expanded. The export still starts every run collapsed (GV:552).
+
 **Motivation.** The updated design collapses linear runs of commits into one stack card (GV:227-264; the toolbar's "Group stacks" switch GV:336-339; both at `a399daf`). A click expands a stack, and a bracket beside the expanded run collapses it again (GV:654-665, :800-806). The design implements this by rewriting the commit list and re-running the whole layout on it (GV:651-652). Every toggle therefore re-packs the lanes, and whole branches jump sideways. Measured in the design page on 2026-09-28 (default revset, collapsing every stack):
 - with Min. crossings, the settings branch moves from column 5 to 3 and the iOS branch from 3 to 1;
 - with greedy, the riverpod branch moves from column 5 to 1.
@@ -4119,6 +4168,168 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 > - **Compaction** on the design sample, `compact` / greedy, every run collapsed: all 19 → 15, default 9 → 8 (a column constraint binds; the planning estimate 9 → 7 missed it).
 > - **Measured** (spec § Measurements): the `stacks` phase costs 0.3–0.45 ms at large-10k and ~9–11 ms at synth-100k (AOT warm).
 
+### Story 4.14: Shared columns — one lane packing and column order for Free and Compact [bridge]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3` (SYNC #8; the Epic 10 header's design update 2026-10-14, decision (g): planned). Bridge scope: pure Dart in `packages/zanshin_core`, SPEC first in the spike's Dart, like 4.13. Refined enough to build from; ACs to be written when scheduled.)*
+
+**Motivation.**
+- In the export, Free and Compact share one set of columns: switching layouts only moves cards up and down; width and column order stay (SYNC #8; design `CLAUDE.md`:5).
+  - GL packs the lanes once for both layouts. Two chains share a lane only if they are apart in both (GL:473-491).
+  - Its cache reuses the columns when the mode changes (GL:570-575).
+- The engine packs per mode. §4.3 visits the nodes by the requested mode's y (`layout_engine.dart:415-420`), and the `compact` order exchanges segments on that mode's rows (`compact_order.dart:200-247`).
+  - So today every layout switch can change the width and the column order, and 10.1's anchor has to absorb sideways jumps.
+- Decision (b) keeps the lane orders: `compact` (the default) and greedy; `optimized` stays dropped. Three parts of the export are not copied:
+  - its whole-lane optimizer (GL:312-374);
+  - its exact chain colouring (GL:492-520);
+  - its router-judged choice between packings (GL:535-568).
+
+  They are factorial in the lane count, they score every candidate with the O(E²) router (prototype defects 16 and 42), and they make the columns depend on card width and height (GL:570; prototype defect 41).
+
+**Scope.**
+1. **SPEC first:** dated amendments of GLD §2, §4.3, §4.7, §4.8, §7.3 and §13. The spike's Dart reference comes first, then its recorder.
+   - Every request lays out both vertical models, compact y and free y. The mode only picks which rows are output; lanes and columns no longer depend on it.
+   - **Joint reservations.** A node's §4.3 interval [a, b) is computed in each model, in that model's units. A node fits a lane iff, in each model, its interval is disjoint from every other interval of that lane. The continuation rule stays (GL:479, :486).
+   - **Visit order** (Claude's proposal): pack once in compact order and once in free order, and keep the packing with fewer lanes; compact wins a tie (GL:524-527).
+   - **Complexity.** §4.3's O(n log n) structure serves the model being visited. The other model needs a general interval-overlap test per lane, e.g. an ordered interval set. The SPEC states the bound.
+2. **The lane order on the joint packing** (decision (b)).
+   - greedy: π = identity.
+   - `compact` (§4.7), Claude's proposal:
+     - an exchange is feasible iff the exchanged segments stay disjoint in both models;
+     - windows are cut where the reservations connect in either model;
+     - the cost is the sum of both models' §4.7 costs, each normalised per pitch;
+     - κ, the reach, the rounds and the budget stay.
+   - Both orders keep the trunk column fixed, drop empty columns, and keep I1–I6 in both models.
+3. **Stacks** (4.13): §4.8 runs on the joint ungrouped columns. A toggle and the "Group stacks" switch still never move a column (2026-09-28 decision (a)). The grouped rows are computed for the requested mode, as today.
+4. **Output.** The grid format is unchanged: rows of the requested mode; lanes and cols identical for both modes. `lanes` is the joint count.
+5. **Worker.** `RepoHandle.graphLayout` loads timestamps for every request, compact included; 4.11's "timestamps iff `free`" goes.
+   - Free is the default, so the default layout pays nothing new.
+   - A compact request now pays the timestamp load: about 59 ms packed and 1.24 s loose at 10k (4.11's Delivered note).
+6. **Measurements** (spec § Measurements). On the real 1.4k-commit repo and the scale inputs, compare the joint packing with the per-mode packings (`tools/lane-metrics.mjs`): mean width, holes and crossings per mode; the layout time.
+
+**Non-goals.**
+- Pixel geometry, routes and route classes (4.15).
+- The export's optimizer, exact colouring and router-judged packing choice (see Motivation). Exact colouring for small graphs is revisited only if the measurements call for it.
+- A lane-order control in the UI (decision (b)); the order stays a request parameter.
+- A Rust reference of the joint packing. The spike's Rust implementation keeps its per-mode greedy as history.
+
+**Depends on.** 4.10, 4.11 and 4.13 (all done). The spike step needs only the spike.
+
+**Design status.** The direction is the export's (SYNC #8; GL:463-575), planned by decision (g); nothing here is NEEDS DESIGN.
+- FINAL: one set of columns for both layouts, and a lane is shared only when its chains are apart in both.
+- Claude's proposals: the visit order (item 1), and the `compact` order's joint feasibility and cost (item 2).
+
+**Witnesses.**
+- **I8 (new, columns across modes).** On every golden and on at least 1,000 seeded DAGs × 2 orders × random stack states, `lane` and `col` are identical in the compact and the free output.
+- I1–I7 hold in both modes on the joint columns, including I2 in the mode that did not drive the packing.
+- **Design oracle.** On the `e243dd2` sample (52 commits, both revsets; GD is unchanged at `e74ced3`), the joint greedy lane count equals the fewer of GL's two greedy candidates (GL:473-491, :524-527).
+  - The oracle is read by a loader that evaluates `graph-layout.jsx` whole, with `revsetMatch` stubbed as LSH:54 does.
+  - If they differ, re-derive by hand before changing code.
+- The `compact` order's joint cost is never above the joint greedy's.
+- Determinism; neither W nor H appears in the request.
+- **Worker.** A compact and a free request on the same repo return identical lane and col arrays, and both load timestamps.
+- The measurements are recorded in the spec.
+
+**Related:** 4.11, 4.13, 4.15; 10.1 (I8 in the checker, offX 0), 10.2, 10.12; GLD §4.3, §4.7, §4.8; SYNC #8.
+
+### Story 4.15: Line router B — one line per parent → child pair, as a `zanshin_core` library [bridge]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3` (the Lines Study's variant B, SYNC #7; the Epic 10 header's design update 2026-10-14, decisions (a1) and (g)). Bridge scope: pure Dart in `packages/zanshin_core`, exported for the view. Refined enough to build from; ACs to be written when scheduled.)*
+
+**Motivation.**
+- **Decision (a1) adopts the export's router B** (GL:148-299, :57-82; SYNC #7; DS components/graph/GraphEdge.prompt.md:14-19):
+  - one line per parent → child pair, with its own exit and entry ports;
+  - tracks, gutter routes and Free detours;
+  - bridges that keep a clearance.
+
+  It supersedes product decision 5 / deviation (d) and 10.4 items 1 and 3.
+- **It fixes prototype defect 2.** A merge whose parent lane is taken climbs the gutter between columns, instead of running up the child's column behind its cards (GL:181-190; GLD D9, §11.4).
+- **It softens GLD D8.** In Free, a run that would pass behind a card detours through a gutter (GL:162-177, :186-190).
+- **Its geometry depends on the card size:**
+  - the exit fan-out on W: 12 → 7 px → shared at 400 / 240 / 160 px (GL:222-231; DS components/graph/fanout.card.html:39-42);
+  - the gutter x on W + 56;
+  - the tracks and bridges on pixel bands;
+  - Free's detours on H: a card 12 units above a band blocks it at H 62 but leaves room at H 40 (GL:162-172).
+- **The epic's rule stays:** a layout is requested once per operation and never for a resize (the Epic 10 header, "The layout model"). So routing becomes a stage of its own, keyed by the metrics.
+- In the export everything is one call: `computeLayout` lays out, routes, and places bridges, markers and stubs (GL:408-426, :584). GV only paints (GV:1047-1130).
+
+**Scope.**
+1. **Home.** `packages/zanshin_core/lib/src/graph_layout/router.dart`.
+   - Pure Dart, under the engine core's import rule (GLD §13), with no isolate dependency.
+   - Exported from `zanshin_core.dart` with its result view; this is the story's bridge part.
+   - A dated GLD section "Routing" replaces §4.5's geometry text and §12's planned top-centre exit.
+2. **Class stage.** It runs per layout, in units, independent of W and H, and its result is cached per layout.
+   - **Kinds** (GL:178-192):
+     - *straight*: same column, the first parent, and that column is free between them;
+     - *fork*: the first parent, and the child's column is free;
+     - *merge-adjacent*: a non-first parent exactly one pitch below the child;
+     - *merge-up*: the parent's column is free;
+     - *gutter*: every other case.
+
+     "Free" means no node strictly between the two rows in that column (GL:160).
+   - **Gutter choice:** the gutter between the two columns, nearest the child, whose two runs have room. A line within one column uses the gutter on its right (GL:173-177, :187-190).
+   - **Free detours, by a unit rule** (Claude's proposal):
+     - a run is blocked when a card in a column strictly between its ends sits 1–12 units above the parent (a run above the parent) or below the child (a run below the child);
+     - the export's pixel test leaves room from 13 units at H 62 and from 12 at H 40 (GL:162-172);
+     - if no gutter is free either, the run stays direct and is reported (GL:186-190; prototype defect 43).
+   - **Shared entries:** dashed edges share one entry only at a node with one real parent and at least two Indirect edges (4.10's `parent_count`; 10.19 item 1). jj reports no `via` (prototype defects 4 and 44); the export groups by its own gap walk (GL:212).
+   - The engine's `route` and `blocked` outputs stay unchanged. They keep serving the invariants and the goldens.
+3. **Geometry stage.** It runs per (layout, metrics). The metrics are W, H, gapX 56, gapY 48 and pad 56.
+   - **Exits** (GL:222-250):
+     - a straight line leaves at the centre, a single other line at 0.28·W;
+     - m lines sit 12 px apart, between 18 px from the centre and 18 px from the edge, squeeze down to 7 px, and then the outermost share one exit;
+     - merge-up lines are innermost, then the others by how far they turn.
+   - **Entries** (GL:206-221): the first parent at the bottom centre; the others beside it, the farther parent farther out, 24 px and then 16 px apart, down to 8.
+   - **Tracks** (GL:84-132, :251-290):
+     - runs in one band whose x-ranges come within 10 px form a cluster;
+     - a cluster is ordered so its runs nest, then spaced 3.5–6 px apart inside the band's free part (12 px off the cards) and centred;
+     - a hidden merge's cluster sits as far from the child as it can (GL:117);
+     - an overfull cluster keeps its spacing, centred, and is reported;
+     - several gutter lines at one x step ±6 px (GL:193-197).
+   - **Bridges** (GL:57-82):
+     - only crossings of edges that share no node count;
+     - the horizontal breaks 12 × 10, unless that keeps less than 12 px of line to a bend or card and the vertical has more room; then the vertical breaks 10 × 12;
+     - the rule is a query over the run indexes, which 10.4 runs per visible window. There is no all-pairs pass.
+   - **Output** as typed arrays:
+     - per edge, a polyline of at most 6 points;
+     - per node, its entry ports (10.19's stubs read them);
+     - the run indexes (verticals by x, horizontals by y, bends), which 10.4 and 10.19 query.
+
+     Rounded corners (r 10) stay the painter's.
+4. **Where it runs — *NEEDS DESIGN.*** Does route geometry run on the UI side per metrics, or on the worker?
+   - **Recommendation** (decision (g)): both stages run on the UI side. The class stage runs once per layout, the geometry stage per metrics. Below a size threshold they run synchronously; above it, in `Isolate.run`. They never cost a worker request.
+   - The Epic 10 rule "the view never computes rows, columns, route shapes, …" then becomes: "the view never decides route classes; route geometry comes from `zanshin_core`'s router" (the Epic 10 header's dated note).
+   - **Alternatives:**
+     - the engine routes per metrics: a relayout and a topology call per card-width step, against the once-per-operation rule;
+     - a worker command that takes the grid back: an asynchronous round trip per slider step, with stale edges in the meantime.
+5. **Oracle tool** (the spike's `tools/`, outside the gate).
+   - It evaluates `graph-layout.jsx` whole (plain JS; `revsetMatch` stubbed as LSH:54 does). It runs GL's `routeAll` on GL's own grid, so differences in lane order never leak in.
+   - Cases: the design sample in both revsets, plus the Lines Study's FAN and PRESETS scenarios (LS:7-22), at W 160 / 240 / 400 × H 40 / 62 × both modes.
+   - `design-input.mjs --rev e74ced3` cannot read this export: it extracts by name from `graph-view.jsx`. The new loader replaces that path for this export.
+
+**Non-goals.**
+- Painting, dashes, rounded corners, and the hover and lineage styles (10.4).
+- Gap markers and end stubs (10.19 places them on the router's runs).
+- Lane order and columns (4.14), rows (4.11) and stacks (4.13).
+- The study's variants A and C (`reroute`; LS:23-27).
+- Bridging crossings of edges that share a node. The export still skips them (GL:62), and 10.4's design question (d) follows it (Claude's proposal).
+
+**Depends on.** 4.11 and 4.10's `parent_count` (both done). It is independent of 4.14. It feeds 10.4, 10.16 (the minimap's lines, GV:475-480) and 10.19.
+
+**Design status.**
+- FINAL (decision (a1)): router B's rules and constants (GL:8-13; DS components/graph/GraphEdge.jsx:6-39).
+- NEEDS DESIGN: item 4.
+- Claude's proposals: the unit rule for Free detours, and shared entries only at single-parent hidden merges (both item 2).
+
+**Witnesses.**
+- **Oracle.** On the oracle cases, the kinds, the exit and entry offsets and the track order equal GL's. Every difference is listed and explained, e.g. the unit rule at H 40.
+- **Fan-out.** Nine lines out of one side sit 12 px apart at W 400, 10.5 px at 240, and 7 px at 160 with the outer three sharing one exit (DS components/graph/fanout.card.html:39-42). Entries sit at 24 + 16·k px, squeezed down to 8.
+- **Tracks.** Runs sit 3.5–6 px apart inside the band's free part, and the runs of one cluster never cross, apart from counted unavoidable cycles (GL:93).
+- **No line behind a card.** In Compact this is a gate over every recording, except a reported gutter with more than 9 lines. In Free it is a counted report (the direct fallback and overfull clusters).
+- **Blocked merges.** A hand-built lane-blocked merge climbs a gutter (defect 2's case). On `synth-10k` (compact, greedy) the 229 blocked merges of 4.11 item 8 route without a vertical behind a card.
+- **Bridges.** The orientation rule holds on hand-built cases. Per-window bridges equal an all-pairs oracle on random windows.
+- **Stability.** The class stage takes no W or H. The geometry stage is deterministic and independent of the window. A card-width change re-runs only the geometry stage and issues no layout request.
+- **Timings.** Both stages at large-10k and synth-100k (AOT, warm); they set item 4's threshold.
+
+**Related:** 4.11 (route classes, D8 and D9), 4.14, 10.4, 10.16, 10.19; GLD §4.5, §11.4, §12; SYNC #7.
+
 ---
 
 ## Epic 5: `zanshin-diff` — Word-Diff + Syntax Highlight
@@ -4126,6 +4337,16 @@ The view never computes rows (Epic 10's house rules), and a stack changes rows. 
 Produce structured diff JSON (hunks → lines → segments) with word-level diff inside changed lines plus tree-sitter syntax classification, served via the FFI surface. Hit the < 500ms target for a 5k-line changed file (NFR-P-3).
 
 ### Story 5.1: Line-level hunks via jj-lib (`hunks.rs`)
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** the floating client's inspector reads these hunks: 10.24 shows them, 10.26 selects them, and 9.50 writes a tree from a selection. The note adds to the scope; it supersedes nothing.
+> - **NEEDS DESIGN, Claude's default adopted (decision (g)): line-level first.** 5.1, 5.5 without segments, 5.6 and 5.8 come first; 5.2–5.4 come later. The design shows neither word-level nor syntax marks (IN:65-94; AC:1855-1900).
+> - **jj's own sections.** The CLI's builtin diff editor cuts a file into changed sections with `ContentDiff::by_line` (`../jj` v0.46.0 `cli/src/merge_tools/builtin.rs:225-271`). The view groups sections into hunks with context, as `jj diff --git` does (`cli/src/diff_util.rs:1767-1847`). Each hunk lists the sections it contains. A selection then names exactly what the user saw (9.50).
+> - **Parameters pass through** with the CLI's defaults: the context lines (`--context`, `diff_util.rs:155-157`; `diff.git.context = 3`, `cli/src/config/misc.toml:16-17`) and the whitespace modes `-w` / `-b` (`diff_util.rs:162-166`).
+> - **Per hunk:** the added and removed counts (the header shows them, IN:106; DS components/content/DiffHunk.prompt.md:8), and a key that is stable within one result: the path plus each section's old and new line range.
+> - **The source symbol.** jj 0.46 appends a source symbol to each git hunk header, like Git's funcname (`diff_util.rs:1788-1830`; `cli/src/source_symbol.rs`). The design's hunk context (IN:105; DF:14) is that symbol. Port it: the language comes from the file name (`source_symbol.rs:57-93`), and the symbol is cut at 80 bytes (`diff_util.rs:1849-1861`). A language without a pattern, Dart among them, gets none, as in the CLI (Claude's proposal).
+> - **Trees in, not change ids.** `compute_hunks` takes two trees. 5.6's revision form (the merged parents) and from/to then share it.
+> - **Binary and conflicted files.** Binary stays as specified. A conflicted file is diffed with its conflict materialized, as `jj diff` does (`diff_util.rs:1884`).
+> - **ACs to add:** the sections equal the builtin editor's for the same pair of files; a hunk's counts equal its lines; context 0 and context 3 yield the same sections; the symbol equals `jj diff --git`'s on a Rust fixture and is absent on a Dart fixture.
 
 As a Rust developer building the diff base,
 I want `crates/zanshin-diff/src/hunks.rs` computing line-level hunks for a change by delegating to jj-lib,
@@ -4502,6 +4723,15 @@ So that the FFI surface and consumers parse diffs with schema validation.
 ---
 
 ### Story 5.6: Diff between two revisions API
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** the inspector's diff view (10.24) reads this API. The note adds to the scope and supersedes the edge case's rename decision.
+> - **The revision form.** Add `diff(revision, paths)` next to from/to, with `jj diff -r` semantics: from the merge of the revision's parents to the revision (`../jj` v0.46.0 `cli/src/commands/diff.rs:41-50`, :183). The root's diff is empty. `paths` are filesets, passed through (:86-90), and the CLI's unmatched-paths warning (:226) becomes a 9.32 code. 10.24 asks for the focused file.
+> - **Copies and renames.** The CLI diffs with copy records (:140, :188), so a file can be renamed or copied, as `show()` already reports (`packages/zanshin_core/lib/src/ffi/commit_views.dart:220-224`). This supersedes the edge case "Decision for 0.1: … rename detection is implicit". Each file carries its kind (added, modified, removed, renamed, copied) and `from_path`; 5.5's `Diff` table gains both.
+> - **Counts.** Each file and each hunk carries added and removed counts (5.1's note). The inspector sums them into "N files +a −r" (IN:279).
+> - **A summary mode** (Claude's proposal). The file list needs each file's kind and counts without its hunks, like `jj diff --stat` (`cli/src/diff_util.rs:116-120`). The mode also returns a fingerprint of each file's changed lines, for 10.24's Viewed key. 10.24 then loads hunks for the focused file only.
+> - **Pinned results.** A result names the operation and the commit id it was computed at. 10.26 and 9.50 use them to detect a stale selection.
+> - **Line-level first** (5.1's note, decision (g)): steps 3 and 4 of `compute_diff` (word diff, highlighting) are skipped until 5.2–5.4 land. A line then carries its text only.
+> - **ACs to add:** a merge diffs against its merged parents; a renamed file reports `renamed` with `from_path`; the summary mode returns the same files and counts as the full diff; an unmatched path warns; a result carries its operation and commit id.
 
 As a Rust caller wanting to diff arbitrary revision pairs,
 I want `crates/zanshin-diff/src/lib.rs` exposing `pub fn compute_diff(repo: &Repo, from: ChangeId, to: ChangeId) -> Result<DiffOutput, DiffError>` that orchestrates hunks, word-diff, highlighting, and output (FR-DF-4),
@@ -6532,17 +6762,56 @@ Shared `movement_util` orchestration over `MutableRepo::check_out`/`edit`; revse
 ### Story 9.15: `squash`, `split` (partial-file) — *supersedes deferred 6.8 part; FR-JJ-10b/10c* [M]
 Tree math via `rewrite::squash_commits` / `CommitWithSelection` / `restore_tree`; message-combine + selected-tree from Story 9.1; GUI supplies the selected `TreeId` (no editor spawn). `split` has no lib primitive — assemble two builders + parallel-tree math.
 
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** the floating client's inspector (10.25, 10.26) and its drops (10.10, 10.27) run `squash` and `split`. The note fills in the one-line scope with the CLI behaviour they need (`../jj` v0.46.0 `cli/src/commands/`); it supersedes nothing.
+> - **Two selection arms for both verbs:** filesets (`SelectedTree::from_paths`) or a GUI tree from 9.50 (`from_tree_id`). No interactive flag is ever passed (ADR-0003). The left side is the source's parent tree, as in the CLI (squash.rs:495; split.rs:567).
+> - **`squash -r X`** is the inspector's "Squash into parent" (IN:220; GV:773-779). The single parent is the destination. A merge refuses with "Cannot squash merge commits without a specified destination" (squash.rs:243), and the UI shows that text (prototype defect 33).
+> - **`squash --from S --into T`**, whole, is 10.10's change drop "Squash into this change" (DND:25-62); with paths or a tree it is 10.27's drop "Move into this change" (DND:69-70).
+> - **Flags pass through** with the CLI's defaults: `-m`, `-u` (:155), `-k` (:180).
+> - **The combined description must be known before the run.**
+>   - The CLI asks inside the command: when the source is abandoned and at least two descriptions are non-empty, it opens an editor on the combined text (:363-396; `cli/src/description_util.rs:356-368`).
+>   - The verb's plan phase reports that case and returns the combined text from 9.1's `combine_messages`, without "JJ:" lines. The GUI asks (10.8's form) and then runs with `-m`. A single non-empty description is taken as it is, as in the CLI.
+>   - This is the backend half of 10.9 design question (e).
+> - **Abandoning.** An emptied source is abandoned unless `-k` is given, whatever its description (squash.rs:68). An abandoned @ gets a new empty @. The prototype differs (GO:86-87; prototype defect 35). The UI follows `MutationResult`.
+> - **An empty interactive selection refuses** with "No changes selected" (:426).
+> - **`split -r X <paths | tree>`** is the composer (IN:125-127; 10.25, 10.26).
+>   - `-m` describes the selected part; the rest keeps its description (split.rs:176).
+>   - `split.legacy-bookmark-behavior` (default true, `cli/src/config/misc.toml:68`; split.rs:502) moves the bookmarks to the rest, and @ moves to the rest.
+>   - The warnings "All changes have been selected, so the original revision will become empty." (:588) and "No changes have been selected, so the new revision will be empty." (:593) become 9.32 codes. 10.25 shows them before the run.
+> - **`split -o / -A / -B`** (:138-170): the selected part becomes a new commit at that location, and the rest stays where it is. These are the drops "Into a new change after / before" (DND:73-76; 10.27). `--parallel` (:190) passes through, default off.
+> - **9.31's `diff` source** previews the three drop rows with the same plan functions (9.31 item 3).
+> - **Witnesses** (9.47's oracle): one scenario per arm and flag above; the tree arm against the CLI's scripted `--tool` (9.50).
+
 ### Story 9.16: `rebase`, `parallelize`, `arrange` — *supersedes deferred 6.8 part* [M]
 `rebase` via `rewrite::{MoveCommitsTarget,compute_move_commits,ComputedMoveCommits::apply}` + 9.1 target/dest resolution; `parallelize` ports the two-map parent recompute; `arrange` exposes only a headless `arrange_apply(plan)` (the CLI's ratatui TUI is replaced by the GUI).
 
-### Story 9.17: `commit`, `resolve`, `diffedit` (GUI-editor-backed) — *FR-JJ-11/12 conflict ops* [M]
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** the design emits four rebase forms, all from 10.10's drop menu (DND:39-46; decision (a4)):
+> - "Move here" `rebase -s S -o T` (the default row), "Move only this change" `rebase -r S -o T` (the ⌥ default), "Insert after" `rebase -r S -A T` and "Insert before" `rebase -r S -B T`.
+> - Each form gets a witness and a 9.47 oracle scenario. The `plan_*` functions stay shared with 9.31 (its contract).
+> - `rebase -r S -o T` with T a descendant of S stays allowed, as in the CLI. The mock hides that row (DND:41; prototype defect 34); the UI shows what 9.31 returns.
+> - `-b`, `-s` / `-b` with `-A` / `-B`, `parallelize` and `arrange` get no UI (decision (a4)). They stay in scope for CLI parity. The deferred-work 2026-09-21 corner (`-s` / `-b` with `-A` / `-B` inside the moved set) is off the UI path.
+> - No new result field: the anchor (T), the flash (S) and the drop origin come from the request (10.9's op hints).
+
+### Story 9.17: `resolve`, `diffedit` (GUI-editor-backed) — *FR-JJ-11/12 conflict ops* [M]
 Backend wraps pub tree helpers + conflict materialization (`conflicts::*`, `MergedTree::conflicts*`); the diff/merge editor is GUI-native and feeds a selected/edited `TreeId`. Expose context+apply pairs for `resolve`/`diffedit`.
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`; retitled):** `commit` leaves this story. 9.49 carves it out, because the inspector's composer (10.25, 10.26) needs it long before `resolve` and `diffedit`, which need a merge or diff editor the design does not have yet. The heading drops `commit`; the sprint-status key stays.
+> - This story keeps `resolve` and `diffedit`. Their GUI-supplied tree comes through 9.50's contract (decision (g)).
+> - The design shows a conflict only as the inspector's "Conflict" flag (IN:233) and offers no resolve action. A conflict view is open (deferred-work).
 
 ### Story 9.18: `revert` — *no lib helper* [M]
 Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase from CLI logic over `merge_commit_trees` / `MergedTree::merge` / conflict labels. The only genuine algorithm port with zero lib helper.
 
 ### Story 9.19: Bookmark thick + list filters — `bookmark move`, `advance`, `rename`; `bookmark list` filters — *supersedes deferred 6.9 part* [M/R]
 `--from` revset membership, dynamic revset with injected `to`, tracking-state transfer; typed filtered rows (replace the CLI template matrix).
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** 10.10's bookmark drop runs `jj bookmark move N --to T`, with `--allow-backwards` when T is not a descendant of the bookmark's change (DND:55-61). 10.15's thin popover runs rename, "Move to…" and "Move existing here…" through this story.
+> - **Exact names.** `bookmark move` takes name patterns, glob by default (`../jj` cli/src/commands/bookmark/move.rs:47-56 @ v0.46.0). The API addresses a bookmark by its exact name, so a name with glob characters never matches other bookmarks.
+> - **`--allow-backwards`** is passed explicitly, never a hidden default. Without it the CLI refuses with "Refusing to move bookmark backwards or sideways: N" (move.rs:123, :134). That refusal maps to a registry code (proposal: `jj.invalid_input`, the CLI text verbatim).
+> - **The fast-forward fact** (`is_fast_forward`, bookmark/mod.rs:165) is one pure function, shared with 9.31's bookmark payload, whose row shows the "backwards" note. This follows 9.31's contract for the other verbs.
+> - **Messages.** "Target revision is empty." (move.rs:140) becomes a 9.32 warning code. "No bookmarks to update." (move.rs:119) is the house no-op result. The UI never offers that case: a drop on the bookmark's own card has no row.
+> - **Local bookmarks only** (move.rs:107). The UI never drags a remote bookmark (GV:92).
+> - **The tracking state after a move** comes from 9.29's list, never from the UI. The mock recomputes synced → ahead / behind / diverged itself (GO:107-117).
+> - **Witnesses** add the op description "point bookmark N to commit <id>" (move.rs:164) and 9.47 oracle scenarios for a forward and a backwards move.
 
 ### Story 9.20: `git push`, `git clone`, `git init` — *FR-JJ-13b push* [M]
 `git::push_refs` (+ safety/classification pipeline), `Workspace::init_*_git` + `GitFetch`; network + multi-tx filesystem setup; progress via typed callback (the 6.4a pattern).
@@ -6567,28 +6836,69 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 ### Story 9.24: Remote-change poll — `git ls-remote` diff against the view — *FR-JJ-13c* [R]
 *(Added 2026-09-12, Ralph.)* A read-only `Repo::remote_changes(remote)` that fetches only the remote's **ref advertisement** (bookmark/tag name → commit id, no pack transfer) and diffs it against the last-known `<name>@<remote>` targets in the current view (`View::remote_bookmarks` / remote tags). Typed result per remote: moved (old id → new id), new upstream, deleted upstream; empty = nothing new. **No transaction, no op-log entry, working copy and bookmarks untouched** — this is what distinguishes it from 6.4a's `git fetch`, which (jj semantics, `import_refs` → `merge_local_bookmark`) also moves *tracked local* bookmarks. jj-lib has **no public ls-remote helper** (only a `pub(crate)` `git remote show` spawn for the default branch), so the transport is ours: spawn `git ls-remote --heads --tags <remote>` via the same subprocess route jj-lib uses for `fetch`/`push` (auth = the user's git: ssh-agent, credential helpers, `.ssh/config` — for free), honouring the same `git.executable-path` setting; gix `Remote::connect(Fetch).ref_map()` is the in-process alternative if the subprocess route proves awkward. No `git fetch --dry-run` — that still downloads objects. **Non-goal:** a commit count ("5 new commits") — impossible without the objects; the UI shows "`main`, `feature-x` changed on `origin`" and offers the real fetch. Surface through the usual chain (`.fbs` → `zanshin-jj` → `extern "C"` → `WorkerCommand`; MCP optional). The **poll timer, interval setting and indicator are UI-side** (Ralph's scope); the backend is one-shot. Cheap (Tier A); needs a real remote fixture in tests (the checked-in fixtures carry no remote bookmarks — construct in-test, as 2.9/6.4a do). *(2026-09-20 addendum, Ralph: the Fetch button's badge is THIS story's count of remote bookmarks that moved/appeared/vanished upstream — still no commit count; per-bookmark commit distances after the fetch are Story 9.29, the button's enable rule and default-remote resolution are Story 9.30. This story was missing from `sprint-status.yaml` until 2026-09-20.)*
 
-### Story 9.25: Log revset input — presets, apply/save, completion candidates — *NEEDS REFINEMENT* [R/M]
-*(Added 2026-09-16, Ralph — captured from a console session, **not yet refined**; ACs to be authored when scheduled. UI decisions below are Ralph's from that session; the UI itself is Ralph's scope, this story is the backend behind it.)*
+### Story 9.25: Graph search backend — revset counts, change search, structured revset errors [R]
+*(Refined 2026-10-14 from the floating client's search field and Configurations dialog (export `e74ced3`; the Epic 10 header's design update 2026-10-14). It was added 2026-09-16 as "Log revset input — presets, apply/save, completion candidates — NEEDS REFINEMENT"; that UI shape (a free-text revset field, the presets My work / All branches / Everything, Apply and Save to `revsets.log`, autocomplete) is superseded and stays readable in git history at `e74ced3`. The design has no free-text revset, its configurations are structured rules (10.22), and the default search is not `revsets.log`, which this UI never writes (decision (g)). The rule "never build a second revset parser" still holds: the builder writes text, and jj-lib parses it.)*
 
-**Motivation.** `jj log`'s default (`builtin_log()` = `present(@) | ancestors(immutable_heads().., 2) | trunk()`, v0.44.0) hides everything reachable only from **untracked** remote bookmarks, because `builtin_immutable_heads()` includes `untracked_remote_bookmarks()`. A user coming from SourceTree ("all branches") sees a fraction of the repo and thinks something is broken. Zanshin must let the user *choose* the revset — never decide for them (FR-JJ-17), never build a second revset parser (jj-lib is the only parser).
+**Motivation.** The floating client's search field (10.21) and its jj log Configurations dialog (10.22) need three reads that the shipped API lacks.
+- **Counts of arbitrary revsets.**
+  - Every filter suggestion and every recent filter shows "N changes" (SR:355-375, :260). The dialog shows "N of M changes match" (RC:306, :324).
+  - 9.2's `Repo::eval_revset` is Rust-only (`crates/zanshin-jj/src/repo.rs:926`; 9.2's as-built note).
+  - The topology call (4.10) runs the pre-verb snapshot and returns the whole revset. It is a layout input, not a counter.
+- **Changes outside the shown view.**
+  - Go-to matches change-id prefixes, commit-id prefixes, subjects and descriptions in all commits. Hits outside the view carry `not in view` (SR:116-126, :347).
+  - The topology knows only the view's nodes, by full id (4.12).
+  - `show(revset, limit)` (9.6) resolves a revset, but pays a tree diff per entry (`packages/zanshin_core/lib/src/worker/handle.dart:794-813`).
+- **Where a revset fails.** A configuration's regex, a typed glob or a broken `revsets.log` fails with a flattened string (`RevsetError::ParseError { reason }`). The UI cannot point at the failing rule.
 
-**UI shape (decided, for context).**
-- A revset text field pre-filled with the **effective** `revsets.log` (Story 4.9 `log_defaults`) plus presets that only pre-fill the field: *My work* = `builtin_log()`, *All branches* = `ancestors(bookmarks() | remote_bookmarks() | @, N) | trunk()`, *Everything* = `all()`.
-- **No live validation while typing** — a half-typed revset is always invalid, so red-while-typing is noise (the CLI validates on Enter too). Enter / **Apply** parses + evaluates in one step and the log view *is* the preview (optionally a "N revisions" line). Errors appear inline only after Apply, with jj-lib's message + caret position; the log stays on the last valid revset. An empty result is not an error.
-- **Save** persists the applied revset as `revsets.log` in the **repo** config — parity with `jj config set --repo revsets.log …` (no op-log entry; config file, as the CLI). Enabled only after a successful Apply.
-- **Autocomplete** for the trailing partial name, deliberately CLI-dumb: no understanding of the surrounding expression.
-- Bookmark **tracking** (Story 9.11) also widens the default log (it changes `immutable_heads()`), but is a repo-state change and belongs in the bookmark sidebar — keep it a separate action, not a log-revset feature.
+The costs shape the calls.
+- `author()`, `committer()`, `subject()`, `description()` and `mine()` load every commit of their domain. These are the same object loads as 4.10's timestamps: 6.7 ms on the real 1.4k-commit repo, 33.6 ms on a packed 10k, ~1.2 s on a loose 10k (the 2026-09-26 deferred-work item "Go-to-change needs a backend path for anything but full ids").
+- `files()` reads jj-lib's changed-path index where the repo has one. Otherwise it diffs every commit against its parents (jj-lib 0.46.0 `src/default_index/revset_engine.rs:1361-1371`).
+- The worker runs one command at a time and cannot cancel one (10.5 item 3).
 
-**Backend work (this story).**
-1. **Config write.** A typed `revsets.log` set on the repo config (`.jj/repo/config.toml`). No generic repo-config writer exists yet; Story 9.5's `git remote rename/remove` rewrites that file privately — generalize or add a narrow setter. Decide `--repo` only vs. also `--user`.
-2. **Structured parse/resolution errors.** `RevsetError::ParseError { reason }` currently flattens jj-lib's `RevsetParseError` to a string. Add the pest span (byte offset/length) and, for `RevsetParseErrorKind::NoSuchFunction`, the `candidates` list as fields (keep `reason` as fallback), so the UI can underline the position and offer "did you mean `bookmarks()`?". Consider the same for `ResolutionError` (jj-lib already computes `collect_similar` candidates over tags + bookmarks for unknown symbols).
-3. **Completion candidates.** `Repo::revset_completions(partial_expr, filter: Option<revset>) -> Vec<Candidate { text, help, kind }>`, ported from the CLI's shell completion at v0.44.0 (`cli/src/complete.rs`: `revisions()` + `split_revset_trailing_name()`), **in-process over existing zanshin-jj reads instead of `jj` subprocesses**: local + remote bookmarks (skip `@git`), tags (skipped when a filter is set — they are almost always immutable), workspace names as `name@` (only when >1 workspace), change ids with first description line (limit 100 over `revsets.short-prefixes` → `revsets.log`), and revset aliases from the effective config with their `.doc` text. Prefix-match on the trailing name, re-prepend the untouched expression prefix, CLI display order.
-   **Builtin function names are the gap:** the CLI does not complete them and jj-lib's `BUILTIN_FUNCTION_MAP` is a private `static` (only leaks as `NoSuchFunction.candidates`). Options: (a) our own list from `docs/revsets.md` at the pinned tag, bumped with the `jj-lib` pin — same pattern as the builtin `[revset-aliases]` table already mirrored in `build_aliases_map` (4.9); (b) omit initially, presets + bookmark completion cover the everyday case. **Open — lean (b) first, (a) if missed.**
-4. Surface through the usual chain (`.fbs` → `extern "C"` → `WorkerCommand`); MCP optional.
+So both calls are op-pinned, take no snapshot, and are batched or limited. The UI debounces them (10.21 item 4).
 
-**Open questions for refinement:** preset depth `N`; Save scope (repo / user); function-name list in or out; `ResolutionError` candidates in or out; "Apply" vs "Test" wording; whether Apply's evaluation reuses `graphSlice` directly (it should — no separate validate-only FFI is needed once live validation is off the table).
+**Scope (backend).**
+1. **Counts.** `Repo::revset_counts(operation_id, expressions, cap) -> Vec<RevsetCount>`.
+   - **Result.** Each entry is `Count { n, capped }` or that expression's own error (item 3). One failing expression never fails the batch.
+   - **Pinned operation.** Evaluated at `operation_id`, given as full-length hex, as `commit_contents` takes it (4.10).
+     - No pre-verb snapshot, no operation written, `lastPrecondition` unchanged.
+     - The UI passes the `operationId` of the shown topology, so a count describes the graph the user sees.
+   - **Parsing.** As for every revset: the effective `[revset-aliases]` (4.9); the user's `user.email` for `mine()` (9.27); the workspace root as the cwd for `files()` (`crates/zanshin-jj/src/revset.rs:329-331`); `@` as the handle's workspace.
+   - **Counting.** It iterates the revset and stops at `cap`. It never calls `count_estimate`, which returns (10, None) under jj-lib's `testing` feature (4.10's note). With `cap = 0` it parses and resolves without iterating.
+2. **Change search.** `Repo::find_changes(operation_id, expression, limit, short_prefixes) -> FoundChanges`.
+   - **Result.** Up to `limit` entries (the CLI's `--limit`) in the revset's iteration order (`jj log --no-graph`). Each entry holds the commit id and the change id, and both shortest-prefix lengths under `short_prefixes`, a pass-through as in the topology call. A `truncated` flag tells whether more matched.
+   - **Evaluation.** The rules of item 1 apply. The rows' content comes from `commit_contents` at the same operation (4.10).
+   - **Consumers** (10.21's go-to beyond the view): `description(substring-i:"…")` and `subject(…)`; `change_id(x)` for a query in jj's change-id alphabet (k–z), `commit_id(x)` for a hex query. The two alphabets are disjoint.
+   - **Ambiguity.** jj refuses an ambiguous prefix ("It is an error to use a non-unique prefix", `docs/revsets.md` @ v0.46.0). The refusal comes back as item 3's error, with the CLI's text verbatim. An unmatched prefix is no error; it yields no entries.
+3. **Structured revset errors** (the old item 2, kept).
+   - `RevsetError::ParseError` gains the kind and the pest span: a byte offset and length into the expression the caller sent. The flattened `reason` stays as the fallback.
+   - Resolution errors gain the kind (unknown symbol, ambiguous id prefix, …), the symbol, and the similar names jj-lib already computes (`collect_similar`).
+   - `NoSuchFunction`'s candidates are carried, but have no consumer until 10.22's raw revset rule (its design question (b)).
+   - They reach Dart on `jj.revset_parse_error` / `jj.revset_resolution_error` for the topology call (4.12) and for items 1 and 2. No new error code.
+4. **Surface** through the shipped chain: `.fbs` payload tables appended to the `Payload` union; the extern fns `zanshin_revset_counts` and `zanshin_find_changes`, committed codegen, `WorkerCommand`s; `RepoHandle.revsetCounts(...)` and `RepoHandle.findChanges(...)`; `docs/ffi-abi.md` and `docs/rust-error-codes.md`. Each extern fn gets a `zanshin_core` real-cdylib test; without one, the coverage ratchet flags it. MCP is optional (Epic 7; ADR-0003's open question (b)).
+5. **Dropped from the scope of 2026-09-16:**
+   - the `revsets.log` writer: 9.28's `configSet` covers `revsets.log` and `[revset-aliases]`, and this UI never writes `revsets.log` (decision (g));
+   - the completion candidates for a free-text revset field, because the design has none;
+   - the presets, which 10.22's configurations replace;
+   - live validation, which stays out.
 
-**Related:** 2.5 (revset error taxonomy), 4.3/4.4 (`stream_lanes`/`graphSlice` take the revset as a pass-through), 4.9 (`log_defaults`, alias map), 9.11 (bookmark track), 9.19 (bookmark list filters). Cheap-to-medium; read-side plus one config write.
+**Non-goals.**
+- Building revset text: `zanshin_core`'s builder writes it (10.21 item 7), and jj-lib parses it.
+- A list of distinct authors. 10.21 suggests authors from loaded content (10.11's cache).
+- A history-wide index of changed paths. 10.21 suggests `@`'s files (`fileList`, 9.4), as the CLI's `jj log` path completion does (`cli/src/complete.rs:1143-1152` @ v0.46.0).
+- Cancellation and debouncing; the UI owns both.
+- Writing config of any kind.
+
+**Tests.**
+- **Counts match the topology.** A count equals the topology's `nodeCount` for the same expression at the same operation, on the medium fixture. Expressions: `author(exact:…)`, `author(substring-i:…)`, `mine()`, `description(substring-i:…)`, `subject(glob:…)`, `files(cwd:…)`, `files(file:…)` and `files(glob:…)`.
+- **Cap.** The count stops at `cap` and sets `capped`. With `cap = 0`, nothing is counted, but a parse or resolution error is still reported.
+- **Batch.** One bad expression in a batch leaves the other counts intact.
+- **No side effects.** Neither call snapshots or writes an operation, even with a dirty working copy; `lastPrecondition` is unchanged.
+- **Search.** `find_changes` honours `limit` and the order, and sets `truncated`. Its ids and prefix lengths equal the topology's for the same nodes. An ambiguous change-id prefix returns the resolution error with the CLI's message; an unmatched prefix returns no entries.
+- **Error spans.** Spans and kinds point at the failing part for a bad regex, an unknown function and an unclosed quote, and reach Dart.
+- **Optional:** 9.47's parity oracle compares the counts with the stock CLI at the pin.
+
+**Related:** 2.5 (revset errors), 4.9 (aliases), 4.10–4.12 (topology, content, op pinning), 9.2 (`eval_revset`), 9.6 (`show`), 9.27 (`user.email`), 9.28 (config writes), 9.47 (parity oracle), 10.21, 10.22.
 
 ### Story 9.26: Implicit snapshot + colocated Git import before every verb — `workspace_helper` parity, reverses D2 [M]
 *(Added 2026-09-17, Ralph — full spec: `implementation-artifacts/spec-9-26-implicit-snapshot-colocated-git-import.md`. Depends on 9.22 and 9.27.)*
@@ -6667,6 +6977,23 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 
 ### Story 9.31: Drop-action capability query — `drop_actions(source, location)`: which verbs may run for this change at this location, and why not (CLI precondition parity) [R]
 *(Added 2026-09-21, Ralph — captured from a console session on commit drag-and-drop; refined enough to build from, ACs to be authored when scheduled. Small-to-medium; read-only, no transaction, no op-log entry. The UI decisions below are Ralph's from that session; this story is the backend behind them.)*
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** decision (a4) supersedes this story's UI shape on four points.
+> - **The four points:**
+>   - the menu opens after a rest on the target, and a plain drop runs the default row;
+>   - ⌥ makes `rebase -r` the default, not `duplicate`;
+>   - Refused and NoOp rows are hidden, not greyed;
+>   - targets are cards only, so there are no edge locations.
+>
+>   The query itself is unchanged. It still returns Refused rows with the CLI's reason: 10.10 shows the first one on the ghost when a card has no available row.
+> - **(Proposal) Several locations per call.** A card target needs the locations onto, `insert_after` and `insert_before` at once (10.10's rows). `drop_actions(source, locations)` returns rows keyed by verb and location. Otherwise the UI makes three calls, cached per location.
+> - **The design's rows:** `rebase -s` and `-r` at onto; `rebase -r` at `-A` and `-B`; `squash`; `new` (merge) at onto; `duplicate` at onto (DND:39-52). (Claude's proposal) The matrix shrinks to these rows, because nothing consumes the others: `rebase -b`, `-s` / `-b` at `-A` / `-B`, `revert`, `restore`, `absorb` and `interdiff` (decision (a4)).
+> - **Bookmark payload.** The Non-goal "No bookmark-label drops" is lifted.
+>   - `bookmark move N` at onto T is Available, Available with the "backwards" flag (it needs `--allow-backwards`), NoOp (already there) or Refused.
+>   - Its plan function is 9.19's fast-forward fact; whichever story lands first creates it.
+> - **Selection payload (for 10.27):** files and hunks of S dropped on T, as `squash --from S --into T` with the selection, and `split -r S -A T` / `-B T` (DND:63-77). The Non-goal "no split rows" is lifted for it. When 9.15's plan reports a combined description, the row carries that flag (10.27 then asks first).
+> - **(Claude's proposal) A target-less variant** for 10.15's tooltips (deferred-work 2026-09-26, "No capability query without a drop target"): the rows `new` at onto, `-A` and `-B` of X, `edit X`, `describe X`, `squash -r X` and `abandon X` for one change. It lives here or in its own story.
+> - **The mock is stricter than jj** (prototype defect 34). It hides `rebase -r` onto a descendant (DND:41), and the merge of two related changes (DND:49), which `cmd_new` allows (`../jj` cli/src/commands/new.rs @ v0.46.0 has no ancestry check). The matrix keeps the CLI's answer; both cells join the fixture matrix.
 
 **Motivation.** Zanshin's graph will be driven by drag-and-drop: the user drags change S and drops it *on* change T, into the gap *above*/*below* T, or on an edge. At that moment the UI needs two answers — is anything possible at all, and which verbs are — so it can show a drop menu of the *available* options and grey the rest out with the reason (backend exposes capabilities, the UI offers the decision — FR-JJ-17). Hand-writing those rules in Dart would duplicate the verbs' refusals and drift from them. The jj CLI already splits every verb into a pure precondition phase and a transaction phase: `compute_commit_location` (`cli/src/cli_util.rs:3551` @ v0.44.0) turns `-o`/`-A`/`-B` into `(new_parents, new_children)` and refuses immutable children and loops (`ensure_no_commit_loop`, `:3641`); `check_rewritable_expr` (`:2011`) refuses immutable targets; `rebase.rs::plan_rebase_{revisions,source,branch}` + `check_rebase_destinations` (`:431-599`) add "Cannot rebase X onto itself" / "onto descendant"; `squash.rs:223-228` refuses a merge source without an explicit destination; `duplicate.rs:123-124` refuses the root; `absorb` considers only ancestors of the source; the Git backend refuses a merge with the root commit as one parent (`lib/src/git_backend.rs:1301`). **Story 9.1 already ported the shared half** into `op_support.rs` (§1 `check_rewritable`/`resolve_immutable`, §2 `compute_commit_location`/`ensure_no_commit_loop`), tested but unwired. This story composes them into one read.
 
@@ -6967,6 +7294,131 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
   - Warm `cargo test -p zanshin-parity`: 18.2 s, of which the oracle is 16.1 s. The gate runs it twice (cargo test + coverage), about +32 s per gate.
   - The first gate run on the branch (cold for both targets) took 1197 s in total.
 
+### Story 9.48: `jj new --insert-after` / `--insert-before` — `new -A` / `-B` parity [M]
+*(Added 2026-10-14, Ralph — console session on the design update, export at `e74ced3`. The card menu's rows "Insert after" and "Insert before" (10.15) need it. deferred-work recorded the gap on 2026-09-26 ("No executing verb for `jj new --insert-before` / `--insert-after`"). Refined enough to build from; ACs are written when it is scheduled.)*
+
+**Motivation.** The design's card menu runs `jj new -A <id>` and `jj new -B <id>` on any change (GV:156; DS components/menus/menus.card.html:21-23).
+- The shipped `Repo::new_change(parents)` (`crates/zanshin-jj/src/repo.rs:977`, `mutate.rs:784`; Dart `newChange(parents)`) takes parents only.
+- `cmd_new` @ v0.46.0 (`../jj` cli/src/commands/new.rs:162-286) computes the location with `compute_commit_location` (cli/src/cli_util.rs:3644). Story 9.1 already ported that helper into `op_support.rs`.
+- 9.31's matrix previews `new` at `insert_after` / `insert_before`, but there is no verb to agree with.
+
+**Scope.**
+1. **Arguments:** `Repo::new_change(parents, insert_after, insert_before)`, the CLI's shape passed through.
+   - Positional parents exclude `-A` and `-B` (clap `conflicts_with`, new.rs:113, :153).
+   - `-A` and `-B` are repeatable and combine.
+   - No Zanshin default. Everything empty stays `jj.invalid_input`, as today: the caller passes @ explicitly, where the CLI defaults to @.
+2. **Location.** 9.1's `compute_commit_location` gives the new parents and the children to rebase, with its refusals. The CLI's message is passed verbatim.
+   - An immutable child → `jj.immutable`.
+   - A loop (`ensure_no_commit_loop`, cli_util.rs:3734) → `jj.invalid_input`.
+   - An unknown id → `jj.change_not_found`.
+3. **The transaction** mirrors `cmd_new` (new.rs:208-284):
+   - the new commit sits on the merged tree of its parents;
+   - each child gets the new commit in place of any of its parents that are the new commit's parents, and the new commit as a parent in any case (new.rs:246-262); then `rebase_descendants` runs (:263);
+   - no bookmark advances when `-A` or `-B` is given (new.rs:197-204);
+   - the working copy moves to the new commit (:272), and the op description is "new empty commit" (:284);
+   - the description stays as the shipped `new` sets it. Its divergences from `cmd_new` (`templates.new_description`, trailers) belong to 9.46 and the 9.47 ledger.
+4. **Result.** `MutationResult` as today: the new change id and @. The CLI's "Rebased N descendant commits." is a status line, not a warning (9.32 item 2), so no field is added.
+5. **One precondition function,** shared with 9.31's `new` row (9.31's contract; whichever lands first creates it). 9.31's agreement test then executes the `new` row at `insert_after` and `insert_before`.
+6. **Surface.**
+   - The `.fbs` request gains the two id lists, appended (a WIP in-place edit), plus the extern.
+   - Dart: `newChange(parents, {insertAfter, insertBefore})`.
+   - `docs/ffi-abi.md`.
+
+**Non-goals.** `--no-edit` and `-m` (no affordance); the UI (10.15); MCP.
+
+**Depends on.** 9.1 and 9.26 (both done; the implicit snapshot runs first). Coordinates with 9.31.
+
+**Design status.** No UI. The verb follows `cmd_new` @ v0.46.0; nothing needs design.
+
+**Witnesses.**
+- `-A T` on a change with two children rebases both onto the new @.
+- `-B T` puts the new change between T and T's parents, and T is rebased onto it.
+- `-A A -B D` on a linear chain A–B–C–D gives the result of the CLI help's example (new.rs:135-145).
+- `-A T` with an immutable child refuses with `jj.immutable` and writes no operation.
+- A bookmark on the parent does not move with `-A` or `-B`.
+- 9.47 oracle scenarios for `-A`, `-B`, `-A` + `-B` and the immutable-child refusal: the op description, the op count and the graph equal the CLI's.
+- A Dart round trip. Once 9.31 exists, its `new` row agrees with execution.
+
+**Related:** 9.1, 9.31, 9.46, 9.47; 10.15; deferred-work 2026-09-26 ("No executing verb for `jj new --insert-before` / `--insert-after`").
+
+### Story 9.49: `commit` — `[-m] [paths | GUI tree]`, carved out of 9.17 [M]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. Carved out of 9.17, because the inspector's composer (10.25, 10.26) needs `commit` long before `resolve` and `diffedit`.)*
+
+**Motivation.** The inspector's composer commits @ (IN:117-157). `jj commit` (`../jj` v0.46.0 `cli/src/commands/commit.rs`) needs no editor for its filesets arm, and only 9.50's tree for its interactive arm. 9.17 bundled it with the two verbs that need a merge or diff editor.
+
+**Scope.** Port `cmd_commit` step for step (commit.rs at v0.46.0):
+- It needs a working copy: "This command requires a working copy" (:93).
+- **Selection:** everything (no paths and no tree: `describe` followed by `new`, :35-36); filesets (:38-41; `SelectedTree::from_paths`); or a GUI tree from 9.50 (`from_tree_id`). Never an interactive flag. The left side is @'s parent tree (:103).
+- "The given paths do not match any file: …" (:131) becomes a 9.32 warning code.
+- **Description:** the CLI's `-m` paragraphs (`join_message_paragraphs`, `cli/src/description_util.rs:421-428`), and trailers when it is not empty (:150; the open `commit_trailers` gap, deferred-work 2026-10-08). The editor arm and its empty-message hint (:164) are not ported: the GUI always passes `-m`, and hints are not ported (9.32 item 2).
+- **Effect:** the selected tree stays in @'s change, with the description (:175). A new @ on top gets @'s full tree, in every workspace whose @ it was (:177-190). Advanceable bookmarks advance (:98, :186); no other bookmark moves (:48-50).
+- The operation is `commit <commit id>` (:193), behind 9.40's no-change gate.
+- The usual chain: `.fbs` → `zanshin-jj` → `extern "C"` → `WorkerCommand` → `zanshin_core`, with typed refusals and the coverage floor.
+
+**Non-goals.** `resolve` and `diffedit` (9.17); the editor; hints.
+
+**Depends on.** 9.1 and 9.32 (done); 9.50 for the tree arm only.
+
+**Design status.** The selection's shape follows 9.50's contract (the Epic 10 header's design update 2026-10-14, decision (g)).
+
+**Witnesses** (9.47's oracle).
+- Commit everything; commit two paths of three; `-m ""`; a path that matches nothing, with its warning.
+- A tree from 9.50 gives the same result as the CLI's scripted `--tool` making the same choice.
+- The new @ holds exactly the unselected changes.
+
+**Related:** 9.15, 9.17, 9.40, 9.47, 9.50; 10.25, 10.26.
+
+### Story 9.50: Hunk selection → selected tree — the GUI diff-editor contract [M]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. It answers ADR-0003's open question "Interactive-verb contract" with contract B, Claude's default adopted in the Epic 10 header's design update 2026-10-14, decision (g).)*
+
+**Motivation.**
+- ADR-0003 leaves open "the exact `SelectedTree`/`TreeId` hand-off shape between the Flutter diff editor and the backend" (`docs/adr/0003-jj-operation-api-surface.md:141-142`).
+- 9.1 shipped `SelectedTree::from_tree_id`, but nothing writes the tree it reads (`crates/zanshin-jj/src/op_support.rs:413-440`, still `allow(dead_code)`).
+- The inspector selects hunks (10.26) and drags them (10.27).
+- The CLI's interactive arm runs its builtin diff editor (`../jj` v0.46.0 `cli/src/merge_tools/builtin.rs`):
+  - `make_diff_files` (:273) materializes each file;
+  - `make_diff_sections` (:225-271) cuts it into sections with `ContentDiff::by_line`;
+  - after the user's choice, `apply_diff_builtin` (:405-465) and `apply_changes` (:467-545) write the selected tree.
+- Upstream #8218 ("Programmatically selecting hunks", open) proposes line ranges and hunk ids; the maintainers point at `--tool` scripts (research `technical-parallel-agents-one-working-copy-research-2026-09-30.md:186`, §5.5).
+
+**Scope.**
+1. **`Repo::select_tree(revision, left, selection) -> TreeId`.**
+   - `left` is the tree the selection was made against: the revision's parent tree, which split, squash and commit diff against (`cli/src/commands/split.rs:567`; `squash.rs:495`; `commit.rs:103`).
+   - The selection lists, per path, the whole file or a set of 5.1 keys (changed old and new line ranges).
+2. **Build**, in the builtin editor's order (builtin.rs:412-464):
+   - start from the revision's tree;
+   - revert every changed file to the left side;
+   - apply the selected files and sections;
+   - write the tree and return its id.
+   - Mode changes, binary files, deletions and non-file entries are whole-file only, as the builtin editor treats them. A conflicted file is selected whole (Claude's proposal).
+3. **Staleness** (Claude's proposal; deferred-work).
+   - A selection is stale when the revision's left tree is no longer `left` (a rebase), or when one of its keys no longer exists.
+   - A change to @'s own content between selecting and running is not stale. Every verb snapshots first (9.26), so an editor that autosaves would otherwise make every commit fail. The selected tree is absolute, so nothing is lost: the rest stays in @.
+   - The verbs that take a tree id (9.15, 9.49) take `left` as well, and refuse the same way.
+   - This story decides the refusal code: `jj.invalid_input`, or a new registered code.
+4. **No operation.** Writing a tree is not a repo mutation; nothing enters the op log.
+5. **Surface:** `.fbs`, `zanshin-jj`, `extern "C"`, `WorkerCommand`, Dart `RepoHandle.selectTree(...)`, `docs/ffi-abi.md`.
+6. **ADR.** Record the contract in ADR-0003's implementation notes and close its open question.
+
+**Non-goals.**
+- Lines inside a section: scm-record can select them, the design cannot (deferred-work).
+- Editing content (`diffedit`, 9.17).
+- Resolving conflicts (`resolve`, 9.17).
+
+**Depends on.** 5.1 and 5.6 (the keys and the same sections); 9.1 (done).
+
+**Design status.** NEEDS DESIGN (architecture), Claude's default adopted (decision (g)): contract B, a separate `select_tree` call returning a tree id that split, squash and commit take. The staleness rule and the conflict rule are Claude's proposals.
+
+**Witnesses.**
+- For a file with three sections, selecting the first and the third yields the same tree as the CLI's `jj split -r X --tool <script>` making the same choice. 9.47's oracle drives the script (research §5.5 and A.2).
+- Whole files give the same tree as `from_paths`.
+- A binary file and a mode change can only be selected whole.
+- A rebased left side refuses, and so does an unknown key. A later edit in @ does not.
+- No operation is written.
+- Every new file reaches the coverage floor.
+
+**Related:** 5.1, 5.6, 9.1, 9.15, 9.17, 9.47, 9.49; 10.26, 10.27; ADR-0003.
+
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 
@@ -6986,7 +7438,7 @@ Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `
 > - ***PLACEHOLDER***: the story is thin on purpose, for one of two reasons. Either the design is not final there (Ralph: the design's dialogs, popups and panels will look different), or its backend is not scheduled. It is refined later.
 > - ***EXPERIMENT***: the story's outcome is a decision, not a product feature.
 >
-> **Scope exception (Ralph, 2026-09-26):** the Flutter UI is Ralph's work (PRD §3.2, `project-context.md`, `CLAUDE.md`). Ralph asked Claude to build this view anyway, because he has never built one and expects it to be faster and less buggy that way. He asked for separately reviewable pieces because not everything is final. Ralph reviews every story, and the rest of the UI stays his. Story 10.0 wrote this exception into the canonical rules (done).
+> **Scope exception (Ralph, 2026-09-26):** the Flutter UI is Ralph's work (PRD §3.2, `project-context.md`, `CLAUDE.md`). Ralph asked Claude to build this view anyway, because he has never built one and expects it to be faster and less buggy that way. He asked for separately reviewable pieces because not everything is final. Ralph reviews every story, and the rest of the UI stays his. Story 10.0 wrote this exception into the canonical rules (done). *(Changed 2026-10-14 (Ralph): the rest of the Flutter UI is Claude's too — Epic 11, the floating app shell; Ralph accompanies and reviews. Story 11.0 wrote the change into the canonical rules (done).)*
 >
 > **Re-planned 2026-09-26 (console session, Ralph)** from the HTML design export. The export supersedes the mockup image that the first version of this epic was written from.
 >
@@ -7072,6 +7524,61 @@ Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `
 > 4. **Stories:** new 10.19 and 10.20. Dated notes in 4.13, 10.1, 10.3, 10.4, 10.5, 10.6, 10.7, 10.12 and 10.17. Prototype defects 21–24 below, dated amendments to defects 3, 4 and 17, and behaviours (iv)–(v).
 > 5. **Citations.** GV, GC, GD and APP line numbers dated 2026-09-30 refer to `e243dd2`. New abbreviations: `GG` = `graph-gaps.jsx`, `GS` = `Graph Gaps Study.html`, `AS` = `Animation Show Case.html`.
 
+> **Design update 2026-10-14 (Ralph, console session; the re-downloaded exports at `e74ced3`: the app project and, new, the design-system project).** The reference is no longer the docked `JJ Desktop Client.html` but **`JJ Desktop Client Floating.html`** (design `CLAUDE.md:3`): the graph owns the window, and every control floats above it on glass islands. Thirteen iterations lie between the last update and this one (`design/archive/v1 Branch Columns` … `v13 Shared Columns`). The design system (`_bmad-output/implementation-artifacts/design_system/`, cited `DS`; synced through `design/DESIGN-SYSTEM-SYNC.md` #9) captures the floating client as tokens, components and a click-through UI kit. What changed, and what Ralph decided:
+> 1. **What the export adds** (cited at `e74ced3`):
+>    - **Floating chrome** (AF; FC; DS readme.md:82-104):
+>      - a top bar that reads Place · View · Action: the traffic lights and a project capsule with its Project menu; the View capsule with the search field, the gap legend, the count and the View options popover; Fetch, Push and the gold "New change";
+>      - a rail (Bookmarks, Workstreams, Reviews, Undo Timeline) with hover previews and pinnable 300 px panels;
+>      - the @ "Working copy" pill, shown only while @ is off-screen; the minimap; calm scrolling, where the controls step aside while the graph scrolls;
+>      - a Projects dialog (SH:1992-2187) and a Settings window with General and Project tabs (ST).
+>    - **The graph** (GL, GV; SYNC #7, #8): the layout engine moved into `graph-layout.jsx`; Free (the default) and Compact share one set of columns; line router B draws one line per parent → child pair (`Graph Lines Study.html`, whose variant B the design team picked); Free's day axis has no gutter; no dot grid, no scrollbars, and the arrow cursor everywhere (FC:12-21, :144-152).
+>    - **Cards:** a ••• button and a right-click menu replace the quick-action fan and the "+" chips; the peek callout gains a hint about drag and right-click; selection is moon, not blue (GV:155-332; GC:72-157; FC:165-170).
+>    - **The inspector** replaces the detail panel: a 460 px glass island with describe in place, the file list, hunks with selection, and a commit/split composer (IN, INC, DF).
+>    - **Drag-and-drop:** changes, bookmarks, files and hunks onto a change, with a dwell menu, a ghost and an undo toast (DND, DNC, GO).
+>    - **The search field** replaces the revset dropdown: one menu with the jj log variants, Go to and Filter by, suggestions with counts, Recent, and a jj log Configurations dialog that also sets the default search (SR, RC, SRC; SYNC #5, #6, #9).
+>    - **Motion:** a 460 ms FLIP on every operation, births out of the parent and a moon flash (GV:659-699).
+>    - **The design system:** night and paper tokens for colour, type, spacing, radii, elevation, glass and motion; React components with prompts; Inter and JetBrains Mono; 48 icons; the Nami brand mark (DS readme.md).
+>    - **Mock data:** `graph-data.js` is unchanged (52 commits); `diff-data.js` adds per-change hunks.
+> 2. **Decisions** (Ralph, 2026-10-14):
+>    - (a) **The floating client wins where the export explicitly changed a recorded decision.** The old decision is marked as superseded where it stands. Four such changes:
+>      - (a1) **Lines: router B** (SYNC #7; GL:148-299). One line per parent → child pair, with its own exit on the parent's top edge and its own entry on the child's bottom edge: the first parent enters at the bottom centre, the others beside it. A straight line leaves at the centre and a single other line at 0.28·W; more lines fan out 12 px apart, squeeze to 7 px, and then the outermost share one exit. Forks turn just above the parent and merges just below the child; horizontal runs sit in tracks 3.5–6 px apart and nest instead of crossing; a lane-blocked line climbs the gutter between columns; in Free a run that would pass behind a card detours through a gutter; a crossing breaks the horizontal 12×10 with at least 12 px of line to the next bend or card, else the vertical. This supersedes product decision 5 and deviation (d) (every edge leaves the top centre) and 10.4 items 1 and 3. New Stories 4.14 (shared columns) and 4.15 (the router).
+>      - (a2) **Free's day axis** (SYNC #8; GL:586-603; GV:1098-1106): no gutter, no fade, offX 0 in both layouts. Each day's label sits on the dashed divider below that day's first commit, at the left edge, horizontally sticky beside the rail or the pinned panel. There is no pinned current-day label; the minimap's pill names the day at the viewport's centre. This supersedes deviations (b) and (c) and 10.2 items 2 and 9's placement.
+>      - (a3) **Gap markers keep 12 px of line to every card** (GG:9; GL:10), and a hidden merge gets one shared marker on its stem (GG:63-70). This supersedes the 24 px rule of the 2026-09-30 decision (c).
+>      - (a4) **Drag-and-drop** (DND:3, :25-109; GV:792-930): the drop menu opens after a 260 ms rest on the target; a plain drop runs the default row, whose full command shows under the ghost before release; ⌥ makes "Move only this change" (`rebase -r`) the default; only the applicable rows are listed; targets are cards only, and Insert after / Insert before are rows. This supersedes 9.31's UI shape on these points (a menu on every drop, ⌥ = duplicate, greyed-out rows with reasons, edge targets) and 10.10 items 3, 4 and 7.
+>    - (b) **Kept**, because the export did not deliberately change them:
+>      - the lane order: `compact` by default, greedy as the alternative, no `optimized` and no lane-order control (the export's `laneOrder:"optimized"`, AF:16, is a leftover of its tweaks);
+>      - 4.13's stack columns, from the ungrouped layout, so that a toggle never moves a column (the 2026-09-28 decision (a); the export takes them from the collapsed graph, SYNC #8);
+>      - runs of mutable ancestors of @ start expanded;
+>      - crossing bridges are always on;
+>      - the go-to-change pulse (deviation (e)), now in moon.
+>    - (c) **Motion is the client's FLIP model** (GV:659-699, :729-747; DS readme.md:98). On every operation, undo included, moved cards glide from their old place in 460 ms while the operation's anchor card stays still; a born change grows out of its anchor (540 ms); the edge layer hides during the move and fades back in over 260 ms, and a born change's edges draw in; the changed or target card flashes a moon ring for 2.4 s. Stack members fade in over 260 ms. Under reduce motion nothing moves and the flash shows static (the 2026-09-30 rule). This supersedes the Animation Show Case model of the 2026-09-30 decision (d) and 10.20's items 1–2.
+>    - (d) **The design system ends "not final"** for the inspector (10.8), the card menu (10.15), the Bookmarks rail content (10.14), the search field (10.21) and the jj log Configurations dialog (10.22): they are built to the design, which stays inspiration (decision (c) of 2026-09-28). Only the bookmark popover (not in the design system, inert in the mock) stays a thin placeholder.
+>    - (e) **Scope change.** Ralph revises "the Flutter UI is Ralph's": Claude now builds the whole Flutter UI, Epic 10 and the new Epic 11 (the floating app shell), and Ralph accompanies and reviews (Story 11.0, delivered). Points that were "Ralph's call" because the shell was his become Claude's proposals that Ralph reviews: the mount points, the `main*.dart` hosts, the demo host's file, the app theme and retiring the mock widgets.
+>    - (f) **Tokens come from the design system** (Claude's proposal; the house rule "Theme" is amended). Client CSS is cited only where the design system has no token. Selection, focus, the go-to pulse and the flash are moon (`--accent`), never the docked client's legacy blue #3b82f6.
+>    - (g) **Claude's defaults for the open questions**, each a NEEDS DESIGN question with this recommendation in its owning story:
+>      - route geometry (4.15): route classes in layout units, without W or H, plus a `zanshin_core` router library that turns them into pixels per card size on the UI side;
+>      - search persistence (10.21, 10.22): configurations and the default search global, as designed; the shown view and Recent per repository; the `jj log` built-in is always the effective `revsets.log`, and the UI never writes `revsets.log`;
+>      - revset text (10.21): one pure builder in `zanshin_core` with explicit pattern kinds, tested through jj-lib; the UI shows its text and passes it verbatim;
+>      - interactive verbs (9.50): a separate `select_tree` call returns the `TreeId` that split, squash and commit take (ADR-0003);
+>      - Epic 5's order: the line-level diff first; word diff and highlighting later, since the design shows neither;
+>      - the keyboard (10.6): one roving focus node, not a tab stop per card; reveals animate within about 3 viewports and jump beyond;
+>      - the legend pill (10.3): at most W/2 − 34 px, painted above the edges;
+>      - a bookmark drop whose row warns "backwards" opens the menu instead of running (10.10; the 2026-09-28 "visible choice");
+>      - Workstreams and Reviews (11.3): hidden until a backend exists; "Fetch automatically" (11.7, 11.8): 9.24's read-only poll;
+>      - the token layer (11.1) lives in `app/lib/src/shared/design/`; the design-system parity test runs inside `cargo make test`; the app's controls take moon as their accent; icons use one mechanism, SVG (11.1);
+>      - the glass: grouped backdrops with the design system's solid fallback, measured over a scrolling 10k graph (11.2); the window drags from the empty part of the bar's row (11.4); the project dot shows the full state only for the open project, and its "branch" label is the bookmarks on @'s closest bookmarked ancestor (11.5);
+>      - the search's counts are async and capped, and a zero count dims its row; a go-to resolves in the view first, then through 9.25's change search (10.21); a raw revset rule in the configurations is deferred (10.22);
+>      - the inspector: describe saves the CLI's two `-m` paragraphs and keeps a draft per change for the session (10.8); Viewed is per repository, keyed by a fingerprint of the file's diff (10.24); the file-level composer ships before hunk selection (10.25); files and hunks drag on 10.10's engine, with a `diff` source in 9.31 (10.27);
+>      - the operation toast is a story of its own (10.23); 10.10 is built first on a fake `drop_actions` port; a non-drag path for moves (keyboard, VoiceOver) is deferred;
+>      - the export's shared columns are planned without its whole-lane optimizer (4.14).
+> 3. **Stories:**
+>    - new: 4.14, 4.15, 9.48, 9.49, 9.50, 10.21–10.27, and Epic 11 (11.0–11.10);
+>    - refined: 9.25;
+>    - retitled: 9.17, 10.2, 10.4, 10.6, 10.7, 10.8, 10.10, 10.14, 10.15, 10.16, 10.20;
+>    - dated notes in 4.11, 4.13, 5.1, 5.6, 9.15, 9.16, 9.17, 9.19, 9.31, 10.1–10.12, 10.14–10.17, 10.19 and 10.20;
+>    - prototype defects 25–76 below (Epic 11's included), and dated amendments to defects 2, 8, 16, 17 and 21–23.
+> 4. **Citations.** Citations dated 2026-10-14 refer to `e74ced3`, those dated earlier to their own commits. New abbreviations: `GL` = `graph-layout.jsx`, `GO` = `graph-ops.js`, `DND` = `graph-dnd.jsx`, `DNC` = `dnd.css`, `AF` = `app-float.jsx`, `SH` = `app-shared.jsx`, `AC` = `app.css`, `FC` = `float.css`, `SR` = `graph-search.jsx`, `SRC` = `search.css`, `RC` = `revset-config.jsx`, `IN` = `inspector.jsx`, `INC` = `inspector.css`, `DF` = `diff-data.js`, `ST` = `settings.jsx`, `STC` = `settings.css`, `DA` = `data.js`, `LS` = `graph-lines-study.jsx`, `SYNC` = `DESIGN-SYSTEM-SYNC.md`, `DS` = the design-system folder (`DS tokens/colors.css:19`). `APP` (`app.jsx`) now belongs to the docked client and `SC` (`styles.css`) to the archive; new citations use neither.
+
 **Goal.** The app's main view as in the design export. The canvas and the graph:
 - commit cards at positions computed from data, several cards per row, on a navy dot-grid canvas:
   - Compact rows are the dependency depth;
@@ -7093,6 +7600,10 @@ Around the graph sit a toolbar, a thin detail panel for the selected commit, a t
 - `APP` = `app.jsx`: the detail body, the describe editor, and the tweak defaults;
 - `SC` = `styles.css`: the design tokens.
 - *(since 2026-09-30)* `GG` = `graph-gaps.jsx`, which the page now loads too: gap markers, end stubs, the gap callout and the toolbar legend. `GS` = `Graph Gaps Study.html`, `AS` = `Animation Show Case.html`.
+- *(since 2026-10-14)* **The reference is `JJ Desktop Client Floating.html`** (design `CLAUDE.md:3`). It loads `fonts.css`, `app.css`, `graph.css`, `float.css`, `dnd.css`, `inspector.css`, `settings.css`, `search.css` and `data.js`, `graph-data.js`, `graph-ops.js`, `diff-data.js`, `tweaks-panel.jsx`, `graph-gaps.jsx`, `revset-config.jsx`, `graph-dnd.jsx`, `graph-layout.jsx`, `graph-view.jsx`, `inspector.jsx`, `settings.jsx`, `app-shared.jsx`, `graph-search.jsx`, `app-float.jsx`; the abbreviations are listed in the design update of 2026-10-14, item 4. **Token values and component anatomy come from the design system** (`DS`; the house rule "Theme"). The docked `JJ Desktop Client.html`, the studies and `design/archive/` stay for reference only (`DS readme.md:16`); citations written before 2026-10-14 keep their export commits.
+  - `DS` holds `tokens/` (colours for night and paper, type, spacing, radii, shadows, glass, motion), `components/<area>/` (React primitives with their `.d.ts`, `.prompt.md` rules and CSS), specimen cards (`guidelines/`, `*.card.html`), a click-through UI kit (`ui_kits/desktop/`) and `assets/` (fonts, 48 UI icons, the Nami app icon, the Lottie loaders). Its readme says "Synced through #9" (the house rule "Design-system sync").
+  - The client's files are the reference for behaviour the DS does not cover.
+  - `design/CLAUDE.md` holds the accent rule: gold = @ and the one primary action; moon (`--accent`) = selection, focus and controls.
 
 Status of the design:
 - **Preliminary but close to final** (Ralph, 2026-09-26). *(2026-09-28, Ralph: inspiration, not a 1:1 template; small deviations are expected and stay unfixed in the export. Decision (c) of the design update.)* The earlier mockup lives at `_bmad-output/planning-artifacts/research/commit-graph-mockup-2026-09-26.webp` (untracked). Where it differs from the export, the mockup and everything planned from it are obsolete.
@@ -7108,7 +7619,9 @@ Status of the design:
   Their stories are thin: 10.15, 10.8, 10.14 and 10.7's dropdown. Whether the two panels really count is 10.8 design question (a).
 
   *(2026-09-28: the hover callouts of the design update are interaction, not decoration, so their mechanism is built for real: the commit callout (10.6) and the stack popover (10.17). The bookmark popover stays a placeholder apart from its hover opening and its position (10.15).)*
-- **The tweaks panel** (`tweaks-panel.jsx`, APP:7-16, :2510-2539) is a design tool, not a product surface. The tweaks that change the graph become view options with the design's defaults (below).
+
+  *(2026-10-14, decision (d) of the design update: the design system ends this for the inspector (10.8), the card menu (10.15), the Bookmarks rail content (10.14), the search field that replaced the revset dropdown (10.21) and the jj log Configurations dialog (10.22); they are built to the design. The quick-action fan and the "+" chips are retired. Only the bookmark popover stays a thin placeholder. The Projects dialog is Epic 11's (11.6).)*
+- **The tweaks panel** (`tweaks-panel.jsx`, APP:7-16, :2510-2539) is a design tool, not a product surface. The tweaks that change the graph become view options with the design's defaults (below). *(2026-10-14: the floating client has no tweaks panel. Its graph tweaks are settled constants (AF:15-16); theme, density, the diff layout and "Hide controls" moved to the Settings window (ST:74-92; Story 11.7).)*
 - **Only the visuals and interactions are the reference.** The prototype renders every card and edge as DOM and runs a quadratic layout on the UI thread (about 2 s at 10k commits). Its algorithmic costs and its bugs (below) are not part of the reference.
 
 **The layout model.** The design does not draw `jj log`'s lane graph, which puts one commit on each row. Instead it lays commits out in rows shared by several commits (GV:140-225):
@@ -7116,6 +7629,8 @@ Status of the design:
 - **Time:** rows are grouped into time buckets: a ladder from 10m to 12h, then calendar days. Independent commits in one bucket share a row.
 - **Lanes:** greedy interval packing with a first-parent continuation and a one-row buffer, optionally permuted to minimise crossings ("Lane order").
 - **Edges:** every parent edge is routed as one orthogonal polyline (straight, merge or branch-off), with rounded corners and crossing hops.
+
+*(2026-10-14: the floating export moved this algorithm into `graph-layout.jsx` (GL). It has Free (the default; rows follow commit time, 16 units per pitch) and Compact, and Time is gone. Both layouts share one set of columns, so a switch changes only heights (SYNC #8; Story 4.14). Edges follow router B, one line per parent → child pair (decision (a1); Story 4.15).)*
 
 That algorithm belongs to the backend:
 - **The A/B spike** `spikes/graph-layout-ab` (`SPEC.md`):
@@ -7134,8 +7649,10 @@ That algorithm belongs to the backend:
 
 Rows, lanes and columns do not depend on card width or height. This was verified on 3000 random layouts: the optimiser's width term is the same for every permutation (SPEC §0, D6). So a layout is requested once per operation and never for a resize.
 
+*(2026-10-14, decisions (a1) and (g): router B's geometry depends on the card size: the exit fan-out on W, the tracks and the Free detours on H. The rule becomes: the view never decides rows, columns, route classes, buckets or a free y. The route classes stay in layout units, without W or H; the pixel geometry comes from `zanshin_core`'s router (Story 4.15), recomputed per card size without a new layout request. Where that router runs is 4.15's NEEDS DESIGN question. The export's own columns depend on W and H (GL:570, prototype defect 41); the engine's do not.)*
+
 **Fixed rows or free y: the Time experiment** *(decided 2026-09-27: free y. Free is the default and Compact the other mode; the view-side gap variant is dropped, so `PerNodeTops` serves hand-made fixtures only)*. The design is row-based in both modes, with a uniform pitch, so its spacing is ordinal. Ralph may instead want the vertical spacing to follow elapsed time. The pixel mapping is therefore split in two:
-- `GraphMetrics` maps columns to x. It covers the card width (160–400), the lane gap (56), the padding (56) and the gutter (88, in Time, and in Free if Free ships with 10.2 item 9's day axis).
+- `GraphMetrics` maps columns to x. It covers the card width (160–400), the lane gap (56), the padding (56) and the gutter (88, in Time, and in Free if Free ships with 10.2 item 9's day axis). *(2026-10-14, decision (a2): there is no gutter in either layout; offX is 0, so Free and Compact have the same width.)*
 - A `VerticalLayout` maps nodes to y.
   - `UniformRows` maps the layout's rows: top = pad + (rows − U − row)·(H + gapY)/U. With U = 1 that is the design (GV:202). With the engine's `free` output (U = 16) it is the free layout, with no y computed in the view.
   - `PerNodeTops` holds arbitrary per-node tops. It serves the one view-side variant, time-sized gaps between Time buckets (prefix sums over the buckets, SPEC §0), and hand-made fixtures.
@@ -7154,7 +7671,7 @@ Every time-based variant needs every commit's timestamp before the first frame. 
 - **Accessors only.** Painters and cards read `GraphLayout` through accessors. 10.12 can then swap the recorded source for 4.11's layout result plus 4.12's lazy topology view without touching 10.1–10.4.
 - **Pitfalls.** Every research §5 pitfall is a scope item of the story it belongs to, marked "(research §5)". One is moot: colouring lines by the edge that opened them (§5 "Linienfarbe"). The design has one gray plus the gold lineage of @.
 
-**Backend dependencies** (restated in 10.12):
+**Backend dependencies** (restated in 10.12): *(2026-10-14: plus 4.14, one set of columns for Free and Compact, which makes every layout request load timestamps, and 4.15, router B as a `zanshin_core` library. The search needs 9.25's counts and change search; the inspector needs Epic 5's line-level diff and 9.15, 9.49 and 9.50; the drop menu needs 9.31, 9.16, 9.9, 9.19 and 9.48.)*
 - **4.10:**
   - the index-only topology and view facts for the whole revset before the first paint, including each node's real parent count (index-only, 4.10 item 1);
   - the edge kinds as jj facts: direct, indirect and Missing. A Missing edge is the elided stub (10.4). Its count N, if 10.4 design question (a) keeps it, is not a topology field (4.10 Non-goals): it depends on the revset and needs an index walk per Missing parent, so it would come from a separate op-pinned count call for the visible nodes, owned by a follow-up story created only then *(decided 2026-09-30: no counts, the design update's decision (b); no count call and no follow-up story. The stub is 10.19's)*;
@@ -7185,13 +7702,15 @@ Every time-based variant needs every commit's timestamp before the first frame. 
 
 The demo host exposes every graph option. Which of them become user settings is 10.7's design question (f).
 
+*(2026-10-14: the floating client settles these tweaks as constants (AF:15-16): Bookmark labels = Always (the legend pill), Hover = focus path on, Crossings = Bridge gap, Show changed files = on, the gap marker = Break without counts. Lane order stays `compact` with greedy as the alternative, by decision (b), although the export freezes `optimized`; it is a request knob and a demo-host option, not a user control. The diff layout (Unified | Side by side) is a Settings row (11.7) and the inspector's toggle (10.24). The View options popover holds the user's graph settings: Layout, Detailed cards, Group stacks and Card width (10.7). Density and theme are Settings rows (11.7).)*
+
 **Prototype defects that no story copies.** Each was verified in the page; the owning story is in brackets.
 1. **Re-centring on @ misfires** [10.5] (GV:531-538):
    - a revset or layout switch re-centres on @ one relayout late;
    - the first relayout of any kind after load (Card width, Detailed, Lane order) jumps to @;
    - after a double-click `jj edit`, the next relayout scrolls to the old @;
    - a hidden-bookmark pick reveals its target in the relayout it causes (GV:582), but the switch re-arms the @ re-centre (GV:538), so the next relayout of any kind jumps to @.
-2. **Blocked merges are routed behind cards** [4.11; reported by 10.4 item 10]. A blocked merge is re-routed as a branch-off and runs up the child's column behind that column's cards, collinear with their chain. Its reservation also pushes the continuation off its lane (GV:52-69, :188-206). The spike keeps this (SPEC D9) and leaves it to Ralph (SPEC §11.4). The design sample has none, but the spike's synthetic inputs have many (229 on `synth-10k`, compact, greedy), so the route invariant is a counted report until 4.11 fixes it.
+2. **Blocked merges are routed behind cards** [4.11; reported by 10.4 item 10]. A blocked merge is re-routed as a branch-off and runs up the child's column behind that column's cards, collinear with their chain. Its reservation also pushes the continuation off its lane (GV:52-69, :188-206). The spike keeps this (SPEC D9) and leaves it to Ralph (SPEC §11.4). The design sample has none, but the spike's synthetic inputs have many (229 on `synth-10k`, compact, greedy), so the route invariant is a counted report until 4.11 fixes it. *(2026-10-14: the export fixes it with gutter routes (GL:181-190); the product fix is 4.15.)*
 3. **Time rows break when a child is older than its parent** [4.11; the spike's clamp fixes it (SPEC D1); checked by 10.1 item 14] (GV:169) *(moot for the product since 2026-09-27: Time is dropped; Free clamps its own time, SPEC §4.2)*:
    - across buckets, the parent is drawn above the child;
    - inside one bucket, both land in the same cell and overlap;
@@ -7207,7 +7726,7 @@ The demo host exposes every graph option. Which of them become user settings is 
 5. **`rowOf` recursion** overflows the stack at about 8k depth with head-first input (GV:174) [4.11; the spike loops instead (SPEC §4.2)].
 6. **Duplicate parents** produce a dashed and a solid edge to the same parent, with colliding edge keys (GV:154, :640) [4.11: jj does yield repeated targets (a Direct and an Indirect edge to one parent, seen on a real repo), and 4.11's input builder keeps one layout edge per target (its Scope 5; SPEC §2 amended, V3 stays a validation); 10.1 item 14; 10.4 item 9].
 7. **An invisible elided stub**: the stub is drawn over the node's own incoming edge at the card centre (GV:643-645) [10.4 design (b)].
-8. **The bookmark legend pill covers branch exits**: it sits on the top border over rightward branch-off exits (GC:97, :105 vs GV:63). The code comment at GV:311-315 intended the bottom border [10.3 design (b)]. *(2026-09-27: it disappears with the top-centre exit, product decision 5: the pill's left end sits at least 24 px right of the card's centre.)*
+8. **The bookmark legend pill covers branch exits**: it sits on the top border over rightward branch-off exits (GC:97, :105 vs GV:63). The code comment at GV:311-315 intended the bottom border [10.3 design (b)]. *(2026-09-27: it disappears with the top-centre exit, product decision 5: the pill's left end sits at least 24 px right of the card's centre.)* *(2026-10-14: it returns with router B's off-centre exits, decision (a1). With the shipped menu add mode the pill may span W − 20 px of the top border (GC:97, :106). 10.3 keeps the pill at most W/2 − 34 px wide, painted above the edges (decision (g); defect 26).)*
 9. **A stale selection**: it survives a revset that hides the commit, so the panel stays open for a commit that is not on the canvas (GV:578) [10.5 item 7].
 10. **A hidden-bookmark pick** permanently rewrites the persisted revset preference (GV:504, :580) [10.14 design (a)].
 11. **Esc is global**: the graph's Esc handler is a window-level keydown listener (GV:541-548). So the Esc that closes the Projects dialog (APP:2034) also clears the graph selection [10.6 item 5].
@@ -7225,11 +7744,11 @@ The demo host exposes every graph option. Which of them become user settings is 
     - crossings are found all-pairs, O(E²);
     - the lane optimiser is factorial below 9 lanes and hill-climbing above, and it is global.
 
-    The spike's phases are O((n+E) log n), and its optimiser is budgeted (SPEC §5).
+    The spike's phases are O((n+E) log n), and its optimiser is budgeted (SPEC §5). *(2026-10-14: the export's column choice now scores every candidate with the O(E²) router; defect 42.)*
 
 Added with the design update of 2026-09-28 (cited at `a399daf`):
 
-17. **Lanes re-pack on every stack toggle** (GV:651-652), so whole branches jump sideways [4.13; decision (a), deviation (f)]. *(2026-09-30: the export at `e243dd2` keeps the columns of the expanded layout while they stay valid and re-packs only otherwise (GV:220-237); 4.13's I7 keeps them always.)*
+17. **Lanes re-pack on every stack toggle** (GV:651-652), so whole branches jump sideways [4.13; decision (a), deviation (f)]. *(2026-09-30: the export at `e243dd2` keeps the columns of the expanded layout while they stay valid and re-packs only otherwise (GV:220-237); 4.13's I7 keeps them always.)* *(2026-10-14: the export at `e74ced3` freezes the all-collapsed graph's columns while they are valid in both layouts, and re-packs otherwise and on the "Group stacks" switch (GL:548-568; GV:580-588). 4.13's I7 still keeps the columns always (decision (b)); defect 31.)*
 18. **The expanded stacks persist in one global list** (`zanshin.graph.expanded`, GV:640), not per repository, although their keys are change ids [10.17].
 19. **The stack popover grows without bound.** It lists every member and sizes its flip by 60 + 34 px per member (GV:543, :558) [10.17].
 20. **A collapse can hide the selected commit** and leave its panel open, like defect 9: the toggle keeps `selectedId` (GV:654-660) [10.17, 10.5].
@@ -7242,13 +7761,90 @@ Added with the design update of 2026-09-30 (cited at `e243dd2`):
     - an end stub's cut sits 10–15 px under the card (GG:106-110).
 
     The scan itself keeps about 24 px from bends and crossings and 21–27 px from its own cards (GG:22, :30, :39).
+
+    *(2026-10-14: the export now falls back to the middle of the longest free run (GG:52-56) and puts a hidden merge's shared marker 16–22 px under the card (GG:63-70); the end stub's cut still sits 10.5–15 px under the card (GG:119-123). The 24 px rule is superseded by 12 px of line, decision (a3).)*
 22. **Marker placement knows only the edge's own two cards** (GG:22). Nothing keeps a marker off another card, e.g. in Free, where a bus can pass behind one (SPEC D8) [10.19].
-23. **Marker placement is all-pairs:** for every dashed edge it scans every segment of every other edge, O(D·E) (GG:26-36) [10.19: whole-layout indexes].
+23. **Marker placement is all-pairs:** for every dashed edge it scans every segment of every other edge, O(D·E) (GG:26-36) [10.19: whole-layout indexes]. *(2026-10-14: defects 22 and 23 stand in the export at `e74ced3` (GG:20-51, :26).)*
 24. **The mock hides commits that jj's `builtin_log()` shows** [10.1 item 13; 10.19 item 9]:
     - that revset holds every mutable commit and every parent of one (`ancestors(immutable_heads().., 2)`);
     - the mock hides the mutable `vw`, `lm`, `nt`, `om` and `yx`, and `ro`, a parent of the mutable merge `wl` (GD:80-81, :91, :95, :99-100).
 
     Its gaps therefore stand for a narrower revset such as `mine()`. Under jj's default revset, gaps occur only in immutable history.
+
+Added with the design update of 2026-10-14 (cited at `e74ced3`; Epic 11's defects are numbered here too). Still present in the export and already recorded: defects 9 (GV:1023), 11 (GV:979-987), 14 (GV:285), 18 (GV:552), 19 (GC:256, GV:341) and 20 (GV:591-597).
+
+*Cards and motion:*
+
+25. **Callout and stack-popover flips ignore the chrome.** They are measured against the window-sized scroll box, not the unobscured area, so they can open under the minimap (z 15), the inspector (z 12) or the top bar (z 20) (GV:224-238; FC:22, :25, :48) [10.6, 10.17].
+26. **A legend pill may span `calc(100% − 20px)`** (GC:106, through `add-menu`, GV:289; DS components/graph/graph.css:22). It covers router B's right-side exits (GL:224-231), so defect 8 returns [10.3; decision (g)].
+27. **The flash ends early:** its class is cleared after 1.8 s while its animation runs 2.4 s, which cuts the fade (GV:744; GC:332; FC:170). "Show in all()" holds it for 2.6 s (GV:973-974) [10.20].
+28. **Under reduce motion every animation collapses to 0.01 ms, so the flash never shows** (GC:447) [10.20, 10.19; the 2026-09-30 rule: static].
+29. **Every card is a tab stop** (GV:291), so Tab walks thousands of cards, while stack cards are no stop at all (GV:339-341) [10.6, 10.17; decision (g)].
+30. **Only the card whose menu is open suppresses its callout** (GC:155). Other cards' callouts still open while a menu is up, against DS components/overlays/PeekCard.prompt.md:12 [10.6].
+31. **A stack toggle can still move columns:** the export drops its column freeze when it does not fit both layouts (GL:548-557; GV:579-589). A variant of defect 17 [4.13, 4.14, 10.17; decision (b)].
+
+*Actions and drag-and-drop:*
+
+32. **"Insert after" silently becomes `jj new`** when the change has an immutable child (GV:707). The CLI refuses: `compute_commit_location` rejects an immutable child (`../jj` cli/src/cli_util.rs:3644 @ v0.46.0) [10.15; the refusal through 10.9 and 10.23].
+33. **"Squash into parent" is wrong on merges and immutable parents.** The card menu enables it there, and it then does nothing (GV:187, :773-776). The inspector disables it with an invented reason, "The parent can’t be rewritten", also on merges (IN:220). The CLI refuses a merge with "Cannot squash merge commits without a specified destination" (`../jj` cli/src/commands/squash.rs:243 @ v0.46.0), and an immutable parent with `jj.immutable` [10.15, 10.8, 10.25].
+34. **The drop rows are stricter than jj.** The mock hides `rebase -r` onto a descendant (DND:41), which the CLI allows, and the merge of two related changes (DND:49), which `cmd_new` allows [10.10; the rows come from 9.31].
+35. **Squash does not follow jj.** It keeps the target's description unless that is empty (GO:86); jj combines both and asks when both are non-empty (`../jj` cli/src/commands/squash.rs:71-73). It keeps an emptied source that has a description and never abandons an emptied @ (GO:87); jj abandons any emptied source unless `-k` is given (squash.rs:68), and an abandoned @ gets a new empty @ [9.15; 10.9 design question (e); 10.25 and 10.27 follow `MutationResult`].
+36. **The bookmark popover is inert and keeps the docked material.** Its buttons have no handlers (GV:117-118), and its styles predate the glass menus (GC:117-130). The design system has no popover [10.15].
+37. **The hint offers "Double-click: jj edit" on immutable cards** (GV:299), where a double-click does nothing (GV:996) [10.6, the callout's hint line].
+
+*The inspector:*
+
+38. **Drafts are lost.** Esc in the @ composer drops the draft and closes the panel: its fields have no cancel handler (IN:133), so the Esc reaches the window-level handler (GV:980-987). A selection change ends describe mode (GV:979), and the panel remounts per selection (`key={selected.id}`, GV:1157), which drops the composer's fields [10.8, 10.25].
+39. **The composer's rules are not the CLI's.** Split refuses "everything" with a text of its own (IN:154, :179); the CLI runs it, with the warning "All changes have been selected, so the original revision will become empty." (`../jj` cli/src/commands/split.rs:588). The preview drops `-m` when the summary is empty (IN:125); the CLI would then open an editor, so the GUI sends `-m ""` and shows it [10.25].
+40. **The bold id prefix is always 2 characters** (IN:227; GV:278). jj's unique prefix is in the view facts (`packages/zanshin_core/lib/src/ffi/graph.dart:441`) [10.8; 10.3 for the cards].
+
+*Layout and lines:*
+
+41. **The design's columns depend on card width and height** (GL:570; GL:312-374, :535-547). The column cache is keyed by W and H, because the optimizer and the judge score pixel routes, so a change of card width or of Detailed cards can reorder the columns [4.14: the engine stays independent of W and H].
+42. **The column choice is global and does not scale** (GL:312-374, :522-568). It extends defect 16: the optimizer permutes whole lanes, exhaustively up to 6 non-trunk lanes, and every candidate, and the choice between packings, is scored with the O(E²) router in both layouts [4.14; decision (b) keeps `compact` and greedy].
+43. **Free detours are not guaranteed** (GL:186-190, :128-131, :193-197). With no gutter free, the run stays direct behind a card; an overfull cluster keeps its spacing over the cards; more than 9 lines on one gutter step into a card [4.15: counted in the route report].
+44. **Dashed edges share an entry through the design's `via`** (GL:212; GG:58-70). It extends defect 4: jj reports no `via`, so beyond single-parent hidden merges this grouping has no jj source [4.15, 10.19].
+45. **A day divider can cross cards** (GL:597-602): commits that straddle midnight within about 25 min overlap vertically [10.2: accepted].
+
+*Search:*
+
+46. **`jj log` bakes in `builtin_log()`** (RC:10, :58; SR:63). The variant evaluates `present(@) | ancestors(immutable_heads().., 2) | trunk()` and describes it as "Your mutable changes plus trunk context", so a user's `revsets.log` is ignored. The product sends the effective `revsets.log` (10.7 item 2's rule) and shows that expression when it differs [10.21 item 1; cited by 10.7; the house rule "Backend boundary"].
+47. **`mine()` and "you" are matched by the author's name** (RC:20, :88, :282; SR:134, :354). `ME = "Ralph Stein"` decides the `you · mine()` tag and the mock's `mine()`. jj's `mine()` is `author_email(exact-i:<user.email>)` (`docs/revsets.md` @ v0.46.0), so a name shared by two people, or one person with two names, gives a different set [10.21 item 7; 10.22 item 4].
+48. **"Path or folder" relies on the default pattern kind** (RC:52; SR:147). A prefix rule writes a bare `files("dir/")`. At v0.46.0 a bare fileset string is a `prefix-glob:` pattern (`docs/filesets.md`), so a path containing `[`, `*` or `?` turns into a glob. The builder writes `cwd:"…"`, `file:"…"` and `glob:"…"` explicitly [10.21 item 7].
+49. **The copied command is not shell-quoted** (RC:72, :214). `jj log -r '<expression>'` breaks as soon as a value contains `'` [10.22 item 5].
+50. **The search state is global, not per repository** (GV:545; SR:23). The shown view, `q:` searches included, and Recent (change ids, paths, authors) carry over from one repository to the next. A recent go-to is hidden once its change is unknown (SR:258), but filters are not [10.21 items 1 and 6].
+51. **A bookmark go-to is remembered as its change** (SR:128, :277). Recent loses the bookmark's name, and after the bookmark moves, the recent still jumps to the old change [10.21 item 6].
+52. **Counting scans every commit, per row and keystroke, on the UI thread** (SR:160, :198, :260; RC:212). `count` filters all commits for every filter row and every recent on each keystroke, and `compose` drops the zero rows before they show. The product counts asynchronously through 9.25 (op-pinned, batched, capped) and dims zero rows [9.25; 10.21 item 4].
+53. **A go-to into a hidden target re-arms the re-centre on @** (SR:240-248, :281; GV:964, :1024-1029). `setRevset("all")` re-arms GV:964's re-centre on @ after the go-to's own reveal has run in a child effect, so the next relayout of any kind jumps to @. This is defect 1's hidden-bookmark case, reached through the search [10.21 item 5; 10.5 item 6].
+54. **⌘F and `/` reach the field behind a modal dialog** (SR:217-226). The window-level listener also focuses the search field while the Configurations dialog, Settings or Projects is open: ⌘F even inside a text field, `/` outside one. The field sits under the scrim. The same pattern as defect 11 (a global Esc) [10.21 item 2].
+
+*Describe:*
+
+55. **Save writes an unchanged description** (IN:49 → GV:764; GO:155-158) [10.8; 9.40].
+56. **The describe text lacks the CLI's trailing newline.** Subject and details are joined and trimmed (IN:28), while `-m` ends each paragraph with "\n" [10.8].
+
+*The floating chrome and the shell (Epic 10 and Epic 11):*
+
+57. **Esc in View options also clears the graph's selection.** The popover's Esc listener (AF:105-112) and the graph's (GV:980-987) are both plain window listeners, so one Esc closes the popover and the inspector. A variant of defect 11 [10.7].
+58. **The bookmark list prints "behind" and "diverged" as bare words,** without distances, next to `↑N` and `✓` (GV:422) [10.14, with 9.29].
+59. **The pinned panel's close button says "Back to History"** (SH:1082), a leftover of the docked client [10.14].
+60. **The rail reacts to the mouse only.** Its buttons have no focus handling (AF:185-188), and the preview, whose rows are clickable, is announced as a tooltip (AF:195) [11.3].
+61. **Calm scrolling finds open menus by scanning the page** (GV:941) [11.3: explicit overlay state].
+62. **A pinned panel plus the inspector leave 28 px of graph** at the 900 px minimum width (AF:252; FC:22; `app/macos/Runner/MainWindowChrome.swift:58`) [11.3].
+63. **The Workstreams empty state names a command that does not exist:** `jj workstream new` (AF:124; SH:1048). jj v0.46.0 has no such verb [11.3: the item is hidden].
+64. **The Projects dialog opens at every launch,** even when a project could reopen (AF:229) [11.5].
+65. **The Projects dialog shows an invented account and a stale version:** "Signed in · Alice Sralph" and "jj client · v0.24.0" (SH:2062, :2070-2079) [11.6].
+66. **The Projects dialog's Remotes and Settings tabs are inert** (SH:2066-2068) [11.6].
+67. **A folder drop adds a fake project** without looking at the folder (SH:2023-2034) [11.6].
+68. **The project's "branch" label is a Git notion;** jj has no current branch (DA:310; ST:38; SH:2158-2160) [11.5].
+69. **Settings hardcode the user config path** `~/.config/jj/config.toml` (ST:135) [11.7].
+70. **The Trunk select offers local names** ("main", "develop") next to a remote symbol (ST:104). jj's own writer stores `<name>@<remote>` (`../jj` cli/src/commands/git/init.rs:332 @ v0.46.0) [11.7].
+71. **`git.fetch` and `git.push` are single selects** (ST:99-100), while jj 0.46 accepts lists and patterns (9.20, 9.30) [11.7].
+72. **Settings keep the jj identity in browser storage, with invented defaults** (ST:75), and hardcode the remotes (ST:96) [11.7].
+73. **⌘, opens Settings on top of an open Projects dialog** (AF:233-237), so two modals stack [11.7].
+74. **Fetch and Push are inert** (AF:176-177) [11.8].
+75. **"Fetch automatically" promises a real fetch on a timer** (ST:101). That would move tracked bookmarks and write operations (9.24's motivation); decision (g) makes it a read-only poll [11.7, 11.8].
+76. **The Undo Timeline is static and shows command lines** (AF:26-30, :132 "142 ops"; SH:1063-1067). jj stores command lines only for CLI operations, and Zanshin deliberately records none (`crates/zanshin-jj/src/op_support.rs:679-681`) [11.9].
 
 **Prototype behaviours that are design questions, not defects** (the owning story asks):
 - (i) Crossings between edges that share a node are neither bridged nor counted (GV:87) [10.4 design (d)]. The spike's optimiser counts them (SPEC D5).
@@ -7262,9 +7858,17 @@ Added with the design update of 2026-09-30 (cited at `e243dd2`):
 - **Bridge imports.** The app imports only `package:zanshin_core/zanshin_core.dart`. That library exports none of the handle, show, bookmark, mutation, exception or graph types today (`zanshin_core.dart:9-33`). Each story adds the types it consumes to the `show` list; that is what the `[UI/bridge]` tag means.
 - **Material.** Material types come from `package:material_ui` only; its `ThemeMode` is not Flutter's.
 - **Visuals.** Designed visuals are a `RenderBox` with text slots (the `splash_card_render.dart` pattern), not nested `Column`/`Row` trees.
-- **Theme.** Colours and sizes live in a `GraphTheme` `ThemeExtension`, whose dark and light values come from the design tokens (GC:4-5, SC:9-56, SC:2363-2376). `GraphTheme.of(context)` falls back to built-in defaults and never force-unwraps.
+- **Theme.** *(Amended 2026-10-14: decision (f) of the design update; the earlier text read "Colours and sizes live in a `GraphTheme` `ThemeExtension`, whose dark and light values come from the design tokens (GC:4-5, SC:9-56, SC:2363-2376).")* Colours and sizes come from the design system, `DS` = `_bmad-output/implementation-artifacts/design_system/`, cited as `DS <path>:<line>`.
+  - **The token layer (Story 11.1)** holds every DS token once:
+    - night: `DS tokens/colors.css:7-55` and `DS tokens/effects.css:4-39`;
+    - paper: `DS tokens/colors.css:57-80` and `DS tokens/effects.css:40-52`;
+    - type: `DS tokens/typography.css`; sizes: `DS tokens/spacing.css`.
+  - **`GraphTheme`** is a `ThemeExtension` with `night` and `paper`. It holds only the graph's roles: canvas, cards, @, rings, lines, gap marks, day axis, stacks and callouts. It derives them from the token layer, so no colour is typed twice. Its geometry comes from `DS components/graph/graph.css` and `DS components/graph/GraphEdge.d.ts` (`GraphPorts`).
+  - **Moon marks selection, focus and every flash** (`--accent`). The docked client's legacy blue never appears (#3b82f6, `AC:33-35`; the rings at `GC:74`, `:76`). Gold stays with @ and the one primary action (`DS readme.md:75-76`).
+  - **Client CSS** (`AC`, `FC`, `GC`, `INC`, `ST`/`STC`) is cited only where the DS has no token. `SC` is retired: the old `styles.css` survives only as `design/archive/v1 Branch Columns/styles.css`.
+  - `GraphTheme.of(context)` falls back to `GraphTheme.night` and never force-unwraps.
 - **Layout data.** The view never lays out the graph. Until 10.12, everything runs on recorded layouts from the spike's reference implementation (10.1 item 13). Every recording passes 10.1's hard invariants. 10.4's route invariant is a counted report, not a gate, until SPEC §11.4 is answered and 4.11 fixes the blocked-merge routing.
-- **Scroll precedence.** One rule, defined in 10.5 item 6 and used by 10.1, 10.7, 10.8 and 10.14. An explicit reveal (a bookmark pick, locate @, go-to-change) beats the re-centre on @ after a revset or layout switch, which beats the anchor. The anchor is the fallback when the target is absent. It is also the rule for reloads, card-size changes and side panels, unless 10.8 design question (e) keeps the raw offset for panels.
+- **Scroll precedence.** One rule, defined in 10.5 item 6 and used by 10.1, 10.7, 10.8 and 10.14. An explicit reveal (a bookmark pick, locate @, go-to-change) beats the re-centre on @ after a revset or layout switch, which beats the anchor. The anchor is the fallback when the target is absent. It is also the rule for reloads, card-size changes and side panels, unless 10.8 design question (e) keeps the raw offset for panels. *(2026-10-14: panels no longer resize the viewport; they float over it. Every reveal centres in the area the floating chrome leaves free, and pinning a panel shifts the offset by the inset's change, so no card moves (10.5's dated note).)*
 - **Ports.** The view model (10.5) declares the ports the view uses: the layout source (`GraphSource`) and the actions runner (`GraphActions`). A story whose real implementation has not landed yet wires a fake: 10.6 and 10.8 before 10.9, and everything before 10.12.
 - **Tests.**
   - Scroll-physics tests run under `TargetPlatformVariant.only(TargetPlatform.macOS)`.
@@ -7281,6 +7885,14 @@ Added with the design update of 2026-09-30 (cited at `e243dd2`):
   - NEEDS DESIGN items are phrased as concrete questions, and they are answered before the story is built, never guessed;
   - a prototype defect is never FINAL, and a prototype behaviour listed above is a question, not a rule.
   - *Amended 2026-09-28 (Ralph; decision (c) of the design update):* the export is inspiration, not a 1:1 template, and it keeps small deviations that Ralph leaves unfixed to save tokens. FINAL therefore means the intended direction, not pixel or behaviour exactness. For a small gap or inconsistency Claude writes a proposed default, marked as Claude's proposal, which Ralph can overrule at review. NEEDS DESIGN questions are kept for choices that change architecture or scope. A decision recorded in this epic wins over the export.
+  - *Amended 2026-10-14 (Ralph; decision (a) of the design update):* where Ralph decided that the export wins, its explicit change supersedes the earlier decision, and that decision is marked as superseded where it stands. Everywhere else, a decision recorded in this epic still wins over the export.
+- **Design-system sync.** *(Added 2026-10-14.)* The design system is the reference for tokens and components, and it moves with the floating client.
+  - Every Epic 10 and Epic 11 story records the sync it was built against: "DS synced through #N" (`DS readme.md:22`; #9 at `e74ced3`).
+  - FINAL items cite DS tokens and components, e.g. `DS components/graph/graph.css:6`. Client files are cited only where the DS has nothing.
+  - When a re-downloaded DS shows a higher N, the next story that touches visuals reads the new entries of `design/DESIGN-SYSTEM-SYNC.md`, from #N+1 on. Each entry names the client files it changed and what the DS should change. The story adds one dated note to every story that an entry affects ("DS #10: changes 10.3 item 5", or "no effect"), and it updates the token layer in the same change.
+  - 11.1's parity test turns `cargo make test` red when a DS token changes, and names the token. A re-download that changes only components keeps the gate green; this rule covers it.
+  - Nothing under `design/` or `design_system/` is edited: both are re-downloaded as a whole.
+  - A decision recorded in this epic still wins over the DS.
 
 **Sequencing.**
 - 10.0 (the scope-exception note) is done.
@@ -7302,6 +7914,14 @@ Added with the design update of 2026-09-30 (cited at `e243dd2`):
 - 10.19 (hidden history, added 2026-09-30) follows 10.4, 10.5, 10.6 and 10.7, on recordings of the `e243dd2` sample (10.1 item 13). Real gaps come with 10.12.
 - 10.20 (graph animations, added 2026-09-30) follows 10.1, 10.3, 10.4, 10.5 and 10.17. Real triggers come with 10.9 and 10.12.
 - 10.10 (drag-and-drop) comes last. It is a placeholder that needs backend 9.31 and 9.16.
+- *Added 2026-10-14 (the design update):*
+  - 11.1 (the design-system token layer) comes before 10.1, whose `GraphTheme` derives from it. 11.2's glass material comes before the first floating surface (10.7, 10.8, 10.14, 10.16).
+  - 4.14 (shared columns) and 4.15 (router B) are backend/bridge work; 10.4 builds on 4.15's library and 10.12 adopts both. Until then the recordings come from the export's `graph-layout.jsx` (10.1's dated note).
+  - 10.21 (search) follows 10.5, 10.6 and 10.11; its counts and change search need the refined 9.25. 10.22 (the Configurations dialog) follows 10.21 and 11.2.
+  - 10.23 (the operation toast) follows 10.9; 11.3 gives it its slot.
+  - 10.24 (the inspector's diff) follows 10.8 and Epic 5's line-level stories. 10.25 (the file-level composer) follows 10.8, 10.9, 9.15 and 9.49 and needs no Epic 5. 10.26 (hunk selection) follows 10.24, 10.25 and 9.50. 10.27 (diff drags) follows 10.10 and 10.26.
+  - 10.10 no longer comes last: it runs on a fake `drop_actions` port right after 10.9 and 10.15; the amended 9.31, 9.16, 9.9, 9.19 and 9.48 bring the real rows.
+  - Epic 11's own sequencing is in its header.
 
 **What changed in the re-plan, and why** (story numbers kept where the topic still fits):
 - **10.1–10.7 keep their topics.** Their content now follows the design: several cards per row, routed edges, the design's toolbar. 10.1's contract takes the spike's output format (rows in 1/U units), so the engine's free layout needs no view-side computation.
@@ -7357,6 +7977,25 @@ Added with the design update of 2026-09-30 (cited at `e243dd2`):
 >   - a card's y is a paint parameter per key, so a card can slide without a rebuild.
 >
 >   Keys already survive rewrites (item 2's change-id rule).
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** the floating client is the reference now.
+> - **Item 3:** offX is 0 in both modes. Free reserves no gutter, so both layouts have the same width: 2·pad + colCount·(W + gapX) − gapX (GL:606-607). The gutter (88) leaves `GraphMetrics`; only 10.2's label column keeps that width (DS components/graph/graph.css:96).
+> - **Items 2 and 14:** once 4.14 lands, the checker gains a hard invariant I8: every node has the same column in Free and Compact. Rows, lanes and columns stay independent of W and H; the export's columns are not (GL:570; prototype defect 41), and that is not copied.
+> - **Edges:** 10.4 paints 4.15's polylines. A change of W or H re-runs 4.15's geometry stage, still without a layout request. Witness (l) gains "and only the router's geometry stage re-runs".
+> - **Item 6:**
+>   - the background hook paints 10.2's day guides only. There is no grid; the canvas is the window's, static behind the viewport (FC:12, :20);
+>   - the overlay hook paints 10.2's day labels, with no gutter fill;
+>   - the plane gets margins from 10.5's insets (the top bar, the rail or the pinned panel, the inspector or the minimap), so every card can scroll clear of the floating chrome. A change of the left inset shifts the scroll offset, so the graph stays still (GV:1065-1077).
+> - **Item 7 is superseded:** there are no scrollbars. The minimap (10.16) is the scroll indicator (FC:18-19). This answers design question (a); witness (h) goes.
+> - **Item 8's cursors are replaced** (FC:144-152; DNC:5): the arrow everywhere (cards, affordances, gap markers, the minimap, item drags); `grabbing` only while a pan is held; an I-beam in text fields; `col-resize` on resize handles. The grab cursor and the card's click cursor (GC:45-46) are the docked client's. The FINAL item "pan-by-drag with the grab cursor" keeps the pan and loses the cursor.
+> - **Item 12 is replaced** by 11.1's token layer; tokens come from the design system (decision (f)). See the house rule "Theme".
+> - **Item 1 and design question (b):** the demo host's file and the `main*.dart` that hosts it become Claude's proposals, which Ralph reviews (decision (e)).
+> - **Item 10:** after 4.14 a Free ↔ Compact switch changes rows only. The re-centre on @ after a layout switch stays (GV:964).
+> - **Item 13 (recordings):**
+>   - GD is unchanged at `e74ced3` (52 commits), so `inputs/design-e243dd2-{default,all}.json` stay the sample. `tools/design-input.mjs --rev e74ced3` fails (it extracts by name from `graph-view.jsx`; GV:6-7) and is not needed: the gap walk is identical (GL:435-460 = GV@e243dd2:145-170);
+>   - the export's own behaviour (shared columns, router B, the day dividers) is read by 4.14's and 4.15's loader, which evaluates `graph-layout.jsx` whole;
+>   - new fixtures for 4.15 and 10.4: the Lines Study's FAN scenario (4 or 8 extra children of the trunk) and its PRESETS (a 2- and a 3-parent merge) (LS:7-22).
+> - **For 10.20** (decision (c)): the FLIP model glides moved cards on both axes. A card's x and y are per-key paint parameters (the 2026-09-30 constraint named y only), and the edge layer can hide and fade back in.
 
 **Motivation.** The design places each card at a pixel position computed from data alone (GV:198-224):
 - x comes from the node's column, y from its row;
@@ -7479,10 +8118,11 @@ This story makes the production viewport that every other Epic 10 story plugs in
 11. **Hit testing and semantics** (research §5).
     - `hitTestChildren` walks item 6's paint order in reverse. The base walks insertion order, which breaks once hover lift, border chips or drag ghosts make children overlap.
     - `describeSemanticsClip` returns the viewport inflated by the cache extent. `describeApproximatePaintClip` returns `Offset.zero & size` unless `Clip.none`. Without these, VoiceOver reports cache-extent cards as visible.
-12. **Theme.** Add a `GraphTheme` `ThemeExtension`; this story adds the canvas tokens, and 10.2–10.4 add theirs.
-    - Dark and light values come from the design: `--canvas-base` is #12162a dark and #f0ece7 light (SC:9, :42).
-    - `GraphTheme.of(context)` falls back to built-in defaults. It must not force-unwrap the way `context.zc` does (`app/lib/src/shared/theme/zanshin_colors.dart:170`).
-    - Only the demo host registers it. The running app's `MaterialApp` is Ralph's Yaru test page (`app/lib/src/features/app/zanshin_app.dart:124-149`).
+12. **Theme.** *(Amended 2026-10-14: the house rule Theme; decision (f) of the Epic 10 header's design update 2026-10-14. The earlier item took `--canvas-base` from SC:9, :42, and only the demo host registered the extension.)* Add a `GraphTheme` `ThemeExtension` with `night` and `paper`, derived from the token layer (Story 11.1). This story adds the canvas roles; 10.2–10.4 add theirs.
+    - **Canvas:** the window-fixed `--canvas`, a radial lift over a linear 165° gradient (`DS tokens/colors.css:19`, paper `:59`). `--canvas-base`, #12162a / #f0ece7, is its flat fallback (`:20`, `:60`). There is no dot grid (`DS readme.md:84`; `FC:20`). 10.2 paints it.
+    - **Geometry defaults** for `GraphMetrics` come from the token layer too: card 240 × 62 / 40, lanes 56 apart, rows 48 apart, pad 56 (`DS tokens/spacing.css:18-19`), corner radius 10 (`DS tokens/effects.css:10`). Free reserves no day gutter any more (decision (a2)), so the 88 px offset goes.
+    - `GraphTheme.of(context)` falls back to `GraphTheme.night`. It must not force-unwrap the way `context.zc` does (`app/lib/src/shared/theme/zanshin_colors.dart:170`).
+    - **Registration:** the demo host registers it, and so does 11.1's app theme, next to the token layer's extensions. This replaces "only the demo host registers it": since 11.0 the app theme is Claude's too.
 13. **Fake data: recorded layouts from the A/B spike, never a layout engine in the view.** A record joins the spike's input and output (SPEC §2–§3) with the view facts a fixture needs (key, @, bookmarks, immutable, …) and mirrors `GraphLayout`'s fields. The sources:
     - **(a) The design sample.**
       - The spike's design inputs (`inputs/design-<rev>.json`, SPEC §7.2), laid out by the spike's reference implementation in compact, time and free, each with greedy and optimized lane order. *(2026-09-27: the product needs compact and free, with greedy and the `compact` order. The Rust reference has no `compact` order, so those recordings come from the spike's Dart binary, as 4.11's goldens do.)*
@@ -7569,13 +8209,45 @@ If Ralph wants smaller reviews, this story splits cleanly into two:
   - a duplicate (child, parent) edge;
   - a dangling edge.
 
-### Story 10.2: Canvas background and time gutter — dot grid, sticky 88 px gutter, bucket pills and guides, Free's day axis — *NEEDS DESIGN* [UI]
+### Story 10.2: Canvas and Free's day axis — the window canvas, day labels on the dividers, no gutter [UI]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
 
 > **Decided 2026-09-27 (Ralph, after the spike viewer; the Epic 10 header's "Product decisions 2026-09-27"):** Free is the default layout and Compact the only other one; Time is dropped.
 > - The gutter (item 2) serves Free's day axis (item 9), which is no longer conditional. Items 3 and 4 keep giving it the pill and guide styles, but their Time placement, item 6's age ladder and item 7's re-bucketing are no longer built, and item 10 is moot. The Time-only witnesses (pills on a bucket's bottom node, the ladder labels, the today-older-than-12h rule) drop out; the Compact ↔ Free switch witness stays.
 > - Two viewer details stay as intended deviations from the design: content fades as it scrolls under the gutter (item 2's gradient, the design's Time gutter GC:57, now in Free), and the current day stays pinned (item 9; design question (e)'s first point is answered: keep it).
 > - Design questions: (a) shrinks to the "now" that formats "Today" and "Yesterday" (item 9, Clock); (b) is moot; (c) is settled for now (below); (d), the rest of (e), (f) and (g) stay open, (g) now for Free's timestamps (4.10 open question 2).
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`; retitled, *NEEDS DESIGN* dropped):** the floating client has a Free layout with its own day axis (GL:586-603; GV:1098-1106; SYNC #7, #8; DS components/graph/DayAxis.prompt.md:14-19). Decision (a2) adopts it. It supersedes deviations (b) (content fading under the gutter) and (c) (the pinned current date), product decision 1's "Free keeps its day axis in the gutter", items 1 and 2, and item 9's placement and pin.
+> - **Canvas** (replaces item 1 and its FINAL point): the canvas is the window-fixed `--canvas` gradient (DS tokens/colors.css:19, paper :59; AC:6-9, :42-45). It sits static behind the viewport and never scrolls (FC:12). The dot grid is gone, and the plane is transparent (FC:20; DS readme.md:84); only the docked client keeps it (GC:50).
+>   - Tokens (decision (f)). Night: a radial lift, 115 % × 85 % at 10 % −12 %, rgba(96,120,178,.24) fading to 0 at 62 %, over a linear 165° gradient #1a2038 → #12162a (68 %) → #0e1224. Paper: a gold lift, rgba(220,168,91,.20), over #f7f4f0 → #f0ece7 → #e8e3dd. `--canvas-base` is the flat fallback (10.1 item 12).
+>   - (Claude's proposal) The graph view paints the canvas behind everything; a transparent mode lets 11.4 paint the window instead.
+> - **No gutter** (replaces item 2): no reserved width and no gradient (GC:57; SYNC #8). offX is 0 in both modes, so Free and Compact have the same width (GL:606-607; 10.1's note).
+> - **Day labels in Free** (replaces item 9's placement):
+>   - each day's label sits on the dashed divider below that day's first (oldest) commit, at the left edge. Reading upward, a label means "this day starts here";
+>   - the divider runs midway between the top of the older day's newest card and the bottom of this day's oldest card (GL:599);
+>   - the oldest day has no divider. Its label sits midway between its oldest card and the root's top, or half a gap below that card when the root is not shown (GL:599);
+>   - labels keep at least 22 px apart; a newer label is pushed up (GL:599). Item 9's "pushed down" goes;
+>   - guides: 1 px `--border-strong`, dash 2 6, from x 0 across the plane, in the background hook behind the edges (GV:1104-1106; DS components/graph/graph.css:95);
+>   - the pill: 11 px JetBrains Mono in `--text-muted` on `--card-solid`, padding 2 × 7, radius 5, a 1 px `--border` (DS components/graph/graph.css:97);
+>   - labels read "Today" (future days too), "Yesterday", then "Sep 23", with the year outside the current year (GL:42-43).
+> - **Sticky horizontally only** (DS components/graph/DayAxis.prompt.md:16):
+>   - the label column stays at the left edge, right of the rail or the pinned panel: at the inset − 6, with the label 2 px in (GV:1099; AF:252; FC:21);
+>   - vertically the labels scroll with their dividers. There is no pinned current-day label; the minimap's current-day pill names the day at the viewport centre (GV:436-437, :486-490, :500; 10.16);
+>   - painted in 10.1's overlay hook; hits pass through (GC:57).
+> - **Positions come from the layout.** The engine's day buckets carry each day's oldest and newest y (GLD §4.2 free, step 4). Through 10.1's `VerticalLayout` the view puts divider k at (top(end of day k−1) + top(start of day k) + H) / 2, in O(#days). It still never computes T or the days.
+> - **Compact** has no labels and no guides.
+> - **Design questions:**
+>   - (e) is answered: the label sits on the divider at the day's bottom, a year shows outside the current year, and there is no pin. Its last point (a clamped child's own date inside its parent's day) stays; cards show relative ages anyway (DS components/graph/DayAxis.prompt.md:19);
+>   - (a) becomes Claude's proposal: freeze "now" per reload, and re-format the labels on window focus and at midnight (a repaint);
+>   - (d) becomes Claude's proposal: the labels are excluded from semantics, and each card's label carries its date;
+>   - (f) and (g) stay engine questions (4.11 open question 6; GLD §11.3).
+> - **Witnesses:**
+>   - the dot-grid witness and "The gutter stays fixed horizontally, and column 0 is visible beside it at h = 0" go;
+>   - "Switching Compact ↔ Time or Free adds or removes the gutter and the 88 px offset" becomes: switching Free ↔ Compact keeps the width and every column, and only Free shows labels and guides;
+>   - the Free witness checks the divider placement, the oldest day's label below its first commit, the 22 px push-up and the year;
+>   - "The pinned label changes exactly where the next label reaches it" goes; the minimap's pill is 10.16's;
+>   - passing midnight still re-formats the labels without a layout request.
+> - **Known limit:** two commits on either side of midnight less than about 25 min apart (about 11 min with compact cards) overlap vertically, so their divider and label cross cards (prototype defect 45). The label stays readable on its opaque pill (Claude's proposal: accept; deferred-work).
 
 **Motivation.** Ralph named the background as its own piece. In the design:
 - the canvas is `--canvas-base` with a subtle dot grid anchored to the content (GC:50);
@@ -7688,6 +8360,36 @@ NEEDS DESIGN:
 > - **Witness:** "…" and the empty bookmark button appear only on hover, and are hit only then.
 
 > **Design update 2026-09-30 (the Epic 10 header; for 10.20):** the card's `RenderBox` can paint without its border. Its content opacity and a vertical offset of its text line are paint parameters per key, paint-only like hover (item 9). 10.20 traces the outline itself from the card's rect and radius. No animation code here.
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):**
+> - **The quick-action fan and the "+" chips are retired** (DS readme.md:150). The export fixes `addButtons: "both"` (AF:16) and renders neither (GV:318-329). This supersedes item 1's two chip slots, item 7, item 8's chip and fan overhang, and the chip and root witnesses.
+>   - **•••** is the card's only action affordance: a 20 px circle at right 10, bottom −11 (GC:139; DS components/graph/graph.css:83-84). It shows on hover, on focus and while its menu is open (GC:136-137, :156).
+>   - A click on ••• opens 10.15's card menu, right-aligned below the button and flipping up (GV:320-321, :564-568). A right-click anywhere on the card opens the same menu at the pointer (GV:294).
+>   - Its semantics label is "Actions", its title "Actions (or right-click the card)" (GV:320). This replaces item 11's "Quick actions", "New change on top" and "Insert new change before".
+>   - The root keeps •••, and its menu offers only New change on top (GV:180). It still has no bookmark control (GV:317). This supersedes item 5's root rule.
+>   - Overhang: at least 11 px on top (the bookmark control) and 11 px at the bottom (•••). The old chips' verbs live in 10.15's menu and in 10.7's New change.
+> - **Tokens come from the design system** (decision (f)); client CSS only where the DS has no token. This supersedes item 5's colour values and item 12's token source. The sources: DS tokens/colors.css (night :24-48, paper :61-75); DS tokens/effects.css (rings :26-29, :48-51); DS tokens/typography.css (:13, :14, :30, :36) and tokens/spacing.css:18; DS components/graph/graph.css:1-53.
+>   - **Selected:** the `--accent` (moon) border plus a 3 px `--accent-ring` (`--ring-select`, DS tokens/effects.css:26; FC:168). This supersedes item 5's blue border and ring.
+>   - **@ and selected:** 1 px `--co-deep` plus a 4 px moon ring, no drop glow (`--ring-wc-select`, DS tokens/effects.css:28; FC:169). This supersedes item 5's blue outer ring.
+>   - Unchanged: base, hover, @ (`--ring-wc`, DS tokens/effects.css:27), immutable, root and dim.
+> - **New states,** all paint-only:
+>   - **menu open:** the hover look, raised above its neighbours, ••• lit, the card's own callout suppressed (GC:154-157; DS components/graph/ChangeCard.jsx:9, :24; DS components/graph/graph.css:80);
+>   - **keyboard focus:** a 2 px moon outline at offset 3 (GC:445; DS components/graph/graph.css:5), driven by 10.6's roving focus node, not a tab stop per card (decision (g));
+>   - the flash and the drag states are painted by 10.20 and 10.10.
+> - **Bookmark control (item 6):**
+>   - The Bookmark labels option is settled to Always (AF:16), so item 12's option goes (Claude's proposal).
+>   - Button mode survives only as the add-bookmark button on a card without bookmarks. It shows on hover or focus (GC:99, :136-137).
+>   - **Legend width: at most W/2 − 34 px, painted above the edges.** Router B's right-side exits pass under it (decisions (a1) and (g)). The export allows `calc(100% − 20px)` (GC:106; DS components/graph/graph.css:22; prototype defect 26); that is not copied. This supersedes item 13's defect-8 note and design question (b)'s answer, which relied on the retired top-centre exit.
+>   - The pill and the popover's rows become drag sources (10.10; GV:92-109). The popover stays 10.15's thin placeholder (decision (d)).
+> - **Design question (a) is answered by the design system:** the dim italic "(no description set)" is keyed on an empty description, and an empty change shows only its "empty" badge (DS components/graph/ChangeCard.jsx:15-16; IN:164). The export's GV:285 still keys it on `isEmpty` (defect 14). (c), (d) and (e)–(h) stay open; the DS keeps a fixed 2-character prefix (DS components/graph/ChangeId.jsx:3).
+> - **The 2026-09-30 note for 10.20 is superseded** (decision (c)): the card needs no borderless paint, content opacity or text offset. 10.20's glide, growth and fade are per-key paint transforms and opacity applied by the viewport; the flash is a ring on 10.6 item 12's overlay layer.
+> - **Cursor:** the arrow on cards, not the click cursor (10.1's note).
+> - **Witnesses** (replacing the chip and root witnesses):
+>   - ••• and the add-bookmark button appear only on hover or focus, and are hit in the overhang;
+>   - a right-click opens the menu;
+>   - the root shows ••• only;
+>   - a legend never exceeds W/2 − 34 px and paints above an exit that passes under it;
+>   - selected and @-selected match the DS rings in both themes.
 
 **Motivation.** The card is the view's unit of information (GV:394-440, GC:71-148). The mock `_CommitCard` (`app/lib/src/features/commits/commit_card.dart:193`) cannot be reused. It is a variable-height `Column`/`Row` tree with its own hover `setState`, which does not fit a fixed-geometry canvas with recycled children. Ralph's rule is that designed visuals are a `RenderBox` with text slots. The house example is `app/lib/src/features/bootstrap/splash_card_render.dart`: `SlottedMultiChildRenderObjectWidget` at :148 and `RenderBox with SlottedContainerRenderObjectMixin` at :188.
 
@@ -7815,7 +8517,7 @@ NEEDS DESIGN:
 - Changing W from 160 to 400, and toggling Detailed, keeps the anchor node in place (with 10.1).
 - Cards keep their State across a reload that shifts every row.
 
-### Story 10.4: Graph edges — rounded orthogonal routes, dashed indirect edges, crossing hops per window, shared buses, the elided marker, the @ lineage — *NEEDS DESIGN* [UI]
+### Story 10.4: Graph edges — router B's lines from 4.15, dashed indirect edges, bridges per window, the @ lineage [UI]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
 
 > **Design update 2026-09-30 (the Epic 10 header):**
@@ -7832,6 +8534,40 @@ NEEDS DESIGN:
 >   - an edge can be stroked partially, from its parent end and by length (`PathMetric.extractPath`);
 >   - besides its per-layout index (item 9), it has an identity across layouts: (child key, parent key);
 >   - the lineage style can switch without a new layout.
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`; retitled, *NEEDS DESIGN* dropped):** decision (a1) adopts the export's router B: one line per parent → child pair (GL:148-299; SYNC #7; DS components/graph/GraphEdge.prompt.md:14-19). It supersedes items 1 and 3 (the three shapes, the 0.4·gapY buses, the top-centre exit and its list of consequences, shared sibling buses) and product decision 5 / deviation (d).
+> - **The geometry comes from 4.15's router library.** Its class stage runs once per layout, its geometry stage per card size. This story paints the result and computes no route itself. Where the router runs is 4.15's item 4 (NEEDS DESIGN; recommended: the UI side).
+> - **What the lines look like** (4.15 item 3):
+>   - every line has its own exit on the parent's top edge and its own entry on the child's bottom edge. A straight line leaves at the centre, a single other line at 0.28·W;
+>   - more lines fan out 12 px apart, squeeze down to 7 px, and then the outermost share one exit, depending on W (DS components/graph/fanout.card.html:39-42);
+>   - the first parent enters at the bottom centre, the others beside it, 24 px and then 16 px apart, down to 8;
+>   - forks turn just above the parent, merges just below the child; horizontal runs sit in tracks 3.5–6 px apart and nest;
+>   - a lane-blocked line climbs the gutter between columns, and in Free a run that would pass behind a card detours through a gutter;
+>   - "Merges run 19.2 px below the upper card and branch-offs 19.2 px above the lower card" goes: runs sit 12–36 px off the cards, centred in their band (GL:113-132).
+> - **Corners** keep r = 10, clamped to half of each segment (GL:15-25, :411).
+> - **Item 4 (bridges):**
+>   - the horizontal breaks 12 × 10, unless that keeps less than 12 px of line to the next bend or card and the vertical has more room; then the vertical breaks 10 × 12 (GL:72-82; 4.15);
+>   - still per visible window, against whole-layout run indexes that 4.15 builds;
+>   - design question (d) follows the export: crossings of edges that share a node are neither bridged nor counted (GL:62; Claude's proposal);
+>   - bridges stay always on (decision (b)).
+> - **Item 8:** the vertical-extent index is built from 4.15's polylines.
+> - **Item 9 (hit lookup):** shared buses and exit stubs are gone. Lines overlap only on a hidden merge's shared entry stem and on an overflowing shared exit, and the lookup returns those sets.
+> - **Item 10 (route report):**
+>   - lane-blocked lines take gutters, so "behind a card" becomes a gate in Compact. The one exception, reported, is a gutter with more than 9 lines (GL:193-197);
+>   - Free stays a counted report: the direct fallback when no gutter is free (GL:186-190), and overfull clusters (GL:128-131; prototype defect 43);
+>   - collinear overlaps are exempt only where router B shares a line.
+> - **Unchanged:** item 2 (stroke and dash), item 6 (the @ lineage) and item 7 (hover and dim). Tokens come from the design system (decision (f)): DS components/graph/graph.css:60-65; DS tokens/colors.css:38 (paper :70) for `--edge` and `--edge-hov`, :41 (paper :71) for `--co` and `--co-glow`.
+>   - Lines are 1.5 px `--edge` (rgba(214,222,245,.34); paper umber .30), on hover `--edge-hov` (.72; paper .62); dimmed lines drop to opacity .28; hidden history is dashed 3 5; @'s lineage is `--co` at 2.25 px with `drop-shadow(0 0 4px --co-glow)`, a Gaussian σ of 2 (graph.css:64).
+>   - Router B's constants are `GraphTheme` geometry, cited from DS components/graph/GraphEdge.d.ts:35-41 (`GraphPorts`): exits inset 18, step 12, min 7; entries 24, step 16, min 8; tracks 3.5–6 px apart; bridges 12 × 10 (or 10 × 12) with 12 px of line kept clear (`CUT_CLEAR`); elbows r 10.
+> - **Motion** (decision (c); 10.20): the edge layer hides while cards glide and fades back in over 260 ms; a born change's edges draw in over 520 ms after 140 ms (GC:425-428; GV:661-691). The 2026-09-30 constraints (partial strokes, the (child key, parent key) identity) serve it.
+> - **Legend pill** (10.3; decision (g)): router B's right-hand exits pass under the card's bookmark pill, which the export lets span W − 20 px (GC:97, :106; prototype defect 26). 10.3 caps it at W/2 − 34 px and paints it above the edges.
+> - **Design status:** FINAL becomes router B's rules (4.15), stroke and dash, the gray plus the gold lineage, the hover and dim states with their paint order, and the bridge rule. The 0.4·gapY buses, the ±0.28·W side point and "12×10 bridges cut into the horizontal" go. No NEEDS DESIGN is left here.
+> - **Witnesses:**
+>   - "The route points of each shape … equal the design's formulas" becomes: the painted paths equal 4.15's polylines at W 160 / 240 / 400 and H 40 / 62, and a card-width change repaints from 4.15's geometry stage without a layout request;
+>   - "Sibling branch-offs share hy …" becomes: only lines on a hidden merge's shared stem or on an overflowing exit come back together from the hit lookup;
+>   - the route report fails a hand-built gutter overflow, passes every Compact recording and counts Free's fallbacks;
+>   - the bridge witness adds the vertical-break case.
+> - **Depends on** 4.15 too.
 
 **Motivation.** The design draws each parent edge as its own orthogonal polyline between known card positions, in one of three shapes (GV:52-69, GC:61-69). It confirms the earlier mockup reading: merges run below the child, convergence runs above the parent, and siblings share one horizontal. What changed is the model:
 - no lane verticals and no per-row recipe;
@@ -7961,6 +8697,36 @@ NEEDS DESIGN:
 >   - The legend's "Show `all()`" is a plain switch that re-centres on @.
 > - **For 10.20** (a constraint; no animation code here): a reload with a new operation and a stack toggle hand the view both the previous and the new layout, plus the anchor. The previous layout stays alive until the transition ends.
 
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** the graph fills the window, and the chrome floats over it (AF:2; FC:47-51). Side panels no longer resize the viewport; they cover its margins. This note amends items 2, 6 and 9 and the FINAL list. It adds items 14–16 and witnesses.
+> - **Item 2, the revset.** `GraphRequest.revset` comes from 10.21's view state: the default search, a jj log variant (a built-in or a 10.22 configuration), or a typed search. It can be any expression, not only the two presets. "jj log" stays the effective `revsets.log`.
+> - **Item 9, the revset error.** The view model keeps the last valid layout and exposes the message. 10.21 shows it in the search field.
+> - **Item 6 and the house rule "Scroll precedence."** Their clause "It is also the rule for reloads, card-size changes and side panels, unless 10.8 design question (e) keeps the raw offset for panels" no longer covers panels. Panels are overlays and follow item 14. Reloads and card-size changes keep the anchor.
+> - **FINAL "the view preferences are global":** this now excludes the shown view, which persists per repository (decision (g); 10.21).
+> - **Item 14 (new), insets.** The view takes `GraphInsets` from 11.3 as a listenable (AF:31-32, :252; DS `tokens/spacing.css:9-16`): top 68; left 76, or 388 with a pinned panel; right 12; bottom 12; the inspector 460 + 12; the minimap 134 + 12.
+>   - The visible rect is the viewport minus the insets. Its right inset is 484 while a commit is selected (the inspector) and 158 otherwise (the minimap) (GV:612-616).
+>   - Every centring targets the visible rect: the first layout, the @ re-centre, a reveal and locate @ (GV:617-622).
+>   - The extents include the insets, so every card can be scrolled clear of the chrome. The plane's margins are top + 4, left + 2, right 24 + (472 or 146) and bottom + 12 (GV:1065-1077). 10.1's exact extents add them.
+>   - Pinning or unpinning shifts the horizontal offset by the inset's change in the same frame, so no card moves on screen (GV:1068-1074).
+>   - When the inspector opens, the view scrolls only if the selected card is covered (8 px margin), and then centres it in the visible rect (GV:1030-1037). This answers 10.8 design question (e) for the inspector.
+>   - The day axis's labels stick right of the rail or the pinned panel, so they follow the left inset (GV:1099; FC:21; decision (a2)).
+>   - The view publishes the visible rect. 10.6's @ pill and 10.23's toast centre on it, 20 px above the bottom (AF:134-135, :213-214; GV:1180-1181).
+>   - @'s off-screen direction (up, down, left, right; 8 px margin against the visible rect) is published for 10.6's pill. It is re-measured on scroll, resize, relayout, selection and inset change (GV:623-642).
+> - **Item 15 (new), calm scrolling.** The view model publishes a `calm` listenable for 11.3, which decides what steps aside (11.3 item 8).
+>   - Only user scrolling counts, never a programmatic scroll. A wheel adds |dx| + |dy| (a ⌃-wheel never counts). A canvas pan adds the pointer's movement. A minimap drag adds a flat 40 per move, and a minimap wheel adds |dx| + |dy| (GV:512, :515, :1017, :1095).
+>   - Calm turns on above 30 px. It turns off 650 ms after the last wheel event, or 420 ms after the last pan move (GV:939-951). A drag, or an open menu or dialog, blocks it (GV:941). Hover clears when it starts (GV:947).
+>   - It carries `pinned` when a text field inside the inspector has focus as the phase starts (GV:944-946).
+>   - The preference Hide controls (default on) gates it (ST:81-82; GV:936).
+> - **Item 16 (new), effective config changed.** Settings writes (11.7, through 9.28) write no operation, so no `OpHeadsChangedEvent` follows. The view model therefore takes an explicit input: it re-reads `logDefaults()` and re-requests under the anchor. `revsets.log`, `revset-aliases."trunk()"` and `revset-aliases."immutable_heads()"` change what the view shows and which cards are immutable.
+> - **The chrome-facing surface** is the export's `api` (GV:1170-1174): the view setters, shown and total, the gap info, locate, all commits with the visible set, the bookmark pick, whether the inspector is open, @'s direction, New change, the drag start, calm, and whether a toast shows. 10.6, 10.7, 10.14 and 11.3 read it.
+> - **Witnesses (added):**
+>   - pinning or unpinning moves no card on screen;
+>   - locate @ with the inspector open centres @ in the area left of the inspector;
+>   - a bookmark pick from the pinned panel centres the target between the panel and the inspector;
+>   - a programmatic reveal never sets `calm`, 31 px of wheel scrolling does, and calm clears 650 ms after the last event;
+>   - a write of `immutable_heads()` issues exactly one request and keeps the anchor;
+>   - closing the inspector at the right end of the scroll range clamps the offset without a visible jump (Claude's proposal).
+> - **Depends on** adds 11.3. Until it lands, the demo host passes fixed insets, with switches for "pinned panel" and "inspector" (Claude's proposal).
+
 **Motivation.** 10.1–10.4 run on recorded layouts. This story owns the view model. It requests layouts through a narrow port and keeps the view coherent while jj re-derives the graph after every operation (ADR-0002), whether the operation is Zanshin's own or an external `jj`. The watcher reports each operation as an `OpHeadsChangedEvent` (`packages/zanshin_core/lib/src/worker/events.dart:19`) on `ZanshinWorker.events` (`packages/zanshin_core/lib/src/worker/isolate.dart:354`).
 
 Anchoring matters more in the design than it did before. Pixel y depends on the layout's row count (GV:202), so a new head shifts every card by one pitch, and a global lane reorder can move columns. The prototype has no reloads, and it re-centres on @ one relayout late (prototype defect 1).
@@ -8063,7 +8829,7 @@ NEEDS DESIGN:
 
 Plus one real-cdylib test on an in-test repo, using `tester.runAsync`: a `describe` through the handle fires `OpHeadsChangedEvent`, and the view model issues exactly one new layout request. The layout source is still fake.
 
-### Story 10.6: Selection, double-click edit, hover focus path, locate @, keyboard and tooltips — *NEEDS DESIGN* [UI]
+### Story 10.6: Selection, double-click edit, hover focus path, the commit callout, the @ locator, go-to reveal and pulse, keyboard — *NEEDS DESIGN* [UI]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
 
 > **Design update 2026-09-28 (the Epic 10 header; cited at `a399daf`):**
@@ -8084,6 +8850,44 @@ Plus one real-cdylib test on an in-test repo, using `tester.runAsync`: a `descri
 > **Design update 2026-09-30 (the Epic 10 header; 10.19):**
 > - **The hover-callout controller also serves 10.19's gap callout.** Its targets are a 12 px band along each dashed edge (10.4 item 9's hit lookup), a marker's box and an end stub. It opens after 380 ms and closes 180 ms after the pointer leaves.
 > - **10.19's flash after "Show in all()"** runs on item 12's per-key ticker and overlay layer, with its own look: an accent ring held and faded over 2.4 s, static under reduce motion.
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):**
+> - **The design now has a card menu and go-to-change.** The motivation's "It designs no keyboard navigation, no context menu and no go-to-change" holds only for the keyboard.
+> - **Item 2:** after a select, the canvas scrolls only if the inspector or the left chrome covers the card; it then reveals the card in the centre of the unobscured area (GV:1030-1037). This supersedes "The canvas does not scroll on select" and answers 10.8 design question (e).
+> - **Item 4:**
+>   - The focus path is always on (AF:16); the off mode and its witness go (Claude's proposal).
+>   - Hover intent: leaving a card clears the hover after 140 ms (GV:954-960).
+>   - Hover is ignored during drags and during 11.3's calm scrolling, which clears it when it starts (GV:947, :957).
+> - **Item 5, the Esc order:** 10.15's card menu (GV:172) → a drag (10.10; GV:907-909) → the inspector's hunk selection (10.26; IN:181-187) → describe → the selection. The scope rule stands; the export still listens on the window (GV:979-987; defect 11).
+> - **Item 6: the @ "Working copy" pill moves here from 10.7** (AF:213-217; FC:136-142; GV:623-642).
+>   - **When it shows:** only while the @ card lies wholly outside the unobscured area (11.3's insets, 8 px margin). Up and down are checked first, then left and right (GV:626-632).
+>   - **When it hides:** while 10.23's toast holds the same spot (AF:213), and during calm scrolling (FC:162).
+>   - **Look:** a 36 px glass pill with a gold-tinted border: the @ badge, "Working copy", and an arrow rotated toward @ (FC:138, :141-142). The arrow keeps its last direction while fading out (AF:90-91). The DS's `AtPill` gives the tokens: 11.2's glass, a border of 38 % `--fl-gold` mixed into `--fl-border`, `--type-control` text, and the arrow turning toward @ in 220 ms on the glide curve (DS components/actions/actions.css:28-32).
+>   - **Place:** bottom 20 px, centred over the unobscured area, sliding when panels open (AF:134-135, :214; FC:137-139).
+>   - **Click:** a reveal that centres @ in the unobscured area (GV:617-622). Smooth within about 3 viewports, instant beyond (decision (g)). This supersedes the FINAL "locate @ centres with animation" for far targets.
+>   - (g), a shortcut, stays open; the export has none.
+> - **Item 7, the commit callout,** uses the DS PeekCard look: 340 px, `--bg-elevated`, the popover shadow (DS components/overlays/PeekCard.prompt.md:10).
+>   - **Hints** (GV:299): "Click: details · Double-click: jj edit · Drag: onto another change · Right-click: actions"; on @ "Working copy (@) · Click for details · …"; none on the root. Each part appears once its feature ships (10.10, 10.15). An immutable card leaves out "Double-click: jj edit" (prototype defect 37).
+>   - **It stays closed** over the bookmark control or •••, while any card menu is open, during drags and during calm scrolling (GC:155, :276, :432; FC:163; PeekCard.prompt.md:12; prototype defect 30).
+>   - Its flips are measured against the unobscured area, not the window (prototype defect 25).
+>   - The stats row stays out (2026-09-28 decision (b)).
+> - **Item 8, keyboard:** one roving focus node with the design's focus ring (GC:445) and Enter or Space to select (GV:292; decision (g)). The export's tab stop per card (GV:291; prototype defect 29) is not copied. (c), the arrow-key map, stays NEEDS DESIGN with that recommendation. ⌘Z belongs to 10.23.
+> - **Tokens** (decision (f)): the selected card carries `--ring-select`; keyboard focus is a 2 px `--accent` outline at offset 3 (DS components/graph/graph.css:5-6); the hover focus path dims cards to opacity .4 and lines to .28 (:10, :65).
+> - **Item 9 and design question (e) are answered:** a right-click or ••• opens 10.15's card menu (GV:294, :320). This supersedes item 9's "not designed".
+> - **Item 11 and design question (d) are answered by 10.21:**
+>   - go-to-change is the search's Go to scopes, Change (`c:`) and Bookmark (`b:`), plus Any's Changes and Bookmarks groups and the recent go-tos; ⌘F or `/` focuses the field (SR:22-34, :42-50, :157-158, :221-222);
+>   - it selects its target (SR:279; GV:1024-1029);
+>   - a target outside the view switches to `all()` first (SR:281);
+>   - a member of a collapsed stack opens via `keepOpenKeys` (10.17; the export clicks the stack card, SR:245-247);
+>   - the input is not a revset: candidates match a change-id prefix, a commit-id prefix, the subject, the description and bookmark names (SR:114-130);
+>   - the reveal centres both axes in the unobscured area (GV:617-622), animated per decision (g). This supersedes item 11's instant-only recommendation and the viewer's per-axis alignment.
+> - **Item 12, the pulse, stays** (deviation (e); decision (b)), in moon `--accent` (decision (f)) instead of the selection blue.
+>   - It fires for every 10.21 go-to, Bookmark go-tos and recents included.
+>   - It does not fire for 10.14's panel pick (Claude's proposal).
+>   - This widens item 12's 2026-09-27 scope.
+>   - For reference, the DS's edit flash: `0 0 0 2px --accent` plus `0 0 0 6px --accent-ring`, held for 35 % of 2.4 s, then faded (DS components/graph/graph.css:78-79). Under reduce motion the pulse is static (decision (c)); reduce motion reaches Flutter only through 11.1 item 7, because macOS never reports it.
+> - **Unchanged:** (a), an immutable double-click does nothing (GV:996); (b), an empty-canvas press only pans (GV:1002-1011); (f), multi-select is not designed.
+> - **Depends on** 10.15, 10.21, 10.23 and 11.3 as well.
 
 **Motivation.** The design fixes the pointer model:
 - a click selects and opens the panel;
@@ -8199,12 +9003,54 @@ NEEDS DESIGN:
 - The focus-set timing at 100k is recorded.
 - A go-to-change jump from one end of a 100k recording to the other builds only the target's visible cards, no card in between, and places the target as item 11 and (d) decide. Its frame work is recorded at three distances (not gated).
 
-### Story 10.7: Graph toolbar — revset select, Layout, Detailed/Compact cards, Card width, shown / total, @ Working copy — *NEEDS DESIGN* [UI]
+### Story 10.7: Graph controls in the floating top bar — the count, View options (Layout, Detailed cards, Group stacks, Card width), New change [UI]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
 
 > **Design update 2026-09-28 (the Epic 10 header):** a **"Group stacks"** switch (GV:336-339 at `a399daf`; title "Collapse linear runs of changes into one stack card"), default on, an app-global preference like Detailed (item 7). It sends 10.5's `stacks` flag and re-lays out under the anchor, never re-centring on @. The counter counts the members of collapsed stacks as shown (10.5 item 10). Witness: the switch issues exactly one layout request and keeps the anchor.
 
 > **Design update 2026-09-30 (the Epic 10 header):** 10.19's gap legend, a chip "N gaps" with its popover, sits right after the revset select (GV:366 at `e243dd2`). This story leaves room for it; 10.19 builds it.
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`; retitled, *NEEDS DESIGN* dropped):** the docked toolbar is gone; the export draws `GraphToolbar` only in the docked client (GV:1081). The story becomes the graph's controls in the floating top bar. 11.3 hosts them and owns the bar's grid, the islands, the slots and calm scrolling. This note supersedes items 1, 2, 4 and 6 and the revset part of item 7, moves the revset witnesses and design questions (a)–(c) to 10.21 and 10.22, answers (d)–(h), and adds New change.
+> - **Item 1, the bar: superseded.** There is no 46 px bar. The controls sit in the top bar's View capsule, an island of 11.2 (44 px, radius 14, padding 0 4, gap 2, centred; FC:66-67), after 10.21's search field.
+> - **Item 2, the revset select: moves to 10.21 and 10.22.** The search field replaces it (AF:161; SYNC:32-56).
+>   - Design question (a) is answered: no free-text field and no Apply/Save. jj log configurations (10.22) replace 9.25's presets.
+>   - (b) and (c) move to 10.21.
+>   - Item 2's rule stays: "`jj log` means the user's effective `revsets.log` …, never a baked-in `builtin_log()`". The export bakes in `builtin_log()`'s expansion (RC:58; prototype defect 46).
+> - **The View capsule, in order** (AF:159-171): 10.21's search field; 10.19's gap legend (AF:162; the 2026-09-30 note's "after the revset select" now reads "after the search field"); the count; a 1 × 20 separator (FC:52); the View options button (36 px, radius 10, `--fl-on` while open; AF:167-168; FC:83-85).
+> - **Item 6, the counter: replaced** (AF:163-165; FC:77-78). 12 px sans with tabular figures in `--text-dim`; the number is bold in `--text-muted`.
+>   - It reads "**N** of M" while the view shows fewer than |all()| commits, and "**M** changes" otherwise. The tooltip reads "N of M changes shown".
+>   - N counts the members of collapsed stacks (10.5 item 10). During a typed filter, N is the filter's count.
+>   - It hides at ≤ 1040 px, together with the separator after it (FC:302).
+>   - (d) answered: before |all()| is known, it reads "**N** changes" (Claude's proposal).
+> - **Items 3–5 move into the View options popover** (AF:46-79; FC:90-102): 340 px wide, 14 px below its button, right-aligned, radius 14, menu material (11.2), opening with the 160 ms pop. Header "Graph view". Rows are at least 36 px high:
+>   - **Layout:** Free | Compact. Free comes first and is the default; the tooltips are "Rows follow commit time" and "Rows = dependency depth" (AF:65). This answers (h).
+>   - **Detailed cards:** a switch with a fixed label (AF:66). Item 4's flipping label is superseded.
+>   - **Group stacks:** the 2026-09-28 note's switch, now a popover row (AF:67).
+>   - **Card width:** 160–400 in steps of 10, with the readout "240px" (AF:68-74).
+>   - A separator, then "Appearance, diffs and more · Settings… ⌘,", which opens 11.7 on General (AF:76, :169).
+>   - An outside press or Esc closes the popover. The Esc is consumed and never reaches the graph; the export's Esc also clears the selection (AF:105-112 with GV:980-987; prototype defect 57).
+> - **No lane-order control** (decision (b)). The export's frozen `laneOrder: "optimized"` (AF:16) is a leftover. Bookmark labels (Always), crossings (bridges, always on) and the hover focus path (on) are fixed too (AF:16). This answers (f).
+> - **(e) answered:** the advanced parameters are not offered. The export has none; they come from the effective config and zanshin_core's pre-fill (10.5 item 2) (Claude's proposal).
+> - **(g) answered:** ⌘, opens 11.7, and ⌘F or / focuses 10.21's field (SYNC:35). The popover has no shortcut (Claude's proposal).
+> - **New item, New change** (AF:179; FC:86-88, :303). 11.3's ACTION slot places it after 11.8's sync group.
+>   - It is the one gold primary: 44 px, radius 14, a gold-tinted border and fill, a 15 px gold "+", the label "New change" and the tooltip "jj new — start a new change on top of @".
+>   - It runs `new` on @ through 10.9 (6.1). The new change becomes @, and if @ was selected, the selection moves to it (GV:704-721).
+>   - The new card grows out of @ in 540 ms (decision (c)).
+>   - At ≤ 920 px it shows the icon only (FC:303).
+> - **The "@ Working copy" button leaves the bar.** It becomes 10.6's bottom @ pill, shown only while @ is out of view (AF:213-217; 10.5 item 14).
+> - **Item 7, persistence:** Layout, Detailed cards, Group stacks and Card width stay app-global preferences in zanshin_settings. The revset choice moves to 10.21; the shown view persists per repository (decision (g)).
+> - **Item 8, controls:** the controls follow the design system (decision (f)): the segmented control on a `--fl-hover` track with an `--fl-on` thumb, and the switch and the slider in moon (FC:96-98, :174; DS `components/forms/Segmented.jsx`, `Switch.jsx`, `Slider.jsx`), all on 11.1's tokens.
+> - **Non-goals, updated:** Pull and the status bar no longer exist. The window chrome is 11.4, Fetch and Push are 11.8, and the rail is 11.3.
+> - **Witnesses:**
+>   - "`jj log` sends the effective `revsets.log`…", "A preset switch issues exactly one layout request…" and "A broken `revsets.log` shows jj's message…" move to 10.21. "The @ button calls locate" moves to 10.6.
+>   - Added:
+>     - the count reads "**N** of M" or "**M** changes" and hides at 1040 px;
+>     - each popover row issues exactly one layout request and persists globally; Layout re-centres @, and the other rows keep the anchor;
+>     - Esc in the popover leaves the selection alone;
+>     - New change calls the fake `GraphActions` once with `new` on @, and the born card grows from @;
+>     - at 920 px the button shows only its icon.
+> - **Design status:** FINAL means the citations above, as direction (decision (d)).
+> - **Depends on** adds 11.1, 11.2, 11.3 and 10.21, plus 10.9 for New change.
 
 **Motivation.** The design's graph toolbar (GV:240-309, GC:10-56) replaces the earlier plan of a free-text revset field with Apply/Save. It offers:
 - exactly two revsets;
@@ -8268,8 +9114,48 @@ NEEDS DESIGN:
 - The preferences persist globally and are restored. The defaults are Compact, Detailed and 240 *(since 2026-09-27: Free, Detailed and 240)*.
 - A broken `revsets.log` shows jj's message and keeps the last layout.
 
-### Story 10.8: Commit detail panel — thin: header, bookmark chips, meta, description, file list, diff placeholder, action row — *PLACEHOLDER, NEEDS DESIGN* [UI/bridge]
+### Story 10.8: Inspector — floating panel, header, title-as-describe, meta, bookmark chips, action row, file list [UI/bridge]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`. Thin by default: the design extraction lists this panel, with its describe mode, among the design's dialogs and popups, which Ralph says are not final.)*
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`; retitled, *PLACEHOLDER* and *NEEDS DESIGN* dropped):** the panel is now the floating client's inspector, built to the design (decision (d)). This story keeps the shell; the diff is 10.24, the composer 10.25, hunk selection 10.26, and file and hunk drags 10.27. The citations in this note are `e74ced3`'s; the body's GV and APP citations belong to older exports.
+> - **The motivation and design question (a) are answered by decision (d).** The design system documents the inspector (DS readme.md:15, :38; the Checkbox, TextField, DiffView, DiffHunk and FileRow components).
+> - **Item 1 (frame) is superseded.**
+>   - A glass island over the graph, not a column: top 68, right 12, bottom 12, 460 px wide (at most 100 % − 100 px), radius 16, the strong glass (FC:22; AF:32; DS readme.md:82, :86). 11.2 supplies the glass, 11.3 the overlay host.
+>   - The canvas keeps its size. While a commit is selected, the right inset is 12 + 460 + 12 instead of the minimap's (GV:612-616; AF:252). The plane's border lets every card scroll clear of the panel (GV:1066-1067).
+>   - On select, the canvas scrolls only when the panel covers the selected card (GV:1030-1037). This answers design question (e) and amends 10.6 item 2.
+>   - Entrance: a 220 ms fade and a 12 px slide (GC:175-176; DS readme.md:98), none under reduce motion. A fixed header, a scrolling body (INC:19-22), and 10.25's composer pinned at the bottom (IN:328).
+>   - Neighbours (11.3): the minimap hides while the panel is open (GV:1155; FC:24-26). Calm scrolling moves the panel aside, unless one of its fields has focus (GV:936-951; FC:155-161). The @ locator and 10.23's toast centre over the uncovered graph (AF:135; GV:1180-1181).
+> - **Item 3 (header) is superseded.**
+>   - The full change id, with jj's unique prefix bold (`changeIdPrefixLength`, `packages/zanshin_core/lib/src/ffi/graph.dart:441`) and the commit id as its tooltip. The design bolds 2 characters (IN:227; prototype defect 40).
+>   - Flags: "@ Working copy" (gold), "◆ Immutable" (not on the root; tooltip "Part of trunk history"), "Empty", "Merge", "Conflict" (IN:228-234; FC:186-190). Then × "Close (Esc)" (IN:235).
+>   - Edit moves to the action row. Describe becomes the title.
+> - **Item 4 (subject, chips) is superseded.**
+>   - The title is the describe field: the subject at 18/600, the full description below it (IN:241-246; FC:192-193, :215). On a mutable change a pen shows on hover, and a click or Enter opens the form. An undescribed mutable change reads "Describe this change…", dim and italic (IN:244).
+>   - The chips add ↓ behind and ↕ diverged (IN:264); both need 9.29. A chip is a drag source of 10.10's bookmark drag (IN:259-262).
+> - **Item 5 (body) is superseded.**
+>   - Meta is one line: author · date · "parent" or "parents", every parent's short id joined with " + " (IN:249-255). The root shows none (GD:10). This answers design question (c). Committer and signature are not shown; this answers (d).
+>   - Changes: `show().fileChanges`, the status letter and the path. Renamed and copied rows show `fromPath` → `path` (Claude's proposal; `packages/zanshin_core/lib/src/ffi/status.dart:69-75`). "Show changed files" is gone (AF:16 fixes it on).
+>   - The Changes header ships here with its title and file count (IN:276-279). Its ± and Viewed are 10.24's, its checkboxes 10.25's.
+>   - Empty states (IN:274; DS readme.md:55): "No changes yet — whatever you edit in your editor lands here." (@), "A merge — no changes of its own.", "The root of all history.", "This change has no file changes."
+> - **Item 6 (diff) answers design question (f):** no diff section until 10.24 (Claude's proposal).
+> - **Item 7 (action row) is superseded** (IN:215-222; FC:202-212). The row hides while the form is open (IN:270).
+>   - An immutable change or the root: a gold "New change on top" (`jj new <id>`).
+>   - @: "New change", "Squash into parent", "Abandon".
+>   - Any other mutable change: "Edit" (gold unless 10.25's composer is open), "Squash into parent", "Abandon".
+>   - Rebase… is gone; rebase is 10.10's card drag. This answers design question (b): Edit appears once, never on @ or an immutable change.
+>   - Squash stays disabled until 10.25 enables it (after 9.15). Its reason is the backend's refusal, not the design's "The parent can’t be rewritten" (IN:220; prototype defect 33). Abandon is quiet, right-aligned, and asks for no confirmation.
+>   - Tokens (decision (f)): gold for the one primary action only, moon for focus.
+> - **Item 8 (describe mode) is superseded: the describe form is this story's.** It moves here from 10.15 item 4.
+>   - It replaces the title in place; meta, chips and the file list stay (IN:238-247). Summary and Details sit in the glass field (IN:29-40; INC:24-31; DS components/forms/TextField.prompt.md:9). An undescribed change starts empty, with the summary focused and selected (IN:44-48).
+>   - Enter in Summary or ⌘↩ saves; Esc cancels (IN:30-33). The footer shows the command, Cancel and a gold Save (IN:53-57).
+>   - NEEDS DESIGN, Claude's default adopted (decision (g)): Save sends the summary and the details as the CLI's two `-m` paragraphs, "S\n\nD\n" (`../jj` v0.46.0 `cli/src/description_util.rs:421-428`; the design drops the trailing newline, IN:28; prototype defect 56). It sends nothing when the text is unchanged (10.9 item 8; the design always saves, GV:764; prototype defect 55). 9.47's ledger row `describe_gui_text` then goes (`crates/zanshin-parity/tests/oracle/ledger.rs:71-78`).
+>   - NEEDS DESIGN, Claude's default adopted (decision (g)): drafts are kept per change for the session, and Esc on a non-empty draft only leaves the field (Claude's proposal). The design drops them on a selection change (GV:979, :1157; prototype defect 38).
+> - **Opening and Esc** (amends 10.6 items 2 and 5). The card menu's "Describe…" opens the panel in describe mode (GV:787, :979). Esc steps back: the form, then the selection of 10.25 or 10.26 on a non-@ change (IN:181-187), then the panel.
+> - **Witnesses.**
+>   - Superseded: "Edit is hidden on @ and on immutable commits; Describe is hidden on immutable commits" and "Squash and Rebase are disabled, with the reason". New: the action row per state, and Squash disabled with the backend's reason.
+>   - "Opening and closing the panel follows (e)" becomes: a covered card scrolls clear, and an uncovered one does not.
+>   - Added: Save sends "S\n\nD\n" once, and nothing when unchanged; a draft survives a selection change; the Esc order; "Describe…" opens the form; the minimap hides; the panel steps aside while scrolling unless a field has focus; the empty states; the unique prefix.
+> - **Depends on** also 11.1 (tokens), 11.2, 11.3 and 10.23. Item 2's `handle.dart:690` (show) is now `packages/zanshin_core/lib/src/worker/handle.dart:813`. Prototype defects 12a–12d are fixed in the export (IN:264, :249-255, :215-222); 12e stays a rule.
 
 **Motivation.** Selecting a card opens the design's right-hand panel (GV:445-479, APP:735-862, GC:150-159). The design extraction lists this panel and its describe mode among the design's dialogs and popups, which Ralph says are not final and will look different.
 - So this story is thin by default. It wires the real data and the verbs into a minimal `material_ui` column and invests nothing in polish. Design question (a) asks whether that reading is right.
@@ -8354,6 +9240,46 @@ NEEDS DESIGN:
 ### Story 10.9: Action runner — one path from every graph affordance to a verb: pending state, anchored reload, refusals, warnings, undo guard — *NEEDS DESIGN* [UI/bridge]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 from the HTML design export, which has no action dialogs; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`.)*
 
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** the export wires every trigger to a verb and answers design questions (a)–(c) and (e). This note supersedes the Motivation's list of triggers and amends items 1, 4, 6, 7 and 8, the Non-goals and the witnesses. Item 3 (pending) stays: the design shows no pending state (10.3 design question (e)).
+> - **Triggers.** The fan, the "+" chips and the panel's "Rebase…" are gone. The triggers are now:
+>   - a double-click on a mutable card: `edit` (GV:993-997);
+>   - the top bar's "New change": `new` on @ (AF:179; Epic 11's shell);
+>   - the card menu, opened by ••• or a right-click (10.15);
+>   - the inspector: its action row (New change, Edit, Squash into parent, Abandon; IN:215-222) and the title as the describe field (IN:238-247), both 10.8; the commit/split composer (IN:117-157; 10.25);
+>   - drops: changes and bookmarks (10.10), files and hunks (10.27);
+>   - the toast's Undo and ⌘Z (10.23).
+> - **Verbs (item 1).** The backlog list gains these, each disabled with its reason until its story lands:
+>   - `commit` with paths or a GUI tree (9.49);
+>   - `split` with paths or a GUI tree, also with `-A` / `-B`; `squash -r X` into its parent; `squash --from S --into T`, whole or partial (all 9.15);
+>   - `duplicate S -o T` (9.9); `bookmark move` and `rename` (9.19);
+>   - `new -A` / `-B` is Story 9.48 now, no longer "no backend story". The merge drop `new T S` is the shipped `newChange([T, S])`.
+>   - `split` and `duplicate` leave the Non-goals; `diffedit`, `resolve` and `revert` stay.
+> - **(a) answered:** after `new`, the new card is revealed only when it lands off-screen (GV:693-698). `edit` reveals nothing; 10.6's @ pill points at @.
+> - **Selection and anchor after success** come from the call and its `MutationResult` (new and abandoned change ids, @). The UI never re-derives jj semantics.
+>   - `new`: the new change is selected when its parent was (GV:719); anchored on the parent (GV:715).
+>   - `commit`: the new @ is selected (GV:771). `split`: the selection stays (GV:767). Both are anchored on the source.
+>   - `squash`: the selection stays, or moves to the destination when the source vanished (GV:778; DND:48); anchored on the destination.
+>   - `abandon`: nothing is selected; anchored on the abandoned change's parent (GV:782).
+>   - A change drop is anchored on the target (DND:40-52). `edit`, `describe` and the bookmark verbs move no card and carry no anchor.
+> - **Op hints for 10.5 and 10.20** (decision (c)). Every outcome carries:
+>   - its anchor;
+>   - the ids to flash: the moved change for a rebase; the target for a squash, a bookmark move or a hunk move (DND:40-70; GV:778);
+>   - the born change, from `MutationResult`: `new`, `commit`, `split`, a merge, a duplicate, an abandoned @'s successor;
+>   - for a change drop, the drop origin: the ghost's rect (GV:900-904).
+> - **(b) and (c) answered by 10.23.** Success feedback is the toast, with Undo, for drops, squash, split, commit and abandon. There is none for `new`, `edit` and `describe` (DS components/overlays/Toast.prompt.md:1). Item 7's guard drives the toast's Undo and ⌘Z. `abandon` still asks for no confirmation.
+> - **Refusals (item 6)** (Claude's proposals). A composer verb's refusal shows in the composer's warn line (INC:91 `.gcomp-warn`, styled but unused in the mock) and keeps the draft. Every other refusal, and every 9.32 warning, uses 10.23's warn variant.
+> - **(d), in part:** ⌘Z (10.23), Esc (cancels a drag, closes a menu) and ⌥ (10.10). Other shortcuts stay open.
+> - **(e) answered.**
+>   - **Squash message.** The CLI opens its editor when the source is abandoned and both descriptions are non-empty (`../jj` cli/src/commands/squash.rs:71-73, :383-398 @ v0.46.0). In that case the destination's Summary and Details (10.8) open pre-filled with 9.15's combined message. Save runs the squash with that message; Esc runs nothing. Otherwise jj's own choice applies without a prompt (the mock keeps the target's description, prototype defect 35).
+>   - **Rebase…'s target** is picked only by a drop (10.10). The design has no Rebase… button. A non-drag path is deferred (decision (g); deferred-work).
+> - **Item 8:** "send nothing when nothing changed" now also governs the inspector's Save (IN:49-56; 10.8).
+> - **Witnesses** add:
+>   - each new trigger calls the right verb; a disabled one calls nothing and shows its reason;
+>   - selection and anchor per verb, from fake `MutationResult`s; the op hints per outcome;
+>   - a composer refusal keeps the draft and shows in the composer; any other refusal reaches 10.23;
+>   - a squash between two described changes runs only after Save, with the edited message;
+>   - "Insert after" on an immutable change with an immutable child shows the backend's refusal (prototype defect 32: the mock silently runs `jj new`, GV:707).
+
 **Motivation.** The design triggers verbs from many places:
 - a double-click: `edit`;
 - the panel header: Edit, Describe;
@@ -8420,7 +9346,7 @@ This story implements 10.5's `GraphActions` port: the one runner that every affo
 
 Plus one real-cdylib test (`tester.runAsync`): an `edit` through the runner moves @ in the repo, and a reload request follows.
 
-### Story 10.10: Drag-and-drop on the graph — drop on commits and edges, menu from `drop_actions` — *PLACEHOLDER, NEEDS DESIGN* [UI]
+### Story 10.10: Drag-and-drop on the graph — changes and bookmarks onto a change, the drop menu from `drop_actions` — *NEEDS DESIGN* [UI]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 for the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`. Placeholder: this is not in the design; refine it once Story 9.31 is scheduled.)*
 
 > **Design update 2026-09-28 (Ralph: commit cards and bookmarks will both be draggable later; the design has no drag yet):**
@@ -8435,6 +9361,64 @@ Plus one real-cdylib test (`tester.runAsync`): an `edit` through the runner move
 >   - a stack as a target: its newest member, or does it expand while the pointer rests on it, like a folder in the Finder?
 >   - dragging one member out of the stack popover?
 >   - a bookmark dropped on a stack lands on a member, and the run splits there.
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`; retitled, *PLACEHOLDER* dropped):** the export now designs drag-and-drop in full (DND; DNC; GV:792-930; DS components/menus/DropMenu.prompt.md, components/overlays/DragGhost.prompt.md).
+> - **What this note supersedes.** Decision (a4) supersedes items 3, 4 and 7, and the Motivation's 9.31 UI shape: a menu on every drop, ⌥ = duplicate, greyed rows, edge targets. The provenance's "this is not in the design" no longer holds. Files and hunks move to 10.27, which takes this story's engine.
+> - **Sources** (item 1 amended; the 2026-09-28 note's sources extended):
+>   - change cards: every card except the root and stack cards, immutable ones included (GV:917, :1005). A press on the card's buttons, pill or peek starts no card drag;
+>   - bookmarks: the card's pill (its first bookmark, GV:96), the popover's rows (GV:109), the Bookmarks panel's rows and its rail callout (GV:416; AF:120, :208), and the inspector's tags (IN:258-265). A remote bookmark never drags (GV:92);
+>   - stacks are neither source nor target (GV:829, :1005; decision (a4)). This answers the 2026-09-28 note's four stack questions. Dragging a member out of the stack popover is not designed.
+> - **Start.** A drag starts after 5 px of travel (GV:885). It closes callouts, popovers and the card menu, cancels the pending click-select and clears hover. The click after a drag is swallowed (GV:873-874, :884-892). The cursor stays the arrow (DNC:4-5).
+> - **While dragging,** callouts, popovers and ••• are hidden (GC:432), and the focus path and calm scrolling pause (GV:941, :957). The source shows at .35: the card (GC:429), or its bookmark control (DNC:7).
+> - **Ghost** (DND:114-133; GC:433-440).
+>   - A 34 px chip at the pointer plus (14, 12), with a moon border and a 3 px ring, tilted −1.5°. A change shows its @ badge, id and subject; a bookmark its short name.
+>   - Below the chip: the default row's full command, or without a target "Drop on a change" / "Drop on the change it should point to" (DND:126-130).
+>   - The command hides while the menu is open, and the ghost fades to .3 over the menu (DNC:34).
+> - **Targets** (replacing item 3): cards only, and only cards with at least one available row (GV:813-833). The target is highlighted moon with a 4 px ring (GC:430). Edges, gaps, the canvas and bookmarks are not targets. A drop on nothing cancels.
+> - **Auto-scroll** (item 2): a 56 px zone inside the visible graph (11.3's insets), ceil((56 − d)/4) px per frame, still active 24 px outside. It arms only once the pointer has been well inside (GV:854-865).
+> - **Drop menu** (replacing item 4's menu; DND:86-109; DNC:10-30):
+>   - it opens after a 260 ms rest on the target (GV:819, :912): 12 px above the card when it fits under the top inset, else below, centred and clamped to the visible graph (GV:836-846);
+>   - above the card the list runs bottom-up, so the default sits nearest the card (DND:84-88). Hairlines separate move · place · combine · copy;
+>   - each row shows a glyph, a label, and a mono short verb or a warn note. The footer shows the highlighted row's full command;
+>   - it lives in the viewport's overlay and scrolls with its card (GV:1136). The target stays pinned (10.1 item 9);
+>   - the pointer highlights a row, and a release on it runs it. Moving between card and menu keeps the target (GV:807-812).
+> - **Rows** (DND:25-62): only Available rows, ids 8 characters (decision (a4)):
+>
+>   | Payload | Row | Command | Toast (10.23) |
+>   |---|---|---|---|
+>   | change | Move here (default) | `jj rebase -s S -o T` | Moved S onto T |
+>   | change | Move only this change (⌥) | `jj rebase -r S -o T` | Moved S onto T |
+>   | change | Insert after | `jj rebase -r S -A T` | Inserted S after T |
+>   | change | Insert before | `jj rebase -r S -B T` | Inserted S before T |
+>   | change | Squash into this change | `jj squash --from S --into T` | Squashed S into T |
+>   | change | New merge change | `jj new T S` | Merged S and T in a new change |
+>   | change | Duplicate here | `jj duplicate S -o T` | Duplicated S onto T |
+>   | bookmark | Move N here | `jj bookmark move N --to T`; `--allow-backwards` with the note "backwards" | Moved N to T |
+>
+>   The mock hides two rows that jj allows (prototype defect 34); the UI shows what 9.31 returns.
+> - **Preview** (item 4's query rules kept): one `drop_actions` query per target for the locations onto, `-A` and `-B` (9.31's note). It is debounced, with at most one query in flight, and cached per operation. The bookmark row needs 9.31's bookmark payload. Item 5 (the reload hold) stays.
+> - **Drop** (replacing item 7): a plain drop runs the default row, whose command the ghost shows before release (DND:3, :130). Holding ⌥ makes "Move only this change" the default, live (GV:800, :893, :910). Esc cancels (GV:909).
+> - **Execution** (item 6 amended):
+>   - the seven change rows and the bookmark row run through 10.9. `-b`, revert, restore, absorb and interdiff get no UI (decision (a4));
+>   - the outcome goes to 10.23 and to 10.20, which flies a dropped change from the ghost's rect (decision (c));
+>   - (Claude's proposal) while the verb runs, the ghost stays where it was dropped; on a refusal it fades out.
+> - **NEEDS DESIGN** (Claude's defaults, decision (g)):
+>   - a bookmark row with the "backwards" note never runs on a plain drop; the drop opens the menu instead. This keeps the 2026-09-28 note's "a visible choice in the drop menu, never a hidden default";
+>   - on a card with no available row, the ghost's line shows the first refusal reason instead of the hint (Claude's proposal).
+> - **Non-goals** now: edge targets and gap zones; files and hunks (10.27); several cards at once; a non-drag path for keyboard and VoiceOver (deferred, decision (g)).
+> - **Design status.** The earlier NEEDS DESIGN list is answered by the design (ghost, highlight, menu layout and order) or moot (edges, shared buses, interdiff, several cards).
+> - **Depends on** now: 10.1, 10.3, 10.6, 10.9, 10.17 (stack cards stay inert), 10.23 and 11.3; no longer 10.4.
+>   - It is built right after 10.9 and 10.15, on a fake `drop_actions` port (decision (g)).
+>   - 9.31 (amended) lands before the real wiring. 9.16, 9.15, 9.9 and 9.19 enable the rows.
+> - **Witnesses** replace "cards and edges highlight", the greyed refused rows and "⌥-drop picks duplicate" with:
+>   - only cards with an available row highlight; Refused and NoOp rows never show;
+>   - the menu opens after 260 ms, above or below as it fits, bottom-up above the card;
+>   - a plain drop runs the first row; ⌥ swaps the default live; a release on a row runs that row;
+>   - the ghost's command line equals the default row's command;
+>   - auto-scroll arms only after the pointer has been inside;
+>   - stacks are neither source nor target; a panel row and an inspector tag start bookmark drags;
+>   - the click after a drag is swallowed;
+>   - a backwards bookmark drop opens the menu and runs nothing.
 
 **Motivation.** On 2026-09-21 Ralph decided that the graph is driven by drag-and-drop (Story 9.31, "UI shape"):
 - the user drops change S on a commit T, or on an edge T→C;
@@ -8500,6 +9484,14 @@ The design has no drag-and-drop. Its canvas drag pans (GV:560-576), which leaves
 
 > **Design update 2026-09-28 (the Epic 10 header):** a visible stack card needs the content of all its members: their authors, the oldest and newest dates, and their conflicts (10.17). The stack popover loads its rows as they scroll into view. 10.6's commit callout reads the same cache, with the full description from 4.10's object half.
 
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):**
+> - **There is still no skeleton look.** The floating client has no loading state for cards. Item 5 and the design status's "the skeleton look (the design has none)" stand: Claude proposes a look at scheduling.
+> - **New readers of the content cache.** They load on demand like the commit callout: 10.15's card-menu header (id + subject, GV:183), 10.10's drag ghost (subject, DND:117), and the inspector (10.8, 10.24). While their content loads, they show the id only (Claude's proposal).
+> - **The callout's content is unchanged** (GV:247-270): the full description, the commit id, the full author and the date. The stats row stays out (2026-09-28 decision (b)), although the export and the DS PeekCard keep it (DS components/overlays/PeekCard.jsx:17-24).
+> - **10.21's search is not a cache reader.** It matches subjects and descriptions across every change (SR:94-126), which the visible-range cache cannot serve. It resolves those matches through 9.25's change search (Claude's proposal; 10.6 item 11's deferred description search).
+> - **Item 6 also holds for the new day labels.** Free's axis labels, 10.16's minimap labels and its current-day pill come from the layout (decision (a2)), never from paged content.
+> - **Witness** (added): the menu header and the ghost show the id until their content arrives, and no card's geometry changes when it does.
+
 **Motivation.** Story 4.10 splits the graph call:
 - the topology and view facts for the whole revset (cheap, index-only);
 - content for the requested commits: the commit objects. On the loose-object 10k fixture that is about 1.2 s of today's 1.22 s (research §3). On a real, packed 1.4k-commit repo most of today's 163 ms is `empty` on its merge commits, 0.78 ms each without a changed-path index (4.10).
@@ -8540,6 +9532,17 @@ The design needs content only on visible cards (subject, author, date, empty, co
 > - Item 3's N goes, because counts are dropped (decision (b)).
 > - 10.19 groups a hidden merge by each node's real parent count, which item 3 already requires from 4.10.
 > - Its "Show in all()" reads the child's parents through `show`.
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):**
+> - **Item 3 gains two backend stories:**
+>   - 4.14 (shared columns): every request loads timestamps, and a hard invariant I8 (the same column in Free and Compact) gates every real layout, like I7;
+>   - 4.15 (router B): the edges' geometry comes from `zanshin_core`'s router, per layout and card size, not from the layout result's `route` field. "A W-independent result" stays: a card-size change re-runs only the router's geometry stage.
+> - **"The Lane order knob"** has no control in the UI (decision (b)). 10.5 passes the order as a request parameter, `compact` by default; greedy stays a demo-host option.
+> - **The route report** (item 3's invariants) becomes a gate in Compact once 4.15 lands: router B's gutter routes answer SPEC §11.4. Free stays reported.
+> - **Item 4 (bridge part)** also exports 4.15's router and its result types.
+> - **Decision (e):** "how the dev host receives its path" and "where the graph mounts in the shell" become Claude's proposals, which Ralph reviews. Proposed: the graph mounts in 11.3's floating overlay host, and a dev entry point takes the path through `--dart-define` until 11.5's project switching lands.
+> - **Witnesses gain:** a Free ↔ Compact switch on a real layout changes no column; a card-width change issues no layout request and re-runs the router; no line runs behind a card in any Compact layout.
+> - **Depends on** 4.14 and 4.15 too.
 
 **Motivation.** Everything before this story runs on recorded layouts and fake content. Real data needs all three backend stories:
 - 4.10: the index-only topology and view facts for the whole revset (timestamps on request), an operation id, and op-pinned content by commit id;
@@ -8684,8 +9687,42 @@ It also names the hybrid, rows with time-sized gaps between the buckets, a paint
 - The readouts are unit-tested on hand-made layouts.
 - Only the demo host imports the lab code (a grep-able import boundary).
 
-### Story 10.14: Bookmark list panel — every bookmark, dimmed outside the revset, pick to reveal — *PLACEHOLDER, NEEDS DESIGN* [UI/bridge]
+### Story 10.14: Bookmarks in the floating rail — hover preview and pinned panel, every bookmark, dimmed outside the view, pick to reveal [UI/bridge]
 *(Added 2026-09-26 in the re-plan from the HTML design export, Ralph — console session on the commit-graph view. Thin by default: the design extraction lists the left side panels among the design's dialogs and popups, which Ralph says are not final.)*
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`; retitled, *PLACEHOLDER* and *NEEDS DESIGN* dropped):** "Branches" is now the rail's **Bookmarks** item (AF:20-25). The design system ends "not final" for it (decision (d)). This note supersedes the Motivation's 290 px left panel and item 4. It answers design questions (a)–(g) and adds witnesses.
+> - **The rail's mechanics belong to 11.3:** hover intent, pinning, the preview's placement and calm scrolling. This story ships the Bookmarks rail item: its preview body, its panel body, its count, and the pick and drag wiring. This answers (e).
+> - **Hover preview** (AF:114-123, :194-203; FC:111-127). 11.3's callout shows:
+>   - the header "Bookmarks" with the number of rows (AF:114, :132);
+>   - the first 5 rows;
+>   - "+N more" (FC:123).
+>   - A row click closes the preview, then picks (AF:120). A click on "+N more" pins the panel (Claude's proposal; that line is inert in the export).
+> - **Pinned panel** (AF:205-211; FC:129-134): 11.3's 300 px panel.
+>   - Header: an icon, "Bookmarks", and a close button labelled "Close". The export's label "Back to History" (SH:1082) is a docked leftover (prototype defect 59).
+>   - The full list scrolls. A pick keeps the panel pinned.
+>   - Pinning changes 10.5's left inset, and no card moves.
+> - **Rows, unchanged** (GV:410-427; GC:186-193): a glyph, the name, "id · subject" (2 bold + 6 characters) and the state. Rows outside the layout are dimmed to .55 (GV:604). The test is exact, because bookmarked changes never fold into a stack (GL:631).
+>   - After 9.29 the chip shows ↑ and ↓ distances and the state "diverged" (GV:38). The export prints "behind" and "diverged" as bare words (GV:422; prototype defect 58).
+> - **Drag** (GV:416): a local row drags its bookmark onto a change (10.10; decision (a4)). Remote rows and names that contain "@" do not drag.
+> - **(a) answered:** the switch to `all()` is now visible and reversible.
+>   - The search field shows the variant `all()` behind its `$` pill, and ✕ returns to the default search (SR:62, :486).
+>   - The switch persists like any view change, per repository (Claude's proposal; decision (g)). This resolves prototype defect 10.
+>   - The pick centres its target in the visible rect, between the pinned panel and the inspector the pick opens (GV:1028; 10.5 item 14).
+> - **(b)** Subjects of hidden targets come from 10.11's content call, by commit id at the returned operation (Claude's proposal).
+> - **(c)** A conflicted bookmark (9.29's `conflicted`) shows a conflict mark. A pick reveals its first added target, the one 9.29 keeps (Claude's proposal).
+> - **(d)** Rows sort by name, like `jj bookmark list` (Claude's proposal). The export lists them in commit order (GV:411).
+> - **(f)** For a divergent target, the pick selects the first of its commits in the layout, and the row reads "divergent" (Claude's proposal).
+> - **(g)** is answered by decision (d): the rail content is built to the design, as inspiration.
+> - **Keyboard:** focusing the rail button opens the preview like hover, and Enter pins (11.3).
+> - **Non-goals, updated:** the rail and its other items belong to 11.3 (Workstreams and Reviews stay hidden) and 11.9 (Undo Timeline). The list has no search or filter field; the export has none.
+> - **Witnesses (added):**
+>   - the preview shows 5 rows and, when there are more, "+N more", with the total in its header;
+>   - a row click in the preview closes the preview and picks;
+>   - the pinned panel stays open after a pick;
+>   - a hidden pick shows `all()` in the search field, and reopening the repository restores it;
+>   - rows sort by name;
+>   - a remote row starts no drag.
+> - **Depends on** adds 11.2, 11.3 and 10.21.
 
 **Motivation.** The design's "Branches" entry opens a 290 px "Bookmarks" panel on the left (GV:481-497, :607-613, GC:161-169). It lists every bookmark in the repository. Picking one selects and reveals its commit, and switches to `all()` when the commit is not in the current revset (GV:579-584). This is how a user finds work that the default log hides.
 
@@ -8747,13 +9784,55 @@ NEEDS DESIGN:
 - A reload after an external `bookmark create` adds the row.
 - A divergent target behaves as decided.
 
-### Story 10.15: Action popups — quick-action fan, "+" chips, bookmark popover, describe editor — *PLACEHOLDER* [UI]
+### Story 10.15: Card action menu (••• and right-click) and the thin bookmark popover [UI]
 *(Added 2026-09-26 in the re-plan from the HTML design export, Ralph — console session on the commit-graph view. Placeholder by Ralph's decision: the design's dialogs and popups are not final and will look different; build them thin so the verbs are reachable, and replace their look later.)*
 
 > **Design update 2026-09-28 (the Epic 10 header):**
 > - **The bookmark popover opens on hover and on keyboard focus,** without delay (GC:118 at `a399daf`), through 10.6's hover-callout controller. It sits to the right of the card at the control's height, and above the control near the right edge (GC:116-117). Design question (b) is answered for it: hover.
 > - **The quick-action fan opens on hover too** (Claude's proposal, accepted), as the design does (item 1), now that "…" itself is visible only on hover (10.3). Design question (b) is thereby answered for both popups.
 > - Everything else in this story stays a placeholder.
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`; retitled, *PLACEHOLDER* dropped):** the export retires the quick-action fan and the "+" chips.
+> - **What changed.** A card's actions are one menu, opened by ••• or a right-click (AF:16, the setting "both"; GV:155-198, :318-324; DS components/menus/Menu.prompt.md; DS readme.md:148-150).
+>   - Decision (d): the card menu is built to the design, as inspiration. Only the bookmark popover stays a thin placeholder.
+>   - This note supersedes items 1, 2 and 4 and the 2026-09-28 note's fan bullet, amends item 3, and answers design question (b) anew.
+> - **Item 1 → the card menu.**
+>   - **•••** is a 20 px circle on the bottom edge, shown on hover and focus (GC:136-143), titled "Actions (or right-click the card)" (GV:320). A click toggles the menu, anchored right-aligned below it, flipping up when needed (GV:564-569).
+>   - **A right-click** opens the menu at the pointer, clamped to the graph (GV:166-169, :294). Stacks and the canvas have no menu.
+>   - **The header** shows the change id (2 bold + 6) and the subject (GV:183).
+>   - **Rows,** with the jj command in a right column (GV:155-159):
+>     - "New change on top" `jj new`, "Insert after" `jj new -A`, "Insert before" `jj new -B`;
+>     - "Edit" `jj edit`, "Describe…" `jj describe` (selects the change and opens 10.8's describe field, GV:787), "Squash into parent" `jj squash`;
+>     - "Abandon" `jj abandon` (danger).
+>   - **The root** shows only "New change on top" (GV:180).
+>   - **Disabled rows** are drawn at 38 % (GV:187): on an immutable change every row except "New change on top" and "Insert after"; "Edit" on @. (Claude's proposal) "Squash into parent" is also disabled on a merge and when the parent is immutable, as the inspector does (IN:220; prototype defect 33).
+>   - **While open,** the card is raised and keeps its ••• (GC:154-157), and it stays pinned (10.1 item 9). The menu closes on an outside press, Esc, a wheel, a resize or a window blur (GV:170-179).
+>   - (Claude's proposal) Arrow keys and Return work as in a native menu; the design has only Esc.
+> - **Item 2 → removed.** The chips' verbs are rows.
+>   - "Insert after" and "Insert before" stay disabled ("no backend verb yet") until Story 9.48.
+>   - "Insert after" then runs `jj new -A` and shows the backend's refusal. It never falls back to `jj new` (prototype defect 32, GV:707).
+> - **Item 3 → the thin placeholder** (decision (d)):
+>   - Create bookmark here… and Delete use 9.8; Rename…, Move to… and Move existing here… are disabled until 9.19;
+>   - "Move to…" is the non-drag path for a move. The card menu gets no bookmark rows;
+>   - its rows and the pill are 10.10's drag sources. It still opens on hover (the 2026-09-28 note);
+>   - the mock keeps it inert and in the docked material (GV:106-121; GC:117-130; prototype defect 36). (Claude's proposal) It takes the DS menu material.
+> - **Item 4 → Story 10.8** (the inspector, whose title is the describe field; IN:42-60, :238-247). Design questions (c) and (d) move with it, with Claude's proposals:
+>   - (c) the summary and the details go out as the CLI's two `-m` paragraphs. `join_message_paragraphs` gives "S\n\nD\n" (`../jj` cli/src/description_util.rs:421-428 @ v0.46.0);
+>   - (d) a draft is kept per change for the session. Esc on a non-empty draft only leaves the field.
+> - **Non-goals.** "Partial (per-file) squash" moves to 10.25, 10.26 and 10.27. "A settings UI for the quick-action list" is moot (deferred-work).
+> - **Design status.**
+>   - (a) is answered by the design for the menu, and stays open for the popover.
+>   - (b) is answered: the menu opens on a click on ••• or a right-click, the popover on hover.
+>   - **NEEDS DESIGN** (Claude's default, decision (g)): disabled rows show the backend's refusal reason as a tooltip. The reason needs a target-less form of 9.31's query (deferred-work 2026-09-26, "No capability query without a drop target"; 9.31's note). Until it exists, a row disabled by a view fact has no tooltip, and a backlog verb says "no backend verb yet" (10.9 item 1).
+> - **Depends on** now: 10.3 (the ••• slot), 10.6, 10.8, 10.9 and 10.23; backend 9.48, 9.15 (Squash into parent) and 9.19 (the popover).
+> - **Witnesses** replace the fan and chip witnesses:
+>   - the rows per state: mutable, immutable, @, root, merge;
+>   - ••• toggles the menu; a right-click opens it at the pointer, clamped;
+>   - each close trigger closes it;
+>   - the card stays mounted while its menu is open and scrolled away;
+>   - disabled rows call nothing; "Insert after" and "Insert before" stay disabled until 9.48;
+>   - "Describe…" selects the change and opens 10.8's describe field;
+>   - Create and Delete in the popover call 9.8's verbs.
 
 **Motivation.** The design contains four popups: the quick-action fan, the "+" chips, the bookmark popover and the inline describe editor. They make the shipped verbs reachable from the graph. Their look will change, so this story wires them to 10.9's runner with minimal visuals and invests nothing in polish.
 
@@ -8800,10 +9879,47 @@ NEEDS DESIGN:
 - Done with no change calls nothing. Esc discards. Unsaved edits behave as decided in (d).
 - A card stays mounted while its popup is open and it is scrolled away.
 
-### Story 10.16: Minimap — a raster of the whole graph per layout, viewport overlay, click-and-drag navigation — *NEEDS DESIGN* [UI]
+### Story 10.16: Minimap — the whole graph in dots with day labels, the current-day pill and the viewport band, click-and-drag navigation — *NEEDS DESIGN* [UI]
 *(Added 2026-09-26, Ralph's idea — console session on the commit-graph view, while reviewing the spike viewer. The viewer then built a minimap to measure its cost (`spikes/graph-layout-ab/viewer/`, README "Viewer"). Backlog; the design has no minimap.)*
 
 > **Design update 2026-09-28 (the Epic 10 header):** the raster shows the grouped layout, so a collapsed stack is one card (10.17). A stack toggle is a new layout and re-rasters through item 6's path.
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):**
+> - **The design now has a minimap** (GV:432-532, :1155; FC:24-45). This supersedes "the design has no minimap" in the provenance line and the design status. Its look is FINAL as the intended direction; the raster stays the implementation (item 1, option A).
+> - **(a) Placement:**
+>   - a 134 px glass card (`--minimap-w`, DS tokens/spacing.css:16; FC:25), radius 14, at right 12, top 68 and bottom 12 (11.3's insets; GV:1155);
+>   - an inner strip inset 12/8: the labels left of x = 58, the graph right of it (GV:435; FC:27);
+>   - **always on, no toggle** (AF:63-77);
+>   - hidden (a fade and 18 px to the right) while 10.8's inspector is open; it comes back during 11.3's calm scrolling, unless a field in the inspector holds focus (GV:1155; FC:26);
+>   - the graph reserves 134 + 12 px on the right (GV:615, :1067).
+> - **(b) Scale:** the whole graph is fitted vertically (GV:467); x is squeezed to at most 48 px, right-aligned (GV:471-473).
+> - **(c) Markers and colours:**
+>   - node dots of radius 2, collapsed stacks as hollow rings of radius 2.6, dotted edges, with sparser dots on gap edges (GV:501-505; FC:29-37);
+>   - the drawing at 60 %, and again at full brightness clipped to the viewport band (GV:519-520; FC:33-37);
+>   - @ is a saffron dot and the selection a moon dot, radius 3.2 (GV:507, :521-522; FC:38-39);
+>   - no bookmark blue, no lineage, no focus path, no go-to hits.
+>   - Claude's proposal: one raster, painted twice per frame (at 60 %, and through the band's clip), with @ and the selection as overlay dots. Scrolling still rasters nothing.
+> - **Day labels.** This supersedes the Non-goal "Day labels … unless design question (c) adds them".
+>   - Calendar days only (Today, Yesterday, Sep 23), mono 10.5 `--text-dim`, at least 18 px apart, hidden near the pill or the hover line (GV:436-450, :491-495; FC:43; SYNC:17).
+>   - Free: the layout's day list; a label marks its day's bottom edge.
+>   - Compact: a row is labelled by its newest commit's day, only when that day is older than the row above (GV:438-449). This needs a day key per node from the engine (deferred-work). The view computes no days.
+> - **The current-day pill** sits at the band's centre, joined to it by a 1 px gold line. It has a gold `--fl-gold` border, `--fl-bg-solid` and mono 600 11.5 (FC:41, :44; GV:524, :528). It names the day the viewport centre is in (GV:486-490; SYNC:74). **It replaces 10.2's pinned current-day label** (decision (a2)).
+> - **Hover:** a dashed line and a muted pill name the day under the pointer (GV:523, :527; FC:42, :45). There is no subject tooltip.
+> - **(d) Viewport:** a rounded `--fl-hover` band over the graph half (radius 4), plus the gold centre line (GV:518, :524; FC:40-41).
+> - **(e) Interaction.** This supersedes item 5's "centres the viewport on the mapped point":
+>   - a press or a drag is an instant, vertical-only jump that centres the point in the unobscured band (GV:496-499, :510-513);
+>   - the wheel over the strip scrolls the graph (GV:515);
+>   - a scrub feeds 11.3's calm scrolling (GV:512, :515);
+>   - nothing is selected, and the cursor is the arrow (FC:148).
+> - **(g) VoiceOver:** one labelled "Minimap" node, removed while hidden (GV:509). Claude's proposal: no adjustable value, because locate @ and go-to-change serve keyboard users.
+> - **Scrollbars:** the graph has none (10.1's note; FC:18-19), so the minimap is the only scroll indicator (FC:155-157).
+> - **(f) stays NEEDS DESIGN,** with option A recommended.
+> - **Witnesses** (added; the vertical-only click replaces the both-axis one):
+>   - labels and the pill in Free and in Compact, on a fixed clock;
+>   - the pill's day changes exactly where a day boundary passes the centre;
+>   - the minimap hides with the inspector and shows during calm scrolling;
+>   - a scrub scrolls vertically only and selects nothing.
+> - **Depends on** 10.8 and 11.3 as well, and no longer on 10.7.
 
 **Motivation.** On a big repo the scrollbar does not navigate: at 100k, one scrollbar pixel spans about 170 rows (10.6 design question (d)). Ralph proposed a minimap for big repos and asked how it performs. The spike viewer built one to find out: a 112 px strip on the right with a raster of the whole graph (cards bright, edges faint, bookmarked cards blue, @ as a gold line), the viewport as a rectangle plus a full-width band, and click or drag to jump. Measured (budget below):
 - the raster is the only real cost: a few milliseconds once per layout, so it belongs off the UI isolate;
@@ -8892,6 +10008,23 @@ NEEDS DESIGN:
 > - **The export now keeps the columns** on a toggle while its frozen columns stay valid (GV:220-237 at `e243dd2`; prototype defect 17). 4.13's I7 keeps them always.
 > - **Stacks at gaps:** the export's `groupStacks` now agrees with 4.13's rule at gaps (GV:264-276). Its sample shows a stack beside a gap and a single card between two stacks (10.19's recordings).
 > - **"Show in all()"** (10.19) opens the stack that holds the hidden parent through `keepOpenKeys`, like go-to-change (item 6).
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):**
+> - **Kept by decision (b):** 4.13's columns come from the ungrouped layout, and a toggle never moves a column; runs of mutable ancestors of @ start expanded. The export now freezes its columns from the all-collapsed graph and re-packs when the freeze does not fit both layouts (GV:579-589; GL:548-557; prototype defect 31), and it still starts every run collapsed (GV:552). Neither is copied.
+> - **The 260 ms member fade returns** (decision (c)): from opacity 0, 6 px higher and scale .98, on `cubic-bezier(.2,.7,.2,1)` (GC:267-268). This supersedes the 2026-09-30 note's "Item 4's fade is dropped" and restores item 4's fade and its witness.
+>   - A collapse stays instant (GV:594).
+>   - The accepted anchor rule stands; the export still centres the middle member (GV:595).
+>   - No fade under reduce motion.
+>   - 10.20 animates operations, not toggles.
+> - **"Group stacks"** stays item 5's app-global switch, now in 10.7's View options popover: default on, tooltip "Collapse linear runs of changes into one stack card" (AF:67; GV:551).
+> - **Stacks are neither drag sources nor drop targets** (decision (a4); GV:1005, :829).
+> - **Keyboard:** 10.6's roving focus includes stack cards, and Enter or Space expands (Claude's proposal). The export's stack card cannot take focus (GV:339-341; prototype defect 29).
+> - **Bracket:** it lights while a member is hovered and never dims with the focus path (GV:1138; GC:263). This answers the design status's open point on dimming.
+> - **Popover:** it keeps its delays and its flip (GV:341; GC:254-255, :294); the flip is measured against the unobscured area (11.3; prototype defect 25). The export is still unbounded (defect 19).
+> - **Tokens:** DS components/graph/graph.css:27-32 and DS components/graph/StackCard.jsx (decision (f)).
+> - **Still in the export, not copied:** the global `zanshin.graph.expanded` list (GV:552; defect 18); a collapse that keeps the selection (GV:591-597; defect 20).
+> - **Minimap:** a collapsed stack is a hollow ring (GV:504; FC:32; 10.16).
+> - **Go-to-change** from 10.21 opens a collapsed stack through `keepOpenKeys`; the export clicks the stack card instead (SR:245-247).
 
 **Motivation.** The updated design collapses linear runs of commits into one stack card (GV:227-264, :536-571; GC:227-247 at `a399daf`). The graph gets shorter and calmer, while forks, merges, bookmarks and @ stay visible. Ralph decided that a toggle never moves a column and that the graph may compact vertically (4.13). This story is the view side: the card, its popover, the bracket, the toggle and the state.
 
@@ -8988,6 +10121,40 @@ NEEDS DESIGN:
 
 ### Story 10.19: Hidden history — gap markers on dashed edges, end stubs, the gap callout, the toolbar legend and "Show in all()" [UI/bridge]
 *(Added 2026-09-30, Ralph — console session on the design update, export at `e243dd2`. The design is the gaps study (`Graph Gaps Study.html`, GS), whose variant B Ralph picked. This story takes over 10.4 item 5 and answers 10.4's design questions (a)–(c). It runs on recordings until 10.12. The design is inspiration, not a 1:1 template (the Epic 10 header, decision (c)); the proposals below are Claude's, accepted by Ralph on 2026-09-30.)*
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** decision (a3) adopts the export's marker rules (GG:9-75; SYNC #7; DS components/graph/GraphEdge.prompt.md:18). It supersedes item 2's 24 px centre rule (2026-09-30 decision (c), recorded as superseded) and item 1's one marker per edge for a hidden merge.
+> - **Clearance** (replaces item 2's 24 px rule): a marker keeps 12 px of visible line to every card (GG CLEAR, GG:9; GL CUT_CLEAR, GL:10).
+>   - The scan follows the export (GG:20-51): vertical runs first, from the child's end; 26 px of free run on a vertical, 30 on a horizontal; 8 px off a card's edge, 12 px off a bend; 11 px around a crossing and 5 px around a shared run.
+>   - Item 2's obstacles stay: every card, every bend, crossing and junction, every other marker and stub. So do its whole-layout indexes, now 4.15's run indexes (Claude's proposal).
+>   - The fallback is the middle of the longest free run (GG:52-56). The 11 px fallback (prototype defect 21) is gone.
+>   - `GraphTheme`'s clearance becomes 12 px of line, still tunable in the demo host.
+> - **Hidden merge** (replaces item 1's per-edge markers):
+>   - one shared marker on the shared stem: 16–22 px under the card when the stem is at least 32 px long, else mid-stem (GG:63-70);
+>   - router B gives the group one shared entry and places its run as far from the card as the band allows (GL:117, :212; 4.15 item 2);
+>   - the group rule stays: exactly one real parent and at least two Indirect edges. Nodes with several real parents never group (jj reports no `via`; prototype defects 4 and 44);
+>   - hovering the marker opens the group's callout, as before.
+> - **"No shared stretches":** router B has no shared buses or exit stubs. A marker never sits on an overflowing shared exit; the shared stem is the group's own place.
+> - **End stub** (item 3):
+>   - slots in the export's order: with a parent edge +0.28, −0.28, +0.14, −0.14, +0.4, −0.4 · W; without one the centre, then ±0.28 and ±0.14 · W. Each slot keeps at least 14 px from every entry port, which router B places off-centre, and from the stubs placed before it (GL:413-424; 4.15's ports);
+>   - the `//` keeps 12 px of visible lead to the card, so its centre sits 16 px under it (Claude's proposal). The export still cuts 10.5–15 px under the card after an 8 px lead (GG:119-123; prototype defect 21's third point);
+>   - "~ elided", the label rule and bottomExtra 44 stay.
+> - **Unchanged** (decision (a3)): family B, no counts, the 380 ms callout delay and "a press on a band pans". The callout's texts and "Show in `all()`"'s request, reveal and flash stay too.
+> - **The flash is moon** (decision (f)): 2 px `--accent` plus 6 px `--accent-ring` (DS components/graph/graph.css:78-79; FC:170), never the docked client's blue (GC:333).
+> - **Legend** (item 7):
+>   - it sits in the View capsule, right after 10.21's search field (AF:161-162), not after 10.7's revset select;
+>   - its "Show `all()`" and the callout's "Show in `all()`" switch 10.21's view state to the built-in `all()` (GV:971; AF:162). The field then reads `$ all()`, and ✕ returns to the default search. An active typed filter is replaced but stays in Recent.
+> - **Tokens** come from the design system (decision (f)): DS components/graph/graph.css:68-73 for the cut, the text and their hover, lineage and dim states (DS components/graph/GraphEdge.jsx:74-79, :118-125).
+>   - Two slanted cuts, 1.5 px with round caps, in `--text-faint`, ±3 px from the mark's centre and 10 px across; the dashed line breaks 8 × 12 beneath them.
+>   - "~ elided" is 11 px JetBrains Mono in `--text-faint`.
+>   - On hover they turn `--text` / `--text-muted`; on @'s lineage `--co`; dimmed .28.
+> - **Depends on** 10.21 instead of 10.7's toolbar, and on 4.15's run indexes and entry ports.
+> - **Witnesses:**
+>   - "Painting … a hidden merge one per edge" becomes one shared marker on its stem;
+>   - "The 24 px rule" becomes: every cut keeps 12 px of visible line to every card, bend, crossing, junction, marker and stub, or is the recorded fallback (the middle of the longest free run); no marker sits on an overflowing shared exit; every window yields the same placement;
+>   - "Stubs … with its `//` 24 px under the card" becomes: every slot at least 14 px from every entry, and a 12 px lead;
+>   - the "Show in `all()`" and legend witnesses check 10.21's state (`$ all()`, and ✕ back to the default search);
+>   - the placement cases stay: a straight edge between adjacent rows still gets its marker in the middle of the 48 px gap.
+> - **Recordings** (item 9): GD is unchanged at `e74ced3`, so the `e243dd2` recordings stay.
 
 **Motivation.** A revset that leaves commits out leaves gaps. jj reports them as edge kinds (4.10):
 - an Indirect edge runs to the nearest visible ancestor;
@@ -9135,8 +10302,49 @@ Ralph picked variant B (`//`, "Break"), no counts anywhere, and one spacing rule
 
 ---
 
-### Story 10.20: Graph animations — stacks unfolding and folding, tree changes after an operation [UI]
+### Story 10.20: Graph animations — after every operation moved cards glide, a new change grows out of its anchor, changed cards flash [UI]
 *(Added 2026-09-30, Ralph — console session on the design update, export at `e243dd2`. Ralph tuned both animations in `Animation Show Case.html` (AS) and picked the values below. The story comes after the view's structure; earlier stories only keep the doors open, in their dated notes. The proposals below are Claude's, accepted by Ralph on 2026-09-30.)*
+
+> **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`):** **motion is the floating client's FLIP model** (decision (c); GV:659-747; GC:422-428; FC:170; DS guidelines/motion.html:12-16; DS tokens/effects.css:35-38).
+> - **Superseded:** the motivation, items 1–3, the Non-goal "Sliding kept nodes … they leave and arrive" and every witness. The Animation Show Case stays in the export as a playground only.
+> - **Item 1 (stacks) moves to 10.17:** a toggle fades the entering members in over 260 ms (GC:267-268); a collapse is instant.
+> - **Item 2 becomes "after every operation".** The 2026-09-30 trigger set stands: Zanshin's verbs, an external `jj`, and undo. Switches never animate.
+>   - **Identity:** a card is the same card when its key matches (10.1 item 2; the export uses the change id, GV:669). A `describe` moves nothing.
+>   - **Glide:** a kept card whose rect changed moves from the old rect to the new one in 460 ms on `cubic-bezier(.32,.72,0,1)` (`--ease-glide`, `--dur-flip`; GV:681-686).
+>   - **Anchor:** the operation's anchor card does not move on screen; the scroll offset absorbs its shift (GV:676-678).
+>   - **Birth:** the born change grows out of the anchor's old rect in 540 ms (`--dur-birth`; GV:687-688). It starts at scale .94 and opacity 0, and is fully opaque at 30 %.
+>   - **Other new cards** fade in over 240 ms after 220 ms (GV:689). **Removed cards** vanish.
+>   - **Edges:** the edge layer hides during the glide (470 ms; GV:691; GC:426), then fades back in over 260 ms ease-out (GC:425). The born change's edges draw in over 520 ms after 140 ms (GC:427; GV:1116-1117), on 10.4's partial strokes.
+>   - **Flash:** each flashed card shows a moon ring, held for the first 35 %, then faded, over 2.4 s ease-out (FC:170; GC:332). It runs on 10.6 item 12's per-key ticker and overlay layer, as 10.19's flash does. The export cuts it at 1.8 s (GV:744; prototype defect 27); that is not copied.
+>   - **A born card off-screen** is revealed after the glide (GV:693-698), under 10.6's reveal rule (decision (g)).
+>   - **A dropped change** starts its glide from the drag ghost's rect (GV:735-736, :900-904; 10.10).
+> - **The runner contract** (new item). Per operation, 10.9 hands the view:
+>   - **the anchor key:** the target of a rebase, insert, squash, merge, duplicate or split-to (DND:40-76); the parent for `jj new` and for squash into parent (GV:715, :778); the first parent for abandon (GV:782); the change itself for split and commit (GV:767, :771);
+>   - **the flash keys:** the moved change after a rebase or insert, and the target after a squash, a bookmark move or a hunk move (DND:40-70; GV:778);
+>   - **the born key:** `jj new`, merge, duplicate, split, commit, and the new @ after abandoning @ (GV:715, :767, :771, :782; DND:50-52, :74-76);
+>   - **the drop origin** (10.10).
+>   - Undo (10.23, 11.9) and external operations animate without an anchor (GV:752); 10.5's anchor keeps the viewport still (Claude's proposal).
+> - **Item 3, the limits:**
+>   - **Kept:** only what intersects the viewport animates. The viewport builds the union of the cards visible before and after, so a card gliding out stays built until it lands (10.1's 2026-09-30 note). Changes elsewhere apply at once.
+>   - **Kept:** a new operation finishes the running transition. Scrolling and panning continue; callouts wait.
+>   - **Dropped as moot** (Claude's proposal): the 1.5 s cap and the 30-card limit. The durations are fixed: at most 660 ms, plus the 2.4 s flash, which blocks nothing.
+>   - **Reduce motion:** no glide, growth, fade or draw-in; the end state shows at once (GV:679). The flash shows as a static ring for its 2.4 s (the 2026-09-30 accepted rule wins over GC:447; prototype defect 28).
+> - **Item 4:** kept cards build 0 times. The glide, growth and fade are per-key paint transforms and opacity applied by the viewport (10.1). Born and new cards build once. 10.3's borderless and tracing paint parameters are no longer needed (10.3's note).
+> - **Item 5,** the slow-motion ×5 switch, stays.
+> - **Non-goals** now: animated revset, layout, card-size or Detailed switches; animated stack toggles beyond 10.17's fade.
+> - **Depends on** 10.1, 10.3, 10.4 (partial strokes), 10.5, 10.6 (the flash layer and the reveal) and 10.9 (the runner contract), plus 10.10 for the drop origin. No longer on 10.17.
+> - **Witnesses** (replacing all):
+>   - a rebase between two recordings: the moved cards glide in 460 ms, and the anchor stays put on screen;
+>   - the edge layer hides, then fades in over 260 ms;
+>   - a `jj new`: the born card grows out of its parent's old rect in 540 ms, and its edges draw in after 140 ms;
+>   - an off-screen born card is revealed;
+>   - the flashed keys ring for 2.4 s;
+>   - an abandon: the card vanishes and the rest glide;
+>   - undo glides back without an anchor;
+>   - a describe moves nothing;
+>   - reduce motion: the end state at once, with a static flash;
+>   - a second operation finishes the first;
+>   - kept cards build 0 times.
 
 **Motivation.** The export adds a playground for two graph animations, with the goal "perceptible, but never in the way: quick and smooth, not hectic" (AS:56; the playground is in German):
 - a commit stack unfolds and folds (AS:64);
@@ -9216,5 +10424,1291 @@ Without them, a toggle or a reload swaps the picture in one frame. The anchor ke
 - **Rebuilds:** kept cards build 0 times during a transition.
 
 **Related:** 10.1, 10.3, 10.4, 10.5, 10.9, 10.17; 10.6 item 12 (the pulse's ticker and reduce-motion rule); the Epic 10 header, "Design update 2026-09-30".
+
+---
+
+### Story 10.21: Graph search — the field, the one menu, go-to and filters, suggestions, Recent, the default search [UI/bridge]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. It replaces 10.7's revset select, which the design system retires as `CommandField` (DS readme.md:154). Built to the design, as inspiration (the Epic 10 header's design update 2026-10-14, decision (d)). The defaults below are Claude's; Ralph adopted them on 2026-10-14 (decision (g)).)*
+
+**Motivation.** The floating client's View capsule opens with one search field instead of the revset select: `[menu ▾ | query | ✕] · gap legend · count · View options` (AF:159-171; SYNC:44-56). The field does three jobs:
+- it shows what the graph shows: the default search, another jj log variant, or a typed search;
+- *Go to* (Change, Bookmark) selects a change and leaves the graph as it is;
+- *Filter by* (Author, File, Description) redraws the graph with `jj log -r '<filter>'`, run in `all()`.
+
+Its one menu lists the variants and the scopes and opens 10.22's dialog. The footer always names what Enter runs ("Verbs first, jj underneath", DS readme.md:51). 10.6's design question (d) asked for a go-to-change affordance. This field is it.
+
+**Scope.**
+1. **The view state.** This story owns what the graph shows.
+   - **Kinds:** the default search; a variant (the built-ins `jj log` and `all()`, or a configuration of 10.22); a typed search `{scope, mode, value, ci}`.
+   - **`GraphRequest.revset`** derives from it (10.5 item 2):
+     - `jj log` sends the effective `revsets.log` (`logDefaults().log`); the mock bakes in `builtin_log()` instead (RC:58; prototype defect 46);
+     - `all()` sends `all()`, a configuration its expression, a typed search item 7's text.
+
+     Every other parameter stays a pass-through (10.5).
+   - **The default is re-read.** A config edit writes no operation, so `logDefaults()` is re-read with every reload and on window focus (Claude's proposal; 10.7's design question (b)).
+   - **Other switches.** 10.19's "Show in `all()`" and "Show `all()`" and 10.14's pick go through this state. The field then reads `$ all()` (SR:472, :479).
+   - **Persistence.** The shown view persists per repository (decision (g)); the design keeps it global (`zanshin.graph.revset`, GV:545; prototype defect 50). A configuration that no longer exists falls back to the default search (SR:212-216).
+2. **The field** (SR:470-491; SRC:8-27; DS components/search/GraphSearch.prompt.md:15-21). Tokens come from the design system (decision (f)).
+   - **Well:** 36 px high in the capsule (11.3), `--fl-hover`, radius 10, no border at rest. Focus adds a moon border and a 3 px ring (SRC:9). Anything but the default search tints the pill moon (SR:476; SRC:14).
+   - **Default search:** an empty field and a calm pill (search icon, no tint); the placeholder "Search changes, bookmarks, authors, files…" ("Search…" when narrow); a `⌘F` hint and no ✕ (SR:43, :477-486).
+   - **Typed search:** the scope's icon and label in the pill; the value in the field, mono for Change and File; the ✕ titled "Back to the default search — <name>" (SR:479-486).
+   - **Another variant:** `$` in the pill; the variant's name in the field, styled as a value (mono for built-ins). Focusing empties it (SR:472, :481-482; SRC:21).
+   - **Keys:**
+     - ⌘F, or `/` outside a text field, focuses the field and selects its text, but never behind a modal dialog (SR:217-226; prototype defect 54);
+     - the prefixes `c: b: a: f: d:` and their long forms switch the scope, and Backspace in an empty field returns to Any (SR:51-52, :300-305, :317-318);
+     - ↑/↓ and Enter work the suggestions (SR:306-313). Esc closes the popover; a second Esc restores the field and blurs it, and blur restores it too (SR:314-316, :327-332).
+   - **✕** returns to the default search. While the field has focus, it reopens Recent (SR:287-290).
+   - **Widths:** the input is 320 px, 250 at ≤1180 px and 170 at ≤980 px. The pill drops its label at ≤1100 px. At ≤980 px the `⌘F` hint goes and the placeholders shorten (SRC:18, :103-105; SR:201-202). Only the input gives way (DS components/search/GraphSearch.prompt.md:21).
+3. **The one menu** (SR:419-468; SRC:68-83; DS components/search/SearchMenu.prompt.md:13-16): 420 px wide, 34 px rows, scrolling above min(72vh, 640 px).
+   - **Order:**
+     1. the default search, tagged `Default` (SR:448, :455);
+     2. the other variants. Each row shows `$`, the name, and a description or the mono expression; the tooltip is the full command (SR:444-447);
+     3. "Go to — selects a change · graph stays": Change `c:`, Bookmark `b:`;
+     4. "Filter by — redraws the graph": Author `a:`, File `f:`, Description `d:` (SR:458-461);
+     5. "Edit Configurations…" (SR:463-466). It opens 10.22 with the shown variant selected, or with the default search while a typed search is active (SR:489).
+   - **Selection.** The selected row is what the graph shows. During a typed search it is the search's scope, and that row shows the search's value (SR:429-442).
+   - **Keys.** Arrow keys move between rows. Esc closes the menu and restores the field (SR:231-239, :420-426).
+   - **Picks.** A variant pick empties the field and switches the view. A scope pick keeps a draft and focuses the field (SR:291-297).
+   - **The `jj log` row** shows the design's description while `revsets.log` is the builtin, and the effective expression otherwise (Claude's proposal; SR:63 assumes the builtin).
+4. **Suggestions** (SR:94-172, :335-417; SRC:29-66; DS components/search/SearchPopover.prompt.md:14-18).
+   - **Groups and limits** as designed:
+     - Any shows Changes 3, Bookmarks 2, Authors 2, Files 3 and Descriptions 1, each followed by "N more in <scope>" (SR:157-165). A single scope shows up to 8 rows (SR:170), and Description adds up to 6 changes matched by subject or body (SR:166-168);
+     - with no match in a scope, a note leads to matches found elsewhere; with no match at all, an empty text (SR:264, :402, :409). The scoring follows SR:110-156.
+   - **Rows** keep the design's parts: the match underline, dimmed folders, `not in view`, `you · mine()`, and the footer with "Filter ↵", "Select ↵" or "Show ↵" (SR:338-396).
+   - **Candidate sources** (decision (g), go-to reach):
+     - first the shown topology, in memory: ids and their prefixes, refs, and the "in view" test (4.12's lookups);
+     - 10.11's content cache for subjects, descriptions and authors;
+     - `bookmarks()` for the Bookmark scope: local and tracked remote bookmarks, plus untracked ones once 9.29 lands;
+     - `fileList()` at `@`, once per operation, for paths and their folders. The CLI's `jj log` completion does the same (`cli/src/complete.rs:1143-1152` @ v0.46.0). The design indexes every commit's changed paths instead (SR:14-20, :94-107);
+     - 9.25's `find_changes` over `all()` for descriptions and id prefixes beyond the view. jj's refusal of an ambiguous prefix becomes a row. A `truncated` result reads "N+ more".
+   - **Counts** (decision (g)). Every filter row shows "N changes" from 9.25's op-pinned count call.
+     - Calls are batched per pause in typing, cached per (operation, expression), and capped; a capped count reads "10,000+".
+     - Rows render before their counts arrive.
+     - A zero count dims the row instead of removing it (Claude's proposal; the design removes it, SR:160; prototype defect 52).
+5. **Semantics.**
+   - **Filter** (SR:196-198, :273). Enter sets the view to the typed search. The expression runs in `all()` and equals the footer's command. It costs one layout request, and 10.5 re-centres on @.
+   - **Go-to** (SR:274-282, :240-248).
+     - It selects the target through 10.6's reveal, rank 1 in 10.5's precedence, and starts the moon pulse. The pulse also fires for Bookmark go-tos and recent go-tos (decision (b)).
+     - A target outside the view switches to `all()` in the same request. A member of a collapsed stack goes into `keepOpenKeys`.
+     - The field then returns to what the graph shows.
+     - The reveal's animation belongs to 10.6: smooth within about three viewports, instant beyond (decision (g)). The design re-arms the re-centre on @ after a hidden target (prototype defect 53).
+6. **Recent** (SR:22-39, :256-260, :397, :411).
+   - It opens on focus while the field is empty. It holds go-tos and filters; a filter shows its count and its mono expression. It is filtered per scope, has a "Clear" action, stores 10 entries and shows 6.
+   - Hidden: a filter whose expression equals a configuration's (SR:199-200), and a go-to whose change is gone (SR:258).
+   - Recent is kept per repository (decision (g)); the design keeps one global list (`zanshin.graph.recentSearches`, SR:23).
+   - A bookmark go-to keeps the bookmark's name (Claude's proposal). The design stores only the change id (SR:277; prototype defect 51).
+7. **Revset text: the builder** (the bridge part; decision (g)).
+   - One pure function in `zanshin_core` turns a scope or a rule into revset text, and 10.22 uses it too. The UI shows its output and passes it on verbatim.
+   - **Shapes and pattern kinds.** It keeps the shapes of RC:48-55, always with explicit pattern kinds: `substring:`, `exact:`, `glob:` and `regex:`, each with `-i` for case-insensitive, and `cwd:"…"`, `file:"…"` and `glob:"…"` for paths. At v0.46.0 a bare string is a `glob:` in revsets and a `prefix-glob:` in filesets (`docs/revsets.md`, `docs/filesets.md`). A bare path containing `[` would therefore act as a glob (prototype defect 48).
+   - **Quoting.** Text is quoted as jj string literals; RC:48 escapes `\` and `"`. Paths are relative to the workspace root, which is Zanshin's cwd for revsets (`crates/zanshin-jj/src/revset.rs:329-331`).
+   - **"You"** is the author whose email equals `user.email`, case-insensitively, because `mine()` = `author_email(exact-i:…)` (`docs/revsets.md`). The email comes from 9.28's `configGet`. The design matches the name instead (SR:134; prototype defect 47).
+   - **What this supersedes.** It replaces "The UI passes the input through and never composes the revset itself" for structured filters only. The sentence comes from the 2026-09-26 deferred-work item "Go-to-change needs a backend path for anything but full ids".
+8. **Errors.**
+   - A revset error shows jj's message, with 9.25's span, in the popover's footer. The graph keeps its last layout (10.5 item 9). This answers 10.7's design question (c).
+   - A broken `revsets.log` marks the `jj log` row.
+   - The design has no error state.
+9. **Semantics nodes.** The field is a combobox and the suggestions a listbox, with an active descendant (SR:477-484).
+
+**Non-goals.**
+- A free-text revset, Save, the variant segment, `in jj log` and the save form (all removed in SYNC #6, SYNC:52).
+- Walking the hits with Enter (the spike viewer's model in 10.6's design question (d)).
+- Go-to hits on the minimap (10.16).
+- Writing `revsets.log` (decision (g)).
+- The capsule, its island and calm scrolling (11.3; the capsule stays visible while the search is in use, SRC:101), the counter (10.7) and the gap legend (10.19).
+
+**Depends on.**
+- 10.5 (the request and the precedence), 10.6 (the reveal and the pulse), 10.11 (content), 10.22 (the configurations and the default search).
+- 11.1 (tokens), 11.2 (menu and popover material), 11.3 (the capsule).
+- Backend: 4.9 (`logDefaults`); 4.10–4.12 (topology, lookups, content; real data with 10.12); 2.8 (`bookmarks`; 9.29 for untracked remotes); 9.4 (`fileList`); 9.28 (`configGet`); 9.25 (counts, `find_changes`, error spans).
+
+**Design status.** FINAL, as the direction (decision (d)): the field's three states and ✕ back to the default search; the one menu and its order; the scopes, their prefixes and the split between Go to and Filter by; a filter run in `all()`; the suggestions and their footer; Recent; `$` marking a variant that draws the graph; the widths.
+
+NEEDS DESIGN (decision (g); the recommendation is the adopted default):
+- (a) Where do the shown view and Recent live? Default: per repository. Configurations and the default search are 10.22's question (a).
+- (b) Who writes revset text? Default: item 7's builder in `zanshin_core`, tested through jj-lib.
+- (c) Counts in suggestions cost an object load or a diff per commit. Show them? Default: item 4's asynchronous, capped counts, with zero rows dimmed.
+- (d) How far does go-to reach? Default: the view first, then `find_changes` over `all()`, with jj's ambiguity refusal.
+
+**Witnesses** (fake ports).
+- **Field:** the three states. ✕ issues one request for the default search. Esc and blur restore the field.
+- **Shortcuts:** ⌘F and `/` focus the field, and `/` inside another text field types a slash. Neither works with a modal dialog open.
+- **Scope keys:** prefixes switch the scope; Backspace in an empty field returns to Any.
+- **Menu:** the order, the `Default` tag and the selected row. A variant pick sends exactly its expression: `jj log` sends the fake `logDefaults().log`, and `all()` sends `all()`.
+- **Filter:** Enter sends exactly the footer's expression, in one request, and adds a recent.
+- **Go-to:** a visible target is selected, revealed and pulsed without a request. A hidden one triggers one request with `all()` and the reveal, and no later relayout jumps to @. A collapsed member travels in `keepOpenKeys`.
+- **Suggestions** on a fixture index: the limits, the "more" rows, the fallback note and the empty text. Each count is requested once per (operation, expression), and a zero count dims its row.
+- **Recent:** per scope, the cap, hidden duplicates of configurations, Clear, per repository.
+- **Widths** at 1181, 1101 and 981 px.
+- **Builder:** golden strings for every scope and mode. On a real-cdylib fixture every string parses, resolves and selects the expected commits through `graphTopology`; optionally the stock CLI checks them through 9.47's oracle.
+
+**Related:** 10.5, 10.6, 10.7, 10.11, 10.14, 10.16, 10.19, 10.22, 11.3; 9.25, 9.28, 4.9–4.12; the Epic 10 header's design update 2026-10-14.
+
+---
+
+### Story 10.22: jj log Configurations dialog — structured filters, default search, command preview [UI/bridge]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. The dialog is the only place where jj log variants are made, edited and made the default search (DS components/search/RevsetDialog.prompt.md:1). Built to the design, as inspiration (the Epic 10 header's design update 2026-10-14, decision (d)). The defaults below are Claude's; Ralph adopted them on 2026-10-14 (decision (g)).)*
+
+**Motivation.** The search menu (10.21) lists two built-ins and the user's configurations.
+- A configuration is a named set of filters that the dialog turns into one revset (RC:49-72).
+- The dialog also picks the default search: the variant listed first in the menu, which ✕ returns to (RC:217-222).
+- The export moved the dialog into the glass dialog of Settings and Projects (SYNC:77-85).
+
+**Scope.**
+1. **Store** (decision (g)).
+   - **Configuration:** `{id, name, op: & | |, rules: [{fn, mode, value, ci, not}]}`, where `fn` is one of `author committer mine subject description files` (RC:13-19, :24-28, :185).
+   - **No `base`.** The design still reads it in `exprOf` (RC:57-71), but no UI has set it since SYNC #6.
+   - **The default search** is `jj log`, `all()` or a configuration id. `jj log` is the fallback: it takes over when the default configuration is removed (RC:43).
+   - **Scope.** Configurations and the default search are global, as designed (`zanshin.graph.revsetConfigs`, `zanshin.graph.revsetDefault`, RC:23, :40), and live in `zanshin_settings`.
+   - **Order.** The list order is the menu's order (SR:452).
+2. **Shell** (FC:266-299; SYNC:79-84).
+   - 11.2's dialog sheet and scrim, 880 × 580.
+   - The title "jj log Configurations" at 17/600, with a close button (RC:228-231).
+   - Esc, a click on the scrim and the close button discard the draft (RC:198-202, :226).
+   - Tokens come from the design system (decision (f)).
+3. **List** (RC:234-255).
+   - *Built-in*: `jj log` and `jj log -r 'all()'`, selectable and read-only.
+   - *Custom*: the name and the mono expression.
+   - The default carries the `Default` tag (SRC:88). The selected entry is moon (FC:283).
+   - The toolbar adds, removes, duplicates and moves entries up and down (RC:205-208). A new entry is called "New configuration", has one `files()` rule, and starts with its name selected (RC:205).
+   - The empty state reads "No custom configurations yet." with "Add configuration" (RC:331-334).
+4. **Editor** (RC:257-300).
+   - **Name:** a glass field (INC:25-27).
+   - **Default search row** (RC:217-222; SRC:94-98): a switch with the hint "Listed first in the search menu — ✕ in the search field returns to it".
+     - While `jj log` is the default, its switch is locked on, with the hint "Used whenever no other configuration is the default" (RC:215).
+     - Switching off makes `jj log` the default again.
+   - **Filters.** A rule row holds:
+     - `is` / `~ not` (red when on, FC:289);
+     - the function;
+     - the mode: contains, is exactly, matches glob, matches regex; for files: path or folder, exact file, glob;
+     - the value in mono, with the function's placeholder;
+     - `Aa` for case-insensitive (not for files);
+     - remove.
+
+     From two rules on, "Match all `&`" / "Match any `|`" appears (RC:267-272). Dashed chips add a rule per function (RC:297-299). Without rules the editor reads "No filters — shows every commit (`all()`)." (RC:295).
+   - **`mine()`** reads "authored by" with the user's `user.email` from 9.28's `configGet`, because `mine()` matches the email (Claude's proposal). The design shows the name (RC:282; prototype defect 47).
+   - **A built-in** shows its command and "Built-in · <description>" (RC:312-317). `jj log`'s description follows 10.21 item 3.
+5. **Command preview** (RC:301-310).
+   - It shows `❯ jj log -r '<expression>'`, with the expression from 10.21's builder. An empty-valued rule drops out, as in RC:56.
+   - It shows "**N** of M changes match". N comes from 9.25's count call, debounced and capped; M is the topology's `allCount`. A built-in counts its own expression.
+   - Copy changes to "Copied" for 1.2 s (RC:214). The copied command is shell-quoted (Claude's proposal; RC:72 is not; prototype defect 49).
+   - A failing rule shows jj's message at that rule, placed by 9.25's span. The preview then shows the error instead of the count.
+6. **Footer** (RC:337-343; FC:295-299).
+   - "Revset reference ↗" opens the docs of the pinned jj version, where the site has them (Claude's proposal; RC:338 links `latest`).
+   - Cancel.
+   - Apply, enabled only when something changed, the default search included (RC:197).
+   - **OK**, the gold-tinted primary: apply, show the selected entry, close (RC:210; SR:489).
+7. **Interplay.**
+   - The dialog never writes jj config. `revsets.log` stays the user's (decision (g)).
+   - The view switches only on OK.
+   - If the configuration the graph shows is deleted, the view falls back to the default search (10.21 item 1).
+
+**Non-goals.**
+- A raw revset rule (design question (b)).
+- Writing `revsets.log` or `[revset-aliases]` (decision (g)).
+- Narrowing a variant (`cfg.base`) and Save (SYNC #6).
+- The docked client's dialog shell (`graph.css`).
+
+**Depends on.**
+- 10.21 (the builder, the menu, the view state).
+- 11.1 (tokens) and 11.2 (the dialog sheet and scrim).
+- Backend: 9.25 (counts, error spans), 9.28 (`configGet`), 4.9 (`logDefaults`), 4.10–4.12 (`allCount`).
+
+**Design status.** FINAL, as the direction (decision (d)): the list, the editor, the rules of the default search, the preview with its count, the footer and the glass material.
+
+NEEDS DESIGN (decision (g); the recommendation is the adopted default):
+- (a) Where do configurations and the default search live: in Zanshin's preferences or in jj's `[revset-aliases]`, per repository or global? Default: Zanshin's preferences, global, as designed. Aliases would be visible to the CLI: zanshin-jj already reads the `{definition, doc}` form (`crates/zanshin-jj/src/revset.rs:452-511`). But aliases need identifier names, and a way back from an expression to rules.
+- (b) Should a raw revset rule cover what the six functions cannot express? Deferred. The design system's `RevsetConfig.expr` keeps the door open (DS components/search/RevsetDialog.d.ts:13). If it is built, its text is passed through and jj-lib validates it, and 9.25's `NoSuchFunction` candidates gain a consumer.
+- (c) Is the default search separate from `revsets.log`? Default: yes. `jj log` stays the effective `revsets.log`, and this UI never writes it. 9.28's `configSet` stays available for a later, explicit action.
+
+**Witnesses** (fake ports).
+- **List:** add, remove, duplicate and move change the list and the menu's order.
+- **Default search:** `jj log` is locked on while it is the default; switching off returns the default to `jj log`; removing the default configuration falls back to `jj log`.
+- **Buttons:** Apply is enabled only after a change; OK applies, switches the view to the selected entry with one layout request, and closes; Cancel, Esc and the scrim discard.
+- **Expressions:** golden strings for every function × mode × negation × `-i`, and for `&` and `|`.
+- **Preview:** "N of M" comes from a fake count port. An error with a span marks its rule.
+- **`mine()`:** the row shows the fake `user.email`.
+- **Persistence:** configurations and the default search survive a restart and are the same in every repository.
+
+**Related:** 10.21, 9.25, 9.28, 11.2; SYNC #6 and #9.
+
+---
+
+### Story 10.23: Operation toast — what an operation did, with Undo; refusal and warning variants [UI]
+*(Added 2026-10-14, Ralph — console session on the design update, export at `e74ced3`. It is 10.9's one feedback surface, split off as a separately reviewable piece (the Epic 10 header's design update 2026-10-14, decision (g)). It answers 10.9's design questions (b) and (c). The design is inspiration, not a 1:1 template (the Epic 10 header, decision (c) of the design update 2026-09-28). Tokens come from the design system (decision (f)).)*
+
+**Motivation.** In the design every graph edit ends in a toast that says what happened and offers Undo (DND:135-146; DNC:44-54; DS components/overlays/Toast.prompt.md:1-9). The design system makes it the rule for feedback: past tense, verb first, ids in mono, always followed by Undo (DS readme.md:57). 10.9 runs the verbs and reports each outcome; this story shows it.
+
+**Scope.**
+1. **Look** (DNC:45-54).
+   - A 38 px glass pill: `--fl-sheen` over `--fl-bg-strong`, `blur(18px) saturate(1.4)`, 1 px `--fl-border`, `--fl-shadow`. Its text is 12.5 px.
+   - Undo is a 28 px quiet pill (`--fl-hover`, `--fl-on` on hover) with the tooltip `jj undo`. × is a 26 px circle labelled "Dismiss". Focus rings are moon.
+   - It enters with a 10 px rise and a fade over 280 ms, on the glide curve (DNC:46).
+2. **Text** (GV:765-783; DND:40-76; DS readme.md:57, :65).
+   - Past tense, verb first. A change id is 8 characters in mono, its 2-character prefix bold. A bookmark shows its short name in mono (DND:61).
+   - Per outcome:
+     - a change drop: "Moved S onto T", "Inserted S after T", "Inserted S before T", "Squashed S into T", "Merged S and T in a new change", "Duplicated S onto T";
+     - a bookmark drop: "Moved N to T";
+     - a file or hunk drop (10.27): "Moved <label> into T", "… into a new change after T", "… into a new change before T";
+     - "Squashed X into P" (Squash into parent), "Abandoned X", "Split X — the rest is now Y", "Committed X · “subject”".
+   - The text is built from 10.9's outcome (verb, ids, label), never parsed from CLI output.
+   - `new`, `edit`, `describe` and `undo` itself show no toast (GV:704-721, :763-764, :748-756).
+   - (Claude's proposal) The popover's bookmark verbs (10.15) toast too: "Created N on X", "Renamed N to M", "Deleted N".
+3. **Lifetime** (GV:746; DS components/overlays/Toast.prompt.md:8-9).
+   - It hides after 6.5 s, and at once on ×.
+   - One toast at a time: a new outcome replaces it and enters again.
+   - Undo hides it, and the undo itself shows no toast.
+4. **Undo** (GV:748-762).
+   - It runs 10.9's guarded `undo()`, only while the op head is the outcome's `newOpId` (10.9 item 7). When the head moves, the Undo button disappears and the text stays (Claude's proposal).
+   - ⌘Z runs it while the toast is visible and focus is not in a text field (GV:757-762). Without a toast, ⌘Z does nothing here (deferred-work).
+5. **Position** (GV:1180-1181; AF:213-214; DS components/overlays/Toast.jsx:5).
+   - Bottom centre of the visible graph, 20 px from the bottom, centred between the left inset (rail, pinned panel) and the right inset (the inspector when open, else the minimap). The insets and the slot are 11.3's overlay host.
+   - It shares the slot with 10.6's @ pill, which hides while a toast is visible (AF:213).
+   - It stays visible while the graph scrolls; calm scrolling hides other chrome, not the toast (FC:159-163).
+6. **Refusals and warnings.** Not designed; Claude's proposals, as in 10.9's dated note.
+   - A refusal uses the same pill with the DS warn glyph and colour and the CLI message verbatim from the exception, without Undo. It stays until × or the next outcome.
+   - A 9.32 warning on success adds one warn-coloured clause with the warning's message to the success text.
+   - A composer verb's refusal never comes here; 10.25 shows it in the composer.
+7. **Semantics.** A polite live region (`role=status`) announces the text. Undo and × are labelled buttons.
+8. **Reduce motion:** no rise and no fade.
+
+**Non-goals.**
+- A history or a stack of toasts.
+- Redo (9.21) and an app-wide Edit › Undo (deferred-work).
+- The Undo Timeline rail panel (11.9).
+- The identity remedy for `jj.identity_missing` (deferred-work 2026-09-26).
+
+**Depends on.** 10.9 (outcomes, the guarded undo, refusals, warnings); 11.3 (the insets and the bottom-centre slot); 10.6 (the @ pill that yields). The outcomes come from 10.10, 10.15, 10.25 and 10.27.
+
+**Design status.** FINAL, as the intended direction (DND:135-146; DNC:44-54; GV:746-762, :1180-1181; AF:213):
+- the look, the texts and which verbs toast;
+- 6.5 s, one at a time, the position and the @ pill yielding;
+- ⌘Z while the toast is visible.
+
+Claude's proposals: the refusal and warning variants, Undo disappearing after a foreign operation, toasts for the popover's bookmark verbs. Nothing needs design.
+
+**Witnesses** (fake outcomes).
+- Each outcome kind renders its text, with 8-character ids and the bold prefix.
+- A second outcome replaces the first. The toast hides at 6.5 s and on ×.
+- Undo calls `undo()` exactly once and hides the toast; no toast follows.
+- After a foreign operation, Undo is gone and ⌘Z calls nothing.
+- ⌘Z in a text field does nothing; ⌘Z while the toast is visible runs Undo.
+- The @ pill hides while a toast is visible and returns after it.
+- The position follows the insets, with the inspector open and closed.
+- A refusal shows the CLI text and no Undo, and stays until ×. A success with a warning shows the clause.
+- Under `disableAnimations` nothing animates. The live region announces the text.
+
+**Related:** 10.9, 10.6, 11.3, 10.10, 10.15, 10.25, 10.27; 9.32, 9.39; the Epic 10 header, "Design update 2026-10-14".
+
+---
+
+### Story 10.24: Inspector diff view — ±, focused-file hunks, Unified / Side by side, Viewed [UI/bridge]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. The inspector is built to the design (the Epic 10 header's design update 2026-10-14, decision (d)). This story takes over the review workflow that 10.8 parked: the deferred-work entry "Epic 10's thin detail panel drops the design's review workflow; no story owns it", and the header's "Design tweaks that matter" line on Diff mode.)*
+
+**Motivation.** The inspector shows a change's diff below its file list (IN:303-322): the focused file's hunks, a layout control and a "Viewed" mark (IN:311-317). The re-plan parked this review workflow, because no diff exists before Epic 5. The design now draws it inside the inspector, line-level only. Epic 5's line-level path (5.1, 5.5, 5.6, 5.8) supplies the data.
+
+**Scope.**
+1. **Data** (5.6's note).
+   - One summary request per selected revision, with `jj diff -r` semantics: each file's kind, `from_path`, counts and fingerprint.
+   - One diff request for the focused file, pinned to (operation, commit id).
+   - Both run again after each reload and on a selection change. Nothing is computed in Dart (10.8 item 6).
+2. **Changes header** (IN:276-286).
+   - "N files +a −r" from the summary.
+   - From the first viewed file on: "n/N viewed" or "✓ all viewed", with Mark all / Reset (IN:280-285).
+   - No meter bar, no auto-advance, no V shortcut: the design drops them (APP@e243dd2:751-761, :934).
+3. **File rows** gain ± and the viewed mark, a ✓ with a dimmed path (IN:297-298; INC:51-52). A click focuses the file (IN:292); the first file starts focused (IN:168).
+4. **Diff block** (IN:303-322; FC:222-228; DS components/content/DiffView.prompt.md:10-12).
+   - The focused file only.
+   - Toolbar: the path, truncated from the left; the Unified / Side-by-side control, as icons (IN:307-310); the "Viewed" toggle (IN:311-314).
+   - Viewed folds the block into "Viewed — diff folded away. Click to show it again." (IN:316-317). A click unfolds it and clears the mark.
+5. **Hunk header** (IN:96-112; INC:62-66; DS components/content/DiffHunk.prompt.md:8).
+   - 30 px on `--accent-soft`: the range `@@ −old,n +new,m @@` in the moon `--hunk`, with real minus signs; 5.1's source symbol when jj prints one; the ±.
+   - The checkbox comes with 10.26, the grip with 10.27.
+6. **Lines** (IN:65-94; AC:1855-1900).
+   - Unified: a sigil and the text, with the add and remove fills.
+   - Side by side: runs of removed and added lines are paired row by row (IN:75-83); an unpaired cell stays empty (AC:1899). This is 5.2's pairing AC.
+   - Mono 11 px. Long lines scroll inside their hunk (AC:1855-1861). No line numbers, as in the design.
+7. **Layout preference.** Unified (the default, AF:12) or side by side, one app preference shared with the Settings window's Diffs row (ST:84-86; 11.7).
+8. **Viewed.**
+   - NEEDS DESIGN, Claude's default adopted (decision (g)): per repository, keyed by (change id, path, fingerprint of that file's diff). A rebase that leaves the file's changes alone keeps the mark; an edit to them resets it.
+   - The fingerprint hashes the file's removed and added lines without line numbers (Claude's proposal; 5.6's summary mode).
+   - The design keys by change id and path, in `localStorage` (SH:56-76).
+9. **Placeholders** (Claude's proposal): a binary file gets one line, "Binary file". A conflicted file shows jj's materialized text, as `jj diff` does (5.1's note).
+10. **Tokens** (decision (f)): hunk headers, the M status (FC:177) and focus in moon; additions and removals in the design system's semantic colours.
+
+**Non-goals.**
+- Selection checkboxes (10.25, 10.26) and drags (10.27).
+- Word-level and syntax marks (5.2–5.4, later; deferred-work).
+- Line numbers, editing (9.44) and a conflict view (9.17).
+
+**Depends on.** 10.8; Epic 5's line-level path (5.1, 5.5 without segments, 5.6 with its summary mode, 5.8); 11.1 for the tokens.
+
+**Design status.** Built to the design (decision (d)); FINAL means the direction. NEEDS DESIGN, with Claude's default adopted (decision (g)): the Viewed key. The fingerprint and the placeholders are Claude's proposals.
+
+**Witnesses** (a fake diff port, then the real cdylib).
+- The header's totals equal the sum of the files' counts, and a file's counts equal its hunks' lines.
+- Focusing a file issues one diff request for its path. No other file's hunks are requested, and nothing is computed in Dart.
+- Side by side pairs three removed and two added lines into three rows with one empty cell.
+- A Rust hunk shows jj's symbol; a Dart hunk shows none.
+- Viewed folds and unfolds. The mark survives a rebase that leaves the file's changes alone, resets when they change, and is per repository.
+- Mark all and Reset set and clear every file. The counter appears with the first viewed file.
+- The layout preference persists, and the Settings row changes it.
+- After a reload the focused path stays focused if it still exists.
+
+**Related:** 10.8, 10.25, 10.26, 10.27; 5.1, 5.5, 5.6, 5.8; the Epic 10 header, "Design update 2026-10-14".
+
+---
+
+### Story 10.25: Commit/split composer, file level — and Squash into parent with the combined-message flow [UI/bridge]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. File-level selection is the CLI's non-interactive arm, so this story ships before Epic 5 and before 10.26 (the Epic 10 header's design update 2026-10-14, decision (g)).)*
+
+**Motivation.** The inspector is where a change is shaped (IN:2-4). On @ a selection becomes `jj commit`, elsewhere `jj split -r` (IN:117-157; DS components/content/DiffHunk.prompt.md:9). Whole files are the CLI's filesets: they need no diff editor and no Epic 5. "Squash into parent" joins this story, because it needs the same description form when both descriptions are set.
+
+**Scope.**
+1. **File checkboxes** (IN:294; INC:5-8; DS components/forms/Checkbox.prompt.md:8-9).
+   - On mutable changes only. Two states at file level; "mixed" comes with 10.26.
+   - Select-all in the Changes header (IN:277).
+   - @ starts with every file selected, any other change with none (IN:166).
+2. **When the composer shows** (IN:177): on @ while it has files, elsewhere once a file is selected. It sits at the panel's bottom (IN:328) and rises 12 px over 260 ms (INC:73-75; DS readme.md:98), not under reduce motion.
+3. **Fields:** 10.8's Summary and Details (IN:133-134), with the placeholders "Summary of what you did" (@) and "Summary of the selected changes".
+4. **Result preview** (IN:135-148; INC:79-89): two rows drawn like the graph, child on top.
+   - On @: "@ New working copy · <files> · stays here to keep working". Elsewhere: "Rest · <files> · keeps “<subject>”".
+   - Below: "Selected · <files> · “<first line>”", or "nothing yet" and "no description yet".
+   - The ± appear once 10.24 lands; until then the rows show file counts only (Claude's proposal).
+5. **Command preview** (IN:125-127). It equals what runs.
+   - On @: `jj commit -m … [<paths>]`. The paths are left out when everything is selected.
+   - Elsewhere: `jj split -r <id> -m … <paths>`.
+   - The two fields go as the CLI's two `-m` paragraphs (10.8's note). An empty summary sends `-m ""` (Claude's proposal); the design drops `-m` (IN:125; prototype defect 39).
+6. **Buttons** (IN:149-153).
+   - Cancel, on split only: it clears the selection and keeps the draft.
+   - A gold Commit or Split, also on ⌘↩ and on Enter in Summary.
+   - Validity follows the CLI (Claude's proposal). Commit needs a selected file (IN:179). Split with everything selected stays allowed: the CLI's warning "All changes have been selected, so the original revision will become empty." (`../jj` v0.46.0 `cli/src/commands/split.rs:588`) is its hint. The design blocks it with a text of its own (IN:154; prototype defect 39).
+7. **Running** (IN:208-213), through 10.9: commit → 9.49 with paths; split → 9.15 with paths.
+   - On success the fields and the selection clear. The selection follows `MutationResult` (10.9): after a commit, the new @ (GV:769-772); after a split, it stays (GV:765-768).
+   - 10.23 shows "Committed <id> · “<first line>”" or "Split <id> — the rest is now <id>", with Undo (GV:767, :771; DS readme.md:57). 10.20 flashes the result (decision (c)).
+   - On a refusal, the draft and the selection stay, and the composer's warn line shows the CLI's text (10.9's note; INC:91).
+8. **Drafts** are kept per change for the session; Esc on a non-empty draft only leaves the field (decision (g)). The design loses them (prototype defect 38).
+9. **Squash into parent** (IN:220; GV:773-779) is enabled through 10.9 and 9.15 (`squash -r`).
+   - When 9.15's plan reports a combined description, the panel opens 10.8's form pre-filled with it. Save runs the squash with `-m`; Esc cancels without a call (Claude's proposal; 10.9 design question (e)). The CLI opens an editor there (squash.rs:363-396).
+   - With a single non-empty description it runs at once, as the CLI does (`cli/src/description_util.rs:356-368`).
+   - `-u` and `-k` pass through with the CLI's defaults.
+   - Its disabled reason is the backend's refusal (prototype defect 33). 10.23 shows "Squashed <id> into <id>" (GV:778).
+
+**Non-goals.**
+- Hunk-level selection and the tree arm (10.26).
+- Drags (10.27).
+- `split --parallel` and `-o / -A / -B` from the composer; the drops use the location flags (10.27).
+- A composer on an empty @ (deferred-work).
+
+**Depends on.** 10.8, 10.9, 10.23; 9.49 and 9.15 with paths; 10.24 for the ± only. It does not wait for Epic 5.
+
+**Design status.** Built to the design (decision (d)). NEEDS DESIGN, with Claude's default adopted (decision (g)): this file-level stage ships before 10.26. Claude's proposals: the validity rules, `-m ""` and the combined-message form.
+
+**Witnesses** (a fake actions port, plus one real-cdylib commit).
+- @ starts with everything selected, another change with nothing; select-all toggles every file.
+- Commit with everything selected calls `commit` without paths; with a subset, with exactly those paths. Both send "S\n\nD\n".
+- Split calls `split -r` with the paths and `-m`; the preview's command equals the call.
+- Commit is disabled with nothing selected. Split with everything selected shows the CLI's warning and runs.
+- Success clears the composer and moves the selection by the rules. A refusal keeps the draft and the selection.
+- A draft survives a selection change and a reload. Esc in a non-empty field leaves the field, and the panel stays open.
+- Squash with two descriptions opens the pre-filled form and sends `-m`; with one, it runs at once.
+- Real cdylib: committing one of two changed files leaves the other one in the new @.
+
+**Related:** 10.8, 10.9, 10.23, 10.24, 10.26; 9.15, 9.49; the Epic 10 header, "Design update 2026-10-14".
+
+---
+
+### Story 10.26: Hunk selection — partial selections through a GUI tree [UI/bridge]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. The interactive-verb contract is 9.50's (the Epic 10 header's design update 2026-10-14, decision (g)).)*
+
+**Motivation.** The design selects hunks, not only files (IN:96-112; INC:69-70). A partly selected file is the CLI's interactive arm (`-i`), whose editor the GUI replaces with its own selection (ADR-0003). 9.50 turns that selection into a tree, and 9.15 and 9.49 take the tree.
+
+**Scope.**
+1. **Checkboxes.**
+   - A checkbox in each hunk header of a mutable change (IN:103), on 10.24's header.
+   - File checkboxes become three-state, none / mixed / all (IN:190, :294), and so does select-all (IN:191, :277).
+   - A selected hunk has a 24 % moon header and a 2 px moon bar on every line (INC:69-70; decision (f)).
+   - @ starts with every hunk selected (IN:166).
+2. **Keys.**
+   - A selection is a set of 9.50 keys (the path plus changed line ranges, 5.1's note), not view-local ids.
+   - After every reload the selection is re-mapped: a key that still exists stays selected, and the others drop (as IN:167 drops stale ids).
+   - @ changes with every snapshot (9.26). Re-mapping keeps the user's choice while they edit.
+3. **Running.**
+   - Every selected file whole: paths, as in 10.25.
+   - Any file partial: `select_tree` (9.50) for the revision, then the verb with the returned tree id (commit 9.49, split 9.15).
+   - The preview shows `-i` for a partial selection, as the design does (IN:126; DS readme.md:51). The call never carries an interactive flag.
+4. **Stale selections.** When 9.50 or the verb refuses a stale selection, the composer's warn line shows the refusal (10.25 item 7). The selection is re-mapped on the reloaded diff, and the draft stays.
+5. **Esc** clears the selection of a non-@ change before the panel closes (IN:181-187; 10.8's note).
+
+**Non-goals.**
+- Lines inside a hunk: jj's builtin editor can select them, the design cannot (deferred-work).
+- Editing hunk content (`diffedit`, 9.17).
+- Drags (10.27).
+
+**Depends on.** 10.24, 10.25 and 9.50; 9.15 and 9.49 taking a tree id.
+
+**Design status.** Built to the design (decision (d)). NEEDS DESIGN, with Claude's default adopted (decision (g)): the contract is a separate `select_tree` call whose tree id the verbs take (9.50).
+
+**Witnesses.**
+- The three-state math of the file and select-all checkboxes (IN:189-191).
+- A partial selection calls `select_tree` once and then the verb with that tree id. A whole-file selection calls no `select_tree` and passes paths.
+- The preview shows `-i` for a partial selection; no call carries an interactive flag.
+- After a reload that rewrote @, the hunks whose keys survive stay selected.
+- A stale refusal keeps the draft and re-maps the selection.
+- Real cdylib: committing hunks 1 and 3 of a three-hunk file leaves hunk 2 in the new @.
+
+**Related:** 10.24, 10.25, 10.27; 9.15, 9.49, 9.50; ADR-0003; the Epic 10 header, "Design update 2026-10-14".
+
+---
+
+### Story 10.27: Drag files and hunks onto a change [UI]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. The drag engine is 10.10's, as the Epic 10 header's design update 2026-10-14 decides in (a4); this story owns the `diff` payload (decision (g)).)*
+
+**Motivation.** The design moves work between changes by dragging it: a file row or a hunk header goes onto another change's card (IN:193-206; DND:63-78). That is jj's `squash --from --into` and `split -A / -B`, without typing a fileset.
+
+**Scope.**
+1. **Sources** (IN:193-206), on a mutable change:
+   - a file row, which carries all its hunks (IN:202-205);
+   - a hunk header, whose grip shows on hover (IN:101-102, :107; INC:67-68).
+   - Inside a multi-selection (10.25, 10.26), a dragged row or hunk carries the whole selection (IN:204, :206).
+   - A click still focuses the file; 10.10's slop tells a click from a drag.
+2. **Payload `diff`** (IN:193-201): the source change, the selection (paths, or 9.50 keys), whether every file is whole, the ±, and a label: "a hunk of x", "N hunks of x", x, "N files" or "N hunks from M files" (IN:197-198).
+3. **Ghost** (DND:119-126): the status letter with the file name or the hunk's symbol, or the label; and the ±. It reads "Drop on the change it belongs to" until a target is found, then the default row's command (decision (a4)).
+4. **Lifted rows.** The dragged rows dim to .38 with a dashed moon outline (IN:176, :289, :319; INC:54). The source card shows its "from" state (GV:927).
+5. **Targets** (DND:63-64): any card except the source change, immutable changes and the root. Stacks are inert, and there are no edge targets (decision (a4)).
+6. **Rows** come from 9.31's `diff` source; the UI never composes them (DND:25-80 is the prototype's client-side rule). Only applicable rows are listed (decision (a4)):
+   - "Move into this change", `jj squash --from A --into T <paths | tree>`, the default row;
+   - "Into a new change after", `jj split -r A -A T …`, only when T's children are all mutable (DND:72-73);
+   - "Into a new change before", `jj split -r A -B T …`.
+7. **Running**, through 10.9.
+   - Whole files pass paths. A partial selection passes 9.50's tree id, never `-i`.
+   - When 9.15's plan reports a combined description, 10.8's form opens on the target first, as for Squash into parent (10.25 item 9; Claude's proposal).
+   - 10.23 shows "Moved <what> into <T>", "Moved <what> into a new change after <T>" or "… before <T>", with Undo (DND:70, :74, :76).
+8. **Escape** cancels the drag without a call (10.10).
+
+**Non-goals.**
+- Change and bookmark drags (10.10).
+- Edge targets (decision (a4)).
+- A `split -o` row, and moving hunks between files (neither is in the design).
+
+**Depends on.** 10.10 (the engine), 10.24, 10.23; 10.26 for partial selections (whole files work without it); 9.15, 9.31's `diff` source and 9.50.
+
+**Design status.** Built to the design (decision (d)) and to decision (a4). NEEDS DESIGN, with Claude's default adopted (decision (g)): the drags belong to 10.10's engine, and 9.31 gains a `diff` source.
+
+**Witnesses** (fake `drop_actions` and actions ports).
+- A file row carries all its hunks. A hunk inside a multi-selection carries the whole selection. The label matches each case.
+- The source, an immutable card and the root are not targets, and stacks stay inert.
+- The menu shows only the fake result's applicable rows; "after" is absent when T has an immutable child.
+- A plain drop runs "Move into this change".
+- Whole files pass paths; a partial selection passes a tree id and never `-i`.
+- The lifted state shows during the drag and clears after it. Escape cancels with no call.
+- The toast text per row.
+
+**Related:** 10.10, 10.23, 10.24, 10.25, 10.26; 9.15, 9.31, 9.50; the Epic 10 header, "Design update 2026-10-14".
+
+---
+
+## Epic 11: Floating app shell (Flutter UI)
+
+> **Granularity:** backlog-level, like Epics 9 and 10. Full acceptance criteria are written per story (via `bmad-create-story`) when it is scheduled.
+>
+> **Tags:**
+> - `[docs]`, `[UI]` and `[UI/bridge]` mean what they mean in Epic 10.
+> - `[UI/native]`: UI plus the macOS runner's Swift (`app/macos/Runner/`).
+>
+> **Scope change (Ralph, 2026-10-14):** the work has grown so much that Ralph revised "the Flutter UI is Ralph's". Claude now builds the whole Flutter UI — Epic 10 and this epic — and Ralph accompanies and reviews every story. Story 11.0 wrote the change into the canonical rules (done). UI code is written only inside a story that asks for it.
+>
+> **Added 2026-10-14 (Ralph, console session on the floating-client export `e74ced3`).** The decisions of the Epic 10 header's "Design update 2026-10-14" apply here too. This epic cites them as "decision (x)". Prototype defects are numbered in the Epic 10 header's list; 60–76 are this epic's.
+
+**Goal.** The window around the graph, as the floating client draws it (`JJ Desktop Client Floating.html`; design `CLAUDE.md:3`). The graph fills the window, and every control floats above it on glass islands (DS readme.md:3, :82-86). Epic 11 builds everything that is not the graph:
+- the design-system foundation (11.1) and the glass material (11.2);
+- the overlay host (11.3): the top bar's grid Place · View · Action, the rail with hover previews and pins, the pinned-panel host, the graph's insets and calm scrolling;
+- the native window chrome for that layout (11.4);
+- projects: the registry, the project capsule, the Project menu and switching (11.5), and the Projects dialog on real data (11.6);
+- the Settings window (11.7);
+- sync: Fetch, Push, the remote-change poll and its badge (11.8);
+- the Undo Timeline (11.9);
+- retiring the docked mock UI (11.10).
+
+**What stays in Epic 10.** The graph, and whatever is graph-semantic, even where it floats:
+- the View capsule's content and New change (10.7);
+- the search field (10.21) and the jj log Configurations dialog (10.22);
+- the Bookmarks rail item (10.14);
+- the @ pill (10.6);
+- the inspector (10.8, 10.24–10.27);
+- the minimap (10.16);
+- the operation toast (10.23).
+
+Epic 11 hosts them through 11.3's slots and 10.5's contract. Insets go into the graph; calm and the chrome-facing `api` come out of it (10.5's 2026-10-14 note).
+
+**Design input.** The floating client and the design system, with the abbreviations of the Epic 10 header's 2026-10-14 update. Tokens come from the design system (decision (f)).
+
+**House rules.** Epic 10's house rules apply (the design-system sync included), with two changes:
+- **Code locations** (Claude's proposal):
+  - `app/lib/src/features/shell/`: 11.3 and the Dart side of 11.4;
+  - `app/lib/src/features/projects/`: 11.5 and 11.6;
+  - `app/lib/src/features/settings/`: 11.7;
+  - `app/lib/src/features/sync/`: 11.8;
+  - `app/lib/src/features/undo_timeline/`: 11.9;
+  - `app/lib/src/shared/design/`: 11.1's tokens;
+  - tests mirror these under `app/test/`.
+- **App home:** the app's `MaterialApp` home becomes 11.3's shell, and the Yaru test page goes (11.10).
+
+**Sequencing.**
+- 11.0 is done (docs).
+- Then 11.1, 11.2 and 11.3 in that order. 11.1 precedes 10.1, whose `GraphTheme` derives from it. 11.4 runs in parallel with 11.2.
+- 11.5 follows 11.3. 11.6 and 11.8 follow 11.5. 11.7 follows 11.3, and its Project tab also needs 11.5. 11.9 follows 11.3.
+- 11.10 comes last: once 11.3, 11.4 and 11.6 have replaced the mock, and 11.1's tokens have replaced `ZanshinColors`.
+- Epic 10's widgets plug into 11.3's slots as they land. Until 10.12, the graph runs on recorded layouts behind 10.5's fake ports.
+
+### Story 11.0: Record the scope change in the canonical rules [docs]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`.)*
+
+> **Delivered (2026-10-14, console session):** next to every Epic 10 exception that Story 10.0 added, a dated note now reads "Changed 2026-10-14 (Ralph): the rest of the Flutter UI is built by Claude too — Epic 11, the floating app shell; Ralph accompanies and reviews". The sites:
+> - `CLAUDE.md`: the scope sentence, plus "UI code is written only inside a story that asks for it";
+> - `project-context.md`: `scope_reminder`; the Flutter-toolchain bullet; the coverage rationale (Epic 11's Dart lines stay unmeasured, like Epic 10's); the `flutter run -d macos` command; the rule "NEVER write Flutter UI code", which now allows UI code only inside an Epic 10 or Epic 11 story, or another story that asks for it;
+> - `prd.md`: the frontmatter `scopeBoundary` (Epic 11's accessibility included); §1's intro sentence and its note; §3.1's "No widgets" bullet; §3.2's "No Flutter widgets" and "No accessibility work";
+> - `epics.md`: § UX Design Requirements, the Epic 10 header's scope exception and the Epic 10 list entry's scope note, and Epic 9's sequencing note on the diff editor.
+>
+> Claude's auto-memory note on the scope split was updated the same day.
+
+**Motivation.** Ralph's answer of 2026-10-14, while the floating-client export was folded into the stories: since the work has grown so much, he revises "Flutter is my domain"; Claude now develops the stories, and he accompanies. Every build agent reads `CLAUDE.md` and `project-context.md` first. Without the change, Epic 11's stories would be refused as UI work, as Epic 10's would have been before Story 10.0.
+
+**Scope.** One dated note at each site listed above. The general rule and its history stay; only the change is added.
+
+**Non-goals.** No code. No other rule changes.
+
+**Witness.** `grep -in "changed 2026-10-14"` hits every site listed above.
+
+---
+
+### Story 11.1: Design-system foundation — tokens as ThemeExtensions for night and paper, type, metrics, elevation, motion, cursor policy, reduce motion, the app theme, fonts, the icon rule, the DS parity test [UI]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3` and the design-system export; Claude builds it under the scope change of 11.0. DS synced through #9. It precedes 10.1.)*
+
+**Motivation.** Every Epic 10 and Epic 11 view draws with the same few values: the indigo canvas, the solid cards, the glass, the text ladder, gold for @ and the one primary action, and moon for selection, focus and controls (`DS readme.md:73-78`). The design system holds them as tokens for night and paper (`DS tokens/`). The app has none of them today:
+- `ZanshinColors` (`app/lib/src/shared/theme/zanshin_colors.dart:10-167`) carries the docked mock's palette: neutral greys, a grey text ladder and the legacy blue #3b82f6. Only night's add and rem match the DS. Canvas, cards, @, moon, glass, lines, shadows, radii, type and motion are missing.
+- Nothing registers it. The `ThemeData` builder is commented out (`app/lib/src/features/app/zanshin_app.dart:31-74`). The running app is the Yaru test page, with the macOS accent as its primary and the DS canvas-base as its base colour (`:111-118`). `context.zc` force-unwraps (`zanshin_colors.dart:170`).
+- Reduce motion never reaches Flutter on macOS (item 7), so every reduce-motion rule in Epic 10 is inert today.
+
+This story turns the DS tokens into Dart once. `GraphTheme` (10.1) and every Epic 11 surface derive from it.
+
+**Scope.**
+1. **The token layer** in `app/lib/src/shared/design/` (design question (a)).
+   - It holds every custom property of `DS tokens/colors.css`, `effects.css`, `spacing.css` and `typography.css`, once. Names follow the CSS (`--card-solid-hi` → `cardSolidHi`). Each group cites its DS file:line, and a constant records `dsSyncedThrough = 9`.
+   - oklch values are converted once to sRGB, with the source in a comment. All of them lie inside the sRGB gamut, e.g. moon ≈ #aebcec and saffron ≈ #f2a618.
+   - Composite tokens keep their parts: the canvas's radial and linear stops, the sheen as a 46 px band (not a fraction of the height), and each shadow's offset, blur, spread and colour, with inset parts flagged.
+   - Values the components use without a token are named too, marked as such (Claude's proposal): the glass field well, rgba(8,10,22,.45) / white .9 (`DS components/forms/forms.css:45-46`); the radii 4.5, 5, 7 and 13 (e.g. `DS components/menus/menus.css:18`); the gold primary's mixes (`DS components/actions/actions.css:8-12`); the 240 ms dialog entrance (item 6).
+2. **Theme-dependent groups are `ThemeExtension`s.** Colours and elevation each have `night`, `paper`, `lerp` and an `of(context)` that falls back to `night` and never force-unwraps.
+   - Theme-independent groups are constant classes: type, metrics and motion.
+   - The names are new (Claude's proposal: `ZsColors`, `ZsElevation`, `ZsType`, `ZsMetrics`, `ZsMotion`), so the legacy `ZanshinColors` keeps compiling until 11.10 retires it.
+3. **Type roles** (`DS tokens/typography.css:27-38`; `DS readme.md:80`).
+   - Families use their pubspec names (`app/pubspec.yaml:56-68`): `Inter` for the UI, `JetBrainsMono` for everything jj prints (ids, revsets, commands, paths, diffs, counts), `ShipporiMincho` only for 残心.
+   - Inter and JetBrains Mono are variable TTFs, so each style sets `FontVariation.weight` next to `fontWeight`, as the splash does (`app/lib/src/features/bootstrap/splash_card_render.dart:76-77`).
+   - Line height is `height` with `TextLeadingDistribution.even`, CSS's half-leading. Letter spacing in em becomes px (em × size).
+   - The caps role upper-cases its string, because Flutter has no text-transform. Styles carry no colour; a view takes it from the colour extension.
+4. **Metrics:** the spacing scale (`DS tokens/spacing.css:7`), the radius ladder (`DS tokens/effects.css:5-17`), and the graph defaults for 10.1's `GraphMetrics` (`DS tokens/spacing.css:18-19`).
+   - The chrome geometry (`DS tokens/spacing.css:9-16`): a 12 px inset, a 44 px top bar, 36 px controls and a 52 px left column, so content starts at 68 from the top and 76 from the left. The inspector is 460 wide, a pinned panel 300, the minimap 134.
+   - The interaction values (`DS readme.md:96`): focus is a 2 px `--accent` outline at offset 2 (cards 3, segmented controls 1); disabled is opacity .38.
+5. **Elevation** (`DS tokens/effects.css:19-29`, paper `:41-51`): the shadows and rings as data, plus a converter to `BoxShadow`.
+   - CSS blurs a shadow with σ = blur / 2, but `BoxShadow.blurRadius` maps r to σ = 0.57735·r + 0.5. The converter therefore passes r = (σ − 0.5) / 0.57735.
+   - Inset parts, such as `--fl-shadow`'s 1 px highlight, have no `BoxShadow`. They are handed to 11.2, which paints them.
+   - Paper uses umber where night uses black.
+6. **Motion** (`DS tokens/effects.css:35-38`; decision (c)).
+   - Curves: glide, `Cubic(.32, .72, 0, 1)`, for everything; spring, `Cubic(.3, 1.4, .5, 1)`, only where the DS keeps it; loader, `Cubic(.65, .05, .35, .95)`.
+   - Durations in ms: hover 120, menu 110, popover 160, panel 200, slide and the edges' fade-back 260, re-layout (FLIP) 460, birth 540, dialog 240 (Claude's proposal; the DS's `Dialog` says 160, see deferred-work), flash 2,400.
+   - Under reduce motion every duration is zero, and the flash is static.
+7. **Reduce motion from macOS.** Flutter's macOS embedder never reports it.
+   - Only the iOS embedder sets the flag. Nothing under the engine's `darwin/macos` calls `FlutterEngineUpdateAccessibilityFeatures` (checked in the local SDK checkout, `flutter-3.47-candidate.0`).
+   - `MediaQuery.disableAnimations` is therefore always false on macOS. The splash's check (`app/lib/src/features/bootstrap/splash_card.dart:54`) and every Epic 10 reduce-motion rule never fire.
+   - The fix:
+     - `zanshin_shell` adds `reduceMotion` and `reduceTransparency` to `ShellTheme` (`packages/zanshin_shell_platform_interface/lib/src/shell_theme.dart:9-17`);
+     - the macOS side reads `NSWorkspace.shared.accessibilityDisplayShouldReduceMotion` and `…ShouldReduceTransparency`, and re-sends both on `accessibilityDisplayOptionsDidChangeNotification`, as it does for the appearance today (`packages/zanshin_shell_macos/macos/zanshin_shell_macos/Sources/zanshin_shell_macos/ZanshinShellPlugin.swift:36-61`);
+     - every window root, the splash's included, overrides `MediaQuery.disableAnimations` with `reduceMotion`, so existing `disableAnimationsOf` calls work unchanged;
+     - 11.2 consumes `reduceTransparency`.
+8. **Cursor policy** (`DS readme.md:100`): the arrow everywhere. Zanshin's widgets never set a click cursor.
+   - Material shows a pointing hand on desktop, so the app theme sets `mouseCursor` to `SystemMouseCursors.basic` in every Material component theme that has one.
+   - `grabbing` shows only while the canvas is held (10.1's pan). A link with a target is the one exception.
+9. **The app theme on the tokens** (`app/lib/src/features/app/zanshin_app.dart:76-121`).
+   - Night is the dark theme and paper the light one. `system` follows `ShellTheme.brightness`, as it does today.
+   - The Yaru builder stays the Material baseline. `createYaruDarkTheme` / `createYaruLightTheme` get the primary that design question (c) picks, `--canvas-base` as the base colour, `--rem` as the error colour and `Inter` as the font.
+   - On top of it: the token layer's extensions (plus 10.1's `GraphTheme` once it exists), a text theme from the type roles, the cursor policy, and `NoSplash` with hover, highlight and focus colours from `--fl-hover`, `--fl-on` and `--accent` (the DS uses fills, not ripples: `DS readme.md:96`).
+   - The splash stays always dark, with no theme lookup. The Yaru test page stays the home; replacing it is not this story's.
+10. **Fonts.**
+    - The variable TTFs stay: Flutter does not load woff2 on desktop, and the DS's woff2 files are for the web.
+    - Shippori Mincho is subset to 残心 (U+6B8B, U+5FC3) for 500 and 600, the DS's own subset (`DS tokens/fonts.css:6-7`), which removes about 17 MB from the bundle. The OFL names no Reserved Font Name (`app/assets/fonts/Shippori_Mincho/OFL.txt:1`), so the subset keeps its family name. The subset command is recorded next to the font.
+    - The undeclared weights and italics leave the repo (Claude's proposal).
+11. **The icon rule** (the 2026-09-28 deferred-work item "8 new icons in the export"; decision (g)).
+    - `app/assets/icons/svg/` stays the source.
+    - The story that first draws an icon copies it, in snake_case, from `DS components/brand/Icon.jsx`, and maps it in `ZI` (`app/lib/src/shared/widgets/zanshin_icon.dart:29-66`). The copy uses `currentColor` and drops the C2PA block; the DS's own files stroke with `#000` (see deferred-work).
+    - The 17 glyphs that exist only inline in `Icon.jsx:51-72` are copied the same way: the drop-menu marks, `arrow-up`, `more-bold`, ….
+    - `working-copy-at` is text, "@" in JetBrains Mono 700, not an icon.
+    - Today 11 of the DS's 48 are missing: abandon, bookmark, bookmark_filled, change, describe, description, squash, stack_collapse, stacked_on, view_options and working_copy_at.
+12. **The DS parity test** (design question (b)).
+    - It reads `../_bmad-output/implementation-artifacts/design_system/tokens/*.css` (`flutter test` runs in `app/`, `Makefile.toml:96-100`). It checks every custom property of the night and paper blocks against the token layer.
+    - A changed, added or removed token fails, and the message names it.
+    - oklch values are compared after conversion, within 1/255 per channel.
+    - It does not compare the sync number (Claude's proposal). A re-download that changes only components keeps the gate green; the house rule "Design-system sync" covers that case.
+
+**Non-goals.**
+- The glass, menu and dialog materials (11.2).
+- Controls: buttons, segmented controls, switches, fields and menu rows. The first story that needs each one builds it on these tokens.
+- Window chrome, and the canvas versus the vibrancy behind it (11.4).
+- Retiring `ZanshinColors`, `context.zc`, the mock widgets, the icon font (if (d) picks SVG) and the older app icon (11.10).
+- Density. The DS keeps a Settings row for it but no tokens (deferred-work); the token layer carries the DS's compact sizes only.
+
+**Depends on.** 11.0.
+
+**Design status.** FINAL: the DS tokens as cited, and decisions (c) and (f). NEEDS DESIGN, each with Claude's recommendation (decision (g)):
+- (a) **Where the token layer lives.** Recommended: `app/lib/src/shared/design/`. It becomes a package only once a second consumer outside the app appears.
+- (b) **The parity test inside `cargo make test`.** Recommended: yes. A DS re-download that changes a token then turns the gate red until the token layer follows. The alternative is a separate task outside the gate.
+- (c) **The accent of the app's controls:** the macOS system accent, as today, or moon. Recommended: moon, as the DS says (`DS readme.md:76`). Gold stays with @ and the one primary action.
+- (d) **One icon mechanism:** SVG through `ZanshinIcon`, or the icon font `Zanshin.ttf` (`app/lib/src/shared/theme/zanshin_icons.dart`; 45 glyphs, used nowhere yet). Recommended: SVG. Its files come straight from the DS and need no generator. The font lacks change, description, view-options and the 17 inline glyphs, and every new glyph needs a manual regeneration. With SVG, 11.10 deletes the font.
+
+**Witnesses.**
+- The parity test passes on the DS at `e74ced3`. On a copied CSS fixture, a changed, an added and a removed token each fail with the token's name.
+- The stored sRGB values of the oklch tokens (saffron, moon, warn, and conflict and `--fl-gold` on paper) equal the conversion within 1/255.
+- `of()` returns `night` without registration. `lerp(night, paper, .5)` gives the midpoint for a colour and for a shadow.
+- Each type role has the DS's size, weight, height and letter spacing. An Inter line at 600 is wider than at 400, so the weight axis is applied.
+- The converter turns `0 14px 36px -12px` into σ 18 (blurRadius ≈ 30.3) with spread −12.
+- With a fake shell reporting `reduceMotion`, `MediaQuery.disableAnimationsOf` is true below the app root and every motion duration is zero. Toggling it updates the running app.
+- Under the app theme, a hovered Material button, checkbox and switch show the arrow (`debugDeviceActiveCursor`).
+- Light, dark and system pick paper or night. The primary is (c)'s answer, and the app theme carries the extensions.
+- The Shippori subset holds only the two glyphs, and the splash renders 残心 unchanged (checked by eye, as the splash was).
+
+**Related:** 10.1 (`GraphTheme`, `GraphMetrics`), 11.2 (materials, `reduceTransparency`), 11.4 (canvas and vibrancy), 11.10 (retirement); the Epic 10 house rules Theme and Design-system sync.
+
+---
+
+### Story 11.2: Glass material primitives — islands in regular and strong glass, menu, popover and callout material, the dialog sheet and scrim, the solid fallback [UI]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3` and the design-system export; Claude builds it under the scope change of 11.0. DS synced through #9.)*
+
+**Motivation.** The floating client's one idea is that the change graph owns the window, and every control floats above it on glass islands (`DS readme.md:3`). It uses a handful of materials for all of it (`DS readme.md:86`):
+- glass islands for the top bar, the rail, the pinned panels, the inspector and the minimap;
+- an opaque menu material for popovers, menus and callouts;
+- one 18 px dialog sheet on a blurred scrim, for Projects, Settings and the jj log Configurations.
+
+Both epics build on them:
+- **Epic 10:** the toolbar (10.7), the bookmark panel (10.14), the minimap (10.16), the search (10.21), the Configurations dialog (10.22), the toast (10.23), the inspector (10.8, 10.24–10.27), and the callouts of 10.6, 10.17 and 10.19.
+- **Epic 11:** 11.3–11.9.
+
+This story builds the materials once, on 11.1's tokens.
+
+**Scope.**
+1. **The glass island** (`DS components/surfaces/surfaces.css:2-7`; `DS components/base.css:8`).
+   - **Fill:** `--fl-sheen` over `--fl-bg`. The sheen fades white .045 → 0 over the top 46 px (paper .6). `--fl-bg` is rgba(26,31,56,.66) (paper rgba(255,253,250,.74)).
+   - **Edge:** a 1 px `--fl-border`, plus `--fl-shadow` (`DS tokens/effects.css:19`, `:41`):
+     - a 1 px top highlight inside the border, white .05 (paper .8), painted as a line;
+     - two drop shadows.
+   - **Backdrop:** blur σ 18 composed with the CSS `saturate(1.4)` colour matrix (`DS tokens/effects.css:31`).
+   - **Shapes** (`DS components/surfaces/surfaces.css:3-6`):
+     - bar: 44 px high, padding 0 4, radius 14;
+     - rail: padding 5, gap 4, radius 16;
+     - panel: radius 16, clipped;
+     - separator: 1 × 20 px in `--fl-border`, with 4 px margins.
+   - Islands sit 12 px from the window edge and from each other, and they never nest (`DS components/surfaces/Island.prompt.md:13`).
+2. **Strong glass**, for the inspector, the pinned panels, the minimap and the toast (`DS components/surfaces/surfaces.css:4`; `DS tokens/effects.css:32`; `FC:22`; `DS components/overlays/overlays.css:4`):
+   - `--fl-bg-strong`, rgba(24,29,52,.86) (paper .9), under the same sheen;
+   - blur σ 22 with saturate 1.4.
+3. **Menu material, without blur** (`DS readme.md:86`).
+   - **Popover**, for view options and other sheets on an island button (`DS components/surfaces/surfaces.css:10-13`; `DS components/surfaces/Popover.prompt.md:13`):
+     - `--fl-sheen` over `--fl-bg-solid`, a 1 px `--fl-border`, radius 14, padding 6 8 10, `--shadow-menu`;
+     - it enters in 160 ms on the glide curve, rising 4 px and growing from scale .98, from its top-right corner.
+   - **Glass menus** (the drop menu, the project menu, the search menu): the same material at radius 13 (`DS components/menus/menus.css:18`, `:36`).
+   - **Callout**, for the rail's hover previews and the commit and gap callouts (`DS components/surfaces/surfaces.css:16-18`):
+     - radius 12, `--shadow-callout`, a 10 px arrow toward its target;
+     - it enters in 140 ms on the glide curve, sliding in from 4 px aside.
+   - **Context menu** (`DS components/menus/menus.css:2`):
+     - `--bg-elevated`, a 1 px `--border-strong`, radius 10, `--shadow-popover`;
+     - it enters in 110 ms ease-out, growing from scale .97.
+4. **The dialog sheet and its scrim** (`DS components/surfaces/surfaces.css:27-28`; `FC:233-236`, `:269-272`; `STC:28`).
+   - **Scrim:** `--scrim`, rgba(7,9,20,.48) (paper umber .18), with blur σ 12 and saturate 1.2. It fades in over 160 ms.
+   - **Sheet:** radius 18, `--fl-sheen` over `--fl-bg-solid`, a 1 px `--fl-border`, and `--shadow-dialog` (umber on paper).
+   - **Entrance:** 240 ms on the glide curve, rising 8 px and growing from scale .985, as the client's Settings and Configurations dialogs do (`STC:28`, `FC:271`). The DS's `Dialog` says 160 ms; 240 ms follows the newer client (Claude's proposal; see deferred-work).
+5. **The solid fallback** (`DS components/base.css:9`; `DS components/surfaces/surfaces.css:7`; `DS guidelines/material.html:1`, "solid fallback for reduced transparency"). It applies while macOS Reduce transparency is on (`ShellTheme.reduceTransparency`, 11.1 item 7):
+   - every glass surface paints `--fl-sheen` over `--fl-bg-solid` and skips the backdrop filter;
+   - the scrim keeps its colour and skips the blur;
+   - it follows the system setting while the app runs.
+6. **One backdrop per window** (design question (a)).
+   - All glass in a window sits under one `BackdropGroup`, and every glass surface uses `BackdropFilter.grouped`, so the backdrop is read once per frame.
+   - 11.3's overlay host provides the group.
+7. **Paint discipline.**
+   - Each material paints its fill, sheen, highlight and border in one `RenderBox`, under the backdrop filter (the house rule Visuals). Nothing is built from nested containers.
+   - Entrances use 11.1's motion values and are skipped under reduce motion.
+   - Every material keeps the arrow cursor (11.1 item 8).
+8. **A gallery page** for Ralph's review (Claude's proposal). It shows every material in night and paper over a busy canvas, with switches for reduce transparency and reduce motion.
+
+**Non-goals.**
+- Placement, anchoring, flipping, the outside tap and calm scrolling (11.3).
+- Window chrome, the canvas, and the vibrancy behind it (11.4).
+- Controls, and the contents of menus, popovers and dialogs (the stories that use them).
+- The toast's layout and its Undo (10.23). This story gives it the strong glass only.
+
+**Depends on.** 11.1: the tokens, the elevation converter, the motion values and `reduceTransparency`.
+
+**Design status.** FINAL: the DS materials as cited. NEEDS DESIGN, each with Claude's recommendation (decision (g)):
+- (a) **The cost of glass.** Recommended: grouped backdrops (`BackdropGroup`) with the DS's solid fallback.
+  - Measured over a scrolling 10k graph (10.1's synthetic recording) with the shell's islands open: the three top-bar islands, the rail, the inspector and the minimap.
+  - The numbers go into this story's notes. If the frame budget is missed, Ralph decides between the solid material while scrolling and fewer blurred surfaces.
+- (b) **Reduce transparency comes from the system only**, through `zanshin_shell` (11.1 item 7). Recommended: yes, with no in-app switch; the DS has none.
+
+Claude's proposals, not questions: the 240 ms dialog entrance (item 4), and the top highlight as a painted line (item 1).
+
+**Witnesses.**
+- Each material paints its DS values in night and in paper: fill, sheen band, border, highlight, shadows (with 11.1's σ conversion) and radius (`paints` matcher).
+- Backdrops:
+  - an island has a grouped `BackdropFilter` with blur σ 18 and the saturate-1.4 matrix;
+  - strong glass uses σ 22;
+  - the scrim uses σ 12 with saturate 1.2;
+  - three islands share one group key.
+- With `reduceTransparency` on:
+  - the tree holds no `BackdropFilter`;
+  - glass paints `--fl-bg-solid`;
+  - the scrim has no blur;
+  - toggling it at runtime switches every visible surface.
+- Entrances take 160 ms (popover), 110 ms (context menu), 140 ms (callout), 240 ms (dialog) and 160 ms (scrim fade), and none under reduce motion.
+- The arrow cursor shows over every material.
+- In profile mode, frame build and raster times over a scrolling 10k graph with six islands are recorded, not gated.
+
+**Related:** 11.1, 11.3 (the overlay host and the group), 11.4 (canvas and vibrancy), 11.5–11.9; 10.6, 10.17 and 10.19 (callouts), 10.7, 10.8, 10.14, 10.16, 10.21–10.27.
+
+---
+
+### Story 11.3: Floating overlay host — top-bar grid Place · View · Action, rail with hover previews and pins, pinned-panel host, insets provider, calm scrolling [UI]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
+
+**Motivation.** In the floating client the graph owns the window, and every control floats above it (DS readme.md:3; AF:2). One component, `FloatChrome` (AF:84-220), does three things:
+- it lays the islands out on one 12 px rhythm;
+- it runs the rail's hover previews and pins;
+- it tells the graph which margins the chrome covers (AF:252).
+
+While the graph scrolls, the chrome steps aside. This story builds that host. It owns no graph semantics: Epic 10 and the other Epic 11 stories fill its slots.
+
+**Scope.**
+1. **Shell and mount** (Claude's proposal).
+   - `FloatingShell` in `app/lib/src/features/shell/` becomes the app's home. `HomePage` returns it; today it returns `const AppShell()` (`app/lib/src/features/home/home_page.dart:22`). `ZanshinApp`'s `home` switches from the Yaru test page (`app/lib/src/features/app/zanshin_app.dart:147`) to `HomePage`.
+   - The layers, bottom to top: 11.4's canvas, the graph view (Epic 10) and the overlay. The overlay passes pointer events through everywhere except on its islands (FC:48-51). 11.4 reserves the bar's row for dragging the window.
+   - Until 10.12 the graph layer runs on 10.5's fake ports and recorded layouts, so Ralph can review the shell in the running app.
+2. **Geometry**, from 11.1's tokens (AF:31-32; DS `tokens/spacing.css:9-16`): inset 12, bar 44, control 36, rail button 40, chrome column 52, content top 68, content left 76, pinned panel 300, inspector 460, minimap 134.
+3. **Top bar** (AF:139-181; FC:47-88).
+   - It sits 12 px from the top, left and right edges, in three columns 12 px apart: `minmax(max-content,1fr) minmax(0,max-content) minmax(max-content,1fr)` (FC:50; SYNC:41).
+   - When the window narrows, the centre gives way first, and the side groups keep their size (FC:49). It is a custom multi-child layout, not nested `Row`s (Claude's proposal).
+   - **PLACE** (left): 11.4's traffic-light column (52 px, not an island; FC:55-56), then 11.5's project capsule.
+   - **VIEW** (centre): one island (11.2) holding 10.21's search field and 10.7's controls.
+   - **ACTION** (right): 11.8's sync group, then 10.7's New change, 8 px apart (FC:81).
+   - Focus rings are 2 px moon at a 2 px offset (FC:205; decision (f)).
+4. **Rail** (AF:20-25, :183-192; FC:104-109).
+   - A glass island at left 12, top 68, with padding 5, gap 4 and radius 16, as wide as the traffic-light column above it.
+   - Buttons are 40 × 40, radius 11, with 19 px icons in `--text-dim`. Hover uses `--fl-hover`; a pinned item uses `--fl-on`.
+   - Items come from a list of rail items, each with an id, label, icon, count, preview body and panel body (Claude's proposal). Bookmarks comes from 10.14, Undo Timeline from 11.9.
+   - Workstreams and Reviews are hidden (design question (a)).
+5. **Hover preview** (AF:95-103, :194-203; FC:111-127; DS `components/surfaces/Callout.prompt.md:1`).
+   - **Opening and closing.** It opens 90 ms after the pointer enters a rail button while no preview is open. While one is open, it switches at once (AF:100). It closes 200 ms after the pointer has left both the button and the preview (AF:102); entering the preview cancels the close (AF:195).
+   - **Pins.** The pinned item shows no preview (AF:97). A click toggles the pin, one item at a time, and closes the preview (AF:103).
+   - **Placement.** 14 px right of the button, with its arrow at the button's centre (AF:99; FC:112-115). It is 290 px wide, in callout material (11.2). Its header holds a 14 px icon, the label and the item's count in mono 11 px (FC:116-118).
+   - **Keyboard** (Claude's proposal). Focusing a rail button opens its preview, Enter or Space pins, and Esc closes. The export reacts to the mouse only (AF:185-188).
+   - The preview is a non-modal popup whose rows the keyboard can reach. It is not a tooltip, as the export's `role="tooltip"` suggests (AF:195; prototype defect 60).
+6. **Pinned-panel host** (AF:205-211; FC:129-134).
+   - Left 76, top 68, bottom 12, 300 px wide, radius 16, in the strong glass (11.2).
+   - It slides in from 8 px to the left in 200 ms with the glide curve. Under reduce motion it appears without motion.
+   - The host draws the header (icon, title, close), and the item supplies the body. Close unpins.
+7. **Insets provider.** It publishes 10.5's `GraphInsets` (10.5 item 14; AF:252): left 76, or 388 while a panel is pinned; top 68; right 12; bottom 12; and the inspector's and the minimap's widths.
+   - **Narrow window** (Claude's proposal): when the inspector opens and less than 320 px of graph would stay visible, the pinned panel unpins. At the 900 px minimum width, a panel plus the inspector leave only 28 px (prototype defect 62).
+8. **Calm scrolling** (FC:154-163; GV:932-951). 10.5 publishes the signal (10.5 item 15), and this host reacts to it.
+   - **Gate:** the preference General › While you scroll › Hide controls, on by default (ST:81-82; 11.7). When it is off, nothing steps aside (GV:936).
+   - **Trigger**, restated from 10.5: user scrolling only, never a programmatic scroll.
+     - A wheel adds |dx| + |dy| (GV:1095); a ⌃-wheel never counts.
+     - A canvas pan adds |movementX| + |movementY| (GV:1017).
+     - A minimap drag adds a flat 40 per pointer move (GV:512), and a minimap wheel adds |dx| + |dy| (GV:515).
+     - Calm turns on above 30 px. It turns off 650 ms after the last wheel event, or 420 ms after the last pan move (GV:939-951).
+     - A drag, or an open menu or dialog, blocks it (GV:941).
+   - **The inspector pin** is decided once, when a calm phase starts: a focused text field inside the inspector keeps the inspector (GV:944-946). It is not re-checked during the phase.
+   - **What steps aside:**
+     - the project capsule, the View capsule and the ACTION group fade and move 6 px up (FC:159);
+     - the rail and the pinned panel fade and move 8 px left (FC:160);
+     - the inspector fades and moves 16 px right, unless it is pinned (FC:161);
+     - the @ pill fades out in 120 ms (FC:162);
+     - the card's ••• button, the peeks, the stack popovers, the bookmark popovers and the rail's previews are hidden outright (FC:163).
+
+     Hover clears (GV:947), and islands that stepped aside ignore the pointer.
+   - **What stays:** the traffic lights; the toast; the minimap, which comes forward where the inspector was (FC:155-156; GV:1155); and the View capsule while its search field has focus, its suggestions are open or its menu is open (SRC:101).
+   - **Timings.**
+     - Out: opacity 150 ms and transform 220 ms with ease; the inspector's transform takes 240 ms.
+     - Back: after 60 ms, opacity 280 ms and transform 340 ms with the glide curve (FC:57, :158-161).
+     - The minimap's own motion: in, opacity 200 ms and transform 260 ms on the glide; out, opacity 160 ms and 18 px to the right, hidden after 260 ms (FC:25-26).
+   - Under reduce motion the islands hide and return without motion.
+   - The host counts its open menus and dialogs explicitly; the export scans the page for them (GV:941; prototype defect 61).
+9. **The bottom-centre slot.** 10.6's @ pill and 10.23's toast centre on 10.5's visible rect, 20 px above the bottom. The pill hides while a toast shows (AF:134-135, :213-214; GV:1180-1181).
+10. **Semantics** (Claude's proposal): each island is a labelled group, and the rail is a toolbar whose buttons report their pressed state.
+
+**Non-goals.**
+- What fills the slots: 10.6, 10.7, 10.8, 10.14, 10.16, 10.21, 10.23, 11.5, 11.8 and 11.9.
+- The native window chrome and the drag region (11.4).
+- Panels for Workstreams and Reviews.
+
+**Depends on.** 11.1 and 11.2; 10.5 items 14 and 15. The slots fill as their stories land. Until then, each slot holds an empty island (Claude's proposal).
+
+**Design status.** The export gives the direction (decision (d)), and the citations above are FINAL in that sense. NEEDS DESIGN:
+- **(a) Workstreams and Reviews.** jj v0.46.0 has neither: there is no `workstream` command under `cli/src/commands/`, and reviews exist only as `jj gerrit`. The export's empty state names a command that does not exist (AF:124; prototype defect 63). Recommendation (decision (g)): hide both rail items until a backend exists.
+- **(b) The cost of the glass over a scrolling 10k-commit graph.** Recommendation (decision (g)): grouped backdrops, with the design system's solid fallback (DS `components/surfaces/Island.prompt.md:14`), measured in 11.2.
+
+**Witnesses.**
+- **Layout.** At 1440, 1100, 1000 and 920 px wide:
+  - the islands sit 12 px from the edges and from each other;
+  - the centre shrinks first;
+  - the count hides at 1040 px;
+  - New change shows its icon only at 920 px.
+- **Pointer.** Below the bar's row, a press between islands starts a graph pan.
+- **Rail.**
+  - The preview opens after 90 ms and switches at once between buttons.
+  - It stays open while the pointer is inside it, and closes 200 ms after the pointer leaves.
+  - The pinned item shows no preview. A click pins and unpins, and only one item is pinned at a time.
+- **Insets.** Pinning publishes left 388 and unpinning publishes 76. 10.5's "no card moves" witness passes with the real host.
+- **Calm.**
+  - 31 px of wheel scrolling moves the listed islands as listed and keeps the traffic lights, the toast and the minimap.
+  - A ⌃-wheel and a programmatic reveal hide nothing, and an open menu blocks calm.
+  - A text field focused in the inspector when the phase starts keeps the inspector.
+  - With Hide controls off, nothing moves. Under `disableAnimations`, nothing animates.
+- **Keyboard.** Tab reaches each rail button, focus opens its preview, and Enter pins.
+
+**Related:** 10.5 (insets, calm, the visible rect), 10.6, 10.7, 10.14, 10.21, 10.23, 11.1, 11.2, 11.4, 11.5, 11.8, 11.9.
+
+---
+
+### Story 11.4: Window chrome for the floating layout — traffic lights in the bar row, drag region, canvas background, minimum size [UI/native]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
+
+**Motivation.** The floating client puts the traffic lights into the top bar's row, in the 52 px column above the rail (FC:55-56; DS `components/window/TrafficLights.prompt.md:1`). It paints the window with two static shaders, night and paper (AC:6-9, :42-45).
+
+The native chrome comes from the docked design (`app/macos/Runner/MainWindowChrome.swift`):
+- a transparent full-size titlebar and a minimum size of 900 × 600 (:52-58);
+- an `NSToolbar` that moves the window buttons down and blocks native dragging in the titlebar, because Flutter handles dragging (:43-48, :66-72);
+- a vibrancy view with a 20 px corner radius behind a transparent Flutter view (:90-110);
+- gray resting rings over the buttons (`TrafficLightOverlayView`, :260).
+
+Flutter-side dragging already exists. `WindowDragArea` starts a native drag on a pan and runs the system titlebar action on a double-click (`packages/zanshin_shell/lib/src/window_drag_area.dart:15-31`; `packages/zanshin_shell_macos/macos/zanshin_shell_macos/Sources/zanshin_shell_macos/ZanshinShellPlugin.swift:123-127, :158`).
+
+**Scope.**
+1. **Traffic lights on the bar's centre line**, at y = 12 + 22 = 34 px and from x 12 to 64 (FC:55-56).
+   - Measure where AppKit places the standard buttons under today's toolbar, and prefer AppKit's own layout: AppKit rebuilds the titlebar often (MainWindowChrome.swift:155-164), so fixed button frames would fight it.
+   - If the native centre is not at 34 px, 11.3's bar follows the measured centre line, which `zanshin_shell` reports (Claude's proposal).
+   - The gray rings stay. The buttons stay visible while calm (FC:155).
+2. **Drag region** (design question (a)). Recommendation (decision (g)): the empty part of the bar's row, outside the islands, drags the window. A double-click runs the system titlebar action, which is zoom by default (`AppleActionOnDoubleClick`, ZanshinShellPlugin.swift:158).
+   - It is built with `WindowDragArea` under 11.3's islands. It reaches from the window's top edge down to the content top at 68 px (Claude's proposal).
+   - Below it, a press on empty canvas pans the graph (10.1).
+   - Native dragging stays blocked in the titlebar (MainWindowChrome.swift:43-48).
+3. **Canvas.** The night and paper shaders (AC:6-9, :42-45; 11.1's tokens) paint the window opaque, under the graph. `app/lib/main2.dart:50-52` already paints them as an example. There is no dot grid (FC:20). The graph view then runs in 10.2's transparent mode.
+   - The canvas clips to the window's corner radius, measured on the system (Claude's proposal). Today the vibrancy view supplies the rounding, with its 20 px radius (MainWindowChrome.swift:101).
+   - The vibrancy view goes once the canvas paints everywhere (Claude's proposal). Any view that stays below the Flutter view must stay event-transparent (MainWindowChrome.swift:652-666).
+4. **Minimum size.** 900 × 600 stays (Claude's proposal). The design's breakpoints run down to 920 px (FC:303) and the search's down to 980 px (SRC:105). At 900 px nothing overlaps.
+5. **Full screen.** The buttons hide in full screen, and the bar keeps its row. After full screen ends, the overlay re-attaches (MainWindowChrome.swift:125-136, :150-152).
+6. **Theme.** The window's appearance already follows the app theme (`app/lib/src/features/app/zanshin_app_view_model.dart:92-100`), so the native buttons match night and paper.
+
+**Non-goals.**
+- The bar's islands (11.3).
+- The splash window (done; `spec-promote-windowing-splash-to-main.md`).
+- Several windows.
+
+**Depends on.** 11.1 (the canvas tokens); 11.3 for the bar. 11.4 can land first, with a stub bar.
+
+**Design status.** FINAL: the citations above, as direction (decision (d)). NEEDS DESIGN: (a) the drag region; the recommendation is above.
+
+**Witnesses.**
+- **Button position**, checked without screen-recording permission (the CGWindowList probe and the overlay's frames): the buttons' centre line is the bar's within 1 px, from x 12 to 64.
+- **Drag.** A pan in the empty part of the bar's row moves the window, and a double-click zooms with the default system setting. A press below 68 px pans the graph.
+- **Canvas.** It follows a theme switch without a restart, and the window's corners stay rounded.
+- **Minimum size.** At 900 × 600 the window opens, and the bar's islands do not overlap.
+- **Full screen.** After full screen and back, the buttons and their rings are in place.
+
+**Related:** 11.1, 11.3, 10.1 (pan), 10.2 (the canvas); `spec-promote-windowing-splash-to-main.md` (the chrome's history).
+
+---
+
+### Story 11.5: Projects — registry, project capsule, Project menu, switching repositories [UI/bridge]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
+
+**Motivation.** The floating client names the open repository in the capsule at the top left. The capsule's menu holds everything about the place: recent projects, all projects, project settings and settings (AF:147-156; ST:15-49; DS `components/menus/ProjectMenu.prompt.md:1-12`).
+
+The app has no project model yet. The mock shell lists `MockProject`s (`app/lib/src/shared/data/mock_data.dart`). The worker boots (`app/lib/src/app/worker_lifecycle_module.dart`), but no feature opens a repository.
+
+**Scope.**
+1. **Registry** (Claude's proposal). An app-side, persisted tree of projects and groups. Each project has a path, a name, a group, an order, a last-opened time and a last known state.
+   - It lives in zanshin_settings as a new defaulted sub-model, under the no-migration rule (`packages/zanshin_settings/lib/src/model/app_settings.dart:10-16`).
+   - The export's `HOME_TREE` shows its shape (DA:304-339).
+   - jj knows nothing about it. 11.6 edits it.
+2. **Opening and switching.**
+   - **Detect first:** `ZanshinWorker.detect(path)` (3.4c).
+     - A jj workspace opens.
+     - A missing path is the `missing` state.
+     - A plain Git repository goes to 11.6's conversion offer.
+     - Anything else is refused. A folder inside a repository gets the enclosing repository offered, as detect suggests (FR-JJ-14).
+   - **Open:** `ZanshinWorker.openRepo(path)` (3.4a) yields the handle that 10.5's view model receives at `init`.
+   - **Switch** (Claude's proposal): the new handle opens first, and the old one closes after it. A failed open keeps the current project and shows the error.
+   - **Launch** (Claude's proposal): the last open project reopens. The Projects dialog shows only when there is no such project or it is missing. The export opens the dialog at every launch (AF:229; prototype defect 64).
+   - **Bridge part:** export `RepoHandle`, `OpenedRepoHandle`, the detect result and its kinds, and `WorkingCopyStatus` from `zanshin_core.dart`; the list is shared with 10.5's.
+3. **Project capsule** (AF:147-153; FC:57-64), in 11.3's PLACE slot. A glass island, 44 px high, radius 14, padding 0 12 0 8, with 10 px gaps. It holds:
+   - the Nami mark at 28 px, with its hairline ring (FC:60-61; DS `components/brand/NamiMark.jsx`);
+   - the name in 13 px semibold, cut with an ellipsis at 220 px (FC:63);
+   - the 7 px status dot, with its label as the tooltip (item 5);
+   - a chevron in `--text-dim`.
+
+   The capsule's tooltip is the path. A click toggles the Project menu; while the menu is open, the capsule shows as pressed (`--fl-on`, STC:5). It steps aside while calm (11.3).
+4. **Project menu** (ST:15-49; STC:4-18; DS `components/menus/ProjectMenu.jsx:5-30`): 300 px wide, 10 px below the capsule, left-aligned, radius 13, in menu material (11.2).
+   - **Recent:** up to 5 projects. The open one comes first with ✓, then the others by last opened; missing ones are left out (ST:20-21). A row has the 14 px check column, the name (semibold when open), the 6 px status dot, and the "branch" label in mono 11 px on the right.
+   - Then "All Projects…" (11.6), "Project Settings…" (11.7, Project) and "Settings…  ⌘," (11.7, General).
+   - Hover fills the row in moon with ink text (STC:10-11). Arrow keys, Enter and Esc work, and the Esc is consumed (ST:24-26).
+5. **Status dot** (STATUS_META, SH:1895-1904; DS `components/content/ProjectRow.jsx:5-14`). See design question (a).
+6. **"Branch" label.** See design question (b).
+7. **Last known state** (Claude's proposal). The registry stores each project's dot and branch label after every refresh and at close. The menu and 11.6 can then show projects that are not open.
+8. **Window title** (Claude's proposal). The window's title is the project's name, for the Window menu and Mission Control. The bar itself shows no title.
+
+**Non-goals.**
+- The Projects dialog (11.6).
+- Settings (11.7).
+- Several projects in several windows or tabs.
+- Any network access for projects that are not open.
+
+**Depends on.** 11.2 and 11.3; 3.4a (open), 3.4c (detect) and 2.4 (status), all shipped; 9.29 for ahead, behind and diverged.
+
+**Design status.** FINAL: the capsule and the menu as cited, as direction (decision (d)). NEEDS DESIGN:
+- **(a) What the dot means in jj, and what it costs for projects that are not open.** Recommendation (decision (g)): the full state only for the open project; other projects show `missing` or their last known state. For the open project:
+  - `conflict` when @ has conflicts;
+  - `dirty` when @ is not empty (2.4's `status()`);
+  - `ahead`, `behind` and `diverged` from 9.29's distances, for the bookmarks on @'s closest bookmarked ancestor;
+  - `syncing` while 11.8 fetches or pushes;
+  - `missing` from detect;
+  - `clean` otherwise.
+- **(b) jj has no current branch** (prototype defect 68). Recommendation (decision (g)): the bookmarks on @'s closest bookmarked ancestor (`heads(::@ & bookmarks())`), the first by name, or "—" when there is none. The label is evaluated through the topology call (4.10).
+
+**Witnesses.**
+- The registry survives add, reorder, group and reload. A file written by an older app version loads with defaults.
+- Opening a project hands 10.5 the handle. A switch closes the old handle only after the new one has opened. A failed open keeps the current project.
+- Launch reopens the last project; if it is missing, the Projects dialog opens instead.
+- The menu lists at most 5 recent projects, the open one first with ✓, and no missing ones. Its three items route to 11.6 and 11.7. Esc closes it and does not clear the graph's selection.
+- On fixtures, the open project's dot reads `conflict` with a conflicted @ and `dirty` with a non-empty @. Another project shows its stored state.
+
+**Related:** 10.5 (the handle at `init`), 11.3, 11.6, 11.7, 11.8, 9.29.
+
+---
+
+### Story 11.6: Projects dialog on real data [UI/bridge]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
+
+**Motivation.** The Projects dialog lists every repository Zanshin knows, in groups. It adds new ones from a directory, from a clone, or by dropping a folder (SH:1992-2187; FC:230-264; DS `components/content/ProjectRow.prompt.md:1-12`, `components/surfaces/Dialog.prompt.md:1-10`).
+
+What exists in the app:
+- a docked-style port of the dialog on `MockProject` (`app/lib/src/features/projects/home_dialog.dart`);
+- the folder drop, as production plumbing (`FolderDropTarget` in `packages/zanshin_shell`);
+- the drop's placement logic (`app/lib/src/features/projects/tree_drop.dart`);
+- a drop demo (`app/lib/main3.dart`).
+
+**Scope.**
+1. **Sheet** (11.2's dialog).
+   - 900 × 640, at most 92 % of the window's width and 88 % of its height, with a 200 px sidebar and radius 18 (AC:1996-2008; FC:233-236).
+   - It opens from "All Projects…" (11.5), and at launch when no project can open (11.5 item 2).
+   - While a project is open, Esc and a scrim click close it. Without an open project it cannot close (the export's `canClose`, SH:2043-2047).
+2. **Sidebar** (SH:2057-2080).
+   - **Brand:** Nami at 32 px, "Zanshin", and the app's version with jj-lib's (Claude's proposal). The export's "jj client · v0.24.0" is stale (prototype defect 65).
+   - **Navigation:** Projects, Remotes (design question (a)), and Settings, which opens 11.7 (Claude's proposal). The export's Remotes and Settings are inert (SH:2066-2068; prototype defect 66).
+   - **Footer:** the jj identity, `user.name` and `user.email` from 9.28's `configGet`, instead of "Signed in" (Claude's proposal). The export's account is invented (SH:2070-2079; prototype defect 65).
+     - Without an identity, the footer links to 11.7's Identity rows (9.27's `identity_missing`).
+3. **Toolbar** (SH:2093-2109):
+   - the search ("Search projects, paths…", focused on open, with ✕), which matches names and paths across groups (SH:1997-2007);
+   - **Add directory**, the gold primary;
+   - **Clone from remote**;
+   - **New group**, a ghost button.
+4. **Tree** (SH:2111-2176; DS `components/content/ProjectRow.jsx:16-55`), from 11.5's registry.
+   - **Group rows:** chevron, folder, name, and the count "N · M groups".
+   - **Project rows:** status dot, name, the saffron caps "open" marker on the open project (FC:260), branch label, ↑ and ↓ (9.29), "path · last opened", and "…" on hover.
+     - "…" offers Open, Reveal in Finder, Move to group and Remove from list (Claude's proposal).
+   - **Behaviour:**
+     - The selection is moon (FC:259).
+     - A double-click or ↩ opens a project.
+     - A missing row is struck through and does not open.
+     - Rows drag into groups and into order, placed by `tree_drop.dart`.
+5. **Add directory** opens a folder picker and runs detect (3.4c) on the chosen folder.
+   - **A jj workspace** is added and opened.
+   - **A Git repository:** the dialog offers conversion to a colocated jj repository (3.4c `convert`), and the user decides (FR-JJ-17).
+   - **Neither:** the dialog offers `jj git init` there (3.4a `initRepo`; CLI parity is 9.20's).
+   - Creation paths show what the CLI prints: a missing identity, and the snapshot report (9.33).
+6. **Clone from remote:** a URL and a destination folder, then `cloneRepo` (3.4a).
+   - It shows a busy state.
+   - Progress arrives with 9.20, which gives clone the 6.4a progress callback (Claude's proposal).
+7. **Folder drop** (FC:262; SH:2013-2034): `FolderDropTarget` over the dialog.
+   - The hint appears only during a drag.
+   - Each dropped folder runs item 5's flow and lands where `tree_drop.dart` places it.
+   - A folder already in the list is not added twice (Claude's proposal; `app/lib/main3.dart:34-35` makes this a switch).
+   - The export adds a fake project without looking at the folder (prototype defect 67).
+8. **New group:** an inline name field. Groups nest.
+9. **Bridge part:** export the detect, convert, init and clone results, alongside 11.5's list.
+
+**Non-goals.**
+- Browsing a hosting provider.
+- Signing in to anything.
+- Several windows.
+
+**Depends on.**
+- 11.2 and 11.5.
+- 3.4a and 3.4c (shipped), and 9.33 (done).
+- 9.29, for ↑ and ↓.
+- 9.20, for clone's CLI parity and progress.
+
+**Design status.** FINAL: the dialog as cited, as direction (decision (d)). NEEDS DESIGN:
+- **(a) The Remotes tab is inert in the export.** Recommendation: drop it. The open project's remotes live in 11.7's Project tab, and remote management (9.5's verbs, done) gets its rows there later (Claude's proposal; deferred-work).
+
+**Witnesses.**
+- The tree shows the registry. The search filters by name and path across groups. ↩ opens the selected project, and the open project carries "open".
+- Add directory on fixtures:
+  - a jj workspace opens;
+  - a Git repository gets the conversion offer, and declining leaves it untouched;
+  - an empty folder gets the init offer.
+- A dropped folder runs the same flow. A folder already in the list is not added again.
+- A clone from a local bare remote opens the clone; the bare remote is built in the test, as 6.4a's tests do.
+- A missing row is struck through and does not open. Remove from list deletes only the registry entry.
+- The footer shows the effective identity. Without one, its link opens 11.7.
+
+**Related:** 11.5, 11.7, 9.20, 9.33, 3.4a, 3.4c.
+
+---
+
+### Story 11.7: Settings window — General and Project tabs over app preferences and jj config [UI/bridge]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
+
+**Motivation.** Set-and-forget settings share one window, with a tab per scope (ST:2-3; DS readme.md:104):
+- **General** holds the app's preferences and the user's jj config.
+- **Project** holds the open repository's `.jj/repo/config.toml`.
+
+Every jj row shows the key it writes: "Zanshin never hides what it writes" (DS `components/settings/SettingsRow.prompt.md:12`).
+
+The backend is done. 9.27 opens repositories with the effective config stack. 9.28 lists, reads, writes and unsets keys at the CLI's scopes (`ZanshinWorker.configList`, `configGet`, `configSet`, `configUnset`, `configPath`). Its types are exported (`packages/zanshin_core/lib/zanshin_core.dart:11-27`).
+
+Today the app stores one preference, the theme (`packages/zanshin_settings/lib/src/model/appearance_settings.dart:15`).
+
+**Scope.**
+1. **Window** (ST:116-143; STC:25-60): 11.2's dialog sheet, 620 px wide, at most 740 px high, radius 18.
+   - **Opening:** ⌘, opens it on General and closes it again (AF:233-237). It also opens from the Project menu (11.5) and from View options' last row (10.7).
+   - **Closing:** Esc or a scrim click (ST:117-124).
+   - **One modal at a time:** ⌘, does nothing while the Projects dialog is open (Claude's proposal). The export stacks them (prototype defect 73).
+   - **Header:** segmented tabs [⚙ General | Nami + project name] (ST:127-130) and a close button. Without an open project, the Project tab is disabled (Claude's proposal).
+   - **Scope line** (ST:133-137): "For Zanshin on this Mac · jj settings go to <path>", and "For <name> only · <path>".
+     - Both paths come from 9.28's `configPath`: for the user scope, the file the CLI would write; for the repo scope, `.jj/repo/config.toml`.
+     - The export hardcodes the user path (ST:135; prototype defect 69).
+   - **Footer:** "How the graph looks lives with the graph: View options in the toolbar." (ST:139).
+2. **Rows** (ST:60-72; STC:39-57; DS `components/settings/SettingsRow.jsx`, `SettingsGroup.jsx`).
+   - The label at 13 px, an optional hint at 11.5 px, and the config key in mono 10.5 px under the label.
+   - The control sits on the right, or below for long text.
+   - Groups have caps headings over `--fl-hover` boxes, 18 px apart.
+3. **General** (ST:74-92).
+   - **Appearance › Theme:** Light · Dark · Auto. This is the existing `appearance.themeMode`.
+   - **Appearance › Density:** Compact · Balanced · Comfy. A new preference, default Compact. It scales 11.1's base size to 12.5, 13 or 13.5 px (AC:69-71). See design question (a).
+   - **While you scroll › Hide controls:** a new preference, default on. It gates 11.3's calm scrolling.
+   - **Diffs › Layout:** Unified · Side by side. A new preference, default Unified (10.24).
+   - **Identity › Name (`user.name`) and Email (`user.email`)**, at the user scope.
+     - Read with `configGet`, which gives the effective value and its source; written with `configSet`.
+     - After a write, the row shows 9.28's working-copy-author fact: like the CLI, @'s author does not change (Claude's proposal).
+     - These rows answer 9.27's `identity_missing` prompt.
+     - The export keeps them in browser storage, with invented defaults (ST:75; prototype defect 72).
+4. **Project** (ST:94-114).
+   - **Remotes › Fetch from (`git.fetch`) and Push to (`git.push`):** selects of `remotes()` (2.9). Design question (b) covers values that are lists or patterns.
+   - **Remotes › Check for remote changes:** Off · 5 min · 15 min, default 15. A per-project preference that drives 11.8's poll (decision (g)). The export's label "Fetch automatically" (ST:101) promises a real fetch (Claude's proposal; prototype defect 75).
+   - **History › Trunk (`revset-aliases."trunk()"`):** a select of the default remote's bookmarks, plus "Custom…" for any revset (Claude's proposal).
+     - It writes `<name>@<remote>`, as the CLI's own writer does (`../jj` cli/src/commands/git/init.rs:332 @ v0.46.0).
+     - The export mixes in local names (ST:104; prototype defect 70).
+   - **History › Immutable heads (`revset-aliases."immutable_heads()"`):** a mono text field below the label, with the hint "Changes at or below these can't be rewritten." (ST:105-107).
+     - It writes on Enter, or when it loses focus.
+     - A broken value shows up as 10.5's revset error after the reload, and the row offers the previous value back (Claude's proposal).
+   - **Identity › "Use a different email here":** the switch writes or unsets `user.email` at the repo scope (`configSet`, `configUnset`). The Email row shows while the switch is on (ST:109-112).
+5. **Effective values** (Claude's proposal). Every jj row shows the effective value, and also the scope it comes from when that is another scope (9.28's `configList` source). A write goes to the tab's scope only.
+6. **The graph follows** (10.5 item 16). A write of `trunk()`, `immutable_heads()` or `revsets.log` re-requests the layout under the anchor. 9.27 reloads the backend's settings.
+7. **App preferences** are new defaulted fields in zanshin_settings: density, Hide controls, the diff layout, and the poll interval per project. No migration is needed (`app_settings.dart:10-16`).
+8. **Bridge part:** export the remotes types, alongside 11.5's list.
+
+**Non-goals.**
+- The graph's view options (10.7).
+- jj log configurations (10.22).
+- A key catalogue, or a raw config editor. 9.28's `configFileRead` and `configFileWrite` stay unused (deferred-work).
+- Managing remotes (11.6, design question (a)).
+
+**Depends on.**
+- 11.2; 11.3 (⌘, and the dialog layer); 11.5 (the open project); 11.8 (the poll).
+- 9.27 and 9.28 (done); 2.9 (shipped).
+
+**Design status.** FINAL: the window and its rows as cited, as direction (decision (d)). NEEDS DESIGN:
+- **(a) Density changes little,** because the floating islands set explicit sizes (AC:69-71). Recommendation: keep it, as a scale on 11.1's base size.
+- **(b) Lists and patterns.** Since jj 0.46, `git.fetch` and `git.push` take lists and patterns (9.20's and 9.30's notes), which a single select cannot show (prototype defect 71). Recommendation: a select while the value is one remote name. Any other value shows read-only as its TOML text, with "Edit…" writing a new value through 9.28.
+
+**Witnesses** (on a fake config port, because app tests never call a jj config verb for real; Epic 10's house rule "Tests").
+- ⌘, opens General and closes it again. "Project Settings…" opens Project. Esc closes. ⌘, does nothing over the Projects dialog.
+- The scope lines show the fake `configPath` results.
+- A theme switch applies at once and persists. With Hide controls off, calm scrolling does nothing (11.3).
+- Name and Email call `configSet` at the user scope with the typed value, and the working-copy-author fact shows.
+- Trunk writes a `<name>@<remote>` value. The identity switch, turned on and off, sets and unsets the repo's `user.email`.
+- A write of `immutable_heads()` issues exactly one graph request (10.5 item 16).
+- A list-valued `git.fetch` shows as read-only text.
+
+**Related:** 9.27, 9.28, 2.9, 10.5, 10.7, 11.3, 11.5, 11.8.
+
+---
+
+### Story 11.8: Sync — Fetch, Push, the remote-change poll, the upstream badge [UI/bridge]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
+
+**Motivation.** The ACTION group carries Fetch and Push next to New change (AF:174-178; FC:80-85). Both buttons are inert in the export (prototype defect 74).
+
+Fetch ships today for one explicit remote: `RepoHandle.gitFetch(remoteName)`, with progress as `ProgressEvent` (6.4a). Three backend stories are in the backlog:
+- 9.30: the CLI's default remotes, and the button's enable rule;
+- 9.24: a read-only check for remote changes, and the badge;
+- 9.20: push.
+
+**Scope.**
+1. **Buttons** (AF:175-178; FC:82-85): 11.2's island with two 36 px icon buttons (17 px icons, radius 10).
+   - The tooltips name the command: "Fetch — jj git fetch" and "Push — jj git push".
+   - Once the remotes are resolved, the tooltips add them (Claude's proposal; "the exact jj command is always one hover away", DS readme.md:51).
+2. **Fetch.**
+   - **Until 9.30:**
+     - one remote: Fetch fetches it;
+     - several remotes: Fetch opens a menu to pick one, so the UI decides nothing for the user (FR-JJ-17);
+     - no remote: the button is disabled.
+   - **With 9.30:** the call passes no remote, and the backend resolves the CLI's defaults (9.30 item 1). The button is enabled while `remotes()` is not empty, the rule 9.30 item 2 names.
+   - **While it runs,** the button shows progress from 6.4a's events, and 11.5's dot reads `syncing`.
+   - **Result:** shown in 10.23's toast. An error (network, authentication) shows its message with Retry (Claude's proposal).
+   - The graph reloads through the operation's event (10.5 item 3).
+3. **Push** (9.20).
+   - It stays disabled until 9.20 lands.
+   - Then it runs `jj git push` with the CLI's defaults, passing `git.push` and `revsets.git-push` through (9.20's 0.46 note). It shows progress like Fetch.
+   - Undoing a push warns, as the CLI does (9.39).
+   - See design question (b).
+4. **Remote-change poll** (9.24; decision (g)).
+   - **When:** at 11.7's per-project interval (Off · 5 · 15 min, default 15), and when the window becomes active (Claude's proposal). It checks the fetch remotes.
+   - **Read-only:** no operation is written, and nothing moves (9.24). A fetch stays a click.
+   - **Badge** on Fetch: the number of remote bookmarks that moved, appeared or vanished upstream (9.24's 2026-09-20 addendum).
+     - Its tooltip names them, e.g. "`main`, `feature-x` changed on `origin`".
+     - It shows no commit count (9.24's non-goal).
+     - A fetch clears it.
+   - Until 9.24 lands, there is no poll and no badge.
+5. **Before every verb,** the backend runs 9.26's snapshot and import (done). This story adds nothing to that.
+6. **Bridge part:** export the fetch result and the remotes types, and 9.24's and 9.20's types when they land. `ProgressEvent` is exported already.
+
+**Non-goals.**
+- Pull: it is gone from the design, and jj has none.
+- Tracking (9.11).
+- Pushing single bookmarks (9.19, 10.15).
+- Credential prompts: git handles authentication (9.24).
+
+**Depends on.**
+- 11.3 (the ACTION slot), 11.5 (the open project), 11.7 (the interval), 10.23 (the toast).
+- 6.4a and 2.9 (shipped).
+- 9.30, 9.24 and 9.20 (backlog).
+
+**Design status.** FINAL: the buttons' place and tooltips (AF:174-178), as direction (decision (d)). NEEDS DESIGN:
+- **(a) What "Fetch automatically" means.** Recommendation (decision (g)): 9.24's read-only poll and the badge; a fetch stays a click. A fetch on a timer would move tracked local bookmarks and write operations (9.24's motivation).
+- **(b) Does Push ask before it runs?** Recommendation: no, as in the CLI. The result toast lists what moved and offers Undo, which warns (9.39).
+
+**Witnesses** (fake ports).
+- With one remote, Fetch calls `gitFetch` with it. With several (before 9.30), it offers a menu. With none, it is disabled.
+- Progress events drive the button, and the dot reads `syncing` until the result arrives.
+- A failed fetch shows the error and Retry, and nothing else changes.
+- The poll:
+  - runs at the interval and on activation, and never when the interval is Off;
+  - calls no mutating verb;
+  - sets the badge, which a fetch clears.
+- Push stays disabled until 9.20's port exists.
+
+**Related:** 6.4a, 9.20, 9.24, 9.26, 9.29, 9.30, 10.23, 11.5, 11.7.
+
+---
+
+### Story 11.9: Undo Timeline panel [UI/bridge]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
+
+**Motivation.** The rail's Undo Timeline previews the latest operations on hover, and pins a timeline of the operation log (AF:24, :26-30, :126-132; SH:1059-1070).
+
+What ships today:
+- the operation log read (2.7/3.4b): `RepoHandle.opLog(limit:)` returns `Operation`s with the id, the parents, the time, the user and host, the description, and the root and snapshot flags (`packages/zanshin_core/lib/src/ffi/op_log.dart:28-66`);
+- undo (9.39).
+
+In the backlog: redo, `op show`, `op diff` and entries with tags (9.21), and restoring to an operation (9.12).
+
+**Scope.**
+1. **Rail item** for 11.3: the label "Undo Timeline" and the icon `undo` (AF:24).
+   - The preview lists the 3 newest operations as "description · when" (AF:126-130).
+   - Its header count: see design question (b).
+2. **Pinned panel** (SH:1059-1070; FC:175-176): a timeline, newest first.
+   - Each row has a dot; the current operation carries the moon dot.
+   - Line 1 is jj's description, line 2 the relative time. Snapshots are dimmed (Claude's proposal).
+   - Rows load in pages through `opLog(limit:)`, in a lazily built list.
+   - The export shows command lines (`describe -m "wip: refactor"`). jj stores them only for CLI operations, as the `args` tag (`../jj` cli/src/cli_util.rs:2983 @ v0.46.0), and Zanshin deliberately writes none (`crates/zanshin-jj/src/op_support.rs:679-681`). So the panel shows the description, and adds the `args` tag as a second line once 9.21 exposes tags (Claude's proposal; prototype defect 76).
+3. **Actions** (Claude's proposal; design question (a)), run through 10.9's runner (anchored reload, refusals):
+   - Undo on the newest operation (9.39). It is the same verb as 10.23's toast. Refusals show in the CLI's words, e.g. "Cannot undo a merge operation" (9.39).
+   - Redo, after an undo (9.21).
+   - "Restore to here" on any row (`jj op restore`, 9.12).
+   - "Show changes" (`jj op show`, 9.21).
+4. **Live.** The list reloads on `OpHeadsChangedEvent`, as the graph does.
+5. **Workspaces.** Undo refuses an operation from another workspace unless asked to cross workspaces (9.21's 0.46 note). The row names the workspace once 9.21 exposes it (Claude's proposal).
+6. **Bridge part:** export `Operation` and the undo result.
+
+**Non-goals.**
+- The operation graph: rows stay linear, newest first.
+- `op abandon` (9.21) and `op revert` (9.12).
+
+**Depends on.**
+- 11.3, 10.9 and 10.23.
+- 2.7/3.4b and 9.39 (shipped).
+- 9.21 and 9.12 (backlog), for the extra actions.
+
+**Design status.** The export gives the direction (decision (d)). NEEDS DESIGN:
+- **(a) Which actions show before 9.12 and 9.21 land.** Recommendation: Undo only. The others show disabled, with their jj command in the tooltip.
+- **(b) The count.** The export's "142 ops" is fixed text (AF:132), and counting every operation means walking the whole log. Recommendation: no count until 9.21 offers a cheap one.
+
+**Witnesses** (fake port).
+- The preview shows the 3 newest descriptions with their times.
+- The panel pages through 1,000 operations and builds no row off screen.
+- The current operation carries the moon dot, and snapshot rows are dimmed.
+- Undo on the newest row calls 9.39's verb once, and a refusal shows its message.
+- An `OpHeadsChangedEvent` reloads the list.
+- Disabled actions show their jj command.
+
+**Related:** 2.7, 3.4b, 9.12, 9.21, 9.39, 10.9, 10.23, 11.3.
+
+---
+
+### Story 11.10: Retire the docked mock UI — mock shell, nav rail, status bar, MockCommit/MockProject widgets, ZanshinColors [UI]
+*(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0.)*
+
+**Motivation.** Before the graph view existed, the app got a docked mock UI from an earlier design:
+- a title bar with Fetch, Pull, Push and a theme switch;
+- a nav rail with the ensō;
+- a status bar;
+- a history column and a branch panel;
+- a mock commit card and detail;
+- a Projects dialog on `MockProject`.
+
+Its colours live in `ZanshinColors` (`context.zc`). The running app no longer shows any of it: its `home` is the Yaru test page (`app/lib/src/features/app/zanshin_app.dart:147`), and the mock hangs only on a commented-out `home: _homePageFactory.create()` (:26-73). 11.3–11.7 replace all of it.
+
+**Scope.**
+1. **Delete the mock widgets** (Claude's proposal for the list):
+   - `app/lib/src/features/shell/app_shell.dart`, `main_nav_rail.dart`, `status_bar.dart` and `window_title_bar.dart`;
+   - `history/history_column.dart` and `branches/branches_panel.dart`;
+   - `commits/commit_card.dart`, `commit_detail.dart`, `diff_block.dart`, and `shared/widgets/commit_tags.dart`;
+   - `projects/home_dialog.dart` (11.6 replaces it; `tree_drop.dart` stays);
+   - `shared/data/mock_data.dart` (`MockCommit`, `MockProject`, …).
+2. **Retire `ZanshinColors` and `context.zc`** (`app/lib/src/shared/theme/zanshin_colors.dart`) once 11.1's tokens cover every remaining user. `ZanshinIcon` and `ZI` stay unless 11.1 replaces them; with 11.1's design question (d) answered "SVG", the unused icon font `Zanshin.ttf` and `zanshin_icons.dart` go.
+3. **Remove the Yaru test page.** `_Example` and the commented-out theme code leave `zanshin_app.dart`; 11.3's shell becomes the home. The theme wiring stays (`ZanshinAppViewModel`).
+4. **The `main*.dart` hosts** (Claude's proposal):
+   - `main4.dart` (the graph POC) stays the reference until 10.1 promotes the viewport (Epic 10's house rule "Code and tests"). Then it goes, together with `features/graph_poc/`.
+   - `main2.dart` (the window background) goes once 11.4 paints the canvas.
+   - `main3.dart` (the folder drop) goes once 11.6 drops folders.
+5. **DI.** `home_page.factory.dart` and the DI graph follow, and `main.inject.dart` is regenerated.
+6. **The app icon** (Claude's proposal; deferred-work). The DS's Nami bundle has three wave layers (`DS assets/app-icon/README.txt`), where the app's `NamiIndigo.icon` has one. Re-author the bundle in Icon Composer's format with the three layers; Ralph checks it in the Dock.
+
+**Non-goals.** The boot, the splash and the window controllers (`features/bootstrap/`, `features/window/`).
+
+**Depends on.** 11.1, 11.3, 11.4 and 11.6; 10.1 for `main4.dart`.
+
+**Design status.** No design; Claude's proposals.
+
+**Witnesses.**
+- `app/lib` and `app/test` contain no `MockProject`, `MockCommit`, `context.zc`, `AppShell`, `MainNavRail`, `StatusBar` or `WindowTitleBar`.
+- `cargo make test` passes, and the app boots into the floating shell.
+
+**Related:** 11.1, 11.3, 11.4, 11.6, 10.1.
 
 ---
