@@ -504,6 +504,11 @@ FR-GR-4 / NFR-P-2 were amended on 2026-09-26: no windowing, but complete geometr
 
 **Sequencing:** Step 9.0 (pin bump 0.41→0.42) precedes all operation work; Story 9.1 (operation-support layer) unblocks Tier C. Then Tier A (cheap) → Tier B (medium) → Tier C (thick) by feasibility-map thickness. Reuses Epic 6's `mutate.rs` (6.1) + FFI mutation surface (6.5) patterns; the interactive thick verbs additionally need the Flutter diff/merge editor (Ralph's UI scope) to supply a selected `TreeId`. *(Changed 2026-10-14 (Ralph): the UI is Claude's now (Story 11.0); the inspector's hunk selection is Story 10.26, and the tree comes from Story 9.50.)*
 
+**Design update 2026-10-16** (Ralph, console sessions on the design-system rounds 1–3; the decisions are numbered 16.x in the Epic 11 header):
+- 9.20 delivers the push plan of decision 16.25: jj v0.46.0's skip or abort per mode, classification per remote, tags, the dry-run plan and every CLI parameter.
+- 9.21 gives the guarded ⌘Z and Redo what they need: `jj redo`, the head operation id on every result, and op entries with their parents and workspace name, from which Undo is turned off after `jj op abandon ..@-` (decisions 16.7, 16.46). The own-operation check itself lives in 10.9's runner.
+- 9.23 gains priority: `jj workspace update-stale` is the only way out of a stale working copy inside Zanshin; a run outside Zanshin also ends the state, through the watcher (decision 16.28).
+
 ---
 
 ### Epic 10: Commit-Graph View (Flutter UI)
@@ -577,6 +582,11 @@ Squash, rebase, bookmark rename/move and drag-and-drop follow when their backend
   - **scope change:** Claude now builds the whole Flutter UI, and Ralph accompanies and reviews. The app shell becomes Epic 11.
 - **New stories:** 4.14 (shared columns), 4.15 (router B), 9.48–9.50 (`new -A/-B`, `commit`, hunk selection → tree), 10.21 (search), 10.22 (the Configurations dialog), 10.23 (the operation toast), 10.24–10.26 (the inspector's diff, composer and hunk selection), 10.27 (diff drags), and Epic 11. 9.25 is refined; most Epic 10 stories carry dated notes.
 
+**Design update 2026-10-16** (Ralph, console sessions on the design-system rounds 1–3, 2026-10-15/16; the decisions 16.1–16.47 are in the Epic 11 header, and the Epic 10 header's "Design update 2026-10-16" says what they change here):
+- **What changed:** the design system was re-downloaded twice (rounds 2 and 3). It is now the reference where it differs from the floating client. Zanshin draws its own controls, without Material or Yaru. A named macOS accent recolours only the moon role. Reduce motion works by property. Settings, Projects and jj log Configurations are windows of their own. The inspector and the pinned panels are resizable. The menu bar is specified, and Push opens a selection sheet.
+- **Decided (Ralph):** every recommendation of the three validation reports, Claude's proposals included ("mit deinen Vorschlägen", 2026-10-16). Workstreams are dropped, not hidden (decision 16.26). Widgetbook 3.25.0 becomes the one review catalogue, and 10.1's demo host becomes its Graph folder (decisions 16.29, 16.30).
+- **New stories:** 11.11 (the Zs control library, the Widgetbook catalogue and the shared Marionette configuration), 11.12 (the window foundation) and 11.13 (the menu bar and shortcuts). 11.11 comes before 10.7, and 10.22 becomes a window on 11.12. Most Epic 10 and Epic 11 stories, and 9.20, 9.21 and 9.23, carry dated notes.
+
 **FRs covered:** none formally. PRD §3.2 keeps the Flutter UI out of the PRD, and there is no UX document (§ UX Design Requirements). The epic consumes:
 - FR-GR-4 and NFR-P-2 as amended 2026-09-26: complete geometry plus lazy content;
 - Story 4.11's layout, not FR-GR-1 / FR-GR-2. Those two describe the `jj log` lane model (pvigier lanes; rows with `lane`, `edges_below`, `color_idx`) that the view no longer draws; both carry a dated amendment (2026-09-26) that points at 4.10–4.12;
@@ -607,6 +617,7 @@ The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Ep
 - 10.20 (graph animations, added 2026-09-30) follows 10.1, 10.3, 10.4, 10.5 and 10.17. Real triggers come with 10.9 and 10.12.
 - 10.10 comes last. It is a placeholder that needs 9.31 and 9.16.
 - *Added 2026-10-14:* 11.1 (the design-system tokens) comes before 10.1. 10.21 (search) and 10.22 (the Configurations dialog) follow 10.5, 10.6 and 10.11, with 9.25 for counts. 10.23 (the toast) follows 10.9. 10.24 follows 10.8 and Epic 5's line-level diff; 10.25 follows 10.8, 10.9, 9.15 and 9.49; 10.26 follows 10.24, 10.25 and 9.50; 10.27 follows 10.10 and 10.26. 10.10 no longer comes last: it runs on a fake `drop_actions` port after 10.9 and 10.15. 4.14 and 4.15 precede 10.4's real geometry and 10.12.
+- *Added 2026-10-16:* 11.11 (the control library and the catalogue) comes before 10.7 and before every later story that uses a control. 10.22 follows 10.21, 11.12 and 11.11, and needs 11.2 only for its "Discard changes?" sheet. The shortcuts of 10.6, 10.7 and 10.9 are bound in 11.13, which follows 10.9 and 10.23. "The demo host" in the first bullet above (10.1's demo host) is the Widgetbook Graph folder (decision 16.30).
 
 ---
 
@@ -622,6 +633,12 @@ The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Ep
 
 **Sequencing:** 11.0 is done. 11.1 and 11.2 come first, before Epic 10's first visual story. 11.3 and 11.4 follow; 11.5–11.9 follow 11.3; 11.10 comes last. Details in the Epic 11 header below.
 
+**Design update 2026-10-16** (Ralph, console sessions on the design-system rounds 1–3; decisions 16.1–16.47 in the Epic 11 header):
+- **Goal, added:** the Zs control library with the Widgetbook catalogue and one Marionette configuration (11.11); the window foundation for Settings, Projects and jj log Configurations as windows of their own (11.12); the menu bar and its shortcuts (11.13).
+- **Goal, amended:** "the Projects dialog" is now the Projects window. It is a parentless dialog window and the start window when no project is open, and closing it quits (decision 16.13). The Settings window is a real window too. There is one project window, and opening another project switches it in place (decision 16.15).
+- **User outcome, amended:** ⌘W on the project window closes the project and shows Projects (decision 16.16). A named macOS accent colour recolours selection and controls (decision 16.2).
+- **Sequencing:** 11.1 → 11.2 → 11.11 → 11.3; 11.12 after 11.4 and before 11.5–11.7 and 10.22; 11.13 after 11.12, 10.9 and 10.23, and before 11.5–11.8, which wire their handlers to it. Details in the Epic 11 header.
+
 ---
 
 ### Cross-Cutting Concerns (no dedicated epic)
@@ -634,6 +651,7 @@ These are reviewed in every epic's acceptance criteria rather than implemented o
 - **AR-P-2** (snake_case JSON), **AR-P-7** (test layout), **AR-AP-3..AP-10** — enforced by tool configs and lint/CI gates set up in Epic 1; passive thereafter.
 
 > **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns. Epic 9 (the ADR-0003 operation build-out) follows Epic 6 and is post-WIP-minimal (scheduling TBD). **2026-09-26:** Epic 4 is reopened for Stories 4.10–4.12 (topology/content split, the Dart layout engine on the worker isolate, the topology wire); Epic 10 (the commit-graph view — Flutter UI built by Claude at Ralph's request) runs 10.1–10.4 on fake data and adopts 4.10–4.12 in 10.11 / 10.12. **2026-09-28:** the design update adds Story 4.13 (commit stacks in the engine) and Story 10.17 (commit stacks in the view). **2026-09-30:** the gaps study and the animation showcase add Stories 10.19 (hidden history) and 10.20 (graph animations). **2026-10-14:** the floating-client export and the design system add Stories 4.14, 4.15, 9.48–9.50 and 10.21–10.27, and Epic 11, the floating app shell, which Claude builds after Ralph's scope change.
+> **2026-10-16:** the design-system rounds 1–3 add Stories 11.11 (the Zs control library and the Widgetbook catalogue), 11.12 (the window foundation) and 11.13 (the menu bar and shortcuts); the decisions 16.1–16.47 are in the Epic 11 header.
 
 ---
 
@@ -6818,10 +6836,67 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 
 *(Refined 2026-10-08, jj 0.46 bump — read the verbs at `v0.46.0`.)* `jj git push` pushes to SEVERAL remotes in one call since 0.46: `git.push` may be a string pattern or an array of patterns, and `--remote` is repeatable and takes patterns — pass the remote list through as the CLI's arguments, with `git.push` as the editable default (never a hidden Zanshin default). The default push targets come from the new `revsets.git-push` setting. Also `jj git init` / `jj git clone` changed between v0.44.0 and v0.46.0 (`git -C ../jj diff v0.44.0 v0.46.0 -- cli/src/commands/git`) — re-read both before porting.
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** Push now opens a selection sheet with a `--dry-run` preview (11.8; decisions 16.8, 16.25), so this story delivers every `jj git push` parameter and a dry-run plan per mode, per remote and per ref. This note amends the one-line scope ("`git::push_refs` (+ safety/classification pipeline)") and the 2026-10-08 refinement; it supersedes nothing in them. It adds items 1–8 and witnesses. `clone` and `init` are unchanged.
+> - **Item 1 (new), every CLI parameter.** The push takes all of `GitPushArgs` (push.rs:123–245 @ v0.46.0) and passes them through like the CLI's arguments: `--remote` (repeatable, patterns), `-b/--bookmark`, `-t/--tag`, `--all`, `--tracked`, `--deleted`, `-r/--revision`, `-c/--change`, `--named`, the three `--allow-*` flags (push.rs:188–202), `--dry-run` and `-o/--option` (push.rs:242–244, sent as push options at :582–584).
+>   - The clap groups hold as in the CLI: `--all` and `--tracked` conflict with the specific refs, and so does `--deleted` (push.rs:121–122, :185).
+>   - The values are patterns, as in the CLI. The caller writes `exact:<name>` where a name must match only itself (decision 16.39).
+>   - 11.8's sheet uses fewer parameters; `-r` and `-o` stay backend-only for now.
+> - **Item 2 (new), push semantics per mode** (decision 16.25). jj does not always refuse the whole push:
+>   - the bare `jj git push` (the default revset) and `-r` classify with `allow_new` and `allow_delete` off (push.rs:513–521). A refused ref prints its reason as a warning and is skipped; the rest is pushed (push.rs:522–553). So the bare push skips every ref in the revset that is not tracked on that remote, a new one included ("Refusing to create new remote bookmark …");
+>   - `--all` (`allow_new` on, `allow_delete` = `--deleted`, push.rs:327–333), `--tracked` (:350–356) and `--deleted` (:373–380) take the same print-and-skip path (push.rs:670–707);
+>   - explicitly named refs (`-b`, `-t`, `--change`, `--named`) abort the whole push on a refused ref (push.rs:454, :479, :501) or a rejected commit (push.rs:505–511).
+>   The plan says per ref which of the two applies, so 11.8 can show "skipped" or block the row. Each candidate ref is classified twice, because the two paths use different parameters: once inside the chosen mode (the bare push: `allow_new` and `allow_delete` off, push.rs:518–521), and once as if named explicitly (`allow_new` = not tracked on any remote, `allow_delete` on; push.rs:465–471, :489–493; a name with an untracked remote ref and no local ref is not a candidate, push.rs:1366–1372). A new bookmark is then "skipped" in the preselection and still tickable by hand (Claude's proposal).
+> - **Item 3 (new), per remote.** Classification and the commit checks run per remote. `CommitsValidator` is built per remote (push.rs:336, :359, :383, :505–506) from that remote's known heads (push.rs:797–802), and the default revset is evaluated with `remote` bound to each remote (push.rs:513–514, :1427–1458). A ref can be "forward" on origin and refused on upstream.
+>   - The default remotes resolve as the CLI does: `git.push` as a list, then as a string, then the only remote (with jj's hint "Pushing to the only existing remote: …"), then `origin` (push.rs:1107–1130).
+>   - Unmatched `--remote` names give the warning "No matching remotes for names: …"; no match at all gives the error "No git remotes to push to" (push.rs:313–321).
+> - **Item 4 (new), refusal texts verbatim.** Each refused ref carries jj's message and hint as data, with separate texts for bookmarks (push.rs:1157–1208) and tags (push.rs:1210–1254):
+>   - a conflicted local ref: "Bookmark N is conflicted" with "Run `jj bookmark list` to inspect, and use `jj bookmark set` to fix it up." (push.rs:1165–1174); tags name `jj tag list` / `jj tag set` (:1218–1226);
+>   - a conflicted remote ref: the hint `jj git fetch` (push.rs:1175–1178; tags :1227–1230);
+>   - a non-tracking remote ref of the same name: `jj bookmark track <name>@<remote>` (push.rs:1179–1184); a tag gets no hint (:1231–1235);
+>   - "Refusing to create new remote bookmark …" with "Run `jj bookmark track …` and try again." (push.rs:1185–1192); tags name `jj tag track` (:1236–1241);
+>   - "Refusing to push deleted bookmark …" with "Push deleted bookmarks with --deleted or forget the bookmark to suppress this warning." (push.rs:1193–1205); tags: "Push deleted tags with --deleted." (:1242–1251).
+>   Commit refusals carry the commit, the reasons joined with " and " (push.rs:880–884) and the hint: "has no description", "has no author and/or committer set" (no flag allows it, :861–867), "has conflicts", and "is private" with the hint "Configured git.private-commits: '<revset>'" (:871–876). The skip path words them "Won't push bookmark|tag N: commit <hash> <reasons>" (push.rs:744–750), the abort path "Won't push commit <hash> since it <reasons>" (push.rs:762–775).
+>   9.32 item 2 says hints are not ported. That rule stays for 9.32's warnings. A hint that a UI shows verbatim is plan or result data of its verb: here item 3's only-remote hint, item 4's per-ref hints and item 8's result hints (decision 16.25; Claude's proposal for the split).
+> - **Item 5 (new), tags.** The bare push, `--all`, `--tracked` and `--deleted` send tags too (push.rs:90–92, :539–553, :694–707). The plan lists them with their kind (bookmark or tag), and the result counts them.
+> - **Item 6 (new), the dry-run plan.** `--dry-run` runs the chosen mode without pushing (push.rs:598–600, :617–619). Per remote and per ref it returns the kind in jj's words — "move forward/backward/sideways from <old> to <new>", "add to <new>", "delete from <old>" (push.rs:1057–1085) — and item 4's refusals. Up-to-date refs are left out, as in jj (push.rs:535, :1164); an explicitly named one reports jj's status line "Bookmark N@<remote> already matches N" (or "Tag …", push.rs:449–453, :474–478, :496–500) as a typed fact. Also:
+>   - the preselection comes only from evaluating `revsets.git-push` per remote (default `remote_bookmarks(remote=exact:remote)..@`, `cli/src/config/revsets.toml:8` @ v0.46.0), never from a client-side ancestor walk. Its warning "No bookmarks/tags found in revsets.git-push: … (remote=…)" goes through 9.32 (push.rs:1450–1456);
+>   - `--change`: the name comes from evaluating `templates.git_push_bookmark` (default `"push-" ++ change_id.short()`, `cli/src/config/templates.toml:30`; `short()` keeps 12 characters, `cli/src/commit_templater.rs:2259`; push.rs:1322–1338). The template's failures "Invalid character in bookmark name" and "Empty bookmark name generated" (push.rs:1329–1334) are dry-run errors too. An existing bookmark that already points at that commit is allowed (push.rs:1340–1345);
+>   - `--named` and `--change` names are checked before anything is sent: the name exists ("Bookmark already exists: …"), tracked remote bookmarks remain for a deleted name, there is no `=`, a side is empty, the name does not parse (push.rs:1256–1300, :410–414). The dry-run reports these errors, so 11.8's name field can show them;
+>   - "Nothing changed." is its own result (push.rs:558–563), a typed fact and not a warning (9.32 item 2).
+> - **Item 7 (new), sign-on-push.** With `git.sign-on-push = true` (default false, `cli/src/config/misc.toml:31`) a real push first signs the commits and rebases their descendants (push.rs:566–579, :918–1038). The dry-run does not sign (push.rs:566), so the pushed ids can differ from the preview. The result reports "Updated signatures of N commits." and "Rebased N descendant commits." (push.rs:1023–1034), and the warning "Skipped signing N immutable commits:" (push.rs:946–949).
+> - **Item 8 (new), the result per remote and per ref.** For each remote and ref: pushed; moved on the remote (the lease: "The following references unexpectedly moved on the remote:" with jj's hint, `cli/src/git_util.rs:507–527` @ v0.46.0); rejected by the remote ("The remote rejected the following updates:" with its hint, git_util.rs:529–547); pushed but not updated locally ("The following bookmarks couldn't be updated locally:", git_util.rs:552). Also:
+>   - whether the operation was recorded. jj records it only if every ref succeeded or at least one was exported (push.rs:624); otherwise nothing is recorded and jj fails with "Failed to push some bookmarks" (push.rs:657–661). 11.8 says "recorded, so Undo works" only then;
+>   - the operation description as jj writes it, e.g. "push bookmark … to git remote origin" or "push all tracked bookmarks/tags to …" (push.rs:625–652);
+>   - which remotes finished before a network or credential error. jj pushes remote by remote, and `push_refs(...)?` stops at the first failure (push.rs:588–615, :602–609). An earlier remote may already have its refs, and then nothing is recorded.
+> - **Witnesses (added; 9.47 oracle scenarios against the stock CLI at v0.46.0, unless a fake remote is needed):**
+>   - a bare push with one refused bookmark (its commit has no description) skips it with "Won't push bookmark N: commit <hash> has no description" and pushes the rest; `-b` on the same bookmark fails the whole push with "Won't push commit <hash> since it has no description" and sends nothing. A bookmark refused only as new is not a valid case here: `-b` tracks it and pushes it (push.rs:465–471);
+>   - `--all` to two remotes, one of which refuses a ref, pushes it to the other;
+>   - a tag in the bare push;
+>   - every refusal text of item 4, for a bookmark and for a tag;
+>   - the dry-run kinds in jj's words; a `--change` name of 12 characters; `--named` with an existing name fails before anything is sent;
+>   - "Nothing changed."; an unmatched `--remote` name warns; no matching remote errors;
+>   - a lease failure on every ref records nothing; a partial success with an export records the operation;
+>   - a second remote that is unreachable after the first succeeded reports the first as done and records nothing (needs an unreachable remote URL in the test).
+
 ### Story 9.21: Operation-log surface — `op log`, `op show`, `op diff`, `op abandon`, `redo` [M/R]
 `op_walk::{walk_ancestors,resolve_op_with_repo,reparent_range}` + `RepoLoader::merge_operations`; typed op entries + cross-op diff; redo stack semantics (beyond 6.2 undo).
 
 *(Refined 2026-10-08, jj 0.46 bump.)* `redo` must mirror Story 9.39's `undo`: since jj 0.46 both refuse an operation performed in ANOTHER workspace unless `--allow-cross-workspace` is passed (`cli/src/commands/redo.rs` @ v0.46.0) — pass the flag through, as 9.39 does for `undo`, and reuse 9.39's undo-stack walk (`UNDO_OP_DESC_PREFIX`) rather than re-deriving it. `op log` entries carry the workspace name the operation was created in (since jj 0.40), so the typed entry should expose it.
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** undo now has three places (decision 16.7), and every undo Zanshin runs ends in the toast "Undid ‹action› · Redo" (decision 16.46). This story's `redo` and its op-log entries are what both need. This note amends the one-line scope and the 2026-10-08 refinement; it supersedes nothing in them. It adds items 1–5 and witnesses.
+> - **Item 1 (new), what the undo guard reads.** ⌘Z / Edit › "Undo ‹action›" takes back only Zanshin's own latest operation, and only while it is still the current one; ⇧⌘Z redoes it (decision 16.7; 11.13; DS components/overlays/Toast.prompt.md:14). The guard itself lives in 10.9's runner: it keeps the id of the operation its last verb wrote and compares it with the current head. No "is it ours" flag goes on the wire (Claude's proposal). One race stays: `undo` runs the snapshot first (`Repo::undo` → `with_verb`, `crates/zanshin-jj/src/repo.rs:1053–1055`, like `jj undo`'s `workspace_helper`), and a snapshot written then becomes the head that `jj undo` takes back. Open for Ralph (Claude's proposal, not yet accepted): ⌘Z passes the operation id the guard saw, and Zanshin refuses before undoing when the head after the snapshot is a different operation; the toast's Undo and the timeline keep the CLI behaviour. This story provides the rest:
+>   - `redo` as in the CLI: it redoes only while the current operation is an undo operation, or a redo whose restored operation is one, else "Nothing to redo" (redo.rs:108–130 @ v0.46.0), and it refuses another workspace's undo unless `--allow-cross-workspace` is passed (redo.rs:132–144; the refinement above);
+>   - the head operation id on every result, and op entries with id, parents, description and workspace name (the refinement's last sentence).
+>   The Redo button in that toast and ⇧⌘Z wait for this story (decision 16.46).
+> - **Item 2 (new), no Undo after `jj op abandon ..@-`.** That command abandons every operation before the current one and reparents the current one directly onto the root operation (abandon.rs:33–35, :69–80, :107–114 @ v0.46.0). A later `jj undo` does not refuse: it refuses only when the operation to undo is the root itself (undo.rs:158–160). So it would restore the root operation's view, an empty repo. Undo is therefore off — ⌘Z, the toast and the Undo Timeline — while the current operation's parent is the root (V2 §4). The op entries already carry what that check needs: `parentIds` and `rootOp` (`packages/zanshin_core/lib/src/ffi/op_log.dart:45`, `:63`). 10.9, 10.23, 11.9 and 11.13 read it.
+> - **Item 3 (new), `op abandon`'s results.** `op abandon` writes no operation; it rewrites the op heads (abandon.rs:131–135). So it cannot be undone, which is why its UI is a ConfirmDialog (DS components/controls/ConfirmDialog.prompt.md:1, :4). The result carries jj's facts: "Abandoned N operations and reparented M descendant operations." (abandon.rs:127), "Nothing changed." (:122), and the warning that the working-copy operation is not updated (:146). The refusals are "Cannot abandon the current operation …" with the hint "Run `jj undo` to revert the current operation, then use `jj op abandon`" (:98, :102), "Cannot abandon the root operation" (:86) and "Cannot abandon a merge operation" (:88). The hint is result data, as in 9.20 item 4; 9.32 item 2's "hints are not ported" stays for warnings.
+> - **Item 4 (new), the ConfirmDialog body** (a record for the UI that offers `op abandon` later; 11.9 keeps it a non-goal). The DS body says "`jj undo` and the Undo Timeline can't go back past this point" (ConfirmDialog.prompt.md:5). That misleads: `jj undo` goes back to an empty repo (item 2). The body names what is really lost: earlier versions of changes (evolog predecessors) are discarded once they are unreachable (abandon.rs:40–43). It also matters for other workspaces: `op abandon` remaps only the current workspace's operation (abandon.rs:136–152), and a workspace whose operation was abandoned is stale until `jj workspace update-stale` runs; once `jj util gc` has removed that operation, update-stale creates a recovery commit (abandon.rs:40–43; cli_util.rs:751–762; `docs/working-copy.md:122–125` @ v0.46.0; 9.23).
+> - **Item 5 (new), Redo's tooltip** is `jj redo` (decision 16.39), set through the action's own title (10.23, 11.9).
+> - **Witnesses (added):**
+>   - redo after an undo restores the undone operation (a 9.47 oracle scenario);
+>   - redo while the current operation is not an undo gives "Nothing to redo";
+>   - after `op abandon ..@-` the current operation's parent is the root operation (the guard's input);
+>   - `op abandon` writes no operation, reports its counts, and refuses the current operation.
 
 ### Story 9.22: `file track`, `file untrack` (locked-WC lifecycle) [M]
 `LockedWorkingCopy::{snapshot,reset}` + `SnapshotOptions`; multi-phase reset/resnapshot reconciliation.
@@ -6832,6 +6907,29 @@ Port the per-commit reverse-3-way-merge + sequential chaining + child-rebase fro
 `Workspace::init_workspace_with_existing_repo` + sparse mutation; `WorkingCopyFreshness::check_stale` + `create_and_check_out_recovery_commit`.
 
 *(Refined 2026-10-08, jj 0.46 bump — read the verbs at `v0.46.0`.)* `workspace add` gained `--colocate` / `--no-colocate` (default: colocate iff the CURRENT workspace is colocated and `git.colocate` is true): a colocated add creates a Git worktree via jj-lib's `git::create_worktree` (a `git worktree add --orphan` subprocess, git ≥ 2.42.0, like fetch/push), and Git HEAD is tracked per worktree since jj 0.45. Pass both flags through; the default is the CLI's, not ours. It still records relative paths and refuses an empty name. `workspace update-stale` in a colocated workspace now also resets Git HEAD to the parent of the fresh working-copy commit (jj 0.45, #9936): `recover_stale_working_copy_impl` (`cli/src/cli_util.rs:626-740` @ v0.46.0) first commits a separate `reset git head` operation when that changes anything, then updates the stale working copy, then snapshots again. The SAME recovery runs implicitly when `snapshot.auto-update-stale = true` and a verb meets a stale working copy (`cli_util.rs:499-512`) — Zanshin's `Repo::precondition` already reads that key and refuses either way (`repo.rs`, "Its `true` arm is Story 9.23's stale recovery"), so this story owns that arm too. The `jj git colocation status|enable|disable` per-workspace verbs (0.46) are NOT in this story — no Zanshin story covers `git colocation` yet.
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** a stale working copy is now a designed project-level state (decision 16.28; 10.5; DS readme.md:225), and `jj workspace update-stale` is the only way out of it inside Zanshin, so this story gains priority. This note amends the one-line scope and the 2026-10-08 refinement, and it corrects the refinement's last sentence. It adds items 1–6 and witnesses.
+> - **Item 1 (new), priority.** With several workspaces a stale working copy is the normal case: modifying workspace A's working-copy commit from workspace B leaves A stale (`docs/working-copy.md:115–118` @ v0.46.0). Zanshin then refuses every call that snapshots, the graph read included; only `commit_contents`, `log_defaults`, `workspace_root` and `resolve_workspace_root` still answer (`crates/zanshin-jj/src/repo.rs:314–322`, `:382–384`). Zanshin offers no `--ignore-working-copy` reads (CLI parity, decision 16.28). If `workspace add` holds the story back, split `update-stale` and its `auto-update-stale` arm into a story of their own and ship them first (Claude's proposal).
+> - **Item 2 (new), result reporting.** The result says which of jj's outcomes happened, in jj's words:
+>   - "Updated working copy to fresh commit <hash>" (cli_util.rs:721–725 @ v0.46.0), with the checkout stats (:715–720);
+>   - "Attempted recovery, but the working copy is not stale." (cli_util.rs:674–679);
+>   - for a lost operation, "Created and checked out recovery commit <hash>" (cli_util.rs:751–762, :1555–1558); the commit's description is jj's recovery text (:1544–1551);
+>   - in a colocated workspace, the separate `reset git head` operation when it changed anything (cli_util.rs:683–706);
+>   - the stats of both snapshots (cli_util.rs:652–655, :733–748), which `jj workspace update-stale` prints (`cli/src/commands/workspace/update_stale.rs:37–38`).
+>   jj's three refusal causes (stale, sibling operation, lost operation; cli_util.rs:3040–3075) all end here: update-stale handles the first two by updating (:681–682) and the third with the recovery commit.
+> - **Item 3 (new), no Undo afterwards.** In the plain case (a clean working copy in a non-colocated workspace) update-stale writes no operation of its own: it checks out the fresh commit and finishes the working-copy lock at the existing head operation (cli_util.rs:708–714, :3081–3106). Operations appear only on the side (item 2's `reset git head`, the snapshots). An Undo would run `jj undo` on someone else's operation, usually the rewrite that made this workspace stale, and decision 16.7 forbids that. So the result toast offers no Undo, and ⌘Z stays greyed afterwards (11.13). This supersedes "Updated the working copy · Undo" in DS components/overlays/StaleNotice.prompt.md:11 (V2 §4).
+> - **Item 4 (new), failure.** update-stale can fail with "Concurrent working copy operation. Try again." (cli_util.rs:3089–3093). That failure shows the error toast with Retry (DS components/overlays/Toast.prompt.md:6, :10–11). It does not contradict the notice's "No Retry" (StaleNotice.prompt.md:10): Retry belongs to the failed action, not to the state.
+> - **Item 5 (new), the `auto-update-stale` arm.** With `snapshot.auto-update-stale = true` (default false, `cli/src/config/misc.toml:62`) the next verb recovers on its own (cli_util.rs:499–512). The UI then shows no StaleNotice, only item 2's result.
+> - **Item 6 (new), the UI hook-up.** 10.5 owns the stale state and the StaleNotice. This story adds the notice's action "Update working copy" and its wire (DS StaleNotice.prompt.md:11; readme.md:225): a quiet Zs Button (11.11) with `jj workspace update-stale` in its tooltip, busy while it runs, then item 2's result. Copy stays next to the visible command, and the button takes a neutral icon, not `fetch`, which means `jj git fetch` (the DS reference drops Copy and uses `fetch`, StaleNotice.jsx:19; Claude's proposal).
+> - **The refinement's last sentence is out of date.** "No Zanshin story covers `git colocation` yet" no longer holds: Story 9.45 covers it.
+> - **Witnesses (added; 9.47 oracle scenarios where the CLI can produce the state):**
+>   - a workspace made stale from another workspace reports the fresh commit;
+>   - a fresh workspace reports "not stale";
+>   - a lost working-copy operation produces the recovery commit;
+>   - a colocated workspace writes the `reset git head` operation;
+>   - the plain case (clean, non-colocated) writes no operation of its own; with an edited file, the stale snapshot's operation appears (cli_util.rs:648–655);
+>   - a concurrent change gives "Concurrent working copy operation. Try again.";
+>   - `auto-update-stale = true` recovers on the next verb and reports item 2's result.
 
 ### Story 9.24: Remote-change poll — `git ls-remote` diff against the view — *FR-JJ-13c* [R]
 *(Added 2026-09-12, Ralph.)* A read-only `Repo::remote_changes(remote)` that fetches only the remote's **ref advertisement** (bookmark/tag name → commit id, no pack transfer) and diffs it against the last-known `<name>@<remote>` targets in the current view (`View::remote_bookmarks` / remote tags). Typed result per remote: moved (old id → new id), new upstream, deleted upstream; empty = nothing new. **No transaction, no op-log entry, working copy and bookmarks untouched** — this is what distinguishes it from 6.4a's `git fetch`, which (jj semantics, `import_refs` → `merge_local_bookmark`) also moves *tracked local* bookmarks. jj-lib has **no public ls-remote helper** (only a `pub(crate)` `git remote show` spawn for the default branch), so the transport is ours: spawn `git ls-remote --heads --tags <remote>` via the same subprocess route jj-lib uses for `fetch`/`push` (auth = the user's git: ssh-agent, credential helpers, `.ssh/config` — for free), honouring the same `git.executable-path` setting; gix `Remote::connect(Fetch).ref_map()` is the in-process alternative if the subprocess route proves awkward. No `git fetch --dry-run` — that still downloads objects. **Non-goal:** a commit count ("5 new commits") — impossible without the objects; the UI shows "`main`, `feature-x` changed on `origin`" and offers the real fetch. Surface through the usual chain (`.fbs` → `zanshin-jj` → `extern "C"` → `WorkerCommand`; MCP optional). The **poll timer, interval setting and indicator are UI-side** (Ralph's scope); the backend is one-shot. Cheap (Tier A); needs a real remote fixture in tests (the checked-in fixtures carry no remote bookmarks — construct in-test, as 2.9/6.4a do). *(2026-09-20 addendum, Ralph: the Fetch button's badge is THIS story's count of remote bookmarks that moved/appeared/vanished upstream — still no commit count; per-bookmark commit distances after the fetch are Story 9.29, the button's enable rule and default-remote resolution are Story 9.30. This story was missing from `sprint-status.yaml` until 2026-09-20.)*
@@ -7016,6 +7114,9 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 ### Story 9.32: Warning channel on every envelope — `warnings: [{ code, message }]`, the CLI's `ui.warning_*` as coded facts [M/R]
 *(Added 2026-09-24, Ralph — decided in a console session after the 9.22–9.28 follow-up reviews; refined enough to build from, ACs to be authored when scheduled. Cross-cut; prerequisite of 9.33 and 9.35.)*
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** some verbs now return jj's hints as data, because the UI shows them verbatim (decision 16.25). This note amends item 2 and the non-goal "no hint porting". It adds no items and no witnesses.
+> - **Item 2 and Non-goals.** "Hints are not ported" stays for this story's warnings. Hints that a UI shows verbatim travel as plan or result data of their verb: 9.20 items 3, 4 and 8, 9.21 item 3, and the undo-push hint "To avoid this, run `jj redo` now." behind 10.23's Redo (undo.rs:140 @ v0.46.0).
 
 **Motivation.** Zanshin already answers refusals with a machine-readable code (`Envelope.error { code, context }`, registry `docs/rust-error-codes.md`), but it has no uniform channel for the other half of what the CLI prints: **success with a warning**. Today each such fact is a one-off field — `MutationResult.identity_missing` (9.27), `Precondition.working_copy_immutable_new_commit` and `Precondition.jjconflict_files_present` (9.26) — and the creation verbs cannot report anything at all (9.33). Ralph's idea (2026-09-24): a status with a code the UI can switch on, so Zanshin can offer the remedy itself (missing identity → "set your identity") without ever parsing text. Decided shape: a **list** of warnings next to the existing result, not one HTTP-style status per response, because several warnings can hold at once (a clone with an empty identity AND a file too large to track AND a failed ref export).
 
@@ -7579,6 +7680,31 @@ Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `
 >    - prototype defects 25–76 below (Epic 11's included), and dated amendments to defects 2, 8, 16, 17 and 21–23.
 > 4. **Citations.** Citations dated 2026-10-14 refer to `e74ced3`, those dated earlier to their own commits. New abbreviations: `GL` = `graph-layout.jsx`, `GO` = `graph-ops.js`, `DND` = `graph-dnd.jsx`, `DNC` = `dnd.css`, `AF` = `app-float.jsx`, `SH` = `app-shared.jsx`, `AC` = `app.css`, `FC` = `float.css`, `SR` = `graph-search.jsx`, `SRC` = `search.css`, `RC` = `revset-config.jsx`, `IN` = `inspector.jsx`, `INC` = `inspector.css`, `DF` = `diff-data.js`, `ST` = `settings.jsx`, `STC` = `settings.css`, `DA` = `data.js`, `LS` = `graph-lines-study.jsx`, `SYNC` = `DESIGN-SYSTEM-SYNC.md`, `DS` = the design-system folder (`DS tokens/colors.css:19`). `APP` (`app.jsx`) now belongs to the docked client and `SC` (`styles.css`) to the archive; new citations use neither.
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the design system was re-downloaded twice (rounds 2 and 3), and Ralph decided 47 points on 2026-10-15/16, numbered 16.1–16.47 in the Epic 11 header. This note says what they change in this header. It amends decisions (b), (c), (d), (e), (f) and (g) of 2026-10-14, item 1 of 2026-10-14, the 2026-09-30 decision (e), the "Design input", the status of the design, and prototype defects 28, 40, 54, 62, 63, 64, 68 and 73. It amends the house rules Material, Theme, Tests and Design-system sync and the Sequencing in place, and it adds the house rule Commands.
+> - **The reference.** The DS downloaded 2026-10-16 (round 3) is the reference for tokens, components and behaviour. The floating client is not, where they differ, for example in its pre-A2 traffic-light geometry (DS tokens/spacing.css:25-39; decision 16.5). `DS <path>:<line>` citations dated 2026-10-16 refer to that download. Commit `b49a5cd` records that download and is the anchor for these citations, as `e74ced3` is for those of 2026-10-14 (the convention V1 §4 proposes). The DS's own headings date its rounds differently ("RUNDE 2026-10-16", "RUNDE 2026-10-17"; DS readme.md:260, :227); in this file the latest is "round 3" or "the DS downloaded 2026-10-16". Older DS citations keep the DS of their date and are not rewritten, although about 60 % of them now point at moved or changed lines (V1, summary; V1 §4 proposed re-anchoring them, which this rule declines); each dated note re-cites what it changes. Where the DS's tokens or CSS disagree with its prose (`*.prompt.md`, the readme) or its cards, the tokens and the CSS win (V2 §4).
+> - **Decision (c) of 2026-10-14, reduce motion.** Its sentence "Under reduce motion nothing moves and the flash shows static (the 2026-09-30 rule)" is superseded by decision 16.4: reduce motion works by property. Colour and opacity keep their tokens; movement, size, position, rotation and stroke drawing go to 0 (DS tokens/motion.css:3-10, :70-71). The flash stays a colour fade over 2.4 s with its spread held. This also supersedes the 2026-09-30 decision (e)'s "the flash is static under reduce motion" and defect 28's "the 2026-09-30 rule: static". The flash's "moon ring" reads `--accent-live-ring`, which stays live in an inactive window (DS readme.md:194).
+> - **Decision (f) of 2026-10-14, the accent.** "Selection, focus, the go-to pulse and the flash are moon (`--accent`)" now means the accent role (decision 16.43): the `--accent*` family and `--focus-ring`, which are moon only under Multicolor. A named macOS accent recolours only this role (decision 16.2; DS readme.md:149). Moon as data — status M, the hunk band, remote — stays fixed (`--status-m`, `--hunk`, `--hunk-bg`, `--remote`; DS tokens/colors.css:60-62, :99). The same reading applies to decision (b)'s go-to pulse "now in moon", to item 1's "selection is moon", and to the "Design input"'s "moon (`--accent`) = selection, focus and controls".
+> - **Decision (g) of 2026-10-14, Claude's defaults.**
+>   - "Workstreams and Reviews (11.3): hidden until a backend exists" is superseded by decision 16.26. Workstreams are dropped everywhere, because they are not a jj concept; Reviews stay hidden until a backend exists. Item 1's rail list "(Bookmarks, Workstreams, Reviews, Undo Timeline)" loses Workstreams.
+>   - "the app's controls take moon as their accent" is superseded by decisions 16.1 and 16.43: Zanshin's own Zs controls (11.11) take the accent role.
+>   - "icons use one mechanism, SVG (11.1)" is confirmed by decision 16.6 and detailed by decision 16.32 (`vector_graphics`, a boot-time `IconRegistry`, six size tokens).
+>   - The project dot's "branch" label (11.5) is a "bookmark" label (defect 68 below).
+> - **Decision (e) of 2026-10-14, the hosts.** "the `main*.dart` hosts, the demo host's file" are answered by decisions 16.29 and 16.30. There is one Widgetbook 3.25.0 catalogue, a dev entrypoint at `app/widgetbook/main.dart` opened through AppWindows. 10.1's demo host becomes its Graph folder, and the slow-motion switch becomes Widgetbook's TimeDilation (Claude's proposal). Every "demo host" in this header (the 2026-09-30 decision (c), "Design tweaks that matter", the house rule Tests, the Sequencing) means that folder.
+> - **Design input.** The DS now holds 58 icons, not 48 (DS readme.md:350; DS assets/icons/glyphs.json), and the token files that the house rule Theme lists below.
+> - **Decision (d) and the status of the design, "dialog".** "The jj log Configurations dialog (10.22)" in decision (d), "the Projects dialog" in the status list and its 2026-10-14 parenthesis ("The Projects dialog is Epic 11's (11.6)") now mean windows of their own: Projects (decision 16.13; 11.6 on 11.12) and jj log Configurations (decision 16.19; 10.22 on 11.12). Decision (d)'s "built to the design" stands. Item 1's "a Projects dialog (SH:1992-2187)" describes the export and stays.
+> - **Prototype defects.**
+>   - Defect 28: see decision (c) above.
+>   - Defect 40 (the 2-character bold prefix): decision 16.35 fixes the rendering everywhere. A change id is one `Text.rich` with two spans and no gap; the bold prefix is jj's shortest unique prefix (`changeIdPrefixLength`); the shown length is max(prefix, the slot's 5 or 8); only ◆ is spaced.
+>   - Defect 54 (⌘F and `/` behind a modal dialog): resolved for Settings, Projects and jj log Configurations, which are windows with their own focus (decisions 16.13, 16.19). ⌘F and `/` stay scoped to the project window and are inactive while one of its sheets is open (10.21). ⌘F while Settings or Projects is key follows decision 16.47.
+>   - Defect 62 (28 px of graph at the 900 px minimum): the minimum is now 880 × 560 (decision 16.37). The collapse rule keeps 320 px of graph: the inspector shrinks first, then the panel, then the pinned panel collapses (decisions 16.22, 16.23).
+>   - Defect 63 (`jj workstream new`): Workstreams are dropped, not hidden (decision 16.26). The bracket "[11.3: the item is hidden]" is superseded.
+>   - Defect 64 (Projects at every launch): Projects is the start window only when no project is open, and closing it quits (decision 16.13; 11.5).
+>   - Defect 68 ("branch"): the word is "bookmark" everywhere (V2 §4).
+>   - Defect 73 (⌘, stacks two modals): obsolete. Settings and Projects are windows, and ⌘, over Projects opens Settings beside it (decisions 16.13, 16.14).
+> - **House rules.** Material, Theme, Tests and Design-system sync carry dated amendments in place. The new house rule Commands collects decisions 16.39 and 16.44.
+> - **Sequencing.** A dated bullet in place: 11.11 before 10.7, 11.12 before 10.22, 11.13 after 10.9 and 10.23.
+> - **Stories:** new 11.11–11.13 (Epic 11). Dated notes in 9.20, 9.21, 9.23, 10.1–10.3, 10.5–10.11, 10.12, 10.14–10.17, 10.19–10.27 and 11.1–11.10. 10.0, 10.4, 10.13 and 10.18 are untouched.
+
 **Goal.** The app's main view as in the design export. The canvas and the graph:
 - commit cards at positions computed from data, several cards per row, on a navy dot-grid canvas:
   - Compact rows are the dependency depth;
@@ -7857,6 +7983,7 @@ Added with the design update of 2026-10-14 (cited at `e74ced3`; Epic 11's defect
 - **Code and tests.** Code goes in `app/lib/src/features/graph/`, tests in `app/test/features/graph/` (mirroring). The POC (`app/lib/src/features/graph_poc/`, `app/lib/main4.dart`) is reference only.
 - **Bridge imports.** The app imports only `package:zanshin_core/zanshin_core.dart`. That library exports none of the handle, show, bookmark, mutation, exception or graph types today (`zanshin_core.dart:9-33`). Each story adds the types it consumes to the `show` list; that is what the `[UI/bridge]` tag means.
 - **Material.** Material types come from `package:material_ui` only; its `ThemeMode` is not Flutter's.
+  - *Amended 2026-10-16 (decision 16.1):* no visible control is Material or Yaru. Controls are 11.11's Zs library on Flutter's widgets-layer primitives (`app/lib/src/shared/controls/`), and text entry is Flutter's `TextField` without decoration. The Material types that remain (`MaterialApp`, `ThemeData`) still come from `package:material_ui` only. Yaru leaves by 11.10.
 - **Visuals.** Designed visuals are a `RenderBox` with text slots (the `splash_card_render.dart` pattern), not nested `Column`/`Row` trees.
 - **Theme.** *(Amended 2026-10-14: decision (f) of the design update; the earlier text read "Colours and sizes live in a `GraphTheme` `ThemeExtension`, whose dark and light values come from the design tokens (GC:4-5, SC:9-56, SC:2363-2376).")* Colours and sizes come from the design system, `DS` = `_bmad-output/implementation-artifacts/design_system/`, cited as `DS <path>:<line>`.
   - **The token layer (Story 11.1)** holds every DS token once:
@@ -7867,12 +7994,16 @@ Added with the design update of 2026-10-14 (cited at `e74ced3`; Epic 11's defect
   - **Moon marks selection, focus and every flash** (`--accent`). The docked client's legacy blue never appears (#3b82f6, `AC:33-35`; the rings at `GC:74`, `:76`). Gold stays with @ and the one primary action (`DS readme.md:75-76`).
   - **Client CSS** (`AC`, `FC`, `GC`, `INC`, `ST`/`STC`) is cited only where the DS has no token. `SC` is retired: the old `styles.css` survives only as `design/archive/v1 Branch Columns/styles.css`.
   - `GraphTheme.of(context)` falls back to `GraphTheme.night` and never force-unwraps.
+  - *Amended 2026-10-16 (decisions 16.2, 16.43; the Epic 11 header):*
+    - **The token layer** holds every DS token file, not only colours, effects, typography and spacing; this supersedes the list under "The token layer (Story 11.1)" above: `DS tokens/` accents, colors, contrast, effects, fonts, inactive, motion, spacing, states, transparency and typography (11.1 item 1). Contrast, inactive and transparency are deltas over a theme and an accent family. Each accent family has 11 tokens, 8 roles plus 3 live copies (DS tokens/accents.css:11); DS readme.md:153 still says 8, and the tokens win.
+    - **"Moon marks selection, focus and every flash"** is superseded. Selection, focus, a control's on state, the menu highlight, drop targets, the go-to pulse and the flash take the accent role (`--accent*`, `--focus-ring`), which is moon only under Multicolor. What stays live in an inactive window (progress, the edit flash, drop targets, links) reads `--accent-live-*` (DS readme.md:194). Moon as data stays fixed: `--status-m`, `--hunk`, `--hunk-bg`, `--remote` (DS tokens/colors.css:60-62, :99). A picked data row (a project, a configuration) is `--accent-soft`; navigation is `--fl-on` (DS readme.md:137).
 - **Layout data.** The view never lays out the graph. Until 10.12, everything runs on recorded layouts from the spike's reference implementation (10.1 item 13). Every recording passes 10.1's hard invariants. 10.4's route invariant is a counted report, not a gate, until SPEC §11.4 is answered and 4.11 fixes the blocked-merge routing.
 - **Scroll precedence.** One rule, defined in 10.5 item 6 and used by 10.1, 10.7, 10.8 and 10.14. An explicit reveal (a bookmark pick, locate @, go-to-change) beats the re-centre on @ after a revset or layout switch, which beats the anchor. The anchor is the fallback when the target is absent. It is also the rule for reloads, card-size changes and side panels, unless 10.8 design question (e) keeps the raw offset for panels. *(2026-10-14: panels no longer resize the viewport; they float over it. Every reveal centres in the area the floating chrome leaves free, and pinning a panel shifts the offset by the inset's change, so no card moves (10.5's dated note).)*
 - **Ports.** The view model (10.5) declares the ports the view uses: the layout source (`GraphSource`) and the actions runner (`GraphActions`). A story whose real implementation has not landed yet wires a fake: 10.6 and 10.8 before 10.9, and everything before 10.12.
 - **Tests.**
   - Scroll-physics tests run under `TargetPlatformVariant.only(TargetPlatform.macOS)`.
   - There are no golden tests, because the repo has none. Ralph reviews visuals in 10.1's demo host.
+  - *Amended 2026-10-16 (decisions 16.29–16.31, 16.33):* this supersedes "Ralph reviews visuals in 10.1's demo host" above. Ralph reviews visuals in the Widgetbook catalogue (`app/widgetbook/main.dart`, Widgetbook 3.25.0 pinned exactly; 11.11). 10.1's demo host is its Graph folder. Agents drive the app and the catalogue through `marionette_flutter` ^0.7.0 with one shared `MarionetteConfiguration`, by Semantics identifier or text, never by coordinates. The CGWindowList probe stays the only check of the native chrome. Widget tests that paint icons load the `IconRegistry` in a shared `setUpAll` helper (`tester.runAsync`).
   - Real-cdylib widget tests wrap worker and watcher I/O in `tester.runAsync`.
   - App tests never call a jj config verb for real. The `test-flutter` task does not pin `XDG_CONFIG_HOME` (`Makefile.toml:109-111`).
 - **Gate and definition of done.**
@@ -7880,6 +8011,11 @@ Added with the design update of 2026-10-14 (cited at `e74ced3`; Epic 11's defect
   - The 3 splash-card failures are fixed, so the earlier "adds no new failure" workaround is gone.
   - The coverage ratchet is Rust-only and does not measure these lines. Each story's named witnesses are the only safety net.
 - **Backend boundary.** The UI never composes jj operations (ADR-0003). It pre-fills every parameter the shipped API takes from the effective config (Story 4.9) and passes it explicitly. CLI parameters that the API lacks are backend gaps, not UI work.
+- **Commands.** *(Added 2026-10-16; decisions 16.39 and 16.44.)*
+  - Every command is real. A jj command in any UI text (tooltip, menu column, footer, empty state, command well) exists in jj v0.46.0 exactly as written, with exactly those options (DS readme.md:53).
+  - A command is shown in full, with the change id, and shell-quoted: `jj new -A kmnvxoqp`, `jj edit kmnvxoqp`. Pattern values get `exact:` where needed. `jj new -A` or `jj edit` without an argument does not exist. The Redo pill's tooltip is `jj redo`.
+  - The UI never composes a sequence of commands of its own (DS readme.md:53; the house rule Backend boundary).
+  - Empty states use the DS's copy where it gives one, for example "No bookmarks yet. Create one with `jj bookmark create <name>`." (DS readme.md:57).
 - **Design status.** Each story separates what the design fixes from what Ralph still decides:
   - FINAL items cite the design by file:line;
   - NEEDS DESIGN items are phrased as concrete questions, and they are answered before the story is built, never guessed;
@@ -7893,6 +8029,12 @@ Added with the design update of 2026-10-14 (cited at `e74ced3`; Epic 11's defect
   - 11.1's parity test turns `cargo make test` red when a DS token changes, and names the token. A re-download that changes only components keeps the gate green; this rule covers it.
   - Nothing under `design/` or `design_system/` is edited: both are re-downloaded as a whole.
   - A decision recorded in this epic still wins over the DS.
+  - *Amended 2026-10-16 (decisions 16.4, 16.33; V2 §4; the Epic 11 header):*
+    - The DS rounds of 2026-10-15/16 came without a SYNC number: the readme still says "Synced through #9" (DS readme.md:22). Citations dated 2026-10-16 refer to the DS downloaded that day (round 3). `dsSyncedThrough` stays 9 until the DS records #10.
+    - Without a higher N, a re-download is checked when 11.1's parity test (tokens and icons) turns red (11.1 item 12; V1 §4). The story that meets the red gate then does what the rule above asks for "#N+1": it adds the dated notes and updates the token layer, citing the download's date instead of "DS #10".
+    - Tokens and CSS win over the DS's prose (`*.prompt.md`, the readme) and over its cards where they disagree; `tokens/motion.css` wins over the motion cards (V2 §4).
+    - Icons are the exception to "A re-download that changes only components keeps the gate green": the icon parity check (decision 16.33) turns `cargo make test` red when a DS icon changes, until the copied file follows.
+    - Older `DS …:line` citations keep the DS of their date and are not rewritten.
 
 **Sequencing.**
 - 10.0 (the scope-exception note) is done.
@@ -7922,6 +8064,11 @@ Added with the design update of 2026-10-14 (cited at `e74ced3`; Epic 11's defect
   - 10.24 (the inspector's diff) follows 10.8 and Epic 5's line-level stories. 10.25 (the file-level composer) follows 10.8, 10.9, 9.15 and 9.49 and needs no Epic 5. 10.26 (hunk selection) follows 10.24, 10.25 and 9.50. 10.27 (diff drags) follows 10.10 and 10.26.
   - 10.10 no longer comes last: it runs on a fake `drop_actions` port right after 10.9 and 10.15; the amended 9.31, 9.16, 9.9, 9.19 and 9.48 bring the real rows.
   - Epic 11's own sequencing is in its header.
+- *Added 2026-10-16 (the Epic 11 header; decisions 16.3, 16.13, 16.19):*
+  - 11.11 (the Zs control library and the Widgetbook catalogue) follows 11.1 and 11.2 (11.11's Depends on), and comes before 10.7 and every later story that uses a control.
+  - 11.12 (the window foundation) comes before 10.22. 10.22 follows 10.21, 11.12 and 11.11, and needs 11.2 only for its "Discard changes?" ConfirmDialog sheet (DS components/search/RevsetDialog.prompt.md:17). This supersedes the 2026-10-14 line "10.22 (the Configurations dialog) follows 10.21 and 11.2".
+  - 11.13 (the menu bar) follows 11.12, 10.9 and 10.23. It comes before 11.5–11.8 and 10.16, which list it in their Depends on. The shortcuts of 10.6, 10.7 and 10.9 are bound there.
+  - "the demo host" in the 10.1 bullet above is the Widgetbook Graph folder (decision 16.30).
 
 **What changed in the re-plan, and why** (story numbers kept where the topic still fits):
 - **10.1–10.7 keep their topics.** Their content now follows the design: several cards per row, routed edges, the design's toolbar. 10.1's contract takes the spike's output format (rows in 1/U units), so the engine's free layout needs no view-side computation.
@@ -7996,6 +8143,19 @@ Added with the design update of 2026-10-14 (cited at `e74ced3`; Epic 11's defect
 >   - the export's own behaviour (shared columns, router B, the day dividers) is read by 4.14's and 4.15's loader, which evaluates `graph-layout.jsx` whole;
 >   - new fixtures for 4.15 and 10.4: the Lines Study's FAN scenario (4 or 8 extra children of the trunk) and its PRESETS (a 2- and a 3-parent merge) (LS:7-22).
 > - **For 10.20** (decision (c)): the FLIP model glides moved cards on both axes. A card's x and y are per-key paint parameters (the 2026-09-30 constraint named y only), and the edge layer can hide and fade back in.
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the demo host becomes the Widgetbook "Graph" folder, and the plane follows live, resizable insets. This note amends item 1, item 10, item 12, the 2026-10-14 note's items 1, 6 and 8, and design question (b). It adds witnesses.
+> - **Item 1, the demo host: superseded** (decision 16.30, Claude's proposal, accepted). There is no demo-host `main*.dart`. The fake-data host is the "Graph" folder of the one review catalogue, Widgetbook 3.25.0 at `app/widgetbook/main.dart` (decision 16.29; Story 11.11 item 3). Every `GraphViewOptions` field becomes a knob of its use cases. The slow-motion switch is Widgetbook's TimeDilation addon, with the explicit `// ignore: experimental_member_use` (decision 16.29). This answers design question (b) and supersedes the 2026-10-14 note's "the demo host's file and the `main*.dart` that hosts it become Claude's proposals".
+>   - If 10.1 lands before 11.11, it adds the Widgetbook 3.25.0 dev entrypoint (pinned exactly) with the Graph folder only, with 11.1 item 7's root-scope widget as its `appBuilder`. 11.11 then takes the entrypoint over and adds the other folders around it, as 11.11 item 3 says (Claude's proposal).
+> - **Item 12, registration: amended.** `GraphTheme` registers once, through 11.1's app theme. The catalogue's `appBuilder` is the app's root-scope widget (11.11 item 3), so the Graph folder gets the same theme. This supersedes the 2026-10-14 sentence "the demo host registers it, and so does 11.1's app theme".
+> - **The 2026-10-14 note's item 6, insets: now live.** 10.5's `GraphInsets` change while the user drags the inspector's or a pinned panel's edge (decision 16.22), and when the collapse rule collapses or restores the pinned panel (decision 16.23). The plane's margins and both extents follow per frame. A left-inset change shifts the horizontal offset by the same amount in the same frame, so no card moves; that rule now also runs per frame during a drag. A panel shown as the rail's temporary flyout changes no inset (decision 16.23).
+> - **The 2026-10-14 note's item 8, cursors: amended** (decision 16.42 (q); DS readme.md:106; DS components/surfaces/ResizeEdge.prompt.md:10). A resize edge shows `col-resize`, and at its minimum or maximum the one-way cursor for the direction that is left (AppKit's resizeLeft / resizeRight). During a drag the resize cursor overrides whatever is under the pointer, with `SystemMouseCursors` or a native `columnResizeCursor(directions:)`; the story that builds the edge (11.3) picks one. This supersedes the plain "`col-resize` on resize handles".
+> - **Item 10, reveal under reduce motion.** A scroll is movement, so under reduce motion `reveal(…, animate: true)` jumps (decision 16.4; DS tokens/motion.css:70–71). The anchor rules are unchanged.
+> - **Witnesses (added):**
+>   - dragging either edge (fake insets driven per frame) moves no card on screen, including at the ends of the scroll range;
+>   - a flyout panel changes no extent and no offset;
+>   - under `disableAnimations` an animated reveal lands in one frame;
+>   - the catalogue's Graph folder pumps every use case without an exception (part of 11.11's smoke test).
 
 **Motivation.** The design places each card at a pixel position computed from data alone (GV:198-224):
 - x comes from the node's column, y from its row;
@@ -8249,6 +8409,12 @@ If Ralph wants smaller reviews, this story splits cleanly into two:
 >   - passing midnight still re-formats the labels without a layout request.
 > - **Known limit:** two commits on either side of midnight less than about 25 min apart (about 11 min with compact cards) overlap vertically, so their divider and label cross cards (prototype defect 45). The label stays readable on its opaque pill (Claude's proposal: accept; deferred-work).
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the pinned panel is now drag-resizable and can collapse, so the day axis's label column follows a live left inset. This note amends the 2026-10-14 note's "Sticky horizontally only" bullet. It adds a witness.
+> - **Sticky label column** (the 2026-10-14 note's first "Sticky" point; DS components/graph/DayAxis.prompt.md:16). "Right of the rail or the pinned panel: at the inset − 6" now reads 10.5 item 14's live left inset (as amended 2026-10-16): 76 with no pinned panel or a collapsed one, else 76 + the panel's effective width + 12 (decisions 16.22, 16.23). The panel's width runs 240–440, default 300 (DS tokens/spacing.css:42).
+>   - During an edge drag the column moves with the inset in the same frame. The cards stay where they are (DS components/surfaces/ResizeEdge.prompt.md:12), and so do the dividers and the labels' vertical places.
+>   - A panel shown as the rail's temporary flyout changes no inset, so the column stays (decision 16.23).
+> - **Witness (added):** dragging the panel's edge, and a collapse by the 320 px rule, move the label column with the inset and move no card and no divider.
+
 **Motivation.** Ralph named the background as its own piece. In the design:
 - the canvas is `--canvas-base` with a subtle dot grid anchored to the content (GC:50);
 - the Time layout adds a sticky 88 px gutter with one time pill per bucket, plus dotted guides between the buckets (GV:618-628, GC:57-59).
@@ -8390,6 +8556,38 @@ NEEDS DESIGN:
 >   - the root shows ••• only;
 >   - a legend never exceeds W/2 − 34 px and paints above an exit that passes under it;
 >   - selected and @-selected match the DS rings in both themes.
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** icons come from the SVG registry, the change id is rendered as jj renders it, other workspaces get `name@` slots, and the accent role replaces "moon". This note amends items 1, 2, 3, 4, 6, 11 and 12, the 2026-09-28 note's icon bullet, the 2026-10-14 note's token and focus bullets, and design questions (c) and (e). It adds items 14–16 and witnesses.
+> - **The 2026-09-28 icon bullet is superseded** (decisions 16.6, 16.32). There is no icon font and no hand-copied subset. The card's glyphs (bookmark, bookmark-filled, more, conflict, merge) come from 11.1's `IconRegistry`, which holds all 58 DS glyphs under their kebab-case names (DS assets/icons/glyphs.json; DS readme.md:350). `ZanshinIcon` paints them at the size token `sm` 12: the flags, the bookmark button and ••• (DS readme.md:353; DS components/graph/ChangeCard.jsx:21–22, :63, :69). "Ralph builds the icon font from them" goes.
+> - **Item 2 and design question (c), the id: answered** (decision 16.35). The bold part is jj's shortest unique prefix (`changeIdPrefixLength`), not 2 characters. The shown length is max(prefix, 8) on a detailed card and max(prefix, 5) on @ and in the compact card, as jj's `shortest(n)` computes it (commit_templater.rs:2295–2302 @ v0.46.0; DS components/graph/ChangeCard.jsx:27 keeps 8 / 5). The id is one `Text.rich` with two spans and no gap between them; only the ◆ keeps its space (jj writes prefix and rest without a separator, commit_templater.rs:2316–2321 @ v0.46.0). The DS's `gap:4px` on `.zs-cid` (DS components/graph/graph.css:34) and its "two-character prefix" (DS components/graph/ChangeId.prompt.md:1) are not copied; this is fixed in Flutter, not sent to the DS. This supersedes item 2's "the first 2 characters bold" and "up to 8 characters in total, or 5 on the @ card", item 3's "the id (5 characters)", and the 2026-10-14 sentence "the DS keeps a fixed 2-character prefix".
+> - **Accent role, not "moon"** (decision 16.43). The selected border is `--accent-line` with `--ring-select` (DS components/graph/graph.css:5); @ and selected is `--ring-wc-select`; the bookmark legend's selected border is `--accent-line` (graph.css:23). Keyboard focus is the 2 px `--focus-ring` at `--focus-offset-card` 3 (DS tokens/states.css:21; DS readme.md:135). Under a named macOS accent these follow the user's colour; gold (@) never moves (decision 16.2). This supersedes the 2026-10-14 bullets "Selected: the `--accent` (moon) border", "@ and selected: … a 4 px moon ring" and "keyboard focus: a 2 px moon outline at offset 3", and item 6's "accent when selected".
+> - **Design question (e), other workspaces: answered in part** (decision 16.28; DS readme.md:224). Divergent, hidden, the conflicted and unsynced bookmark, and pending stay open.
+> - **Item 14 (new), `name@` slots.**
+>   - **Item 1, slots.** The slot children gain the `name@` badge (the @ badge with a name) and up to three `WorkspaceTag` slots (two names and `+N`).
+>   - Shown only when the repository has two or more workspaces. With one, the card keeps the plain @ badge, as jj prints no marker then (commit_templater.rs:1492–1495 @ v0.46.0; DS readme.md:224).
+>   - Ours is the saffron @ badge reading `name@` (`.zs-at.is-named`, at most 96 px, DS components/graph/graph.css:41–43). Every other workspace is a quiet `WorkspaceTag` (`.zs-ws`: mono, `--text-muted`, 1 px `--border-strong`, at most 96 px, graph.css:44–46), never saffron.
+>   - Order: ours first, then two others by name, then `+N`, whose tooltip lists the rest (DS components/graph/ChangeCard.jsx:35). jj sorts all names and does not put ours first: it walks the view's working copies in name order (commit_templater.rs:1491–1503 @ v0.46.0; a `BTreeMap`, view.rs:65 @ v0.46.0) and joins them with a space (commit_templater.rs:1871–1875 @ v0.46.0); ours-first is a GUI choice, not a parity gap.
+>   - A name prints as a revset symbol, quoted when it is not a plain symbol (`"my ws"@`), as jj's `WorkspaceRef` does (commit_templater.rs:1865–1868 @ v0.46.0).
+>   - **Meta-line yield order** (V2 §4): the author shrinks first (item 2), then further workspace tags fold into `+N`, then names shorten inside their 96 px, then the date goes. The DS's own demo card overflows by about 35 px at 240 px; that is not copied.
+>   - **The compact card** shows the same slots, first on its one line, before the id (DS components/graph/ChangeCard.jsx:53–55). There the subject ellipsizes first (it takes the remaining width, DS components/graph/graph.css:11), then further tags fold into `+N`, then names shorten inside their 96 px (Claude's proposal; the DS gives no compact order).
+>   - **Data:** a view fact per node from the topology's working-copy list (`GraphTopology.workingCopiesOf`, `packages/zanshin_core/lib/src/ffi/graph.dart:512`), added to `GraphLayout` as an accessor (10.1 item 2 allows that). Which name is ours comes from 10.5's wire (10.5 item 1, the 2026-10-16 note).
+>   - **VoiceOver:** the card's label names the workspaces, e.g. "Working copy of default, working copy of ci, <subject>" (DS components/graph/ChangeCard.jsx:39; DS components/graph/AtBadge.prompt.md:8). This amends item 11.
+> - **Item 15 (new), inactive window and disabled** (decision 16.42 (i); DS tokens/inactive.css:4–6, :17; DS readme.md:194).
+>   - In a window that is not key, the selected ring and border go neutral through the inactive tokens; gold, the data colours and the edit flash stay.
+>   - No hover is painted in a non-key window; hover clears on resignKey.
+>   - No focus ring shows in a non-key window; the focus is kept and returns with the window.
+>   - A card affordance that is disabled (for example while the working copy is stale, 16.28) paints at `--disabled-opacity` .4 (DS tokens/states.css:26). The dim of the focus path (.4, graph.css:9) is a separate paint and unchanged.
+> - **Item 16 (new), affordance motion by property** (decision 16.4). ••• and the add-bookmark button fade on `--dur-hover` and scale in on `--dur-nudge`, the scale × `--motion` (DS components/graph/graph.css:89, :91). Under reduce motion they only fade.
+> - **Items 4 and 12, the host.** "The demo host drives the tick" (item 4) and "a `GraphViewOptions` field that the demo host toggles" (item 12) now read: the Widgetbook Graph folder does (decision 16.30). 10.5 still owns the tick in the app.
+> - **Depends on** adds 11.1 (the `IconRegistry`, the size tokens, the inactive tokens) and 10.5 (our workspace's name). Until 10.5 lands, the Widgetbook Graph folder passes the name as a knob (Claude's proposal).
+> - **Witnesses (added):**
+>   - the id's bold part equals jj's shortest unique prefix on a fixture with a 3-character prefix, the shown length is max(prefix, 8) or max(prefix, 5), and there is no gap between the spans (`paints` matcher on one paragraph);
+>   - with one workspace no name shows; with two, ours reads `default@` in saffron and the other `ci@` as a tag; with five, ours, two names and `+2` with a tooltip listing the rest;
+>   - a 240 px card with four workspaces yields in the stated order and never overflows;
+>   - a 160 px compact card with three workspaces yields in the compact order, keeps ours and the full id, and never overflows;
+>   - a workspace name with a space prints quoted;
+>   - in an inactive window the selected ring uses the neutral tokens and no hover paints;
+>   - under `disableAnimations` ••• appears at full size and only fades.
 
 **Motivation.** The card is the view's unit of information (GV:394-440, GC:71-148). The mock `_CommitCard` (`app/lib/src/features/commits/commit_card.dart:193`) cannot be reused. It is a variable-height `Column`/`Row` tree with its own hover `setState`, which does not fit a fixed-geometry canvas with recycled children. Ralph's rule is that designed visuals are a `RenderBox` with text slots. The house example is `app/lib/src/features/bootstrap/splash_card_render.dart`: `SlottedMultiChildRenderObjectWidget` at :148 and `RenderBox with SlottedContainerRenderObjectMixin` at :188.
 
@@ -8727,6 +8925,39 @@ NEEDS DESIGN:
 >   - closing the inspector at the right end of the scroll range clamps the offset without a visible jump (Claude's proposal).
 > - **Depends on** adds 11.3. Until it lands, the demo host passes fixed insets, with switches for "pinned panel" and "inspector" (Claude's proposal).
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the working copy can be stale, the insets follow resizable and collapsible panels, the top inset is 60, and the chrome API gains two scroll targets. This note amends items 1, 9, 13, 14 and 15, the non-goal "Any Rust change", the chrome-facing surface and the 2026-10-14 "Depends on". It adds item 17 and witnesses.
+> - **Item 9, a stale working copy: a state of its own** (decision 16.28; DS readme.md:225). `jj.stale_working_copy` is not an error with retry. It supersedes "Other errors: an error state with retry." for this code.
+>   - **Project-level.** The view model exposes one stale state for the project, not per-call errors. The graph keeps its last valid layout, as after a revset error; card content still loads, because `commit_contents` runs without a snapshot.
+>   - **What still answers:** only the calls without a snapshot, `commit_contents`, `logDefaults()` and the workspace root. Every other call refuses, as jj does: the inspector's `show()`, search, the Undo Timeline, the bookmark list, Push and every verb. Their surfaces show "Working copy is stale" as the disabled reason (DS components/overlays/StaleNotice.prompt.md:9). Zanshin offers no `--ignore-working-copy` reads (CLI parity; decision 16.28).
+>   - **No Retry** (StaleNotice.prompt.md:10): retrying cannot help.
+>   - **Cold start.** A project that is stale when it opens has no layout. The notice then stands over the empty canvas.
+>   - **The cause** comes from the error context, `<cause>\n<working_copy_op_id>\n<repo_op_id>` with `stale`, `sibling_operation` or `operation_not_found` (`docs/rust-error-codes.md:80`). The notice shows jj's own message for that cause, with the op id (cli_util.rs:3040–3075 @ v0.46.0).
+>   - **The notice.** This story fills 11.3's slot top-centre under the bar with the DS `StaleNotice` (Claude's proposal; no story owned the widget): "Working copy is stale · ‹command›", the command copyable (DS readme.md:225). The command is the one jj's hint names for the cause: `jj workspace update-stale` for `stale` and `operation_not_found` (cli_util.rs:3047, :3071 @ v0.46.0), `jj op integrate <working_copy_op_id>` for `sibling_operation` (cli_util.rs:3061–3065 @ v0.46.0); the DS sentence shows the first case. 9.23's "Update working copy" runs `jj workspace update-stale`, which recovers all three (cli_util.rs:681–682, :751–763 @ v0.46.0). The notice has role status, is announced once and fades in on `--dur-panel` (StaleNotice.prompt.md:13). Until 9.23 lands, the CLI remedy is all it offers; 9.23 adds "Update working copy".
+>   - **Exit.** `jj workspace update-stale` run in a terminal often writes no operation. So the view model re-requests on the watcher's checkout events as well as on op-heads changes, and leaves the state when a request no longer refuses.
+>   - This also answers design question (d) for the stale state: its look is the DS's.
+> - **Item 1, bridge part: our workspace's name on the wire** (V2 §4; decision 16.28). 10.3's `name@` slots need to know which working copy is ours, and no call names it today. A small addition on the opened handle or on the topology carries it. This narrows the non-goal "Any Rust change" to everything except this field; 10.12 adds it instead if 10.5 does not.
+> - **Item 14, insets: live and resizable** (decisions 16.22, 16.23; DS tokens/spacing.css:42–43; DS components/surfaces/ResizeEdge.prompt.md:12).
+>   - **Top 60, not 68** (`--chrome-top`, DS tokens/spacing.css:39); 68 in full screen (spacing.css:52).
+>   - **Left** = 76 + the panel's effective width + 12 while a panel is pinned and not collapsed, else 76. This supersedes the fixed "388 with a pinned panel".
+>   - **Right** = the inspector's effective width + 24 while a commit is selected, else the minimap column 158. This supersedes the fixed 484. The plane's right margin uses the effective inspector width in place of 460.
+>   - The effective widths come from 11.3's width model: the user's dragged width, shrunk by the collapse rule when the window has no room, inspector first (decision 16.23). A panel that is pinned but collapsed is a state of its own: the pin is kept and the left inset is 76. A panel shown as the rail's temporary flyout changes no inset.
+>   - `GraphInsets` notifies per frame during an edge drag. The existing rule "pinning or unpinning shifts the horizontal offset by the inset's change in the same frame" now runs on every left-inset change: drags, collapse and restore. @'s direction is re-measured on each change.
+> - **Item 15, calm: one wait** (decision 16.45, Claude's proposal; DS tokens/motion.css:67; DS readme.md:104). Calm turns off `--delay-calm-return` 650 ms after the last wheel event or pan move alike. This supersedes "or 420 ms after the last pan move". An edge drag is a drag, so it blocks calm.
+> - **Item 17 (new), scroll targets for the menu bar** (decision 16.18; DS readme.md:205, :209). The chrome-facing surface adds "scroll to the selection" (Go › Selection ⌘J) and "scroll to @" (Go › Working Copy (@) ⇧⌘J). Both are explicit reveals in item 6's precedence that centre in the visible rect; neither changes the selection. "Scroll to the selection" is unavailable without one, so 11.13 greys its item. 11.13 binds the keys.
+> - **Reduce motion.** An animated reveal jumps (decision 16.4), as 10.1's note says.
+> - **Depends on.** The 2026-10-14 sentence "Until it lands, the demo host passes fixed insets, with switches" now reads: the Widgetbook Graph folder (decision 16.30) passes fixed insets with knobs for "pinned panel", "pinned but collapsed", the panel width, "inspector" and the inspector width. 9.23 is not a dependency; it adds the notice's action.
+> - **Item 13, the host.** "The demo host drives the view model with the fake ports" now reads: the Widgetbook Graph folder does (decision 16.30). A real-repo host still arrives with 10.12.
+> - **Witnesses (added):**
+>   - `jj.stale_working_copy` from the fake source yields the stale state, keeps the last layout and offers no retry; content requests still run; a refused `show()` reports the stale reason;
+>   - a project stale at open shows the notice over an empty canvas;
+>   - after a checkout event the next request succeeds and the state clears, with no operation written;
+>   - each of the three causes shows jj's message and the command of jj's hint for it (`jj op integrate <op>` for a sibling operation);
+>   - dragging either edge moves no card, also with the offset clamped at an extent;
+>   - a collapse sets the left inset to 76 and moves no card; a restore brings it back at the remembered width;
+>   - the top inset is 60, and 68 in full screen;
+>   - calm clears 650 ms after the last pan move;
+>   - "scroll to @" and "scroll to the selection" centre their target and leave the selection unchanged.
+
 **Motivation.** 10.1–10.4 run on recorded layouts. This story owns the view model. It requests layouts through a narrow port and keeps the view coherent while jj re-derives the graph after every operation (ADR-0002), whether the operation is Zanshin's own or an external `jj`. The watcher reports each operation as an `OpHeadsChangedEvent` (`packages/zanshin_core/lib/src/worker/events.dart:19`) on `ZanshinWorker.events` (`packages/zanshin_core/lib/src/worker/isolate.dart:354`).
 
 Anchoring matters more in the design than it did before. Pixel y depends on the layout's row count (GV:202), so a new head shifts every card by one pitch, and a global lane reorder can move columns. The prototype has no reloads, and it re-centres on @ one relayout late (prototype defect 1).
@@ -8888,6 +9119,35 @@ Plus one real-cdylib test on an in-test repo, using `tester.runAsync`: a `descri
 >   - For reference, the DS's edit flash: `0 0 0 2px --accent` plus `0 0 0 6px --accent-ring`, held for 35 % of 2.4 s, then faded (DS components/graph/graph.css:78-79). Under reduce motion the pulse is static (decision (c)); reduce motion reaches Flutter only through 11.1 item 7, because macOS never reports it.
 > - **Unchanged:** (a), an immutable double-click does nothing (GV:996); (b), an empty-canvas press only pans (GV:1002-1011); (f), multi-select is not designed.
 > - **Depends on** 10.15, 10.21, 10.23 and 11.3 as well.
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** ⌘J and ⇧⌘J scroll without selecting, the pulse and the flash follow reduce motion by property, the callout and the @ pill take the DS tokens, and the accent role replaces "moon". This note amends items 5, 6, 7, 8 and 12, the 2026-09-30 note, the 2026-10-14 note's items 6, 7, 8 and 12 and its token bullet, and design questions (c) and (g). It adds witnesses.
+> - **Design question (g), the shortcut for @: answered** (decision 16.18; DS readme.md:205, :209). Go › Working Copy (@) ⇧⌘J scrolls to @. Go › Selection ⌘J scrolls to the selected change. Both are 10.5's new scroll targets, bound by 11.13.
+>   - **Scroll only.** ⇧⌘J, the @ pill's click and item 6's locate @ are one action: they reveal @ and leave the selection alone. This supersedes the DS's "↩ / Space scroll to @ and select it" (DS components/actions/AtPill.prompt.md:9) and the 2026-10-14 sentence "(g), a shortcut, stays open".
+>   - The pill's tooltip names ⇧⌘J (Claude's proposal).
+> - **Item 12, the pulse, under reduce motion: superseded** (decision 16.4; DS tokens/motion.css:20, :70–71). The ring's growth from 2 to 22 px is movement and goes to zero; its opacity is colour and stays. So under reduce motion the ring holds its start spread and fades, three times. This supersedes item 12's "there is no pulse, only the selection ring", its witness "with `disableAnimations` no animation runs" and the 2026-10-14 sentence "Under reduce motion the pulse is static (decision (c))".
+> - **The 2026-09-30 note, 10.19's flash: superseded** (decision 16.4). Under reduce motion the flash is a colour fade over the full `--dur-flash` 2.4 s with its spread held: 2 px `--accent-live-line` and 6 px `--accent-live-ring`, held for 35 %, then faded on `--ease-state` (DS components/graph/graph.css:83–85; motion.css:35). This supersedes "static under reduce motion". The flash reads the live copies, so it also shows in an inactive window.
+> - **Accent role, not "moon"** (decision 16.43). The pulse ring is the accent role, not "moon `--accent`". Keyboard focus is the 2 px `--focus-ring` at `--focus-offset-card` 3 (DS tokens/states.css:21; DS readme.md:135). This supersedes the 2026-10-14 token bullet's "a 2 px `--accent` outline" and item 12's "in moon `--accent` (decision (f))".
+> - **Item 7, the commit callout: material and id** (DS components/overlays/PeekCard.prompt.md:10). The callout is the one menu material: 340 px, `--fl-sheen` over `--fl-bg-solid`, 1 px `--fl-border`, radius 13, `--shadow-menu` (DS readme.md:90). This supersedes the 2026-10-14 sentence "340 px, `--bg-elevated`, the popover shadow". Its change id follows decision 16.35: jj's shortest unique prefix bold, max(prefix, 8) characters, one `Text.rich` without a gap. This supersedes the 2026-09-28 "the change id (2 bold + 6)".
+> - **Item 7, the callout's motion** (decisions 16.4, 16.40; DS components/overlays/PeekCard.prompt.md:13; DS tokens/motion.css:16, :30). It fades in. It leaves with the generic exit: a fade with the mirrored drift × `--motion`, on `--dur-exit-lg` 180 and `--ease-exit`. Under reduce motion both are fades only.
+> - **The 2026-10-14 note's item 6, the @ pill: DS tokens** (DS components/actions/AtPill.prompt.md:7–9).
+>   - Edge `--at-chrome-edge`. This supersedes "a border of 38 % `--fl-gold` mixed into `--fl-border`"; `--fl-gold` is retired (DS readme.md:77).
+>   - In: a fade with a 10 px rise on `--dur-slide` and the glide curve. Out: a fade on `--dur-exit`.
+>   - When the visible area changes, it re-centres on `--dur-move`; when @ moves to the other side, its arrow turns on `--dur-toggle`. This supersedes "the arrow turning toward @ in 220 ms on the glide curve" and "sliding when panels open".
+>   - Under reduce motion the rise, the re-centring and the turn go to zero; the fade stays.
+>   - VoiceOver: a button "Working copy, below" (or above, left, right), a Tab stop only while shown.
+> - **Item 8, keyboard: ⌘Z moves to 11.13** (decision 16.7). The 2026-10-14 sentence "⌘Z belongs to 10.23" now reads: ⌘Z and ⇧⌘Z belong to 11.13's menu bar, which runs them only for Zanshin's own latest operation while it is current.
+> - **Design question (c), partly answered** (decision 16.42 (p)). Go › Parent and Go › Child (11.13) move the selection; on a merge, Parent goes to the first parent. The rest of the key map, including Child with several children, stays open with the 2026-10-14 recommendation.
+> - **Inactive window and Esc** (decision 16.42 (i); DS tokens/inactive.css:4–6; DS readme.md:194).
+>   - In a window that is not key, no focus ring, no hover and no callout show; hover clears on resignKey, and the focus returns with the window.
+>   - Item 5's Esc acts only inside the project window's focus scope. Settings, Projects and jj log Configurations are windows of their own (decisions 16.13, 16.19), so an Esc there never reaches the graph. Prototype defect 11's example (the Projects dialog) is moot.
+> - **Witnesses (added):**
+>   - ⇧⌘J, a pill click and locate @ reveal @ and leave the selection as it was;
+>   - ⌘J centres the selected card and selects nothing new; without a selection it does nothing;
+>   - under `disableAnimations` the pulse ring keeps its spread and only its opacity runs, three times; 10.19's flash fades over 2.4 s with its spread held;
+>   - the @ pill appears without a rise under `disableAnimations`, and its edge is `--at-chrome-edge`;
+>   - the callout uses the menu material with radius 13 and shows jj's prefix;
+>   - the callout leaves with a fade on `--dur-exit-lg`, without drift under `disableAnimations`;
+>   - in an inactive window no focus ring, hover or callout shows.
 
 **Motivation.** The design fixes the pointer model:
 - a click selects and opens the panel;
@@ -9052,6 +9312,25 @@ NEEDS DESIGN:
 > - **Design status:** FINAL means the citations above, as direction (decision (d)).
 > - **Depends on** adds 11.1, 11.2, 11.3 and 10.21, plus 10.9 for New change.
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the controls are 11.11's Zs controls, the popover's last row picks the General tab, New change uses the one primary recipe, and the menu bar mirrors the popover. This note amends item 8, the 2026-10-14 note's popover, counter, New change, (g) and item 8 bullets, and the Non-goals. It adds witnesses.
+> - **Item 8, controls: superseded** (decisions 16.1, 16.3). "Controls come from `package:material_ui` with Yaru styling, themed to the design" goes. Layout is 11.11's Segmented, Detailed cards and Group stacks its Switch, Card width its Slider; no Material- or Yaru-styled control is visible. The 2026-10-14 sentence "the switch and the slider in moon" now reads: in the accent role (decision 16.43). In an inactive window their on-states go neutral (DS tokens/inactive.css:4–6). The semantics roles stay.
+> - **The View options popover: radius 13** in the one menu material (DS readme.md:90, :94, :322). This supersedes the 2026-10-14 "radius 14".
+> - **Its last row: "Appearance, diffs and more"** (decision 16.14; DS readme.md:110). It opens Settings on the General tab, or brings it forward and switches to General, through 11.12's `openOrActivate`. It shows no ⌘,, because it picks a tab and ⌘, does not. This supersedes the 2026-10-14 row "Appearance, diffs and more · Settings… ⌘," and "which opens 11.7 on General".
+> - **The counter and the gap legend** (decision 16.37, Claude's proposal; the DS defines no breakpoint). At ≤ 1040 px the gap legend hides together with the count and its separator. This amends the 2026-10-14 sentence "It hides at ≤ 1040 px, together with the separator after it".
+> - **New change: the one primary recipe** (DS readme.md:143; DS readme.md:331, :353).
+>   - `--primary-fill-a/-b`, the inset `--primary-ring`, hover and pressed steps, disabled .4; lg adds the island glass and `--fl-shadow`. This supersedes the 2026-10-14 "a gold-tinted border and fill".
+>   - The "+" is the `plus` glyph at `--icon-lg` 16 px. This supersedes "a 15 px gold '+'".
+>   - **Reduce motion:** the born card's 60 px rise is × `--motion`, so under reduce motion it only fades in over `--dur-birth` (DS tokens/motion.css:34; decision 16.4). This amends "The new card grows out of @ in 540 ms".
+> - **(g), shortcuts: amended** (11.13; DS readme.md:203–204). The menu bar mirrors the popover: View › Free ⌘1, Compact ⌘2, Detailed Cards and Group Stacks change the same preferences and issue the same request as the rows. Change › New Change ⌘N runs this story's New change. View › Edit Configurations… ⌥⌘L opens 10.22's window. 11.13 routes them; the popover itself still has no shortcut. ⌘, opens Settings on the tab shown last (decision 16.14), not on General.
+> - **Non-goals, the tweaks panel.** "Its graph options are view options in the demo host" now reads: they are knobs of the Widgetbook Graph folder (decision 16.30).
+> - **Depends on** adds 11.11 (the controls) and 11.12 (`openOrActivate`).
+> - **Witnesses (added):**
+>   - every control in the capsule and the popover is a Zs control; no `material_ui` or Yaru widget is in the tree;
+>   - "Appearance, diffs and more" shows no ⌘, and opens or activates Settings on General;
+>   - at 1040 px the count, its separator and the gap legend are hidden;
+>   - under `disableAnimations` the born card fades in without a rise;
+>   - ⌘1 and ⌘2 issue exactly one layout request each, like the Layout row.
+
 **Motivation.** The design's graph toolbar (GV:240-309, GC:10-56) replaces the earlier plan of a free-text revset field with Apply/Save. It offers:
 - exactly two revsets;
 - the Layout switch;
@@ -9156,6 +9435,39 @@ NEEDS DESIGN:
 >   - "Opening and closing the panel follows (e)" becomes: a covered card scrolls clear, and an uncovered one does not.
 >   - Added: Save sends "S\n\nD\n" once, and nothing when unchanged; a draft survives a selection change; the Esc order; "Describe…" opens the form; the minimap hides; the panel steps aside while scrolling unless a field has focus; the empty states; the unique prefix.
 > - **Depends on** also 11.1 (tokens), 11.2, 11.3 and 10.23. Item 2's `handle.dart:690` (show) is now `packages/zanshin_core/lib/src/worker/handle.dart:813`. Prototype defects 12a–12d are fixed in the export (IN:264, :249-255, :215-222); 12e stays a rule.
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the inspector is drag-resizable at its left edge, sits at top 60, uses the Zs controls, shows commands in full and handles the stale and inactive states. This note amends the Motivation, the 2026-10-14 note's items 1, 3 and 7, its token bullet and its describe form. It adds items 9–11 and witnesses.
+> - **Item 1, frame: resizable** (decisions 16.22, 16.23; DS tokens/spacing.css:42–43; DS components/surfaces/ResizeEdge.prompt.md:5, :10–13).
+>   - Width 380–720, default 460, at the ResizeEdge on its left edge, the one 11.3 builds (`ZsResizeEdge`). This supersedes "460 px wide (at most 100 % − 100 px)".
+>   - A drag stops where less than 320 px of graph would be left: the limit is window − left inset − 24 − 320 (ResizeEdge.prompt.md:5).
+>   - When the window narrows, the inspector shrinks to its minimum before the pinned panel does, and it grows back to its remembered width once there is room (decision 16.42 (a)).
+>   - The width the user dragged persists app-wide on release, in AppSettings' `layout` sub-model (`inspectorWidth`, default 460), not the shrunk width (decision 16.42 (l)).
+>   - While dragging, the graph's edge follows live and no card moves (10.5 item 14).
+>   - The 2026-10-14 sentence "the right inset is 12 + 460 + 12" now reads: 12 + the inspector's effective width + 12 (10.5 item 14).
+>   - **Top 60, not 68** (`--chrome-top`, DS tokens/spacing.css:39); 68 in full screen (spacing.css:52). This supersedes "top 68".
+>   - **The edge** has the standard focus ring, ← → (⇧ for 50), Home / End and ↩, and the VoiceOver adjustable value "Inspector width, 460 points" (decision 16.24), all from 11.3. It is a Tab stop after the inspector's own controls.
+> - **Entrance and exit** (decisions 16.4, 16.40; DS tokens/motion.css:31). In: a fade on `--dur-panel` 200 with the 12 px slide × `--motion`, so under reduce motion it only fades. This supersedes "a 220 ms fade and a 12 px slide …, none under reduce motion". Out: the generic exit, a fade with the mirrored drift × `--motion` on `--dur-exit-lg` 180 and `--ease-exit`.
+> - **The Motivation's "minimal `material_ui` column": superseded** (decision 16.1). The 2026-10-14 note already built the inspector to the design; its buttons, close button, checkboxes and the describe fields are 11.11's Zs controls (text entry stays Flutter's `TextField`, undecorated).
+> - **Item 3, the header's id** follows decision 16.35: jj's prefix bold, one `Text.rich` with two spans and no gap.
+> - **Item 7, the action row: commands in full** (decisions 16.39, 16.44; DS readme.md:53).
+>   - Each button's tooltip names the command with the change's id, as it runs: `jj new kmnvxoqp`, `jj edit kmnvxoqp`, `jj squash -r kmnvxoqp` (squash.rs:91–93 @ v0.46.0), `jj abandon kmnvxoqp`. Ids in commands are max(jj's shortest unique prefix, 8) characters (decision 16.35; DS readme.md:67), so a shown command is never ambiguous.
+>   - The Edit button shows the `working-copy-at` glyph, not a pencil: `jj edit` moves @ (DS readme.md:339).
+>   - The 2026-10-14 token sentence "gold for the one primary action only, moon for focus" now reads: gold for the one primary action only, `--focus-ring` for focus (decision 16.43).
+> - **Item 9 (new), the stale working copy** (decision 16.28; 10.5 item 9). While the working copy is stale, `show()` refuses. The inspector shows the node's view facts; the file list shows "Working copy is stale" in its place; the action row and the describe field are disabled with that reason (DS components/overlays/StaleNotice.prompt.md:9; Claude's proposal for the layout).
+> - **Item 10 (new), file list keys** (DS components/content/FileRow.prompt.md:9). The list is one Tab stop; ↑ ↓ move the row, Space toggles the row's checkbox once 10.25 adds it, ↩ jumps to the file's diff once 10.24 adds it.
+> - **Item 11 (new), inactive window and selection** (DS tokens/inactive.css:4–6, :19–22; DS readme.md:175–179).
+>   - In a window that is not key, the fields show no halo and no caret, and on-states go neutral; the edit flash and gold stay.
+>   - In the describe fields, selected glyphs are drawn in `--selection-text` through `buildTextSpan` (decision 16.10). Read-only text (the id, meta) paints only the system highlight for now; that is known debt (DS readme.md:179).
+> - **Depends on** adds 11.11 (the controls) and 11.3 for the ResizeEdge and the width model.
+> - **Witnesses (added):**
+>   - a drag on the edge changes the width between 380 and 720 and stops at the 320 px graph limit; a double-click returns to 460;
+>   - ← adds 10, ⇧← adds 50, Home goes to 380, End to 720, ↩ to 460;
+>   - a narrow window shrinks the inspector first and restores the remembered width when it widens again; the stored width is the dragged one;
+>   - the top edge sits at 60;
+>   - under `disableAnimations` the inspector fades in and out without a slide;
+>   - each action-row tooltip shows the full command with the change id;
+>   - in the stale state the action row and the describe field are disabled with the reason;
+>   - in an inactive window the describe field shows no caret.
 
 **Motivation.** Selecting a card opens the design's right-hand panel (GV:445-479, APP:735-862, GC:150-159). The design extraction lists this panel and its describe mode among the design's dialogs and popups, which Ralph says are not final and will look different.
 - So this story is thin by default. It wires the real data and the verbs into a minimal `material_ui` column and invests nothing in polish. Design question (a) asks whether that reading is right.
@@ -9279,6 +9591,33 @@ NEEDS DESIGN:
 >   - a composer refusal keeps the draft and shows in the composer; any other refusal reaches 10.23;
 >   - a squash between two described changes runs only after Save, with the edited message;
 >   - "Insert after" on an immutable change with an immutable child shows the backend's refusal (prototype defect 32: the mock silently runs `jj new`, GV:707).
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** ⌘Z moves to the menu bar, every undo is reported, the menu bar's Change menu runs through this runner, and every command the UI shows is real and complete. This note amends item 7 and the 2026-10-14 note's trigger list, its "(b) and (c)" and its "(d), in part". It adds items 10 and 11 and witnesses.
+> - **Item 7, the undo guard** (decision 16.7). The guard stays: Undo is offered only while the op head is the outcome's `newOpId`. It now drives three places:
+>   - the toast's Undo (10.23);
+>   - ⌘Z and Edit › "Undo ‹action›" (11.13). They work with or without a toast, for Zanshin's own latest operation while it is current. ⇧⌘Z and Edit › "Redo ‹action›" redo it; redo needs 9.21;
+>   - nothing older: that is the Undo Timeline's (11.9).
+>
+>   This supersedes the 2026-10-14 note's trigger "the toast's Undo and ⌘Z (10.23)" and its "(d), in part: ⌘Z (10.23)": ⌘Z belongs to 11.13.
+>   - **The label.** The runner publishes the label of Zanshin's own latest operation while it is current (the verb and ids that 10.23's text names). 11.13 names the Edit menu item with it and greys the item otherwise.
+>   - **Never a foreign operation** (the CLI, another workspace). jj refuses, by default, to undo another workspace's operation (`undo.rs:120–132` @ v0.46.0; `--allow-cross-workspace`, `:50–53`, is never passed). An operation the CLI ran in this workspace is not refused by jj; the `newOpId` guard keeps it out.
+>   - **No Undo after `jj op abandon ..@-`.** The current operation's parent is then the root operation, and `jj undo` restores the parent (`undo.rs:158–160` @ v0.46.0): an empty repo (V2 §4).
+>   - **No Undo after `jj workspace update-stale`.** It usually writes no operation of its own, so an undo would hit a foreign one (decision 16.28; V2 §4).
+> - **Undo outcomes** (decision 16.46). An undo the runner runs, from any of the three places, is an outcome too: 10.23 shows "Undid ‹action› · Redo", and undoing a push carries jj's warning (10.23's note). This amends the 2026-10-14 note's "(b) and (c)": `new`, `edit` and `describe` still show no toast; an undo now does.
+> - **(d), shortcuts → 11.13** (decision 16.34; DS readme.md:204). The menu bar's Change menu runs its verbs through this runner: New Change ⌘N, Describe…, Edit, Squash into Parent, Abandon ⌘⌫. Abandon still asks for no confirmation (CLI parity). The target is the selection, else @, as the CLI defaults to @, and each item names its target ("Abandon @"; Claude's proposal, accepted 2026-10-16). The runner takes the target as a parameter and never guesses one.
+> - **Item 10 (new), commands shown in full** (decisions 16.39, 16.44; DS readme.md:51, :53). Wherever the UI shows the command a verb runs (tooltips, menu columns, the ghost's line, the composer preview), it shows the full command with the change id, shell-quoted: `jj new -A kmnvxoqp`, `jj edit kmnvxoqp`, `jj squash -r kmnvxoqp`.
+>   - `jj new -A` and `jj edit` without their argument, as the DS examples print them, are not real commands (`new.rs:111–118`, `edit.rs:35` @ v0.46.0; V2 §4).
+>   - A pattern argument (a bookmark or remote name) gets `exact:` where its text would otherwise act as a glob. jj's bookmark names are glob patterns by default (`bookmark/move.rs:47–56` @ v0.46.0).
+>   - Every command exists in jj v0.46.0 exactly as written, with exactly those options, and the UI never shows a sequence of commands.
+> - **Item 11 (new), stale working copy** (decision 16.28; DS readme.md:225). While the project is stale, every verb is disabled through item 1's disabled-with-reason path: jj snapshots the working copy before every verb it runs, undo included (`workspace_helper`, `undo.rs:62` @ v0.46.0), and refuses while it is stale (DS readme.md:225), as 10.5 item 9 and 11.13 item 3 (both as amended 2026-10-16) say. The reason names the state and the command `jj workspace update-stale`. Nothing runs with `--ignore-working-copy` (CLI parity).
+> - **Witnesses (added):**
+>   - ⌘Z calls `undo()` while the head is the outcome's `newOpId`, also with no toast showing; after a foreign operation it calls nothing, and the published label is gone;
+>   - after `op abandon` and after `update-stale`, no Undo is offered anywhere;
+>   - an undo's outcome reaches 10.23 as "Undid ‹action›" with Redo;
+>   - a Change-menu verb with no selection targets @, with a selection the selected change, and the label names it;
+>   - every shown command carries the change id and parses as written (through 9.47's oracle where it applies);
+>   - a stale project disables every verb with the reason, and none calls anything.
+> - **Related** adds 11.13, which consumes the label and the target rule (11.13 depends on this story, not the other way round), and 9.21 for redo.
 
 **Motivation.** The design triggers verbs from many places:
 - a double-click: `edit`;
@@ -9420,6 +9759,27 @@ Plus one real-cdylib test (`tester.runAsync`): an `edit` through the runner move
 >   - the click after a drag is swallowed;
 >   - a backwards bookmark drop opens the menu and runs nothing.
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the ghost and the target take the accent role's tokens, resize edges stay out of a drag, and the bookmark row's command is exact. This note amends the 2026-10-14 note's Ghost, Targets, Auto-scroll, Drop menu and Rows bullets. It adds witnesses.
+> - **Ghost** (decision 16.43). "A moon border and a 3 px ring" now reads: a 1 px `--accent-line` border and `--shadow-drag` (a 3 px `--accent-ring` plus the drop shadow) on `--card-solid-hi` (DS components/overlays/overlays.css:40; DS tokens/accents.css:53). Moon only under Multicolor (decision 16.2).
+>   - The command line below it is the tooltip build; its border turns `--accent-line` once a target is found (overlays.css:53–54).
+>   - The change id follows decision 16.35: jj's shortest unique prefix bold, max(prefix, 8) characters, one `Text.rich` without a gap (`commit_templater.rs:2295–2302`, `:2316–2321` @ v0.46.0).
+>   - Under reduce motion the ghost keeps its −1.5° tilt and simply follows the pointer (DS components/overlays/DragGhost.prompt.md:12).
+> - **Targets** (decision 16.43). "Highlighted moon with a 4 px ring (GC:430)" now reads: an `--accent-live-line` border on `--card-solid-hi` with `--ring-drop`, a 4 px `--accent-live-ring` plus a drop shadow (DS components/graph/graph.css:8; DS tokens/effects.css:34). The live copies keep their colour in an inactive window (DS readme.md:194).
+> - **Resize edges** (decision 16.42 (k)). While a drag runs, the inspector's and the pinned panel's resize edges are inert: no line, no resize cursor, no grab. They sit on the island layer, below the drop menu (`--z-drop`) and the ghost (`--z-drag`) (DS readme.md:100).
+> - **Auto-scroll** (the 2026-10-14 note's bullet). "A 56 px zone inside the visible graph (11.3's insets)" reads the live insets: the left one moves with a resized or collapsed panel, the right one with the inspector's width (decisions 16.22, 16.23).
+> - **Drop menu.**
+>   - The 260 ms rest stays (decision (a4)). The DS's `--delay-drop-menu` 520 (DS tokens/motion.css:53) is not adopted (deferred-work).
+>   - Its highlight is the command-menu highlight: solid `--accent` with `--accent-ink` (DS components/menus/DropMenu.prompt.md:12; DS readme.md:138).
+>   - It fades in; its scale is × `--motion` (DropMenu.prompt.md:15; decision 16.4).
+> - **Rows, the bookmark row** (decision 16.39).
+>   - `--allow-backwards` is real on `jj bookmark move` (`bookmark/move.rs:68–70`, its refusal and hint `:123–137` @ v0.46.0; DS readme.md:53).
+>   - Bookmark names are glob patterns there by default (`move.rs:47–56`). So the row's command writes `exact:<name>` when the name holds a glob character, shell-quoted, e.g. `jj bookmark move 'exact:feat[1]' --to vruxwmqv --allow-backwards`.
+> - **Witnesses (added):**
+>   - the ghost and the target paint the accent family's tokens; in an inactive window the target keeps its live colour;
+>   - no resize edge shows its line or cursor during a drag;
+>   - the auto-scroll zone moves with a resized panel;
+>   - a bookmark whose name holds `*` shows and runs `exact:` in its row.
+
 **Motivation.** On 2026-09-21 Ralph decided that the graph is driven by drag-and-drop (Story 9.31, "UI shape"):
 - the user drops change S on a commit T, or on an edge T→C;
 - a menu lists the available verbs and greys out the unavailable ones with the reason;
@@ -9492,6 +9852,15 @@ The design has no drag-and-drop. Its canvas drag pans (GV:560-576), which leaves
 > - **Item 6 also holds for the new day labels.** Free's axis labels, 10.16's minimap labels and its current-day pill come from the layout (decision (a2)), never from paged content.
 > - **Witness** (added): the menu header and the ghost show the id until their content arrives, and no card's geometry changes when it does.
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the design system now has a skeleton. This note supersedes the 2026-10-14 note's "There is still no skeleton look", its "Claude proposes a look at scheduling", item 5's look "without text" and the design status's "the skeleton look (the design has none)". It amends a witness and adds one.
+> - **Item 5, the look.** A card whose content has not arrived shows 11.11's `Skeleton` in its text slots: `--skeleton` bars with a `--skeleton-hi` sweep every `--dur-shimmer` (1.6 s, linear). The card keeps its real material and border (DS components/controls/Skeleton.prompt.md:4, :8). Rows (the stack popover's) use the row kind.
+> - **Shown late.** A skeleton shows only when the content takes longer than `--delay-skeleton`, 150 ms (DS tokens/motion.css:57; Skeleton.prompt.md:9). Content that arrives sooner simply appears.
+> - **Reduce motion** (decision 16.4). The sweep becomes one pulse and leaves no highlight behind (DS tokens/motion.css:9, :37; Skeleton.prompt.md:10).
+> - **Semantics.** Not focusable and hidden; the region is busy (Skeleton.prompt.md:10).
+> - The 2026-10-14 note's id-only readers (the menu header, the ghost, the inspector) keep showing the id and get no skeleton.
+> - **Witnesses.** "A skeleton card gets its text without any card moving" stays. Added: content that arrives within 150 ms shows no skeleton; under reduce motion the skeleton pulses once and ends without a highlight.
+> - **Depends on** adds 11.11 (the Skeleton).
+
 **Motivation.** Story 4.10 splits the graph call:
 - the topology and view facts for the whole revset (cheap, index-only);
 - content for the requested commits: the commit objects. On the loose-object 10k fixture that is about 1.2 s of today's 1.22 s (research §3). On a real, packed 1.4k-commit repo most of today's 163 ms is `empty` on its merge commits, 0.78 ms each without a changed-path index (4.10).
@@ -9543,6 +9912,11 @@ The design needs content only on visible cards (subject, author, date, empty, co
 > - **Decision (e):** "how the dev host receives its path" and "where the graph mounts in the shell" become Claude's proposals, which Ralph reviews. Proposed: the graph mounts in 11.3's floating overlay host, and a dev entry point takes the path through `--dart-define` until 11.5's project switching lands.
 > - **Witnesses gain:** a Free ↔ Compact switch on a real layout changes no column; a card-width change issues no layout request and re-runs the router; no line runs behind a card in any Compact layout.
 > - **Depends on** 4.14 and 4.15 too.
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** this story puts our workspace's name on the wire if 10.5 has not, its dev knobs move to the Widgetbook Graph folder, and its real-repo host is the app's own `main.dart`. This note amends items 4 and 5, the non-goal "Any Rust change", the design status's "how the dev host receives its path", and the 2026-10-14 note's decision (e) bullet and "greedy stays a demo-host option". It adds no items and no witnesses.
+> - **Item 4 (bridge part), our workspace name.** If 10.5 has not put this workspace's name on the graph wire, this story does, so 10.3's `name@` slots know which one is ours (decision 16.28; V2 §4). The non-goal "Any Rust change" then excludes this one field, as 10.5's note says for its own non-goal.
+> - **The 2026-10-14 note's "greedy stays a demo-host option"** now reads: a knob in the Widgetbook Graph folder (decision 16.30).
+> - **Item 5, the real-repo host.** The dev entry point that takes the path through `--dart-define` (the 2026-10-14 note's decision (e) bullet) is the app's own `main.dart` reading that define, not a separate `main*.dart`. 11.10's witness "`app/lib` holds no `main*.dart` besides `main.dart`" therefore holds, and the define goes once 11.5's project switching lands (Claude's proposal; decision 16.30). This also answers the design status's "how the dev host receives its path".
 
 **Motivation.** Everything before this story runs on recorded layouts and fake content. Real data needs all three backend stories:
 - 4.10: the index-only topology and view facts for the whole revset (timestamps on request), an operation id, and op-pinned content by commit id;
@@ -9724,6 +10098,26 @@ It also names the hybrid, rows with time-sized gaps between the buckets, a paint
 >   - a remote row starts no drag.
 > - **Depends on** adds 11.2, 11.3 and 10.21.
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the pinned panel is resizable and can collapse, Workstreams are dropped, rows show jj's prefix, and the list follows the stale and inactive states. This note amends the Motivation, item 1, the 2026-10-14 note's pinned panel, rows and non-goals bullets, and the non-goals. It adds witnesses.
+> - **The pinned panel: resizable and collapsible** (decisions 16.22, 16.23; DS tokens/spacing.css:42–43; DS components/surfaces/ResizeEdge.prompt.md:10–12).
+>   - 240–440 wide, default 300, at the ResizeEdge on its right edge (11.3's `ZsResizeEdge`). The width is shared by all left panels and remembered app-wide (`panelWidth` in AppSettings' `layout`, decision 16.42 (l)). This supersedes the 2026-10-14 "11.3's 300 px panel".
+>   - When even the minimum widths would leave less than 320 px of graph, the panel collapses: the pin is kept, the rail button stays active, and the panel returns at its remembered width once there is room. A rail click without room shows the panel as the rail's temporary flyout, with the same body. 11.3 runs the rule; this story's panel body works in both places.
+>   - Pinning, collapsing and dragging change 10.5's live left inset, and no card moves.
+> - **Workstreams: dropped, not hidden** (decision 16.26). Workstreams are not a jj concept. The 2026-10-14 non-goals sentence "(Workstreams and Reviews stay hidden)" now reads: Workstreams are dropped; Reviews stays hidden until a backend exists. The non-goal "the design's placeholder panels (Workstreams, Reviews, Undo Timeline; APP:1054-1080)" loses Workstreams.
+> - **Rows: the id** follows decision 16.35: jj's shortest unique prefix bold, max(prefix, 8) characters, one `Text.rich` without a gap. This supersedes item 1's "the id as 2 bold characters plus 6" and the 2026-10-14 "(2 bold + 6 characters)".
+> - **The Motivation's "minimal `material_ui` list": superseded** (decision 16.1). The 2026-10-14 note already built the panel to the design; its close button, rows and scroll area are 11.11's Zs controls (the ScrollArea viewport is a Tab stop only when it scrolls and holds nothing focusable).
+> - **Empty state** (decision 16.44; DS readme.md:57): "No bookmarks yet. Create one with `jj bookmark create <name>`." The command exists in jj v0.46.0 as written.
+> - **Stale working copy** (decision 16.28). `list_bookmarks` refuses while the working copy is stale. The preview and the panel keep their last rows and show "Working copy is stale" as the reason; a pick whose target is in the current layout still selects and reveals it, as a card click does (10.8 item 9 shows the stale inspector); a pick that needs the switch to `all()`, and every drag (a verb), is disabled with that reason (Claude's proposal for keeping the last rows and for the split).
+> - **Inactive window** (decision 16.42 (i); DS readme.md:194). In a window that is not key, the selected row goes neutral, no hover paints and no focus ring shows.
+> - **Depends on** adds 11.11 (the controls).
+> - **Witnesses (added):**
+>   - the pinned panel resizes between 240 and 440 and persists the dragged width;
+>   - at a window width where 320 px of graph cannot remain, the panel collapses with its pin kept, and returns at its width when the window widens;
+>   - a rail click without room opens the flyout with the same rows;
+>   - a row's id bolds jj's prefix;
+>   - an empty repository shows the DS empty-state sentence;
+>   - in the stale state a pick of a target in the layout selects and reveals it; a hidden pick and a drag are disabled, and the reason shows.
+
 **Motivation.** The design's "Branches" entry opens a 290 px "Bookmarks" panel on the left (GV:481-497, :607-613, GC:161-169). It lists every bookmark in the repository. Picking one selects and reveals its commit, and switches to `all()` when the commit is not in the current revset (GV:579-584). This is how a user finds work that the default log hides.
 
 The design extraction lists the side panels among the not-final dialogs and popups. So this story ships a minimal `material_ui` list and invests nothing in polish; design question (g) asks whether that reading is right.
@@ -9834,6 +10228,31 @@ NEEDS DESIGN:
 >   - "Describe…" selects the change and opens 10.8's describe field;
 >   - Create and Delete in the popover call 9.8's verbs.
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the card menu is built on 11.11's Menu, and its right column shows real, complete commands. This note amends the Scope's first sentence, the Non-goals and the 2026-10-14 note's Item 1 bullets (header, rows, disabled rows, keys) and Item 3 bullet. It adds witnesses.
+> - **The Scope's "Every popup is thin: `material_ui` widgets"** is superseded, and so is the 2026-10-14 note's proposal "Arrow keys and Return work as in a native menu". The card menu is 11.11's Menu, and the popover uses 11.11's controls (decisions 16.1, 16.3). No Material widget is visible.
+> - **The menu's behaviour** comes from 11.11 (DS components/menus/Menu.prompt.md:16–21):
+>   - the highlight is solid `--accent` with `--accent-ink`; "Abandon" is red at rest and takes the `--danger-hover` tint, never the accent and never solid red;
+>   - 28 px rows, a 16 px leading column, the command in mono in the right column;
+>   - ↑↓ move and wrap, Home End, typeahead, ↩ and Space activate; Esc closes and returns focus to •••;
+>   - activation blinks the row (`--dur-blink` off, then on), then the menu fades out (`--dur-exit`, `--ease-exit`);
+>   - VoiceOver reads a menu of menu items, and the highlight is exposed;
+>   - it fades in; its scale is × `--motion` (decision 16.4).
+> - **Rows, the commands** (decisions 16.39, 16.44). The right column shows the full command with the change id: `jj new kmnvxoqp`, `jj new -A kmnvxoqp`, `jj new -B kmnvxoqp`, `jj edit kmnvxoqp`, `jj describe kmnvxoqp`, `jj squash -r kmnvxoqp`, `jj abandon kmnvxoqp`. This supersedes the 2026-10-14 note's bare forms (`jj new -A`, `jj edit`, …), which are not real commands (`new.rs:111–118`, `edit.rs:35` @ v0.46.0; V2 §4).
+> - **"Copy ›"** (DS Menu.prompt.md:7): a submenu with Change id and Description, on 11.11's submenu (`--delay-submenu` 150, `--delay-submenu-out` 300, the safe triangle, flip left). Copying is not a jj command, so the row has no command column.
+> - **Edit's icon** is `working-copy-at`, a drawn @, not a pencil: `jj edit` moves @ (DS Menu.prompt.md:6; DS readme.md:339).
+> - **Disabled rows** are drawn at .4 (`--disabled-opacity`; DS tokens/states.css:26; DS readme.md:136), and the arrow keys skip them. This supersedes the 2026-10-14 note's "drawn at 38 % (GV:187)".
+> - **The header's change id** follows decision 16.35: jj's shortest unique prefix bold, max(prefix, 8) characters, one `Text.rich` without a gap. This supersedes the 2026-10-14 note's "(2 bold + 6)".
+> - **Item 3, the bookmark popover,** takes the one menu material: 13 px, `--fl-sheen` over `--fl-bg-solid`, 1 px `--fl-border`, `--shadow-menu` (DS readme.md:90). The 2026-10-14 note's proposal is thereby decided.
+> - **The menu bar** (11.13) runs the same rows for the selection, else @ (decision 16.34). Both go through 10.9's runner.
+> - **Inactive window.** The menu closes with the key window (DS readme.md:131). No hover is painted in a window that is not key (decision 16.42 (i)).
+> - **Non-goals.** "The final look and animations" no longer holds for the card menu: its look and motion are 11.11's Menu (above). For the bookmark popover it still holds beyond the menu material (item 3 stays thin).
+> - **Depends on** adds 11.11 (Menu, controls) and 11.2 (the menu material).
+> - **Witnesses (added):**
+>   - each row's right column equals the command the runner runs, with the change id;
+>   - ↑↓, Home End and typeahead move the highlight; ↩ blinks the row and then runs it;
+>   - "Copy ›" opens 150 ms after hover and at once on →; a pointer moving toward it through the triangle keeps it open;
+>   - a disabled row is drawn at .4 and the arrow keys skip it.
+
 **Motivation.** The design contains four popups: the quick-action fan, the "+" chips, the bookmark popover and the inline describe editor. They make the shipped verbs reachable from the graph. Their look will change, so this story wires them to 10.9's runner with minimal visuals and invests nothing in polish.
 
 **Scope.** Every popup is thin: `material_ui` widgets, no animation polish, an overlay anchored to its card (e.g. `OverlayPortal`). The card stays pinned (10.1 item 9) while its popup is open.
@@ -9920,6 +10339,15 @@ NEEDS DESIGN:
 >   - the minimap hides with the inspector and shows during calm scrolling;
 >   - a scrub scrolls vertically only and selects nothing.
 > - **Depends on** 10.8 and 11.3 as well, and no longer on 10.7.
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the minimap gets a View-menu switch, the accent role's line for the selection, the `--at-chrome` pill and fade-only motion under reduce motion. This note amends the 2026-10-14 note's (a), (c), its current-day pill bullet and its Depends on. It adds witnesses.
+> - **(a), "always on, no toggle," is superseded** (decision 16.42 (n); DS readme.md:203). View › Show Minimap (11.13) is an app-global switch, default on, persisted with the other view preferences. With it off, the minimap is gone, and while no inspector is open the right inset is 12 instead of the minimap column 158 (12 + 134 + 12; 10.5 item 14 as amended 2026-10-16; Claude's proposal). The same 12 replaces 158 in 11.3's panel limit (its 2026-10-16 note, "Limits") and in 10.23's centring of the toast.
+> - **(a), the placement's top.** "At right 12, top 68 and bottom 12 (11.3's insets)" now reads top 60, the content top (`--chrome-top`; DS tokens/spacing.css:39; DS ui_kits/desktop/kit.css:147), and 68 in full screen (spacing.css:52), as 10.5 item 14 (as amended 2026-10-16) publishes it. "The graph reserves 134 + 12 px on the right" likewise reads the minimap column 158 (12 + 134 + 12; 10.5 item 14).
+> - **Hide and show** (the 2026-10-14 note's (a)). It hides with a fade on `--dur-exit-lg` (`--ease-exit`) and an 18 px drift to the right. It shows with a fade on `--dur-panel` and the drift back on `--dur-slide` (DS ui_kits/desktop/kit.css:147–148). Under reduce motion only the fades run; the drift is × `--motion` (decision 16.4).
+> - **(c), the dots** (decision 16.43). @ stays `--co`. "The selection a moon dot" now reads `--accent-line`, the accent role's line tone (DS readme.md:169; kit.css:157). It goes neutral in an inactive window with the rest of the accent role (DS readme.md:194).
+> - **The current-day pill.** Its border and its connector are `--at-chrome` (DS tokens/colors.css:41; kit.css:159, :162). This supersedes "a gold `--fl-gold` border": `--fl-gold` is retired (DS readme.md:77, :327).
+> - **Depends on** adds 11.13 for the menu item.
+> - **Witnesses (added):** the minimap shows by default; Show Minimap off hides it, and with no selection the right inset becomes 12; under reduce motion, hiding and showing only fade; the selected dot paints the accent family's line.
 
 **Motivation.** On a big repo the scrollbar does not navigate: at 100k, one scrollbar pixel spans about 170 rows (10.6 design question (d)). Ralph proposed a minimap for big repos and asked how it performs. The spike viewer built one to find out: a 112 px strip on the right with a raster of the whole graph (cards bright, edges faint, bookmarked cards blue, @ as a gold line), the viewport as a rectangle plus a full-width band, and click or drag to jump. Measured (budget below):
 - the raster is the only real cost: a few milliseconds once per layout, so it belongs off the UI isolate;
@@ -10025,6 +10453,14 @@ NEEDS DESIGN:
 > - **Still in the export, not copied:** the global `zanshin.graph.expanded` list (GV:552; defect 18); a collapse that keeps the selection (GV:591-597; defect 20).
 > - **Minimap:** a collapsed stack is a hollow ring (GV:504; FC:32; 10.16).
 > - **Go-to-change** from 10.21 opens a collapsed stack through `keepOpenKeys`; the export clicks the stack card instead (SR:245-247).
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** reduce motion is now defined by property, so the member fade stays; the popover takes the one menu material and the generic exit; ids follow jj's prefix. This note amends item 4, the 2026-10-14 note's member-fade bullet, its "No fade under reduce motion" and its Popover bullet, items 1 and 2, the Related line and a witness.
+> - **Reduce motion** (decision 16.4). Under reduce motion the members still fade in over 260 ms; only the 6 px rise and the .98 scale go to zero (× `--motion`; DS tokens/motion.css:3–7). This supersedes the 2026-10-14 note's "No fade under reduce motion", item 4's "and is skipped under reduce motion (`MediaQuery.disableAnimations`)" and the witness's "and animates nothing under `disableAnimations`".
+> - **The member fade's tokens** (Claude's proposal; DS readme.md:104, :139). The 2026-10-14 note's "260 ms … on `cubic-bezier(.2,.7,.2,1)` (GC:267-268)" now reads: opacity on `--dur-slide` (260), the 6 px rise and the .98 scale on `--dur-move` (260), both on `--ease-glide` like every entrance, the distances × `--motion` (DS tokens/motion.css:15, :33, :43).
+> - **Item 2, the popover,** takes the one menu material: 13 px, `--fl-sheen` over `--fl-bg-solid`, 1 px `--fl-border`, `--shadow-menu` (DS readme.md:90, :284). It still opens after 380 ms, now the token `--delay-stack-list` (DS tokens/motion.css:50). It leaves with the generic exit: a fade with a small mirrored drift × `--motion`, on `--dur-exit-lg` (180 ms) and `--ease-exit` (decision 16.40; DS tokens/motion.css:16, :30).
+> - **Change ids** (decision 16.35). Each id prints with jj's shortest unique prefix bold, one `Text.rich` without a gap: max(prefix, 5) characters for each end of the card's range, on detailed and compact stack cards alike, as the DS stack card prints 5 per end (DS components/graph/StackCard.jsx:15; it shows the range only on the detailed card), and max(prefix, 8) in a popover row (DS readme.md:67; `commit_templater.rs:2295–2302` @ v0.46.0). This supersedes item 1's "2 bold + 3 dim characters each" and item 2's "(2 bold + 4)".
+> - **"Group stacks"** is also View › Group Stacks in the menu bar (11.13; DS readme.md:203): the same app-global switch. 11.13 builds the item and this story's switch is its handler (11.13's Depends on); **Related** adds 11.13.
+> - **Witness** (replacing "… and animates nothing under `disableAnimations`"): under reduce motion the members fade in over 260 ms with no rise and no scale, and only the entering cards build.
 
 **Motivation.** The updated design collapses linear runs of commits into one stack card (GV:227-264, :536-571; GC:227-247 at `a399daf`). The graph gets shorter and calmer, while forks, merges, bookmarks and @ stay visible. Ralph decided that a toggle never moves a column and that the graph may compact vertically (4.13). This story is the view side: the card, its popover, the bracket, the toggle and the state.
 
@@ -10155,6 +10591,17 @@ NEEDS DESIGN:
 >   - the "Show in `all()`" and legend witnesses check 10.21's state (`$ all()`, and ✕ back to the default search);
 >   - the placement cases stay: a straight edge between adjacent rows still gets its marker in the middle of the 48 px gap.
 > - **Recordings** (item 9): GD is unchanged at `e74ced3`, so the `e243dd2` recordings stay.
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the flash stays a colour fade under reduce motion and reads the live copies of the accent role; the legend gets the one menu material, the callout delays and a breakpoint. This note amends items 2, 5, 6 and 7, the 2026-10-14 note's "The flash is moon" and Clearance bullets, and the witnesses.
+> - **Item 6, the flash under reduce motion** (decision 16.4). The ring keeps its 2.4 s colour fade (`--dur-flash`, `--ease-state`). Its spread is held, so it fades at a fixed size (DS tokens/motion.css:4, :35; DS components/graph/graph.css:83–85). This supersedes item 6's "Under reduce motion the ring shows for 2.4 s without fading".
+> - **The flash's colour** (decision 16.43). The 2026-10-14 note's "The flash is moon (decision (f)): 2 px `--accent` plus 6 px `--accent-ring` (DS components/graph/graph.css:78-79)" now reads: 2 px `--accent-live-line` plus 6 px `--accent-live-ring` (graph.css:85). Moon only under Multicolor (decision 16.2). The live copies keep their colour in an inactive window (DS readme.md:194).
+> - **Item 7, the legend.**
+>   - Its popover takes the one menu material (DS readme.md:90, :284; DS ui_kits/desktop/kit.css:50).
+>   - **Timing** (Claude's proposal): it opens `--delay-callout` (90 ms) after hover or focus, and stays `--delay-callout-out` (200 ms) after the pointer leaves (DS tokens/motion.css:51–52). It fades in on `--dur-pop` and out on `--dur-exit`. The kit swaps the two delays (kit.css:48–49; deferred-work). This supersedes item 7's "hover or focus opens it after 200 ms (GC:317)".
+>   - **Breakpoint** (decision 16.37; Claude's proposal): the chip hides together with 10.7's count at a window width of 1040 px or less. The DS gives the legend no breakpoint: its kit hides only the count at ≤ 1040 px (DS ui_kits/desktop/kit.css:210), and the readme says only that both are gone at the 880 px minimum (DS readme.md:193).
+> - **Item 5, the callout's child row,** prints the change id per decision 16.35: jj's shortest unique prefix bold, max(prefix, 8) characters, one `Text.rich` without a gap. This supersedes "(2 bold + 4)".
+> - **Item 2 and the 2026-10-14 note's Clearance bullet.** The clearance is tuned in the Widgetbook Graph folder (decision 16.30), not "in the demo host".
+> - **Witnesses (amended).** The "Show in `all()`" witness "under `disableAnimations` nothing animates" becomes: under reduce motion the gap's commits still flash, as a 2.4 s colour fade at a fixed ring size. Added: the legend opens 90 ms after hover and closes 200 ms after leaving; the chip is hidden at 1040 px and shown at 1041 px.
 
 **Motivation.** A revset that leaves commits out leaves gaps. jj reports them as edge kinds (4.10):
 - an Indirect edge runs to the nearest visible ancestor;
@@ -10346,6 +10793,26 @@ Ralph picked variant B (`//`, "Break"), no counts anywhere, and one spacing rule
 >   - a second operation finishes the first;
 >   - kept cards build 0 times.
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** reduce motion is now defined by property, and the motion values come from DS tokens/motion.css. This note amends the 2026-10-14 note's reduce-motion bullet, its glide, birth, edge and flash bullets, its token citation, item 5 and the witnesses.
+> - **Reduce motion** (decision 16.4). Movement, size, position and stroke drawing go to zero; colour and opacity keep their tokens (DS tokens/motion.css:3–10).
+>   - The glide has no duration (`--dur-flip` → 0): moved cards stand at their new place at once, and the anchor rule still holds.
+>   - The born change does not grow (its growth out of the anchor's old rect and its scale step are × `--motion`), but it still fades in over `--dur-birth`, 540 ms (motion.css:34).
+>   - Other new cards still fade in.
+>   - The edge layer still fades back in. The born change's edges do not draw in; they arrive with the layer's fade.
+>   - The flash stays a 2.4 s colour fade with its spread held (DS components/graph/graph.css:83–85; 10.19's note).
+>
+>   This supersedes the 2026-10-14 note's "Reduce motion: no glide, growth, fade or draw-in; the end state shows at once (GV:679). The flash shows as a static ring for its 2.4 s", its witness "reduce motion: the end state at once, with a static flash", and the older item 3's "Under reduce motion (`MediaQuery.disableAnimations`) nothing animates" and the Limits witness's "reduce motion shows the end state at once".
+> - **Tokens.** The 2026-10-14 note's citation "DS tokens/effects.css:35-38" is replaced by DS tokens/motion.css:
+>   - the glide: `--dur-flip` 460 on `--ease-glide` (:15, :44);
+>   - the birth: `--dur-birth` 540 (:34);
+>   - the flash: `--dur-flash` 2400 on `--ease-state` (:14, :35; graph.css:84), not "ease-out";
+>   - the edge layer hides for `--dur-flip`, 460 ms, not the kit's 470 ms (the note's "470 ms; GV:691; GC:426");
+>   - the edge layer fades back in on `--dur-slide` 260 with `--ease-state`, not "260 ms ease-out" (DS ui_kits/desktop/kit.css:13);
+>   - the birth keeps the story's growth out of the anchor's old rect from scale .94 (GV:687-688). The DS kit's birth is a 60 px rise from scale .96 (kit.css:17–18; motion.css:34). The anchor model needs the growth, so this is a deliberate deviation (Claude's proposal).
+> - **The flash's colour** (decision 16.43). "A moon ring" now reads the live copies: 2 px `--accent-live-line` plus 6 px `--accent-live-ring` (graph.css:85). They keep their colour in an inactive window (DS readme.md:194).
+> - **Item 5, slow motion.** The ×5 switch is Widgetbook's TimeDilation addon in the Graph folder (decisions 16.29, 16.30), not a demo-host switch.
+> - **Witnesses (amended).** "Reduce motion: the end state at once, with a static flash" becomes: under reduce motion moved cards jump, the born card fades in without growing, the edge layer fades back in, and the flash fades over 2.4 s at a fixed spread. Added: the glide and the edge hide both take `--dur-flip`.
+
 **Motivation.** The export adds a playground for two graph animations, with the goal "perceptible, but never in the way: quick and smooth, not hectic" (AS:56; the playground is in German):
 - a commit stack unfolds and folds (AS:64);
 - the tree shows what an operation changed (AS:73).
@@ -10429,6 +10896,37 @@ Without them, a toggle or a reload swaps the picture in one frame. The anchor ke
 
 ### Story 10.21: Graph search — the field, the one menu, go-to and filters, suggestions, Recent, the default search [UI/bridge]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. It replaces 10.7's revset select, which the design system retires as `CommandField` (DS readme.md:154). Built to the design, as inspiration (the Epic 10 header's design update 2026-10-14, decision (d)). The defaults below are Claude's; Ralph adopted them on 2026-10-14 (decision (g)).)*
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the field follows the design system's pill rule and its field-attached list model, the search belongs to the project window, and jj log Configurations is a window. This note amends items 2–7, the Depends on, the Related line and the witnesses. It adds items 10 and 11.
+> - **Item 2, the well and the pill** (decision 16.43).
+>   - "Focus adds a moon border and a 3 px ring" now reads: an `--accent-line` border plus a 3 px `--accent-ring` (DS components/search/search.css:8).
+>   - "Anything but the default search tints the pill moon" now reads (DS readme.md:140; search.css:14–20): the tint is `--accent-soft` over the capsule's `--fl-hover`; the label is `--text`, also at rest; the scope icon is `--accent-text`; hover and open step the tint to `--accent-soft-hi`, pressed to `--accent-ring`. DS components/search/GraphSearch.prompt.md:15 still calls the pill accent-coloured; the CSS wins (deferred-work).
+> - **Item 2, secondary text** (decision 16.41). The placeholder, the `⌘F` hint and the footer hints step up a rung on their fill, so they keep 4.5:1 (DS readme.md:132, :141; search.css:26).
+> - **Item 2, the keys ⌘F and `/`.** They belong to the project window. Settings, Projects and jj log Configurations are windows of their own with their own focus, so "never behind a modal dialog (SR:217-226; prototype defect 54)" now covers only the two sheets, ConfirmDialog and Push: while one is open on the project window, ⌘F and `/` do nothing (decision 16.17). With Settings key, ⌘F focuses this field and brings the project window forward; with Projects key, it focuses Projects' own search (decision 16.47; 11.13).
+> - **Items 3 and 4, one list model** (DS readme.md:138; SearchMenu.prompt.md:14, :16; SearchPopover.prompt.md:16). Both lists are field-attached:
+>   - focus stays in the field, which names the keyboard row as its active descendant;
+>   - the keyboard row is `--accent-soft` with its icon in `--accent-text`; hover is `--fl-hover` and never moves the keyboard row; a click runs the clicked row;
+>   - what the graph shows carries a check, never a fill. This amends item 3's "The selected row is what the graph shows": that row is marked by its check;
+>   - ↑↓ move the keyboard row in both lists. Home and End move it in the menu only; in the suggestions they stay with the caret (Claude's proposal; GraphSearch.prompt.md:18 vs SearchPopover.prompt.md:19);
+>   - when the menu opens, its keyboard row starts on the current row, and the keyboard row is kept in view as it moves (Claude's proposal);
+>   - Recent's "Clear" is no Tab stop of its own, and a click on it keeps focus in the field (Claude's proposal);
+>   - the lists' scroll viewport is no Tab stop, because it holds focusable rows (11.11's ScrollArea rule);
+>   - both lists use the one menu material, 13 px; the suggestions enter on `--dur-pop`, 12 px under the field, their drop × `--motion` (SearchPopover.prompt.md:18; decision 16.4).
+> - **Item 3, "Edit Configurations…"** opens the jj log Configurations window (10.22), or brings it forward with its edits as they are. View › Edit Configurations… ⌥⌘L does the same (decision 16.19; DS components/search/RevsetDialog.prompt.md:10; DS readme.md:203). The rule "with the shown variant selected" applies when it opens.
+> - **Items 4 and 6, change ids** (decision 16.35). Suggestion rows and Recent go-tos print the change id with jj's shortest unique prefix bold, max(prefix, 8) characters, one `Text.rich` without a gap.
+> - **Item 4, no workspace go-to** (decision 16.27). The Change scope offers no `<name>@` rows for workspaces.
+> - **Item 5, the pulse** is 10.6's pulse in the accent role (decision 16.43), not "the moon pulse".
+> - **Item 7, quotes.** Revset text, and every command that shows it, uses straight quotes, as jj parses them. Curly quotes are for messages only (DS readme.md:63; r4out content D-12).
+> - **Item 10 (new), stale working copy** (decision 16.28). While the working copy is stale, jj refuses every read of it, so the field is disabled with the reason, and the graph keeps its last layout (DS readme.md:225; V2 §4).
+> - **Item 11 (new), the inactive window** (DS tokens/inactive.css:4–5, :20–22). When the project window is not key, the field shows its rest edge with no halo and no caret, and the pill's tint goes neutral; focus returns with the window. No hover is painted there (decision 16.42 (i)).
+> - **Depends on** adds 11.11 (the field, the ScrollArea and the list model) and 11.12 (per-window focus; 10.22's window). **Related** adds 11.13 (Edit › Find ⌘F calls this field).
+> - **Witnesses (amended and added):**
+>   - "Neither works with a modal dialog open" becomes: neither works while a sheet is open on the project window; with Settings key, ⌘F focuses this field and brings the project window forward;
+>   - the keyboard row moves with ↑↓ while focus stays in the field; hover never moves it; the shown row carries a check;
+>   - Home and End move the menu's keyboard row, and the caret in the suggestions;
+>   - the menu opens with its keyboard row on the current row;
+>   - on a variant, the pill's label paints `--text` and its icon `--accent-text`;
+>   - a stale project disables the field; an inactive window shows the field at rest.
 
 **Motivation.** The floating client's View capsule opens with one search field instead of the revset select: `[menu ▾ | query | ✕] · gap legend · count · View options` (AF:159-171; SYNC:44-56). The field does three jobs:
 - it shows what the graph shows: the default search, another jj log variant, or a typed search;
@@ -10548,6 +11046,37 @@ NEEDS DESIGN (decision (g); the recommendation is the adopted default):
 ### Story 10.22: jj log Configurations dialog — structured filters, default search, command preview [UI/bridge]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. The dialog is the only place where jj log variants are made, edited and made the default search (DS components/search/RevsetDialog.prompt.md:1). Built to the design, as inspiration (the Epic 10 header's design update 2026-10-14, decision (d)). The defaults below are Claude's; Ralph adopted them on 2026-10-14 (decision (g)).)*
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** jj log Configurations becomes a window of its own, built on 11.12, instead of a sheet. This note supersedes item 2 and amends items 3, 4, 6 and 7, the heading's "dialog", the Motivation, the Depends on, the Related line, the design status and the witnesses.
+> - **Item 2, the shell → a window** (decisions 16.19, 16.20). It supersedes "11.2's dialog sheet and scrim, 880 × 580", "The title … at 17/600, with a close button" and "Esc, a click on the scrim and the close button discard the draft". Now (DS components/search/RevsetDialog.prompt.md:9–11; DS components/window/Window.prompt.md:14–17):
+>   - a parentless window with the key `revset-configs` (11.12): 880 × 580 by default, resizable, minimum 820 × 460. The list stays 240 and the editor grows. Size and position are remembered;
+>   - the minimum is 820, not the DS's 680 (RevsetDialog.prompt.md:9; DS components/search/search.css:111). At 680 the value field of a rule row keeps a text area of −4 px, and 120 px of text need about 804 (V3 §4.4; Claude's proposal, accepted 2026-10-16);
+>   - the Window scaffold: borderless and opaque, `--fl-sheen` over `--fl-bg-solid`, no vibrancy; a 52 pt header whose title "jj log Configurations" sits at 13/600 at block end + 12; no close button in the content, no scrim, no 18 px radius, no entrance (DS readme.md:189);
+>   - the traffic lights: close and zoom active, minimise grey, all with grey rings at rest (Window.prompt.md:17). The Window menu and Mission Control list it by its title.
+> - **Placement** (decisions 16.19, 16.42 (b)). It floats above the project window while Zanshin is active, also above Settings and Projects, and drops to the normal level when Zanshin resigns (11.12 item 6, through the NSWindow handle). It moves freely and closes with the project window. "Edit Configurations…" and ⌥⌘L open it, or bring it forward with its edits as they are (RevsetDialog.prompt.md:10).
+> - **Which project.** The count, `mine()`, Apply and OK refer to the project in the project window and follow a project switch; the configurations are global anyway (RevsetDialog.prompt.md:11; decision 16.15).
+> - **Leaving** (decisions 16.19, 16.21).
+>   - Esc, ⌘W and the red button mean Cancel. With unsaved changes the window first asks "Discard changes?", a ConfirmDialog sheet on this window under its header: Discard changes (destructive) · Cancel, which keeps editing (RevsetDialog.prompt.md:17).
+>   - ↩ outside the fields means OK (RevsetDialog.prompt.md:20).
+>   - Closing the project (⌘W on the project window, a project switch) or quitting while this window holds unsaved changes first brings it forward and asks "Discard changes?". Cancel aborts the close or the quit (Claude's proposal, accepted 2026-10-16; V3 §5.4; 11.12 item 7's close and terminate hooks).
+>   - Esc in an open Select closes only its list, not the window.
+> - **Focus.** The window has its own FocusScope. Focus starts on the selected entry, and Tab moves through the window (RevsetDialog.prompt.md:20). On close the project window becomes key, with focus in 10.21's search field (Claude's proposal; r5out windows cfg-focus-trap-window).
+> - **Inactive.** A click in the graph makes the project window key and this one inactive. It stays where it is and takes the inactive look (RevsetDialog.prompt.md:18; DS tokens/inactive.css).
+> - **Item 3, the selected entry,** is `--accent-soft`, pressed `--accent-soft-hi` (DS search.css:129–130): a configuration is data, picked among data (DS readme.md:137; decision 16.43). This supersedes "The selected entry is moon (FC:283)".
+> - **Item 4, the editor's controls,** are 11.11's: a TextField on `--field-bg` for the name and the values, a Select for the function and the mode, a Switch in the default-search row, the toggle chip for `Aa` (DS search.css:145, :175–180; DS readme.md:278). This supersedes "a glass field (INC:25-27)".
+> - **Item 6, the footer.** 30 px buttons; OK is the gold-tinted primary with the shared primary tokens (RevsetDialog.prompt.md:16; DS readme.md:143).
+> - **Item 7, "The view switches only on OK," is amended** (Claude's proposal, accepted 2026-10-16; decision 16.42 (c)). OK switches the view to the selected entry. Apply saves, and when the edited configuration is the one the graph shows, redraws it with one layout request. The DS's "the view changes only on OK" (RevsetDialog.prompt.md:16; DS readme.md:192) stays true for switching.
+> - **Motivation and design status.** "The export moved the dialog into the glass dialog of Settings and Projects" and the design status's "the glass material" now read: the Window scaffold of Settings and Projects, on the window surface fill (11.2; Window.prompt.md:15).
+> - **"Dialog"** in the heading and the older text now means this window; the sprint-status key `10-22-jj-log-configurations-dialog` stays (as 11.6's note does for Projects).
+> - **Depends on** now: 10.21; 11.12 (the window, its level, the close and terminate hooks); 11.11 (the controls); 11.2 only for the "Discard changes?" ConfirmDialog sheet; 11.1 (tokens). This supersedes "11.2 (the dialog sheet and scrim)". The backend list stays. **Related** adds 11.13 (View › Edit Configurations… ⌥⌘L opens this window).
+> - **Witnesses** (amended). "Cancel, Esc and the scrim discard" becomes: Cancel, Esc, ⌘W and the red button cancel, asking first when something is unsaved; there is no scrim. Added:
+>   - the window opens at 880 × 580, cannot shrink below 820 × 460, and its frame is remembered;
+>   - while Zanshin is active it stays above the project window; ⌥⌘L brings an open one forward and keeps its edits;
+>   - closing the project closes it; with unsaved changes the close and the quit ask first, and Cancel aborts them;
+>   - Apply on the shown configuration redraws it with one request; OK switches the view;
+>   - ↩ outside a field runs OK; Esc in an open Select closes only the list;
+>   - a project switch updates the count and `mine()`;
+>   - Widgetbook's Windows folder opens the real window through AppWindows (11.11 item 3).
+
 **Motivation.** The search menu (10.21) lists two built-ins and the user's configurations.
 - A configuration is a named set of filters that the dialog turns into one revset (RC:49-72).
 - The dialog also picks the default search: the variant listed first in the menu, which ✕ returns to (RC:217-222).
@@ -10636,6 +11165,40 @@ NEEDS DESIGN (decision (g); the recommendation is the adopted default):
 ### Story 10.23: Operation toast — what an operation did, with Undo; refusal and warning variants [UI]
 *(Added 2026-10-14, Ralph — console session on the design update, export at `e74ced3`. It is 10.9's one feedback surface, split off as a separately reviewable piece (the Epic 10 header's design update 2026-10-14, decision (g)). It answers 10.9's design questions (b) and (c). The design is inspiration, not a 1:1 template (the Epic 10 header, decision (c) of the design update 2026-09-28). Tokens come from the design system (decision (f)).)*
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the toast follows DS Toast (heights, tones, motion, hold), and undo follows the three-place rule, with a toast after every undo. This note amends items 1–8, the Non-goals, the design status and the witnesses.
+> - **Item 1, the look** (DS components/overlays/Toast.prompt.md:10; overlays.css:4, :17–20; DS readme.md:330).
+>   - A 36 px glass pill (`--control-lg`), its text `--fs-control`. Undo, Redo and Retry are 26 px quiet pills (`--control-sm`; hover `--fl-on`, pressed `--fl-press`). × is a 26 px circle. This supersedes "38 px", "28 px" and "12.5 px".
+>   - "Focus rings are moon" now reads `--focus-ring`, the accent role's line (decision 16.43).
+> - **Items 1 and 8, motion** (Toast.prompt.md:12; overlays.css:4–5, :13–14).
+>   - In: a 10 px rise and a fade on `--dur-slide` (260 ms) with `--ease-glide`. This supersedes "over 280 ms".
+>   - Out: 8 px down and a fade on `--dur-exit-lg` (180 ms), `--ease-exit`.
+>   - A replaced toast fades in place on `--dur-exit` (120 ms) while the new one enters.
+>   - Reduce motion: fades only; the distances are × `--motion` (decision 16.4). This supersedes item 8's "no rise and no fade".
+> - **Item 3, the hold.** `--dur-toast-hold`, 6.5 s, paused while the pointer is over the toast (Toast.prompt.md:11; DS tokens/motion.css:60).
+> - **Item 6, the tones** (Toast.prompt.md:5–6, :10–11).
+>   - A refusal takes the warn tone: the `conflict` glyph in `--warn`. Like a success, it hides after the hold. This supersedes item 6's "It stays until × or the next outcome" for refusals.
+>   - A failure (an operation that failed, a fetch that could not reach its remote) takes the error tone: the `alert` glyph in `--rem`, role alert, and an action such as Retry with its command as the tooltip. It stays until dismissed or retried.
+> - **Item 4, undo in three places** (decision 16.7; Toast.prompt.md:14). This supersedes item 4's "⌘Z runs it while the toast is visible and focus is not in a text field (GV:757-762). Without a toast, ⌘Z does nothing here (deferred-work)".
+>   - The toast's Undo takes back the operation it reports, only while that operation is still current. When the head moves, the button goes and the text stays: item 4's proposal, now decided (V2 §4).
+>   - ⌘Z and Edit › "Undo ‹action›" (11.13) take back Zanshin's own latest operation while it is current, with or without a toast; ⇧⌘Z redoes it. Never further back, never a foreign operation.
+>   - Everything older is the Undo Timeline's (11.9).
+>   - No Undo after `jj op abandon ..@-` and after `jj workspace update-stale` (10.9's note).
+> - **Items 2 and 3, after an undo** (decision 16.46). Every undo Zanshin runs (⌘Z, this toast's Undo, the timeline's Undo) ends in the toast "Undid ‹action› · Redo". The DS says this for ⌘Z (Toast.prompt.md:14); extending it to the toast's Undo gives Redo a home (Claude's proposal). Redo runs `jj redo` (9.21); its tooltip is `jj redo`, set through the action's own title (Toast.prompt.md:6; decision 16.39). This supersedes item 2's "and `undo` itself show no toast", item 3's "and the undo itself shows no toast", and the witness's "no toast follows".
+> - **Undoing a push** shows jj's warning, "Undoing a push operation often leads to conflicted bookmarks.", with Redo (Toast.prompt.md:14; DS components/push/PushDialog.prompt.md:23). jj prints it with the hint "To avoid this, run `jj redo` now." (`undo.rs:135–140` @ v0.46.0); the Redo button is that hint.
+> - **Push results** come from 11.8: "Pushed 2 bookmarks to origin · Undo" (Toast.prompt.md:9; PushDialog.prompt.md:23). Undo shows only when the push recorded an operation, which jj does only when something was exported (`push.rs:624`, else "Failed to push some bookmarks" `:657–661` @ v0.46.0; decision 16.25).
+> - **Item 2, ids** (decision 16.35). A change id prints with jj's shortest unique prefix bold, max(prefix, 8) characters, one `Text.rich` without a gap. This supersedes "its 2-character prefix bold".
+> - **Item 7, semantics** (Toast.prompt.md:15). Role status, alert for errors, announced once. The toast is not in the Tab order while you work; ⌘Z is its key. F6 moves to the toast region, where Undo and × are buttons.
+> - **Non-goals.** "Redo (9.21) and an app-wide Edit › Undo (deferred-work)" is superseded: Redo in the toast is in scope and needs 9.21; Edit › Undo and Redo are 11.13's.
+> - **Design status.** "⌘Z while the toast is visible" is superseded by decision 16.7.
+> - **Depends on** adds 11.11 (the buttons, the focus ring) and 9.21 (redo). **Related** adds 11.13, which binds ⌘Z and ⇧⌘Z to this story's undo and redo (11.13 depends on this story).
+> - **Witnesses (amended):**
+>   - "⌘Z while the toast is visible runs Undo" becomes: ⌘Z runs `undo()` while the outcome's operation is current, with or without the toast; ⇧⌘Z after it runs `redo()`;
+>   - "Undo calls `undo()` exactly once and hides the toast; no toast follows" becomes: … and the toast "Undid ‹action› · Redo" follows; its Redo calls `redo()` once;
+>   - "Under `disableAnimations` nothing animates" becomes: under reduce motion the toast fades in and out without rise or drop;
+>   - "A refusal shows the CLI text and no Undo, and stays until ×" becomes: a refusal shows the CLI text in the warn tone, no Undo, and hides after 6.5 s; a failure shows the error tone with its action and stays;
+>   - "Each outcome kind renders its text, with 8-character ids and the bold prefix" checks the prefix length a fake reports;
+>   - added: hovering pauses the hold; after `op abandon` no Undo shows; undoing a push shows jj's warning with Redo; F6 reaches Undo and ×.
+
 **Motivation.** In the design every graph edit ends in a toast that says what happened and offers Undo (DND:135-146; DNC:44-54; DS components/overlays/Toast.prompt.md:1-9). The design system makes it the rule for feedback: past tense, verb first, ids in mono, always followed by Undo (DS readme.md:57). 10.9 runs the verbs and reports each outcome; this story shows it.
 
 **Scope.**
@@ -10704,6 +11267,15 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 ### Story 10.24: Inspector diff view — ±, focused-file hunks, Unified / Side by side, Viewed [UI/bridge]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. The inspector is built to the design (the Epic 10 header's design update 2026-10-14, decision (d)). This story takes over the review workflow that 10.8 parked: the deferred-work entry "Epic 10's thin detail panel drops the design's review workflow; no story owns it", and the header's "Design tweaks that matter" line on Diff mode.)*
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the hunk band and the M status are data colours that never follow the accent; secondary text steps up a rung; read-only selection paints the highlight only. This note amends items 4, 5 and 10. It adds witnesses.
+> - **Item 5, the hunk header.** It sits on `--hunk-bg`, with its range in `--hunk` (DS components/content/DiffHunk.prompt.md:8; DiffView.prompt.md:11; content.css:51–52). This supersedes "30 px on `--accent-soft` … in the moon `--hunk`": `--accent-soft` is selection (10.26).
+> - **Item 10, tokens** (decision 16.43). The hunk band, the hunk range and the M status are the fixed data tokens `--hunk-bg`, `--hunk` and `--status-m` (DS tokens/colors.css:60–61, paper :99). They change neither with the macOS accent nor in an inactive window (DS readme.md:80, :153; DS tokens/inactive.css:7–8). Only focus follows the accent (`--focus-ring`). This supersedes "hunk headers, the M status (FC:177) and focus in moon".
+> - **Secondary text** (decision 16.41). The header's context and counts step up a rung on the band, so they keep 4.5:1 (DS readme.md:132, :141).
+> - **Selection in read-only text** (decision 16.10). Diff lines are selectable. Flutter paints only the highlight there, and the glyphs keep their colours; that is known debt (DS readme.md:179; DiffHunk.prompt.md:11).
+> - **Item 4, the toolbar's controls,** are 11.11's: the Unified / Side-by-side Segmented with icons, and the Viewed toggle as the Checkbox at size sm in the add tone, green because Viewed is a review state, not a selection (DS components/content/DiffView.prompt.md:5; DS components/forms/Checkbox.prompt.md:9; DS readme.md:302). The folded row is a button whose focus ring sits inside the well (DiffView.prompt.md:12). The toolbar's controls, each hunk and the folded row are Tab stops (DiffView.prompt.md:13).
+> - **Depends on** adds 11.11.
+> - **Witnesses (added):** the hunk header paints `--hunk-bg` and `--hunk` under every accent family and in an inactive window; selecting diff text paints the system highlight and leaves the glyph colours.
+
 **Motivation.** The inspector shows a change's diff below its file list (IN:303-322): the focused file's hunks, a layout control and a "Viewed" mark (IN:311-317). The re-plan parked this review workflow, because no diff exists before Epic 5. The design now draws it inside the inspector, line-level only. Epic 5's line-level path (5.1, 5.5, 5.6, 5.8) supplies the data.
 
 **Scope.**
@@ -10760,6 +11332,16 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 ### Story 10.25: Commit/split composer, file level — and Squash into parent with the combined-message flow [UI/bridge]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. File-level selection is the CLI's non-interactive arm, so this story ships before Epic 5 and before 10.26 (the Epic 10 header's design update 2026-10-14, decision (g)).)*
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the composer's motion follows DS tokens/motion.css, it gets the generic exit and 11.11's Checkbox, and its command preview is complete. This note amends items 1, 2, 5 and 9. It adds witnesses.
+> - **Item 2, the entrance** (decision 16.4). The composer rises 12 px and fades in on `--dur-slide` (260 ms) with `--ease-glide` (DS ui_kits/desktop/kit.css:129–130). Under reduce motion it only fades; the rise is × `--motion`. This supersedes "not under reduce motion".
+> - **The exit** (decision 16.40). When the composer goes (after a commit or a split, or when the selection is cleared), it leaves with the generic exit: a fade with a small mirrored drift × `--motion`, on `--dur-exit-lg` (180 ms) and `--ease-exit` (DS tokens/motion.css:16, :30).
+> - **Item 1, the checkboxes,** are 11.11's Checkbox, with the drawn check; under reduce motion the check is simply there and the fill fades (DS components/forms/Checkbox.prompt.md:10–11, :13; DS readme.md:302).
+> - **Item 5, the command preview** (decisions 16.39, 16.44). It shows the full command as it runs, with the change id, shell-quoted: `jj commit -m '…' -m '…' <paths>`, `jj split -r kmnvxoqp -m '…' -m '…' <paths>`. It is one command, never a sequence (DS readme.md:53).
+>   - A path is written in the fileset form of 10.21's builder: `file:"…"` where the bare path would act as a glob (at v0.46.0 a bare fileset string is a `prefix-glob:`; 10.21 item 7), so the preview equals the call (Claude's proposal).
+> - **Item 9, Squash into parent.** When the combined-message form sends `-m`, the shown command includes it: `jj squash -r kmnvxoqp -m '…'`.
+> - **Depends on** adds 11.11.
+> - **Witnesses (added):** under reduce motion the composer fades in without rising; it leaves with the generic exit; a squash with the combined message shows `-m` in its command; a path holding `[` appears in its fileset form, and the call carries the same text.
 
 **Motivation.** The inspector is where a change is shaped (IN:2-4). On @ a selection becomes `jj commit`, elsewhere `jj split -r` (IN:117-157; DS components/content/DiffHunk.prompt.md:9). Whole files are the CLI's filesets: they need no diff editor and no Epic 5. "Squash into parent" joins this story, because it needs the same description form when both descriptions are set.
 
@@ -10820,6 +11402,14 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 ### Story 10.26: Hunk selection — partial selections through a GUI tree [UI/bridge]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. The interactive-verb contract is 9.50's (the Epic 10 header's design update 2026-10-14, decision (g)).)*
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** a selected hunk is drawn in the accent role's tokens, kept apart from the hunk band, which is data. This note amends item 1. It adds a witness.
+> - **Item 1, the selected hunk** (decisions 16.2, 16.43). The header takes `--accent-soft-hi` with its text in `--text`, and every line gets a 2 px `--accent-line` edge (DS components/content/DiffHunk.prompt.md:8; content.css:58–59). This supersedes "a 24 % moon header and a 2 px moon bar on every line". An unselected header stays on `--hunk-bg` (10.24).
+>   - In some families the selected band sits close to the plain one, so the edge and the checked box carry the selection, never the band alone (DS readme.md:310).
+> - **Secondary text** (decision 16.41). On the selected header, the dim and faint parts (context, counts) read as `--text-muted`, so they keep 4.5:1 on the tint (DS readme.md:132).
+> - **Item 1, the checkboxes,** are 11.11's Checkbox, with the mixed dash (DS readme.md:126, :302). The hunk is a Tab stop with its ring inside, and Space toggles its checkbox (DiffHunk.prompt.md:11).
+> - **Depends on** adds 11.11.
+> - **Witness (added):** under every accent family a selected hunk paints `--accent-soft-hi` and the 2 px `--accent-line` edge, and an unselected one `--hunk-bg`.
+
 **Motivation.** The design selects hunks, not only files (IN:96-112; INC:69-70). A partly selected file is the CLI's interactive arm (`-i`), whose editor the GUI replaces with its own selection (ADR-0003). 9.50 turns that selection into a tree, and 9.15 and 9.49 take the tree.
 
 **Scope.**
@@ -10862,6 +11452,12 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 ### Story 10.27: Drag files and hunks onto a change [UI]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. The drag engine is 10.10's, as the Epic 10 header's design update 2026-10-14 decides in (a4); this story owns the `diff` payload (decision (g)).)*
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** resize edges stay out of a hunk drag, and the lifted rows and the source card take the accent role's tokens. This note amends item 4. It adds witnesses.
+> - **Resize edges** (decision 16.42 (k)). While a file or a hunk is lifted, the inspector's and the pinned panel's resize edges are inert: no line, no resize cursor, no grab (10.10's note). The drag leaves the inspector across its own resize edge, so that edge must not take the pointer.
+> - **Item 4, the lifted rows** (decision 16.43). "A dashed moon outline" now reads: opacity .38 with a 1.5 px dashed `--accent-line` outline, 1.5 px inside (DS components/content/content.css:19, :60; FileRow.prompt.md:7). The source card's "from" state is a dashed `--accent-line` border (DS components/graph/graph.css:82).
+> - **The ghost and the target** follow 10.10's 2026-10-16 note.
+> - **Witnesses (added):** no resize edge reacts during a hunk lift; a lifted row paints .38 with the dashed `--accent-line` outline.
 
 **Motivation.** The design moves work between changes by dragging it: a file row or a hunk header goes onto another change's card (IN:193-206; DND:63-78). That is jj's `squash --from --into` and `split -A / -B`, without typing a fileset.
 
@@ -10919,6 +11515,108 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 >
 > **Added 2026-10-14 (Ralph, console session on the floating-client export `e74ced3`).** The decisions of the Epic 10 header's "Design update 2026-10-14" apply here too. This epic cites them as "decision (x)". Prototype defects are numbered in the Epic 10 header's list; 60–76 are this epic's.
 
+> **Design update 2026-10-16 (DS rounds 1–3; console sessions 2026-10-15/16, Ralph):** the design system was re-downloaded twice, and Ralph accepted every recommendation of the three validation reports, Claude's proposals included ("mit deinen Vorschlägen", 2026-10-16). The decisions are listed below as 16.1–16.47; every story cites them as "decision 16.<n>". This note amends the Goal, the Design input and "What stays in Epic 10". It amends the house rule Code locations and the Sequencing in place, and it adds Stories 11.11–11.13.
+> - **Goal, added:**
+>   - 11.11: the Zs control library on Flutter's widgets-layer primitives, the Widgetbook catalogue and the shared Marionette configuration (decisions 16.1, 16.3, 16.29–16.33);
+>   - 11.12: the window foundation — Settings, Projects and jj log Configurations as parentless dialog windows, the chrome kinds, the per-window roots (decisions 16.13–16.21, 16.38);
+>   - 11.13: the menu bar and its shortcuts (decisions 16.7, 16.14, 16.16, 16.18, 16.34, 16.46, 16.47).
+> - **Goal, amended:** "the Projects dialog on real data (11.6)" is now the Projects window (decision 16.13), and "the Settings window (11.7)" is a window of its own on 11.12. There is one project window (decision 16.15).
+> - **Design input, amended:** "Tokens come from the design system (decision (f))" stays. The DS downloaded 2026-10-16 (round 3) is the reference; its citations follow the Epic 10 header's rule (anchored at `b49a5cd`, the commit that records the download; the DS itself heads the round "RUNDE 2026-10-17", DS readme.md:227); the floating client is not where they differ, for example in its pre-A2 traffic-light geometry (DS tokens/spacing.css:25-39; decision 16.5). Tokens and CSS win over the DS's prose and its cards.
+> - **What stays in Epic 10, amended:** the jj log Configurations dialog (10.22) is a window now, built on 11.12 (decision 16.19).
+> - **House rule Code locations** gains `app/lib/src/shared/controls/`, `app/widgetbook/`, `app/lib/src/features/window/` and the menu bar's place in `app/lib/src/features/shell/` (in place below).
+> - **Sequencing** gains 11.11–11.13 (in place below).
+
+**Decisions 2026-10-15/16 (design-system rounds 1–3).** Ralph's decisions of 2026-10-15 (E1–E12 and the evening addendum) and of 2026-10-16 (round 2's decisions 1–6, round 3's proposals 1–6, "mit deinen Vorschlägen"). They apply to Epics 9–11. Claude's proposals are marked. Sources:
+- V1 = `_bmad-output/planning-artifacts/research/design-system-validation-2026-10-15.md` (§3 E1–E12 and Ralph's "Stand" block, §4, §6);
+- V2 = `…/research/design-system-validation-round-2-2026-10-16.md` (§4 "what we do right in Flutter", §5, §6);
+- V3 = `…/research/design-system-validation-round-3-2026-10-16.md` (§4–§6);
+- RC = `…/research/technical-ui-controls-yaru-material-custom-and-macos-accents-research-2026-10-15.md` (§5);
+- `push.rs` = `../jj` `cli/src/commands/git/push.rs` @ v0.46.0;
+- `r3out`, `r4out` and `r5out` = this session's critique reports: the critiques of round 1's evening research on windows, tooling, workstreams and SVG (`r3out <topic>.md`, its critiques numbered C1… or "critique N"); round 2's per-area reports (`r4out <area>`, findings such as W-12, KVS-4, M-12); round 3's (`r5out <area>`). They are scratch files and not tracked. A story that cites one restates the finding it relies on, and so do the decisions here; the ID only names where the finding came from.
+
+*Controls, accent, motion, chrome*
+- **16.1 Own control library.** Zanshin draws every control itself, on Flutter's widgets-layer primitives. Text entry stays Flutter's `TextField`, undecorated. No visible control is Material- or Yaru-styled. Where the DS and the floating client differ, the DS wins. The DS's design-review changes are adopted: the control heights 22 · 26 · 30 · 36 · 44, the radius scale, one menu material, the layers, the icons. *(E1, Ralph, 2026-10-15; V1 §3; RC §5; DS readme.md:86, :94, :100, :116.)*
+- **16.2 Accent C1 + D.** Multicolor = moon, Zanshin's own. A named macOS accent recolours only the moon role: eight named families (Graphite included) beside Multicolor, and "This Mac" by hue mapping (DS tokens/accents.css:6-10). Gold, the brand and the data colours stay fixed. Settings › General gets the row "Accent colour: Follow macOS · Zanshin", default Follow macOS. Supersedes 11.1 design question (c). *(E2, Ralph, 2026-10-15; V1 §3; DS readme.md:149, :167-181; tokens/accents.css:2-26.)*
+- **16.3 The control library is its own story,** Story 11.11: the state model, the focus ring, the cursor, semantics, reduce motion, contrast and the catalogue. It follows 11.1 and 11.2 (its Menu, Select, Popover and ConfirmDialog sit on 11.2's materials, and its Materials folder shows them) and comes before 11.3 and 10.7. *(E3, Ralph, 2026-10-15; V1 §3; RC §5.)*
+- **16.4 Reduce motion by property.** Colour and opacity changes keep their tokens. Movement, size, position, rotation and stroke drawing go to 0. The flash becomes a colour fade with its spread held; sweeps pulse; the spinner keeps turning. `tokens/motion.css` wins over the cards: there is no 120 ms cap; every ring spread and the focus ring's 3 px settle are × `--motion`, so rings fade at a fixed size; a skeleton pulses once and leaves no residual highlight; the Nami loader's swell stops while its fades stay. Supersedes the 2026-09-30 "flash static", the Epic 10 header's decision (c) sentence "nothing moves and the flash shows static", and every "static" or "nothing animates" sentence in 10.6, 10.17, 10.19, 10.20, 10.23, 11.1, 11.2 and 11.3 (their notes name them). *(E4, Ralph, 2026-10-15; V1 §3; V2 §4; DS tokens/motion.css:3-10, :25, :70-71; guidelines/motion.html:19.)*
+- **16.5 Traffic lights.** The grey rings stay, a deliberate deviation with a per-theme `--tl-ring`. The native buttons are never moved. The bar derives from the measured block: first island at block end + 12. *(E5, Ralph, 2026-10-15; V1 §3; DS tokens/spacing.css:25-39; tokens/colors.css:22, :81.)*
+- **16.6 Icons are SVG,** not an icon font. *(E6, Ralph, 2026-10-15; V1 §3.)*
+- **16.7 Undo has three places.** The toast's Undo. ⌘Z and Edit › "Undo ‹action›", only for Zanshin's own latest operation while it is still the current one; then the toast "Undid … · Redo", and ⇧⌘Z redoes. The Undo Timeline for older operations. Never further back, never someone else's operation. Supersedes 10.23's "⌘Z only while the toast is visible". *(E7, Ralph, 2026-10-15; V1 §3; DS components/overlays/Toast.prompt.md:14; readme.md:202.)*
+- **16.8 Push opens a selection sheet** with a `--dry-run` preview. Supersedes "no confirmation" and 11.8 design question (b). 9.20 delivers every CLI parameter and the dry-run plan. 11.8's non-goal "pushing single bookmarks" goes. *(E8, Ralph, 2026-10-15; V1 §3; DS components/push/PushDialog.prompt.md.)*
+- **16.9 The splash status lines are English.** *(E9, Ralph, 2026-10-15; DS readme.md:47.)*
+- **16.10 Selected-glyph colour.** In text fields the selected glyphs are recoloured through `buildTextSpan`. Read-only text (diffs, ids) paints only the highlight for now; that is known debt. *(E10, Ralph, 2026-10-15; DS readme.md:175-179.)*
+- **16.11 Theme names** are night and paper; `light` stays an alias. *(E11, Ralph, 2026-10-15.)*
+- **16.12 The yellow accent** is checked in the Accent card and otherwise left as it is. *(E12, Ralph, 2026-10-15.)*
+
+*Windows and the keyboard*
+- **16.13 Dialog windows.** Settings (one window for "Settings…", "Project Settings…" and "Appearance, diffs and more") and Projects are parentless dialog windows. Projects is the start window when no project is open. Closing Projects quits. *(Ralph, 2026-10-15/16; V1 §6; V2 §5; DS readme.md:187-192.)*
+- **16.14 Rows that show ⌘,.** Every row that shows ⌘, does what ⌘, does: it opens or brings forward Settings on the tab shown last and never switches it. Only "Project Settings…" (Project tab) and "Appearance, diffs and more" (General tab) pick a tab, and they show no ⌘,. With no project open and Project shown last, ⌘, shows General. *(Ralph, 2026-10-16; V2 §5.1; DS readme.md:190.)*
+- **16.15 One project window.** Opening another project switches it in place. Settings' Project tab shows that project. *(Ralph, 2026-10-16; V2 §5.2; DS readme.md:193.)*
+- **16.16 ⌘W on the project window** closes the project and shows Projects. Only closing Projects quits. *(Ralph, 2026-10-16; V2 §5.3; DS readme.md:193.)*
+- **16.17 Two sheets.** The sheets are ConfirmDialog and Push, nothing else. A click beside a sheet does nothing; Esc and Cancel cancel. *(Ralph, 2026-10-16; V2 §5.4; DS readme.md:90, :187; components/push/PushDialog.prompt.md:24.)*
+- **16.18 ⌘J and ⇧⌘J.** ⌘J scrolls to the selected change (Go › Selection). ⇧⌘J scrolls to @ (Go › Working Copy (@)). Both only scroll, and the selection stays, as on a click on the @ pill. Supersedes DS components/actions/AtPill.prompt.md:9 "and select it". *(Ralph, 2026-10-16; V2 §5.5; V3 §5.5; DS readme.md:205.)*
+- **16.19 jj log Configurations is a window of its own** (frame key `revset-configs`; supersedes "stays a sheet"). It floats above the project window while Zanshin is active (the NSWindow level, set through the window's handle) and closes with the project window. ↩ outside the fields = OK. Esc, ⌘W and the red button = Cancel, asking "Discard changes?" first when something is unsaved. *(Ralph, 2026-10-16; V2 §5.6; DS components/search/RevsetDialog.prompt.md:9-20.)*
+- **16.20 Configurations' minimum is 820 × 460** (Claude's proposal). At the DS's 680 × 460 the filter row's text area is −4 px wide. *(Accepted 2026-10-16; V3 §4.4, §5.3; DS components/search/search.css:111.)*
+- **16.21 Unsaved Configurations.** Closing the project (⌘W, a switch) or quitting first brings Configurations forward and asks "Discard changes?". Cancel aborts the close or the quit (Claude's proposal). *(Accepted 2026-10-16; V3 §5.4.)*
+- **16.22 Resize edges.** The inspector (edge on its left) and the left pinned panels (edge on their right) are drag-resizable per DS ResizeEdge: the inspector 380–720, default 460; the panels 240–440, default 300; a 10 pt grab zone, 7 of it in the gap; the cursor at once, the line after 150 ms; a double-click resets; keys ← → 10 pt, ⇧ 50, Home / End, ↩ the default. *(Ralph, 2026-10-16, D6; DS components/surfaces/ResizeEdge.prompt.md:9-13; tokens/spacing.css:42-44; tokens/motion.css:55.)*
+- **16.23 The collapse rule** (Claude's proposal). When even the minimum widths would leave less than 320 px of graph, the inspector shrinks first, then the panel; then the pinned panel collapses. The pin is kept, the rail button stays active, and the panel returns at its remembered width once there is room. The rule runs on every change: a window resize, the inspector opening, a pin. A rail click without room shows the panel as the rail's temporary flyout. The width the user dragged persists, never the effective one. Supersedes the DS's "the panel detaches (floats over the graph)" (DS components/surfaces/ResizeEdge.prompt.md:12) and 11.3 item 7's unpin proposal. *(Accepted 2026-10-16; V3 §4.3, §5.2.)*
+- **16.24 VoiceOver on a resize edge** (Claude's proposal): an adjustable value ("Inspector width, 460 points"; ± 10; increase = wider), no splitter role, which Flutter does not have. Supersedes DS components/surfaces/ResizeEdge.prompt.md:13's "splitter". *(Accepted 2026-10-16; V3 §5.6.)*
+
+*Push*
+- **16.25 Push follows jj v0.46.0** (Claude's proposal). *(Accepted 2026-10-16; V3 §4.1, §5.1.)*
+  - The bare `jj git push`, `-r/--revision` and the bulk modes (`--all`, `--tracked`, `--deleted`) print a refused ref's reason as a warning, skip that ref and push the rest (push.rs:513-553, :670-707). Explicitly named refs (`-b`, `-t`, `--change`, `--named`) abort the whole push (push.rs:454, :479, :501, :505-511).
+  - The dialog's preselection stays the bare push. A refused ref shows "skipped" with jj's reason and hint, verbatim from the backend, with separate texts for bookmarks and tags (push.rs:1157-1254). Only a hand-picked refused row cannot be ticked.
+  - Tags are pushed and listed. Classification runs per remote.
+  - "Recorded, so Undo works" holds only if something was exported (push.rs:624); otherwise jj ends with "Failed to push some bookmarks" (push.rs:657-661). A network error may follow an earlier remote's success: the loop runs per remote, and `push_refs(...)?` fails out of it (push.rs:588-615, :602-609).
+  - The `--allow-*` flags are always passed where allowed, the bare push included.
+  - The backend also reports: the private reason's hint "Configured git.private-commits: '<revset>'" (push.rs:871-876); "No matching remotes for names: …" and "No git remotes to push to" (push.rs:313-321); "Nothing changed." (push.rs:558-563); `-o/--option` (push.rs:242-244, :582-584); the dry-run texts "move forward / backward / sideways from … to …", "add to …", "delete from …" (push.rs:1057-1085).
+  - Supersedes DS readme.md:217 and :219, and PushDialog.prompt.md:12, :14 (a bulk flag "only while … the selection … holds no refused ref"), :18 and :22.
+
+*Workstreams and workspaces*
+- **16.26 Workstreams are dropped everywhere,** not "hidden": they are not a jj concept. Reviews stay hidden until a backend exists. Supersedes the Workstreams part of the Epic 10 header's decision (g) and defect 63's "hidden". *(Ralph, 2026-10-15; V1 §6.)*
+- **16.27 No Workspaces section** in the Project menu, and no `<name>@` go-to in the search. *(Ralph, 2026-10-15, declined; the round-2 prompt's header, item 4; V2 §6.)*
+- **16.28 Workspaces** show as `name@` on cards (ours included, as the CLI does; ours first, the others by name) and as a project-level stale-working-copy state. In that state there is no Retry. Only reads without a snapshot keep working (`commit_contents`, `log_defaults`, `workspace_root`); there are no `--ignore-working-copy` reads (CLI parity). A cold start shows the notice over an empty canvas. The state ends through the watcher. jj's three causes keep jj's text. There is no Undo after `update-stale`. 9.23 gains priority. *(Ralph, 2026-10-15/16; V2 §4; DS readme.md:222-225.)*
+
+*Tools and icons*
+- **16.29 Widgetbook 3.25.0,** pinned exactly, is the one review catalogue. It replaces the planned galleries and demo hosts: a dev entrypoint `app/widgetbook/main.dart`, opened through AppWindows. Widgetbook 4.x is a non-goal, because it is `runApp`-only. Experimental addons (Semantics, TimeDilation) carry an explicit `// ignore: experimental_member_use`, or they are dropped, because the analyzer runs with `--fatal-warnings`. *(Ralph, 2026-10-15; V1 §6.)*
+- **16.30 10.1's demo host becomes the Widgetbook "Graph" folder;** slow motion is Widgetbook's TimeDilation (Claude's proposal). *(Accepted 2026-10-16; V1 §6.)*
+- **16.31 Marionette.** `marionette_flutter` ^0.7.0, which carries Ralph's multi-view fix, and `marionette_mcp` installed (`dart pub global activate marionette_mcp`). One shared `MarionetteConfiguration(isInteractiveElement:)` serves the app and the catalogue. Zs controls take an optional `Semantics(identifier:)`; matchers use the Semantics identifier or the text, never coordinates. Each window's root carries a key, so 0.7.0's `ancestor_keys` can scope a listing to one window. Screenshots are "all views, in attach order", unlabeled and Flutter-layer only. No Patrol or Patrol MCP now; the CGWindowList probe stays the native check. Accepted with it (Claude's proposals): one custom Marionette extension (`registerMarionetteExtension`) that opens a catalogue path and sets addon values, so agents never click through Widgetbook's own navigation; 11.11 writes the tooling rules (the identifier convention, the experimental-ignore policy, the exact 3.25.0 pin) into `project-context.md`. *(Ralph, 2026-10-15; V1 §6.)*
+- **16.32 The SVG pipeline.** All 58 DS icons are copied once, with the C2PA `<metadata>` and `xmlns:c2pa` stripped, under their DS kebab-case file names; the `ZI` constants are camelCase. The pubspec asset `- path: assets/icons/svg/` runs `transformers: - package: vector_graphics_compiler` (a dev_dependency), and `vector_graphics` replaces `flutter_svg`. A boot-time `IconRegistry` loads them (`vg.loadPicture`), parallel to the settings load in `ZanshinBootSequence`, injected through a module with a required constructor parameter like `SettingsModule(store:)`, and provided by an InheritedWidget above all windows. `ZanshinIcon` is a leaf `RenderBox`, tinted with a saveLayer and `ColorFilter.mode(srcIn)`, in six sizes: xs 10 · sm 12 · md 14 · lg 16 · bar 17 · rail 19. There is no Material fallback. The retired aliases: download → fetch, stacked-on → arrow-up, add → plus, check-bold → check, dash-bold → minus, more-bold → more, grip-dots → grip, arrow-left → chevron-left, edit → describe. *(Ralph, 2026-10-15; DS readme.md:350-353; assets/icons/glyphs.json:62-72; components/brand/Icon.prompt.md:10-13.)*
+- **16.33 The icon parity check runs in the gate** (Claude's proposal): the bytes are equal after the strip; the names in `glyphs.json` = the files = `ZI`, minus `ZI.workstream`, the one named leftover of 11.1 item 11, until 11.10 removes it; no retired alias is in use. The lint parses each file with `parseWithoutOptimizers(warningsAsErrors: true)` and checks its attributes, rx/ry ≤ half the shorter side included. A DS re-download that changes an icon therefore turns the gate red. For icons, this supersedes 11.1 item 12's "A re-download that changes only components keeps the gate green" and the same sentence in the Epic 10 house rule "Design-system sync". Widget tests load the registry in a shared `setUpAll` helper (`tester.runAsync`); one witness paints an icon on the first pump after the load. *(Accepted 2026-10-16; DS readme.md:352.)*
+
+*Rendering, menus and layout*
+- **16.34 The menu bar's Change menu** targets the selection, and @ when nothing is selected, like the CLI. Each item names its target ("Abandon @") (Claude's proposal). *(Accepted 2026-10-16; V2 §4.)*
+- **16.35 Change ids** are one `Text.rich` with two spans and no gap. The bold prefix is jj's shortest unique prefix (`changeIdPrefixLength`); the shown length is max(prefix, the slot's 5 or 8); only ◆ is spaced. Fixed in Flutter, not sent to the DS. *(Ralph, 2026-10-15; V1 §6; DS readme.md:67.)*
+- **16.36 "What we do right in Flutter" becomes story text.** The lists of V2 §4 and V3 §4–§5 (the stale state, commands, push, undo, the secondary text rung, motion exits, controls, windows) go into the stories that own them. *(Ralph, 2026-10-16.)*
+- **16.37 The project window's minimum is 880 × 560;** the DS wins (decision 16.1), and 11.4's 900 × 600 is superseded. The gap legend hides together with the count at ≤ 1040 px (Claude's proposal; the DS defines no breakpoint). *(DS readme.md:193.)*
+- **16.38 Settings and Projects open at the normal level:** key, in front, FullScreenAuxiliary, never a raised level (Claude's proposal). *(Accepted 2026-10-16; V2 §4.)*
+- **16.39 Commands are shown in full,** with the change id and shell-quoted (`jj new -A kmnvxoqp`, `jj edit kmnvxoqp`, `exact:` patterns). The Redo pill's tooltip is `jj redo`. *(Ralph, 2026-10-16; V2 §4.)*
+- **16.40 One exit for transient surfaces** (panels, the inspector, the composer, the peek, the stack list, StaleNotice): a fade plus a mirrored drift × `--motion`, `--dur-exit-lg` 180, `--ease-exit`. *(Ralph, 2026-10-16; V2 §4; DS tokens/motion.css:14-18, :29-30.)*
+- **16.41 The secondary text rung everywhere:** GraphSearch hints, the SearchField placeholder, hunk stats, menu shortcuts under the sheen. *(Ralph, 2026-10-16; V2 §4; DS readme.md:132.)*
+- **16.42 Further Claude proposals,** taken from the detailed findings behind V2 and V3. They fall under Ralph's blanket "mit deinen Vorschlägen" of 2026-10-16, but he has not reviewed them one by one; 16.45–16.47 are of the same kind. Each is cited where it is used:
+  - (a) the inspector grows back to its remembered width after a collapse;
+  - (b) Configurations' floating level also floats it over Settings and Projects while Zanshin is active;
+  - (c) Configurations: Apply saves and redraws the shown variant; OK switches the variant;
+  - (d) the Settings window's title is the tab label (General, or the project's name);
+  - (e) Settings switches to General when the project closes;
+  - (f) closing Projects quits, even with Settings open;
+  - (g) the Go and Change commands and the project commands target the project window from any Zanshin window;
+  - (h) the Recent row's status dot gets an ink ring on the highlighted row;
+  - (i) no hover is painted in a non-key window (cleared on resign key);
+  - (j) one frame-store key for the one project window;
+  - (k) resize edges are inert during drags and sit on the island layer, below callouts;
+  - (l) the widths persist in an AppSettings `layout` sub-model {inspectorWidth 460, panelWidth 300}, written on release;
+  - (m) Fetch has no shortcut: the menu-bar spec wins over the card's ⇧⌘F;
+  - (n) View › Show Minimap is an app-global switch, default on;
+  - (o) menu-bar items are in Title Case per the HIG, as the DS writes them (DS readme.md:200-207); this deviates from the sentence-case rule (DS readme.md:49) for the menu bar only;
+  - (p) Go › Parent and Go › Child move the selection, to the first parent on merges;
+  - (q) one-way resize cursors with a drag-time override (`SystemMouseCursors`, or AppKit's `columnResizeCursor(directions:)` natively).
+- **16.43 "Moon" in older story text means the accent role** (decision 16.2) wherever it marks selection, focus, a control's on state, the menu highlight, a drop target, the go-to pulse or the flash: the `--accent*` family and `--focus-ring`, moon only under Multicolor. Moon as data (status M, the hunk band, remote) is the fixed `--status-m`, `--hunk`, `--hunk-bg` and `--remote`. A selected data row (a project, a configuration) is `--accent-soft`; navigation is `--fl-on` (DS readme.md:137). Supersedes the Epic 10 header's decision (f) "Selection, focus, the go-to pulse and the flash are moon", decision (g)'s "the app's controls take moon as their accent" and the house rule "Moon marks selection, focus and every flash". Each touched story maps its own moon mentions (Claude's proposal for the mapping). *(Derived from 16.2; V1 §3 E2, §4.)*
+- **16.44 Every command is real.** A jj command in any UI text — tooltip, menu column, footer, empty state, command well — exists in jj v0.46.0 exactly as written, with exactly those options; the UI never composes a sequence of commands (DS readme.md:53). Empty states use the DS's copy where it gives one, for example "No bookmarks yet. Create one with `jj bookmark create <name>`." (DS readme.md:57). It is the Epic 10 house rule Commands, together with 16.39. *(Ralph, 2026-10-15.)*
+- **16.45 Calm scrolling returns on one wait,** `--delay-calm-return` 650, for the wheel and pans alike; supersedes 11.3 item 8's "420 ms after the last pan move" (Claude's proposal). *(Accepted 2026-10-16; DS readme.md:104; tokens/motion.css:67.)*
+- **16.46 Every undo ends in the toast "Undid ‹action› · Redo":** ⌘Z, the toast's Undo and the timeline's Undo. DS Toast.prompt.md:14 says it for ⌘Z; the other two get it as well, so that Redo always has a home (Claude's proposal). Undoing a push shows the CLI's warning with Redo (DS components/overlays/Toast.prompt.md:14; components/push/PushDialog.prompt.md:23). Supersedes 10.23 items 2 and 3 (no toast after an undo) and its witness "no toast follows". Redo needs 9.21. *(Accepted 2026-10-16.)*
+- **16.47 ⌘F while Settings or Projects is key.** Projects focuses its own search field. Settings has none, so ⌘F targets the project window's search and brings that window forward, like the other project commands (16.42 (g)) (Claude's proposal). *(Accepted 2026-10-16.)*
+
 **Goal.** The window around the graph, as the floating client draws it (`JJ Desktop Client Floating.html`; design `CLAUDE.md:3`). The graph fills the window, and every control floats above it on glass islands (DS readme.md:3, :82-86). Epic 11 builds everything that is not the graph:
 - the design-system foundation (11.1) and the glass material (11.2);
 - the overlay host (11.3): the top bar's grid Place · View · Action, the rail with hover previews and pins, the pinned-panel host, the graph's insets and calm scrolling;
@@ -10950,6 +11648,10 @@ Epic 11 hosts them through 11.3's slots and 10.5's contract. Insets go into the 
   - `app/lib/src/features/sync/`: 11.8;
   - `app/lib/src/features/undo_timeline/`: 11.9;
   - `app/lib/src/shared/design/`: 11.1's tokens;
+  - `app/lib/src/shared/controls/`: 11.11's Zs controls *(added 2026-10-16, Claude's proposal)*;
+  - `app/widgetbook/`: 11.11's Widgetbook catalogue, a dev entrypoint *(added 2026-10-16; decision 16.29)*;
+  - `app/lib/src/features/window/`: 11.12's window foundation *(added 2026-10-16; `AppWindows` already lives there)*;
+  - the menu bar (11.13) goes in `app/lib/src/features/shell/` *(added 2026-10-16, Claude's proposal)*;
   - tests mirror these under `app/test/`.
 - **App home:** the app's `MaterialApp` home becomes 11.3's shell, and the Yaru test page goes (11.10).
 
@@ -10959,6 +11661,11 @@ Epic 11 hosts them through 11.3's slots and 10.5's contract. Insets go into the 
 - 11.5 follows 11.3. 11.6 and 11.8 follow 11.5. 11.7 follows 11.3, and its Project tab also needs 11.5. 11.9 follows 11.3.
 - 11.10 comes last: once 11.3, 11.4 and 11.6 have replaced the mock, and 11.1's tokens have replaced `ZanshinColors`.
 - Epic 10's widgets plug into 11.3's slots as they land. Until 10.12, the graph runs on recorded layouts behind 10.5's fake ports.
+- *Added 2026-10-16 (decisions 16.3, 16.13, 16.19; Stories 11.11–11.13):*
+  - 11.11 (the Zs control library, the Widgetbook catalogue, Marionette) follows 11.1 and 11.2: its Menu, Select, Popover and ConfirmDialog sit on 11.2's materials, and its Materials folder shows them (11.11's Depends on). It comes before 11.3 and before 10.7, so the order is 11.1 → 11.2 → 11.11 → 11.3. 11.4 still runs in parallel with 11.2.
+  - 11.12 (the window foundation) follows 11.4 and comes before 11.5, 11.6, 11.7 and 10.22.
+  - 11.13 (the menu bar) follows 11.12, 10.9 and 10.23. It comes before 11.5, 11.6, 11.7, 11.8 and 10.16: they wire their handlers to its items and list 11.13 in their Depends on (11.13's Depends on; their dated notes). So 11.5–11.8 now also wait for 10.9 and 10.23. The other handler owners (10.5, 10.6, 10.7, 10.21, 10.22, 9.21) wire theirs when both they and 11.13 have landed; until a handler lands, its item stays grey (11.13 item 3; Claude's proposal).
+  - 11.10 also follows 11.11: Yaru, `flutter_svg` and the separate `main*.dart` demo hosts leave once the Zs controls and the Widgetbook catalogue exist (Claude's proposal).
 
 ### Story 11.0: Record the scope change in the canonical rules [docs]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`.)*
@@ -10983,6 +11690,75 @@ Epic 11 hosts them through 11.3's slots and 10.5's contract. Insets go into the 
 
 ### Story 11.1: Design-system foundation — tokens as ThemeExtensions for night and paper, type, metrics, elevation, motion, cursor policy, reduce motion, the app theme, fonts, the icon rule, the DS parity test [UI]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3` and the design-system export; Claude builds it under the scope change of 11.0. DS synced through #9. It precedes 10.1.)*
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the token layer takes every token file of the design system downloaded on 2026-10-16 (round 3; still "synced through #9", `DS readme.md:22`), the accent families of decision 16.2, motion by property (decision 16.4) and the SVG icon pipeline (decisions 16.6, 16.32, 16.33); the controls move to their own story, 11.11 (decisions 16.1, 16.3). This note amends the Motivation, items 1, 2, 4, 5, 6, 7, 8, 9, 10, 11 and 12, the Non-goals, design questions (a)–(d), the Design status, the Related line and the witnesses. It adds items 13 and 14 and witnesses.
+> - **Motivation, "moon for selection, focus and controls"** now means the accent role (decision 16.43): the `--accent*` family tokens and `--focus-ring`, moon only under Multicolor. Moon as data stays fixed: `--status-m`, `--hunk`, `--hunk-bg`, `--remote` (`DS readme.md:80`, `:153`).
+> - **Item 1, the token layer.**
+>   - It holds every custom property of every `DS tokens/*.css`: `accents.css`, `colors.css`, `contrast.css`, `effects.css`, `inactive.css`, `motion.css`, `spacing.css`, `states.css`, `transparency.css` and `typography.css` (`fonts.css` holds only `@font-face` rules). This supersedes the four-file list "`colors.css`, `effects.css`, `spacing.css` and `typography.css`". `dsSyncedThrough` stays 9 until the DS records #10 (V3 §6).
+>   - Every value is a fixed hex or rgba; oklch survives only in the DS's comments (`DS readme.md:80`, `:326`). This supersedes the conversion sentence "oklch values are converted once to sRGB", and its claim "All of them lie inside the sRGB gamut" (item 1, second bullet) was false anyway (RC §7: four paper tokens lay outside sRGB and P3). Nothing is converted.
+>   - "Values the components use without a token" (item 1, fourth bullet) are DS tokens now: the radii `--radius-tag` 5, `--radius-chip` 7, `--radius-well` 12 and `--radius-popover` 13 (`DS tokens/effects.css:9`, `:11`, `:16`, `:17`), the field well `--field-bg` and the inset track `--seg-inset-bg` (`DS tokens/states.css:15`), the gold primary `--primary-*` (`DS tokens/states.css:29-32`) and the dialog entrance `--dur-dialog` 220 (`DS tokens/motion.css:32`). Only the checkbox's 4.5 / 3.5 stay a component's own geometry (`DS readme.md:94`).
+>   - Each accent family has 11 tokens: 8 roles plus the live copies `--accent-live-line`, `-ring` and `-text` (`DS tokens/accents.css:11`, `:13-24`). The readme's "8 fixed tokens" (`DS readme.md:153`) is stale; the CSS wins (V3 §6). Multicolor is the moon set in `colors.css`; the eight named families are `DS tokens/accents.css:28-51`. The derived tokens `--selection`, `--focus-ring`, `--ring-*` and `--ring-drop` follow the family (`DS tokens/accents.css:52-54`; `DS tokens/colors.css:76`, `:110`).
+>   - New single tokens: `--proj-stale` (`DS tokens/colors.css:65`, paper `:101`), `--accent-native` / `--accent-native-dark` for 11.4's AccentColor asset (`DS tokens/accents.css:57`), the text-selection tokens (item 14) and the traffic-light ring `--tl-ring` (`DS tokens/colors.css:22`, paper `:81`; decision 16.5).
+>   - Theme names are `night` and `paper`; `[data-theme="light"]` is an alias of paper (decision 16.11; `DS tokens/colors.css:79`).
+> - **Item 2, axes and deltas.** The theme-dependent extensions have two axes: theme (night, paper) × accent family (Multicolor plus Blue, Purple, Pink, Red, Orange, Yellow, Green, Graphite). Increased contrast (`DS tokens/contrast.css:21-22`), the inactive window (`DS tokens/inactive.css:17-18`, `:26-31`), reduce transparency (`DS tokens/transparency.css:9-14`) and reduce motion (`DS tokens/motion.css:69-71`) are deltas over them, never a matrix (`DS readme.md:183`). `lerp` also runs across accent families, so a switch is smooth (RC §6.4). Item 2's "Theme-independent groups are constant classes: type, metrics and motion" no longer holds for metrics and motion: increased contrast sets `--focus-w` to 3 (`DS tokens/contrast.css:21`), full screen moves the chrome (`DS tokens/spacing.css:52`) and reduce motion zeroes the movement durations, so both resolve their deltas through an `of(context)` too (Claude's proposal). The component edges that `contrast.css:23-26` adds are control states and belong to 11.11.
+> - **Item 4, metrics.** The chrome geometry now derives from the measured traffic lights (`DS tokens/spacing.css:25-40`; decision 16.5): `--tl-*`, first island at block end + 12, bar 4–48, content top 60 (`:39`); full screen 12 / 68 (`:52`). This supersedes "a 44 px top bar … so content starts at 68 from the top"; the 76 from the left stays (`:40`). New groups: control heights 22 · 26 · 30 · 36 · 44 (`:9-15`; `DS readme.md:86`), icon sizes xs 10 · sm 12 · md 14 · lg 16 · bar 17 · rail 19 (`:17-23`), the window header 52 (`:41`), the resize limits inspector 380–720 default 460 and panel 240–440 default 300, `--graph-min-w` 320 and the grab zone 10 / 7 (`:42-44`; decision 16.22). The radius ladder is `DS tokens/effects.css:5-22`. The interaction values come from `DS tokens/states.css:17-26`, not `DS readme.md:96`: focus is a 2 px `--focus-ring` outline at offset 2, inside −2 for rows, flush segments and clipping wells, cards 3, a 3 px settle and a 3 px field halo; disabled is .4. This supersedes "a 2 px `--accent` outline at offset 2 (cards 3, segmented controls 1); disabled is opacity .38" (item 4, second bullet).
+> - **Item 5, elevation.** The sources move to `DS tokens/effects.css:24-34` (night) and `:50-61` (paper), plus the tooltip shadow in `DS tokens/states.css:63`, `:97`. There are four shadow builds: island, menu, dialog and tooltip; `--shadow-popover` and `--shadow-callout` are retired (`DS readme.md:284`). The converter and its witness stay (`--fl-shadow`, `DS tokens/effects.css:25`).
+> - **Item 6, motion** (decision 16.4). The source is `DS tokens/motion.css`, not `effects.css:35-38`.
+>   - Curves by job: `--ease-state` (.25,.1,.25,1), `--ease-glide` (.32,.72,0,1), `--ease-exit` (.4,0,1,1), `--ease-linear` and `--ease-loader` (`:14-18`). The spring is retired (`DS readme.md:327`); this supersedes "spring, `Cubic(.3, 1.4, .5, 1)`, only where the DS keeps it".
+>   - Durations in two families: fades (`:22-37`) and movement (`:39-44`), plus the waits and holds (`:46-61`) and calm scrolling (`:63-67`). The dialog entrance is 220 (`:32`); this supersedes "dialog 240 (Claude's proposal; the DS's `Dialog` says 160, see deferred-work)".
+>   - Reduce motion by property (`:3-10`, `:69-71`): `--motion` goes from 1 to 0 and the five movement durations go to 0; every fade keeps its token, every exit fades out, the flash stays a colour fade, the spinner keeps turning and sweeps pulse. There is no 120 ms cap (the cards' "≤ 120ms", `DS guidelines/motion.html:19`, is stale; V2 §4). Every keyframe distance, ring spread and the focus ring's 3 px settle are × `--motion` (`:25`). This supersedes item 6's "Under reduce motion every duration is zero, and the flash is static" (item 6, third bullet) and the 2026-09-30 rule it carried.
+> - **Item 7, the shell.** The fix for reduce motion stays (Flutter's macOS embedder still reports nothing). `ShellTheme` also carries:
+>   - the accent identity `AppleAccentColor` (−1 Graphite, 0–6 Red … Pink; absent means Multicolor or "This Mac", told apart by the detection order below; RC §6.1) and `NSColor.controlAccentColor` resolved in aqua, used when the key is absent: to recognise Multicolor and for the "This Mac" hue mapping (`DS readme.md:181`);
+>   - the detection order: key present → its family; key absent and the colour equals Zanshin's own app accent → Multicolor; otherwise the hue mapping (V1 §4). Colours resolve under the window's appearance, not `NSApp.effectiveAppearance` (RC §6.4);
+>   - `selectedTextBackgroundColor` and `unemphasizedSelectedTextBackgroundColor`, resolved in the appearance that matches Zanshin's theme (Night → darkAqua, Paper → aqua; `DS readme.md:175`, `:177`);
+>   - `accessibilityDisplayShouldIncreaseContrast` (`DS tokens/contrast.css:6`), the window's key status (`DS tokens/inactive.css:13`; 11.12 drives it per window), `NSScroller.preferredScrollerStyle` (`DS components/controls/ScrollArea.prompt.md:12`) and, for 11.11's track click, `AppleScrollerPagingBehavior` (`:10`; Claude's proposal).
+>   - The family the app shows = the Settings choice "Accent colour: Follow macOS · Zanshin" (default Follow macOS; `DS readme.md:149`; 11.7 builds the row) × the reported identity; "Zanshin" always gives Multicolor (decision 16.2).
+>   - An overridable appearance scope (theme, accent family, increased contrast, reduce motion, reduce transparency, inactive) above the app root, used only by the catalogue's Appearance addon (11.11) and by tests; the app itself never offers an in-app switch for the system settings (r3out tooling.md critique 4). It reuses the fake shell of the reduce-motion witness ("With a fake shell reporting `reduceMotion` …").
+>   - A root-scope widget that installs the ambient defaults: the token extensions, `DefaultTextStyle`, `IconTheme`, `DefaultSelectionStyle` and `ScrollConfiguration`. Without it a `MaterialApp` child falls back to the 48 px monospace debug style (measured; V1 §6). Every window root, the catalogue's `appBuilder` included, uses it.
+> - **Item 8, cursor.** The premise "Material shows a pointing hand on desktop" is only partly right (RC §5): most Material controls use `adaptiveClickable`, the arrow on desktop; the hand stays only on Switch, Slider, TabBar, ListTile, DataTable and BottomNavigationBar, `DropdownMenu` hard-codes it, and Yaru's toggles default to `click`. The Zs controls own their cursors (11.11), so the theme's `mouseCursor = basic` covers only the Material parts that remain. The policy now cites `DS readme.md:106` (`:100` is the Layers paragraph today): the arrow everywhere, `grabbing` only while the canvas is held, the I-beam over text entry including read-only fields, `progress` over anything busy, and the resize cursor over a `ResizeEdge`, one-way at a limit — `SystemMouseCursors` resize variants, with a drag-time override if a native `columnResizeCursor(directions:)` is needed (decision 16.42 q).
+> - **Item 9, the app theme.** "The Yaru builder stays the Material baseline" and the `createYaruDarkTheme` / `createYaruLightTheme` sentence (item 9, second bullet) are struck (decision 16.1; RC §5): the app builds its own `ThemeData` from the tokens, only for the Material parts that remain (`MaterialApp` as host for Navigator, Overlay, localisations and the extensions; text editing). No visible control is Material- or Yaru-styled. The primary is no longer design question (c)'s answer: there is no macOS-accent primary; the accent role comes from the family tokens (decision 16.2). `NoSplash` takes hover `--fl-hover`, highlight `--fl-on` and focus `--focus-ring` (not `--accent`). The Yaru dependency leaves by 11.10 at the latest.
+> - **Item 10, fonts.** The mono styles carry `fontFamilyFallback: ['Inter']`, because JetBrains Mono has neither ✓ nor ‥ (V1 §4).
+> - **Item 11, the icon rule, rewritten** (decisions 16.6, 16.32). It supersedes every sentence of the old item (all five bullets): the snake_case copies from `Icon.jsx`, "the story that first draws an icon copies it", the `#000` note, the 17 inline glyphs, "`working-copy-at` is text" and "11 of the DS's 48 are missing".
+>   - The source is `DS assets/icons/ui/`: 58 files, one per name in `DS assets/icons/glyphs.json:2-61` (`DS readme.md:350`; `DS components/brand/Icon.prompt.md:1`). The floating client's 45-file set is not a source (r4out icons ICONS-8).
+>   - All 58 are copied once to `app/assets/icons/svg/`, with the download stamp removed: the `<metadata>` block and the root's `xmlns:c2pa` attribute (r4out icons ICONS-6). They keep the DS's kebab-case file names; `ZI` constants are camelCase. The 36 other snake_case files there today are replaced; `workstream.svg` stays as it is, with `ZI.workstream`, until 11.10 deletes both (see the leftover below). `working-copy-at` is a drawn glyph now (`DS readme.md:343`), used for Edit. The unused `pull` glyph is copied too; nothing offers Pull (`DS readme.md:346`; jj v0.46.0 has no pull verb, `cli/src/commands/git/mod.rs:78-89` @ v0.46.0).
+>   - Retired aliases (`DS assets/icons/glyphs.json:62-72`) are not used: `ZI.arrowLeft` → `chevronLeft` (`commit_detail.dart:169`), `ZI.download` → `fetch` (`home_dialog.dart:368`), `ZI.edit` → `describe`. The two call sites sit in mock files that 11.10 deletes; they are renamed anyway so the set check of item 12 holds. `ZI.workstream` has no DS file (decision 16.26); it is the one leftover the set check tolerates by name until 11.10 deletes its mock users (Claude's proposal).
+>   - Build: the pubspec asset entry becomes `- path: assets/icons/svg/` with `transformers: - package: vector_graphics_compiler`; `vector_graphics_compiler` is a dev_dependency and `vector_graphics` replaces `flutter_svg` (`ZanshinIcon` is its only user; r3out svg.md §7).
+>   - Runtime: an `IconRegistry` loads every glyph with `vg.loadPicture` during boot, in parallel to the settings load in `ZanshinBootSequence._load` (`app/lib/src/features/bootstrap/zanshin_bootstrap.dart:159-173`). It enters DI through a module with a required constructor parameter, like `SettingsModule(store:)`, and is exposed through an InheritedWidget above all windows, so the dialog windows share it (r3out svg.md critique 4).
+>   - `ZanshinIcon` becomes a leaf `RenderBox`: it paints the picture scaled from 16 to one of the six size tokens inside `saveLayer` with `ColorFilter.mode(colour, BlendMode.srcIn)`, synchronously, so no icon pops in a frame late. It reads no Material `IconTheme`, `Theme` or `Colors` fallback and takes no free size; every call site moves to a size token (r3out svg.md critique 6).
+>   - Icon edits need a hot restart, because the registry holds the pictures (deferred-work).
+> - **Item 12, the DS parity test.**
+>   - The extractor reads every selector scope: the theme selectors, the attribute deltas (`[data-accent]`, `[data-contrast]`, `[data-transparency]`, `[data-window]`, `[data-motion]`, `[data-fullscreen]`) and their `@media` copies. It resolves `var()` aliases and flattens `:is()` selectors; a naive extractor gets paper's inactive × increased-contrast `--accent-line` wrong (`#e7e9f2` instead of `#26242c`; `DS tokens/inactive.css:26-31`; r5out regression RG-tokens-11-1-is-selector).
+>   - Values compare exactly as hex or rgba. This supersedes "oklch values are compared after conversion, within 1/255 per channel" (item 12, third bullet).
+>   - Trigger: the DS rounds of 2026-10-15/16 carry no SYNC number, so a re-download is checked when the parity test turns red, not when N rises (V1 §4); the Epic 10 house rule "Design-system sync" names the case.
+>   - The icon parity check (decision 16.33; Claude's proposal, accepted) runs in the same test file and reads `../_bmad-output/implementation-artifacts/design_system/assets/icons/`: each app SVG equals its DS file byte for byte after the same strip; the `glyphs.json` names, the app files and the `ZI` constants are one set (minus the named leftover of item 11); no `ZI` constant uses a retired alias; a lint parses every file with `parseWithoutOptimizers(xml, warningsAsErrors: true)` (asserts are on under `flutter test`, so any unsupported element throws) and checks the attributes the compiler drops silently: no `class`, `style`, `id`, `transform`, `filter`; `currentColor` the only colour; at most 2 decimals; `rx` / `ry` at most half the shorter side (`DS readme.md:352`; `DS components/brand/Icon.prompt.md:13` has the other file rules but not this one). A changed, added or removed glyph, or a rule violation, fails and names the glyph.
+>   - Consequence: a DS re-download that changes an icon turns the gate red. This supersedes, for icons, "A re-download that changes only components keeps the gate green" (item 12, fourth bullet).
+>   - Widget tests load the registry once in a shared `setUpAll` helper (real async there; no tester is needed); a test that loads it inside a `testWidgets` body uses `tester.runAsync`, as the first-pump witness does (`flutter test` bundles the transformed `.vec` files; r3out svg.md §7, critique 4).
+> - **Item 13 (new), the splash.**
+>   - Its status lines are English (decision 16.9; `DS readme.md:47`): `lade Settings…`, `lese Shell-Umgebung…` and `starte App…` (`zanshin_bootstrap.dart:160`, `:168`, `:171`) become `Loading settings…`, `Reading the shell environment…` and `Starting Zanshin…` (Claude's proposal for the wording).
+>   - Reduce motion by property: the Nami loader's swell stops (`DS guidelines/motion.html:19`; `splash_card.dart:54`), but the splash's cross-fade is opacity and keeps its duration. This supersedes, for the splash, `_splashFade`'s "Reduce motion skips the native cross-fade" (`zanshin_bootstrap.dart:232-236`), which also reads the platform flag that item 7 replaces (Claude's proposal to place this here).
+> - **Item 14 (new), text selection** (decision 16.10). The root-scope widget sets `DefaultSelectionStyle` from the shell's `selectedTextBackgroundColor`, and from the unemphasized colour in an inactive window or an unfocused field (`DS readme.md:175-177`). `--accent-select` (`DS tokens/colors.css:55`, `:97`; per family in `DS tokens/accents.css`) and `--select-inactive` (`DS tokens/states.css:73`, `:99`) are only the fallback (`DS readme.md:175`, `:177`). Selected glyphs turn `--selection-text` (`DS tokens/states.css:71`) in text fields through `buildTextSpan` (11.11); read-only text (diffs, ids, commands) paints only the highlight for now, a known debt (`DS readme.md:179`).
+> - **Non-goals.** "Controls … The first story that needs each one builds it on these tokens" (second non-goal) is superseded: the controls are 11.11 (decision 16.3). "the icon font (if (d) picks SVG)" now reads "the icon font": (d) is answered.
+> - **Design questions.**
+>   - (a) stays answered `app/lib/src/shared/design/`. The in-app Widgetbook catalogue (11.11) is not "a second consumer outside the app" (r3out tooling.md story impacts).
+>   - (b) stays yes, and the parity test now includes the icon check (item 12).
+>   - (c) is answered by decision 16.2: the accent role follows the macOS accent through Zanshin's own families, Multicolor is moon, and Settings offers "Follow macOS · Zanshin". It supersedes the recommendation "moon, as the DS says".
+>   - (d) is answered SVG (decision 16.6), precompiled through the asset transformer and held in a boot-time registry (item 11).
+> - **Design status.** "decisions (c) and (f)" now read with decision 16.43: selection, focus and the flash are the accent role, not moon.
+> - **Witnesses (superseded):**
+>   - "The parity test passes on the DS at `e74ced3`" (first witness) → on the DS downloaded on 2026-10-16;
+>   - "The stored sRGB values of the oklch tokens … within 1/255" (second witness) is obsolete: every token is hex or rgba;
+>   - "every motion duration is zero" (sixth witness) → the five movement durations are zero and `motion` is 0, every fade keeps its value;
+>   - "a hovered Material button, checkbox and switch show the arrow" (seventh witness) moves to 11.11, on the Zs controls;
+>   - "The primary is (c)'s answer" (eighth witness) → with a fake shell reporting `AppleAccentColor` 4 (Blue), the accent tokens are the Blue family; with the key absent and `controlAccentColor` equal to Zanshin's app accent they are moon; with the key absent and an iMac orange reported they are the Orange family; with the setting "Zanshin" they are moon whatever the shell reports.
+> - **Witnesses (added):**
+>   - on a fixture with `:is()` selectors, paper's inactive × increased-contrast `--accent-line` is `#26242c`;
+>   - `lerp` between two accent families gives the midpoint;
+>   - every family has 11 tokens, and `--proj-stale` exists in night and paper;
+>   - the icon parity check fails, by name, on a changed, an added and a removed glyph, on a retired alias in `ZI`, on a `<style>` element and on an `rx` larger than half the shorter side;
+>   - a widget test paints an icon on the first pump after the registry has loaded in `tester.runAsync`;
+>   - with the overridable appearance scope set to paper, Graphite, increased contrast and reduce motion, the extensions report those values without the native plugin;
+>   - the splash status lines are English, and under reduce motion the splash still fades out.
+> - **Related** adds 11.11 (controls, catalogue), 11.12 (per-window roots, key status), 11.7 (the accent row) and 11.4 (`--accent-native`, `--tl-ring`).
 
 **Motivation.** Every Epic 10 and Epic 11 view draws with the same few values: the indigo canvas, the solid cards, the glass, the text ladder, gold for @ and the one primary action, and moon for selection, focus and controls (`DS readme.md:73-78`). The design system holds them as tokens for night and paper (`DS tokens/`). The app has none of them today:
 - `ZanshinColors` (`app/lib/src/shared/theme/zanshin_colors.dart:10-167`) carries the docked mock's palette: neutral greys, a grey text ladder and the legacy blue #3b82f6. Only night's add and rem match the DS. Canvas, cards, @, moon, glass, lines, shadows, radii, type and motion are missing.
@@ -11081,6 +11857,49 @@ This story turns the DS tokens into Dart once. `GraphTheme` (10.1) and every Epi
 ### Story 11.2: Glass material primitives — islands in regular and strong glass, menu, popover and callout material, the dialog sheet and scrim, the solid fallback [UI]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3` and the design-system export; Claude builds it under the scope change of 11.0. DS synced through #9.)*
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the DS of 2026-10-16 settles the materials: one menu material for everything that floats for a moment, a sheet for only two tasks, an opaque fill for the windows of their own, and reduce motion by property. This note amends the Motivation, items 1–8, the design status, the non-goals and the witnesses. It adds item 9 and witnesses.
+> - **Motivation, the dialog sheet.** "one 18 px dialog sheet on a blurred scrim, for Projects, Settings and the jj log Configurations" is superseded. The sheet serves only ConfirmDialog and Push (decision 16.17; DS readme.md:90, :187; DS components/surfaces/Dialog.prompt.md:1). Settings, Projects and jj log Configurations are windows of their own (decisions 16.13, 16.19; 11.12), on the window surface fill of item 9. In the Motivation's Epic 10 list, 10.22 is such a window now, not a sheet.
+> - **Item 1, the top edge.** "Islands sit 12 px from the window edge and from each other" still holds for the rail on the left, on the right, at the bottom and between islands. The top bar is the exception: its first island starts at block end + 12 (91 with the reference block), and it centres on the traffic-light block, at 4–48 (decision 16.5; DS tokens/spacing.css:25–39). 11.3 places it.
+> - **Item 2, the toast's blur** (decision 16.1; found in review). The toast takes the strong fill, `--fl-bg-strong`, under the regular blur, σ 18 with saturate 1.4 (`--glass-blur`; DS components/overlays/overlays.css:4), not σ 22. Only the panel island (the inspector, the pinned panels; DS components/surfaces/surfaces.css:4) and the minimap (DS ui_kits/desktop/kit.css:147) use `--glass-blur-strong`, σ 22. This amends item 2's "blur σ 22" for the toast and the non-goal's "This story gives it the strong glass only": it gives the toast the strong fill and the regular blur.
+> - **Item 3, one menu material.** This supersedes item 3's three builds: the popover's "radius 14", the callout's "radius 12, `--shadow-callout`, … 140 ms", and the context menu's "`--bg-elevated`, a 1 px `--border-strong`, radius 10, `--shadow-popover`".
+>   - **The material.** Every menu, popover, callout, select list and suggestion list, the peek, the stack list and the gap legend use one material: `--fl-sheen` over `--fl-bg-solid`, a 1 px `--fl-border`, `--shadow-menu`, radius 13 (`--radius-popover`), and rows of radius 8 at a 5 px inset (DS readme.md:90, :284, :322; DS tokens/effects.css:17, :27; DS components/surfaces/surfaces.css:9, :16; DS components/menus/menus.css:6). `--bg-elevated`, `--shadow-popover` and `--shadow-callout` are retired (DS readme.md:284).
+>   - **Entrances** (DS tokens/motion.css:27–28; DS components/base.css:53–56). A command menu (context, project, drop and text menu) enters in `--dur-menu` 110 on `--ease-glide`, growing from scale .97. The popover enters in `--dur-pop` 160 on the glide curve, from 4 px above at .98, from its top-right corner. The callout enters in `--dur-pop` 160, not 140, sliding in from 4 px aside; its 10 px arrow stays (surfaces.css:17). This supersedes the context menu's "110 ms ease-out" (now the glide curve) and the popover's "rising 4 px" (it comes down from 4 px above).
+>   - **Exits (new).** Menus, popovers, callouts and tooltips leave in `--dur-exit` 120 on `--ease-exit`: menus and callouts fade, and the popover also drifts 2 px back up (DS tokens/motion.css:16, :29; DS components/menus/menus.css:7; DS components/surfaces/surfaces.css:57–58; DS components/base.css:59–61). The parent keeps the surface mounted for the exit (11.11's Presence).
+> - **Item 4, the two sheets.**
+>   - **Where.** The sheet serves ConfirmDialog and Push on the project window, and the "Discard changes?" ConfirmDialog on the jj log Configurations window (DS components/search/RevsetDialog.prompt.md:17; 10.22). It sits on `--z-dialog` 50, and the menus it opens sit on `--z-menu` 60 (DS tokens/effects.css:44–45). Radius 18, the fill and `--shadow-dialog` stay as written.
+>   - **Entrance:** 220 ms (`--dur-dialog`) on the glide curve, rising 8 px and growing from scale .985 (DS tokens/motion.css:32; DS components/surfaces/surfaces.css:30; DS components/base.css:57). This supersedes item 4's 240 ms, its sentence "The DS's `Dialog` says 160 ms; 240 ms follows the newer client (Claude's proposal; see deferred-work)", and the same proposal under Design status. The scrim still fades in over 160 ms (`--dur-pop`; surfaces.css:28).
+>   - **Exit (new):** the scrim fades, and the sheet drops 4 px to scale .99, in `--dur-exit-lg` 180 on `--ease-exit` (DS components/surfaces/surfaces.css:59–60; DS components/base.css:62; DS components/surfaces/Dialog.prompt.md:7).
+>   - **A click on the scrim does nothing.** Esc and Cancel cancel (decision 16.17; DS components/surfaces/Dialog.prompt.md:8; DS components/surfaces/surfaces.css:26–27).
+>   - **Focus** (DS readme.md:145; DS components/surfaces/Dialog.prompt.md:8; DS components/controls/ConfirmDialog.prompt.md:12; DS components/push/PushDialog.prompt.md:24):
+>     - focus starts on the sheet's named control (ConfirmDialog: Cancel when destructive, else the primary; Push: Push), else on the first control;
+>     - Tab and Shift+Tab stay inside the sheet, also when focus sits on the sheet's own container (the DS's reference trap leaks on Shift+Tab there; r4out a11y KVS-8);
+>     - on close, focus returns to the opener;
+>     - Esc and Cancel do nothing while the sheet is busy (pushing).
+> - **Item 5, reduce transparency and increased contrast.** Both are token deltas (DS tokens/transparency.css:3–14; DS tokens/contrast.css:21–22).
+>   - Every glass surface paints solid, with no backdrop filter: the islands, panels, inspector, minimap, toast, the large primary and the @ pill. `--fl-bg` and `--fl-bg-strong` take `--fl-bg-solid`'s value.
+>   - This applies under Reduce transparency and also under increased contrast (`ShellTheme.increaseContrast`, 11.1 item 7).
+>   - The scrim loses its blur and darkens: night rgba(7,9,20,.62) and paper rgba(58,46,34,.28) under Reduce transparency; .7 and .36 under increased contrast. This supersedes item 5's "the scrim keeps its colour and skips the blur".
+>   - Both follow the system while the app runs.
+> - **Item 6, one backdrop group per window that has glass.** The project window has one. The windows of their own have none for their fill, which is opaque (item 9). The one exception is jj log Configurations while its "Discard changes?" sheet is open: that sheet's scrim blurs at σ 12 (`--scrim-blur`; DS components/surfaces/Dialog.prompt.md:7; DS components/search/RevsetDialog.prompt.md:17), so the window gets a group for the scrim while the sheet shows (Claude's proposal for the placement).
+> - **Item 7, reduce motion** (decision 16.4; DS tokens/motion.css:3–10, :70–71; DS components/base.css:52). Every entrance and exit keeps its fade and its token; only the distances and scale steps go to zero (× `--motion`). This supersedes item 7's "Entrances … are skipped under reduce motion" and the witness's "and none under reduce motion".
+> - **Item 8, the gallery** is superseded by the Widgetbook catalogue (decision 16.29). 11.11's Materials folder shows every material over a busy canvas, in night and paper. Its Appearance addon (theme × accent family × contrast × reduce motion × reduce transparency) replaces the in-page switches. Design question (b) stays for the app: there is no in-app switch, and the addon drives reduce transparency only through 11.1's catalogue-only override seam (r3out tooling.md critique 4).
+> - **Item 9 (new), the window surface fill**, for Settings, Projects and jj log Configurations (11.12; DS readme.md:90, :189; DS components/window/window.css:20–27; DS components/window/Window.prompt.md:14–15).
+>   - `--fl-sheen` over `--fl-bg-solid`, full-bleed, borderless and opaque: no radius, no shadow, no scrim, no entrance and no vibrancy. The system draws the corners, the shadow and the appearing.
+>   - Reduce transparency changes nothing. Increased contrast takes the solid values the fill already has.
+>   - The header's hairline is `--fl-border` (window.css:27).
+>   - One `RenderBox`, like the other materials (item 7, paint discipline).
+> - **Design status.** "Claude's proposals, not questions: the 240 ms dialog entrance (item 4)" is superseded by `--dur-dialog` 220 (item 4 above). The top highlight as a painted line stays a proposal.
+> - **Non-goals** add: the windows of their own, their chrome and their header (11.12); the contents of ConfirmDialog (11.11) and Push (11.8).
+> - **Witnesses (amended and added):**
+>   - every surface of the menu family paints radius 13, `--fl-sheen` over `--fl-bg-solid`, `--fl-border` and `--shadow-menu`, in night and paper;
+>   - the toast's `BackdropFilter` uses σ 18 under the strong fill; the inspector, the pinned panels and the minimap use σ 22. This amends "strong glass uses σ 22";
+>   - entrances take 110 ms (menu), 160 ms (popover), 160 ms (callout), 220 ms (sheet) and 160 ms (scrim); exits take 120 ms (menu, popover, callout) and 180 ms (sheet, scrim). This supersedes "110 ms (context menu), 140 ms (callout), 240 ms (dialog)";
+>   - under `disableAnimations` every entrance and exit still fades, with no translation and no scale;
+>   - with increased contrast on, the tree holds no `BackdropFilter`, glass paints solid and the scrim is the contrast scrim; toggling it at runtime switches every visible surface;
+>   - a tap on the scrim leaves the sheet open, and Esc closes it; Shift+Tab from the sheet's container stays inside; focus returns to the opener;
+>   - the window fill paints the sheen over the solid fill with no border, radius or shadow; a window of its own holds no `BackdropFilter` while no sheet is open, and the Configurations window's "Discard changes?" scrim blurs at σ 12.
+> - **Depends on** adds 11.1's `increaseContrast` (11.1 item 7). **Related** adds 11.11 (the catalogue, Presence, the ConfirmDialog content) and 11.12 (the windows of their own).
+
 **Motivation.** The floating client's one idea is that the change graph owns the window, and every control floats above it on glass islands (`DS readme.md:3`). It uses a handful of materials for all of it (`DS readme.md:86`):
 - glass islands for the top bar, the rail, the pinned panels, the inspector and the minimap;
 - an opaque menu material for popovers, menus and callouts;
@@ -11174,6 +11993,85 @@ Claude's proposals, not questions: the 240 ms dialog entrance (item 4), and the 
 
 ### Story 11.3: Floating overlay host — top-bar grid Place · View · Action, rail with hover previews and pins, pinned-panel host, insets provider, calm scrolling [UI]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the DS of 2026-10-16 derives the chrome from the measured traffic lights, makes the inspector and the pinned panels resizable at their edge toward the graph, drops Workstreams, and turns the calm-scrolling literals into tokens. This note amends items 2–8 and 10, the non-goals, design question (a) and the witnesses. It adds items 11–13 and witnesses.
+> - **Items 2 and 3, geometry** (decision 16.5; DS tokens/spacing.css:25–45, :50–52; DS readme.md:84, :193).
+>   - The bar centres on the traffic-light block that 11.4 measures. The bar's top is the block centre − 22 (`--chrome-bar-y`, 4 with the reference block at x 19–79, centre y 26). The first island starts at block end + 12 (`--chrome-first-x`, 91). The right edge stays 12. The content starts at bar bottom + 12 (`--chrome-top`, 60).
+>   - In full screen there is no block: the first island sits at 12, the bar's top at 12 and the content top at 68 (`[data-fullscreen]`). The rail stays at left 12 and does not hide; its top, like the pinned panel's and the inspector's, is the content top (`--chrome-top`, 68 in full screen; DS ui_kits/desktop/kit.css:65, :82, :90).
+>   - This supersedes item 2's "content top 68", item 3's "It sits 12 px from the top, left and right edges", and the PLACE column's "11.4's traffic-light column (52 px, not an island; FC:55-56)". The system's block is 60 wide at x 19–79 in the reference, not the 52 px rail column, and the project capsule starts at block end + 12. The floating client's pre-A2 geometry (FC:55–56) is not the reference (the Epic 11 header).
+>   - Item 2 adds the ranges: pinned panel 300 (240–440), inspector 460 (380–720), the graph's minimum 320, the grab zone 10 / 7 (spacing.css:42–44).
+> - **Item 3, focus rings.** "Focus rings are 2 px moon at a 2 px offset (FC:205; decision (f))" is superseded by the one focus rule (DS components/base.css:19–24; DS tokens/states.css:18–22; DS tokens/contrast.css:21): `--focus-ring`, which is the accent role (decision 16.43); `--focus-w` 2 px, 3 px under increased contrast; 2 px outside; keyboard only; fading in on `--dur-focus`. Rail buttons draw it 2 px inside (DS readme.md:135; base.css:25–26). The rings come from 11.11's state core.
+> - **Item 4, the rail.**
+>   - It sits at left 12 and top 60 (not 68) and is 52 wide (`--chrome-col`). "As wide as the traffic-light column above it" is superseded: the block is 60 wide (spacing.css:31, :36).
+>   - Its items are Bookmarks (10.14) and Undo Timeline (11.9). Reviews stays hidden until a backend exists. **Workstreams is dropped**, not hidden: jj has no such concept (decision 16.26). This answers design question (a) and supersedes item 4's "Workstreams and Reviews are hidden (design question (a))".
+>   - Rail icons take the size token rail, 19 px (`--icon-rail`; spacing.css:23).
+> - **Item 5, the preview.** The callout is 11.2's one menu material (radius 13, `--shadow-menu`) and enters in 160 ms (DS components/surfaces/Callout.prompt.md:9; DS components/surfaces/surfaces.css:14–16). Its 90 ms and 200 ms are now `--delay-callout` and `--delay-callout-out` (DS tokens/motion.css:51–52).
+> - **Item 5, the keyboard** (decision 16.1; DS components/surfaces/Callout.prompt.md:11; found in review). The preview is hover-only. The keyboard path is the rail button itself: ↩ pins the panel (Space too, as on any button; Claude's proposal), and focus opens no preview. The preview is not announced; the pinned panel is. Its rows are reached in the pinned panel. This supersedes item 5's "Keyboard (Claude's proposal). Focusing a rail button opens its preview, Enter or Space pins, and Esc closes" and "The preview is a non-modal popup whose rows the keyboard can reach".
+> - **Item 6, the pinned panel.**
+>   - Top 60, not 68. Its width is the effective panel width of item 11, not a fixed 300.
+>   - **Entrance:** it fades in on `--dur-panel` 200 and slides 8 px on the glide curve. Under reduce motion it still fades; only the slide goes to zero (decision 16.4; DS tokens/motion.css:31; DS ui_kits/desktop/kit.css:82–83, the 8 px panel keyframe, not base.css:55's 12 px inspector one). This supersedes "Under reduce motion it appears without motion."
+>   - **Exit (new)**, on close or unpin: a fade with the mirrored 8 px drift × `--motion`, in `--dur-exit-lg` 180 on `--ease-exit` (decision 16.40; motion.css:16, :30).
+> - **Item 7, insets and the narrow window.**
+>   - The left inset is live: 76 + the effective panel width + 12 while a panel is pinned and not collapsed, else 76. The top inset is 60 (68 in full screen). The published inspector width is its effective width (item 11). During a drag the insets notify every frame (10.5 item 14). This supersedes the fixed "388 while a panel is pinned" and "top 68".
+>   - The narrow-window proposal "the pinned panel unpins" (Claude's proposal of 2026-10-14) is superseded by the collapse rule of item 11 (decision 16.23): the pin stays.
+>   - At the 880 minimum (decision 16.37; 11.4) a pinned panel is always collapsed while the inspector is open; the inspector at 460 then leaves exactly 320 px of graph. This replaces prototype defect 62's 28 px at 900.
+> - **Item 8, calm-scrolling timings from the DS tokens** (DS tokens/motion.css:63–67; DS ui_kits/desktop/kit.css:147–148, :177–187). This supersedes "Out: opacity 150 ms and transform 220 ms with ease; the inspector's transform takes 240 ms" and "Back: after 60 ms, opacity 280 ms and transform 340 ms with the glide curve (FC:57, :158-161)".
+>   - **Out:** fade and drift together in `--dur-calm-out` 180 on `--ease-exit`, the inspector included. The drifts stay (bar islands −6 px, rail and panel −8 px, inspector +16 px) and are × `--motion`.
+>   - **Back:** after `--delay-calm-in` 60, over `--dur-calm-in` 340; the fade on `--ease-state`, the drift on `--ease-glide`.
+>   - **The @ pill** fades out in `--dur-exit` 120 (kit.css:185) and returns with the others on the calm-in timing. The kit returns it on `--dur-pop` without the delay; aligning it is Claude's proposal.
+>   - **The minimap's own motion:** in, opacity `--dur-panel` 200 and the slide `--dur-slide` 260 on the glide; out, opacity `--dur-exit-lg` 180 on `--ease-exit`, 18 px to the right × `--motion`, hidden after `--dur-slide` (kit.css:147–148; motion.css:31, :33). This supersedes the out opacity of 160 ms.
+>   - **One return wait** (decision 16.45; Claude's proposal): calm ends `--delay-calm-return` 650 after the last scroll event, for wheel and pan alike (DS readme.md:104; motion.css:67). This supersedes "or 420 ms after the last pan move"; 10.5 item 15 carries the same change.
+>   - The window in which a programmatic scroll's own events don't count derives from that scroll's animation, not from a literal (the kit's 700 / 300 ms are not tokens; r4out motion).
+>   - **Reduce motion:** the islands fade out and back with no drift (decision 16.4; DS components/surfaces/Island.prompt.md:15). This supersedes "Under reduce motion the islands hide and return without motion."
+>   - **Resize edges** hide with their island and come back with it (kit.css:184).
+>   - **What blocks calm.** "A drag, or an open menu or dialog, blocks it" and the explicit count now cover only this window's menus, popovers, previews and sheets. An open or key Settings, Projects or jj log Configurations window blocks nothing (decisions 16.13, 16.19).
+> - **Item 10, semantics**, adds the resize edges (item 11).
+> - **Item 11 (new), the resize edges and the width model** (decisions 16.22–16.24; DS components/surfaces/ResizeEdge.prompt.md:1–13; DS components/surfaces/surfaces.css:61–69; DS tokens/spacing.css:42–44; DS tokens/motion.css:55). This story builds `ZsResizeEdge` on 11.11's state core, the width model and its persistence. The host puts the pinned panel's edge on its right side; 10.8 puts the inspector's edge on its left side.
+>   - **The edge.** A sibling of the island, 10 pt wide: 7 in the 12 pt gap, 3 over the island. It runs along the straight part of the edge only; the 16 pt corners are left out. The resize cursor shows at once. After `--delay-resize` 150 a 2 pt `--edge-hov` line fades in on the island's 1 px edge, on `--dur-hover`, and it stays while dragging. No accent: it is a handle, not a selection.
+>   - **The cursor** (decision 16.42 (q)): `col-resize`, one-way at a limit (resize left / resize right). Flutter has `SystemMouseCursors.resizeColumn`, `resizeLeft` and `resizeRight`; AppKit now recommends `columnResizeCursor(directions:)`. The story picks one. During a drag the cursor is held for the whole window, because Flutter falls back to the cursor under the pointer once a clamped drag leaves the 10 pt zone (r5out resize).
+>   - **Drag.** The width follows the pointer with no tween. The graph's edge follows live, and no card moves (10.5 item 14). A double-click resets to the default (460 / 300) on `--dur-expand` 200, which jumps under reduce motion (motion.css:42, :70). The DS API has no drag start and end callbacks (r5out resize); `ZsResizeEdge` adds them, so the host suppresses hover, peeks and calm during a drag and persists on release.
+>   - **Keys.** A Tab stop after the island's own controls. ← → move the edge by 10 pt (⇧: 50), Home / End go to the minimum / maximum, and ↩ goes to the default. Focus draws the standard 2 px ring around the strip (DS components/base.css:24).
+>   - **VoiceOver** (decision 16.24; Claude's proposal). The edge is an adjustable value, not a splitter: Flutter on macOS has no splitter role. `Semantics(slider: true)` with the label "Inspector width" or "Panel width", the value "460 points", and increase / decrease by 10; increase means wider. On the inspector's edge, the plain → key narrows the island (the edge follows the arrow) while VoiceOver's increase widens it; that is on purpose (r5out resize). This supersedes "`role="separator"` … splitter" (ResizeEdge.prompt.md:13).
+>   - **Width model.** Two values per width: the *remembered* width the user set, and the *effective* width the window allows. One width for the inspector, one shared by every left panel (ResizeEdge.prompt.md:11).
+>     - The remembered widths persist app-wide in an AppSettings `layout` sub-model {inspectorWidth 460, panelWidth 300} (`packages/zanshin_settings`), defaulted per the store's no-migration rule (decision 16.42 (l)).
+>     - They are written on drag release and debounced on keys; a narrow window never changes them (Claude's proposal; r5out resize).
+>   - **Limits.** A drag stops where 320 px of graph would remain (`--graph-min-w`):
+>     - the inspector at window − left inset − 24 − 320 (ResizeEdge.prompt.md:5);
+>     - the panel at window − 88 − the right side (effective inspector + 24, or the minimap column 158) − 320. The DS example gives the panel no limit; this one is Claude's proposal (r5out resize).
+>   - **The collapse rule** (decision 16.23; Claude's proposal, accepted 2026-10-16). It supersedes "the panel detaches (floats over the graph)" (ResizeEdge.prompt.md:12).
+>     - When the remembered widths would leave less than 320 px of graph, the inspector shrinks first, down to 380, then the panel, down to 240.
+>     - When even the minimum widths don't fit, the pinned panel collapses. The pin stays, the rail button stays active, and the left inset falls back to 76.
+>     - The panel returns at its remembered width once that width fits beside the inspector at its minimum. The inspector then grows back toward its remembered width (decision 16.42 (a)).
+>     - The rule runs on every change: a window resize, the inspector opening on a selection, a pin, and a remembered width that no longer fits. That also resolves a panel dragged to 440 before the inspector opens.
+>     - With both at 460 / 300: at 1192 px and wider both fit; from 1192 to 1112 the inspector shrinks to 380; from 1112 to 1052 the panel shrinks to 240; below 1052 the panel collapses; widening, it returns at 1112 (r5out resize).
+>   - **The flyout.** A rail click while the panel has no room shows the panel as the rail's temporary flyout: at its remembered width beside the rail, over the graph, outside the insets. Esc, a click outside or the rail button close it. The pin follows the click as usual, so the panel returns pinned once there is room (Claude's proposal for the detail).
+>   - **Layer and drags** (decision 16.42 (k); r5out resize). The edges sit on the island layer (`--z-chrome`), below callouts, menus, the peek and the stack popovers (DS tokens/effects.css:42–45), so a pinned panel's edge never cuts through another item's hover callout. During item drags (10.10's card drag, 10.27's hunk lift) the edges ignore the pointer: no hover, no line, no capture.
+> - **Item 12 (new), the stale-notice slot.** A slot top-centre under the bar for 10.5's `StaleNotice` (decision 16.28), on `--z-chrome` (DS readme.md:100, :225). It fades in on `--dur-panel` (DS components/overlays/overlays.css:58) and leaves with the generic exit (decision 16.40).
+> - **Item 13 (new), layers, Esc and the inactive window.**
+>   - **Layers** (DS tokens/effects.css:40–48; DS readme.md:100): islands, rail, panels, inspector, minimap, toast and the stale notice on `--z-chrome` 20; previews on `--z-preview` 40; sheets on `--z-dialog` 50; menus and popovers on `--z-menu` 60; the drop menu on `--z-drop` 70; tooltips on `--z-tooltip` 80; the drag ghost on `--z-drag` 90.
+>   - **Esc** closes the topmost of this window's open surfaces (tooltip, menu, popover, flyout, preview, sheet). It never reaches another window.
+>   - **Inactive window** (DS readme.md:131, :194; DS tokens/inactive.css). While the project window is not key, no hover is painted, and hover clears when the window resigns key (decision 16.42 (i)). No focus ring shows. The accent role goes neutral through 11.1's inactive delta. The host reads 11.12's active-window tracker; until 11.12 lands, the window counts as key (Claude's proposal).
+> - **Non-goals.** "Panels for Workstreams and Reviews" now reads "Panels for Reviews". Workstreams has no panel and no rail item at all (decision 16.26).
+> - **Design question (a)** is answered by item 4 above.
+> - **Witnesses (amended and added):**
+>   - **Layout** adds 880 px (decision 16.37). The first island starts at block end + 12, and the bar centres on the block. The count and the gap legend hide at 1040 px and below. At 880 the bar fits: search 170, New change icon-only (DS readme.md:193). "The islands sit 12 px from the edges" holds everywhere except the bar's top.
+>   - **Insets.** "Pinning publishes left 388" is superseded: pinning publishes 76 + the effective panel width + 12, which is 388 at the default 300. The top inset is 60, and 68 in full screen.
+>   - **Resize.**
+>     - Dragging either edge follows the pointer and moves no card; it stops at 320 px of graph.
+>     - A double-click resets the width. ←, →, ⇧, Home, End and ↩ change it as specified. The strip shows the focus ring.
+>     - `matchesSemantics(isSlider: true, …)`, and increase means wider.
+>     - A temporarily narrow window leaves the stored widths unchanged, and the stored width is written on release only.
+>   - **Collapse.**
+>     - At 1192, 1112 and 1052 px the shrink sequence holds. Below 1052 the panel collapses, keeping its pin and its active rail button. Widening, it returns at 300 px at 1112.
+>     - At 1000 px with a panel pinned, opening the inspector collapses the panel. A rail click there shows the flyout, which leaves the insets unchanged and closes on Esc.
+>   - **Drags.** During a card drag and a hunk lift, the edges take no hover.
+>   - **Calm.**
+>     - "Under `disableAnimations`, nothing animates" is superseded: the islands fade out and back with no translation.
+>     - Calm ends 650 ms after the last pan move, as after the last wheel event.
+>     - An open Settings window does not block calm; an open menu still does.
+>   - **Inactive.** While the window is not key, an island shows no hover, and Tab focus shows no ring.
+>   - **Keyboard.** "Tab reaches each rail button, focus opens its preview, and Enter pins" now reads: Tab reaches each rail button, focus opens no preview, and ↩ pins.
+> - **Depends on** adds 11.11 (the state core, IconButton, Presence). 11.12 lands later (after 11.4), so its active-window tracker is not a dependency: until it lands the window counts as key (item 13), and the inactive look switches on with 11.12. **Related** adds 10.8 (the inspector's edge), 10.10 and 10.27 (inert edges during drags), 11.11 and 11.12.
 
 **Motivation.** In the floating client the graph owns the window, and every control floats above it (DS readme.md:3; AF:2). One component, `FloatChrome` (AF:84-220), does three things:
 - it lays the islands out on one 12 px rhythm;
@@ -11276,6 +12174,35 @@ While the graph scrolls, the chrome steps aside. This story builds that host. It
 ### Story 11.4: Window chrome for the floating layout — traffic lights in the bar row, drag region, canvas background, minimum size [UI/native]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the DS of 2026-10-16 measures the system's traffic lights and derives the bar from them instead of placing them. It also sets the project window's minimum to 880 × 560 and gives full screen its own geometry. This note amends items 1, 2, 4 and 5, the non-goals, the design status and the witnesses. It adds items 7 and 8 and witnesses.
+> - **Item 1, the traffic lights are measured, never moved** (decision 16.5; DS tokens/spacing.css:25–31; DS components/window/TrafficLights.prompt.md:9; DS readme.md:84).
+>   - The reference, on macOS 27.0.1 with the standard buttons and the app's toolbar: 14 × 14 pt, pitch 23, the block 60 wide at x 19–79, centre y 26.
+>   - `zanshin_shell` reads `standardWindowButton(.closeButton … .zoomButton).frame` at runtime and reports the block. 11.3 derives the bar from it: the first island at block end + 12, the bar centred on the block, the content at bar bottom + 12 (spacing.css:37–39).
+>   - It reports again whenever AppKit rebuilds the titlebar or the window enters or leaves full screen (MainWindowChrome.swift:125-136, :150-164; Claude's proposal).
+>   - This supersedes item 1's "at y = 12 + 22 = 34 px and from x 12 to 64 (FC:55-56)" and "If the native centre is not at 34 px, 11.3's bar follows the measured centre line": the bar always follows the measured block. The export's pre-A2 geometry is not the reference (the Epic 11 header).
+> - **Item 1, the rings.** "The gray rings stay" now reads: the grey rings stay as a deliberate deviation from the system (decision 16.5; DS components/window/TrafficLights.prompt.md:10–11).
+>   - 1 px in `--tl-ring` per theme: night rgba(255,255,255,.26), paper rgba(58,46,34,.30) (DS tokens/colors.css:22, :81). Disabled buttons get them too.
+>   - Hovering the group shows the system's buttons. An inactive window keeps the rings.
+>   - `TrafficLightOverlayView` strokes `NSColor.gray` today (MainWindowChrome.swift:312). It takes the theme's ring colour and follows a theme switch.
+> - **Item 2, the drag region** reaches down to the content top at 60 (68 in full screen), not to 68 (spacing.css:39, :52).
+> - **Item 4, minimum size 880 × 560** (decision 16.37; DS readme.md:193). The runner (`MainWindowChrome.swift:58`) and the Dart constraint (`app/lib/src/features/window/app_windows.dart:21`) both move to it. This supersedes item 4's "900 × 600 stays (Claude's proposal)" and its reasoning from the floating client's breakpoints ("At 900 px nothing overlaps"). `defaultWindowConstraints` is the default of every `AppWindows` create path (app_windows.dart:92, :123); it becomes the project window's 880 × 560, and 11.12's dialog windows pass their own (Projects 680 × 440, jj log Configurations 820 × 460 per decision 16.20, Settings content-sized).
+>   - At 880 the bar fits at its narrowest after block end + 12: search 170, the count and the gap legend gone (at 1040 px and below, decision 16.37), New change icon-only.
+>   - With the inspector open at 460, exactly 320 px of graph stay (`--graph-min-w`). The DS's reason "the graph keeps one card column and its gutters" does not hold there: one card and two gutters need 352 (r4out windows W-7). Recorded, not a blocker. A pinned panel is collapsed then (11.3 item 11).
+> - **Item 5, full screen** (DS tokens/spacing.css:50–52; DS readme.md:193; DS components/window/TrafficLights.prompt.md:9). The system hides the buttons, so there is no block: the first island sits at 12, the bar's top at 12, the content top at 68; the rail stays at left 12, its top at the content top (11.3). This supersedes "the bar keeps its row". `zanshin_shell` reports the full-screen state together with the block (item 1). The overlay still re-attaches after full screen ends.
+> - **Item 7 (new), the app accent for native UI** (decision 16.2; DS tokens/accents.css:57; DS readme.md:173). An `AccentColor` colour set in the runner's asset catalogue, named in Info.plist by `NSAccentColorName`: `--accent-native` #4757a1 (any) and `--accent-native-dark` #5162ad (dark). Under Multicolour, native menus, alerts and open and save panels then get a deeper moon that holds white text (6.7 / 5.7:1).
+> - **Item 8 (new), the key status.** The inactive window is designed now (DS readme.md:194; DS tokens/inactive.css): the accent role goes neutral, nothing shows focus, the rings stay. 11.1 item 7 adds the key status to `zanshin_shell`, and 11.12's active-window tracker drives the inactive look for every window. This story adds no key-status plumbing of its own: it keeps the rings in an inactive window, and hover there still shows the system's colours (DS components/window/TrafficLights.prompt.md:11).
+> - **Non-goal "Several windows"** is narrowed. Settings, Projects and jj log Configurations are secondary windows built in 11.12 (decisions 16.13, 16.19). `MainWindowChrome` is parameterised there, with this story's chrome as the kind main. There is still one project window (decision 16.15). `isRestorable = false` stays (MainWindowChrome.swift:64).
+> - **Design status.** The geometry is FINAL in the DS of 2026-10-16 (DS components/window/TrafficLights.prompt.md:9–12; DS tokens/spacing.css:25–52); FC:55–56 no longer is. Design question (a), the drag region, keeps its recommendation.
+> - **Witnesses (amended and added):**
+>   - **Button position.** "The buttons' centre line is the bar's within 1 px, from x 12 to 64" is superseded. Now: the bar's centre line equals the measured block centre within 1 px, the first island starts at block end + 12, and the content at bar bottom + 12. On macOS 27.0.1 the probe reads the reference values: block 19–79, centre 26, so first island 91, bar 4–48, content 60.
+>   - **Drag.** "A press below 68 px pans the graph" now reads "below 60 px".
+>   - **Minimum size.** "At 900 × 600 the window opens" is superseded: at 880 × 560 the window opens and the bar's islands don't overlap, and the window can't be made smaller.
+>   - **Full screen.** In full screen the bar's top is 12 and the content starts at 68. After full screen, the block-derived geometry and the rings are back.
+>   - **Rings.** They stroke `--tl-ring` in night and in paper, and they follow a theme switch without a restart.
+>   - **Accent.** The built app's Info.plist names the accent colour, and the colour set holds #4757a1 (any) and #5162ad (dark).
+>   - **Native capture is its own verification step** (the CGWindowList probe). Widgetbook, Marionette screenshots and fake-owner tests never see the native chrome (r3out tooling.md critique 7).
+> - **Related** adds 11.12 (the secondary windows) and 11.3 item 11 (the collapse rule at 880).
+
 **Motivation.** The floating client puts the traffic lights into the top bar's row, in the 52 px column above the rail (FC:55-56; DS `components/window/TrafficLights.prompt.md:1`). It paints the window with two static shaders, night and paper (AC:6-9, :42-45).
 
 The native chrome comes from the docked design (`app/macos/Runner/MainWindowChrome.swift`):
@@ -11324,6 +12251,37 @@ Flutter-side dragging already exists. `WindowDragArea` starts a native drag on a
 
 ### Story 11.5: Projects — registry, project capsule, Project menu, switching repositories [UI/bridge]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the app has one project window that switches projects in place, the Projects window is the start window, and the Project menu follows the ⌘, rule. This note amends items 2, 4, 5, 6 and 7, design questions (a) and (b), the Non-goals, the Depends on and the witnesses. It adds items 9 and 10 and witnesses.
+> - **Item 2, launch, switching and closing** (decisions 16.13, 16.15, 16.16, 16.21).
+>   - "The Projects dialog shows only when there is no such project or it is missing" (item 2, Launch) now means the Projects *window* (11.6). It opens as the app's first and only window, and closing it quits (DS readme.md:191).
+>   - **One project window.** Opening another project switches the open window in place; the Settings' Project tab follows it (DS readme.md:193). The switch order of this item stays: the new handle opens first, the old one closes after it.
+>   - **⌘W on the project window** closes the project and shows the Projects window; only closing Projects quits (DS readme.md:193, :201). This story owns the "close the project" action; 11.13 binds ⌘W to it. The project window's red button runs the same action, dirty check included (Claude's proposal; DS readme.md:201).
+>   - **Unsaved Configurations.** A switch, ⌘W and quitting first run 10.22's dirty check: an unsaved jj log Configurations window comes forward and asks "Discard changes?". Cancel aborts the switch, the close or the quit (decision 16.21).
+>   - **One frame key.** The project window keeps one frame-store key, not one per path (decision 16.42 j). `remembered_window_controller.dart:63` anticipates `project:<path>`; that key form goes.
+> - **Item 4, the Project menu** (decisions 16.1, 16.14, 16.43).
+>   - It is 11.11's Menu (DS components/menus/ProjectMenu.prompt.md:1): 28 px rows like every command menu (ProjectMenu.prompt.md:10; DS readme.md:322), ↑ ↓ Home End, typeahead by project name, the activation blink, and Esc returns focus to the capsule (ProjectMenu.prompt.md:12). VoiceOver reads the recent projects as radio items, the open one checked.
+>   - The order is fixed: Recent · All Projects… ⇧⌘O · Project Settings… (disabled without a project) · Settings… ⌘, (ProjectMenu.prompt.md:11).
+>   - "Settings… ⌘, (11.7, General)" (item 4) is superseded. The row does what ⌘, does: it opens or brings forward Settings on the tab shown last. Only "Project Settings…" picks a tab (Project), and it shows no shortcut (decision 16.14). All three rows open their windows through `AppWindows.openOrActivate` (11.12).
+>   - "Hover fills the row in moon with ink text" (item 4) is superseded by the command-menu highlight: solid `--accent` with `--accent-ink` (DS components/menus/menus.css:24–25). Moon only under Multicolor (decision 16.43).
+>   - **The dot on a highlighted row** (Claude's proposal, decision 16.42 h). The highlight's ink list leaves the 6 px dot out (menus.css:25, :61), so on the solid accent most status dots fall to about 1:1. While a Recent row is highlighted, its dot gets a 1 px `--accent-ink` ring.
+> - **Item 5 and design question (a), the `stale` status** (decision 16.28). The dot gains `stale` in `--proj-stale` (DS tokens/colors.css:65, :101; readme.md:225) while 10.5 reports the open project's working copy as stale. The same dot shows in Recent and in the Projects window. While stale, jj refuses `status()` (it snapshots), so the dot reads `stale` instead of `conflict` or `dirty` (Claude's proposal).
+> - **Items 4, 6 and 7 and design question (b), the word.** The label is a bookmark label. Read "bookmark" for "branch" in items 4, 6 and 7 (V2 §4; prototype defect 68). Design question (b)'s recommendation `heads(::@ & bookmarks())` stays.
+> - **Item 9 (new), workspaces** (decisions 16.27, 16.28). The Project menu gets no Workspaces section and no `<name>@` go-to. Workspaces show as `name@` on cards (10.3) and as the project-level stale state (10.5). Whether a sibling workspace's folder becomes its own registry entry or a child of its repository stays open (deferred-work).
+> - **Item 10 (new), lifecycle edges** (Claude's proposals, accepted 2026-10-16; decision 16.42 e, f, g):
+>   - closing the project while Settings shows its Project tab switches Settings to General (11.7);
+>   - closing Projects quits, even while Settings is open;
+>   - Go, Change and project commands act on the project window from any Zanshin window (11.13).
+> - **Non-goals.** "Several projects in several windows or tabs" stays; decision 16.15 now records it. "The Projects dialog (11.6)" reads "the Projects window (11.6)".
+> - **Depends on** adds 11.11 (the Menu), 11.12 (dialog windows, the launch window, the exit rule) and 11.13 (the ⌘,, ⌘W and ⇧⌘O bindings). 11.2 stays, for the menu material.
+> - **Witnesses (amended and added):**
+>   - "Launch reopens the last project; if it is missing, the Projects dialog opens instead" now reads: …if it is missing, the Projects window opens as the only window, and closing it quits.
+>   - "Its three items route to 11.6 and 11.7" now reads: All Projects… and Settings… open or activate their windows; Settings… keeps the tab shown last; Project Settings… opens the Project tab and is disabled without a project.
+>   - The close-project action closes the handle and shows Projects; the app keeps running.
+>   - Opening a second project switches the one project window; no second project window appears.
+>   - With a dirty Configurations window, a switch, the close-project action and quitting ask "Discard changes?"; Cancel keeps the project open.
+>   - The open project's dot reads `stale` while 10.5 reports the stale state.
+>   - A highlighted Recent row's dot carries the ink ring.
 
 **Motivation.** The floating client names the open repository in the capsule at the top left. The capsule's menu holds everything about the place: recent projects, all projects, project settings and settings (AF:147-156; ST:15-49; DS `components/menus/ProjectMenu.prompt.md:1-12`).
 
@@ -11391,6 +12349,41 @@ The app has no project model yet. The mock shell lists `MockProject`s (`app/lib/
 
 ### Story 11.6: Projects dialog on real data [UI/bridge]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
+
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the Projects dialog becomes a window of its own, the parentless Projects window, which is also the start window when no project is open. This note supersedes item 1, amends the Motivation, items 2, 3, 4 and 7, the Non-goals, the Depends on and the witnesses, and adds item 10 and witnesses. The heading's "dialog", and "the dialog" in the Motivation, items 5–7 and the design status, now mean this window; the sprint-status key stays.
+> - **Motivation.** Its `components/surfaces/Dialog.prompt.md:1-10` (the sheet) now reads DS components/window/Window.prompt.md:1, :23 (the Window scaffold, the Projects window). Item 6 is the flow behind the Clone… button.
+> - **Item 1, the window** (decisions 16.13, 16.15, 16.38, 16.42 f; DS readme.md:191; components/window/Window.prompt.md:23). This supersedes "Sheet (11.2's dialog)", the bounds of 92 % and 88 % of the window, radius 18, "Esc and a scrim click close it" and "Without an open project it cannot close" (item 1).
+>   - A parentless dialog window under the key `projects` (11.12): 900 × 640 by default, resizable, minimum 680 × 440, the full frame remembered. Its title is "Projects", for the Window menu and Mission Control. Close and zoom are active, minimise is grey (Window.prompt.md:17).
+>   - No scrim, no 18 px radius, no `--shadow-dialog`, no entrance. The fill is 11.2's window surface: `--fl-sheen` over `--fl-bg-solid`, opaque, no vibrancy (Window.prompt.md:15).
+>   - It opens key and in front at the normal window level and joins a full-screen Space (FullScreenAuxiliary). It never takes a raised level (decision 16.38).
+>   - It opens from All Projects… ⇧⌘O (11.5's menu and the File menu), from Window › Projects (11.13), and at launch when no project can open (11.5 item 2).
+>   - Esc clears the search and never closes. ⌘W and the red button close it. As the start window (no project open), closing it quits, even while Settings is open (decision 16.42 f).
+>   - Opening a project closes Projects and opens, or switches, the one project window (decision 16.15). Settings… in the sidebar opens the Settings window beside it.
+> - **Item 2, sidebar.** 200 px (Window.prompt.md:23). It begins under the traffic lights; the brand block sits below the header row (DS readme.md:191; components/window/window.css:40). The sidebar's Settings… is a ⌘, row: it opens Settings on the tab shown last (DS readme.md:190; decision 16.14). Its tooltip names ⌘, (ui_kits/desktop/dialogs.jsx:39).
+> - **Item 3, header.**
+>   - The toolbar sits in the 52 pt header row over the main column (DS tokens/spacing.css:41). The title "Projects" starts at sidebar + 12 (window.css:42); the prose's "block end + 12" fits no window with a sidebar (r4out windows W-12).
+>   - Order: search (230) · Add directory (the gold primary) · Clone… · New group (a ghost icon button) (dialogs.jsx:45–48). "Clone from remote" (item 3) becomes "Clone…".
+>   - At the minimum width the search shrinks to 120, and Clone… and New group become icon-only (V2 §4).
+> - **Item 4, tree** (decision 16.43; DS components/content/ProjectRow.prompt.md:9–11).
+>   - One Tab stop: the selected row, or the first row while none is selected. ↑ ↓ move and select, Home End, → expands a group or steps in, ← collapses or steps to the parent, ↩ opens (a group toggles), typeahead by name (ProjectRow.prompt.md:11; DS readme.md:209). Tab reaches only the selected row's ••• (r4out a11y KVS-6: the reference makes every row's ••• a Tab stop).
+>   - The ScrollArea viewport is no Tab stop while the tree holds focusable rows (V2 §4).
+>   - "The selection is moon (FC:259)" (item 4) is superseded: the selection is `--accent-soft`, pressed `--accent-soft-hi`, and a selected row keeps `--accent-soft` on hover. A picked project is data (DS readme.md:137; ProjectRow.prompt.md:10; V2 §4). Hover is `--fl-hover`, pressed `--fl-on`.
+>   - The status dot gains `stale` (11.5 item 5). The open project carries the saffron caps OPEN marker (ProjectRow.prompt.md:9). The label is a bookmark label, not a "branch" (11.5).
+> - **Item 7, folder drop.** `FolderDropTarget` sits over the window; this supersedes "over the dialog". The plumbing stays, because the drop is addressed by view (`FolderDropHost.swift:69-79`). A Finder drop lands in a window that is not key, so the drop target keeps the live accent: `--ring-drop` is built from `--accent-live-ring` (DS readme.md:194; tokens/accents.css:53).
+> - **Item 10 (new), inactive look, catalogue, agents.**
+>   - While another window is key, the Projects window shows the inactive look: selected rows neutral, no focus, the title dimmed (DS readme.md:194; tokens/inactive.css).
+>   - Its content is a window-agnostic widget. This story adds the use case in 11.11's Widgetbook "Windows" folder that opens the real window through `AppWindows` (decision 16.29; 11.11 item 3).
+>   - Rows and buttons carry `Semantics(identifier:)`, and the window root carries a key for Marionette's `ancestor_keys` (decision 16.31).
+> - **Non-goals.** "Several windows" is narrowed: Projects is a window itself; several project windows stay out (decision 16.15).
+> - **Depends on** adds 11.12 (dialog windows, the launch path, the exit rule), 11.11 (SearchField, Button, ScrollArea and the tree's controls) and 11.13 (⇧⌘O, ⌘W, Window › Projects). 11.2 stays, for the window surface fill.
+> - **Witnesses (added):**
+>   - As the only window at launch, closing Projects quits. With a project open, ⌘W and the red button close only Projects.
+>   - Esc clears the search and never closes the window.
+>   - Opening a project closes Projects, and the project window switches in place.
+>   - The sidebar's Settings… opens Settings on the tab shown last, beside Projects.
+>   - At 680 × 440 the header fits: search 120, Clone… and New group icon-only.
+>   - The tree has one Tab stop, also without a selection; Tab from the selected row reaches its •••.
+>   - The CGWindowList probe (11.12) shows Titled | Closable | Resizable without Miniaturizable, FullScreenAuxiliary, and the traffic-light block at x 19–79, y 26.
 
 **Motivation.** The Projects dialog lists every repository Zanshin knows, in groups. It adds new ones from a directory, from a clone, or by dropping a folder (SH:1992-2187; FC:230-264; DS `components/content/ProjectRow.prompt.md:1-12`, `components/surfaces/Dialog.prompt.md:1-10`).
 
@@ -11472,6 +12465,40 @@ What exists in the app:
 ### Story 11.7: Settings window — General and Project tabs over app preferences and jj config [UI/bridge]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** Settings becomes a window of its own that ⌘, opens on the tab shown last, and General gains the Accent colour row. This note supersedes item 1's sheet and its opening, closing and one-modal rules, and amends the Motivation, items 1–4 and 7, the Depends on and the witnesses. It adds items 9 and 10 and witnesses.
+> - **Item 1, the window** (decisions 16.13, 16.14, 16.15, 16.38; DS readme.md:190; components/window/Window.prompt.md:21). This supersedes "11.2's dialog sheet … radius 18", "⌘, opens it on General and closes it again", "Closing: Esc or a scrim click", "One modal at a time" (and with it prototype defect 73) and the header's close button, all in item 1.
+>   - **Kind.** A parentless dialog window under the key `settings` (11.12). 620 wide; the height follows the tab up to 740; not resizable. It is built with `DialogWindowControllerMacOS(constraints:)`: the owner factories drop constraints, and a content-sized window needs them (r3out windows.md C3). Only the origin is remembered, and a tab switch keeps the top edge in place (11.12 item 3; r4out windows W-6).
+>   - **Buttons.** Only close is active; minimise and zoom are grey (DS components/window/TrafficLights.prompt.md:5). No ✕ in the content and no Esc. ⌘W and the red button close it. Changes apply at once (Window.prompt.md:21).
+>   - **Level.** It opens key and in front at the normal level and joins a full-screen Space; never a raised level (decision 16.38).
+>   - **Opening.** ⌘, opens or brings forward Settings on the tab shown last, and never switches the tab or closes the window. Every row that shows ⌘, does the same: Zanshin › Settings…, the Project menu's Settings…, Settings… in the Projects sidebar. Only two rows pick a tab, and they show no ⌘,: "Project Settings…" (Project, 11.5) and View options' "Appearance, diffs and more" (General, 10.7) (decision 16.14). With no project open and Project shown last, ⌘, shows General. Every route goes through `AppWindows.openOrActivate`; 11.13 binds ⌘,.
+>   - **Beside, not on top.** ⌘, while the Projects window is key opens Settings as a second window beside it.
+>   - **Header.** The 52 pt header row holds the tabs Segmented `[⚙ General | Nami + project name]`, centred (Window.prompt.md:4–5; components/window/window.css:34). The header hides the title, but the window carries one for the Window menu and Mission Control: the tab's label, "General" or the project's name (Claude's proposal, decision 16.42 d). The DS titles the Project tab's window "Project" (DS readme.md:190; r4out windows W-13).
+>   - **The Project tab.** It always shows the project in the one project window (decision 16.15). Without an open project it is disabled with the reason "Open a project first" (DS readme.md:190). When the project closes while Project shows, Settings switches to General (decision 16.42 e). A selected tab that turns disabled moves the Tab stop to the first enabled tab (11.11's Segmented; r4out a11y KVS-11).
+>   - **The repo path in the scope line.** It is the file that 9.28's `configPath` reports. At jj 0.46 the repo config is a secure per-user config: `.jj/repo/config-id` names `<config dir>/jj/repos/<id>/config.toml`, and a legacy `.jj/repo/config.toml` is migrated and replaced by a symlink (`../jj` lib/src/secure_config.rs:166–167, :297 @ v0.46.0; cli/src/config.rs:61 @ v0.46.0). This supersedes item 1's "for the repo scope, `.jj/repo/config.toml`". The DS kit still prints the old path (ui_kits/desktop/dialogs.jsx:77).
+>   - **Closing with a pending field.** A pending text field is written in `onWindowCloseRequested`. Every window switch blurs the focused field, so item 4's "writes on Enter, or when it loses focus" also fires on each switch to another window (r3out windows.md C7; deferred-work).
+>   - **Inactive and theme.** While another window is key, Settings shows the inactive look (DS readme.md:194; tokens/inactive.css). A theme switch here restyles every open window (11.12 item 4).
+> - **Motivation, the repo file.** "**Project** holds the open repository's `.jj/repo/config.toml`" now reads: Project holds the open repository's config, the file 9.28's `configPath` reports (item 1's scope line, above).
+> - **Item 3, General** (decisions 16.2, 16.11).
+>   - Theme reads Paper · Night · Auto (ui_kits/desktop/dialogs.jsx:82); this supersedes "Light · Dark · Auto". The stored `appearance.themeMode` values stay.
+>   - New row **Appearance › Accent colour**: Follow macOS · Zanshin, an inset Segmented, default Follow macOS, with the hint "Selection, focus and controls take the colour from System Settings › Appearance. Gold stays with @ and the primary action." (DS readme.md:149; dialogs.jsx:84). 11.1 reads the preference.
+> - **Items 2–4, controls** (decision 16.1). Every control is 11.11's: the tabs Segmented at 36, the inset Segmented at 30 (DS readme.md:86, :330), Select, Switch and TextField.
+> - **Item 7, app preferences** add the accent source (Follow macOS · Zanshin, default Follow macOS), a defaulted field like the others.
+> - **Item 9 (new), catalogue and agents.** The window's content is a window-agnostic widget. This story adds the use case in 11.11's Widgetbook "Windows" folder that opens the real window through `AppWindows` (decision 16.29; 11.11 item 3). Controls carry `Semantics(identifier:)`, and the window root carries a key for Marionette's `ancestor_keys` (decision 16.31).
+> - **Item 10 (new), ⌘F while Settings is key** (Claude's proposal, decision 16.47). Settings has no search field, so ⌘F targets the project window's search and brings that window forward (11.13).
+> - **Depends on.** This supersedes "11.3 (⌘, and the dialog layer)": the window comes from 11.12 and the controls from 11.11. 11.3 stays, for the calm scrolling that item 3's Hide controls gates (and its witness). 11.2 stays, for the window surface fill. 11.5, 11.8, 9.27, 9.28 and 2.9 stay. The ⌘, binding comes from 11.13.
+> - **Witnesses.** This supersedes "⌘, opens General and closes it again. 'Project Settings…' opens Project. Esc closes. ⌘, does nothing over the Projects dialog." Instead:
+>   - ⌘, opens or activates Settings on the tab shown last, and a second ⌘, leaves it open on the same tab.
+>   - With no project open and Project shown last, ⌘, shows General.
+>   - "Project Settings…" opens Project, and "Appearance, diffs and more" opens General.
+>   - Esc does nothing; ⌘W and the red button close the window.
+>   - ⌘, while Projects is key opens Settings as a second window.
+>   - A theme switch restyles every open window.
+>   - The window's height follows the tab, and its top edge stays in place.
+>   - Closing the project while Project shows switches to General and disables Project with "Open a project first".
+>   - A pending Immutable heads edit is written when the window closes.
+>   - The window title reads "General" or the project's name.
+>   - The Accent colour row writes the new preference, and its default is Follow macOS.
+
 **Motivation.** Set-and-forget settings share one window, with a tab per scope (ST:2-3; DS readme.md:104):
 - **General** holds the app's preferences and the user's jj config.
 - **Project** holds the open repository's `.jj/repo/config.toml`.
@@ -11551,6 +12578,61 @@ Today the app stores one preference, the theme (`packages/zanshin_settings/lib/s
 ### Story 11.8: Sync — Fetch, Push, the remote-change poll, the upstream badge [UI/bridge]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** Push opens a selection sheet with a `--dry-run` preview instead of pushing (decisions 16.8, 16.25; DS components/push/PushDialog.prompt.md), and both buttons are Zs controls (decision 16.1). This note supersedes item 3's "Then it runs `jj git push` with the CLI's defaults …" and "See design question (b)", design question (b) itself, and the non-goal "Pushing single bookmarks (9.19, 10.15)". It amends items 1, 2, 4 and 6 and Depends on. It adds items 7–9 and witnesses.
+> - **Item 1, buttons.** The two buttons are the 11.11 IconButton, with icons at the `bar` size (17; decision 16.32). The tooltips stay "Fetch — jj git fetch" and "Push — jj git push" (DS components/actions/IconButton.prompt.md:9). The resolved remotes (item 1's proposal) are named in words after the command ("Fetch — jj git fetch · origin, upstream"), never as `--remote` flags the call does not pass (decision 16.44; Claude's proposal).
+>   - Fetch has no shortcut: the menu-bar spec wins over a card's ⇧⌘F (decision 16.42 (m); DS readme.md:204).
+>   - Push is also Change › Push… ⇧⌘P in the menu bar; it ends in "…" because it opens a sheet (DS readme.md:198, :204; 11.13).
+>   - VoiceOver reads the badge count in the label, e.g. "Fetch, 3 new" (IconButton.prompt.md:10).
+> - **Item 2, Fetch.** The error toast with Retry (item 2's proposal) is the DS error tone: the `alert` glyph in `--rem`, role alert, and it stays until dismissed or retried (DS components/overlays/Toast.prompt.md:6, :10–11). Change › Fetch in the menu bar runs the same action (11.13).
+> - **Item 3, Push (partly superseded).** "It stays disabled until 9.20 lands" stays. After that, the button opens `PushDialog` as a sheet on the project window, one of the two sheets (decision 16.17; 11.2). Nothing runs before the sheet's Push. Item 7 has the sheet's rules. "Undoing a push warns, as the CLI does (9.39)" stays, now with Redo (item 8).
+> - **Item 4, badge.** It is the 11.11 IconButton badge. In an inactive window it goes neutral, and the number stays readable (DS readme.md:194).
+>   - "When the window becomes active" now means when Zanshin becomes the active app, not when the project window becomes key again after Settings, Projects or Configurations (decisions 16.13, 16.19; Claude's proposal).
+>   - While the working copy is stale the poll does not run and the badge hides; it returns with the first poll after the state ends (decision 16.28; Claude's proposal).
+> - **Item 6, bridge part,** adds 9.20's plan and result types: per mode, per remote and per ref, with jj's messages and hints (9.20 items 2–8).
+> - **Item 7 (new), the Push sheet.** It follows DS PushDialog.prompt.md:1–24 and readme.md:211–220, corrected by decision 16.25 where the DS states jj wrongly:
+>   - **Preselection = the bare `jj git push`.** It comes from 9.20's dry-run, which evaluates `revsets.git-push` per remote. The UI never derives it; the mocks' ancestor walk would preselect backward moves (V2 §4). The footer then reads `jj git push`.
+>   - **Refused refs in the preselection or a bulk choice show "skipped"**, with jj's reason and hint verbatim from 9.20 (bookmarks and tags have different texts, push.rs:1157–1254 @ v0.46.0). They do not change the command: jj skips them and pushes the rest (push.rs:518–553, :670–707). A refusal on one remote marks only that remote's line. This supersedes PushDialog.prompt.md:12 ("Never while a refused ref is in that set …"), :14's "and holds no refused ref", :18 ("jj refuses the *whole* push while one is in it") and readme.md:217's first sentence.
+>   - **Only hand-picked refused rows cannot be ticked.** For `--bookmark`, `--tag`, `--change` and `--named`, jj aborts the whole push (push.rs:454, :479, :501, :505–511). Tickability comes from 9.20's explicit-mode verdict (9.20 item 2). Two consequences:
+>     - once the footer names refs, a row that was "skipped" in the preselection is not named unless the user ticks it by hand: naming a ref that is refused as explicit would abort the push, and naming a new one would push and track it. It keeps "skipped" and its reason (the DS reference drops blocked rows the same way, PushDialog.jsx:219);
+>     - a hand-picked row's one flag goes to every chosen remote (PushDialog.prompt.md:15), and jj stops at the first remote that refuses it (push.rs:423, :479). So a refusal on any chosen remote blocks the row. "Marks only that remote's line" holds for skipped refs only.
+>   - **Allow chips** add `--allow-empty-description`, `--allow-private` or `--allow-conflicts` whenever a sent ref needs them, also on the bare command (`jj git push --allow-empty-description` is valid; the flags sit in neither clap group, push.rs:188–202). The DS reference returns the bare command before it adds them (PushDialog.jsx:218 vs :225–226); its prose is right (PushDialog.prompt.md:16, :19). A refusal without a flag (no author or committer, the ref-level ones) shows the reason and jj's hint, without a chip.
+>   - **Bulk** `--tracked`, `--all`, `--deleted`, tags included. After a hand-pick, "As jj git push" no longer shows as active. A bulk flag is written only while the selection is exactly that choice (PushDialog.prompt.md:14), and the backend's dry-run confirms it.
+>   - **Tags** are rows (TAG, `--tag`) in the preselection and in every bulk mode (push.rs:90–92).
+>   - **Several remotes:** one row per ref and one line per remote (PushDialog.prompt.md:15). The default remotes arrive resolved from 9.20: `git.push` as a name, a list or a pattern, else the only remote, else `origin` (push.rs:1107–1130).
+>   - **The change row** works for the selected change, else @, the same target rule as the Change menu (decision 16.34; Claude's proposal for the sheet): `--change @`, or `--change <change id>` for another change (Claude's proposal; the DS writes only @, PushDialog.jsx:224). It shows the name 9.20 evaluates from `templates.git_push_bookmark` (12 characters by default). An edited name becomes `--named <name>=<rev>`. A bad name (it exists, tracked remote bookmarks remain, it is invalid or empty; push.rs:1256–1300) shows jj's text in the TextField's error state, and Push is disabled (V2 §4).
+>   - **Kinds** use jj's dry-run words: "move forward/backward/sideways from … to …", "add to …", "delete from …" (push.rs:1057–1085; V2 §4). Backward, sideways and delete keep the warn tone. Up-to-date refs are not listed (PushDialog.prompt.md:17).
+>   - **The "As jj git push" tooltip** names the evaluated `revsets.git-push` and every default remote, worded "tracked bookmarks and tags in <revsets.git-push>". jj sends only the tags whose target is in that revset, not every tracked tag (push.rs:90–92, :539–541, :1487–1490).
+>   - **Footer:** the exact command, shell-quoted, with `exact:` where a name must match only itself (decision 16.39); every command in it is real (decision 16.44). With nothing selected there is no command, and Push is disabled (the DS reference falls back to `jj git push`; V2 §4). "Checked with --dry-run" stays.
+>   - **`git.sign-on-push`:** when it is on, the sheet says that the push signs commits and rebases their descendants, so the pushed ids can differ from the preview (9.20 item 7; V2 §4).
+>   - **`-r` and `-o`** stay out of the sheet; 9.20 has them (9.20 item 1).
+> - **Item 8 (new), states and results.**
+>   - Nothing to push: 9.20's "Nothing changed." (push.rs:558–563) as one sentence, Push disabled.
+>   - Pushing: progress in the footer; Esc and Cancel are inert (PushDialog.prompt.md:24; V2 §4).
+>   - Done, per remote line: pushed · moved on <remote> (the lease, with jj's hint "Try fetching from the remote, then make the bookmark point to where you want it to be, and push again.", git_util.rs:523–527 @ v0.46.0) · rejected (the remote's message, git_util.rs:529–547) · couldn't be updated locally (git_util.rs:552).
+>   - "The push is recorded, so Undo works" shows only when 9.20 reports the operation recorded, i.e. something was exported (push.rs:624). Otherwise nothing was recorded, and the sheet says so. This supersedes the unconditional sentence in PushDialog.prompt.md:22 and readme.md:219.
+>   - A network or credential error names its remote and says which earlier remotes already got their refs; nothing is recorded (push.rs:588–615, :602–609). This supersedes "errors that stop everything" (PushDialog.prompt.md:22) and the reference comment "before anything is sent" (PushDialog.jsx:229).
+>   - The lease failure is never called "stale"; that word belongs to the working copy (decision 16.28).
+>   - After the sheet: the result toast, e.g. "Pushed 2 bookmarks to origin · Undo"; Undo shows only when the push was recorded (10.23's note). Undoing a push warns as the CLI does, "Undoing a push operation often leads to conflicted bookmarks.", with Redo (PushDialog.prompt.md:23; Toast.prompt.md:14; decision 16.46; the warning from 9.39, Redo from 9.21).
+> - **Item 9 (new), keyboard, VoiceOver, stale.**
+>   - Per PushDialog.prompt.md:24: focus starts on Push (Done); Tab cycles inside the sheet (11.2's trap); Space toggles the focused row; ↩ pushes, except from the name field, and in done ↩ is Done; Esc and Cancel cancel, not while pushing; a click beside the sheet does nothing (decision 16.17); focus returns to the Push button. Rows read as checkboxes with name, TAG, from → to and the kind per remote; refusals, results and errors are announced.
+>   - Esc acts only in the project window.
+>   - While the working copy is stale, both buttons are disabled with the reason "Working copy is stale" (decision 16.28; DS readme.md:225). jj refuses fetch and push then, because both run the snapshot first (`cli/src/commands/git/fetch.rs:141`, push.rs:292 @ v0.46.0), and the sheet's dry-run would fail too.
+> - **Design question (b)** is answered by decision 16.8: Push asks, through the sheet. The recommendation "no, as in the CLI" is dropped.
+> - **Non-goals.** "Pushing single bookmarks (9.19, 10.15)" goes: the sheet pushes single bookmarks and tags by hand (V1 §3, E8). "Credential prompts" stays a non-goal.
+> - **Depends on** adds 11.2 (the sheet), 11.11 (IconButton with badge, Checkbox, Chip, TextField, Button) and 11.13 (Push… ⇧⌘P, Change › Fetch). 9.20 now also delivers the dry-run plan (9.20 items 1–8). Redo after undoing a push needs 9.21 (backlog), through 10.23.
+> - **Witnesses (added; fake ports):**
+>   - Push opens the sheet, and no push verb runs before the sheet's Push;
+>   - a plan with a refused ref in the preselection keeps the footer at `jj git push` and shows the row "skipped" with jj's reason and hint;
+>   - a hand-picked refused row cannot be ticked;
+>   - an allowed reason adds its `--allow-*` flag, also on the bare command;
+>   - after a hand-pick "As jj git push" is inactive, and a bulk flag is written only after the backend confirms it;
+>   - a tag row; two remotes with one line each, where a refusal on one remote marks only that line;
+>   - the change row follows the selection;
+>   - a result with nothing exported shows no Undo sentence; a partial one with an export shows it;
+>   - a network error on the second remote names it and says that the first remote got its refs;
+>   - Esc while pushing and a click beside the sheet do nothing;
+>   - the Fetch tooltip shows no shortcut; a stale working copy disables both buttons.
+
 **Motivation.** The ACTION group carries Fetch and Push next to New change (AF:174-178; FC:80-85). Both buttons are inert in the export (prototype defect 74).
 
 Fetch ships today for one explicit remote: `RepoHandle.gitFetch(remoteName)`, with progress as `ProgressEvent` (6.4a). Three backend stories are in the backlog:
@@ -11619,6 +12701,25 @@ Fetch ships today for one explicit remote: `RepoHandle.gitFetch(remoteName)`, wi
 ### Story 11.9: Undo Timeline panel [UI/bridge]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the panel follows the three-place undo rule (decision 16.7) and the accent role (decision 16.43), and it becomes drag-resizable like every pinned panel (decisions 16.22, 16.23). This note amends items 2, 3 and 5, design question (a), Depends on, and the witness "The current operation carries the moon dot". It adds items 7 and 8 and witnesses.
+> - **Item 2, the current operation's dot** takes the accent role (`--accent`; moon only under Multicolor), not moon (decision 16.43). This supersedes "the current operation carries the moon dot" in item 2 and the witness of the same words.
+> - **Item 2, width.** The pinned panel is drag-resizable at its right edge: 240–440, default 300, one width shared with the other left panels and remembered app-wide as `panelWidth` in AppSettings' `layout`, written on release; the dragged width persists, never the collapsed or shrunk one (decisions 16.22, 16.23, 16.42 (l); DS components/surfaces/ResizeEdge.prompt.md:9–13; tokens/spacing.css:42–44). When even the minimum widths leave less than 320 px of graph, it collapses and comes back at its remembered width; a rail click without room shows it as the rail's flyout (decision 16.23). 11.3 builds the edge and the width model.
+> - **Item 3, actions.** The timeline is decision 16.7's place for everything ⌘Z does not reach. Its Undo on the newest row stays `jj undo`, with jj's refusals (9.39). Also:
+>   - Undo is disabled while the current operation's parent is the root operation, e.g. after `jj op abandon ..@-`, because `jj undo` would then restore an empty repo (9.21 item 2);
+>   - an undo from the timeline ends in the toast "Undid ‹action› · Redo", like every undo Zanshin runs (decision 16.46);
+>   - Redo's tooltip is `jj redo` (decision 16.39). The disabled actions' tooltips name the full command with the operation id, e.g. `jj op restore <operation id>` (decisions 16.39, 16.44). This amends design question (a)'s "with their jj command in the tooltip".
+> - **Item 5, workspaces.** The row's workspace name is one of the two places where workspaces show, next to `name@` on cards (10.3). There is no Workspaces section in the Project menu (decision 16.27).
+> - **Item 7 (new), stale working copy.** `jj op log` refuses on a stale working copy, because it runs the snapshot first (`cli/src/commands/operation/log.rs:113` @ v0.46.0), and Zanshin's `opLog` refuses too. The panel and item 1's hover preview then show "Working copy is stale", disabled with that reason and without Retry (decision 16.28; DS readme.md:225).
+> - **Item 8 (new), `op abandon` if it is offered later** (it stays a non-goal): its ConfirmDialog body names the evolog loss instead of "`jj undo` and the Undo Timeline can't go back past this point" (9.21 item 4; DS components/controls/ConfirmDialog.prompt.md:5).
+> - **Depends on** adds 11.11 (ScrollArea, Button, Tooltip) and 11.3's resize edge. The root-parent check needs nothing new: the shipped `opLog` entries carry `parentIds` and `rootOp` (9.21 item 2). 9.21 provides Redo for the toast.
+> - **Witnesses (added):**
+>   - the current operation carries the accent dot (replaces the moon-dot witness);
+>   - with the current operation's parent the root, Undo is disabled with a reason;
+>   - an undo from the timeline shows "Undid … · Redo";
+>   - Redo's tooltip is `jj redo`, and the disabled actions name the full command with the operation id;
+>   - dragging the edge keeps the width within 240–440, a double-click resets it to 300, and the width is shared with the Bookmarks panel;
+>   - a stale working copy disables the panel, without Retry.
+
 **Motivation.** The rail's Undo Timeline previews the latest operations on hover, and pins a timeline of the operation log (AF:24, :26-30, :126-132; SH:1059-1070).
 
 What ships today:
@@ -11673,6 +12774,22 @@ In the backlog: redo, `op show`, `op diff` and entries with tags (9.21), and res
 ### Story 11.10: Retire the docked mock UI — mock shell, nav rail, status bar, MockCommit/MockProject widgets, ZanshinColors [UI]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0.)*
 
+> **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** with the own control library (decision 16.1), SVG icons (decision 16.6) and the Widgetbook catalogue (decisions 16.29, 16.30) decided, the retirement also takes the Yaru dependency, the icon font, `flutter_svg` and every Workstream remnant. This note amends the Motivation, items 2, 3 and 4, the Non-goals and the Depends on line. It adds witnesses.
+> - **Motivation, "a title bar with Fetch, Pull, Push":** the mock's Pull button goes with `window_title_bar.dart` (item 1) and nothing replaces it: jj v0.46.0 has no pull verb (`cli/src/commands/git/mod.rs:78-89` @ v0.46.0). The DS's unused `pull` glyph stays in the copied set (11.1 item 11) and is never drawn (r4out icons ICONS-7).
+> - **Item 2, icons and theme.**
+>   - Decision 16.6 answers 11.1's design question (d) "SVG", so the icon font goes for certain: `assets/fonts/zanshin_icons/Zanshin.ttf`, `app/lib/src/shared/theme/zanshin_icons.dart` and the pubspec font family `Zanshin` (`app/pubspec.yaml:69-71`). `ZanshinIcon` and `ZI` stay, as 11.1 rebuilt them.
+>   - `flutter_svg` leaves the pubspec if 11.1 left it in place (11.1 item 11 replaces it with `vector_graphics`).
+>   - `ZI.workstream` and `app/assets/icons/svg/workstream.svg` go (decision 16.26). Their only users are mock files of item 1 (`main_nav_rail.dart:59`, `app_shell.dart:203`, `:211`). The named leftover in 11.1's icon set check goes with them, so the check then demands exactly the `glyphs.json` set.
+> - **Item 3, Yaru.** Besides the test page, the `yaru` path dependency leaves `app/pubspec.yaml` (`:28-29`) and no file imports `package:yaru` (decision 16.1; RC §5). `material_ui` stays: `MaterialApp` hosts navigation, overlays, localisations and the token extensions (11.1 item 9).
+> - **Item 4, the hosts.** The Widgetbook entrypoint `app/widgetbook/main.dart` (11.11) stays: it is the one review catalogue, and its Graph folder replaces a separate demo host (decision 16.30). No `main*.dart` demo host is added. `main4.dart` still goes once 10.1 has promoted the viewport, `main2.dart` after 11.4 and `main3.dart` after 11.6, as before.
+> - **Non-goals, "The boot, the splash and the window controllers":** narrowed for Yaru only. The boot-failure page (`features/bootstrap/boot_failure.dart:4`, `:23-24`) still themes itself with `yaruLight` / `yaruDark`; it takes the token `ThemeData` of 11.1 item 9 instead, so that no file imports Yaru. The boot flow itself stays out of scope.
+> - **Witnesses (added):**
+>   - `app/lib` and `app/assets` contain no `workstream`;
+>   - no file imports `package:yaru`, and `app/pubspec.yaml` has neither `yaru` nor `flutter_svg` nor the `Zanshin` font family;
+>   - 11.1's icon set check runs with an empty leftover list;
+>   - `app/lib` holds no `main*.dart` besides `main.dart`; the only other entrypoint is `app/widgetbook/main.dart`.
+> - **Depends on** adds 11.11 (the catalogue the hosts give way to).
+
 **Motivation.** Before the graph view existed, the app got a docked mock UI from an earlier design:
 - a title bar with Fetch, Pull, Push and a theme switch;
 - a nav rail with the ensō;
@@ -11710,5 +12827,224 @@ Its colours live in `ZanshinColors` (`context.zc`). The running app no longer sh
 - `cargo make test` passes, and the app boots into the floating shell.
 
 **Related:** 11.1, 11.3, 11.4, 11.6, 10.1.
+
+---
+
+### Story 11.11: Zs control library, Widgetbook catalogue and shared Marionette configuration [UI]
+*(Added 2026-10-16, Ralph — console session on the design-system rounds 1–3; decisions 16.1, 16.3, 16.4, 16.10, 16.29–16.33 and 16.41 of the Epic 11 header. Built against the DS downloaded on 2026-10-16 (round 3), DS synced through #9.)*
+
+**Motivation.** Yaru and Material cannot reach the DS's switch, checkbox, segmented control, select or menus (RC §2–§3). Ralph decided on 2026-10-15 that Zanshin draws its own controls on Flutter's widgets-layer primitives, with text entry from Flutter (decision 16.1), and that they get a story of their own after 11.1 and 11.2 and before 10.7 (decision 16.3). Otherwise each story builds focus, motion and semantics again, and the drift returns that the DS showed before round 1: four disabled values and five focus treatments (RC §5). The DS now specifies every state a control needs (`DS readme.md:114-145`).
+
+The same story sets up the tools to review and drive them. Widgetbook 3.25.0 becomes the one review catalogue; it replaces the galleries and the demo host that 10.1, 10.20 and 11.2 planned (decisions 16.29, 16.30). Marionette 0.7.0 carries Ralph's multi-view fix, but it sees custom controls only through one shared configuration and Semantics identifiers (decision 16.31).
+
+**Scope.**
+1. **The state core.** `FocusableActionDetector` + `WidgetStatesController` + `MouseRegion` + `Semantics`, about 40 lines of our own instead of Material's `WidgetStateMixin` (RC §4). Every control takes its states from it:
+   - rest → hover → pressed, one fill step each, the press instant, no shrink, no ripple (`DS readme.md:102`, `:121-122`). Where a component's CSS uses its own ladder (the inline ✕ / ••• buttons: hover `--fl-on`, pressed `--fl-press`), the component CSS wins (r4out a11y KVS-12);
+   - focus-visible: the one ring of `DS readme.md:135` and `DS tokens/states.css:17-23`, drawn inside for rows, flush segments, rail buttons, scroll viewports and clipping wells (`DS components/base.css:25-26`), 3 px out for cards, fading in on `--dur-focus` while it settles 3 px × `--motion`. macOS's focus highlight mode is always "traditional", so a control that takes no focus on click behaves like `:focus-visible` (RC §4). Under increased contrast the ring is 3 px (`DS tokens/contrast.css:21`), and an inside ring is drawn at inset −3, so it stays within the bounds and is never clipped (r4out a11y KVS-4; Claude's proposal);
+   - disabled .4 (`DS tokens/states.css:26`); disabled with a reason: the same .4, no hover fill, no press, no activation by pointer or key, not a Tab stop, the reason in the semantics hint, "dimmed" for VoiceOver (`DS readme.md:127`, `:136`). The helper wraps the control in the Zs tooltip, not Material's `Tooltip` that `DS components/base.css:38` names (r4out a11y KVS-10);
+   - error, busy (spinner in the icon slot, the label stays, clicks ignored, `progress` cursor) and read-only (`DS readme.md:128-130`);
+   - the inactive window (`DS tokens/inactive.css`; `DS readme.md:131`, `:194`): the accent role goes neutral and no focus ring, halo or caret shows; what stays live reads `--accent-live-line`, `-ring` and `-text` — progress, the edit flash, drop targets, links (`DS tokens/accents.css:23-24`); the badge goes neutral with the role;
+   - increased contrast: the edges `DS tokens/contrast.css:23-26` adds to buttons, chips, segments, navigation-on and the selected data row;
+   - reduce motion by property (decision 16.4; `DS tokens/motion.css:3-10`): movement and `--motion` go to 0, fades stay, the spinner turns, sweeps pulse;
+   - secondary text on a fill steps up a rung (`DS readme.md:132`, `:141`; `DS components/base.css:45-47`; decision 16.41);
+   - cursors: each control owns its cursor — the arrow, the I-beam on text entry including read-only, `progress` while busy (`DS readme.md:106`);
+   - VoiceOver on macOS reads roles only from semantics flags (button, checked, toggled, slider, textField …), not from `SemanticsRole` (RC §4); a tooltip's description sits on the control's semantics, not on its wrapper (r4out a11y KVS-9).
+   Designed visuals are a `RenderBox` with text slots (Epic 10 house rule "Visuals"; `splash_card_render.dart`). Where a component's `.prompt.md` or the readme disagrees with its tokens and CSS, the tokens and CSS win, e.g. `DS components/controls/ProgressBar.prompt.md:8` (an `--accent` fill on `--dur-panel`, a still bar under reduce motion) against `:10` and `DS components/controls/controls.css:54-59` (V2 §4).
+2. **The controls**, on the widgets-layer primitives (`ToggleableStateMixin`, `RawRadio` / `RadioGroup`, `RawMenuAnchor`, `RawTooltip`, `RawScrollbar`; RC §4), sized by the control heights 22 · 26 · 30 · 36 · 44 (`DS tokens/spacing.css:9-15`) and the radius tokens (`DS tokens/effects.css:5-22`), with icons through `ZanshinIcon` and its six size tokens (11.1 item 11). The DS's list of changed components is `DS readme.md:302`.
+   - **Button:** quiet, ghost, danger (quiet until hover, a red tint, never a solid red fill), destructive (the confirmation's primary) and the gold primary in one recipe (`DS readme.md:143`; `DS tokens/states.css:29-41`); sm / md / lg; icon-only; busy.
+   - **IconButton**, with its badge (a 1px `--accent-line` edge, `DS readme.md:269`; neutral in an inactive window).
+   - **Switch, Checkbox** (tristate, the check drawn and morphed on `--dur-toggle`), **Radio** / RadioGroup.
+   - **Segmented** (all variants; one Tab stop, ←/→ skip disabled segments; `DS components/forms/Segmented.prompt.md:9-11`). When the selected segment is disabled — the Settings tabs with Project shown last and no project open (`DS readme.md:190`) — the Tab stop falls back to the first enabled segment (r4out a11y KVS-11).
+   - **Slider:** no tween on keys or track clicks, Page Up / Down ten steps, Home / End (`DS readme.md:282`). The gap between thumb and focus ring stays transparent, not `--card-solid` (`DS components/forms/forms.css:49-50`), because the slider also sits on glass and in the Settings window (r4out a11y KVS-13; Claude's proposal).
+   - **TextField / SearchField:** Flutter's `TextField` with `decoration: null` inside a painted well (RC §4); the error state with its message line, the read-only state, the SearchField's quiet fill (`DS readme.md:120`); no halo and no caret in an inactive window (`DS tokens/inactive.css:19-22`); the selection highlight from 11.1 item 14 and selected glyphs recoloured to `--selection-text` through `buildTextSpan` (decision 16.10).
+   - **Select** (`DS components/forms/Select.prompt.md:11-17`): the list opens over the trigger with the chosen row on it; width at least trigger + 40, at most 360; clamped 8 px on both axes; long lists scroll the chosen row to the trigger (V2 §4); press – drag – release picks in one gesture; a click on the open trigger closes it (Claude's proposal); typeahead on `text`.
+   - **Menu** (`DS components/menus/Menu.prompt.md:16-21`): the command-menu highlight is solid `--accent` with `--accent-ink`; the activation blink; typeahead within `--dur-typeahead`; check items, headers, the shortcut column; danger rows tint red; submenus after `--delay-submenu` 150, closed after `--delay-submenu-out` 300, with the safe triangle; the pointer's arrival in the submenu cancels a pending switch (V2 §4); a keyboard-opened submenu highlights its first row; it flips left and stays 8 px inside the window; ← closes only a submenu, never the top-level menu, and Esc on the top level returns focus to the opener (r4out a11y KVS-7); VoiceOver gets the highlighted row through semantics, because focus stays on the menu (KVS-7).
+   - **The field-attached list model** (`DS readme.md:138`): focus stays in the field, ↑↓ move a keyboard row in `--accent-soft` with an accent icon, hover is `--fl-hover` and never moves it, what the graph shows carries a check. 10.21 builds its lists on it.
+   - **Tooltip** (`DS components/controls/Tooltip.prompt.md:10-14`): 700 ms rest, 600 ms warm window (`DS tokens/motion.css:47-48`), Esc hides it, flip and clamp at the window edge, never over its control.
+   - **Popover** (its content; the material is 11.2's) and **ConfirmDialog** (its content; the sheet is 11.2's), with the destructive confirm on ⌘↩ (`DS readme.md:209`).
+   - **ScrollArea** (`DS components/controls/ScrollArea.prompt.md:8-13`): an overlay bar; the viewport is a Tab stop only when it scrolls and holds nothing focusable itself (r4out a11y KVS-1; V2 §4); a track click pages toward the click, or under "Jump to the spot that's clicked" centres the thumb on it, and the press continues as a drag (r4out a11y KVS-14); "Show scroll bars: Always" from 11.1 item 7.
+   - **Chip, Badge, Link** (live text in an inactive window), **Disclosure, Spinner** (keeps turning), **ProgressBar** (fill `--accent-live-line` on `--progress-track`, the value on `--dur-expand`; `DS readme.md:169`; `DS components/controls/controls.css:52-59`), **Skeleton** (shown only after `--delay-skeleton` 150, `DS tokens/motion.css:57`; under reduce motion the highlight stays off the bar and the bar pulses, `DS components/controls/controls.css:62-67`), **Presence**, **Kbd** (in prose only, `DS readme.md:63`).
+   - Where a component's reference JSX lags its `.prompt.md` on keys (Popover, FileRow, Chip, Link), the `.prompt.md` wins (r4out a11y KVS-5).
+   Code goes in `app/lib/src/shared/controls/`, tests in `app/test/shared/controls/` (Claude's proposal).
+3. **The Widgetbook catalogue** (decisions 16.29, 16.30).
+   - `widgetbook: 3.25.0`, pinned exactly, as a dev_dependency of `app/`. 3.25.0 is the last 3.x; 4.x boots only through `runApp` and cannot run in the view-less runner, so it is a non-goal (r3out tooling.md critique 2).
+   - A dev entrypoint `app/widgetbook/main.dart` opens its window through `AppWindows`, like `main4.dart`, and runs with `flutter run -d macos -t widgetbook/main.dart`. It lives inside `app/` because the fonts, SVG and Lottie assets are declared only there and because its use cases can open the real windows (r3out tooling.md critique 1).
+   - The generic `Widgetbook(...)` constructor with manual directories; no generator, no Cloud, no Widgetbook `lightTheme` / `darkTheme`. The `appBuilder` is the app's root-scope widget of 11.1 item 7 on `material_ui`'s `MaterialApp`, so the ambient defaults hold (else the 48 px monospace fallback shows).
+   - One custom Appearance addon: night / paper × accent family × increased contrast × reduce motion × reduce transparency, through 11.1's overridable appearance scope; it paints the DS canvas behind each use case. Built-in addons: TextScale, Inspector, Grid, Zoom, Alignment. `SemanticsAddon` and `TimeDilationAddon` are `@experimental`: each gets one explicit `// ignore: experimental_member_use` (Claude's proposal; TimeDilation is the slow-motion switch of decision 16.30). The AccessibilityAddon (tap targets, labels; `accessibility_tools` comes with Widgetbook) is optional; it is deprecated in 3.25.0 (r3out tooling.md §3), which is a `deprecated_member_use` info and fails `--fatal-infos`, so it needs its own explicit `// ignore: deprecated_member_use` or stays out.
+   - Folders: **Controls**, with a state-matrix use case per control family that mirrors `DS components/controls/state-matrix.card.html`, derived from each component's `.d.ts` "States:" line (`DS readme.md:286`) through forced `WidgetStatesController` states; **Materials** (11.2: each material over a busy canvas; 11.2's in-page switches give way to the Appearance addon); **Windows** — its use cases open the real Settings, Projects and jj log Configurations windows through `AppWindows`, so the native window is reviewable; their content widgets stay window-agnostic. 11.11 sets the folder up; 11.12, 11.6, 11.7 and 10.22 add their windows (Claude's proposal for the split; r3out tooling.md critique 1, r3out windows.md critique 4); **Graph** — 10.1's demo host, with `GraphViewOptions` as knobs (decision 16.30). If 10.1 lands first, it has already added the pinned entrypoint with this folder only (10.1's 2026-10-16 note), and 11.11 adds the other folders around it; **Icons** — the 58 glyphs at the six sizes, in the text-ladder and semantic colours, night and paper (r3out svg.md story impacts).
+   - A smoke test pumps every use case once (`initialRoute: '/?path=…'`) and expects no exception. An optional parity test checks that every component in `DS _ds_manifest.json` has a use case (r3out tooling.md critique 10).
+4. **Marionette** (decision 16.31).
+   - `marionette_flutter` goes from `^0.6.0` to `^0.7.0` (`app/pubspec.yaml:23`). `marionette_mcp` is not on PATH today: install it first (`dart pub global activate marionette_mcp`) and write the step down.
+   - One shared `MarionetteConfiguration(isInteractiveElement:)` registers the Zs controls; the app's main (`app/lib/main.dart:33-37` initialises the binding without one today) and the catalogue's main both pass it.
+   - Every Zs control takes an optional `Semantics(identifier:)`. Agents match by Semantics identifier or by text, never by coordinates: coordinate gestures still go to the first view. Each window's root carries a key, so 0.7.0's `ancestor_keys` can scope a listing to one window (11.12 keys the windows). Screenshots are "all views, in attach order", unlabeled and Flutter-layer only; native chrome is checked with the CGWindowList probe (11.4, 11.12).
+   - One custom Marionette extension (`registerMarionetteExtension`) opens a catalogue path and sets addon values, so agents never click through Widgetbook's own navigation (Claude's proposal, accepted).
+   - The tooling rules go into `project-context.md`: the identifier convention, the experimental-ignore policy and the exact 3.25.0 pin with "no Widgetbook 4" (Claude's proposal, accepted).
+
+**Non-goals.**
+- Widgetbook 4, its generator and Widgetbook Cloud.
+- Golden or snapshot tests (the house rule "Tests" stays).
+- Patrol and Patrol MCP (decision 16.31; the revisit trigger is in deferred-work).
+- A separate `packages/zanshin_widgetbook` app; it is an option only once controls and tokens are a package of their own (11.1 design question (a)).
+- The graph's visuals (Epic 10), the materials themselves (11.2), the dialog windows and their chrome (11.12).
+- Retiring the marionette fork branch `fix/multi-view-gestures` (deferred-work).
+
+**Depends on.** 11.1 (tokens, the appearance scope, the ambient defaults, `ZanshinIcon`); 11.2 for the Materials folder and the menu, popover and sheet material that Menu, Select, Popover and ConfirmDialog sit on. It blocks 10.7 and every later story that draws a control (decision 16.3).
+
+**Design status.** FINAL: the DS downloaded on 2026-10-16 — Control states (`DS readme.md:114-145`), Accent colour (`:147-181`), the components in `DS components/actions/`, `controls/`, `forms/`, `menus/` and `surfaces/`, and the cards *Controls — state model*, *state matrix* and *micro-animations*; decisions 16.1, 16.3, 16.4, 16.10, 16.29–16.33 and 16.41. Small gaps carry Claude's proposals, marked above. Nothing NEEDS DESIGN.
+
+**Witnesses.**
+- Per control and state: `paints` (fills, edges, the ring inside or outside, the inactive look, the increased-contrast edges), `matchesSemantics` (flags, value, the disabled reason as hint, the highlighted menu row) and `meetsGuideline`.
+- `debugDeviceActiveCursor`: the arrow on every control, the I-beam on text entry including read-only, `progress` while busy. This replaces 11.1's seventh witness, "a hovered Material button, checkbox and switch show the arrow".
+- `sendKeyEvent` key maps: Menu (↑↓ wrap, Home End, typeahead, → ← Esc, a keyboard-opened submenu's first row), Select, Segmented (the disabled-selected fallback), Slider, Radio and ScrollArea (Tab stop only when it scrolls and holds nothing focusable).
+- A control disabled with a reason is no Tab stop, ignores ↩ / Space and a click, and reports the reason.
+- Under `disableAnimations`: movement durations are zero, fades keep their tokens, the spinner turns, the skeleton and the indeterminate bar pulse.
+- Under increased contrast an inside focus ring lies within the control's bounds.
+- The catalogue smoke test pumps every use case without an exception; the shared Marionette configuration reports every Zs control in the Controls folder as interactive.
+- `dart analyze --fatal-infos --fatal-warnings` (the gate, `Makefile.toml:117`) stays clean with the catalogue and its addons in.
+
+**Related:** 11.1, 11.2, 11.3, 11.10, 11.12, 10.1, 10.7, 10.15, 10.20, 10.21, 10.22, 10.25, 11.7; RC §4–§5; V1 §6; r3out tooling.md; r4out a11y.
+
+---
+
+### Story 11.12: Window foundation — dialog windows, chrome kinds, frames, per-window roots [UI/native]
+*(Added 2026-10-16, Ralph — console session on the design-system rounds 1–3; decisions 16.13–16.21 and 16.38; Claude builds it under the scope change of 11.0.)*
+
+**Motivation.** Settings, Projects and jj log Configurations become windows of their own (decisions 16.13, 16.19; DS readme.md:187–192). The app's windowing knows only the main window today:
+- `AppWindows` types its factory and `openOrActivate` to `WindowController` only, and its lifecycle mixes in `WindowControllerDelegate` (`app/lib/src/features/window/app_windows.dart:28-35`, `:118-130`, `:167`).
+- Its exit rule ends the process when the last window unregisters (`app_windows.dart:140-144`; the runner defers to it, `AppDelegate.swift:14-19`).
+- `MainWindowChrome` forces a miniaturizable, resizable style mask, a 900 × 600 minimum and a vibrancy view (`app/macos/Runner/MainWindowChrome.swift:52`, `:58`, `:90-106`). Only it sets `isRestorable = false` (`:64`).
+- `WindowFrameStore` restores size and origin, and applies the chrome by a flag (`WindowFrameStore.swift:73-79`).
+- `zanshin_shell` resolves one window for appearance, drag and title-bar double-click (`ZanshinShellPlugin.swift:77-80`, `:120-123`).
+- The first window must go through `runWidget`, and `openMain` always creates `main` (`boot_window_host.dart:57`, `:94`).
+
+Flutter's macOS windowing (r3out windows.md §1):
+- A parentless `DialogWindowController` is Titled | Closable (| Resizable), never Miniaturizable, FullScreenAuxiliary, and made key on its first frame.
+- A parented dialog becomes a critical sheet. Satellite windows throw `UnimplementedError` on macOS.
+- The owner factories drop `constraints`; the `*MacOS` constructors pass them.
+- Each window is built from the `WindowManager`'s context, so a second window has no theme or DI ancestor.
+
+This story builds the plumbing once, so 11.5–11.7, 11.13 and 10.22 only fill in their windows.
+
+**Scope.**
+1. **Dialog windows in `AppWindows`.**
+   - `RememberedDialogWindowController` on `DialogWindowControllerMacOS(constraints:)`: parentless; Titled | Closable, plus Resizable where the window asks for it; no Miniaturizable; FullScreenAuxiliary.
+   - The factory and `openOrActivate` are generalised to `BaseWindowController`. The lifecycle adds `DialogWindowControllerDelegate`, so `onWindowCloseRequested` can intercept a close.
+   - One instance per key: `settings`, `projects`, `revset-configs`, and one key for the project window (decisions 16.15, 16.42 j).
+   - Each dialog window passes its own constraints. `create` and `openOrActivate` default to `defaultWindowConstraints`, the project window's minimum (900 × 600 today, `app_windows.dart:21`, `:92`, `:123`; 880 × 560 after 11.4, decision 16.37); a dialog window never takes that default (Claude's proposal; 11.4's note). Projects passes 680 × 440 (11.6), Configurations 820 × 460 (10.22; decision 16.20), Settings its content size (item 3).
+2. **Chrome kinds `main | secondary`.** `MainWindowChrome` becomes parameterised. `main` stays what 11.4 builds.
+   - `secondary` keeps the engine's style mask (no minimise; zoom only where resizable), and adds `.fullSizeContentView`, a transparent titlebar, a hidden title and the same empty `NSToolbar`, so the traffic lights sit where they sit in the project window (DS tokens/spacing.css:28–31).
+   - It draws the grey rings in the per-theme `--tl-ring` (DS tokens/colors.css:22, :81; decision 16.5), also around greyed buttons (DS components/window/TrafficLights.prompt.md:10).
+   - It adds the drag interceptor plus a `WindowDragArea` on the empty header (DS components/window/Window.prompt.md:16).
+   - It forces no minimum and adds no vibrancy: the window is opaque, Flutter paints the fill, and AppKit draws corners and shadow (DS readme.md:90).
+   - Every window, of either kind, sets `isRestorable = false`. Today only `MainWindowChrome.swift:64` does, and AppKit's restore overrides a stored frame about 300 ms after launch.
+3. **Frame store.**
+   - The existing `zanshin/window_frames` store is reused with one key per window.
+   - New: a position-only mode for content-sized windows (Settings).
+   - The first placement is centred over the project window, and it is applied after the first frame, because `placeForFirstLaunch` uses `window.frame` (`WindowFrameStore.swift:110-121`), which means nothing before a content-sized window's first frame.
+   - Settings' height follows its tab with the top edge held in place. `setContentSize` keeps the bottom-left origin, so the runner re-anchors the top (r4out windows W-6; deferred-work).
+   - Content-sized windows get their constraints through the `*MacOS` constructor; without them a `shrinkWrap` window is not sized to its content at all (r3out windows.md C3).
+4. **`zanshin_shell` for every window.** `setWindowAppearance` applies to every app window, not to the resolved one, so a theme switch in Settings restyles all windows. Window drag and title-bar double-click act on `NSApp.currentEvent.window`.
+5. **Per-window app root** over the shared DI: theme, settings, the icon registry (decision 16.32) and the ambient defaults of 11.1.
+   - An active-window tracker fed by `didChangeViewFocus` drives the inactive delta (DS tokens/inactive.css; readme.md:194) and "no hover painted in a window that is not key" (hover cleared on resign key; Claude's proposal, decision 16.42 i).
+   - Each window root carries a key, so Marionette 0.7.0's `ancestor_keys` can scope a listing to one window (decision 16.31).
+   - Window content widgets stay window-agnostic, so tests and 11.11's Widgetbook host them in a plain view.
+   - It adds a Window-scaffold use case (a secondary window with its header, rings and inactive look) to 11.11's Widgetbook "Windows" folder (11.11 item 3); 11.6, 11.7 and 10.22 add theirs.
+6. **Configurations' level** (decisions 16.19, 16.42 b). The `revset-configs` window takes `.floating` while Zanshin is active and `.normal` when it resigns, through the NSWindow handle, as the splash does (`WindowingBootstrap.swift:84-88`, `:136`). It then also floats over Settings and Projects while Zanshin is active (Claude's proposal; deferred-work watches it). Settings and Projects stay at the normal level (decision 16.38).
+7. **Boot and lifecycle** (decisions 16.13, 16.16, 16.21, 16.42 f).
+   - `openProjects` beside `openMain`. With no project to open, the Projects window is the first window, built in the warm-up frame, with its DI root in place before `runWidget`.
+   - `applicationShouldHandleReopen` (a Dock click with no visible window) brings back a minimised project window, or opens Projects when no project is open (only Settings is left).
+   - The exit rule changes from "the last window is gone" (`app_windows.dart:140-144`) to "Projects closes while no project window is open"; Settings and Configurations do not keep the app alive (decision 16.42 f). Closing the project opens Projects before the project window goes, so the registry never counts zero windows in between (Claude's proposal).
+   - Hooks for 10.22's dirty check: `applicationShouldTerminate` and a close intercept on the project window. With an unsaved Configurations window they bring it forward and wait for "Discard changes?"; Cancel aborts the quit or the close (decision 16.21).
+8. **Header geometry for secondary windows.** The Window scaffold's header is 52 pt; its controls centre on y 26 (DS tokens/spacing.css:41; Window.prompt.md:16). Where the prose and `components/window/window.css` differ, the CSS wins: Projects' title sits at sidebar + 12 (window.css:42), and Settings centres its tabs and hides its title (window.css:34; Window.prompt.md:4) (r4out windows W-12).
+9. **Known side effect.** Every window switch blurs the focused text field, so blur-triggered writes (11.7) fire on each switch (r3out windows.md C7; deferred-work).
+
+**Non-goals.**
+- Several project windows (decision 16.15).
+- Satellite windows: not implemented on macOS.
+- Native sheets: a parented dialog becomes a critical sheet with a nested run loop. The two sheets stay Flutter-drawn (11.2; decision 16.17).
+- A raised level for Settings or Projects (decision 16.38).
+- The menu bar (11.13) and the windows' content (11.5–11.7, 10.22).
+
+**Depends on.** 11.1 (tokens, the appearance scope, the ambient defaults) and 11.4 (the main chrome this story parameterises). Blocks 11.5, 11.6, 11.7, 11.13 and 10.22.
+
+**Design status.** FINAL in the DS: readme.md:187–194 (windows, inactive), components/window/Window.prompt.md:14–19, components/window/TrafficLights.prompt.md:9–11, components/search/RevsetDialog.prompt.md:9–11. The window level choices are recorded decisions (16.19, 16.38, 16.42 b). No open design question.
+
+**Witnesses.**
+- Fake-owner tests (flutter_test's test windowing owner supports dialog controllers): keying, one instance per key, `openOrActivate` brings an open window forward, the dialog lifecycle, the close intercept.
+- The exit rule: closing Projects with no project window open exits; closing Settings or Configurations does not; closing the project opens Projects first and never exits.
+- A theme switch from a secondary window restyles every open window.
+- Frames are remembered per key; Settings remembers only its origin, and its top edge stays when its content height changes.
+- A text field in a secondary window takes input.
+- Each dialog window gets the minimum it passes; none inherits the project window's.
+- The CGWindowList probe per window (the native check; Widgetbook, Marionette screenshots and fake-owner tests never see the native chrome):
+  - Settings: Titled | Closable, no Resizable, no Miniaturizable;
+  - Projects and Configurations: Titled | Closable | Resizable, no Miniaturizable;
+  - each FullScreenAuxiliary, `isRestorable` false, the traffic-light block at x 19–79, y 26;
+  - Configurations at the floating level while Zanshin is active and at the normal level after it resigns.
+
+**Related:** 11.4, 11.5, 11.6, 11.7, 11.11, 11.13, 10.22; r3out windows.md (with its critique); r4out windows W-4–W-6, W-12; r5out windows cfg-floating-native, frame-store-key-one-window.
+
+---
+
+### Story 11.13: Menu bar and shortcuts [UI/native]
+*(Added 2026-10-16, Ralph — console session on the design-system rounds 1–3; decisions 16.7, 16.14, 16.16, 16.18, 16.34, 16.42, 16.46 and 16.47; Claude builds it under the scope change of 11.0.)*
+
+**Motivation.** Every command also lives in the menu bar: that is where shortcuts are learned, and where Help search and VoiceOver find them (DS readme.md:198). Today the runner's `MainMenu.xib` has "Preferences… ⌘," without an action (`MainMenu.xib:35`), no File menu and no Close ⌘W. Its stock Edit › Find submenu already claims ⌘F ("Find…", `:120`) and ⌘J ("Jump to Selection", `:146`). The DS now specifies the whole menu bar and the shortcut map (DS readme.md:196–209). No story owns it yet (r4out windows W-9).
+
+**Scope.**
+1. **Menus** as DS readme.md:200–207, in Title Case as the DS writes them (decision 16.42 o; this deviates from the sentence-case rule, DS readme.md:49, for the menu bar only). Items that open a window or a sheet end in "…" (DS readme.md:198).
+   - **Zanshin:** About Zanshin · Settings… ⌘, ("Preferences…" becomes "Settings…") · Services · Hide Zanshin ⌘H · Hide Others ⌥⌘H · Show All · Quit Zanshin ⌘Q.
+   - **File:** All Projects… ⇧⌘O · Open Recent ▸ (11.5's registry) · Project Settings… · Close Window ⌘W.
+   - **Edit:** Undo ‹action› ⌘Z · Redo ‹action› ⇧⌘Z · Cut ⌘X · Copy ⌘C · Paste ⌘V · Select All ⌘A · Find ⌘F.
+   - **View:** Free ⌘1 · Compact ⌘2 · Detailed Cards · Group Stacks · Edit Configurations… ⌥⌘L · Show Minimap (app-global, default on; decision 16.42 n) · Enter Full Screen ⌃⌘F.
+   - **Change:** New Change ⌘N · Describe… · Edit · Squash into Parent · Abandon ⌘⌫ (no confirmation; the toast offers Undo) · Fetch (no shortcut: the menu-bar spec wins over the card's ⇧⌘F, DS components/controls/controls.card.html:54; decision 16.42 m) · Push… ⇧⌘P.
+   - **Go:** Selection ⌘J · Working Copy (@) ⇧⌘J · Parent · Child.
+   - **Window:** Minimize ⌘M · Zoom · Projects · Bring All to Front · the window list.
+   - **Help:** Zanshin Help · jj Documentation ↗.
+   - The xib's stock Find submenu (with "Jump to Selection ⌘J" and "Find and Replace…") goes, so no two items claim ⌘F or ⌘J (Claude's proposal).
+2. **Routing.**
+   - **⌘,** and every row that shows ⌘, open or bring forward Settings on the tab shown last, and never toggle it (decision 16.14; 11.7).
+   - **⌘W** acts on the key window. On the project window it runs 11.5's close-project action and shows Projects (decision 16.16). Settings and Projects close. Configurations closes, and asks "Discard changes?" first when something is unsaved (decision 16.21; DS readme.md:201; RevsetDialog.prompt.md:17).
+   - **⌘Z and ⇧⌘Z** (decisions 16.7, 16.46). Undo takes back only Zanshin's own latest operation, and only while it is still the current one; it never goes further back and never over someone else's operation (DS readme.md:202; components/overlays/Toast.prompt.md:14). The item names the action ("Undo Abandon kmnvxoqp"); 10.9's runner publishes the label and the operation id. Every undo ends in the toast "Undid ‹action› · Redo", and ⇧⌘Z redoes while that undo is still current. Undoing a push shows jj's warning "Undoing a push operation often leads to conflicted bookmarks." with Redo (`../jj` cli/src/commands/undo.rs:138 @ v0.46.0). Redo needs 9.21 (`jj redo`, cli/src/commands/redo.rs:44 @ v0.46.0).
+   - **⌘J and ⇧⌘J** scroll to the selected change and to @, through 10.5's chrome API. They only scroll; the selection stays, as with an @-pill click (decision 16.18). This supersedes DS components/actions/AtPill.prompt.md:9's "scroll to @ and select it".
+   - **⌘F** focuses the project window's graph search (10.21; `/` too, outside text fields). While Projects is key, ⌘F focuses Projects' own search. While Settings is key, ⌘F brings the project window forward and focuses its search (decision 16.47). While jj log Configurations is key, ⌘F does the same as from Settings (Claude's proposal; decision 16.42 g; DS components/search/RevsetDialog.prompt.md:1).
+   - **Project commands from any window.** Change, Go and the View items act on the project window from any Zanshin window, Configurations included (decision 16.42 g).
+   - **Text fields first.** Inside a text field the text shortcuts win: ⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌘A and ⌘⌫ act on the text (DS readme.md:209).
+   - **F6** moves focus to the toast region (Toast.prompt.md:15; 10.23).
+3. **Greying** (DS readme.md:201, :205, :206; r4out windows W-11).
+   - Close Window, while a sheet (ConfirmDialog, Push) is open on the key window. Zanshin's sheets are Flutter-drawn, so the menu greys it by hand.
+   - Minimize, for Settings, Projects and Configurations; Zoom, for Settings.
+   - Enter Full Screen, while a FullScreenAuxiliary window (Settings, Projects, Configurations) is key.
+   - Go › Selection, without a selection. Go › Parent and Child, without a selection (Claude's proposal).
+   - Change › Edit, while its target is @ (design question (b)).
+   - Undo, when Zanshin has no own operation that is still current: after a foreign operation, after `jj op abandon` (the current operation's parent is then the root) and after `jj workspace update-stale` (decision 16.28).
+   - Change items, while the working copy is stale (decision 16.28). The reason is in 10.5's StaleNotice; a per-item tooltip exists only on the xib fallback of design question (a) (`NSMenuItem.toolTip`), not on `PlatformMenuItem`.
+   - An item whose handler story has not landed yet stays grey (Claude's proposal; see Depends on).
+4. **The Change menu's target** (Claude's proposal, decision 16.34). The target is the selected change; without a selection it is @, as in the CLI (`jj abandon`, `jj describe`, `jj new` and `jj squash` default to @: `../jj` cli/src/commands/abandon.rs:48, describe.rs:52, new.rs:54, squash.rs:89 @ v0.46.0). Edit is the exception: `jj edit` takes no default (edit.rs:35 @ v0.46.0); see design question (b). Each item names its target: "Abandon @", "Abandon kmnvxoqp". The id is the menus' 8-character form, longer when jj's shortest unique prefix is longer (decision 16.35; DS readme.md:67). It is plain text, because `PlatformMenuItem` takes a plain `String` label (design question (a)); the xib fallback could bold the prefix through `attributedTitle` (Claude's proposal). Go › Parent and Child move the selection; on a merge, Parent takes the first parent (decision 16.42 p).
+5. **Every command is real** (decision 16.44). Each item runs exactly the jj command its story names, with the change id in full (decision 16.39); the menu bar composes no command sequence (DS readme.md:53).
+
+**Non-goals.**
+- Help content.
+- An About window: About Zanshin keeps the system's standard panel; the DS lists the About window as still open (DS readme.md:336).
+- Context menus (10.15) and the Project menu (11.5).
+
+**Depends on.** 11.12 (the windows the routing addresses), 10.9 (the runner, the undo label and the own-operation check) and 10.23 (the toast).
+The handlers come from the stories that own them: 10.5 (scroll API), 10.6 (selection, Go), 10.7 (view setters, New change), 10.16 (minimap switch), 10.21 (search), 10.22 (Configurations), 11.5 (close project, Open Recent), 11.6 (Projects), 11.7 (Settings), 11.8 (Fetch, Push), 9.21 (redo). Each of those stories wires its handler to the item this story builds; until then the item is grey (Claude's proposal). 11.5, 11.6 and 11.7 therefore depend on this story for their shortcuts, not the other way round.
+
+**Design status.** FINAL in the DS: readme.md:196–209 and the shortcut check (readme.md:209). Decided outside the DS: ⇧⌘J scrolls only (decision 16.18), no ⇧⌘F (decision 16.42 m), the Change menu's target (decision 16.34). NEEDS DESIGN:
+- **(a) Where the menu is built** (Claude's proposal). Recommendation: in Dart through `PlatformMenuBar`, with `PlatformProvidedMenuItem` for the system items (About, Services, Hide, Hide Others, Show All, Quit, Minimize, Zoom, Bring All to Front, Enter Full Screen), so labels such as "Undo ‹action›" and the greying follow app state. A spike first checks it with the windowing API's several windows; if it fails, the xib keeps the menus and a method channel sets titles and enabled states.
+- **(b) Change › Edit with @ as its target** (Claude's proposal). `jj edit @` changes nothing and only prints "Already editing that commit." (`../jj` cli/src/commands/edit.rs:65–66 @ v0.46.0). Recommendation: Edit names the selected change and is greyed while its target is @ (no selection, or @ selected), with that reason.
+
+**Witnesses** (fake handlers).
+- Each item routes to its handler; an item without a handler is grey.
+- The greying table above holds, item by item, per key window.
+- ⌘, never toggles; ⌘W and the red button on the project window show Projects and the app keeps running; ⌘W on a dirty Configurations window asks first.
+- ⌘Z is grey after a foreign operation and after the own operation stopped being current; after an undo the toast reads "Undid … · Redo", and ⇧⌘Z redoes.
+- The Change items name their target: the selection, else @.
+- ⌘J and ⇧⌘J change the scroll offset and leave the selection as it was.
+- Inside a text field, ⌘Z and ⌘⌫ act on the text, not on jj.
+- No two items share a key equivalent (the stock "Jump to Selection ⌘J" and "Find… ⌘F" are gone).
+
+**Related:** 10.5, 10.6, 10.7, 10.9, 10.21, 10.22, 10.23, 11.5, 11.6, 11.7, 11.8, 11.12, 9.21; r4out windows W-9–W-11; r5out windows window-lifecycle-edges.
 
 ---

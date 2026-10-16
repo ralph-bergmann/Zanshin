@@ -645,7 +645,7 @@ _Added the same day after Ralph's answers and his near-final HTML design (`_bmad
 - **Design chrome and panels outside Epic 10** [APP:135-171, :206-308, :313-350, :956-972, :1054-1080, :1983-2178, :2263-2271]. Low. They are Ralph's UI, and no Epic 10 story covers them:
   - the window header: Fetch / Pull / Push / New, the system/dark/light theme switch, and a "?" help button with no action;
   - the status bar: "@ branch", taken from `data.js` BOOKMARKS and stale relative to the graph's @ (APP:957), and a "⌘K palette" hint although no palette exists;
-  - the nav rail, and the placeholder Workstreams / Reviews / Undo Timeline panels;
+  - the nav rail, and the placeholder Workstreams / Reviews / Undo Timeline panels; *(Resolved 2026-10-16 for Workstreams: dropped everywhere, decision 16.26; 11.10 removes the remnants.)*
   - the Projects (Home) dialog, and the Density tweak;
   - dead flyout code that is never opened;
   - App's own Esc handler (APP:2263-2271), which clears the selection of the old column view. That view is no longer mounted (APP:2484).
@@ -966,6 +966,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - AS stays in the export as a playground.
   - Its values are no longer planned (decision (c)): the 250 ms stack slide, the 1.8 px/ms tracing, the 600 ms leave with a 16 px blur and a 16 px rise.
   - **Follow-up:** none. 10.20's demo host keeps the slow-motion switch.
+  - *(Resolved 2026-10-16: the demo host becomes the Widgetbook "Graph" folder, and the slow-motion switch is Widgetbook's TimeDilation addon (decision 16.30; Stories 10.1, 10.20, 11.11).)*
 - **The design system's id-length rule disagrees with its card.** Low; a record.
   - DS readme.md:65 says change ids have 5 characters on cards.
   - DS ChangeCard and the client show 8 on detailed non-@ cards, and 5 on compact cards and on @ (DS components/graph/ChangeCard.jsx:25; GV:278).
@@ -1019,9 +1020,11 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **⌘Z works only while a toast is visible.** Low.
   - An app-wide Edit › Undo and Redo (⇧⌘Z = `jj redo`, 9.21) is not designed (GV:757-762; 10.23).
   - **Follow-up:** with 9.21, if Ralph wants a menu-bar Undo.
+  - *(Resolved 2026-10-16: undo has three places (decision 16.7): the toast's Undo; ⌘Z and Edit › "Undo ‹action›" for Zanshin's own latest operation while it is still current, with ⇧⌘Z = `jj redo`; the Undo Timeline for older operations. Every undo ends in the toast "Undid ‹action› · Redo" (decision 16.46). The menu bar is the new Story 11.13; Redo needs 9.21.)*
 - **The DS UI kit deviates from the client on drag-and-drop.** None; a record.
   - The kit rests 520 ms before the menu (the client: 260 ms), places the menu below the card first (the client: above), and binds ⌘Z always (the client: only while a toast is visible) (DS ui_kits/desktop/app.jsx:272, :305; GV:819, :842, :757-762).
   - **Follow-up:** the client is the reference; raise it at the next design-system sync.
+  - *(Resolved 2026-10-16 for ⌘Z: the spec is now decision 16.7 (DS components/overlays/Toast.prompt.md:14), so neither the client's "only while a toast is visible" nor the kit's "always" holds; 11.13 builds it. The drop menu keeps 260 ms (decision (a4); the DS's `--delay-drop-menu` 520 is not adopted). The kit itself is still wrong; the 2026-10-16 section below records it among the DS leftovers.)*
 
 ### The inspector and the diff
 
@@ -1062,6 +1065,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - The export's rail lists both (AF:22-23), and its empty state names `jj workstream new` (AF:124). jj v0.46.0 has no `workstream` command, and reviews exist only as `jj gerrit` (`cli/src/commands/` at v0.46.0).
   - 11.3 hides both items (decision (g)).
   - **Follow-up:** Ralph decides what each should mean, for example Gerrit or forge reviews. Backend stories follow, and then 11.3 shows the items.
+  - *(Resolved 2026-10-16 for Workstreams: they are dropped everywhere, not hidden, because they are not a jj concept (decision 16.26; 11.3's rail, 10.14, and 11.10 removes `ZI.workstream` and its SVG). Reviews stays hidden until a backend exists; this entry stays its record.)*
 - **Remote management has no surface.** Low.
   - 9.5's `git remote add`, `remove`, `rename` and `set-url` (done) have no UI consumer.
   - The Projects dialog's Remotes tab is inert (SH:2067), and 11.6 proposes to drop it. 11.7's Project tab only picks the fetch and push remotes.
@@ -1086,21 +1090,26 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - 46 of the 48 SVGs in `DS assets/icons/ui/`, and all 46 in `design/icons/ui/`, stroke with `#000` and embed a C2PA manifest of about 7.8 KB. Only `change.svg` and `description.svg` keep `currentColor`.
   - `DS components/brand/Icon.jsx:4-72` holds the same geometry with `currentColor`. `ZanshinIcon`'s srcIn tint hides the difference; an icon-font generator or an untinted `SvgPicture` would not.
   - **Follow-up:** 11.1's icon rule copies from `Icon.jsx`. Ask Claude Design to keep `currentColor` only if Ralph wants the files themselves fixed.
+  - *(Resolved 2026-10-16: in the DS downloaded 2026-10-16 every glyph is a file with `currentColor`, 58 of them (DS readme.md:344, :350). The app copies the files themselves, stripped of `<metadata>` and `xmlns:c2pa`, into a precompiled SVG pipeline with an `IconRegistry`, and the gate checks their bytes (decisions 16.6, 16.32, 16.33; 11.1 item 11 as amended 2026-10-16).)*
 - **Some component values have no token.** Low.
   - `DS readme.md:90` lists radius 13 for glass menus, and `DS components/menus/menus.css:18`, `:36` use it, but `DS tokens/effects.css:5-17` has no such token.
   - The radii 4.5, 5 and 7, the glass field well rgba(8,10,22,.45) and the gold primary's mixes are literals too (`DS components/forms/forms.css:31`, `:38`, `:45-46`; `DS components/graph/graph.css:51`, `:97`; `DS components/actions/actions.css:8-12`).
   - **Follow-up:** 11.1 names them in the token layer, marked as untokenised; the parity test cannot cover them. A DS sync request if Ralph wants them tokenised.
+  - *(Resolved 2026-10-16: the DS's design review tokenised them: one radius scale with `--radius-tag` 5, `--radius-chip` 7, `--radius-well` 12 and `--radius-popover` 13 (DS readme.md:321); every mix a control uses is a fixed token, such as `--primary-action` (DS readme.md:298); literal colours became tokens such as `--seg-inset-bg` and `--field-bg` (DS readme.md:286, part C). 11.1's 2026-10-16 note takes them as tokens.)*
 - **The dialog entrance differs between the DS and the client.** Low.
   - The DS's `Dialog` enters with `zs-pop` in 160 ms (`DS components/surfaces/surfaces.css:28`).
   - The client's Settings and Configurations dialogs use `gset-in` in 240 ms (`STC:28`, `FC:271`), and so does the DS's own `RevsetDialog` (`DS components/search/search.css:99`). There is no duration token for it.
   - **Follow-up:** 11.2 uses 240 ms (Claude's proposal). The next DS sync can align `Dialog`.
+  - *(Resolved 2026-10-16: the DS unified the entrance to `--dur-dialog` 220 ms for Dialog, Settings and Configurations (DS readme.md:302; DS tokens/motion.css:32), and 11.2 uses 220 (its 2026-10-16 note). The only sheets left are ConfirmDialog and Push (decision 16.17); Settings, Projects and Configurations are windows now, with no entrance (decisions 16.13, 16.19; DS readme.md:90).)*
 - **The dot grid survives in the DS.** None; a record.
   - `--grid-dot` (`DS tokens/colors.css:38`, `:70`), `--grid-step` (`DS tokens/spacing.css:19`) and `.zs-dots` (`DS components/base.css:7`) remain, although the floating client dropped the grid (`FC:20`; `DS readme.md:84`).
   - **Follow-up:** the token layer carries them for the parity test only; nothing paints them.
+  - *(Resolved 2026-10-16: the DS removed `--grid-dot`, `--grid-step` and `.zs-dots` (DS readme.md:327).)*
 - **The shadow names are crossed.** Low.
   - `--shadow-popover` is the context menu's shadow (`DS components/menus/menus.css:2`), while `--shadow-menu` belongs to popovers and glass menus (`DS components/surfaces/surfaces.css:10`; `DS components/menus/menus.css:36`).
   - `DS guidelines/elevation.html:11` labels them that way; `DS readme.md:94` calls the latter "menus".
   - **Follow-up:** 11.1 names the Flutter shadows by role (context menu, popover, callout, dialog) and keeps the CSS name beside each.
+  - *(Resolved 2026-10-16: one menu material for every menu, popover, callout and the peek: 13 px on `--fl-sheen` over `--fl-bg-solid`, 1 px `--fl-border`, `--shadow-menu`; `--shadow-popover`, `--shadow-callout` and `--bg-elevated` are retired (DS readme.md:90, :284, :322). 11.2 builds it (its 2026-10-16 note).)*
 - **`nami_loader_pulse.json` is not in the app.** None; a record.
   - `DS assets/motion/` and `design/lottie/` have it. `app/assets/lottie/` has the other two loaders, byte-identical to the DS's.
   - **Follow-up:** the story that first shows the pulse loader copies it.
@@ -1112,7 +1121,89 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - `DS components/surfaces/Island.prompt.md:5` still uses `CommandField`, retired in syncs #5 and #6.
   - `DS components/surfaces/Popover.prompt.md:6` offers the Layout "Compact, Time"; Time is gone since #7.
   - **Follow-up:** mention it with the next DS sync. Stories cite the components' code, not these examples.
+  - *(Resolved 2026-10-16: the DS fixed `Island.prompt.md` (GraphSearch, not CommandField) and `Popover.prompt.md` (Free · Compact, not Time) (DS readme.md:303).)*
 - **Density has no tokens.** Low.
   - The DS's Settings card has a Density row, Compact · Balanced · Comfy (`DS components/settings/settings.card.html:30`), and its UI kit defaults to compact.
   - No DS component reads it. In the client it changes only the body font size (`AC:69-71`, `:80`).
   - **Follow-up:** 11.7's design question (a) asks Ralph whether the row stays. The token layer carries the DS's compact sizes only.
+
+## Surfaced 2026-10-16 while validating the design-system rounds 1–3 and folding them into Epics 9–11 (console session, Ralph)
+
+_Ralph re-downloaded the design-system project twice (rounds 2 and 3; the DS readme still says "Synced through #9") and validated each round against the stories (V1 = `_bmad-output/planning-artifacts/research/design-system-validation-2026-10-15.md`, V2 = `…-round-2-2026-10-16.md`, V3 = `…-round-3-2026-10-16.md`; RC = `technical-ui-controls-yaru-material-custom-and-macos-accents-research-2026-10-15.md`). On 2026-10-16 he accepted every recommendation of the three reports, Claude's proposals included ("mit deinen Vorschlägen"). The stories were updated the same day: the decisions 16.1–16.47 in the Epic 11 header, a "Design update 2026-10-16" in the Epic List and the Epic 10 header (with the new house rule Commands), new Stories 11.11 (Zs control library, Widgetbook catalogue, Marionette), 11.12 (window foundation) and 11.13 (menu bar and shortcuts), and dated notes in 9.20, 9.21, 9.23, 9.32, most Epic 10 stories and 11.1–11.10. `DS <path>:<line>` below refers to the DS downloaded 2026-10-16 (round 3). Ten entries of the 2026-10-14 section and one older entry above are marked resolved. The items below fall outside those stories:_
+
+### The design system and its process
+
+- **A change log for the next Claude Design round.** Low; not sent, not in the accepted scope.
+  - V3 §7 proposes: commit each download as its own commit; the DS readme holds only the current state plus an OPEN section; a `CHANGELOG.md` with rounds R1…Rn and their delivery dates; the prompts number rounds instead of dating them; a #10 entry in `DESIGN-SYSTEM-SYNC.md`.
+  - The DS dates its own rounds differently from this file ("RUNDE 2026-10-16", "RUNDE 2026-10-17"; DS readme.md:260, :227). Commit `b49a5cd` records the 2026-10-16 download and is the anchor for the citations dated 2026-10-16 (Epic 10 header, "The reference").
+  - **Follow-up:** Ralph decides whether to send it with the next round. `dsSyncedThrough` stays 9 until the DS records #10.
+- **DS doc leftovers deliberately not sent back.** None; a record. The stories carry the decided behaviour, and tokens and CSS win over the DS's prose and cards (V2 §4).
+  - GraphSearch.prompt.md:15 (the pill; 10.21 follows rule A2, DS readme.md:140); StaleNotice.prompt.md:9 `--warn` and :11 "· Undo" (no Undo after `update-stale`, decision 16.28); Icon.prompt.md:13 (the rx rule); surfaces.card.html:34 (⌘, on the Appearance row; decision 16.14 shows none); settings.card.html (the 18 px sheet; Settings is a window); Window.prompt.md:14, :17, :18 ("both float above", two windows).
+  - readme.md:183 (stale track hover and measurements); readme.md:153 ("8 tokens"; a family has 11); readme.md:104's token list lacks `--delay-resize`; readme.md:163 (the yellow ΔE); readme.md:189, :194; tokens/spacing.css:41.
+  - The UI kit: ⌘W over the Push sheet, ⌥⌘L unwired, ⌘Z walking the history (the spec is decision 16.7), the inverted gap-legend delays (ui_kits/desktop/kit.css:48–49; 10.19 uses them the right way round).
+  - Push: PushDialog.jsx:218 drops the `--allow-*` flags; readme.md:217 and :219 claim behaviour jj v0.46.0 does not have (decision 16.25).
+  - `--delay-drop-menu` 520 against the decided 260 (decision (a4) of 2026-10-14); ConfirmDialog's body does not name the evolog loss of `jj op abandon` (DS ConfirmDialog.prompt.md:4–5; 9.21); menu examples with bare commands (decisions 16.39, 16.44); the menu bar's Title Case (readme.md:200–207) against the sentence-case rule (readme.md:49; decision 16.42 (o) keeps Title Case for the menu bar only); the pressed scope pill in night yellow at 4.40:1 (left as is under decision 16.12); the Fetch card's ⇧⌘F (decision 16.42 (m)); "branch" in ProjectRow and ProjectMenu (11.5 says "bookmark"); ResizeEdge's "detach" and "splitter" (decisions 16.23, 16.24).
+  - **Follow-up:** mention them with the next round, if Ralph wants the DS cleaned up.
+- **The gap legend's breakpoint is not in the DS.** Low.
+  - The DS defines no width at which the toolbar's gap legend hides. Claude's proposal, used by 10.7 and 10.19: it hides together with the count at ≤ 1040 px (decision 16.37).
+  - **Follow-up:** ask for a DS value with the next round.
+- **⇧⌘J against the AtPill's "select it".** None; a record.
+  - DS AtPill.prompt.md:9 says the pill scrolls to @ "and select[s] it". Decision 16.18 (V3 §5.5) keeps scroll only, for the pill, ⌘J and ⇧⌘J. The DS is not updated.
+  - **Follow-up:** the next round.
+- **The DS's "Still open" list.** Medium: no story covers these (DS readme.md:336).
+  - A repository that will not load (not a jj repo, a broken `.jj`, no permission); an operation that fails half-way (which toast, what the op log shows); the About window (11.13 keeps the system's standard panel); whether a finished fetch may notify or badge the Dock.
+  - **Follow-up:** design them in a later round; then stories.
+- **The unused `pull` glyph.** None; a record.
+  - The DS keeps `pull` among the glyphs "not used anywhere yet" (DS readme.md:346). jj has no pull; 11.10 removes the mock Pull button. The glyph is copied with the other 58 (decision 16.32) and stays unused.
+
+### Declined or deferred by Ralph
+
+- **A Workspaces section in the Project menu and a `<name>@` go-to.** None; declined by Ralph on 2026-10-15 (decision 16.27; round-2 prompt header item 4; V2 §6).
+  - Workspaces stay visible in two places without a new surface: `name@` on cards (10.3, decision 16.28) and the workspace name in Undo Timeline rows (11.9 item 5).
+- **Reads with `--ignore-working-copy`.** None; declined (CLI parity, decision 16.28).
+  - While the working copy is stale only the no-snapshot reads work (`commit_contents`, `log_defaults`, `workspace_root`); the way out is 9.23's `update-stale`.
+- **Patrol and Patrol MCP.** Low; deferred (decision 16.31).
+  - **Follow-up — revisit trigger:** Patrol's `$.platform.macos` ships AND its binding works with a real windowing owner (several views). Until then Marionette 0.7.0 plus the CGWindowList probe cover it.
+
+### Windows and the shell
+
+- **Configurations floats over Settings and Projects too.** Low; watch (decision 16.42 (b), Claude's proposal; 11.12 item 6).
+  - The `revset-configs` window takes `.floating` while Zanshin is active, so it also sits above Settings and Projects.
+  - **Follow-up:** if that annoys in use, float it only above the project window, for example by lowering it while Settings or Projects is key (Claude's proposal).
+- **Blur-triggered settings writes fire on every window switch.** Low (11.7, 11.12 item 9; r3out windows.md C7).
+  - Every window switch blurs the focused text field, so 11.7's write-on-blur rows write each time the user moves to another Zanshin window.
+  - **Follow-up:** check it in 11.7; write only when the value changed (Claude's proposal).
+- **Settings' top-anchored resize needs native work.** Medium (11.12 item 3; r4out windows W-6).
+  - `setContentSize` keeps the bottom-left origin, so a Settings window whose height follows its tab moves its top edge. The runner has to re-anchor the top.
+  - **Follow-up:** 11.12 builds it; if it flickers, a fixed height per tab is the fallback (Claude's proposal).
+- **Several workspaces of one repository in the project registry.** Low; open (r3out workstream.md critique 2, MISSED).
+  - The registry (11.5) is keyed by path. With no Workspaces section (decision 16.27) a user can still add a sibling workspace's folder. Whether it is its own entry or a child of its repository is not decided.
+  - **Follow-up:** Ralph decides when 11.5 is refined.
+
+### Tooling: Widgetbook, Marionette, icons
+
+- **Widgetbook's dev plugins reach the release build.** Low (11.11; decision 16.29).
+  - Widgetbook's dev-only plugins (`url_launcher_macos`) end up in release builds (flutter#163874), and adding it changes the app's `GeneratedPluginRegistrant`. Catalogue builds also run the `zanshin_core` build hook.
+  - **Follow-up:** open. Once 11.11 adds Widgetbook, check whether `url_launcher_macos` ships in the release bundle, and keep it out if it does (Claude's proposal; 11.11 does not cover it).
+- **Marionette's limits.** Low (decision 16.31; r3out tooling.md).
+  - Coordinate gestures still hit the first view; screenshots are "all views, in attach order", unlabeled and Flutter-layer only; bounds carry no view id. Hence the rule: match by Semantics identifier or text, never by coordinates, and scope listings with `ancestor_keys` on keyed window roots.
+  - **Follow-up:** retire the marionette fork branch `fix/multi-view-gestures` once `marionette_flutter` ^0.7.0 is in (11.11 non-goal).
+- **The IconRegistry needs a hot restart.** Low (decision 16.32).
+  - The registry loads the precompiled icons once at boot, so a changed icon shows only after a hot restart.
+  - **Follow-up:** measure the paint cost of `ZanshinIcon`'s saveLayer per icon on a large graph; batch or cache only if it shows in frame times (Claude's proposal).
+
+### Platform and debt
+
+- **Flutter on macOS still does not report Reduce motion.** Medium; still open (the 2026-10-14 entry "macOS never reports Reduce motion to Flutter" above).
+  - Decision 16.4 makes reduce motion a per-property rule; it stays inert on macOS until 11.1 item 7 feeds `MediaQuery.disableAnimations` from `zanshin_shell`.
+- **Selected glyphs in read-only text keep their colour.** Low; known debt (decision 16.10).
+  - Text fields recolour selected glyphs through `buildTextSpan`. Read-only text (the diff, ids) paints only the highlight for now.
+  - **Follow-up:** a later story, if the contrast is missed (DS readme.md:175–179 measures it).
+- **Code comments still cite the CLI at v0.44.0.** Low (r3out workstream.md MISSED).
+  - `crates/zanshin-jj/src/snapshot.rs:133` (and `:711`) and `crates/zanshin-jj/src/repo.rs:316–317` cite `cli/src/cli_util.rs` @ v0.44.0 for the stale-working-copy recovery, which 9.23 reads at `cli_util.rs:626-740` @ v0.46.0. Both files cite v0.44.0 in many other comments too.
+  - **Follow-up:** re-point them in 9.23, or in 9.46's v0.44 → v0.46 audit.
+- **RC §8 side findings, to check before the next UI story.** Low.
+  - The workspace's SDK and Dart constraints against the installed Flutter channel, and the `material_ui` lock version.
+  - `packages/zanshin_shell/lib/src/window_drag_area.dart:3` imports `package:flutter/material.dart`, against the house rule that Material types come from `package:material_ui` only; 11.12 touches that package.
+  - Until Yaru leaves (11.10), a git dependency on the `material_ui` bookmark rather than a path (RC §5).
+  - **Follow-up:** check them when 11.1 or 11.12 starts.
