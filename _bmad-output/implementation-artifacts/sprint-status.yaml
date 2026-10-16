@@ -27,6 +27,13 @@
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
+# Nächster Schritt laut Story-Reihenfolge von Epic 11:
+#
+#   zuerst 11.1 und 11.2;
+#   11.11 vor 10.7;
+#   11.12 vor 10.22;
+#   11.13 nach 10.9 und 10.23.
+
 generated: 2026-05-15
 last_updated: 2026-10-16
 project: Zanshin
