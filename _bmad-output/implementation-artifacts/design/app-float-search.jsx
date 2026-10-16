@@ -24,7 +24,6 @@ const URL_TWEAKS = Object.fromEntries([["theme", URLQ.get("th") || URLQ.get("the
 
 const RAIL = [
   { id: "branches",   label: "Bookmarks",     icon: "branch" },
-  { id: "workstream", label: "Workstreams",   icon: "workstream" },
   { id: "reviews",    label: "Reviews",       icon: "reviews" },
   { id: "undo",       label: "Undo Timeline", icon: "undo" },
 ];
@@ -126,7 +125,6 @@ function FloatChrome({ api, t, setTweak, pinned, setPinned, project, onOpenHome,
         {bmCount > 5 && <div className="fl-co-more">+{bmCount - 5} more</div>}
       </>
     );
-    if (id === "workstream") return <div className="fl-co-empty">No workstreams yet. Create one with <code>jj workstream new</code>.</div>;
     if (id === "reviews") return <div className="fl-co-empty">No open reviews.</div>;
     return (
       <div className="fl-co-ops">

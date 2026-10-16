@@ -1,6 +1,6 @@
 import * as React from "react";
 
-/** ZANSHIN wordmark — monoline stroke paths, gold gradient / ink / white. */
+/** ZANSHIN wordmark — monoline stroke paths, gold gradient / ink / white. States: none — a static mark. */
 export interface WordmarkProps {
   /** cap height in px, default 38 (splash). Stroke scales with it. */
   height?: number;

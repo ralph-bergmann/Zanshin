@@ -1,0 +1,34 @@
+/* ============================================================
+   ZANSHIN — increased contrast (macOS Accessibility › Display › Increase contrast)
+   A DELTA layer over Night or Paper and over any accent family. It never touches an accent token — every family's line is
+   ≥ 3:1 already — so there is no theme × accent × contrast matrix: two short blocks (night, paper) plus a few edges.
+   On: data-contrast="more" on the element that carries data-theme / data-accent, or the system (prefers-contrast: more).
+   Flutter: NSWorkspace.accessibilityDisplayShouldIncreaseContrast. It also implies Reduce transparency (the same solid values as
+   tokens/transparency.css).
+   Measured: lines night card 4.0–4.4 · canvas 4.1–4.8 · lift 3.07 (--border-strong #78809c; #767e9a gave 2.99) ·
+             paper card 3.7–4.0 · canvas 3.1–3.5 (--border-strong #867e75 on the darkest stop #e8e3dd 3.13; #8a8279 gave 2.97 —
+             the day dividers sit exactly there)
+             hover is always stronger than rest: --edge-hov night #a6adc6 (card 7.3, 1.8 × the rest edge) · paper #5f5852 (6.9, 1.85 ×) —
+             cards, bookmark chips, stacks, •••, the switch
+             slider: the groove is dark (night #232941) / light (paper #efebe6) with a --border-strong edge (--track-edge: night 3.7 to the
+             groove, 4.2 on the card · paper 3.4 / 3.9), so the filled part stands ≥ 3:1 off the empty part in every family — night 3.97
+             (red) – 10.1 · paper 3.28 (orange) – 6.4 · inactive 4.1 / 3.4 (an opaque mid-grey track gave 1.01–1.12). Hover steps the
+             edge (--track-edge-hover = --edge-hov), never the groove, so the gap holds on hover too
+             text --text-faint night 4.6 · paper 5.0 on the hardest surface it sits on at rest; on fills it steps up (base.css)
+             (--text, --text-muted and paper --text-dim pass already; dim and faint keep their order)
+   Edges are added where a state was a fill only: buttons, chips, segments, navigation-on, the selected row (accent line), the progress groove.
+   ============================================================ */
+[data-contrast="more"]{--border:#6f7792;--border-strong:#78809c;--fl-border:#78809c;--edge:#7c84a0;--edge-hov:#a6adc6;--track:#232941;--track-hover:#232941;--track-edge:#78809c;--track-edge-hover:#a6adc6;--tick:#767e9a;--scroll-thumb:#767e9a;--scroll-thumb-hover:#8f97b2;--scroll-thumb-drag:#a6adc6;--text-dim:#aab1ca;--text-faint:#a3aac3;--fl-bg:#1a1f35;--fl-bg-strong:#1a1f35;--glass-blur:none;/* @kind other */--glass-blur-strong:none;/* @kind other */--scrim:rgba(7,9,20,.7);--scrim-blur:none;/* @kind other */--focus-w:3px;/* @kind spacing */}
+[data-contrast="more"][data-theme="paper"],[data-contrast="more"][data-theme="light"],[data-theme="paper"] [data-contrast="more"],[data-theme="light"] [data-contrast="more"],[data-contrast="more"] [data-theme="paper"],[data-contrast="more"] [data-theme="light"]{--border:#8f877f;--border-strong:#867e75;--fl-border:#867e75;--edge:#857d74;--edge-hov:#5f5852;--track:#efebe6;--track-hover:#efebe6;--track-edge:#867e75;--track-edge-hover:#5f5852;--tick:#8a8279;--scroll-thumb:#8a8279;--scroll-thumb-hover:#6f675f;--scroll-thumb-drag:#5f5852;--text-dim:#5f5852;--text-faint:#655e57;--fl-bg:#fffdfa;--fl-bg-strong:#fffdfa;--glass-blur:none;/* @kind other */--glass-blur-strong:none;/* @kind other */--scrim:rgba(58,46,34,.36);--scrim-blur:none;/* @kind other */--focus-w:3px;/* @kind spacing */}
+[data-contrast="more"] :is(.zs-btn:not(.zs-btn--primary,.zs-btn--destructive),.zs-chip:not(.zs-chip--add),.zs-toast-undo,.zs-seg,.zs-progress){box-shadow:inset 0 0 0 1px var(--border-strong)}
+[data-contrast="more"] :is(.zs-search,.zs-gs){border-color:var(--border-strong)}
+[data-contrast="more"] :is(.zs-seg-thumb,.zs-seg:not(.has-thumb) .zs-seg-btn.is-on,.zs-dialog-navitem.is-on,.zs-file.is-sel,.zs-ib.is-on){box-shadow:inset 0 0 0 1px var(--border-strong)}
+[data-contrast="more"] :is(.zs-proj.is-sel,.zs-rsd-item.is-on,.zs-gs-row.is-active,.zs-gs-srow.is-active,.zs-chip--toggle.is-on,.zs-push-row.is-sel){box-shadow:inset 0 0 0 1px var(--accent-line)}
+@media (prefers-contrast:more){
+:root{--border:#6f7792;--border-strong:#78809c;--fl-border:#78809c;--edge:#7c84a0;--edge-hov:#a6adc6;--track:#232941;--track-hover:#232941;--track-edge:#78809c;--track-edge-hover:#a6adc6;--tick:#767e9a;--scroll-thumb:#767e9a;--scroll-thumb-hover:#8f97b2;--scroll-thumb-drag:#a6adc6;--text-dim:#aab1ca;--text-faint:#a3aac3;--fl-bg:#1a1f35;--fl-bg-strong:#1a1f35;--glass-blur:none;/* @kind other */--glass-blur-strong:none;/* @kind other */--scrim:rgba(7,9,20,.7);--scrim-blur:none;/* @kind other */--focus-w:3px;/* @kind spacing */}
+[data-theme="paper"],[data-theme="light"]{--border:#8f877f;--border-strong:#867e75;--fl-border:#867e75;--edge:#857d74;--edge-hov:#5f5852;--track:#efebe6;--track-hover:#efebe6;--track-edge:#867e75;--track-edge-hover:#5f5852;--tick:#8a8279;--scroll-thumb:#8a8279;--scroll-thumb-hover:#6f675f;--scroll-thumb-drag:#5f5852;--text-dim:#5f5852;--text-faint:#655e57;--fl-bg:#fffdfa;--fl-bg-strong:#fffdfa;--glass-blur:none;/* @kind other */--glass-blur-strong:none;/* @kind other */--scrim:rgba(58,46,34,.36);--scrim-blur:none;/* @kind other */--focus-w:3px;/* @kind spacing */}
+:root :is(.zs-btn:not(.zs-btn--primary,.zs-btn--destructive),.zs-chip:not(.zs-chip--add),.zs-toast-undo,.zs-seg,.zs-progress){box-shadow:inset 0 0 0 1px var(--border-strong)}
+:root :is(.zs-search,.zs-gs){border-color:var(--border-strong)}
+:root :is(.zs-seg-thumb,.zs-seg:not(.has-thumb) .zs-seg-btn.is-on,.zs-dialog-navitem.is-on,.zs-file.is-sel,.zs-ib.is-on){box-shadow:inset 0 0 0 1px var(--border-strong)}
+:root :is(.zs-proj.is-sel,.zs-rsd-item.is-on,.zs-gs-row.is-active,.zs-gs-srow.is-active,.zs-chip--toggle.is-on,.zs-push-row.is-sel){box-shadow:inset 0 0 0 1px var(--accent-line)}
+}

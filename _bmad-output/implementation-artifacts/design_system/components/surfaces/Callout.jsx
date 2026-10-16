@@ -7,7 +7,7 @@ export function Callout({ icon, title, count, arrow = true, className = "", styl
     <div role="tooltip" className={["zs-callout", !arrow && "no-arrow", className].filter(Boolean).join(" ")} style={style}>
       {title && (
         <div className="zs-callout-hd">
-          {icon && <Icon name={icon} size={14} />}
+          {icon && <Icon name={icon} size="md" />}
           <span>{title}</span>
           {count != null && <span className="zs-callout-n">{count}</span>}
         </div>

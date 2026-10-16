@@ -1,5 +1,6 @@
 import React from "react";
 import { Icon } from "../brand/Icon.jsx";
+import { Checkbox } from "../forms/Checkbox.jsx";
 
 // DiffView — the diff block on the quiet code surface: a toolbar (path, layout toggle, Viewed) over hunks or plain lines.
 // lines: strings with a git sigil ("+…", "-…", "@@…", " …") or objects { t: "add" | "rem" | "hunk" | "ctx", s }.
@@ -15,7 +16,7 @@ export function zsDiffLine(l) {
 export function DiffView({ file, tools, lines = [], maxHeight, viewed, onViewedChange, children, className = "" }) {
   const toggle = onViewedChange && (
     <button type="button" role="checkbox" aria-checked={!!viewed} className={"zs-viewed" + (viewed ? " is-on" : "")} onClick={() => onViewedChange(!viewed)} title={viewed ? "Mark as not viewed" : "Mark as viewed"}>
-      <span className={"zs-viewed-box" + (viewed ? " is-on" : "")}>{viewed && <Icon name="check" size={10} />}</span>
+      <Checkbox presentational size="sm" tone="add" checked={!!viewed} />
       <span>Viewed</span>
     </button>
   );
@@ -29,7 +30,7 @@ export function DiffView({ file, tools, lines = [], maxHeight, viewed, onViewedC
         </div>
       )}
       {viewed && onViewedChange ? (
-        <button type="button" className="zs-diff-collapsed" onClick={() => onViewedChange(false)}><Icon name="check" size={11} /><span>Viewed — diff folded away. Click to show it again.</span></button>
+        <button type="button" className="zs-diff-collapsed" onClick={() => onViewedChange(false)}><Icon name="check" size="sm" /><span>Viewed — diff folded away. Click to show it again.</span></button>
       ) : children ? (
         <div className="zs-diff-hunks">{children}</div>
       ) : (

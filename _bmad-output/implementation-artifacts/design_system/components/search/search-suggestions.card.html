@@ -44,7 +44,7 @@
       <SearchPopover footer={footer}>
         {rows.map((r) => r.g ? <SearchGroup key={r.g} label={r.g}/> : (
           <SearchRow key={r.k} icon={r.icon} before={r.before} label={r.label} quote={r.quote} mono={r.mono} meta={r.meta} more={r.more}
-            highlighted={nav[hi] === r} onMouseMove={() => setHi(nav.indexOf(r))}/>
+            active={nav[hi] === r}/>
         ))}
       </SearchPopover>
     );

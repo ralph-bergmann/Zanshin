@@ -1,0 +1,14 @@
+/* ============================================================
+   ZANSHIN — reduce transparency (macOS Accessibility › Display › Reduce transparency)
+   A DELTA layer like contrast.css: every glass surface turns solid and nothing blurs — islands, panels, inspector, minimap, toast,
+   the large primary, the @ pill, scrims. Components carry no rule of their own; they all read these tokens.
+   On: data-transparency="reduce" on the element that carries data-theme, or the system (prefers-reduced-transparency: reduce).
+   Flutter: NSWorkspace.accessibilityDisplayShouldReduceTransparency. Increased contrast implies it (contrast.css sets the same values).
+   The scrim stays a dim layer — it is a colour, not glass — but loses its blur and darkens a step so the sheet still separates.
+   ============================================================ */
+[data-transparency="reduce"]{--fl-bg:#1a1f35;--fl-bg-strong:#1a1f35;--glass-blur:none;/* @kind other */--glass-blur-strong:none;/* @kind other */--scrim:rgba(7,9,20,.62);--scrim-blur:none;/* @kind other */}
+[data-transparency="reduce"][data-theme="paper"],[data-transparency="reduce"][data-theme="light"],[data-theme="paper"] [data-transparency="reduce"],[data-theme="light"] [data-transparency="reduce"],[data-transparency="reduce"] [data-theme="paper"],[data-transparency="reduce"] [data-theme="light"]{--fl-bg:#fffdfa;--fl-bg-strong:#fffdfa;--glass-blur:none;/* @kind other */--glass-blur-strong:none;/* @kind other */--scrim:rgba(58,46,34,.28);--scrim-blur:none;/* @kind other */}
+@media (prefers-reduced-transparency:reduce){
+:root{--fl-bg:#1a1f35;--fl-bg-strong:#1a1f35;--glass-blur:none;/* @kind other */--glass-blur-strong:none;/* @kind other */--scrim:rgba(7,9,20,.62);--scrim-blur:none;/* @kind other */}
+[data-theme="paper"],[data-theme="light"]{--fl-bg:#fffdfa;--fl-bg-strong:#fffdfa;--glass-blur:none;/* @kind other */--glass-blur-strong:none;/* @kind other */--scrim:rgba(58,46,34,.28);--scrim-blur:none;/* @kind other */}
+}

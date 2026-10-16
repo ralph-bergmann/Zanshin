@@ -12,3 +12,4 @@ The menu that opens over a change while something is dragged onto it — offerin
 - Hover highlight is the moon accent with `--accent-ink`; the footer always shows the exact jj command of the highlighted action.
 - Labels: verb first, sentence case ("Move only this change", "Into a new change after"). Warnings go in `note` ("backwards").
 - Every applied drop ends in an undo `Toast`.
+- Keyboard · VoiceOver · Reduce motion: during a drag ↑ ↓ move the default action, Esc cancels the drag, releasing over the card runs the highlighted row · menu, announced when it opens · fades in (its scale × `--motion`).

@@ -1,6 +1,6 @@
 import * as React from "react";
 
-/** One hunk of a file's diff, selectable for commit / split and draggable onto another change. */
+/** One hunk of a file's diff, selectable for commit / split and draggable onto another change. States: rest · selected (header --accent-soft-hi, 2px accent edge on every line) · focus-visible (inside) · grab (grip on hover) · lifted (.38, dashed). */
 export interface DiffHunkProps {
   /** header text; default built from oldStart/newStart: "@@ −12,6 +12,9 @@" */
   range?: string;

@@ -5,3 +5,4 @@ The @ badge marks the working copy — wherever @ appears (card, menu head, loca
 ~~~
 
 - Saffron (`--co`) belongs to @ alone.
+- Keyboard · VoiceOver · Reduce motion: not focusable · read with its card ("Working copy", or "working copy of default") · static.

@@ -1,0 +1,80 @@
+<!-- @dsCard group="Components" viewport="1720x2060" name="Push dialog — Night" subtitle="jj git push as a sheet: the default with tags, by hand, bulk, two remotes, refusals with and without Allow (also on @), partial success, nothing to push, pushing, errors" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;background:var(--canvas);min-height:100vh;color:var(--text);font-family:var(--font-sans)}.grid{display:grid;grid-template-columns:repeat(3,540px);gap:28px 30px;padding:26px 28px;align-items:start}.cell{display:flex;flex-direction:column;gap:9px}.cap{font:var(--fs-sm) var(--font-sans);color:var(--text-dim);text-wrap:pretty}.cap b{color:var(--text);font-weight:600}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { PushDialog } = window.ZanshinDesignSystem_a33847;
+  const noop = () => {};
+  const B = {
+    swipe: { name: "feature/ZAN-412_swipe", tracked: true, from: "xyzrmwpo", to: "plkmnvxo", kind: "forward", inDefault: true },
+    docs: { name: "docs/api-reference", tracked: true, from: "tzkvmrls", to: "mrplxqwv", kind: "forward", inDefault: true },
+    tag: { name: "v1.5.0", type: "tag", tracked: true, from: null, to: "plkmnvxo", kind: "new", inDefault: true },
+    tagRc: { name: "v1.6.0-rc1", type: "tag", from: null, to: "mrplxqwv", kind: "new" },
+    review: { name: "review/ZAN-412-v2", from: null, to: "plkmnvxo", kind: "new" },
+    exp: { name: "exp/riverpod", tracked: true, from: "uwqmpnrk", to: "tnrkslqw", kind: "sideways" },
+    spike: { name: "old/spike-cache", tracked: true, from: "qrvtmkxl", to: null, kind: "delete" },
+    wip: { name: "wip/offline", from: null, to: "mxnztwqp", kind: "new", refused: "empty-description" },
+    back: { name: "release/1.5", tracked: true, from: "vkxnrslp", to: "pnwqxrtk", kind: "backward" },
+  };
+  const R = {
+    two: { name: "wip/sync-engine", from: null, to: "kqwtlmzr", kind: "new", refused: ["empty-description", "conflicts"], refusedAt: "kqwtlmzr" },
+    author: { name: "import/legacy", from: null, to: "zzpqmwkr", kind: "new", refused: "no-author" },
+    conflicted: { name: "main", tracked: true, from: "wqzkmtrl", to: "pnwqxrtk", kind: "forward", inDefault: true, refused: "conflicted" },
+    untracked: { name: "ci/cache", remotes: { origin: { from: "lmrtqkzw", to: "rtkpwnql", kind: "forward", refused: "untracked-remote" } } },
+  };
+  const M = {
+    main: { name: "main", remotes: { origin: { tracked: true, from: "wqzkmtrl", to: "plkmnvxo", kind: "forward", inDefault: true }, upstream: { tracked: true, from: "vkxnrslp", to: "plkmnvxo", kind: "forward", inDefault: true } } },
+    swipe: { name: "feature/ZAN-412_swipe", remotes: { origin: { tracked: true, from: "xyzrmwpo", to: "plkmnvxo", kind: "forward", inDefault: true }, upstream: { from: null, to: "plkmnvxo", kind: "new", refused: "tracked-elsewhere" } } },
+    docs: { name: "docs/api-reference", remotes: { origin: { tracked: true, from: "tzkvmrls", to: "mrplxqwv", kind: "forward", inDefault: true }, upstream: { tracked: true, from: "mrplxqwv", to: "mrplxqwv", kind: "none" } } },
+    tag: { name: "v1.5.0", type: "tag", remotes: { origin: { tracked: true, from: null, to: "plkmnvxo", kind: "new", inDefault: true }, upstream: { tracked: true, from: null, to: "plkmnvxo", kind: "new", inDefault: true } } },
+  };
+  const change = { id: "ovknlmro", generated: "push-ovknlmro" };
+  const P = (p) => <PushDialog scrim={false} width={540} remotes={["origin", "upstream"]} defaultRemotes={["origin"]} onPush={noop} onCancel={noop} {...p}/>;
+  function Demo() {
+    const [a1, setA1] = React.useState({});
+    const [c1, setC1] = React.useState({ ...change, refused: "empty-description" });
+    const [s2, setS2] = React.useState(["feature/ZAN-412_swipe", "exp/riverpod", "old/spike-cache", "wip/offline", "tag:v1.6.0-rc1"]);
+    const [c2, setC2] = React.useState({ ...change, on: true, name: "ralph/swipe-polish" });
+    const [a2, setA2] = React.useState({});
+    const [a5, setA5] = React.useState({});
+    return (
+      <div className="grid">
+        <div className="cell"><span className="cap"><b>Ready</b> · the preselection is what jj git push alone sends — tracked bookmarks and tracked tags · @ has no description: refused until allowed</span>
+          {P({ bookmarks: [B.swipe, B.docs, B.tag, B.review], change: c1, onChange: setC1, allow: a1, onAllow: setA1 })}</div>
+        <div className="cell"><span className="cap"><b>Hand-picked</b> · a change under its own name · a tag by hand (--tag) · warnings · a refusal with Allow</span>
+          {P({ bookmarks: [B.swipe, B.exp, B.spike, B.wip, B.tagRc, B.review], selected: s2, onSelect: setS2, change: c2, onChange: setC2, allow: a2, onAllow: setA2 })}</div>
+        <div className="cell"><span className="cap"><b>Bulk</b> · Tracked → --tracked (tags included) · a remote other than the default</span>
+          {P({ bookmarks: [B.swipe, B.docs, B.back, B.tag, B.review], selected: ["feature/ZAN-412_swipe", "docs/api-reference", "release/1.5", "tag:v1.5.0"], bulk: "tracked", remote: ["upstream"] })}</div>
+        <div className="cell"><span className="cap"><b>Two remotes</b> · git.push = ["origin", "upstream"] — both preselected, no flag · one line per remote · not sent where the default doesn’t send it</span>
+          {P({ bookmarks: [M.main, M.swipe, M.docs, M.tag], defaultRemotes: ["origin", "upstream"] })}</div>
+        <div className="cell"><span className="cap"><b>Two remotes, by hand</b> · each ticked ref goes to both — feature/ZAN-412_swipe is tracked on origin, so upstream refuses it (and with it the whole push: it can’t be ticked)</span>
+          {P({ bookmarks: [M.main, M.swipe, M.docs, M.tag], defaultRemotes: ["origin", "upstream"], selected: ["main", "feature/ZAN-412_swipe", "tag:v1.5.0"] })}</div>
+        <div className="cell"><span className="cap"><b>Refused</b> · two reasons, each with its Allow · no author · conflicted · an untracked remote bookmark — no switch, jj’s hint instead</span>
+          {P({ bookmarks: [B.swipe, R.two, R.author, R.conflicted, R.untracked], allow: a5, onAllow: setA5 })}</div>
+        <div className="cell"><span className="cap"><b>Done — some pushed, some not</b> · the lease failed for one, the remote rejected one; the push is recorded</span>
+          {P({ bookmarks: [B.swipe, B.docs, B.back, B.tag], selected: ["feature/ZAN-412_swipe", "docs/api-reference", "release/1.5", "tag:v1.5.0"], state: "done", onFetch: noop, onDone: noop,
+            results: [{ ref: "feature/ZAN-412_swipe", remote: "origin", status: "pushed" }, { ref: "tag:v1.5.0", remote: "origin", status: "pushed" }, { ref: "docs/api-reference", remote: "origin", status: "lease" }, { ref: "release/1.5", remote: "origin", status: "rejected", message: "protected branch — force-push is not allowed" }] })}</div>
+        <div className="cell"><span className="cap"><b>Nothing to push</b> · no bookmark or tag has moved, none sits on @</span>
+          {P({ bookmarks: [], change: { ...change, on: false } })}</div>
+        <div className="cell"><span className="cap"><b>Pushing</b> · progress in the footer, Push busy · <b>Error</b> · credentials refused (network: the same note)</span>
+          {P({ bookmarks: [B.swipe, B.docs], state: "pushing", progress: .55 })}
+          {P({ bookmarks: [B.swipe], error: { kind: "auth", remote: "origin" } })}</div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

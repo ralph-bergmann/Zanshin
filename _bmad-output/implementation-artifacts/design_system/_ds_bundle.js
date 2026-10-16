@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"1832ce60da58","components/actions/Button.jsx":"908088f81a4c","components/actions/IconButton.jsx":"4c0e46521c19","components/brand/Icon.jsx":"b7fdbd8828a7","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"1421c40f478b","components/content/DiffView.jsx":"0c184d9798dd","components/content/FileRow.jsx":"daf1830bc45f","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"19cd159660f9","components/forms/Checkbox.jsx":"31fed6c8ce61","components/forms/SearchField.jsx":"ffb9e83804ba","components/forms/Segmented.jsx":"853a8320151a","components/forms/Select.jsx":"3dcfb6974f4d","components/forms/Slider.jsx":"b7f0306841e8","components/forms/Switch.jsx":"b9c611b9e251","components/forms/TextField.jsx":"4972d77b277f","components/graph/AtBadge.jsx":"2e632db09a27","components/graph/BookmarkChip.jsx":"d09fc9abf2b6","components/graph/ChangeCard.jsx":"7a9764c73265","components/graph/ChangeId.jsx":"cdfcdc246109","components/graph/DayAxis.jsx":"daf511168e2f","components/graph/Flag.jsx":"07a6c846ef01","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/StackCard.jsx":"2f1bb5d3a29a","components/menus/DropMenu.jsx":"949f42439199","components/menus/Menu.jsx":"252962eb8cab","components/menus/ProjectMenu.jsx":"cb5f414db82b","components/overlays/DragGhost.jsx":"e3271e35fecd","components/overlays/PeekCard.jsx":"2107f8cc819f","components/overlays/Toast.jsx":"a57cedd57864","components/search/GraphSearch.jsx":"266bdb1eed1c","components/search/RevsetDialog.jsx":"c2e821658590","components/search/SearchMenu.jsx":"2fdaecea03db","components/search/SearchPopover.jsx":"3d5ea654c592","components/settings/SettingsGroup.jsx":"5b815f7fe172","components/settings/SettingsRow.jsx":"7d9c836ee9c8","components/surfaces/Callout.jsx":"c81b2fefbca8","components/surfaces/Dialog.jsx":"00ba572aab67","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"84209a41cae8","components/window/TrafficLights.jsx":"6a3e17094dbb","ui_kits/desktop/app.jsx":"9db78544f9f8","ui_kits/desktop/chrome.jsx":"aed2c27a8273","ui_kits/desktop/data.js":"b8357bf78fa1","ui_kits/desktop/dialogs.jsx":"8cf56d61bb01","ui_kits/desktop/graph.jsx":"c00b2e7d7394","ui_kits/desktop/inspector.jsx":"3c179bb333df","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"a0f57c614cd2"},"inlinedExternals":[],"unexposedExports":[{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
+/* @ds-bundle: {"format":4,"namespace":"ZanshinDesignSystem_a33847","components":[{"name":"AtPill","sourcePath":"components/actions/AtPill.jsx"},{"name":"Button","sourcePath":"components/actions/Button.jsx"},{"name":"IconButton","sourcePath":"components/actions/IconButton.jsx"},{"name":"Icon","sourcePath":"components/brand/Icon.jsx"},{"name":"NamiMark","sourcePath":"components/brand/NamiMark.jsx"},{"name":"Wordmark","sourcePath":"components/brand/Wordmark.jsx"},{"name":"DiffHunk","sourcePath":"components/content/DiffHunk.jsx"},{"name":"DiffView","sourcePath":"components/content/DiffView.jsx"},{"name":"FileRow","sourcePath":"components/content/FileRow.jsx"},{"name":"Kbd","sourcePath":"components/content/Kbd.jsx"},{"name":"ProjectRow","sourcePath":"components/content/ProjectRow.jsx"},{"name":"Badge","sourcePath":"components/controls/Badge.jsx"},{"name":"Chip","sourcePath":"components/controls/Chip.jsx"},{"name":"ConfirmDialog","sourcePath":"components/controls/ConfirmDialog.jsx"},{"name":"Disclosure","sourcePath":"components/controls/Disclosure.jsx"},{"name":"Link","sourcePath":"components/controls/Link.jsx"},{"name":"Presence","sourcePath":"components/controls/Presence.jsx"},{"name":"ProgressBar","sourcePath":"components/controls/ProgressBar.jsx"},{"name":"Radio","sourcePath":"components/controls/Radio.jsx"},{"name":"RadioGroup","sourcePath":"components/controls/Radio.jsx"},{"name":"ScrollArea","sourcePath":"components/controls/ScrollArea.jsx"},{"name":"Skeleton","sourcePath":"components/controls/Skeleton.jsx"},{"name":"Spinner","sourcePath":"components/controls/Spinner.jsx"},{"name":"Tooltip","sourcePath":"components/controls/Tooltip.jsx"},{"name":"Checkbox","sourcePath":"components/forms/Checkbox.jsx"},{"name":"SearchField","sourcePath":"components/forms/SearchField.jsx"},{"name":"Segmented","sourcePath":"components/forms/Segmented.jsx"},{"name":"Select","sourcePath":"components/forms/Select.jsx"},{"name":"Slider","sourcePath":"components/forms/Slider.jsx"},{"name":"Switch","sourcePath":"components/forms/Switch.jsx"},{"name":"TextField","sourcePath":"components/forms/TextField.jsx"},{"name":"AtBadge","sourcePath":"components/graph/AtBadge.jsx"},{"name":"WorkspaceTag","sourcePath":"components/graph/AtBadge.jsx"},{"name":"BookmarkChip","sourcePath":"components/graph/BookmarkChip.jsx"},{"name":"ChangeCard","sourcePath":"components/graph/ChangeCard.jsx"},{"name":"ChangeId","sourcePath":"components/graph/ChangeId.jsx"},{"name":"DayLabel","sourcePath":"components/graph/DayAxis.jsx"},{"name":"DayAxis","sourcePath":"components/graph/DayAxis.jsx"},{"name":"Flag","sourcePath":"components/graph/Flag.jsx"},{"name":"GraphPorts","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEdge","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"GraphEnd","sourcePath":"components/graph/GraphEdge.jsx"},{"name":"StackCard","sourcePath":"components/graph/StackCard.jsx"},{"name":"DropMenu","sourcePath":"components/menus/DropMenu.jsx"},{"name":"Menu","sourcePath":"components/menus/Menu.jsx"},{"name":"ProjectMenu","sourcePath":"components/menus/ProjectMenu.jsx"},{"name":"DragGhost","sourcePath":"components/overlays/DragGhost.jsx"},{"name":"PeekCard","sourcePath":"components/overlays/PeekCard.jsx"},{"name":"StaleNotice","sourcePath":"components/overlays/StaleNotice.jsx"},{"name":"Toast","sourcePath":"components/overlays/Toast.jsx"},{"name":"PushDialog","sourcePath":"components/push/PushDialog.jsx"},{"name":"SearchScopes","sourcePath":"components/search/GraphSearch.jsx"},{"name":"SearchDollar","sourcePath":"components/search/GraphSearch.jsx"},{"name":"GraphSearch","sourcePath":"components/search/GraphSearch.jsx"},{"name":"RevsetDialog","sourcePath":"components/search/RevsetDialog.jsx"},{"name":"SearchMenu","sourcePath":"components/search/SearchMenu.jsx"},{"name":"SearchPopover","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchGroup","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchRow","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchMatch","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchTag","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SearchAvatar","sourcePath":"components/search/SearchPopover.jsx"},{"name":"SettingsGroup","sourcePath":"components/settings/SettingsGroup.jsx"},{"name":"SettingsRow","sourcePath":"components/settings/SettingsRow.jsx"},{"name":"Callout","sourcePath":"components/surfaces/Callout.jsx"},{"name":"CalloutText","sourcePath":"components/surfaces/Callout.jsx"},{"name":"Dialog","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"Island","sourcePath":"components/surfaces/Island.jsx"},{"name":"IslandSeparator","sourcePath":"components/surfaces/Island.jsx"},{"name":"Popover","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverHeader","sourcePath":"components/surfaces/Popover.jsx"},{"name":"PopoverSeparator","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionRow","sourcePath":"components/surfaces/Popover.jsx"},{"name":"OptionLink","sourcePath":"components/surfaces/Popover.jsx"},{"name":"ResizeEdge","sourcePath":"components/surfaces/ResizeEdge.jsx"},{"name":"TrafficLights","sourcePath":"components/window/TrafficLights.jsx"},{"name":"Window","sourcePath":"components/window/Window.jsx"}],"sourceHashes":{"components/actions/AtPill.jsx":"a27d14275f5c","components/actions/Button.jsx":"d79d9d36cef1","components/actions/IconButton.jsx":"a3731d5452c3","components/brand/Icon.jsx":"45c4a7df2bac","components/brand/NamiMark.jsx":"9dab91ef51d2","components/brand/Wordmark.jsx":"5c045c96be92","components/content/DiffHunk.jsx":"017e79b469f3","components/content/DiffView.jsx":"04b319036eb4","components/content/FileRow.jsx":"a920e39b10c6","components/content/Kbd.jsx":"85089290debd","components/content/ProjectRow.jsx":"15e5ec6e86ca","components/controls/Badge.jsx":"bd34a0b91c06","components/controls/Chip.jsx":"c389ddae92da","components/controls/ConfirmDialog.jsx":"0f90a823811a","components/controls/Disclosure.jsx":"222f3fcdf807","components/controls/Link.jsx":"4472cca8a205","components/controls/Presence.jsx":"a433e3ef6872","components/controls/ProgressBar.jsx":"ab2b80b6e92c","components/controls/Radio.jsx":"e20f60621deb","components/controls/ScrollArea.jsx":"4cb3c524784b","components/controls/Skeleton.jsx":"6d03ea29ccf7","components/controls/Spinner.jsx":"a4b7e2c2ecbd","components/controls/Tooltip.jsx":"fc1e596f3e3b","components/forms/Checkbox.jsx":"d3a2476ac687","components/forms/SearchField.jsx":"717909ccaa73","components/forms/Segmented.jsx":"92df17d2c77b","components/forms/Select.jsx":"b4ee6e478fd0","components/forms/Slider.jsx":"1dd0fc0d8074","components/forms/Switch.jsx":"024a1a8f1cfa","components/forms/TextField.jsx":"c5da3b37ed1d","components/graph/AtBadge.jsx":"06741664cea3","components/graph/BookmarkChip.jsx":"bff238511e77","components/graph/ChangeCard.jsx":"c4738cdf8461","components/graph/ChangeId.jsx":"cdfcdc246109","components/graph/DayAxis.jsx":"daf511168e2f","components/graph/Flag.jsx":"74ce24245881","components/graph/GraphEdge.jsx":"54a06bd4f2a0","components/graph/StackCard.jsx":"2f1bb5d3a29a","components/menus/DropMenu.jsx":"34a1f5dcb052","components/menus/Menu.jsx":"eba0bb90465b","components/menus/ProjectMenu.jsx":"5ad3fe0fc674","components/overlays/DragGhost.jsx":"1ef204a4c010","components/overlays/PeekCard.jsx":"2107f8cc819f","components/overlays/StaleNotice.jsx":"f6e23ed7288f","components/overlays/Toast.jsx":"fd2b8b195f24","components/push/PushDialog.jsx":"84a747440735","components/search/GraphSearch.jsx":"d58ce1ecb94c","components/search/RevsetDialog.jsx":"5bdcbf8e40d7","components/search/SearchMenu.jsx":"11fa1d605d91","components/search/SearchPopover.jsx":"b719f8aa4a39","components/settings/SettingsGroup.jsx":"5b815f7fe172","components/settings/SettingsRow.jsx":"7d9c836ee9c8","components/surfaces/Callout.jsx":"b1a86c8ba506","components/surfaces/Dialog.jsx":"60716305daa1","components/surfaces/Island.jsx":"3d29240d5eae","components/surfaces/Popover.jsx":"9d190f861642","components/surfaces/ResizeEdge.jsx":"7e3ccde5113a","components/window/TrafficLights.jsx":"9e60a5e2b2a2","components/window/Window.jsx":"613b0da2d731","ui_kits/desktop/app.jsx":"aabbb9e82bcd","ui_kits/desktop/chrome.jsx":"385289d78a23","ui_kits/desktop/data.js":"b8357bf78fa1","ui_kits/desktop/dialogs.jsx":"de3d5fdba128","ui_kits/desktop/graph.jsx":"c00b2e7d7394","ui_kits/desktop/inspector.jsx":"b6944e6c90c1","ui_kits/desktop/layout.js":"cb0482023945","ui_kits/desktop/search.jsx":"842622ca4ae6"},"inlinedExternals":[],"unexposedExports":[{"name":"useSheetFocus","sourcePath":"components/surfaces/Dialog.jsx"},{"name":"zsDiffLine","sourcePath":"components/content/DiffView.jsx"},{"name":"zsMs","sourcePath":"components/menus/Menu.jsx"},{"name":"zsProjectStatus","sourcePath":"components/content/ProjectRow.jsx"}]} */
 
 (() => {
 
@@ -11,86 +11,100 @@ const __ds_scope = {};
 // components/brand/Icon.jsx
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
-// Zanshin UI icons — 16px grid, 1.3–1.6 stroke, round caps, currentColor. Generated from icons/ui/*.svg.
+// Zanshin UI icons — 16px grid, one 1.5 stroke, round caps and joins, currentColor; solids only where meaning needs one.
+// Generated from assets/icons/ui/*.svg — the source. The Flutter app renders those same files (precompiled at build time, tinted in one colour).
 const ZS_ICON_SET = {
-  "abandon": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5\"></path></g>",
-  "arrow-left": "<path d=\"M9.5 4L5.5 8l4 4\" stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></path>",
-  "auto": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\"><circle cx=\"8\" cy=\"8\" r=\"5.5\"></circle><path d=\"M8 2.5v11\" stroke=\"currentColor\" stroke-width=\"1.4\"></path><path d=\"M8 2.5a5.5 5.5 0 0 0 0 11\" fill=\"currentColor\" stroke=\"none\"></path></g>",
-  "bookmark-filled": "<path d=\"M4.6 2.2h6.8c.47 0 .85.38.85.85v10.4c0 .35-.4.55-.68.34L8 11.1l-3.57 2.69a.43.43 0 0 1-.68-.34V3.05c0-.47.38-.85.85-.85z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linejoin=\"round\"></path>",
-  "bookmark": "<path d=\"M4.6 2.2h6.8c.47 0 .85.38.85.85v10.4c0 .35-.4.55-.68.34L8 11.1l-3.57 2.69a.43.43 0 0 1-.68-.34V3.05c0-.47.38-.85.85-.85z\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linejoin=\"round\"></path>",
-  "branch": "<g stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\"><circle cx=\"4\" cy=\"4\" r=\"1.8\"></circle><circle cx=\"4\" cy=\"12\" r=\"1.8\"></circle><circle cx=\"12\" cy=\"8\" r=\"1.8\"></circle><path d=\"M4 5.8v4.4M5.6 4q3 0 5 2.5\"></path></g>",
-  "calendar": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\"><rect x=\"2.5\" y=\"3.5\" width=\"11\" height=\"10\" rx=\"1\"></rect><path d=\"M2.5 6.5h11M5.5 2v3M10.5 2v3\"></path></g>",
-  "check": "<path d=\"M3 8.5l3 3 7-7\" stroke=\"currentColor\" stroke-width=\"1.6\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></path>",
-  "chevron-down": "<path d=\"M4.5 6.5l3.5 3.5 3.5-3.5\" stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></path>",
-  "chevron-right": "<path d=\"M6 4l4 4-4 4\" stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></path>",
-  "close": "<path d=\"M3.5 3.5l9 9M12.5 3.5l-9 9\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\"></path>",
-  "cloud": "<path d=\"M4.5 12.5h7a2.5 2.5 0 0 0 .3-4.98A3.5 3.5 0 0 0 5 6.5 2.75 2.75 0 0 0 4.5 12.5z\" stroke=\"currentColor\" stroke-width=\"1.3\" fill=\"none\" stroke-linejoin=\"round\"></path>",
-  "conflict": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 1.5L1.5 13.5h13L8 1.5z\"></path><path d=\"M8 6v3.5M8 11v0.4\"></path></g>",
-  "describe": "<path d=\"M3 13l.6-2.6L10.5 3.5l2 2-6.9 6.9L3 13zM9.3 4.7l2 2\" stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linejoin=\"round\"></path>",
-  "download": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 2v8M5 7l3 3 3-3\"></path><path d=\"M3 13h10\"></path></g>",
-  "edit": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 13l1-3 7-7 2 2-7 7-3 1z\"></path><path d=\"M10 3.5l2 2\"></path></g>",
-  "fetch": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"><path d=\"M8 2v8\"></path><path d=\"M5 7l3 3 3-3\"></path><path d=\"M3 13h10\"></path></g>",
-  "file-text": "<g stroke=\"currentColor\" stroke-width=\"1.3\" fill=\"none\" stroke-linejoin=\"round\"><path d=\"M4 2h5l3 3v9H4V2z\"></path><path d=\"M9 2v3h3M6 8.5h4M6 11h3\" stroke-linecap=\"round\"></path></g>",
-  "file": "<path d=\"M4 2h5l3 3v9H4V2z\" stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linejoin=\"round\"></path>",
-  "folder-open": "<path d=\"M2.5 13V5h4l1.5 1.5h5.5V8M2.5 13l1.8-5h11l-1.8 5h-11z\" stroke=\"currentColor\" stroke-width=\"1.3\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\"></path>",
-  "folder-plus": "<g stroke=\"currentColor\" stroke-width=\"1.3\" fill=\"none\" stroke-linejoin=\"round\"><path d=\"M2.5 13V4.5h4L8 6h5.5V13H2.5z\"></path><path d=\"M8 8.5v3M6.5 10h3\" stroke-linecap=\"round\"></path></g>",
-  "folder": "<path d=\"M3 5.5h4.5l1.5 1.5h6V14H3V5.5z\" stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linejoin=\"round\"></path>",
-  "grip": "<g fill=\"currentColor\"><circle cx=\"6\" cy=\"4\" r=\"1.1\"></circle><circle cx=\"10\" cy=\"4\" r=\"1.1\"></circle><circle cx=\"6\" cy=\"8\" r=\"1.1\"></circle><circle cx=\"10\" cy=\"8\" r=\"1.1\"></circle><circle cx=\"6\" cy=\"12\" r=\"1.1\"></circle><circle cx=\"10\" cy=\"12\" r=\"1.1\"></circle></g>",
-  "hash": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"><path d=\"M6 2l-1 12M11 2l-1 12M2.5 5.5h11M2 10.5h11\"></path></g>",
-  "history": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"><circle cx=\"8\" cy=\"8\" r=\"5.5\"></circle><path d=\"M8 4.5V8l2.2 2.2\"></path></g>",
-  "home": "<path d=\"M2.5 7.5L8 2.5l5.5 5M4 7v6.5h8V7\" stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linejoin=\"round\" stroke-linecap=\"round\"></path>",
-  "merge": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"><path d=\"M5 3v6a3 3 0 0 0 3 3h3\"></path><circle cx=\"5\" cy=\"3\" r=\"1.5\"></circle><circle cx=\"11\" cy=\"12\" r=\"1.5\"></circle></g>",
-  "moon": "<path d=\"M12.5 8.5A5.5 5.5 0 1 1 7.5 3.5a4.5 4.5 0 0 0 5 5z\" stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-linejoin=\"round\"></path>",
-  "more": "<g fill=\"currentColor\"><circle cx=\"3.5\" cy=\"8\" r=\"1.1\"></circle><circle cx=\"8\" cy=\"8\" r=\"1.1\"></circle><circle cx=\"12.5\" cy=\"8\" r=\"1.1\"></circle></g>",
-  "plus": "<path d=\"M8 3v10M3 8h10\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"></path>",
-  "pull": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"><path d=\"M8 2v6\"></path><path d=\"M5 5l3 3 3-3\"></path><circle cx=\"8\" cy=\"12\" r=\"1.5\"></circle></g>",
-  "push": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"><path d=\"M8 13V5\"></path><path d=\"M5 8l3-3 3 3\"></path><path d=\"M3 2h10\"></path></g>",
-  "reviews": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"><path d=\"M3 11.5V4a1 1 0 0 1 1-1h7l3 3v5.5a1 1 0 0 1-1 1H6L3 14v-2.5z\"></path></g>",
-  "search": "<g stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-linecap=\"round\"><circle cx=\"7\" cy=\"7\" r=\"4\"></circle><path d=\"M10 10l3.5 3.5\"></path></g>",
-  "settings": "<g stroke=\"currentColor\" stroke-width=\"1.3\" fill=\"none\"><circle cx=\"8\" cy=\"8\" r=\"2.2\"></circle><path d=\"M8 1.5v1.6M8 12.9v1.6M14.5 8h-1.6M3.1 8H1.5M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1M12.6 12.6l-1.1-1.1M4.5 4.5L3.4 3.4\"></path></g>",
-  "split-inline": "<g stroke=\"currentColor\" stroke-width=\"1.3\" fill=\"none\"><rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.2\"></rect><path d=\"M2 8h12\"></path></g>",
-  "split-side": "<g stroke=\"currentColor\" stroke-width=\"1.3\" fill=\"none\"><rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.2\"></rect><path d=\"M8 3v10\"></path></g>",
-  "squash": "<g stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 2v7M5 6l3 3 3-3\"></path><path d=\"M3 13h10\"></path></g>",
-  "stack-collapse": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"6.5\" width=\"9\" height=\"7.5\" rx=\"1.5\"></rect><path d=\"M5 4h8.5a.5.5 0 0 1 .5.5V11\"></path><path d=\"M8 1.5h7.5\"></path></g>",
-  "stacked-on": "<path d=\"M8 3v10M5 6l3-3 3 3\" stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></path>",
-  "sun": "<g stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-linecap=\"round\"><circle cx=\"8\" cy=\"8\" r=\"2.8\"></circle><path d=\"M8 1.5V3M8 13v1.5M14.5 8H13M3 8H1.5M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7L3.6 3.6\"></path></g>",
-  "undo": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"><path d=\"M3.5 6.5H10a3.5 3.5 0 1 1 0 7H6\"></path><path d=\"M5.5 4L3 6.5 5.5 9\"></path></g>",
-  "user": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\"><circle cx=\"8\" cy=\"6\" r=\"2.5\"></circle><path d=\"M3 14c0-2.5 2.2-4.5 5-4.5s5 2 5 4.5\"></path></g>",
-  "view-options": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"><path d=\"M2.5 5h1.6M7.9 5h5.6M2.5 11h6.1M12.4 11h1.1\"></path><circle cx=\"6\" cy=\"5\" r=\"1.9\"></circle><circle cx=\"10.5\" cy=\"11\" r=\"1.9\"></circle></g>",
-  "working-copy-at": "<text x=\"8\" y=\"12\" text-anchor=\"middle\" font-size=\"11\" font-weight=\"700\" fill=\"currentColor\" font-family=\"ui-monospace,monospace\">@</text>",
-  "workstream": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\"><circle cx=\"3.5\" cy=\"4\" r=\"1.5\"></circle><circle cx=\"3.5\" cy=\"12\" r=\"1.5\"></circle><circle cx=\"12.5\" cy=\"4\" r=\"1.5\"></circle><circle cx=\"12.5\" cy=\"12\" r=\"1.5\"></circle><path d=\"M3.5 5.5v5M12.5 5.5v5M5 4h6M5 12h6\"></path></g>",
-  // added from the floating client: @ locator arrow (app-float), drop-menu + quick-action glyphs (graph-dnd, graph-view), checkbox marks (inspector)
-  "arrow-up": "<path d=\"M8 13V3.5M4 7.5l4-4 4 4\" stroke=\"currentColor\" stroke-width=\"1.6\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></path>",
-  "add": "<path d=\"M8 2.5v11M2.5 8h11\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"></path>",
-  "check-bold": "<path d=\"M3 8.5l3 3 7-7\" stroke=\"currentColor\" stroke-width=\"2.2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></path>",
-  "dash-bold": "<path d=\"M4 8h8\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"></path>",
-  "more-bold": "<g fill=\"currentColor\"><circle cx=\"3.5\" cy=\"8\" r=\"1.4\"></circle><circle cx=\"8\" cy=\"8\" r=\"1.4\"></circle><circle cx=\"12.5\" cy=\"8\" r=\"1.4\"></circle></g>",
-  "new-on-top": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2.5\" y=\"10\" width=\"11\" height=\"4\" rx=\"1.2\"></rect><path d=\"M8 1.75v5.5M5.25 4.5h5.5\"></path></g>",
-  "insert-after": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3.5 1.75h9\"></path><path d=\"M8 4v4.5M5.75 6.25h4.5\"></path><rect x=\"2.5\" y=\"10.5\" width=\"11\" height=\"3.75\" rx=\"1.2\"></rect></g>",
-  "insert-before": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2.5\" y=\"1.75\" width=\"11\" height=\"3.75\" rx=\"1.2\"></rect><path d=\"M8 7.5v4.5M5.75 9.75h4.5\"></path><path d=\"M3.5 14.25h9\"></path></g>",
-  "move-onto": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 2v8.5M4.5 7l3.5 3.5L11.5 7\"></path><path d=\"M3 14h10\"></path></g>",
-  "move-only": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"5\" y=\"1.5\" width=\"6\" height=\"4.5\" rx=\"1.2\"></rect><path d=\"M8 7.5v3.5M6 9.5l2 2 2-2\"></path><path d=\"M3 14h10\"></path></g>",
-  "squash-into": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2.5\" y=\"9\" width=\"11\" height=\"5\" rx=\"1.3\"></rect><path d=\"M8 1.5v5.5M5.5 4.5L8 7l2.5-2.5\"></path></g>",
-  "merge-new": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"3\" r=\"1.6\"></circle><path d=\"M8 4.6V7c0 2-4 2-4 4.5V14M8 7c0 2 4 2 4 4.5V14\"></path></g>",
-  "duplicate": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"5.5\" y=\"5.5\" width=\"8\" height=\"8\" rx=\"1.5\"></rect><path d=\"M3 10.5V3.5a1 1 0 0 1 1-1h7\"></path></g>",
-  // added from the floating client's graph search (graph-search.jsx): the Change and Description scope glyphs
-  "change": "<g stroke=\"currentColor\" stroke-width=\"1.4\" fill=\"none\" stroke-linecap=\"round\"><circle cx=\"8\" cy=\"8\" r=\"2.6\"></circle><path d=\"M1.5 8h3.9M10.6 8h3.9\"></path></g>",
-  "description": "<path d=\"M3 4.5h10M3 8h10M3 11.5h6\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linecap=\"round\"></path>",
-  // the configurations dialog's list toolbar (revset-config.jsx): remove, duplicate, move up
-  "minus": "<path d=\"M3 8h10\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\"></path>",
-  "copy": "<g stroke=\"currentColor\" stroke-width=\"1.3\" fill=\"none\"><rect x=\"5.5\" y=\"5.5\" width=\"8\" height=\"8\" rx=\"1.5\"></rect><path d=\"M10.5 3.5V3A1.5 1.5 0 0 0 9 1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5\"></path></g>",
-  "chevron-up": "<path d=\"M4.5 9.5L8 6l3.5 3.5\" stroke=\"currentColor\" stroke-width=\"1.5\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></path>",
-  "grip-dots": ["0 0 10 12", "<g fill=\"currentColor\"><circle cx=\"3\" cy=\"2.5\" r=\"1\"></circle><circle cx=\"7\" cy=\"2.5\" r=\"1\"></circle><circle cx=\"3\" cy=\"6\" r=\"1\"></circle><circle cx=\"7\" cy=\"6\" r=\"1\"></circle><circle cx=\"3\" cy=\"9.5\" r=\"1\"></circle><circle cx=\"7\" cy=\"9.5\" r=\"1\"></circle></g>"]
+  "abandon": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5\"></path></g>",
+  "alert": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"8\" r=\"5.75\"></circle><path d=\"M8 5.5v2.25\"></path><circle cx=\"8\" cy=\"10.35\" r=\"0.85\" fill=\"currentColor\" stroke=\"none\"></circle></g>",
+  "arrow-up": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 13.25V3M4.5 6.5L8 3l3.5 3.5\"></path></g>",
+  "auto": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"8\" r=\"5.5\"></circle><path d=\"M8 2.5v11\"></path><path d=\"M8 2.5a5.5 5.5 0 0 0 0 11z\" fill=\"currentColor\" stroke=\"none\"></path></g>",
+  "bookmark": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4.6 2.2h6.8c.47 0 .85.38.85.85v10.4c0 .35-.4.55-.68.34L8 11.1l-3.57 2.69a.43.43 0 0 1-.68-.34V3.05c0-.47.38-.85.85-.85z\"></path></g>",
+  "bookmark-filled": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4.6 2.2h6.8c.47 0 .85.38.85.85v10.4c0 .35-.4.55-.68.34L8 11.1l-3.57 2.69a.43.43 0 0 1-.68-.34V3.05c0-.47.38-.85.85-.85z\" fill=\"currentColor\"></path></g>",
+  "branch": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"4\" cy=\"4\" r=\"1.75\"></circle><circle cx=\"4\" cy=\"12\" r=\"1.75\"></circle><circle cx=\"12\" cy=\"8\" r=\"1.75\"></circle><path d=\"M4 5.75v4.5M5.75 4q3 0 5 2.5\"></path></g>",
+  "calendar": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2.5\" y=\"3.5\" width=\"11\" height=\"10\" rx=\"1.5\"></rect><path d=\"M2.5 6.5h11M5.5 1.75V4M10.5 1.75V4\"></path></g>",
+  "change": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"8\" r=\"2.5\"></circle><path d=\"M1.75 8h3.75M10.5 8h3.75\"></path></g>",
+  "check": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 8.5l3 3 7-7\"></path></g>",
+  "chevron-down": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4.5 6.25l3.5 3.5 3.5-3.5\"></path></g>",
+  "chevron-left": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9.75 4.5L6.25 8l3.5 3.5\"></path></g>",
+  "chevron-right": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6.25 4.5L9.75 8l-3.5 3.5\"></path></g>",
+  "chevron-up": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4.5 9.75L8 6.25l3.5 3.5\"></path></g>",
+  "close": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3.5 3.5l9 9M12.5 3.5l-9 9\"></path></g>",
+  "cloud": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4.55 12.5h7a2.5 2.5 0 0 0 .3-4.98A3.5 3.5 0 0 0 5.05 6.5 2.75 2.75 0 0 0 4.55 12.5z\"></path></g>",
+  "conflict": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 1.75L1.75 13.5h12.5z\"></path><path d=\"M8 6.05v2.25\"></path><circle cx=\"8\" cy=\"10.9\" r=\"0.85\" fill=\"currentColor\" stroke=\"none\"></circle></g>",
+  "copy": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"5.5\" y=\"5.5\" width=\"8\" height=\"8\" rx=\"1.5\"></rect><path d=\"M2.5 10.5V4A1.5 1.5 0 0 1 4 2.5h6.5\"></path></g>",
+  "describe": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 13l1-3 7-7 2 2-7 7-3 1z\"></path><path d=\"M9.25 4.75l2 2\"></path></g>",
+  "description": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 4.5h10M3 8h10M3 11.5h6\"></path></g>",
+  "duplicate": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"5.5\" y=\"5.5\" width=\"8\" height=\"8\" rx=\"1.5\"></rect><path d=\"M2.5 10.5V4A1.5 1.5 0 0 1 4 2.5h6.5M9.5 8v3M8 9.5h3\"></path></g>",
+  "fetch": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 2v8M5 7l3 3 3-3M3 13h10\"></path></g>",
+  "file": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 2h5l3 3v9H4V2z\"></path><path d=\"M9 2v3h3\"></path></g>",
+  "file-text": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 2h5l3 3v9H4V2z\"></path><path d=\"M9 2v3h3M6.5 8.5h3M6.5 11H8\"></path></g>",
+  "folder": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2.5 12.5V3.5h4L8 5h5.5v7.5H2.5z\"></path></g>",
+  "folder-open": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2.5 12.5V3.5h4L8 5h4.5v2\"></path><path d=\"M2.5 12.5l1.75-5h10l-1.75 5h-10z\"></path></g>",
+  "folder-plus": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2.5 12.5V3.5h4L8 5h5.5v7.5H2.5z\"></path><path d=\"M8 7.5v2.5M6.75 8.75h2.5\"></path></g>",
+  "grip": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"6\" cy=\"4\" r=\"1.25\" fill=\"currentColor\" stroke=\"none\"></circle><circle cx=\"10\" cy=\"4\" r=\"1.25\" fill=\"currentColor\" stroke=\"none\"></circle><circle cx=\"6\" cy=\"8\" r=\"1.25\" fill=\"currentColor\" stroke=\"none\"></circle><circle cx=\"10\" cy=\"8\" r=\"1.25\" fill=\"currentColor\" stroke=\"none\"></circle><circle cx=\"6\" cy=\"12\" r=\"1.25\" fill=\"currentColor\" stroke=\"none\"></circle><circle cx=\"10\" cy=\"12\" r=\"1.25\" fill=\"currentColor\" stroke=\"none\"></circle></g>",
+  "hash": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 2l-1 12M11 2l-1 12M2.5 5.5h11M2 10.5h11\"></path></g>",
+  "history": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"8\" r=\"5.5\"></circle><path d=\"M8 5v3l1.9 1.9\"></path></g>",
+  "home": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2.5 7.5L8 2.5l5.5 5M4 7v6.5h8V7\"></path></g>",
+  "insert-after": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3.5 2h9M8 4.5V8M6.25 6.25h3.5\"></path><rect x=\"2.5\" y=\"10.5\" width=\"11\" height=\"3.5\" rx=\"1.5\"></rect></g>",
+  "insert-before": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2.5\" y=\"2\" width=\"11\" height=\"3.5\" rx=\"1.5\"></rect><path d=\"M8 8v3.5M6.25 9.75h3.5M3.5 14h9\"></path></g>",
+  "merge": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"3.5\" r=\"1.75\"></circle><circle cx=\"4.5\" cy=\"12.5\" r=\"1.75\"></circle><circle cx=\"11.5\" cy=\"12.5\" r=\"1.75\"></circle><path d=\"M4.5 10.75V10c0-1.75 3.5-2.25 3.5-4.75M11.5 10.75V10c0-1.75-3.5-2.25-3.5-4.75\"></path></g>",
+  "merge-new": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"4.5\" cy=\"12.5\" r=\"1.75\"></circle><circle cx=\"11.5\" cy=\"12.5\" r=\"1.75\"></circle><path d=\"M8 1.75v3.5M6.25 3.5h3.5M4.5 10.75V10c0-1.75 3.5-2.25 3.5-4.75M11.5 10.75V10c0-1.75-3.5-2.25-3.5-4.75\"></path></g>",
+  "minus": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 8h10\"></path></g>",
+  "moon": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M13.4 8.47A5.4 5.4 0 1 1 7.33 2.6 4.2 4.2 0 0 0 13.4 8.47z\"></path></g>",
+  "more": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"3.5\" cy=\"8\" r=\"1.25\" fill=\"currentColor\" stroke=\"none\"></circle><circle cx=\"8\" cy=\"8\" r=\"1.25\" fill=\"currentColor\" stroke=\"none\"></circle><circle cx=\"12.5\" cy=\"8\" r=\"1.25\" fill=\"currentColor\" stroke=\"none\"></circle></g>",
+  "move-only": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"5\" y=\"1.75\" width=\"6\" height=\"2.5\" rx=\"1.25\"></rect><path d=\"M8 6.75v2.5M6.25 7.5L8 9.25l1.75-1.75\"></path><rect x=\"2.5\" y=\"11.75\" width=\"11\" height=\"2.5\" rx=\"1.25\"></rect></g>",
+  "move-onto": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 1.75V8M5 5l3 3 3-3\"></path><rect x=\"2.5\" y=\"10.5\" width=\"11\" height=\"3.5\" rx=\"1.5\"></rect></g>",
+  "new-on-top": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 2v5.5M5.25 4.75h5.5\"></path><rect x=\"2.5\" y=\"10.5\" width=\"11\" height=\"3.5\" rx=\"1.5\"></rect></g>",
+  "plus": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 3v10M3 8h10\"></path></g>",
+  "pull": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 1.75v6M5 4.75l3 3 3-3\"></path><circle cx=\"8\" cy=\"12\" r=\"1.75\"></circle></g>",
+  "push": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 13V5M5 8l3-3 3 3M3 2h10\"></path></g>",
+  "reviews": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 11.5V4a1 1 0 0 1 1-1h7l3 3v5.5a1 1 0 0 1-1 1H6L3 14v-2.5z\"></path></g>",
+  "search": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"7\" cy=\"7\" r=\"4\"></circle><path d=\"M10 10l3.5 3.5\"></path></g>",
+  "settings": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6.79 3.77L6.96 2.09A6 6 0 0 1 9.04 2.09L9.21 3.77A4.4 4.4 0 0 1 11.06 4.83L12.6 4.14A6 6 0 0 1 13.64 5.95L12.27 6.94A4.4 4.4 0 0 1 12.27 9.06L13.64 10.05A6 6 0 0 1 12.6 11.86L11.06 11.17A4.4 4.4 0 0 1 9.21 12.23L9.04 13.91A6 6 0 0 1 6.96 13.91L6.79 12.23A4.4 4.4 0 0 1 4.94 11.17L3.4 11.86A6 6 0 0 1 2.36 10.05L3.73 9.06A4.4 4.4 0 0 1 3.73 6.94L2.36 5.95A6 6 0 0 1 3.4 4.14L4.94 4.83A4.4 4.4 0 0 1 6.79 3.77z\"></path><circle cx=\"8\" cy=\"8\" r=\"1.85\"></circle></g>",
+  "split-inline": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.5\"></rect><path d=\"M2 8h12\"></path></g>",
+  "split-side": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.5\"></rect><path d=\"M8 3v10\"></path></g>",
+  "squash": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 1.75V5.5M5.75 3.25L8 5.5l2.25-2.25M8 14.25V10.5M5.75 12.75L8 10.5l2.25 2.25M2.5 8h11\"></path></g>",
+  "squash-into": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2.5 9v3.5A1.5 1.5 0 0 0 4 14h8a1.5 1.5 0 0 0 1.5-1.5V9\"></path><path d=\"M8 1.75v8.5M5 7.25l3 3 3-3\"></path></g>",
+  "stack-collapse": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"8\" width=\"7\" height=\"6\" rx=\"1.5\"></rect><path d=\"M4.5 5.5h5.5A1.5 1.5 0 0 1 11.5 7v4.5M7 3h5.5A1.5 1.5 0 0 1 14 4.5V9\"></path></g>",
+  "sun": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"8\" r=\"2.25\"></circle><path d=\"M8 2v1.25M8 12.75V14M14 8h-1.25M3.25 8H2M12.45 3.55l-1.09 1.09M4.64 11.36l-1.09 1.09M12.45 12.45l-1.09-1.09M4.64 4.64L3.55 3.55\"></path></g>",
+  "undo": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 3.5L3 6.5l3 3\"></path><path d=\"M3 6.5h7a3.5 3.5 0 0 1 0 7H6\"></path></g>",
+  "updown": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 6.25L8 3.5l3 2.75M5 9.75L8 12.5l3-2.75\"></path></g>",
+  "user": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"5.25\" r=\"2.25\"></circle><path d=\"M3 14c0-2.25 2.2-4 5-4s5 1.75 5 4\"></path></g>",
+  "view-options": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2.5 5h1.6M7.9 5h5.6M2.5 11h6.1M12.4 11h1.1\"></path><circle cx=\"6\" cy=\"5\" r=\"1.9\"></circle><circle cx=\"10.5\" cy=\"11\" r=\"1.9\"></circle></g>",
+  "working-copy-at": "<g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"8\" r=\"2.25\"></circle><path d=\"M10.25 5.75V9.1c0 1.05.7 1.9 1.7 1.9 1.25 0 1.8-1.4 1.8-3A5.75 5.75 0 1 0 10.9 13\"></path></g>"
+};
+// retired names → their glyph, so older calls keep working
+const ZS_ICON_ALIASES = {
+  "download": "fetch",
+  "stacked-on": "arrow-up",
+  "add": "plus",
+  "check-bold": "check",
+  "dash-bold": "minus",
+  "more-bold": "more",
+  "grip-dots": "grip",
+  "arrow-left": "chevron-left",
+  "edit": "describe"
+};
+
+// Sizes = the --icon-* tokens (tokens/spacing.css): pass a name or a number in px.
+const ZS_ICON_SIZES = {
+  xs: 10,
+  sm: 12,
+  md: 14,
+  lg: 16,
+  bar: 17,
+  rail: 19
 };
 function Icon({
   name,
-  size = 16,
+  size: sizeIn = "lg",
   title,
   className = "",
   style,
   ...rest
 }) {
-  const d = ZS_ICON_SET[name];
+  const size = typeof sizeIn === "string" ? ZS_ICON_SIZES[sizeIn] || 16 : sizeIn;
+  const d = ZS_ICON_SET[name] || ZS_ICON_SET[ZS_ICON_ALIASES[name]];
   if (!d) return null;
   const [vb, inner] = Array.isArray(d) ? d : ["0 0 16 16", d];
   return /*#__PURE__*/React.createElement("svg", _extends({
@@ -108,66 +122,9 @@ function Icon({
   }));
 }
 Icon.names = Object.keys(ZS_ICON_SET);
+Icon.sizes = ZS_ICON_SIZES;
 Object.assign(__ds_scope, { Icon });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/brand/Icon.jsx", error: String((e && e.message) || e) }); }
-
-// components/actions/Button.jsx
-try { (() => {
-function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
-// Button — sm 30px (inspector), md 32px (dialogs), lg 44px (the bar's one primary action).
-// variant: default (quiet fill) · primary (gold, once per view) · ghost · danger (quiet until hover)
-function Button({
-  variant = "default",
-  size = "sm",
-  icon,
-  iconSize,
-  children,
-  className = "",
-  type = "button",
-  ...rest
-}) {
-  const cls = ["zs-btn", variant !== "default" && "zs-btn--" + variant, size !== "sm" && "zs-btn--" + size, className].filter(Boolean).join(" ");
-  const isz = iconSize || (size === "lg" ? 15 : 13);
-  return /*#__PURE__*/React.createElement("button", _extends({
-    type: type,
-    className: cls
-  }, rest), typeof icon === "string" ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: icon,
-    size: isz
-  }) : icon, children != null && /*#__PURE__*/React.createElement("span", null, children));
-}
-Object.assign(__ds_scope, { Button });
-})(); } catch (e) { __ds_ns.__errors.push({ path: "components/actions/Button.jsx", error: String((e && e.message) || e) }); }
-
-// components/actions/IconButton.jsx
-try { (() => {
-function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
-// IconButton — sm 28 (panel close) · md 36 (inside islands) · lg 40 (rail). `active` = pressed/open state.
-function IconButton({
-  icon,
-  label,
-  size = "md",
-  active = false,
-  iconSize,
-  className = "",
-  type = "button",
-  title,
-  ...rest
-}) {
-  const isz = iconSize || (size === "sm" ? 14 : size === "lg" ? 18 : 17);
-  const cls = ["zs-ib", size !== "md" && "zs-ib--" + size, active && "is-on", className].filter(Boolean).join(" ");
-  return /*#__PURE__*/React.createElement("button", _extends({
-    type: type,
-    className: cls,
-    "aria-label": label,
-    title: title === undefined ? label : title
-  }, rest), typeof icon === "string" ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: icon,
-    size: isz
-  }) : icon);
-}
-Object.assign(__ds_scope, { IconButton });
-})(); } catch (e) { __ds_ns.__errors.push({ path: "components/actions/IconButton.jsx", error: String((e && e.message) || e) }); }
 
 // components/brand/NamiMark.jsx
 try { (() => {
@@ -299,6 +256,1019 @@ function Wordmark({
 Object.assign(__ds_scope, { Wordmark });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/brand/Wordmark.jsx", error: String((e && e.message) || e) }); }
 
+// components/content/Kbd.jsx
+try { (() => {
+// Kbd — keyboard shortcut hint.
+function Kbd({
+  children
+}) {
+  return /*#__PURE__*/React.createElement("kbd", {
+    className: "zs-kbd"
+  }, children);
+}
+Object.assign(__ds_scope, { Kbd });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/content/Kbd.jsx", error: String((e && e.message) || e) }); }
+
+// components/content/ProjectRow.jsx
+try { (() => {
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// Repository status → dot colour, exactly the client's STATUS_META.
+const zsProjectStatus = {
+  clean: {
+    color: "var(--proj-clean)",
+    label: "clean"
+  },
+  dirty: {
+    color: "var(--proj-dirty)",
+    label: "uncommitted changes"
+  },
+  ahead: {
+    color: "var(--proj-ahead)",
+    label: "ahead of remote"
+  },
+  behind: {
+    color: "var(--proj-behind)",
+    label: "behind remote"
+  },
+  diverged: {
+    color: "var(--proj-diverged)",
+    label: "diverged"
+  },
+  conflict: {
+    color: "var(--proj-conflict)",
+    label: "conflict"
+  },
+  missing: {
+    color: "var(--proj-missing)",
+    label: "path missing"
+  },
+  syncing: {
+    color: "var(--proj-syncing)",
+    label: "syncing"
+  },
+  stale: {
+    color: "var(--proj-stale)",
+    label: "working copy is stale"
+  }
+};
+
+// ProjectRow — one row of the Projects tree. kind "project": status dot, name, OPEN (the repo in this window), branch, ↑↓, path · last opened, ••• on hover.
+// kind "group": chevron, folder, CAPS name, count. depth indents 16px per level. Double-click (or ↩) opens a project.
+// Keyboard (a tree, one Tab stop — the selected row): ↑ ↓ move and select · Home End · → expands a group, or steps into it ·
+// ← collapses, or steps to the parent · ↩ opens a project (a group: toggles) · ••• is reachable with Tab from its row and shows with focus.
+// VoiceOver: tree item with level, expanded / collapsed, selected; the status dot reads as its label (clean, ahead …).
+function zsTreeKeys(e, {
+  group,
+  expanded,
+  depth,
+  onToggle,
+  onOpen
+}) {
+  if (e.target !== e.currentTarget) return;
+  const tree = e.currentTarget.closest('[role="tree"]');
+  const items = tree ? [...tree.querySelectorAll('[role="treeitem"]')] : [e.currentTarget];
+  const i = items.indexOf(e.currentTarget);
+  const go = j => {
+    const el = items[Math.max(0, Math.min(items.length - 1, j))];
+    if (el) {
+      e.preventDefault();
+      el.focus();
+    }
+  };
+  if (e.key === "ArrowDown") go(i + 1);else if (e.key === "ArrowUp") go(i - 1);else if (e.key === "Home") go(0);else if (e.key === "End") go(items.length - 1);else if (e.key === "ArrowRight" && group) {
+    e.preventDefault();
+    if (!expanded) onToggle && onToggle();else go(i + 1);
+  } else if (e.key === "ArrowLeft") {
+    e.preventDefault();
+    if (group && expanded) {
+      onToggle && onToggle();
+      return;
+    }
+    for (let j = i - 1; j >= 0; j--) if (Number(items[j].getAttribute("aria-level")) < depth + 1) {
+      items[j].focus();
+      return;
+    }
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (group) onToggle && onToggle();else onOpen && onOpen();
+  }
+}
+function ProjectRow({
+  kind = "project",
+  name,
+  path,
+  branch,
+  status = "clean",
+  ahead,
+  behind,
+  lastOpened,
+  open = false,
+  selected = false,
+  depth = 0,
+  expanded = false,
+  count,
+  groups,
+  more = true,
+  onClick,
+  onDoubleClick,
+  onMore,
+  onToggle,
+  onSelect,
+  tabIndex,
+  className = "",
+  ...rest
+}) {
+  const focus = e => {
+    try {
+      if (e.target === e.currentTarget && e.currentTarget.matches(":focus-visible")) onSelect && onSelect();
+    } catch (_) {}
+  };
+  if (kind === "group") {
+    return /*#__PURE__*/React.createElement("div", _extends({
+      role: "treeitem",
+      "aria-expanded": expanded,
+      "aria-level": depth + 1,
+      "aria-selected": selected,
+      tabIndex: tabIndex != null ? tabIndex : selected ? 0 : -1,
+      className: ["zs-proj is-group", selected && "is-sel", className].filter(Boolean).join(" "),
+      style: {
+        "--depth": depth
+      },
+      onClick: onClick,
+      onFocus: focus,
+      onKeyDown: e => zsTreeKeys(e, {
+        group: true,
+        expanded,
+        depth,
+        onToggle: onToggle || onClick
+      })
+    }, rest), /*#__PURE__*/React.createElement("span", {
+      className: "zs-proj-chev" + (expanded ? " is-open" : "")
+    }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+      name: "chevron-right",
+      size: "sm"
+    })), /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+      name: expanded ? "folder-open" : "folder",
+      size: "md",
+      className: "zs-proj-icon"
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "zs-proj-name"
+    }, name), /*#__PURE__*/React.createElement("span", {
+      className: "zs-proj-count"
+    }, count, groups > 0 ? " · " + groups + (groups === 1 ? " group" : " groups") : ""));
+  }
+  const s = zsProjectStatus[status] || zsProjectStatus.clean;
+  return /*#__PURE__*/React.createElement("div", _extends({
+    role: "treeitem",
+    "aria-selected": selected,
+    "aria-level": depth + 1,
+    tabIndex: tabIndex != null ? tabIndex : selected ? 0 : -1,
+    className: ["zs-proj", selected && "is-sel", open && "is-open", status === "missing" && "is-missing", className].filter(Boolean).join(" "),
+    style: {
+      "--depth": depth
+    },
+    onClick: onClick,
+    onDoubleClick: onDoubleClick,
+    onFocus: focus,
+    title: path,
+    onKeyDown: e => zsTreeKeys(e, {
+      group: false,
+      depth,
+      onOpen: onDoubleClick
+    })
+  }, rest), /*#__PURE__*/React.createElement("span", {
+    className: "zs-proj-chev"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "zs-proj-dot",
+    style: {
+      background: s.color
+    },
+    title: s.label
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "zs-proj-text"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-proj-l1"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-proj-name"
+  }, name), open && /*#__PURE__*/React.createElement("span", {
+    className: "zs-proj-open"
+  }, "open"), branch && branch !== "—" && /*#__PURE__*/React.createElement("span", {
+    className: "zs-proj-branch"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "branch",
+    size: "xs"
+  }), branch), ahead > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "zs-proj-meta is-ahead"
+  }, "\u2191", ahead), behind > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "zs-proj-meta is-behind"
+  }, "\u2193", behind)), (path || lastOpened) && /*#__PURE__*/React.createElement("div", {
+    className: "zs-proj-l2"
+  }, path && /*#__PURE__*/React.createElement("span", {
+    className: "zs-proj-path"
+  }, path), path && lastOpened && /*#__PURE__*/React.createElement("span", {
+    className: "zs-proj-sep"
+  }, "\xB7"), lastOpened && /*#__PURE__*/React.createElement("span", {
+    className: "zs-proj-when"
+  }, lastOpened))), more && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-proj-more",
+    title: "More\u2026",
+    "aria-label": "More",
+    onClick: e => {
+      e.stopPropagation();
+      onMore && onMore(e);
+    }
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "more",
+    size: "md"
+  })));
+}
+Object.assign(__ds_scope, { zsProjectStatus, ProjectRow });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/content/ProjectRow.jsx", error: String((e && e.message) || e) }); }
+
+// components/controls/Badge.jsx
+try { (() => {
+// Badge — a count on an icon button or a nav row (Fetch: incoming changes). tone accent = something to act on · neutral = just a count.
+// Appears scaling .6 → 1 with a fade; a new number rises 5px into place (--dur-toggle, glide); 0 hides it with the exit. true = a dot.
+function Badge({
+  count,
+  max = 99,
+  tone = "accent",
+  label,
+  className = ""
+}) {
+  const show = count != null && count !== false && count !== 0;
+  const [mounted, setMounted] = React.useState(show);
+  const [closing, setClosing] = React.useState(false);
+  const last = React.useRef(count);
+  React.useEffect(() => {
+    if (show) {
+      setMounted(true);
+      setClosing(false);
+      last.current = count;
+      return;
+    }
+    if (!mounted) return;
+    setClosing(true);
+    const t = setTimeout(() => {
+      setMounted(false);
+      setClosing(false);
+    }, 120);
+    return () => clearTimeout(t);
+  }, [show, count]);
+  if (!mounted) return null;
+  const v = show ? count : last.current;
+  const dot = v === true;
+  const txt = dot ? "" : typeof v === "number" && v > max ? max + "+" : String(v);
+  return /*#__PURE__*/React.createElement("span", {
+    className: ["zs-badge", tone === "neutral" && "zs-badge--neutral", dot && "is-dot", closing && "is-closing", className].filter(Boolean).join(" "),
+    "aria-label": label,
+    "aria-hidden": label ? undefined : true
+  }, !dot && /*#__PURE__*/React.createElement("span", {
+    key: txt,
+    className: "zs-badge-n"
+  }, txt));
+}
+Object.assign(__ds_scope, { Badge });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/controls/Badge.jsx", error: String((e && e.message) || e) }); }
+
+// components/actions/IconButton.jsx
+try { (() => {
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// IconButton — sm 30 (--control-md: panel close) · md 36 (--control-lg: inside islands) · lg 40 (rail). Icons: sm 12 · bar 17 · rail 19. `active` = toggled/open. `badge` = a count on the corner (e.g. Fetch: incoming changes).
+function IconButton({
+  icon,
+  label,
+  size = "md",
+  active = false,
+  badge,
+  iconSize,
+  className = "",
+  type = "button",
+  title,
+  ...rest
+}) {
+  const isz = iconSize || (size === "sm" ? "sm" : size === "lg" ? "rail" : "bar");
+  const cls = ["zs-ib", size !== "md" && "zs-ib--" + size, active && "is-on", className].filter(Boolean).join(" ");
+  const hasBadge = badge != null && badge !== false && badge !== 0;
+  return /*#__PURE__*/React.createElement("button", _extends({
+    type: type,
+    className: cls,
+    "aria-label": hasBadge ? label + ", " + badge : label,
+    "aria-pressed": active || undefined,
+    title: title === undefined ? label : title
+  }, rest), typeof icon === "string" ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: icon,
+    size: isz
+  }) : icon, badge != null && badge !== false && /*#__PURE__*/React.createElement(__ds_scope.Badge, {
+    count: badge
+  }));
+}
+Object.assign(__ds_scope, { IconButton });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/actions/IconButton.jsx", error: String((e && e.message) || e) }); }
+
+// components/controls/Chip.jsx
+try { (() => {
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// Chip — small pressable tokens. kind: toggle (on/off, e.g. "Aa" match case) · not (the "~" negation: on = red) · filter (a value with ✕) · add (dashed, "+ author")
+function Chip({
+  kind = "toggle",
+  on = false,
+  onChange,
+  onClick,
+  onRemove,
+  label,
+  mono = false,
+  icon,
+  size = "md",
+  disabled,
+  title,
+  children,
+  className = "",
+  ...rest
+}) {
+  const text = children != null ? children : label;
+  const cls = ["zs-chip", "zs-chip--" + kind, size === "sm" && "zs-chip--sm", mono && "is-mono", on && "is-on", className].filter(Boolean).join(" ");
+  if (kind === "filter") return /*#__PURE__*/React.createElement("span", _extends({
+    className: cls,
+    title: title
+  }, rest), icon && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: icon,
+    size: "sm"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "zs-chip-l"
+  }, text), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-chip-x",
+    "aria-label": "Remove " + (typeof text === "string" ? text : "filter"),
+    disabled: disabled,
+    onClick: onRemove
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "close",
+    size: "xs"
+  })));
+  const toggle = kind === "toggle" || kind === "not";
+  return /*#__PURE__*/React.createElement("button", _extends({
+    type: "button",
+    className: cls,
+    title: title,
+    disabled: disabled,
+    "aria-pressed": toggle ? on : undefined,
+    onClick: e => {
+      if (toggle && onChange) onChange(!on);
+      onClick && onClick(e);
+    }
+  }, rest), kind === "add" ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "plus",
+    size: "xs"
+  }) : icon ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: icon,
+    size: "sm"
+  }) : null, text);
+}
+Object.assign(__ds_scope, { Chip });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/controls/Chip.jsx", error: String((e && e.message) || e) }); }
+
+// components/controls/Disclosure.jsx
+try { (() => {
+// Disclosure — a chevron row that opens a section. The chevron turns 0 → 90° and the body's height animates (--dur-panel, glide).
+// Keyboard: Space/↩ toggle, → opens, ← closes (as in the Projects tree).
+function Disclosure({
+  label,
+  open: openProp,
+  defaultOpen = false,
+  onToggle,
+  meta,
+  children,
+  className = ""
+}) {
+  const [own, setOwn] = React.useState(defaultOpen);
+  const open = openProp != null ? openProp : own;
+  const body = React.useRef(null);
+  const first = React.useRef(true);
+  React.useLayoutEffect(() => {
+    const el = body.current;
+    if (!el) return;
+    if (first.current) {
+      first.current = false;
+      el.style.height = open ? "auto" : "0px";
+      return;
+    }
+    const from = el.getBoundingClientRect().height;
+    el.style.height = "auto";
+    const to = open ? el.scrollHeight : 0;
+    el.style.height = from + "px";
+    void el.offsetHeight;
+    el.style.height = to + "px";
+    const instant = parseFloat(getComputedStyle(el).transitionDuration) === 0;
+    if (instant) {
+      if (open) el.style.height = "auto";
+      return;
+    }
+    const done = e => {
+      if (e.target === el && e.propertyName === "height") {
+        if (open) el.style.height = "auto";
+        el.removeEventListener("transitionend", done);
+      }
+    };
+    el.addEventListener("transitionend", done);
+    return () => el.removeEventListener("transitionend", done);
+  }, [open]);
+  const set = v => {
+    setOwn(v);
+    onToggle && onToggle(v);
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: ["zs-disc", open && "is-open", className].filter(Boolean).join(" ")
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-disc-hd",
+    "aria-expanded": open,
+    onClick: () => set(!open),
+    onKeyDown: e => {
+      if (e.key === "ArrowRight" && !open) {
+        e.preventDefault();
+        set(true);
+      } else if (e.key === "ArrowLeft" && open) {
+        e.preventDefault();
+        set(false);
+      }
+    }
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "chevron-right",
+    size: "sm",
+    className: "zs-disc-chev"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "zs-disc-l"
+  }, label), meta != null && /*#__PURE__*/React.createElement("span", {
+    className: "zs-disc-meta"
+  }, meta)), /*#__PURE__*/React.createElement("div", {
+    ref: body,
+    className: "zs-disc-bd",
+    "aria-hidden": !open
+  }, children));
+}
+Object.assign(__ds_scope, { Disclosure });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/controls/Disclosure.jsx", error: String((e && e.message) || e) }); }
+
+// components/controls/Link.jsx
+try { (() => {
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// Link — two kinds only. inline (prose, accent text, underline on hover) · quiet (footers and utilities: dim → text, never underlined).
+// With href it is an <a> (the one place the pointing hand is allowed); without, a button styled as a link (arrow cursor).
+function Link({
+  href,
+  quiet = false,
+  external = false,
+  children,
+  className = "",
+  ...rest
+}) {
+  const cls = ["zs-link", quiet && "zs-link--quiet", className].filter(Boolean).join(" ");
+  if (href) return /*#__PURE__*/React.createElement("a", _extends({
+    className: cls,
+    href: href,
+    target: external ? "_blank" : undefined,
+    rel: external ? "noreferrer" : undefined
+  }, rest), children, external && /*#__PURE__*/React.createElement("span", {
+    "aria-hidden": "true"
+  }, " \u2197"));
+  return /*#__PURE__*/React.createElement("button", _extends({
+    type: "button",
+    className: cls
+  }, rest), children);
+}
+Object.assign(__ds_scope, { Link });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/controls/Link.jsx", error: String((e && e.message) || e) }); }
+
+// components/controls/Presence.jsx
+try { (() => {
+// Presence — keeps a closing layer mounted for its exit. children is a function of `closing`; pass it on as the component's closing prop.
+// exit: ms, default --dur-exit (120). Dialogs and toasts use 180 (--dur-exit-lg).
+function Presence({
+  open,
+  exit = 120,
+  children
+}) {
+  const [mounted, setMounted] = React.useState(!!open);
+  const [closing, setClosing] = React.useState(false);
+  React.useEffect(() => {
+    if (open) {
+      setMounted(true);
+      setClosing(false);
+      return;
+    }
+    if (!mounted) return;
+    setClosing(true);
+    const t = setTimeout(() => {
+      setMounted(false);
+      setClosing(false);
+    }, exit);
+    return () => clearTimeout(t);
+  }, [open]);
+  return mounted ? children(closing) : null;
+}
+Object.assign(__ds_scope, { Presence });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/controls/Presence.jsx", error: String((e && e.message) || e) }); }
+
+// components/controls/ProgressBar.jsx
+try { (() => {
+// ProgressBar — 4px track, accent fill. value/max = determinate (width eases over --dur-panel); no value = indeterminate (a 32% sweep, --dur-shimmer).
+function ProgressBar({
+  value,
+  max = 1,
+  label,
+  width = 200,
+  className = "",
+  style
+}) {
+  const ind = value == null;
+  const f = ind ? null : Math.max(0, Math.min(1, value / max));
+  return /*#__PURE__*/React.createElement("span", {
+    role: "progressbar",
+    "aria-label": label,
+    "aria-valuemin": 0,
+    "aria-valuemax": max,
+    "aria-valuenow": ind ? undefined : value,
+    className: ["zs-progress", ind && "is-ind", className].filter(Boolean).join(" "),
+    style: {
+      width,
+      ...style
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-progress-fill",
+    style: ind ? undefined : {
+      width: f * 100 + "%"
+    }
+  }));
+}
+Object.assign(__ds_scope, { ProgressBar });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/controls/ProgressBar.jsx", error: String((e && e.message) || e) }); }
+
+// components/controls/Radio.jsx
+try { (() => {
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// Radio — 15px circle; on = accent fill with a 6px ink dot that grows in (--dur-toggle, glide).
+function Radio({
+  checked = false,
+  onChange,
+  label,
+  hint,
+  disabled = false,
+  children,
+  buttonRef,
+  tabIndex,
+  onKeyDown,
+  className = "",
+  ...rest
+}) {
+  const text = children != null ? children : label;
+  return /*#__PURE__*/React.createElement("label", {
+    className: ["zs-radio-row", disabled && "is-disabled", className].filter(Boolean).join(" ")
+  }, /*#__PURE__*/React.createElement("button", _extends({
+    ref: buttonRef,
+    type: "button",
+    role: "radio",
+    "aria-checked": checked,
+    disabled: disabled,
+    tabIndex: tabIndex,
+    onKeyDown: onKeyDown,
+    "aria-label": text == null ? label : undefined,
+    className: "zs-radio" + (checked ? " is-on" : ""),
+    onClick: () => onChange && onChange(true)
+  }, rest), /*#__PURE__*/React.createElement("span", {
+    className: "zs-radio-dot"
+  })), text != null && /*#__PURE__*/React.createElement("span", {
+    className: "zs-radio-l"
+  }, /*#__PURE__*/React.createElement("span", null, text), hint && /*#__PURE__*/React.createElement("span", {
+    className: "zs-radio-hint"
+  }, hint)));
+}
+
+// RadioGroup — one tab stop (the chosen radio); ↑/↓ (←/→) move and choose, skipping disabled options.
+function RadioGroup({
+  options = [],
+  value,
+  onChange,
+  label,
+  direction = "column",
+  disabled = false,
+  className = ""
+}) {
+  const refs = React.useRef([]);
+  const opts = options.map(o => typeof o === "string" ? {
+    value: o,
+    label: o
+  } : o);
+  const idx = opts.findIndex(o => o.value === value);
+  const stop = idx >= 0 ? idx : opts.findIndex(o => !o.disabled);
+  const move = (from, dir) => {
+    for (let k = 1; k <= opts.length; k++) {
+      const j = (from + dir * k + opts.length * 2) % opts.length;
+      if (!opts[j].disabled) {
+        onChange && onChange(opts[j].value);
+        refs.current[j] && refs.current[j].focus();
+        return;
+      }
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    role: "radiogroup",
+    "aria-label": label,
+    className: ["zs-radiogroup", direction === "row" && "is-row", className].filter(Boolean).join(" ")
+  }, opts.map((o, i) => /*#__PURE__*/React.createElement(Radio, {
+    key: o.value,
+    buttonRef: el => refs.current[i] = el,
+    tabIndex: i === stop ? 0 : -1,
+    checked: o.value === value,
+    disabled: disabled || o.disabled,
+    hint: o.hint,
+    title: o.title,
+    onChange: () => onChange && onChange(o.value),
+    onKeyDown: e => {
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+        e.preventDefault();
+        move(i, 1);
+      } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        move(i, -1);
+      }
+    }
+  }, o.label)));
+}
+Object.assign(__ds_scope, { Radio, RadioGroup });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/controls/Radio.jsx", error: String((e && e.message) || e) }); }
+
+// components/controls/ScrollArea.jsx
+try { (() => {
+// ScrollArea — the macOS overlay scrollbar, vertical and (axis "both") horizontal. Hidden at rest; shows while scrolling and fades
+// --delay-scroll-hide after it stops. Near the edge (the 14px gutter) the track appears and the thumb widens 6 → 10px (--dur-nudge;
+// Reduce motion: it is simply wider); dragging darkens it.
+// Track click: one page toward the click, as macOS by default ("Jump to the next page"); ⌥-click — or the system setting
+// "Jump to the spot that's clicked" (pageJump false) — jumps there. Overscroll is contained (the graph behind never scrolls along);
+// the elastic bounce is the platform's.
+// Keyboard: the viewport is one Tab stop (focus ring drawn inside); ↑ ↓ ← → 40px · Page Up/Down (and Space / ⇧Space) one page less 40 ·
+// Home / End to the ends. VoiceOver: a scroll area; the bars are decoration (aria-hidden) — VO scrolls with its own commands.
+function ScrollArea({
+  height = 240,
+  axis = "y",
+  pageJump = true,
+  label,
+  children,
+  className = "",
+  style
+}) {
+  const vp = React.useRef(null);
+  const hide = React.useRef(0);
+  const [bar, setBar] = React.useState({
+    top: 0,
+    h: 0,
+    left: 0,
+    w: 0
+  });
+  const [show, setShow] = React.useState(false);
+  const [hover, setHover] = React.useState(null);
+  const [drag, setDrag] = React.useState(null);
+  const measure = React.useCallback(() => {
+    const el = vp.current;
+    if (!el) return;
+    const my = el.scrollHeight - el.clientHeight,
+      mx = el.scrollWidth - el.clientWidth;
+    const h = my > 0 ? Math.max(24, (el.clientHeight - 4) * (el.clientHeight / el.scrollHeight)) : 0;
+    const w = axis !== "y" && mx > 0 ? Math.max(24, (el.clientWidth - 4) * (el.clientWidth / el.scrollWidth)) : 0;
+    setBar({
+      h,
+      top: h ? el.scrollTop / my * (el.clientHeight - 4 - h) : 0,
+      w,
+      left: w ? el.scrollLeft / mx * (el.clientWidth - 4 - w) : 0
+    });
+  }, [axis]);
+  React.useEffect(() => {
+    measure();
+  }, [measure, children]);
+  const ms = () => {
+    const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--delay-scroll-hide"));
+    return isNaN(n) ? 800 : n;
+  };
+  const onScroll = () => {
+    measure();
+    setShow(true);
+    clearTimeout(hide.current);
+    hide.current = setTimeout(() => setShow(false), ms());
+  };
+  const onMove = e => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setHover(r.right - e.clientX <= 14 ? "y" : axis !== "y" && r.bottom - e.clientY <= 14 ? "x" : null);
+  };
+  const startDrag = dir => e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = vp.current,
+      p0 = dir === "y" ? e.clientY : e.clientX,
+      s0 = dir === "y" ? el.scrollTop : el.scrollLeft;
+    const k = dir === "y" ? (el.scrollHeight - el.clientHeight) / (el.clientHeight - 4 - bar.h) : (el.scrollWidth - el.clientWidth) / (el.clientWidth - 4 - bar.w);
+    setDrag(dir);
+    const mv = ev => {
+      const d = ((dir === "y" ? ev.clientY : ev.clientX) - p0) * k;
+      if (dir === "y") el.scrollTop = s0 + d;else el.scrollLeft = s0 + d;
+    };
+    const up = () => {
+      setDrag(null);
+      window.removeEventListener("pointermove", mv);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", mv);
+    window.addEventListener("pointerup", up);
+  };
+  const trackClick = dir => e => {
+    const el = vp.current,
+      r = e.currentTarget.getBoundingClientRect();
+    const spot = !pageJump !== !e.altKey; // ⌥ inverts the system setting
+    if (dir === "y") {
+      const y = e.clientY - r.top,
+        page = el.clientHeight - 40;
+      if (spot) el.scrollTop = y / r.height * (el.scrollHeight - el.clientHeight);else el.scrollTop += y < bar.top ? -page : page;
+    } else {
+      const x = e.clientX - r.left,
+        page = el.clientWidth - 40;
+      if (spot) el.scrollLeft = x / r.width * (el.scrollWidth - el.clientWidth);else el.scrollLeft += x < bar.left ? -page : page;
+    }
+  };
+  const onKey = e => {
+    const el = vp.current,
+      page = el.clientHeight - 40;
+    const moves = {
+      ArrowDown: [0, 40],
+      ArrowUp: [0, -40],
+      ArrowRight: [40, 0],
+      ArrowLeft: [-40, 0],
+      PageDown: [0, page],
+      PageUp: [0, -page],
+      " ": [0, e.shiftKey ? -page : page]
+    };
+    if (e.target !== el) return;
+    if (moves[e.key]) {
+      e.preventDefault();
+      el.scrollBy(moves[e.key][0], moves[e.key][1]);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      el.scrollTop = 0;
+    } else if (e.key === "End") {
+      e.preventDefault();
+      el.scrollTop = el.scrollHeight;
+    }
+  };
+  const cls = ["zs-scroll", show && "is-show", hover === "y" && "is-hover", hover === "x" && "is-hover-x", drag === "y" && "is-drag", drag === "x" && "is-drag-x", className].filter(Boolean).join(" ");
+  return /*#__PURE__*/React.createElement("div", {
+    className: cls,
+    style: {
+      height,
+      ...style
+    },
+    onMouseMove: onMove,
+    onMouseLeave: () => setHover(null)
+  }, /*#__PURE__*/React.createElement("div", {
+    ref: vp,
+    className: "zs-scroll-vp",
+    onScroll: onScroll,
+    onKeyDown: onKey,
+    tabIndex: 0,
+    role: "region",
+    "aria-label": label,
+    style: axis === "y" ? {
+      overflowX: "hidden"
+    } : undefined
+  }, children), bar.h > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "zs-scroll-bar",
+    "aria-hidden": "true",
+    onPointerDown: trackClick("y")
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-scroll-thumb",
+    style: {
+      height: bar.h,
+      transform: "translateY(" + bar.top + "px)"
+    },
+    onPointerDown: startDrag("y")
+  })), bar.w > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "zs-scroll-bar is-x",
+    "aria-hidden": "true",
+    onPointerDown: trackClick("x")
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-scroll-thumb",
+    style: {
+      width: bar.w,
+      transform: "translateX(" + bar.left + "px)"
+    },
+    onPointerDown: startDrag("x")
+  })));
+}
+Object.assign(__ds_scope, { ScrollArea });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/controls/ScrollArea.jsx", error: String((e && e.message) || e) }); }
+
+// components/controls/Skeleton.jsx
+try { (() => {
+// Skeleton — "pending" placeholders whose shape is known: a bar, a card (240 × 62), a row (30px). A soft sweep every --dur-shimmer.
+function Skeleton({
+  kind = "bar",
+  width = "100%",
+  height = 10,
+  radius = 4,
+  className = "",
+  style
+}) {
+  if (kind === "card") return /*#__PURE__*/React.createElement("div", {
+    className: ("zs-skel-card " + className).trim(),
+    style: style,
+    "aria-busy": "true",
+    "aria-label": "Loading change"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-skel-line"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-skel",
+    style: {
+      width: 38,
+      height: 9
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "zs-skel",
+    style: {
+      width: "58%",
+      height: 9
+    }
+  })), /*#__PURE__*/React.createElement("span", {
+    className: "zs-skel",
+    style: {
+      width: "36%",
+      height: 7
+    }
+  }));
+  if (kind === "row") return /*#__PURE__*/React.createElement("div", {
+    className: ("zs-skel-row " + className).trim(),
+    style: style,
+    "aria-busy": "true",
+    "aria-label": "Loading"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-skel",
+    style: {
+      width: 14,
+      height: 14,
+      borderRadius: 3
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "zs-skel",
+    style: {
+      flex: 1,
+      maxWidth: width,
+      height: 8
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "zs-skel",
+    style: {
+      width: 34,
+      height: 8
+    }
+  }));
+  return /*#__PURE__*/React.createElement("span", {
+    className: ("zs-skel " + className).trim(),
+    style: {
+      width,
+      height,
+      borderRadius: radius,
+      ...style
+    },
+    "aria-hidden": "true"
+  });
+}
+Object.assign(__ds_scope, { Skeleton });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/controls/Skeleton.jsx", error: String((e && e.message) || e) }); }
+
+// components/controls/Spinner.jsx
+try { (() => {
+// Spinner — the inline busy mark, 12–16px: a quarter arc on a faint ring, one turn per --dur-spin (800ms), linear. currentColor.
+// Keeps turning under reduce motion — it is information, not decoration.
+function Spinner({
+  size = 14,
+  label,
+  className = "",
+  style
+}) {
+  return /*#__PURE__*/React.createElement("svg", {
+    className: ("zs-spinner " + className).trim(),
+    width: size,
+    height: size,
+    viewBox: "0 0 16 16",
+    style: style,
+    role: label ? "progressbar" : undefined,
+    "aria-label": label,
+    "aria-hidden": label ? undefined : true
+  }, /*#__PURE__*/React.createElement("circle", {
+    cx: "8",
+    cy: "8",
+    r: "6",
+    fill: "none",
+    stroke: "currentColor",
+    strokeOpacity: ".22",
+    strokeWidth: "2"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M8 2a6 6 0 0 1 6 6",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round"
+  }));
+}
+Object.assign(__ds_scope, { Spinner });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/controls/Spinner.jsx", error: String((e && e.message) || e) }); }
+
+// components/actions/Button.jsx
+try { (() => {
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// Button — 30px (--control-md: inspector, dialogs, settings — sm and md are one height) · lg 44px (--control-xl: the bar's one primary action).
+// variant: default (quiet fill) · primary (gold, once per view) · ghost · danger (quiet until hover) · destructive (filled red — a confirmation's one primary)
+// busy: a spinner takes the icon slot, the label stays, clicks are ignored. No children = icon-only (square); pass label for VoiceOver.
+function Button({
+  variant = "default",
+  size = "sm",
+  icon,
+  iconSize,
+  busy = false,
+  label,
+  children,
+  className = "",
+  type = "button",
+  ...rest
+}) {
+  const iconOnly = children == null && icon != null;
+  const cls = ["zs-btn", variant !== "default" && "zs-btn--" + variant, size !== "sm" && "zs-btn--" + size, iconOnly && "zs-btn--icon", className].filter(Boolean).join(" ");
+  const isz = iconSize || (size === "lg" ? "lg" : "md");
+  return /*#__PURE__*/React.createElement("button", _extends({
+    type: type,
+    className: cls,
+    "aria-busy": busy || undefined,
+    "aria-label": iconOnly ? label : undefined,
+    title: iconOnly && rest.title === undefined ? label : rest.title
+  }, rest), busy ? /*#__PURE__*/React.createElement(__ds_scope.Spinner, {
+    size: typeof isz === "string" ? __ds_scope.Icon.sizes[isz] : isz
+  }) : typeof icon === "string" ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: icon,
+    size: isz
+  }) : icon, children != null && /*#__PURE__*/React.createElement("span", null, children));
+}
+Object.assign(__ds_scope, { Button });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/actions/Button.jsx", error: String((e && e.message) || e) }); }
+
+// components/forms/Checkbox.jsx
+try { (() => {
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// Checkbox — one component for every check: md 15px (files, hunks, settings) · sm 13px (the Viewed chip).
+// tone accent = selection (moon) · add = the Viewed review state (green). mixed = some hunks of a file; clicking mixed selects all.
+// The mark is one 3-point path: unchecked → checked draws it in; checked ↔ mixed moves its points (CSS d).
+// presentational: renders a span for use inside another button (the Viewed chip owns the role).
+function Checkbox({
+  checked = false,
+  mixed = false,
+  onChange,
+  label,
+  disabled,
+  size = "md",
+  tone = "accent",
+  presentational = false,
+  className = "",
+  ...rest
+}) {
+  const on = checked && !mixed;
+  const cls = ["zs-check", size === "sm" && "zs-check--sm", tone === "add" && "zs-check--add", on && "is-on", mixed && "is-mixed", className].filter(Boolean).join(" ");
+  const mark = /*#__PURE__*/React.createElement("svg", {
+    className: "zs-check-svg",
+    viewBox: "0 0 16 16",
+    "aria-hidden": "true"
+  }, /*#__PURE__*/React.createElement("path", {
+    className: "zs-check-mark",
+    pathLength: "1",
+    d: mixed ? "M4 8 L8 8 L12 8" : "M3.6 8.4 L6.6 11.3 L12.6 4.9"
+  }));
+  if (presentational) return /*#__PURE__*/React.createElement("span", {
+    className: cls,
+    "aria-hidden": "true"
+  }, mark);
+  return /*#__PURE__*/React.createElement("button", _extends({
+    type: "button",
+    role: "checkbox",
+    "aria-checked": mixed ? "mixed" : !!checked,
+    "aria-label": label,
+    title: label,
+    disabled: disabled,
+    className: cls,
+    onPointerDown: e => e.stopPropagation(),
+    onClick: e => {
+      e.stopPropagation();
+      onChange && onChange(mixed ? true : !checked);
+    }
+  }, rest), mark);
+}
+Object.assign(__ds_scope, { Checkbox });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/forms/Checkbox.jsx", error: String((e && e.message) || e) }); }
+
 // components/content/DiffView.jsx
 try { (() => {
 // DiffView — the diff block on the quiet code surface: a toolbar (path, layout toggle, Viewed) over hunks or plain lines.
@@ -340,12 +1310,12 @@ function DiffView({
     className: "zs-viewed" + (viewed ? " is-on" : ""),
     onClick: () => onViewedChange(!viewed),
     title: viewed ? "Mark as not viewed" : "Mark as viewed"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-viewed-box" + (viewed ? " is-on" : "")
-  }, viewed && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "check",
-    size: 10
-  })), /*#__PURE__*/React.createElement("span", null, "Viewed"));
+  }, /*#__PURE__*/React.createElement(__ds_scope.Checkbox, {
+    presentational: true,
+    size: "sm",
+    tone: "add",
+    checked: !!viewed
+  }), /*#__PURE__*/React.createElement("span", null, "Viewed"));
   return /*#__PURE__*/React.createElement("div", {
     className: ["zs-diff", viewed && "is-viewed", className].filter(Boolean).join(" ")
   }, (file || tools || toggle) && /*#__PURE__*/React.createElement("div", {
@@ -359,7 +1329,7 @@ function DiffView({
     onClick: () => onViewedChange(false)
   }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "check",
-    size: 11
+    size: "sm"
   }), /*#__PURE__*/React.createElement("span", null, "Viewed \u2014 diff folded away. Click to show it again.")) : children ? /*#__PURE__*/React.createElement("div", {
     className: "zs-diff-hunks"
   }, children) : /*#__PURE__*/React.createElement("div", {
@@ -381,206 +1351,6 @@ function DiffView({
 }
 Object.assign(__ds_scope, { zsDiffLine, DiffView });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/content/DiffView.jsx", error: String((e && e.message) || e) }); }
-
-// components/content/Kbd.jsx
-try { (() => {
-// Kbd — keyboard shortcut hint.
-function Kbd({
-  children
-}) {
-  return /*#__PURE__*/React.createElement("kbd", {
-    className: "zs-kbd"
-  }, children);
-}
-Object.assign(__ds_scope, { Kbd });
-})(); } catch (e) { __ds_ns.__errors.push({ path: "components/content/Kbd.jsx", error: String((e && e.message) || e) }); }
-
-// components/content/ProjectRow.jsx
-try { (() => {
-function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
-// Repository status → dot colour, exactly the client's STATUS_META.
-const zsProjectStatus = {
-  clean: {
-    color: "#9ca3af",
-    label: "clean"
-  },
-  dirty: {
-    color: "#facc15",
-    label: "uncommitted changes"
-  },
-  ahead: {
-    color: "#4ade80",
-    label: "ahead of remote"
-  },
-  behind: {
-    color: "#60a5fa",
-    label: "behind remote"
-  },
-  diverged: {
-    color: "#fb923c",
-    label: "diverged"
-  },
-  conflict: {
-    color: "#f87171",
-    label: "conflict"
-  },
-  missing: {
-    color: "#71717a",
-    label: "path missing"
-  },
-  syncing: {
-    color: "#a78bfa",
-    label: "syncing"
-  }
-};
-
-// ProjectRow — one row of the Projects tree. kind "project": status dot, name, OPEN (the repo in this window), branch, ↑↓, path · last opened, ••• on hover.
-// kind "group": chevron, folder, CAPS name, count. depth indents 16px per level. Double-click (or ↩) opens a project.
-function ProjectRow({
-  kind = "project",
-  name,
-  path,
-  branch,
-  status = "clean",
-  ahead,
-  behind,
-  lastOpened,
-  open = false,
-  selected = false,
-  depth = 0,
-  expanded = false,
-  count,
-  groups,
-  more = true,
-  onClick,
-  onDoubleClick,
-  onMore,
-  className = "",
-  ...rest
-}) {
-  if (kind === "group") {
-    return /*#__PURE__*/React.createElement("div", _extends({
-      role: "treeitem",
-      "aria-expanded": expanded,
-      className: ["zs-proj is-group", selected && "is-sel", className].filter(Boolean).join(" "),
-      style: {
-        "--depth": depth
-      },
-      onClick: onClick
-    }, rest), /*#__PURE__*/React.createElement("span", {
-      className: "zs-proj-chev" + (expanded ? " is-open" : "")
-    }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-      name: "chevron-right",
-      size: 12
-    })), /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-      name: expanded ? "folder-open" : "folder",
-      size: 14,
-      className: "zs-proj-icon"
-    }), /*#__PURE__*/React.createElement("span", {
-      className: "zs-proj-name"
-    }, name), /*#__PURE__*/React.createElement("span", {
-      className: "zs-proj-count"
-    }, count, groups > 0 ? " · " + groups + (groups === 1 ? " group" : " groups") : ""));
-  }
-  const s = zsProjectStatus[status] || zsProjectStatus.clean;
-  return /*#__PURE__*/React.createElement("div", _extends({
-    role: "treeitem",
-    "aria-selected": selected,
-    className: ["zs-proj", selected && "is-sel", open && "is-open", status === "missing" && "is-missing", className].filter(Boolean).join(" "),
-    style: {
-      "--depth": depth
-    },
-    onClick: onClick,
-    onDoubleClick: onDoubleClick,
-    title: path
-  }, rest), /*#__PURE__*/React.createElement("span", {
-    className: "zs-proj-chev"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "zs-proj-dot",
-    style: {
-      background: s.color
-    },
-    title: s.label
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "zs-proj-text"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "zs-proj-l1"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-proj-name"
-  }, name), open && /*#__PURE__*/React.createElement("span", {
-    className: "zs-proj-open"
-  }, "open"), branch && branch !== "—" && /*#__PURE__*/React.createElement("span", {
-    className: "zs-proj-branch"
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "branch",
-    size: 10
-  }), branch), ahead > 0 && /*#__PURE__*/React.createElement("span", {
-    className: "zs-proj-meta is-ahead"
-  }, "\u2191", ahead), behind > 0 && /*#__PURE__*/React.createElement("span", {
-    className: "zs-proj-meta is-behind"
-  }, "\u2193", behind)), (path || lastOpened) && /*#__PURE__*/React.createElement("div", {
-    className: "zs-proj-l2"
-  }, path && /*#__PURE__*/React.createElement("span", {
-    className: "zs-proj-path"
-  }, path), path && lastOpened && /*#__PURE__*/React.createElement("span", {
-    className: "zs-proj-sep"
-  }, "\xB7"), lastOpened && /*#__PURE__*/React.createElement("span", {
-    className: "zs-proj-when"
-  }, lastOpened))), more && /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-proj-more",
-    title: "More\u2026",
-    "aria-label": "More",
-    onClick: e => {
-      e.stopPropagation();
-      onMore && onMore(e);
-    }
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "more",
-    size: 13
-  })));
-}
-Object.assign(__ds_scope, { zsProjectStatus, ProjectRow });
-})(); } catch (e) { __ds_ns.__errors.push({ path: "components/content/ProjectRow.jsx", error: String((e && e.message) || e) }); }
-
-// components/forms/Checkbox.jsx
-try { (() => {
-function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
-// Checkbox — selection of files and hunks (inspector). Moon like every other selection; mixed = some hunks of a file.
-// Clicking mixed selects everything, like the client's file toggle.
-function Checkbox({
-  checked = false,
-  mixed = false,
-  onChange,
-  label,
-  disabled,
-  className = "",
-  ...rest
-}) {
-  const on = checked && !mixed;
-  return /*#__PURE__*/React.createElement("button", _extends({
-    type: "button",
-    role: "checkbox",
-    "aria-checked": mixed ? "mixed" : !!checked,
-    "aria-label": label,
-    title: label,
-    disabled: disabled,
-    className: ["zs-check", on && "is-on", mixed && "is-mixed", className].filter(Boolean).join(" "),
-    onPointerDown: e => e.stopPropagation(),
-    onClick: e => {
-      e.stopPropagation();
-      onChange && onChange(mixed ? true : !checked);
-    }
-  }, rest), on && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "check-bold",
-    size: 10
-  }), mixed && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "dash-bold",
-    size: 10
-  }));
-}
-Object.assign(__ds_scope, { Checkbox });
-})(); } catch (e) { __ds_ns.__errors.push({ path: "components/forms/Checkbox.jsx", error: String((e && e.message) || e) }); }
 
 // components/content/DiffHunk.jsx
 try { (() => {
@@ -662,8 +1432,8 @@ function DiffHunk({
   }, "+", a), r > 0 && /*#__PURE__*/React.createElement("span", {
     className: "r"
   }, "\u2212", r)), onGrab && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "grip-dots",
-    size: 10,
+    name: "grip",
+    size: "xs",
     className: "zs-hunk-grip",
     style: {
       height: 12
@@ -723,7 +1493,7 @@ function FileRow({
     title: "Viewed"
   }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "check",
-    size: 10
+    size: "xs"
   })), /*#__PURE__*/React.createElement("span", {
     className: "zs-file-stat"
   }, added > 0 && /*#__PURE__*/React.createElement("span", {
@@ -737,38 +1507,72 @@ Object.assign(__ds_scope, { FileRow });
 
 // components/forms/SearchField.jsx
 try { (() => {
-// SearchField — 32px, quiet fill; focus = moon border + ring.
+// SearchField — 30px (--control-md), a quiet FILL at rest (a named exception to the text-entry well, as NSSearchField); focus = accent edge + halo. A clear ✕ appears with a query; Esc clears, a second Esc leaves the field.
+// shortcut: a key cap shown while the field is empty and unfocused (the one place a key cap sits outside prose).
 function SearchField({
-  value,
+  value = "",
   onChange,
   placeholder = "Search",
   autoFocus,
   label,
-  style
+  style,
+  shortcut,
+  onClear,
+  className = ""
 }) {
+  const ref = React.useRef(null);
+  const [focus, setFocus] = React.useState(false);
+  const clear = () => {
+    onChange && onChange("");
+    onClear && onClear();
+    ref.current && ref.current.focus();
+  };
   return /*#__PURE__*/React.createElement("label", {
-    className: "zs-search",
+    className: ("zs-search " + className).trim(),
     style: style
   }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "search",
-    size: 14
+    size: "md"
   }), /*#__PURE__*/React.createElement("input", {
+    ref: ref,
     type: "text",
     value: value,
     placeholder: placeholder,
     autoFocus: autoFocus,
     "aria-label": label || placeholder,
+    onFocus: () => setFocus(true),
+    onBlur: () => setFocus(false),
+    onKeyDown: e => {
+      if (e.key === "Escape") {
+        if (value) {
+          e.preventDefault();
+          clear();
+        } else e.currentTarget.blur();
+      }
+    },
     onChange: e => onChange && onChange(e.target.value)
-  }));
+  }), value ? /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-search-x",
+    "aria-label": "Clear search",
+    title: "Clear (Esc)",
+    onClick: clear
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "close",
+    size: "xs"
+  })) : shortcut && !focus ? /*#__PURE__*/React.createElement(__ds_scope.Kbd, null, shortcut) : null);
 }
 Object.assign(__ds_scope, { SearchField });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/forms/SearchField.jsx", error: String((e && e.message) || e) }); }
 
 // components/forms/Segmented.jsx
 try { (() => {
-// Segmented — 2–4 mutually exclusive options. options: ["A","B"] or [{ value, label, icon, title }]
-// variant: default (view menu, 22px) · tabs (settings window scope tabs, 28px) · inset (inside a settings row, darker track, 24px)
-// size sm: icon-only toggles in a diff toolbar (18px)
+// Segmented — 2–4 mutually exclusive options. options: ["A","B"] or [{ value, label, icon, title, disabled }]
+// variant: default 26 (View options) · tabs 36 (the Settings window's header: General | Project) · inset 30 (inside a settings row, darker track)
+// size sm 22: icon-only toggles in a diff toolbar. Segment heights are the control minus twice the inset (22 · 30 · 26 · 18).
+// A thumb slides to the chosen segment (--dur-toggle, glide; Reduce motion: it is simply there). Hover brightens the label only.
+// A disabled segment is aria-disabled (no hover, no press, skipped by the arrows) inside a wrapper whose title gives the reason.
+// Keyboard: one tab stop (the chosen segment); ←/→ (and ↑/↓) move and choose, skipping disabled ones. VoiceOver: radio group (tabs: tab list).
 function Segmented({
   options = [],
   value,
@@ -776,68 +1580,106 @@ function Segmented({
   label,
   variant = "default",
   size = "md",
-  role = "radiogroup"
+  role = "radiogroup",
+  className = ""
 }) {
   const tabs = variant === "tabs";
-  const cls = ["zs-seg", variant !== "default" && "zs-seg--" + variant, size === "sm" && "zs-seg--sm"].filter(Boolean).join(" ");
+  const refs = React.useRef([]);
+  const [thumb, setThumb] = React.useState(null);
+  const [live, setLive] = React.useState(false);
+  const opts = options.map(o => typeof o === "string" ? {
+    value: o,
+    label: o
+  } : o);
+  const idx = opts.findIndex(o => o.value === value);
+  const measure = React.useCallback(() => {
+    const el = refs.current[idx];
+    setThumb(el ? {
+      x: el.offsetLeft,
+      w: el.offsetWidth
+    } : null);
+  }, [idx]);
+  React.useLayoutEffect(() => {
+    measure();
+  }, [measure, options.length]);
+  React.useEffect(() => {
+    const t = requestAnimationFrame(() => setLive(true));
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => measure()) : null;
+    if (ro) refs.current.forEach(el => el && ro.observe(el));
+    return () => {
+      cancelAnimationFrame(t);
+      ro && ro.disconnect();
+    };
+  }, [measure]);
+  const move = (from, dir) => {
+    for (let k = 1; k <= opts.length; k++) {
+      const j = (from + dir * k + opts.length) % opts.length;
+      if (!opts[j].disabled) {
+        onChange && onChange(opts[j].value);
+        refs.current[j] && refs.current[j].focus();
+        return;
+      }
+    }
+  };
+  const onKey = (e, i) => {
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      move(i, 1);
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      move(i, -1);
+    }
+  };
+  const cls = ["zs-seg", variant !== "default" && "zs-seg--" + variant, size === "sm" && "zs-seg--sm", thumb && "has-thumb", className].filter(Boolean).join(" ");
+  const tabStop = idx >= 0 ? idx : opts.findIndex(o => !o.disabled);
   return /*#__PURE__*/React.createElement("div", {
     className: cls,
     role: tabs ? "tablist" : role,
     "aria-label": label
-  }, options.map(o => {
-    const v = typeof o === "string" ? o : o.value;
-    const l = typeof o === "string" ? o : o.label;
-    const on = v === value;
-    return /*#__PURE__*/React.createElement("button", {
-      key: v,
+  }, thumb && /*#__PURE__*/React.createElement("span", {
+    className: "zs-seg-thumb",
+    "aria-hidden": "true",
+    style: {
+      width: thumb.w,
+      transform: "translateX(" + thumb.x + "px)",
+      transitionDuration: live ? undefined : "0ms"
+    }
+  }), opts.map((o, i) => {
+    const on = o.value === value;
+    const btn = /*#__PURE__*/React.createElement("button", {
+      key: o.value,
+      ref: el => refs.current[i] = el,
       type: "button",
       role: tabs ? "tab" : "radio",
       "aria-checked": tabs ? undefined : on,
       "aria-selected": tabs ? on : undefined,
-      "aria-label": !l && o.title ? o.title : undefined,
+      "aria-disabled": o.disabled || undefined,
+      "aria-description": o.disabled && o.title ? o.title : undefined,
+      tabIndex: i === tabStop && !o.disabled ? 0 : -1,
+      "aria-label": !o.label && o.title ? o.title : undefined,
       className: "zs-seg-btn" + (on ? " is-on" : ""),
-      title: o.title,
-      onClick: () => onChange && onChange(v)
+      title: o.disabled ? undefined : o.title,
+      onKeyDown: e => onKey(e, i),
+      onClick: () => !o.disabled && onChange && onChange(o.value)
     }, o.icon && (typeof o.icon === "string" ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
       name: o.icon,
-      size: size === "sm" ? 12 : tabs ? 13 : 12
-    }) : o.icon), l);
+      size: tabs ? "md" : "sm"
+    }) : o.icon), o.label);
+    return o.disabled ? /*#__PURE__*/React.createElement("span", {
+      key: o.value,
+      className: "zs-seg-why",
+      title: o.title
+    }, btn) : btn;
   }));
 }
 Object.assign(__ds_scope, { Segmented });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/forms/Segmented.jsx", error: String((e && e.message) || e) }); }
 
-// components/forms/Select.jsx
-try { (() => {
-function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
-// Select — native dropdown in the inset-field skin (settings: remotes, trunk). options: ["origin"] or [{ value, label }]
-function Select({
-  options = [],
-  value,
-  onChange,
-  label,
-  className = "",
-  ...rest
-}) {
-  return /*#__PURE__*/React.createElement("select", _extends({
-    className: ("zs-field zs-select " + className).trim(),
-    value: value,
-    "aria-label": label,
-    onChange: e => onChange && onChange(e.target.value)
-  }, rest), options.map(o => {
-    const v = typeof o === "string" ? o : o.value;
-    return /*#__PURE__*/React.createElement("option", {
-      key: v,
-      value: v
-    }, typeof o === "string" ? o : o.label);
-  }));
-}
-Object.assign(__ds_scope, { Select });
-})(); } catch (e) { __ds_ns.__errors.push({ path: "components/forms/Select.jsx", error: String((e && e.message) || e) }); }
-
 // components/forms/Slider.jsx
 try { (() => {
-// Slider — 4px track, moon fill, white 14px thumb, mono value readout.
+// Slider — 4px track, accent fill, --thumb knob, tabular mono readout. ticks: true (every step, when ≤ 21) or an array of values.
+// The value never tweens: drag follows the pointer, a click on the track jumps there, keys land at once; the readout brightens while dragging.
+// Keys: ←↓ / →↑ one step (native) · Page Down / Page Up ten steps · Home / End the ends. The fill is --accent-line.
 function Slider({
   value,
   min = 0,
@@ -847,11 +1689,28 @@ function Slider({
   width = 120,
   unit = "",
   label,
-  showValue = true
+  showValue = true,
+  ticks,
+  disabled = false,
+  className = ""
 }) {
+  const [drag, setDrag] = React.useState(false);
   const p = (value - min) / (max - min) * 100;
+  React.useEffect(() => {
+    if (!drag) return;
+    const up = () => setDrag(false);
+    window.addEventListener("pointerup", up);
+    return () => window.removeEventListener("pointerup", up);
+  }, [drag]);
+  let marks = [];
+  if (Array.isArray(ticks)) marks = ticks;else if (ticks) {
+    const n = Math.round((max - min) / step);
+    if (n <= 20) for (let i = 0; i <= n; i++) marks.push(min + i * step);
+  }
   return /*#__PURE__*/React.createElement("span", {
-    className: "zs-slider"
+    className: ["zs-slider", drag && "is-drag", disabled && "is-disabled", className].filter(Boolean).join(" ")
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-slider-track"
   }, /*#__PURE__*/React.createElement("input", {
     type: "range",
     min: min,
@@ -859,12 +1718,37 @@ function Slider({
     step: step,
     value: value,
     "aria-label": label,
+    "aria-valuetext": value + unit,
+    disabled: disabled,
     style: {
       width,
       "--p": p + "%"
     },
-    onChange: e => onChange && onChange(+e.target.value)
-  }), showValue && /*#__PURE__*/React.createElement("span", {
+    onPointerDown: () => setDrag(true),
+    onChange: e => onChange && onChange(+e.target.value),
+    onKeyDown: e => {
+      const k = {
+        PageUp: Math.min(max, value + step * 10),
+        PageDown: Math.max(min, value - step * 10),
+        Home: min,
+        End: max
+      }[e.key];
+      if (k != null) {
+        e.preventDefault();
+        if (k !== value && onChange) onChange(k);
+      }
+    }
+  }), marks.length > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "zs-slider-ticks",
+    "aria-hidden": "true"
+  }, marks.map(m => /*#__PURE__*/React.createElement("span", {
+    key: m,
+    className: "zs-slider-tick",
+    style: {
+      position: "absolute",
+      left: (m - min) / (max - min) * 100 + "%"
+    }
+  })))), showValue && /*#__PURE__*/React.createElement("span", {
     className: "zs-slider-val"
   }, value, unit));
 }
@@ -873,22 +1757,25 @@ Object.assign(__ds_scope, { Slider });
 
 // components/forms/Switch.jsx
 try { (() => {
-// Switch — 30 × 18, moon when on.
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// Switch — 30 × 18, accent when on. Press stretches the knob toward its travel; Space toggles (role switch).
 function Switch({
   checked = false,
   onChange,
   label,
-  disabled = false
+  disabled = false,
+  className = "",
+  ...rest
 }) {
-  return /*#__PURE__*/React.createElement("button", {
+  return /*#__PURE__*/React.createElement("button", _extends({
     type: "button",
     role: "switch",
     "aria-checked": checked,
     "aria-label": label,
     disabled: disabled,
-    className: "zs-switch" + (checked ? " is-on" : ""),
+    className: ["zs-switch", checked && "is-on", className].filter(Boolean).join(" "),
     onClick: () => onChange && onChange(!checked)
-  });
+  }, rest));
 }
 Object.assign(__ds_scope, { Switch });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/forms/Switch.jsx", error: String((e && e.message) || e) }); }
@@ -896,44 +1783,86 @@ Object.assign(__ds_scope, { Switch });
 // components/forms/TextField.jsx
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
-// TextField — the inset field: a darker well on glass (light: near-white), hairline, moon focus ring.
-// size: sm 30px / 12.5px (settings) · md 34px / 13.5px semibold (composer summary) · lg 36px / 15px semibold (describe summary)
+// TextField — the inset field: a darker well on glass (light: near-white), hairline, moon focus border + halo.
+// size: sm 30 / 12.5px (settings) · md 36 / 13px semibold (composer summary) · lg 36 / 15px semibold (describe summary) — --control-md / --control-lg
 // multiline: the details textarea (13px / 1.5); size "md" makes it the compact composer version (44px, no resize).
+// error: true or the message (red edge + halo, message line below) · message: a neutral hint line · readOnly: dashed edge, selectable.
 function TextField({
   size = "sm",
   multiline = false,
   mono = false,
   rows = 2,
   inputRef,
+  error,
+  message,
   className = "",
+  style,
   ...rest
 }) {
+  const id = React.useId();
+  const msg = typeof error === "string" ? error : message;
   const cls = ["zs-field", multiline ? "zs-field--area" : "zs-field--" + size, multiline && size === "md" && "is-compact", mono && "is-mono", className].filter(Boolean).join(" ");
-  if (multiline) return /*#__PURE__*/React.createElement("textarea", _extends({
-    ref: inputRef,
+  const a = {
     className: cls,
-    rows: rows
-  }, rest));
-  return /*#__PURE__*/React.createElement("input", _extends({
+    "aria-invalid": error ? true : undefined,
+    "aria-describedby": msg ? id : undefined,
+    ...rest
+  };
+  const field = multiline ? /*#__PURE__*/React.createElement("textarea", _extends({
     ref: inputRef,
-    className: cls
-  }, rest));
+    rows: rows,
+    style: msg ? undefined : style
+  }, a)) : /*#__PURE__*/React.createElement("input", _extends({
+    ref: inputRef,
+    style: msg ? undefined : style
+  }, a));
+  if (!msg) return field;
+  return /*#__PURE__*/React.createElement("span", {
+    className: "zs-fieldwrap",
+    style: style
+  }, field, /*#__PURE__*/React.createElement("span", {
+    id: id,
+    className: "zs-field-msg" + (error ? " is-error" : ""),
+    role: error ? "alert" : undefined
+  }, error && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "alert",
+    size: 12
+  }), msg));
 }
 Object.assign(__ds_scope, { TextField });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/forms/TextField.jsx", error: String((e && e.message) || e) }); }
 
 // components/graph/AtBadge.jsx
 try { (() => {
-// AtBadge — "@", the working copy. Saffron is reserved for it: nothing else in the UI may use --co.
+// AtBadge — "@", the working copy of THIS workspace. Saffron is reserved for it: nothing else in the UI may use --co.
+// name: with two or more workspaces jj prints every working copy as name@ (ours included: default@) — so does the badge.
+// With one workspace jj prints no marker, and the badge stays a plain "@".
 function AtBadge({
-  size = "md"
+  size = "md",
+  name
 }) {
   return /*#__PURE__*/React.createElement("span", {
-    className: "zs-at" + (size === "sm" ? " is-sm" : ""),
-    title: "Working copy (@)"
-  }, "@");
+    className: "zs-at" + (size === "sm" ? " is-sm" : "") + (name ? " is-named" : ""),
+    title: name ? "Working copy of " + name + " — this workspace" : "Working copy (@)"
+  }, name && /*#__PURE__*/React.createElement("span", {
+    className: "zs-at-n"
+  }, name), "@");
 }
-Object.assign(__ds_scope, { AtBadge });
+
+// WorkspaceTag — another workspace's working copy on this commit (name@): quiet, never saffron — gold is only ours.
+function WorkspaceTag({
+  name,
+  more,
+  title
+}) {
+  return /*#__PURE__*/React.createElement("span", {
+    className: "zs-ws" + (more ? " is-more" : ""),
+    title: title || (more ? undefined : "Working copy of the workspace " + name)
+  }, more ? "+" + more : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
+    className: "zs-ws-n"
+  }, name), "@"));
+}
+Object.assign(__ds_scope, { AtBadge, WorkspaceTag });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/graph/AtBadge.jsx", error: String((e && e.message) || e) }); }
 
 // components/actions/AtPill.jsx
@@ -953,7 +1882,7 @@ function AtPill({
     title: "Scroll to the working copy"
   }, rest), /*#__PURE__*/React.createElement(__ds_scope.AtBadge, null), /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "arrow-up",
-    size: 14
+    size: "md"
   }));
 }
 Object.assign(__ds_scope, { AtPill });
@@ -1009,7 +1938,7 @@ function BookmarkChip({
       title: title || (state ? name + " — " + (ZS_BM_STATE[state] || state) : name)
     }, rest), /*#__PURE__*/React.createElement(__ds_scope.Icon, {
       name: "bookmark-filled",
-      size: 11
+      size: "sm"
     }), /*#__PURE__*/React.createElement("span", {
       className: "zs-bm-name"
     }, name), state && /*#__PURE__*/React.createElement("span", {
@@ -1022,7 +1951,7 @@ function BookmarkChip({
     title: title || name
   }, rest), /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "bookmark-filled",
-    size: 12
+    size: "sm"
   }), b.prefix && /*#__PURE__*/React.createElement("span", {
     className: "zs-bm-rest is-prefix"
   }, b.prefix), /*#__PURE__*/React.createElement("span", {
@@ -1064,12 +1993,16 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
 // States: workingCopy (saffron, glow) · selected (moon ring) · immutable (◆, muted subject) · empty / undescribed (italic, dim) · root
 // · dim · drop (rebase target) · dragging "src" | "from" · flash (just changed) · menuOpen (its ••• menu is showing)
 // Hover affordances: the ••• button (onMenu) on the bottom edge; without bookmarks, a round bookmark button (onBookmark) on the top edge.
+// workspaces: the workspaces whose working copy is this commit — pass them only when the repo has two or more (jj prints no marker
+// with one). Ours (ownWorkspace) is the saffron name@ badge; the others are quiet name@ tags, two at most, then +N (its title lists them).
 function ChangeCard({
   id,
   subject,
   author,
   date,
   bookmarks = [],
+  workspaces,
+  ownWorkspace,
   workingCopy,
   selected,
   hover,
@@ -1101,13 +2034,13 @@ function ChangeCard({
     title: "conflict"
   }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "conflict",
-    size: 12
+    size: "sm"
   })), merge && /*#__PURE__*/React.createElement("span", {
     className: "zs-card-flag",
     title: "merge"
   }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "merge",
-    size: 12
+    size: "sm"
   })));
   const cls = ["zs-card", !detailed && "is-compact", workingCopy && "is-wc", selected && "is-sel", hover && "is-hover", immutable && "is-immutable", root && "is-root", dim && "is-dim", drop && "is-drop", dragging && "is-drag-" + dragging, flash && "is-flash", menuOpen && "is-menu", className].filter(Boolean).join(" ");
   const cid = /*#__PURE__*/React.createElement(__ds_scope.ChangeId, {
@@ -1116,10 +2049,21 @@ function ChangeCard({
     immutable: immutable && !root
   });
   const stop = e => e.stopPropagation();
+  const others = (workspaces || []).filter(w => w !== ownWorkspace).sort();
+  const named = workspaces && workspaces.length > 0;
+  const at = /*#__PURE__*/React.createElement(React.Fragment, null, workingCopy && /*#__PURE__*/React.createElement(__ds_scope.AtBadge, {
+    name: named ? ownWorkspace : undefined
+  }), others.slice(0, 2).map(w => /*#__PURE__*/React.createElement(__ds_scope.WorkspaceTag, {
+    key: w,
+    name: w
+  })), others.length > 2 && /*#__PURE__*/React.createElement(__ds_scope.WorkspaceTag, {
+    more: others.length - 2,
+    title: others.slice(2).map(w => w + "@").join(" · ")
+  }));
   return /*#__PURE__*/React.createElement("div", _extends({
     role: "button",
     tabIndex: 0,
-    "aria-label": (workingCopy ? "Working copy, " : "") + (subject || "no description"),
+    "aria-label": (workingCopy ? "Working copy" + (named ? " of " + ownWorkspace : "") + ", " : "") + (others.length ? "working copy of " + others.join(", ") + ", " : "") + (subject || "no description"),
     className: cls,
     style: {
       width,
@@ -1130,7 +2074,7 @@ function ChangeCard({
     className: "zs-card-line"
   }, subj), /*#__PURE__*/React.createElement("div", {
     className: "zs-card-line zs-card-meta"
-  }, workingCopy && /*#__PURE__*/React.createElement(__ds_scope.AtBadge, null), cid, author && /*#__PURE__*/React.createElement("span", {
+  }, at, cid, author && /*#__PURE__*/React.createElement("span", {
     className: "zs-card-meta-t au"
   }, author.split(" ")[0]), date && /*#__PURE__*/React.createElement("span", {
     className: "zs-card-meta-t"
@@ -1138,7 +2082,7 @@ function ChangeCard({
     className: "zs-card-meta-t em"
   }, "empty"), flags)) : /*#__PURE__*/React.createElement("div", {
     className: "zs-card-line"
-  }, workingCopy && /*#__PURE__*/React.createElement(__ds_scope.AtBadge, null), cid, subj, flags), bookmarks.length > 0 && !root && /*#__PURE__*/React.createElement(__ds_scope.BookmarkChip, {
+  }, at, cid, subj, flags), bookmarks.length > 0 && !root && /*#__PURE__*/React.createElement(__ds_scope.BookmarkChip, {
     name: bookmarks[0],
     more: bookmarks.length - 1
   }), !bookmarks.length && !root && onBookmark && /*#__PURE__*/React.createElement("button", {
@@ -1153,7 +2097,7 @@ function ChangeCard({
     onPointerDown: stop
   }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "bookmark",
-    size: 11
+    size: "sm"
   })), onMenu && /*#__PURE__*/React.createElement("button", {
     type: "button",
     className: "zs-card-more",
@@ -1168,8 +2112,8 @@ function ChangeCard({
     onDoubleClick: stop,
     onPointerDown: stop
   }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "more-bold",
-    size: 12
+    name: "more",
+    size: "sm"
   })), children);
 }
 Object.assign(__ds_scope, { ChangeCard });
@@ -1254,7 +2198,7 @@ function Flag({
     title: title
   }, icon && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: icon,
-    size: 11
+    size: "sm"
   }), children);
 }
 Object.assign(__ds_scope, { Flag });
@@ -1615,7 +2559,7 @@ function DropMenu({
     onClick: () => onSelect && onSelect(a.id, i)
   }, a.icon ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: a.icon,
-    size: 15
+    size: "md"
   }) : /*#__PURE__*/React.createElement("span", null), /*#__PURE__*/React.createElement("span", {
     className: "zs-drop-l"
   }, a.label), a.note ? /*#__PURE__*/React.createElement("span", {
@@ -1630,22 +2574,194 @@ Object.assign(__ds_scope, { DropMenu });
 // components/menus/Menu.jsx
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
-// Menu — actions on one change. Head names the change; every item shows the jj command it runs.
-// items: [{ id, label, icon, cmd, danger, disabled }] — use "sep" for a separator.
+// reads a motion token (ms) so code and tokens never drift; falls back where there is no document
+const zsMs = (name, fallback) => {
+  try {
+    const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+    return isNaN(n) ? fallback : n;
+  } catch (e) {
+    return fallback;
+  }
+};
+const zsActionable = it => it && it !== "sep" && !it.header && !it.disabled;
+const zsText = it => (it.text != null ? it.text : typeof it.label === "string" ? it.label : "").toLowerCase();
+// is p inside the triangle a → b → c (the pointer's last spot and the submenu's near corners)?
+const zsInTri = (p, a, b, c) => {
+  const s = (u, v, w) => (u.x - w.x) * (v.y - w.y) - (v.x - w.x) * (u.y - w.y);
+  const d1 = s(p, a, b),
+    d2 = s(p, b, c),
+    d3 = s(p, c, a);
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+};
+
+// Menu — every command menu: actions on a change (head names it, rows show the jj command), the text context menu, pull-downs,
+// the project menu, the Select list. items: [{ id, label, text, icon, cmd, shortcut, danger, disabled, checked, radio, submenu, title }]
+// · "sep" · { header }. `text` is what typeahead matches when the label is a node (mono <code>, a project row).
+// One highlight shared by mouse and keyboard (solid accent + ink; danger rows a red tint). Keyboard: ↑/↓ move (wrap), Home/End,
+// typing jumps (letters within --dur-typeahead extend the match), Return/Space activate, → opens a submenu, ← closes it, Esc closes.
+// Activation blinks the row (off --dur-blink · on --dur-blink), then onSelect; the parent closes the menu with its exit (closing).
+// Submenus: open after --delay-submenu on hover (at once with → ↩ or a click); while the pointer travels toward an open submenu
+// (inside the triangle from where it was to the submenu's near corners) other rows don't take the highlight; the submenu closes
+// --delay-submenu-out after the pointer leaves row and triangle. It opens to the right, flips left when the window has no room
+// (8px margin) and shifts up to stay 8px inside the bottom edge.
 function Menu({
   id,
   subject,
   workingCopy = false,
   items = [],
   onSelect,
+  onClose,
+  autoFocus = false,
+  blink = true,
+  highlight,
+  closing = false,
+  still = false,
   className = "",
   style,
   ...rest
 }) {
+  const ref = React.useRef(null);
+  const [hi, setHi] = React.useState(highlight == null ? -1 : highlight);
+  const [kbd, setKbd] = React.useState(false);
+  const [blinkAt, setBlinkAt] = React.useState(-1);
+  const [sub, setSub] = React.useState(-1);
+  const busy = React.useRef(false);
+  const typed = React.useRef({
+    s: "",
+    t: 0
+  });
+  const subT = React.useRef(0),
+    last = React.useRef(null),
+    subEl = React.useRef(null);
+  React.useEffect(() => {
+    if (highlight != null) setHi(highlight);
+  }, [highlight]);
+  React.useEffect(() => {
+    if (autoFocus && ref.current) ref.current.focus({
+      preventScroll: true
+    });
+  }, [autoFocus]);
+  React.useEffect(() => () => clearTimeout(subT.current), []);
+  const step = (from, dir) => {
+    for (let k = 1; k <= items.length; k++) {
+      const j = ((from + dir * k) % items.length + items.length) % items.length;
+      if (zsActionable(items[j])) return j;
+    }
+    return from;
+  };
+  const activate = i => {
+    const it = items[i];
+    if (!zsActionable(it) || busy.current) return;
+    if (it.submenu) {
+      clearTimeout(subT.current);
+      setSub(i);
+      return;
+    }
+    if (!blink) {
+      onSelect && onSelect(it.id, it);
+      return;
+    }
+    const ms = zsMs("--dur-blink", 70);
+    busy.current = true;
+    setHi(i);
+    setBlinkAt(i);
+    setTimeout(() => {
+      setBlinkAt(-1);
+      setTimeout(() => {
+        busy.current = false;
+        onSelect && onSelect(it.id, it);
+      }, ms);
+    }, ms);
+  };
+  const aiming = e => {
+    const box = subEl.current && subEl.current.getBoundingClientRect(),
+      p = last.current;
+    if (!box || !p) return false;
+    const nearX = box.left >= p.x ? box.left : box.right;
+    return zsInTri({
+      x: e.clientX,
+      y: e.clientY
+    }, p, {
+      x: nearX,
+      y: box.top
+    }, {
+      x: nearX,
+      y: box.bottom
+    });
+  };
+  const enter = (i, e) => {
+    if (busy.current) return;
+    const it = items[i];
+    clearTimeout(subT.current);
+    if (sub >= 0 && sub !== i && aiming(e)) {
+      subT.current = setTimeout(() => {
+        setHi(i);
+        setSub(it.submenu ? i : -1);
+      }, zsMs("--delay-submenu-out", 300));
+      return;
+    }
+    setHi(i);
+    if (it.submenu) subT.current = setTimeout(() => setSub(i), zsMs("--delay-submenu", 150));else if (sub >= 0) subT.current = setTimeout(() => setSub(-1), zsMs("--delay-submenu-out", 300));
+  };
+  const onKey = e => {
+    const k = e.key;
+    if (k === "ArrowDown" || k === "ArrowUp") {
+      e.preventDefault();
+      setKbd(true);
+      setSub(-1);
+      setHi(h => step(h < 0 && k === "ArrowUp" ? 0 : h, k === "ArrowDown" ? 1 : -1));
+    } else if (k === "Home" || k === "End") {
+      e.preventDefault();
+      setKbd(true);
+      setHi(k === "Home" ? step(-1, 1) : step(items.length, -1));
+    } else if (k === "Enter" || k === " ") {
+      e.preventDefault();
+      activate(hi);
+    } else if (k === "ArrowRight") {
+      if (items[hi] && items[hi].submenu) {
+        e.preventDefault();
+        setKbd(true);
+        setSub(hi);
+      }
+    } else if (k === "ArrowLeft" || k === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onClose && onClose();
+    } else if (k.length === 1 && /\S/.test(k)) {
+      const now = Date.now();
+      const t = typed.current;
+      t.s = now - t.t < zsMs("--dur-typeahead", 600) ? t.s + k.toLowerCase() : k.toLowerCase();
+      t.t = now;
+      const from = Math.max(0, t.s.length > 1 ? hi : hi + 1);
+      for (let n = 0; n < items.length; n++) {
+        const j = (from + n) % items.length;
+        if (zsActionable(items[j]) && zsText(items[j]).startsWith(t.s)) {
+          setKbd(true);
+          setHi(j);
+          break;
+        }
+      }
+    }
+  };
+  const cls = ["zs-menu", kbd && "is-kbd", closing && "is-closing", still && "is-static", className].filter(Boolean).join(" ");
   return /*#__PURE__*/React.createElement("div", _extends({
+    ref: ref,
     role: "menu",
-    className: ("zs-menu " + className).trim(),
-    style: style
+    tabIndex: -1,
+    "aria-label": subject,
+    className: cls,
+    style: style,
+    onKeyDown: onKey,
+    onMouseMove: e => {
+      if (kbd) setKbd(false);
+      if (sub < 0 || !aiming(e)) last.current = {
+        x: e.clientX,
+        y: e.clientY
+      };
+    },
+    onMouseLeave: () => {
+      if (!kbd && sub < 0 && !busy.current) setHi(-1);
+    }
   }, rest), (id || subject) && /*#__PURE__*/React.createElement("div", {
     className: "zs-menu-head"
   }, workingCopy && /*#__PURE__*/React.createElement(__ds_scope.AtBadge, {
@@ -1655,31 +2771,427 @@ function Menu({
     length: 8
   }), subject && /*#__PURE__*/React.createElement("span", {
     className: "zs-menu-subj"
-  }, subject)), items.map((it, i) => it === "sep" ? /*#__PURE__*/React.createElement("div", {
-    key: "sep" + i,
-    className: "zs-menu-sep",
-    role: "separator"
-  }) : /*#__PURE__*/React.createElement("button", {
-    key: it.id || i,
-    type: "button",
-    role: "menuitem",
-    className: "zs-menu-item" + (it.danger ? " is-danger" : ""),
-    disabled: it.disabled,
-    onClick: () => onSelect && onSelect(it.id)
-  }, it.icon ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: it.icon,
-    size: 14
-  }) : /*#__PURE__*/React.createElement("span", null), /*#__PURE__*/React.createElement("span", null, it.label), it.cmd ? /*#__PURE__*/React.createElement("span", {
-    className: "zs-menu-cmd"
-  }, it.cmd) : /*#__PURE__*/React.createElement("span", null))));
+  }, subject)), items.map((it, i) => {
+    if (it === "sep") return /*#__PURE__*/React.createElement("div", {
+      key: "sep" + i,
+      className: "zs-menu-sep",
+      role: "separator"
+    });
+    if (it.header) return /*#__PURE__*/React.createElement("div", {
+      key: "h" + i,
+      className: "zs-menu-h",
+      role: "presentation"
+    }, it.header);
+    const check = it.checked !== undefined;
+    const cls = ["zs-menu-item", it.danger && "is-danger", i === hi && "is-hi", i === blinkAt && "is-blink"].filter(Boolean).join(" ");
+    return /*#__PURE__*/React.createElement("div", {
+      key: it.id || i,
+      className: "zs-menu-row",
+      style: {
+        position: "relative"
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      tabIndex: -1,
+      className: cls,
+      disabled: it.disabled,
+      title: it.title,
+      role: check ? it.radio ? "menuitemradio" : "menuitemcheckbox" : "menuitem",
+      "aria-checked": check ? !!it.checked : undefined,
+      "aria-haspopup": it.submenu ? "menu" : undefined,
+      "aria-expanded": it.submenu ? sub === i : undefined,
+      onMouseEnter: e => enter(i, e),
+      onClick: () => activate(i)
+    }, check ? /*#__PURE__*/React.createElement("span", {
+      className: "zs-menu-chk"
+    }, it.checked && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+      name: "check",
+      size: "sm"
+    })) : typeof it.icon === "string" ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+      name: it.icon,
+      size: "md"
+    }) : it.icon || /*#__PURE__*/React.createElement("span", null), /*#__PURE__*/React.createElement("span", {
+      className: "zs-menu-l"
+    }, it.label), /*#__PURE__*/React.createElement("span", {
+      className: "zs-menu-r"
+    }, it.cmd && /*#__PURE__*/React.createElement("span", {
+      className: "zs-menu-cmd"
+    }, it.cmd), it.shortcut && /*#__PURE__*/React.createElement("span", {
+      className: "zs-menu-sc"
+    }, it.shortcut), it.submenu && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+      className: "zs-menu-chev",
+      name: "chevron-right",
+      size: "sm"
+    }))), it.submenu && sub === i && /*#__PURE__*/React.createElement(ZsSubmenu, {
+      subRef: subEl,
+      items: it.submenu,
+      kbd: kbd,
+      blink: blink,
+      onSelect: onSelect,
+      onClose: () => {
+        setSub(-1);
+        ref.current && ref.current.focus();
+      }
+    }));
+  }));
 }
-Object.assign(__ds_scope, { Menu });
+
+// the submenu places itself: right of its row, flipped left without room, shifted up to stay 8px inside the window
+function ZsSubmenu({
+  subRef,
+  items,
+  kbd,
+  blink,
+  onSelect,
+  onClose
+}) {
+  const box = React.useRef(null);
+  const [pos, setPos] = React.useState({
+    flip: false,
+    dy: 0
+  });
+  React.useLayoutEffect(() => {
+    const el = box.current && box.current.firstElementChild;
+    if (!el) return;
+    subRef.current = el;
+    const r = el.getBoundingClientRect(),
+      W = window.innerWidth,
+      H = window.innerHeight;
+    setPos({
+      flip: r.right > W - 8,
+      dy: r.bottom > H - 8 ? Math.min(r.top - 8, r.bottom - (H - 8)) : 0
+    });
+    return () => {
+      subRef.current = null;
+    };
+  }, []);
+  return /*#__PURE__*/React.createElement("div", {
+    ref: box,
+    className: "zs-menu-subwrap" + (pos.flip ? " is-flip" : ""),
+    style: {
+      transform: pos.dy ? "translateY(" + -pos.dy + "px)" : undefined
+    }
+  }, /*#__PURE__*/React.createElement(Menu, {
+    items: items,
+    className: "zs-menu-sub",
+    autoFocus: kbd,
+    blink: blink,
+    onSelect: onSelect,
+    onClose: onClose
+  }));
+}
+Object.assign(__ds_scope, { zsMs, Menu });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/menus/Menu.jsx", error: String((e && e.message) || e) }); }
+
+// components/controls/Tooltip.jsx
+try { (() => {
+let zsTipWarmUntil = 0;
+const ZS_FLIP = {
+  bottom: "top",
+  top: "bottom",
+  right: "left",
+  left: "right"
+};
+
+// Tooltip — replaces the HTML title on controls. After --delay-tooltip (700ms) of rest; at once while "warm" (another tooltip closed
+// less than --dur-tooltip-warm ago). Verbs first, jj underneath: label (+ shortcut, plain text) on the first line, the exact command under it.
+// Placement: 8px from the control; when it would leave the window it FLIPS to the other side, then CLAMPS 8px inside the edges
+// (shifted along its axis, the arrowless box never covers the control). Hides on leave (--dur-exit fade) and on press.
+// Keyboard focus shows it after the same delay; it is the control's description for VoiceOver (aria-describedby) while shown.
+// A disabled control with a reason: wrap it — the anchor keeps the hover while the control takes none (base.css › disabled).
+function Tooltip({
+  label,
+  cmd,
+  shortcut,
+  placement = "bottom",
+  open,
+  delay,
+  children,
+  className = ""
+}) {
+  const [show, setShow] = React.useState(false);
+  const [closing, setClosing] = React.useState(false);
+  const [fit, setFit] = React.useState({
+    side: placement,
+    dx: 0,
+    dy: 0,
+    done: false
+  });
+  const t = React.useRef(0),
+    tip = React.useRef(null);
+  const id = React.useId();
+  React.useEffect(() => () => clearTimeout(t.current), []);
+  const enter = () => {
+    clearTimeout(t.current);
+    t.current = setTimeout(() => {
+      setClosing(false);
+      setFit({
+        side: placement,
+        dx: 0,
+        dy: 0,
+        done: false
+      });
+      setShow(true);
+    }, Date.now() < zsTipWarmUntil ? 0 : delay != null ? delay : __ds_scope.zsMs("--delay-tooltip", 700));
+  };
+  const leave = () => {
+    clearTimeout(t.current);
+    if (!show) return;
+    zsTipWarmUntil = Date.now() + __ds_scope.zsMs("--dur-tooltip-warm", 600);
+    setClosing(true);
+    t.current = setTimeout(() => {
+      setShow(false);
+      setClosing(false);
+    }, __ds_scope.zsMs("--dur-exit", 120));
+  };
+  const visible = open != null ? open : show;
+  // measure once per showing: flip if the preferred side has no room, then clamp along the other axis
+  React.useLayoutEffect(() => {
+    const el = tip.current;
+    if (!visible || !el || fit.done) return;
+    const r = el.getBoundingClientRect(),
+      W = window.innerWidth,
+      H = window.innerHeight,
+      m = 8;
+    let side = fit.side;
+    const out = {
+      bottom: r.bottom > H - m,
+      top: r.top < m,
+      right: r.right > W - m,
+      left: r.left < m
+    };
+    if (out[side] && side === placement) {
+      setFit({
+        side: ZS_FLIP[side],
+        dx: 0,
+        dy: 0,
+        done: false
+      });
+      return;
+    }
+    const vertical = side === "bottom" || side === "top";
+    const dx = vertical ? r.left < m ? m - r.left : r.right > W - m ? W - m - r.right : 0 : 0;
+    const dy = vertical ? 0 : r.top < m ? m - r.top : r.bottom > H - m ? H - m - r.bottom : 0;
+    setFit({
+      side,
+      dx,
+      dy,
+      done: true
+    });
+  }, [visible, fit]);
+  return /*#__PURE__*/React.createElement("span", {
+    className: ("zs-tip-anchor " + className).trim(),
+    onMouseEnter: enter,
+    onMouseLeave: leave,
+    onPointerDown: leave,
+    onFocus: e => {
+      try {
+        if (e.target.matches(":focus-visible")) enter();
+      } catch (_) {}
+    },
+    onBlur: leave,
+    "aria-describedby": visible ? id : undefined
+  }, children, visible && /*#__PURE__*/React.createElement("span", {
+    ref: tip,
+    id: id,
+    role: "tooltip",
+    className: ["zs-tip", "is-" + fit.side, closing && "is-closing"].filter(Boolean).join(" "),
+    style: {
+      "--tip-dx": fit.dx + "px",
+      "--tip-dy": fit.dy + "px"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-tip-l"
+  }, /*#__PURE__*/React.createElement("span", null, label), shortcut && /*#__PURE__*/React.createElement("span", {
+    className: "zs-tip-k"
+  }, shortcut)), cmd && /*#__PURE__*/React.createElement("code", {
+    className: "zs-tip-cmd"
+  }, cmd)));
+}
+Object.assign(__ds_scope, { Tooltip });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/controls/Tooltip.jsx", error: String((e && e.message) || e) }); }
+
+// components/forms/Select.jsx
+try { (() => {
+function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
+// Select — the pop-up button (settings: remotes, trunk; the Configurations dialog's function and mode pickers).
+// Trigger: the field's well + value + double chevron. The list is a Menu that opens OVER the trigger (macOS pop-up button):
+// · the chosen row lies centred on the trigger and its text starts at the trigger's text x (list left = trigger left − 29);
+// · width = trigger + 40, at most 360; clamped 8px inside the window; a list taller than the window minus 16 scrolls, the chosen row in view;
+// · it grows out of the chosen row (transform-origin there), --dur-menu on glide; leaving fades (--dur-exit).
+// Pointer: a click opens it and it stays; press – drag – release picks the row under the pointer in one gesture.
+// Keys: Space ↩ ↑ ↓ open; then the Menu's keys (↑↓ Home End, typeahead — on `text`, so mono <code> labels match too, ↩ picks, Esc closes
+// and focus returns to the trigger). placement "below" drops it under the trigger instead (pull-downs that run commands).
+// options: ["origin", "sep", { value, label, text, disabled, mono }, { header: "Remote bookmarks" }, { value: "__custom", label: "Custom…" }]
+function Select({
+  options = [],
+  value,
+  onChange,
+  onCustom,
+  label,
+  mono = false,
+  placement = "over",
+  disabled = false,
+  className = "",
+  style,
+  ...rest
+}) {
+  const wrap = React.useRef(null);
+  const btn = React.useRef(null);
+  const menu = React.useRef(null);
+  const press = React.useRef(null);
+  const [open, setOpen] = React.useState(false);
+  const [closing, setClosing] = React.useState(false);
+  const [pos, setPos] = React.useState(null);
+  const opts = options.map(o => o === "sep" ? "sep" : typeof o === "string" ? {
+    value: o,
+    label: o
+  } : o);
+  const cur = opts.find(o => o !== "sep" && !o.header && o.value === value);
+  const items = opts.map(o => o === "sep" ? "sep" : o.header ? {
+    header: o.header
+  } : {
+    id: o.value,
+    text: o.text || (typeof o.label === "string" ? o.label : String(o.value)),
+    label: mono || o.mono ? /*#__PURE__*/React.createElement("code", {
+      className: "zs-select-code"
+    }, o.label) : o.label,
+    checked: o.value === value,
+    radio: true,
+    disabled: o.disabled
+  });
+  const close = (refocus = true) => {
+    setClosing(true);
+    setTimeout(() => {
+      setOpen(false);
+      setClosing(false);
+      setPos(null);
+    }, 120);
+    if (refocus && btn.current) btn.current.focus();
+  };
+  React.useLayoutEffect(() => {
+    if (!open || !menu.current || !wrap.current) return;
+    const m = menu.current.querySelector(".zs-menu");
+    if (!m) return;
+    const w = wrap.current.getBoundingClientRect(),
+      vh = window.innerHeight;
+    m.style.maxHeight = vh - 16 + "px";
+    m.style.overflowY = "auto";
+    if (placement === "below") {
+      setPos({
+        top: w.height + 4,
+        left: 0,
+        origin: "top left"
+      });
+      return;
+    }
+    const row = m.querySelector('.zs-menu-item[aria-checked="true"]') || m.querySelector(".zs-menu-item");
+    const rowTop = row ? row.parentElement.offsetTop : 0,
+      h = m.offsetHeight;
+    let top = -rowTop + Math.round((w.height - 28) / 2) - 1;
+    if (w.top + top < 8) {
+      const over = 8 - (w.top + top);
+      top += over;
+      if (h > vh - 16) m.scrollTop = Math.min(over, m.scrollHeight - h);
+    }
+    if (w.top + top + h > vh - 8) top -= w.top + top + h - (vh - 8);
+    setPos({
+      top,
+      left: -29,
+      origin: "29px " + (rowTop - m.scrollTop + 14) + "px"
+    });
+  }, [open, placement]);
+  React.useEffect(() => {
+    if (!open) return;
+    const down = e => {
+      if (wrap.current && !wrap.current.contains(e.target)) close(false);
+    };
+    // press – drag – release: a release over a row after the pointer moved (or after a held press) picks it
+    const up = e => {
+      const p = press.current;
+      press.current = null;
+      if (!p) return;
+      const moved = Math.abs(e.clientX - p.x) > 4 || Math.abs(e.clientY - p.y) > 4 || Date.now() - p.t > 300;
+      const row = e.target.closest && e.target.closest(".zs-menu-item");
+      if (moved && row && menu.current && menu.current.contains(row) && !row.disabled) row.click();
+    };
+    document.addEventListener("mousedown", down);
+    document.addEventListener("mouseup", up);
+    return () => {
+      document.removeEventListener("mousedown", down);
+      document.removeEventListener("mouseup", up);
+    };
+  }, [open]);
+  const onKey = e => {
+    if (!open && ["ArrowDown", "ArrowUp", " ", "Enter"].includes(e.key)) {
+      e.preventDefault();
+      setOpen(true);
+    }
+  };
+  return /*#__PURE__*/React.createElement("span", {
+    ref: wrap,
+    className: "zs-select-wrap",
+    style: style
+  }, /*#__PURE__*/React.createElement("button", _extends({
+    ref: btn,
+    type: "button",
+    className: ["zs-select", open && "is-open", className].filter(Boolean).join(" "),
+    disabled: disabled,
+    "aria-haspopup": "menu",
+    "aria-expanded": open,
+    "aria-label": label ? label + ": " + (cur ? cur.text || cur.label : "") : undefined,
+    onMouseDown: e => {
+      if (!open) {
+        e.preventDefault();
+        press.current = {
+          x: e.clientX,
+          y: e.clientY,
+          t: Date.now()
+        };
+        setOpen(true);
+      }
+    },
+    onKeyDown: onKey
+  }, rest), /*#__PURE__*/React.createElement("span", {
+    className: "zs-select-v" + (mono || cur && cur.mono ? " is-mono" : "")
+  }, cur ? cur.label : "—"), /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    className: "zs-select-chev",
+    name: "updown",
+    size: "sm"
+  })), open && /*#__PURE__*/React.createElement("div", {
+    ref: menu,
+    style: {
+      position: "absolute",
+      zIndex: "var(--z-menu)",
+      top: pos ? pos.top : 0,
+      left: pos ? pos.left : 0,
+      visibility: pos ? "visible" : "hidden"
+    }
+  }, /*#__PURE__*/React.createElement(__ds_scope.Menu, {
+    items: items,
+    autoFocus: true,
+    closing: closing,
+    highlight: items.findIndex(it => it.checked),
+    style: {
+      minWidth: (btn.current ? btn.current.offsetWidth : 170) + (placement === "below" ? 0 : 40),
+      maxWidth: 360,
+      transformOrigin: pos ? pos.origin : undefined
+    },
+    onClose: () => close(true),
+    onSelect: v => {
+      if (v === "__custom") onCustom && onCustom();else if (v !== value) onChange && onChange(v);
+      close(true);
+    }
+  })));
+}
+Object.assign(__ds_scope, { Select });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/forms/Select.jsx", error: String((e && e.message) || e) }); }
 
 // components/menus/ProjectMenu.jsx
 try { (() => {
-// ProjectMenu — drops from the project capsule: recent projects (✓ = open), All Projects…, Project Settings…, Settings… ⌘,
-// recent: [{ id, name, branch, status }] — status keys as in ProjectRow (clean, dirty, ahead, behind, diverged, conflict, syncing)
+// ProjectMenu — drops from the project capsule. It IS a Menu (one highlight, ↑↓ Home End, typeahead on the project name, blink,
+// closing exit): Recent (✓ = open, status dot, branch in the mono column) · All Projects… ⇧⌘O · Project Settings… (the Project tab) · Settings… ⌘, (does exactly what ⌘, does: the tab shown last)
+// recent: [{ id, name, branch, status, path }] — status keys as in ProjectRow (clean, dirty, ahead, behind, diverged, conflict, syncing)
 function ProjectMenu({
   recent = [],
   activeId,
@@ -1687,79 +3199,64 @@ function ProjectMenu({
   onAll,
   onProjectSettings,
   onSettings,
+  closing = false,
+  autoFocus = false,
+  onClose,
   className = "",
   style
 }) {
-  return /*#__PURE__*/React.createElement("div", {
-    role: "menu",
+  const items = [{
+    header: "Recent"
+  }, ...recent.map(p => {
+    const s = __ds_scope.zsProjectStatus[p.status] || __ds_scope.zsProjectStatus.clean;
+    return {
+      id: "p:" + p.id,
+      text: p.name,
+      title: p.path,
+      checked: p.id === activeId,
+      radio: true,
+      cmd: p.branch,
+      label: /*#__PURE__*/React.createElement("span", {
+        className: "zs-pm-l"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "zs-pm-name"
+      }, p.name), /*#__PURE__*/React.createElement("span", {
+        className: "zs-pm-dot",
+        style: {
+          background: s.color
+        },
+        title: s.label
+      }))
+    };
+  }), "sep", {
+    id: "all",
+    label: "All Projects…",
+    shortcut: "⇧⌘O"
+  }, "sep", {
+    id: "project-settings",
+    label: "Project Settings…",
+    disabled: !activeId
+  }, {
+    id: "settings",
+    label: "Settings…",
+    shortcut: "⌘,"
+  }];
+  const pick = id => {
+    if (id === "all") onAll && onAll();else if (id === "project-settings") onProjectSettings && onProjectSettings();else if (id === "settings") onSettings && onSettings();else {
+      const p = recent.find(r => "p:" + r.id === id);
+      p && onPick && onPick(p);
+    }
+  };
+  return /*#__PURE__*/React.createElement(__ds_scope.Menu, {
     "aria-label": "Project",
+    items: items,
+    onSelect: pick,
+    onClose: onClose,
+    autoFocus: autoFocus,
+    closing: closing,
     className: ("zs-pm " + className).trim(),
     style: style
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "zs-pm-h"
-  }, "Recent"), recent.map(p => {
-    const s = __ds_scope.zsProjectStatus[p.status] || __ds_scope.zsProjectStatus.clean;
-    const on = p.id === activeId;
-    return /*#__PURE__*/React.createElement("button", {
-      key: p.id,
-      type: "button",
-      role: "menuitemradio",
-      "aria-checked": on,
-      className: "zs-pm-item" + (on ? " is-on" : ""),
-      onClick: () => onPick && onPick(p),
-      title: p.path
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "zs-pm-chk"
-    }, on && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-      name: "check",
-      size: 12
-    })), /*#__PURE__*/React.createElement("span", {
-      className: "zs-pm-name"
-    }, p.name), /*#__PURE__*/React.createElement("span", {
-      className: "zs-pm-dot",
-      style: {
-        background: s.color
-      },
-      title: s.label
-    }), /*#__PURE__*/React.createElement("span", {
-      className: "zs-pm-sub"
-    }, p.branch));
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "zs-pm-sep",
-    role: "separator"
-  }), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    role: "menuitem",
-    className: "zs-pm-item",
-    onClick: onAll
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-pm-chk"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "zs-pm-name"
-  }, "All Projects\u2026")), /*#__PURE__*/React.createElement("div", {
-    className: "zs-pm-sep",
-    role: "separator"
-  }), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    role: "menuitem",
-    className: "zs-pm-item",
-    onClick: onProjectSettings
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-pm-chk"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "zs-pm-name"
-  }, "Project Settings\u2026")), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    role: "menuitem",
-    className: "zs-pm-item",
-    onClick: onSettings
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-pm-chk"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "zs-pm-name"
-  }, "Settings\u2026"), /*#__PURE__*/React.createElement("kbd", {
-    className: "zs-pm-kbd"
-  }, "\u2318,")));
+  });
 }
 Object.assign(__ds_scope, { ProjectMenu });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/menus/ProjectMenu.jsx", error: String((e && e.message) || e) }); }
@@ -1790,7 +3287,7 @@ function DragGhost({
       className: "zs-ghost-card is-bm"
     }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
       name: "bookmark",
-      size: 12
+      size: "sm"
     }), /*#__PURE__*/React.createElement("span", {
       className: "zs-ghost-bm"
     }, bookmark), rest && /*#__PURE__*/React.createElement("span", {
@@ -1894,37 +3391,103 @@ function PeekCard({
 Object.assign(__ds_scope, { PeekCard });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/overlays/PeekCard.jsx", error: String((e && e.message) || e) }); }
 
-// components/overlays/Toast.jsx
+// components/overlays/StaleNotice.jsx
 try { (() => {
-// Toast — every graph edit can be taken back. Glass pill at the bottom centre: what happened (ids in mono), Undo (jj undo), dismiss.
-// The client keeps it 6.5s; while it shows, the @ locator steps aside.
-function Toast({
-  children,
-  onUndo,
-  onClose,
-  undoLabel = "Undo",
+// StaleNotice — the project-level state "Working copy is stale": another workspace or the CLI rewrote this workspace's @ (say, by
+// rebasing an ancestor) and jj refuses everything that reads the working copy — jj log included, and the workspace list — until
+// `jj workspace update-stale` runs. Not a menu, not a toast: a glass island top-centre over the graph, under the top bar, while it lasts.
+// The graph keeps its last valid layout (as with a revset error); the project capsule's dot turns warn. No Retry — retrying can't help.
+// Without onUpdate: the sentence and the command (copyable). With onUpdate: "Update working copy" — the command in its tooltip, then the
+// usual result toast.
+function StaleNotice({
+  command = "jj workspace update-stale",
+  onUpdate,
+  onCopy,
+  busy = false,
   className = "",
   style
 }) {
   return /*#__PURE__*/React.createElement("div", {
     role: "status",
-    className: ("zs-toast " + className).trim(),
+    className: ("zs-stale " + className).trim(),
     style: style
-  }, /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "conflict",
+    size: "md",
+    className: "zs-stale-ic"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "zs-stale-t"
+  }, "Working copy is stale"), /*#__PURE__*/React.createElement("span", {
+    className: "zs-stale-sep",
+    "aria-hidden": "true"
+  }, "\xB7"), /*#__PURE__*/React.createElement("code", {
+    className: "zs-stale-cmd"
+  }, command), onUpdate ? /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "md",
+    icon: "fetch",
+    busy: busy,
+    title: command,
+    onClick: onUpdate
+  }, "Update working copy") : /*#__PURE__*/React.createElement(__ds_scope.IconButton, {
+    size: "sm",
+    icon: "copy",
+    iconSize: "sm",
+    label: "Copy command",
+    title: "Copy — " + command,
+    onClick: onCopy
+  }));
+}
+Object.assign(__ds_scope, { StaleNotice });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/overlays/StaleNotice.jsx", error: String((e && e.message) || e) }); }
+
+// components/overlays/Toast.jsx
+try { (() => {
+// Toast — every graph edit can be taken back. Glass pill at the bottom centre: what happened (ids in mono), Undo (jj undo), dismiss.
+// tone: success (default — past tense + Undo, 6.5s) · warn (refused, nothing changed — 6.5s) · error (failed — action Retry, stays until dismissed).
+// One at a time: a new toast replaces the current one (replaced → the old fades in place, the new rises in). closing → slides down and fades.
+function Toast({
+  children,
+  tone = "success",
+  onUndo,
+  undoLabel = "Undo",
+  action,
+  onClose,
+  closing = false,
+  replaced = false,
+  className = "",
+  style
+}) {
+  const icon = tone === "warn" ? "conflict" : tone === "error" ? "alert" : null;
+  const cls = ["zs-toast", tone !== "success" && "is-" + tone, closing && "is-closing", replaced && "is-replaced", className].filter(Boolean).join(" ");
+  return /*#__PURE__*/React.createElement("div", {
+    role: tone === "error" ? "alert" : "status",
+    className: cls,
+    style: style
+  }, icon && /*#__PURE__*/React.createElement("span", {
+    className: "zs-toast-ic"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: icon,
+    size: "md"
+  })), /*#__PURE__*/React.createElement("span", {
     className: "zs-toast-t"
   }, children), onUndo && /*#__PURE__*/React.createElement("button", {
     type: "button",
     className: "zs-toast-undo",
     onClick: onUndo,
     title: "jj undo"
-  }, undoLabel), onClose && /*#__PURE__*/React.createElement("button", {
+  }, undoLabel), action && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-toast-undo",
+    onClick: action.onClick,
+    title: action.title
+  }, action.label), onClose && /*#__PURE__*/React.createElement("button", {
     type: "button",
     className: "zs-toast-x",
     onClick: onClose,
     "aria-label": "Dismiss"
   }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "close",
-    size: 10
+    size: "xs"
   })));
 }
 Object.assign(__ds_scope, { Toast });
@@ -2015,6 +3578,8 @@ function SearchDollar() {
 //   view "variant" — another jj log variant: the pill shows $, the field shows the variant's name as a value; clicking in empties it
 // ✕ always returns to the default search. Typed prefixes c: b: a: f: d: switch the scope; Backspace in an empty field returns to Any;
 // ⌘F or / focuses the field. Popovers (SearchMenu, SearchPopover) go in as children and anchor under the field.
+// Field-attached lists: focus STAYS in this input. ↑/↓ move the keyboard row of the open list (SearchMenu / SearchPopover), which the
+// input names with aria-activedescendant (pass activeDescendant + controls); ↩ runs that row, Esc closes the list, a click runs any row.
 function GraphSearch({
   scope = "any",
   value = "",
@@ -2028,6 +3593,8 @@ function GraphSearch({
   placeholder,
   hotkey = true,
   expanded = false,
+  activeDescendant,
+  controls,
   onChange,
   onScopeChange,
   onMenu,
@@ -2098,12 +3665,12 @@ function GraphSearch({
     title: title
   }, showVariant ? /*#__PURE__*/React.createElement(SearchDollar, null) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: sc.icon,
-    size: 14
+    size: "md"
   }), scope !== "any" && /*#__PURE__*/React.createElement("span", {
     className: "zs-gs-sl"
   }, sc.label)), /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "chevron-down",
-    size: 12,
+    size: "sm",
     className: "zs-gs-chev"
   })), /*#__PURE__*/React.createElement("input", {
     ref: ref,
@@ -2114,7 +3681,10 @@ function GraphSearch({
     autoComplete: "off",
     role: "combobox",
     "aria-label": "Search the graph",
-    "aria-expanded": expanded,
+    "aria-expanded": expanded || menuOpen,
+    "aria-autocomplete": "list",
+    "aria-controls": controls,
+    "aria-activedescendant": activeDescendant,
     onChange: change,
     onKeyDown: key,
     onMouseUp: onMouseUp,
@@ -2140,7 +3710,7 @@ function GraphSearch({
     title: atDefault ? "Clear" : "Back to the default search — " + defaultName
   }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "close",
-    size: 10
+    size: "xs"
   })), children);
 }
 // the client's width steps: input 320 · 250 (≤1180) · pill icon only (≤1100) · 170, no ⌘F, short placeholders (≤980)
@@ -2148,564 +3718,103 @@ GraphSearch.sizeFor = w => w <= 980 ? "narrow" : w <= 1100 ? "compact" : w <= 11
 Object.assign(__ds_scope, { SearchScopes, SearchDollar, GraphSearch });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/search/GraphSearch.jsx", error: String((e && e.message) || e) }); }
 
-// components/search/RevsetDialog.jsx
-try { (() => {
-const ZS_RSD_FNS = ["author", "committer", "mine", "subject", "description", "files"];
-const ZS_RSD_HINT = {
-  author: "Author name or email",
-  committer: "Committer name or email",
-  mine: "Changes authored by your user.email",
-  subject: "First line of the description",
-  description: "Full description text",
-  files: "Changes touching these paths"
-};
-const ZS_RSD_TEXT = [["substring", "contains"], ["exact", "is exactly"], ["glob", "matches glob"], ["regex", "matches regex"]];
-const ZS_RSD_FILE = [["prefix", "path or folder"], ["file", "exact file"], ["glob", "glob"]];
-const zsRsdQ = v => '"' + String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
-function zsRuleExpr(r) {
-  let e;
-  if (r.fn === "mine") e = "mine()";else if (r.fn === "files") e = "files(" + (r.mode === "prefix" ? "" : r.mode + ":") + zsRsdQ(r.value) + ")";else e = r.fn + "(" + r.mode + (r.ci ? "-i" : "") + ":" + zsRsdQ(r.value) + ")";
-  return (r.not ? "~" : "") + e;
-}
-function zsExprOf(cfg) {
-  if (!cfg.rules) return cfg.expr || "all()";
-  const rs = cfg.rules.filter(r => r.fn === "mine" || String(r.value || "").trim());
-  return rs.length ? rs.map(zsRuleExpr).join(cfg.op === "|" ? " | " : " & ") : "all()";
-}
-const zsNewRule = fn => fn === "mine" ? {
-  fn,
-  not: false
-} : fn === "files" ? {
-  fn,
-  mode: "prefix",
-  value: "",
-  not: false
-} : {
-  fn,
-  mode: "substring",
-  ci: false,
-  value: "",
-  not: false
-};
-const zsRsdId = () => "c-" + Math.random().toString(36).slice(2, 8);
-
-// RevsetDialog — "jj log Configurations" (the floating client's dialog, withHome). Built-ins (jj log, all()) are selectable and read-only;
-// custom configurations combine filters (author, committer, mine, subject, description, files). Every entry has a Default search switch:
-// the default is listed first in the search menu and ✕ in the search field returns to it; it carries a Default tag in the list.
-// jj log is the fallback default — its switch is locked on while it is the default; removing the default configuration falls back to it.
-// Controlled: configs/selected/defaultId come in, onChange/onSelect/onDefaultChange go out; Cancel · Apply (dirty) · OK.
-function RevsetDialog({
-  builtins = RevsetDialog.builtins,
-  configs = [],
-  selected,
-  defaultId = "default",
-  me = "you",
-  matchCount,
-  total,
-  dirty = false,
-  overlay = false,
-  docHref = "https://docs.jj-vcs.dev/latest/revsets/",
-  onSelect,
-  onDefaultChange,
-  onChange,
-  onCancel,
-  onApply,
-  onOk,
-  onClose,
-  className = "",
-  style
-}) {
-  const [copied, setCopied] = React.useState(false);
-  const cur = configs.find(c => c.id === selected) || null;
-  const curB = !cur ? builtins.find(b => b.id === selected) || null : null;
-  const home = defaultId === "default" || defaultId === "all" || configs.some(c => c.id === defaultId) ? defaultId : "default";
-  const isHome = selected === home,
-    lockHome = isHome && selected === "default";
-  React.useEffect(() => {
-    if (!overlay || !onClose) return undefined;
-    const h = e => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", h, true);
-    return () => window.removeEventListener("keydown", h, true);
-  }, [overlay, onClose]);
-  const set = (next, sel) => {
-    if (onChange) onChange(next);
-    if (sel !== undefined && onSelect) onSelect(sel);
-  };
-  const upd = fn => set(configs.map(c => c.id === selected ? fn(JSON.parse(JSON.stringify(c))) : c));
-  const updRule = (i, patch) => upd(c => {
-    const r = {
-      ...c.rules[i],
-      ...patch
-    };
-    if (patch.fn && patch.fn !== c.rules[i].fn) Object.assign(r, zsNewRule(patch.fn), {
-      not: c.rules[i].not,
-      value: patch.fn === "mine" ? undefined : c.rules[i].value
-    });
-    c.rules[i] = r;
-    return c;
-  });
-  const add = () => {
-    const c = {
-      id: zsRsdId(),
-      name: "New configuration",
-      op: "&",
-      rules: [zsNewRule("files")]
-    };
-    set([...configs, c], c.id);
-  };
-  const dup = () => {
-    if (!cur) return;
-    const i = configs.indexOf(cur),
-      c = {
-        ...JSON.parse(JSON.stringify(cur)),
-        id: zsRsdId(),
-        name: cur.name + " copy"
-      };
-    set([...configs.slice(0, i + 1), c, ...configs.slice(i + 1)], c.id);
-  };
-  const del = () => {
-    if (!cur) return;
-    const i = configs.indexOf(cur),
-      rest = configs.filter(x => x !== cur);
-    if (home === cur.id && onDefaultChange) onDefaultChange("default");
-    set(rest, rest.length ? rest[Math.min(i, rest.length - 1)].id : null);
-  };
-  const move = dir => {
-    const i = cur ? configs.indexOf(cur) : -1,
-      j = i + dir;
-    if (i < 0 || j < 0 || j >= configs.length) return;
-    const n = [...configs];
-    [n[i], n[j]] = [n[j], n[i]];
-    set(n);
-  };
-  const cmd = cur ? "jj log -r '" + zsExprOf(cur) + "'" : curB ? curB.cmd : "";
-  const copy = () => {
-    if (!cmd) return;
-    try {
-      navigator.clipboard.writeText(cmd);
-    } catch (e) {/* clipboard unavailable */}
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
-  };
-  const tag = id => home === id && /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-tag"
-  }, "Default");
-  const idx = cur ? configs.indexOf(cur) : -1;
-  const homeUI = /*#__PURE__*/React.createElement("label", {
-    className: "zs-rsd-opt"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-opt-t"
-  }, /*#__PURE__*/React.createElement("span", null, "Default search"), /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-dim"
-  }, lockHome ? "Used whenever no other configuration is the default" : "Listed first in the search menu — ✕ in the search field returns to it")), /*#__PURE__*/React.createElement(__ds_scope.Switch, {
-    label: "Default search",
-    checked: isHome,
-    disabled: lockHome,
-    onChange: () => onDefaultChange && onDefaultChange(isHome ? "default" : selected)
-  }));
-  const preview = /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-block"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-lbl"
-  }, "Command"), /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-pv"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-pv-cmd"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-prompt"
-  }, "\u276F "), cmd), /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-pv-ft"
-  }, /*#__PURE__*/React.createElement("span", null, matchCount != null && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("b", null, matchCount), total != null ? " of " + total : "", " changes match")), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-link",
-    onClick: copy
-  }, copied ? "Copied" : "Copy"))));
-  const box = /*#__PURE__*/React.createElement("div", {
-    className: ("zs-rsd " + className).trim(),
-    role: "dialog",
-    "aria-modal": overlay || undefined,
-    "aria-label": "jj log configurations",
-    style: style
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-hd"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-title"
-  }, "jj log Configurations"), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-x",
-    onClick: onClose,
-    "aria-label": "Close"
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "close",
-    size: 11
-  }))), /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-bd"
-  }, /*#__PURE__*/React.createElement("aside", {
-    className: "zs-rsd-side"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-side-tb"
-  }, /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-ib",
-    onClick: add,
-    title: "Add configuration"
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "plus",
-    size: 13
-  })), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-ib",
-    onClick: del,
-    disabled: !cur,
-    title: "Remove"
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "minus",
-    size: 13
-  })), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-ib",
-    onClick: dup,
-    disabled: !cur,
-    title: "Duplicate"
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "copy",
-    size: 13
-  })), /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-tb-sep"
-  }), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-ib",
-    onClick: () => move(-1),
-    disabled: idx <= 0,
-    title: "Move up"
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "chevron-up",
-    size: 13
-  })), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-ib",
-    onClick: () => move(1),
-    disabled: idx < 0 || idx >= configs.length - 1,
-    title: "Move down"
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "chevron-down",
-    size: 13
-  }))), /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-list"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-sec"
-  }, "Built-in"), builtins.map(b => /*#__PURE__*/React.createElement("button", {
-    key: b.id,
-    type: "button",
-    className: "zs-rsd-item is-b" + (b.id === selected ? " is-on" : ""),
-    onClick: () => onSelect && onSelect(b.id)
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-nmrow"
-  }, /*#__PURE__*/React.createElement("code", null, b.cmd), tag(b.id)))), /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-sec"
-  }, "Custom"), configs.map(c => /*#__PURE__*/React.createElement("button", {
-    key: c.id,
-    type: "button",
-    className: "zs-rsd-item" + (c.id === selected ? " is-on" : ""),
-    onClick: () => onSelect && onSelect(c.id)
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-nmrow"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-nm"
-  }, c.name || "Unnamed"), tag(c.id)), /*#__PURE__*/React.createElement("code", null, zsExprOf(c)))), !configs.length && /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-empty",
-    onClick: add
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "plus",
-    size: 12
-  }), "Add configuration"))), cur ? /*#__PURE__*/React.createElement("main", {
-    className: "zs-rsd-main"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-field"
-  }, /*#__PURE__*/React.createElement("label", {
-    htmlFor: "zs-rsd-name"
-  }, "Name"), /*#__PURE__*/React.createElement("input", {
-    id: "zs-rsd-name",
-    className: "zs-rsd-in",
-    value: cur.name,
-    onChange: e => {
-      const v = e.target.value;
-      upd(c => {
-        c.name = v;
-        return c;
-      });
-    }
-  })), homeUI, /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-block"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-block-hd"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-lbl"
-  }, "Filters"), (cur.rules || []).length > 1 && /*#__PURE__*/React.createElement(__ds_scope.Segmented, {
-    label: "Combine",
-    value: cur.op === "|" ? "|" : "&",
-    onChange: v => upd(c => {
-      c.op = v;
-      return c;
-    }),
-    options: [{
-      value: "&",
-      label: /*#__PURE__*/React.createElement(React.Fragment, null, "Match all ", /*#__PURE__*/React.createElement("code", null, "&"))
-    }, {
-      value: "|",
-      label: /*#__PURE__*/React.createElement(React.Fragment, null, "Match any ", /*#__PURE__*/React.createElement("code", null, "|"))
-    }]
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-rules"
-  }, (cur.rules || []).map((r, i) => /*#__PURE__*/React.createElement("div", {
-    key: i,
-    className: "zs-rsd-rule"
-  }, /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-not" + (r.not ? " is-on" : ""),
-    onClick: () => updRule(i, {
-      not: !r.not
-    }),
-    title: r.not ? "Negated (~) — click to include" : "Click to exclude matches (~)"
-  }, r.not ? "~ not" : "is"), /*#__PURE__*/React.createElement("select", {
-    className: "zs-rsd-sel is-mono",
-    value: r.fn,
-    onChange: e => updRule(i, {
-      fn: e.target.value
-    }),
-    title: ZS_RSD_HINT[r.fn]
-  }, ZS_RSD_FNS.map(f => /*#__PURE__*/React.createElement("option", {
-    key: f,
-    value: f
-  }, f, "()"))), r.fn === "mine" ? /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-mine"
-  }, "authored by ", /*#__PURE__*/React.createElement("b", null, me), " ", /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-dim"
-  }, "\xB7 user.email")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("select", {
-    className: "zs-rsd-sel",
-    value: r.mode,
-    onChange: e => updRule(i, {
-      mode: e.target.value
-    })
-  }, (r.fn === "files" ? ZS_RSD_FILE : ZS_RSD_TEXT).map(([v, l]) => /*#__PURE__*/React.createElement("option", {
-    key: v,
-    value: v
-  }, l))), /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-val"
-  }, /*#__PURE__*/React.createElement("input", {
-    className: "zs-rsd-in is-mono",
-    value: r.value || "",
-    spellCheck: "false",
-    onChange: e => updRule(i, {
-      value: e.target.value
-    }),
-    placeholder: r.fn === "files" ? r.mode === "glob" ? "lib/**/*.dart" : "app/lib/main.dart" : ZS_RSD_HINT[r.fn]
-  }), r.fn !== "files" && /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-ci" + (r.ci ? " is-on" : ""),
-    onClick: () => updRule(i, {
-      ci: !r.ci
-    }),
-    title: "Case-insensitive (-i)"
-  }, "Aa"))), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-ib",
-    onClick: () => upd(c => {
-      c.rules.splice(i, 1);
-      return c;
-    }),
-    title: "Remove filter"
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "close",
-    size: 10
-  })))), !(cur.rules || []).length && /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-none"
-  }, "No filters \u2014 shows every commit (", /*#__PURE__*/React.createElement("code", null, "all()"), ").")), /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-add"
-  }, ZS_RSD_FNS.map(f => /*#__PURE__*/React.createElement("button", {
-    key: f,
-    type: "button",
-    className: "zs-rsd-chip",
-    onClick: () => upd(c => {
-      c.rules = [...(c.rules || []), zsNewRule(f)];
-      return c;
-    }),
-    title: ZS_RSD_HINT[f]
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "plus",
-    size: 10
-  }), f)))), preview) : curB ? /*#__PURE__*/React.createElement("main", {
-    className: "zs-rsd-main"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-field"
-  }, /*#__PURE__*/React.createElement("label", null, "Name"), /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-fixed"
-  }, /*#__PURE__*/React.createElement("code", null, curB.cmd), /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-dim"
-  }, "Built-in \xB7 ", curB.desc))), homeUI, preview) : /*#__PURE__*/React.createElement("main", {
-    className: "zs-rsd-main is-empty"
-  }, /*#__PURE__*/React.createElement("p", null, "No custom configurations yet."), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-btn",
-    onClick: add
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "plus",
-    size: 12
-  }), "Add configuration"))), /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-ft"
-  }, /*#__PURE__*/React.createElement("a", {
-    className: "zs-rsd-doc",
-    href: docHref,
-    target: "_blank",
-    rel: "noreferrer"
-  }, "Revset reference \u2197"), /*#__PURE__*/React.createElement("span", {
-    className: "zs-rsd-grow"
-  }), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-btn",
-    onClick: onCancel || onClose
-  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-btn",
-    onClick: onApply,
-    disabled: !dirty
-  }, "Apply"), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-rsd-btn is-primary",
-    onClick: onOk
-  }, "OK")));
-  if (!overlay) return box;
-  return /*#__PURE__*/React.createElement("div", {
-    className: "zs-rsd-ov",
-    onPointerDown: e => {
-      if (e.target === e.currentTarget && onClose) onClose();
-    }
-  }, box);
-}
-RevsetDialog.builtins = [{
-  id: "default",
-  cmd: "jj log",
-  desc: "Default revset — your mutable changes plus trunk context"
-}, {
-  id: "all",
-  cmd: "jj log -r 'all()'",
-  desc: "Every visible commit, incl. immutable history and untracked remotes"
-}];
-RevsetDialog.exprOf = zsExprOf;
-RevsetDialog.ruleExpr = zsRuleExpr;
-Object.assign(__ds_scope, { RevsetDialog });
-})(); } catch (e) { __ds_ns.__errors.push({ path: "components/search/RevsetDialog.jsx", error: String((e && e.message) || e) }); }
-
 // components/search/SearchMenu.jsx
 try { (() => {
+const ZS_SCOPE_ROWS = ["change", "bookmark", "author", "file", "description"];
+
 // SearchMenu — the one menu left of the field, in this order: the default search (tag Default) · the other jj log variants,
 // built-ins and configurations ($ glyph, name, expression) · Go to (Change, Bookmark) · Filter by (Author, File, Description), each
-// with its prefix · Edit Configurations…. The row of what the graph shows is selected; the scope row of an active search shows its value.
+// with its prefix · Edit Configurations….
+// A FIELD-ATTACHED list (readme › Control states, rule 4): focus stays in the search field. The keyboard row (`active`, named by the
+// field's aria-activedescendant) is --accent-soft with its icon in accent; hover is --fl-hover; what the graph shows — the current
+// variant, or the scope of the active typed search (its row shows the value) — carries a check, never the fill.
+// Keys come from the field: SearchMenu.navigate(e, active, SearchMenu.count(variants)) → the new index (↑ ↓ Home End), or null.
 // variants: [{ id, name, builtin, desc (built-ins) | expr (configurations), cmd }] in menu order — the first is the default search.
 function SearchMenu({
   variants = SearchMenu.builtins,
   current,
   scope,
   value,
+  active,
   onPickVariant,
   onPickScope,
   onEdit,
-  autoFocus = false,
+  listId = "zs-gs-menu",
   className = "",
   style
 }) {
-  const ref = React.useRef(null);
-  React.useEffect(() => {
-    if (!autoFocus || !ref.current) return;
-    const b = ref.current.querySelector(".zs-gs-srow.is-on") || ref.current.querySelector(".zs-gs-srow");
-    if (b) b.focus({
-      preventScroll: true
-    });
-  }, [autoFocus]);
-  const arrows = e => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    const bs = [...e.currentTarget.querySelectorAll("button")],
-      i = bs.indexOf(document.activeElement);
-    const n = bs[(i + (e.key === "ArrowDown" ? 1 : -1) + bs.length) % bs.length];
-    if (n) n.focus();
-  };
-  const vRow = (v, first) => {
-    const on = current === v.id;
-    return /*#__PURE__*/React.createElement("button", {
-      key: "v:" + v.id,
-      type: "button",
-      role: "option",
-      "aria-selected": on,
-      className: "zs-gs-srow zs-gs-vrow" + (on ? " is-on" : ""),
-      onClick: () => onPickVariant && onPickVariant(v.id),
-      title: v.cmd || (v.expr ? "jj log -r '" + v.expr + "'" : undefined)
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "zs-gs-ic"
-    }, /*#__PURE__*/React.createElement(__ds_scope.SearchDollar, null)), /*#__PURE__*/React.createElement("span", {
-      className: "zs-gs-sl"
-    }, v.builtin ? /*#__PURE__*/React.createElement("code", null, v.name) : v.name || "Unnamed"), /*#__PURE__*/React.createElement("span", {
-      className: "zs-gs-sd" + (v.builtin ? "" : " is-mono")
-    }, v.builtin ? v.desc : v.expr), first ? /*#__PURE__*/React.createElement("span", {
-      className: "zs-gs-tag"
-    }, "Default") : /*#__PURE__*/React.createElement("span", null));
-  };
-  const sRow = id => {
+  const act = active != null ? active : -1;
+  const keep = e => e.preventDefault(); // a click must not take focus from the field
+  const row = (i, cls, onPick, title, kids, selected) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    id: listId + "-" + i,
+    role: "option",
+    "aria-selected": i === act,
+    "aria-current": selected || undefined,
+    className: "zs-gs-srow " + cls + (i === act ? " is-active" : "") + (selected ? " is-current" : ""),
+    onMouseDown: keep,
+    onClick: onPick,
+    title: title
+  }, kids);
+  const n = variants.length;
+  return /*#__PURE__*/React.createElement("div", {
+    id: listId,
+    className: ("zs-gs-menu " + className).trim(),
+    role: "listbox",
+    "aria-label": "Search menu",
+    style: style
+  }, variants.map((v, i) => row(i, "zs-gs-vrow", () => onPickVariant && onPickVariant(v.id), v.cmd || (v.expr ? "jj log -r '" + v.expr + "'" : undefined), /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
+    className: "zs-gs-ic"
+  }, /*#__PURE__*/React.createElement(__ds_scope.SearchDollar, null)), /*#__PURE__*/React.createElement("span", {
+    className: "zs-gs-sl"
+  }, v.builtin ? /*#__PURE__*/React.createElement("code", null, v.name) : v.name || "Unnamed"), /*#__PURE__*/React.createElement("span", {
+    className: "zs-gs-sd" + (v.builtin ? "" : " is-mono")
+  }, v.builtin ? v.desc : v.expr), /*#__PURE__*/React.createElement("span", {
+    className: "zs-gs-end"
+  }, i === 0 && /*#__PURE__*/React.createElement("span", {
+    className: "zs-gs-tag"
+  }, "Default"), current === v.id && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "check",
+    size: "sm",
+    className: "zs-gs-chk"
+  }))), current === v.id)), /*#__PURE__*/React.createElement("div", {
+    className: "zs-gs-msep"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "zs-gs-gh"
+  }, /*#__PURE__*/React.createElement("span", null, "Go to"), /*#__PURE__*/React.createElement("em", null, "selects a change \xB7 graph stays")), ZS_SCOPE_ROWS.slice(0, 2).map((id, k) => scopeRow(id, n + k)), /*#__PURE__*/React.createElement("div", {
+    className: "zs-gs-gh"
+  }, /*#__PURE__*/React.createElement("span", null, "Filter by"), /*#__PURE__*/React.createElement("em", null, "redraws the graph")), ZS_SCOPE_ROWS.slice(2).map((id, k) => scopeRow(id, n + 2 + k)), /*#__PURE__*/React.createElement("div", {
+    className: "zs-gs-msep"
+  }), row(n + 5, "zs-gs-edit", onEdit, undefined, /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
+    className: "zs-gs-ic"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "settings",
+    size: "md"
+  })), /*#__PURE__*/React.createElement("span", {
+    className: "zs-gs-sl"
+  }, "Edit Configurations\u2026"))));
+  function scopeRow(id, i) {
     const s = __ds_scope.SearchScopes[id],
       on = scope === id;
-    return /*#__PURE__*/React.createElement("button", {
-      key: id,
-      type: "button",
-      role: "option",
-      "aria-selected": on,
-      className: "zs-gs-srow" + (on ? " is-on" : ""),
-      onClick: () => onPickScope && onPickScope(id)
-    }, /*#__PURE__*/React.createElement("span", {
+    return row(i, "", () => onPickScope && onPickScope(id), undefined, /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
       className: "zs-gs-ic"
     }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
       name: s.icon,
-      size: 14
+      size: "md"
     })), /*#__PURE__*/React.createElement("span", {
       className: "zs-gs-sl"
     }, s.label), /*#__PURE__*/React.createElement("span", {
       className: "zs-gs-sd" + (on ? " is-val" : s.go ? "" : " is-mono")
-    }, on ? value : s.desc), /*#__PURE__*/React.createElement("kbd", {
+    }, on ? value : s.desc), /*#__PURE__*/React.createElement("span", {
+      className: "zs-gs-end"
+    }, on && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+      name: "check",
+      size: "sm",
+      className: "zs-gs-chk"
+    }), /*#__PURE__*/React.createElement("kbd", {
       className: "zs-gs-kbd"
-    }, s.prefix));
-  };
-  return /*#__PURE__*/React.createElement("div", {
-    className: ("zs-gs-menu " + className).trim(),
-    role: "listbox",
-    "aria-label": "Search menu",
-    onKeyDown: arrows,
-    ref: ref,
-    style: style
-  }, variants.map((v, i) => vRow(v, i === 0)), /*#__PURE__*/React.createElement("div", {
-    className: "zs-gs-msep"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "zs-gs-gh"
-  }, /*#__PURE__*/React.createElement("span", null, "Go to"), /*#__PURE__*/React.createElement("em", null, "selects a change \xB7 graph stays")), ["change", "bookmark"].map(sRow), /*#__PURE__*/React.createElement("div", {
-    className: "zs-gs-gh"
-  }, /*#__PURE__*/React.createElement("span", null, "Filter by"), /*#__PURE__*/React.createElement("em", null, "redraws the graph")), ["author", "file", "description"].map(sRow), /*#__PURE__*/React.createElement("div", {
-    className: "zs-gs-msep"
-  }), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "zs-gs-srow zs-gs-edit",
-    onClick: onEdit
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "zs-gs-ic"
-  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
-    name: "settings",
-    size: 13
-  })), /*#__PURE__*/React.createElement("span", {
-    className: "zs-gs-sl"
-  }, "Edit Configurations\u2026")));
+    }, s.prefix))), on);
+  }
 }
 SearchMenu.builtins = [{
   id: "default",
@@ -2720,6 +3829,17 @@ SearchMenu.builtins = [{
   cmd: "jj log -r 'all()'",
   builtin: true
 }];
+// rows in the menu: the variants, five scopes, Edit Configurations…
+SearchMenu.count = (variants = SearchMenu.builtins) => variants.length + 6;
+// the field's keys for an open list: ↑ ↓ (wrap) Home End → the new keyboard row; anything else → null (↩ and Esc stay with the field)
+SearchMenu.navigate = (e, active, count) => {
+  if (!count) return null;
+  if (e.key === "ArrowDown") return active < 0 ? 0 : (active + 1) % count;
+  if (e.key === "ArrowUp") return active < 0 ? count - 1 : (active - 1 + count) % count;
+  if (e.key === "Home") return 0;
+  if (e.key === "End") return count - 1;
+  return null;
+};
 Object.assign(__ds_scope, { SearchMenu });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/search/SearchMenu.jsx", error: String((e && e.message) || e) }); }
 
@@ -2728,14 +3848,16 @@ try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 // SearchPopover — the suggestions under the graph search, in menu material. Empty field: recent searches (go-tos and filters, with
 // their change counts). While typing: matches grouped by kind (Changes, Bookmarks, Authors, Files, Descriptions).
-// footer states what Enter does: { text, verb } — the full `jj log -r '…'` command with "Filter", or
+// footer states what Enter does for the KEYBOARD row: { text, verb } — the full `jj log -r '…'` command with "Filter", or
 // "Selects the change — the graph stays as it is" with "Select".
+// A field-attached list: focus stays in the search field (aria-activedescendant names the keyboard row); the popover never takes it.
 function SearchPopover({
   note,
   empty,
   footer,
   children,
   listRef,
+  listId = "zs-gs-pop",
   className = "",
   style,
   ...rest
@@ -2748,6 +3870,7 @@ function SearchPopover({
     }
   }, rest), /*#__PURE__*/React.createElement("div", {
     className: "zs-gs-list",
+    id: listId,
     role: "listbox",
     "aria-label": "Suggestions",
     ref: listRef
@@ -2782,7 +3905,9 @@ function SearchGroup({
   }, action));
 }
 
-// SearchRow — one 34px suggestion: icon · before + label (+ quote, sub, after) · meta. highlighted = moon tint, icon in moon.
+// SearchRow — one 34px suggestion: icon · before + label (+ quote, sub, after) · meta.
+// active = the keyboard row (--accent-soft, icon in accent; give it an id for the field's aria-activedescendant). Hover is --fl-hover
+// and does NOT move the keyboard row — ↩ and the footer stay with the keyboard row, a click runs the clicked one.
 // mono = a path (folder part dimmed via SearchMatch split); dim = "(no description set)"; more = "3 more in Files" row with a chevron.
 function SearchRow({
   icon,
@@ -2794,6 +3919,7 @@ function SearchRow({
   mono = false,
   dim = false,
   meta,
+  active,
   highlighted = false,
   more = false,
   onClick,
@@ -2801,17 +3927,19 @@ function SearchRow({
   className = "",
   ...rest
 }) {
+  const on = active != null ? active : highlighted;
   return /*#__PURE__*/React.createElement("div", _extends({
     role: "option",
-    "aria-selected": highlighted,
-    className: "zs-gs-row" + (highlighted ? " is-on" : "") + (more ? " is-more" : "") + (className ? " " + className : ""),
+    "aria-selected": on,
+    className: "zs-gs-row" + (on ? " is-active" : "") + (more ? " is-more" : "") + (className ? " " + className : ""),
+    onMouseDown: e => e.preventDefault(),
     onClick: onClick,
     onMouseMove: onMouseMove
   }, rest), /*#__PURE__*/React.createElement("span", {
     className: "zs-gs-ic"
   }, typeof icon === "string" ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: icon,
-    size: 14
+    size: "md"
   }) : icon), /*#__PURE__*/React.createElement("span", {
     className: "zs-gs-main"
   }, before, more ? /*#__PURE__*/React.createElement("span", {
@@ -2826,7 +3954,7 @@ function SearchRow({
     className: "zs-gs-meta"
   }, more ? /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: "chevron-right",
-    size: 12
+    size: "sm"
   }) : meta));
 }
 
@@ -2873,7 +4001,7 @@ function SearchTag({
   }, children);
 }
 
-// SearchAvatar — an author's initial (moon ring on the highlighted row)
+// SearchAvatar — an author's initial (accent ring on the keyboard row)
 function SearchAvatar({
   name = ""
 }) {
@@ -2950,7 +4078,7 @@ function Callout({
     className: "zs-callout-hd"
   }, icon && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: icon,
-    size: 14
+    size: "md"
   }), /*#__PURE__*/React.createElement("span", null, title), count != null && /*#__PURE__*/React.createElement("span", {
     className: "zs-callout-n"
   }, count)), /*#__PURE__*/React.createElement("div", {
@@ -2971,8 +4099,53 @@ Object.assign(__ds_scope, { Callout, CalloutText });
 
 // components/surfaces/Dialog.jsx
 try { (() => {
-// Dialog — modal sheet on a blurred scrim. Optional left nav (Projects: brand on top, nav items, signed-in user at the foot),
-// a toolbar row, and a scrolling body. The scrim fills its positioned parent (absolute) — place the Dialog inside the window frame.
+const ZS_FOCUSABLE = 'button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+// useSheetFocus — what every modal sheet does with focus (Dialog, ConfirmDialog, PushDialog):
+// on open, focus goes to `initial` (a selector inside the sheet) or its first focusable control; Tab and ⇧Tab cycle inside the sheet
+// (aria-disabled controls are skipped); on close, focus returns to whatever had it before the sheet opened.
+function useSheetFocus(ref, initial) {
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const prev = document.activeElement;
+    const list = () => [...el.querySelectorAll(ZS_FOCUSABLE)].filter(n => n.getAttribute("aria-disabled") !== "true" && n.getClientRects().length);
+    const first = initial && el.querySelector(initial) || list()[0] || el;
+    first.focus({
+      preventScroll: true
+    });
+    const trap = e => {
+      if (e.key !== "Tab") return;
+      const f = list();
+      if (!f.length) {
+        e.preventDefault();
+        return;
+      }
+      const a = f[0],
+        z = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === a) {
+        e.preventDefault();
+        z.focus();
+      } else if (!e.shiftKey && document.activeElement === z) {
+        e.preventDefault();
+        a.focus();
+      }
+    };
+    el.addEventListener("keydown", trap);
+    return () => {
+      el.removeEventListener("keydown", trap);
+      if (prev && prev.focus && document.contains(prev)) prev.focus({
+        preventScroll: true
+      });
+    };
+  }, []);
+}
+
+// Dialog — a modal SHEET over the project window, for short modal tasks (it is not how Settings or Projects open — those are Windows).
+// Optional left nav, a toolbar row, a scrolling body. The scrim fills its positioned parent (absolute) — place it inside the window frame.
+// Keys and focus: Esc (and the ✕) call onClose — a click on the scrim does nothing: a macOS sheet never closes by a click beside it, and
+// unsaved input would be lost without asking. Focus starts on `initialFocus` (or the first control), stays inside, returns.
+// closing → the scrim fades and the sheet drops 4px (--dur-exit-lg, --ease-exit); keep it mounted that long (Presence).
 function Dialog({
   title,
   onClose,
@@ -2985,18 +4158,32 @@ function Dialog({
   width = 900,
   height = 640,
   scrim = true,
+  closing = false,
+  initialFocus,
   className = "",
   children
 }) {
+  const ref = React.useRef(null);
+  useSheetFocus(ref, initialFocus);
+  const onKey = e => {
+    if (e.key === "Escape" && onClose) {
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    }
+  };
   const box = /*#__PURE__*/React.createElement("div", {
+    ref: ref,
     role: "dialog",
     "aria-modal": "true",
     "aria-label": title,
+    tabIndex: -1,
     className: ["zs-dialog", (nav || navHeader) && "has-nav", className].filter(Boolean).join(" "),
     style: {
       width,
       height
     },
+    onKeyDown: onKey,
     onClick: e => e.stopPropagation(),
     onMouseDown: e => e.stopPropagation()
   }, (nav || navHeader) && /*#__PURE__*/React.createElement("nav", {
@@ -3006,11 +4193,12 @@ function Dialog({
   }, nav.map(n => /*#__PURE__*/React.createElement("button", {
     key: n.id,
     type: "button",
+    "aria-current": n.id === activeNav ? "page" : undefined,
     className: "zs-dialog-navitem" + (n.id === activeNav ? " is-on" : ""),
     onClick: () => onNav && onNav(n.id)
   }, n.icon && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
     name: n.icon,
-    size: 14
+    size: "md"
   }), /*#__PURE__*/React.createElement("span", null, n.label), n.count != null && /*#__PURE__*/React.createElement("span", {
     className: "zs-dialog-navcount"
   }, n.count)))), navFooter && /*#__PURE__*/React.createElement("div", {
@@ -3023,8 +4211,9 @@ function Dialog({
     className: "zs-dialog-title"
   }, title), onClose && /*#__PURE__*/React.createElement(__ds_scope.IconButton, {
     icon: "close",
-    iconSize: 12,
-    label: "Close (Esc)",
+    iconSize: "sm",
+    label: "Close",
+    title: "Close (Esc)",
     size: "sm",
     onClick: onClose
   })), tools && /*#__PURE__*/React.createElement("div", {
@@ -3033,12 +4222,638 @@ function Dialog({
     className: "zs-dialog-bd"
   }, children)));
   return scrim ? /*#__PURE__*/React.createElement("div", {
-    className: "zs-scrim",
-    onMouseDown: onClose
+    className: "zs-scrim" + (closing ? " is-closing" : "")
   }, box) : box;
 }
-Object.assign(__ds_scope, { Dialog });
+Object.assign(__ds_scope, { useSheetFocus, Dialog });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/surfaces/Dialog.jsx", error: String((e && e.message) || e) }); }
+
+// components/controls/ConfirmDialog.jsx
+try { (() => {
+// ConfirmDialog — only for what jj undo can't take back. Everything else acts and offers Undo; pushing has its own sheet (PushDialog).
+// tone destructive: the filled red button is the dialog's one primary; focus starts on Cancel, ↩ = the focused button, ⌘↩ confirms.
+// tone warn / default: the gold primary, focused, ↩ confirms. Esc and Cancel cancel — a click on the scrim does nothing; Tab stays inside; focus returns.
+// The 18px modal sheet (--dur-dialog in, glide; --dur-exit-lg out).
+function ConfirmDialog({
+  title,
+  children,
+  cmd,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  tone = "destructive",
+  onConfirm,
+  onCancel,
+  busy = false,
+  closing = false,
+  scrim = true,
+  width = 420
+}) {
+  const box = React.useRef(null);
+  const id = React.useId();
+  const destructive = tone === "destructive";
+  __ds_scope.useSheetFocus(box, destructive ? '[data-k="cancel"]' : '[data-k="ok"]');
+  const onKey = e => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onCancel && onCancel();
+    } else if (e.key === "Enter" && (destructive ? e.metaKey || e.ctrlKey : true)) {
+      e.preventDefault();
+      onConfirm && onConfirm();
+    }
+  };
+  const sheet = /*#__PURE__*/React.createElement("div", {
+    ref: box,
+    role: "alertdialog",
+    "aria-modal": "true",
+    "aria-labelledby": id + "t",
+    "aria-describedby": id + "d",
+    className: "zs-alert is-" + tone,
+    style: {
+      width
+    },
+    onKeyDown: onKey,
+    onMouseDown: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-alert-hd"
+  }, tone === "warn" && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "conflict",
+    size: "lg",
+    className: "zs-alert-ic"
+  }), /*#__PURE__*/React.createElement("h2", {
+    id: id + "t",
+    className: "zs-alert-title"
+  }, title)), /*#__PURE__*/React.createElement("div", {
+    id: id + "d",
+    className: "zs-alert-body"
+  }, children), cmd && /*#__PURE__*/React.createElement("code", {
+    className: "zs-alert-cmd"
+  }, cmd), /*#__PURE__*/React.createElement("div", {
+    className: "zs-alert-ft"
+  }, destructive && /*#__PURE__*/React.createElement("span", {
+    className: "zs-alert-key"
+  }, "\u2318\u21A9 confirms"), /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "md",
+    "data-k": "cancel",
+    onClick: onCancel
+  }, cancelLabel), /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "md",
+    "data-k": "ok",
+    variant: destructive ? "destructive" : "primary",
+    busy: busy,
+    onClick: onConfirm,
+    title: destructive ? "⌘↩" : "↩"
+  }, confirmLabel)));
+  return scrim ? /*#__PURE__*/React.createElement("div", {
+    className: "zs-scrim" + (closing ? " is-closing" : "")
+  }, sheet) : sheet;
+}
+Object.assign(__ds_scope, { ConfirmDialog });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/controls/ConfirmDialog.jsx", error: String((e && e.message) || e) }); }
+
+// components/push/PushDialog.jsx
+try { (() => {
+const ZS_KIND = {
+  new: ["new", "new"],
+  forward: ["forward", ""],
+  backward: ["backwards", "warn"],
+  sideways: ["sideways", "warn"],
+  delete: ["delete", "warn"],
+  none: ["up to date", "none"]
+};
+// commit checks (jj checks every commit a ref or change would send) — three can be allowed by a flag: [reason, flag, chip, allow key]
+const ZS_ALLOW = {
+  "empty-description": ["has no description", "--allow-empty-description", "Allow empty descriptions", "emptyDescription"],
+  private: ["is private (git.private-commits)", "--allow-private", "Allow private commits", "private"],
+  conflicts: ["has conflicts", "--allow-conflicts", "Allow conflicts", "conflicts"]
+};
+// refusals without a flag: jj's reason and the command its hint names (none where jj names none)
+const ZS_HARD = {
+  "no-author": {
+    text: () => "has no author and/or committer set"
+  },
+  conflicted: {
+    text: (n, r) => (r ? n + "@" + r : n) + " is conflicted",
+    hint: () => "jj git fetch"
+  },
+  "untracked-remote": {
+    text: (n, r) => "an untracked " + n + "@" + r + " exists",
+    hint: (n, r) => "jj bookmark track " + n + "@" + r
+  },
+  "tracked-elsewhere": {
+    text: (n, r, o) => "refusing to create new remote bookmark " + n + "@" + r + (o ? " — it is tracked on " + o : "")
+  }
+};
+const zsList = x => x == null ? [] : Array.isArray(x) ? x : [x];
+const zsKey = b => (b.type === "tag" ? "tag:" : "") + b.name;
+// a ref's --dry-run result on one remote: its own entry in `remotes`, else the top-level fields (one remote, or the same everywhere)
+const zsAt = (b, r) => b.remotes ? b.remotes[r] || {
+  kind: "none"
+} : b;
+const zsSends = (b, r, byDefault) => {
+  const t = zsAt(b, r);
+  return t.kind !== "none" && (!byDefault || !!t.inDefault);
+};
+// why jj would refuse a ref (or the change) on the remotes it goes to: commit reasons (some allowable), the local ref, each remote
+function zsRefusal(b, to, allow, byDefault) {
+  const top = zsList(b.refused);
+  const commit = top.filter(x => ZS_ALLOW[x] || x === "no-author");
+  const open = commit.filter(x => ZS_ALLOW[x] && !allow[ZS_ALLOW[x][3]]);
+  const hard = [];
+  if (commit.includes("no-author")) hard.push({
+    id: "no-author",
+    commit: true
+  });
+  if (top.includes("conflicted")) hard.push({
+    id: "conflicted"
+  });
+  // in the preselection a ref goes only where it is in the default; otherwise (or ticked by hand) to every chosen remote
+  const useDef = byDefault && to.some(r => zsSends(b, r, true));
+  if (b.remotes) to.forEach(r => {
+    if (!zsSends(b, r, useDef)) return;
+    zsList(b.remotes[r].refused).forEach(id => hard.push({
+      id,
+      remote: r
+    }));
+  });
+  return {
+    commit,
+    open,
+    hard,
+    blocked: open.length > 0 || hard.length > 0
+  };
+}
+const zsBulk = (rows, k, to) => rows.filter(b => to.some(r => {
+  const t = zsAt(b, r);
+  return t.kind !== "none" && (k === "deleted" ? t.kind === "delete" : t.kind !== "delete" && (k === "all" || t.tracked));
+}));
+
+// PushDialog — "Push" opens this sheet instead of pushing. A surface for exactly the parameters of `jj git push` (jj v0.46.0): nothing
+// invented, no sequence of commands. The 18px modal sheet over the project window (one of the two sheets, with ConfirmDialog).
+// · Preselection = what `jj git push` alone sends, per remote: tracked bookmarks in remote_bookmarks(remote=<r>)..@ (revsets.git-push)
+//   and the tracked tags. Remotes: git.push (one name, a list or a pattern) — without it the only remote, else origin; no flag for those.
+// · Rows: bookmarks and tags (TAG) — tick one → --bookmark <name> / --tag <name>. Bulk: Tracked (--tracked) · All (--all) · Deleted
+//   (--deleted) — tags included. With more than one remote each row lists every remote: what happens there, or "not sent".
+// · Push a change (@): --change @ → templates.git_push_bookmark ("push-" + short id), shown in advance; an edited name → --named <name>=@.
+// · Kinds (--dry-run, per remote): new · forward · backwards · sideways · delete — the last three warn.
+// · Refusals: jj refuses the WHOLE push while one refused commit or ref is in it, so a refused row can't be ticked. Commit reasons
+//   (several at once: "has no description and has conflicts") — three with an Allow chip (--allow-empty-description / --allow-private /
+//   --allow-conflicts), "no author" without; the ref itself (conflicted) or one remote (conflicted there, an untracked <name>@<r>, tracked
+//   on another remote) — no chip, jj's hint command instead. The change (@) is checked the same way.
+// · After: all pushed → the sheet closes, result toast. Some failed → state "done": per row and remote pushed · remote moved (the lease) ·
+//   rejected (permissions, hooks); jj recorded the push (Undo works); Fetch where a lease failed; Done.
+// · No click outside: the scrim does nothing (a sheet never closes by a click beside it) — Esc and Cancel cancel, ↩ pushes.
+function PushDialog({
+  remotes = ["origin"],
+  defaultRemotes,
+  defaultRemote = "origin",
+  remote,
+  onRemote,
+  bookmarks = [],
+  selected,
+  onSelect,
+  bulk = null,
+  onBulk,
+  change,
+  onChange,
+  allow = {},
+  onAllow,
+  state = "ready",
+  error,
+  progress,
+  results = [],
+  onPush,
+  onCancel,
+  onDone,
+  onFetch,
+  onRetry,
+  closing = false,
+  scrim = true,
+  width = 560
+}) {
+  const box = React.useRef(null);
+  __ds_scope.useSheetFocus(box, '[data-k="push"]');
+  const defs = defaultRemotes || [defaultRemote];
+  const to = remote || defs;
+  const multi = to.length > 1;
+  const rows = bookmarks.filter(b => to.some(r => zsSends(b, r, false) || zsAt(b, r).inDefault));
+  const defKeys = rows.filter(b => to.some(r => zsSends(b, r, true))).map(zsKey);
+  const sel = new Set(selected != null ? selected : defKeys);
+  const chg = change ? zsRefusal({
+    refused: change.refused
+  }, to, allow, false) : null;
+  const withChange = !!(change && change.on && !chg.blocked);
+  const selDefault = !bulk && !withChange && defKeys.length === sel.size && defKeys.every(k => sel.has(k));
+  // the bare command runs only while nothing it covers is refused — else every ref goes by name, to every chosen remote
+  const byDefault = selDefault && rows.every(b => !defKeys.includes(zsKey(b)) || !zsRefusal(b, to, allow, true).blocked);
+  const done = state === "done",
+    busy = state === "pushing";
+  const ref = b => zsRefusal(b, to, allow, byDefault);
+  const pushSet = rows.filter(b => sel.has(zsKey(b)) && !ref(b).blocked);
+  const cmd = PushDialog.command({
+    bookmarks,
+    selected: [...sel],
+    bulk,
+    remotes: to,
+    defaultRemotes: defs,
+    change,
+    allow
+  });
+  const warnN = pushSet.filter(b => to.some(r => (!byDefault || zsAt(b, r).inDefault) && ZS_KIND[zsAt(b, r).kind][1] === "warn")).length;
+  const empty = !pushSet.length && !withChange;
+  const res = (b, r) => results.find(x => x.ref === zsKey(b) && x.remote === r);
+  const okN = results.filter(x => x.status === "pushed").length,
+    leases = [...new Set(results.filter(x => x.status === "lease").map(x => x.remote))];
+  const toggle = k => {
+    const n = new Set(sel);
+    n.has(k) ? n.delete(k) : n.add(k);
+    onSelect && onSelect([...n]);
+    onBulk && onBulk(null);
+  };
+  const pickBulk = k => {
+    onSelect && onSelect(k === "default" ? defKeys : zsBulk(rows, k, to).map(zsKey));
+    onBulk && onBulk(k === "default" ? null : k);
+  };
+  const close = done ? onDone || onCancel : onCancel;
+  const onKey = e => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      !busy && close && close();
+    } else if (e.key === "Enter" && !e.target.matches("input,textarea")) {
+      e.preventDefault();
+      if (done) close && close();else if (!empty && !busy) onPush && onPush(cmd);
+    }
+  };
+  // inline (the kind column, one reason): "Allow" — the reason stands beside it; in the chip row under several reasons: the long label
+  const allowChip = (id, short) => /*#__PURE__*/React.createElement(__ds_scope.Chip, {
+    key: id,
+    kind: "toggle",
+    size: "sm",
+    on: false,
+    title: (short ? ZS_ALLOW[id][2] + " — " : "") + ZS_ALLOW[id][1],
+    onChange: () => onAllow && onAllow({
+      ...allow,
+      [ZS_ALLOW[id][3]]: true
+    }),
+    onClick: e => e.stopPropagation()
+  }, short ? "Allow" : ZS_ALLOW[id][2]);
+  // the sub-lines under a name: commit reasons, hard reasons with jj's hint, then the per-remote outcome of a push that failed in part
+  const why = (b, rf, at, chipInline) => {
+    const n = b.name,
+      out = [];
+    if (rf.commit.length) out.push(/*#__PURE__*/React.createElement("span", {
+      key: "c",
+      className: "zs-push-sub is-refused"
+    }, rf.blocked && (rf.open.length || rf.hard.some(h => h.commit)) ? "Refused — " : "Allowed — ", /*#__PURE__*/React.createElement(__ds_scope.ChangeId, {
+      id: at,
+      length: 8
+    }), " ", rf.commit.map(x => ZS_ALLOW[x] ? ZS_ALLOW[x][0] : ZS_HARD[x].text()).join(" and ")));
+    if (rf.open.length > (chipInline ? 1 : 0) && !rf.hard.length) out.push(/*#__PURE__*/React.createElement("span", {
+      key: "a",
+      className: "zs-push-allow"
+    }, rf.open.map(id => allowChip(id))));
+    rf.hard.filter(h => !h.commit).forEach((h, i) => {
+      const o = h.id === "tracked-elsewhere" ? to.concat(remotes).filter((r, j, a) => a.indexOf(r) === j && r !== h.remote && b.remotes && b.remotes[r] && b.remotes[r].tracked).join(", ") : "";
+      const hint = ZS_HARD[h.id].hint && ZS_HARD[h.id].hint(n, h.remote);
+      out.push(/*#__PURE__*/React.createElement("span", {
+        key: "h" + i,
+        className: "zs-push-sub is-refused"
+      }, "Refused", multi && h.remote ? " on " + h.remote : "", " \u2014 ", ZS_HARD[h.id].text(n, h.id === "conflicted" ? h.remote : h.remote, o), hint && /*#__PURE__*/React.createElement(React.Fragment, null, " \xB7 ", /*#__PURE__*/React.createElement("code", null, hint))));
+    });
+    if (done) to.forEach(r => {
+      const x = res(b, r);
+      if (!x || x.status === "pushed") return;
+      out.push(/*#__PURE__*/React.createElement("span", {
+        key: "r" + r,
+        className: "zs-push-sub " + (x.status === "lease" ? "is-refused" : "is-error")
+      }, PushDialog.outcomes[x.status].text(n, r, x.message)));
+    });
+    if (!out.length && !done && to.every(r => !zsAt(b, r).tracked) && to.some(r => zsAt(b, r).kind !== "delete" && zsAt(b, r).kind !== "none")) out.push(/*#__PURE__*/React.createElement("span", {
+      key: "t",
+      className: "zs-push-sub"
+    }, "not tracked yet \u2014 the push tracks it"));
+    return out;
+  };
+  const kindOf = (b, r, rf) => {
+    const t = zsAt(b, r),
+      x = done && res(b, r);
+    if (x) {
+      const o = PushDialog.outcomes[x.status];
+      return /*#__PURE__*/React.createElement("span", {
+        className: "zs-push-kind is-" + o.tone,
+        title: x.message || undefined
+      }, o.icon && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+        name: o.icon,
+        size: "sm"
+      }), o.label(r));
+    }
+    if (t.kind === "none") return /*#__PURE__*/React.createElement("span", {
+      className: "zs-push-kind is-none"
+    }, "up to date");
+    if (rf.hard.some(h => !h.remote || h.remote === r)) return /*#__PURE__*/React.createElement("span", {
+      className: "zs-push-kind is-warn"
+    }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+      name: "conflict",
+      size: "sm"
+    }), "refused");
+    if (byDefault && !t.inDefault && to.some(x => zsAt(b, x).inDefault)) return /*#__PURE__*/React.createElement("span", {
+      className: "zs-push-kind is-none",
+      title: "not in remote_bookmarks(remote=" + r + ")..@"
+    }, "not sent");
+    const k = ZS_KIND[t.kind] || ZS_KIND.forward;
+    return /*#__PURE__*/React.createElement("span", {
+      className: "zs-push-kind" + (k[1] ? " is-" + k[1] : "")
+    }, k[1] === "warn" && /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+      name: "conflict",
+      size: "sm"
+    }), k[0]);
+  };
+  const move = t => /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-move"
+  }, t.from ? /*#__PURE__*/React.createElement(__ds_scope.ChangeId, {
+    id: t.from,
+    length: 8
+  }) : /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-none"
+  }, "\u2014"), /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-arrow"
+  }, "\u2192"), t.to ? /*#__PURE__*/React.createElement(__ds_scope.ChangeId, {
+    id: t.to,
+    length: 8
+  }) : /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-none"
+  }, t.kind === "none" ? "—" : "deleted"));
+  const err = error && PushDialog.errors[error.kind];
+  const hasTags = rows.some(b => b.type === "tag");
+  const sheet = /*#__PURE__*/React.createElement("div", {
+    ref: box,
+    role: "dialog",
+    "aria-modal": "true",
+    "aria-label": "Push",
+    className: "zs-push",
+    style: {
+      width
+    },
+    onKeyDown: onKey
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-hd"
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "zs-push-title"
+  }, "Push"), /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-to",
+    role: "group",
+    "aria-label": "To remote"
+  }, /*#__PURE__*/React.createElement("span", null, "to"), remotes.map(r => /*#__PURE__*/React.createElement(__ds_scope.Chip, {
+    key: r,
+    kind: "toggle",
+    size: "sm",
+    mono: true,
+    on: to.includes(r),
+    disabled: busy || done,
+    title: defs.includes(r) ? "git.push — no flag" : "--remote " + r,
+    onChange: () => {
+      const n = to.includes(r) ? to.filter(x => x !== r) : [...to, r];
+      if (n.length) onRemote && onRemote(n);
+    }
+  }, r)))), /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-bd"
+  }, err && /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-note is-error",
+    role: "alert"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "alert",
+    size: "md",
+    className: "zs-push-note-ic"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-note-t"
+  }, err.text(error.remote || to[0])), /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "sm",
+    onClick: onRetry,
+    title: cmd || undefined
+  }, "Try again")), done && /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-note",
+    role: "status"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "conflict",
+    size: "md",
+    className: "zs-push-note-ic"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-note-t"
+  }, "Pushed ", okN, " of ", results.length, " \u2014 the rest stayed as they were on ", to.join(", "), ". The push is recorded, so Undo works as usual."), leases.length > 0 && /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "sm",
+    icon: "fetch",
+    title: "jj git fetch " + leases.map(r => "--remote " + r).join(" "),
+    onClick: onFetch
+  }, "Fetch")), /*#__PURE__*/React.createElement("section", {
+    className: "zs-push-sec",
+    "aria-label": hasTags ? "Bookmarks and tags" : "Bookmarks"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-sec-hd"
+  }, /*#__PURE__*/React.createElement("span", null, hasTags ? "Bookmarks and tags" : "Bookmarks"), !done && /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-bulk"
+  }, [["default", "As jj git push", to.map(r => "remote_bookmarks(remote=" + r + ")..@").join(" · ") + " · tracked tags"], ["tracked", "Tracked", "--tracked"], ["all", "All", "--all"], ["deleted", "Deleted", "--deleted"]].map(([k, l, t]) => /*#__PURE__*/React.createElement("button", {
+    key: k,
+    type: "button",
+    className: "zs-push-bk" + ((k === "default" ? selDefault : bulk === k) ? " is-on" : ""),
+    title: t,
+    onClick: () => pickBulk(k)
+  }, l)))), rows.length ? /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-list",
+    role: "group"
+  }, rows.map(b => {
+    const key = zsKey(b),
+      rf = ref(b),
+      blocked = rf.blocked,
+      on = sel.has(key) && !blocked;
+    const chipInline = !multi && rf.open.length === 1 && !rf.hard.length && !done;
+    return /*#__PURE__*/React.createElement("div", {
+      key: key,
+      className: "zs-push-row" + (on ? " is-sel" : "") + (blocked ? " is-refused" : "") + (multi ? " is-multi" : ""),
+      onClick: () => !blocked && !done && !busy && toggle(key)
+    }, /*#__PURE__*/React.createElement(__ds_scope.Checkbox, {
+      checked: on,
+      disabled: blocked || done || busy,
+      label: (b.type === "tag" ? "tag " : "") + b.name,
+      onChange: () => toggle(key),
+      onClick: e => e.stopPropagation()
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "zs-push-what"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "zs-push-l1"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "zs-push-name"
+    }, b.name), b.type === "tag" && /*#__PURE__*/React.createElement("span", {
+      className: "zs-push-type",
+      title: "--tag"
+    }, "tag")), why(b, rf, b.refusedAt || zsAt(b, to[0]).to || "", chipInline)), multi ? /*#__PURE__*/React.createElement("span", {
+      className: "zs-push-dests"
+    }, to.map(r => /*#__PURE__*/React.createElement("span", {
+      key: r,
+      className: "zs-push-dest"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "zs-push-remote"
+    }, r), move(zsAt(b, r)), kindOf(b, r, rf)))) : /*#__PURE__*/React.createElement(React.Fragment, null, move(zsAt(b, to[0])), chipInline ? allowChip(rf.open[0], true) : kindOf(b, to[0], rf)));
+  })) : /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-empty"
+  }, "No bookmark or tag has anything to send to ", to.join(", "), ".")), change && /*#__PURE__*/React.createElement("section", {
+    className: "zs-push-change" + (withChange ? " is-on" : "") + (chg.blocked ? " is-refused" : ""),
+    "aria-label": "Push a change"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Checkbox, {
+    checked: withChange,
+    disabled: chg.blocked || done || busy,
+    label: "Push @ as a new bookmark",
+    onChange: v => onChange && onChange({
+      ...change,
+      on: v
+    })
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-change-t"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-change-l"
+  }, "Push ", /*#__PURE__*/React.createElement(__ds_scope.ChangeId, {
+    id: change.id,
+    length: 8
+  }), " as a new bookmark"), /*#__PURE__*/React.createElement("input", {
+    className: "zs-field zs-field--sm is-mono zs-push-change-in",
+    value: change.name != null ? change.name : change.generated,
+    disabled: !withChange || done || busy,
+    spellCheck: "false",
+    "aria-label": "Bookmark name",
+    onChange: e => onChange && onChange({
+      ...change,
+      name: e.target.value
+    })
+  }), chg.commit.length || chg.hard.length ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-sub is-refused"
+  }, chg.blocked ? "Refused — " : "Allowed — ", /*#__PURE__*/React.createElement(__ds_scope.ChangeId, {
+    id: change.refusedAt || change.id,
+    length: 8
+  }), " ", chg.commit.map(x => ZS_ALLOW[x] ? ZS_ALLOW[x][0] : ZS_HARD[x].text()).join(" and "), !chg.blocked && /*#__PURE__*/React.createElement(React.Fragment, null, " \xB7 pushed with ", /*#__PURE__*/React.createElement("code", null, chg.commit.map(x => ZS_ALLOW[x][1]).join(" ")))), chg.open.length > 0 && !chg.hard.length && /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-allow"
+  }, chg.open.map(id => allowChip(id)))) : /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-sub"
+  }, change.name == null || change.name === change.generated ? /*#__PURE__*/React.createElement(React.Fragment, null, "The name jj generates (", /*#__PURE__*/React.createElement("code", null, "templates.git_push_bookmark"), ") \u2014 type your own to name it.") : /*#__PURE__*/React.createElement(React.Fragment, null, "Your name \u2014 pushed with ", /*#__PURE__*/React.createElement("code", null, "--named"), ".")))), !empty && !done && warnN > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-note",
+    role: "note"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "conflict",
+    size: "md",
+    className: "zs-push-note-ic"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-note-t"
+  }, warnN === 1 ? "One ref" : warnN + " refs", " will rewrite or remove history on ", to.join(", "), " \u2014 moved backwards, sideways or deleted. jj checks each one against what you last fetched; one that has moved there since isn\u2019t pushed.")), empty && !err && !done && /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-empty",
+    role: "status"
+  }, "Nothing to push. Choose a bookmark or tag", change ? ", or push @ as a new one" : "", ".")), /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-ft"
+  }, busy ? /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-run",
+    role: "status"
+  }, /*#__PURE__*/React.createElement(__ds_scope.ProgressBar, {
+    value: progress,
+    label: "Pushing",
+    width: "100%"
+  }), /*#__PURE__*/React.createElement("span", null, "Pushing ", pushSet.length + (withChange ? 1 : 0), " to ", to.join(", "), "\u2026")) : /*#__PURE__*/React.createElement("code", {
+    className: "zs-push-cmd",
+    "aria-label": "Command"
+  }, cmd || "jj git push"), /*#__PURE__*/React.createElement("div", {
+    className: "zs-push-btns"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-push-hint"
+  }, done ? "Ran" : /*#__PURE__*/React.createElement(React.Fragment, null, "Checked with ", /*#__PURE__*/React.createElement("code", null, "--dry-run"))), done ? /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "md",
+    variant: "primary",
+    "data-k": "push",
+    onClick: close
+  }, "Done") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "md",
+    onClick: onCancel,
+    disabled: busy
+  }, "Cancel"), /*#__PURE__*/React.createElement(__ds_scope.Button, {
+    size: "md",
+    variant: "primary",
+    "data-k": "push",
+    busy: busy,
+    disabled: empty,
+    onClick: () => onPush && onPush(cmd),
+    title: cmd || undefined
+  }, "Push")))));
+  return scrim ? /*#__PURE__*/React.createElement("div", {
+    className: "zs-scrim" + (closing ? " is-closing" : "")
+  }, sheet) : sheet;
+}
+
+// the exact command for a dialog state — minimal: no flags for the defaults, a bulk flag only when the selection IS that bulk choice,
+// and never the bare command or a bulk flag while it would carry a refused ref (jj would refuse the whole push): then each ref by name
+PushDialog.command = ({
+  bookmarks = [],
+  selected = [],
+  bulk = null,
+  remotes,
+  defaultRemotes,
+  defaultRemote = "origin",
+  change,
+  allow = {}
+}) => {
+  const defs = defaultRemotes || [defaultRemote],
+    to = remotes || defs;
+  const sel = new Set(selected);
+  const rows = bookmarks.filter(b => to.some(r => zsSends(b, r, false)));
+  const def = bookmarks.filter(b => to.some(r => zsSends(b, r, true)));
+  const blocked = (b, byDefault) => zsRefusal(b, to, allow, byDefault).blocked;
+  const withChange = !!(change && change.on && !zsRefusal({
+    refused: change.refused
+  }, to, allow, false).blocked);
+  const p = ["jj git push"];
+  if (!(to.length === defs.length && to.every(r => defs.includes(r)))) to.forEach(r => p.push("--remote " + r));
+  const isDefault = !bulk && !withChange && def.length === sel.size && def.every(b => sel.has(zsKey(b)));
+  if (isDefault && def.length && !def.some(b => blocked(b, true))) return p.join(" ");
+  const send = rows.filter(b => sel.has(zsKey(b)) && !blocked(b, false));
+  if (!send.length && !withChange) return "";
+  const covered = bulk && zsBulk(rows, bulk, to);
+  if (covered && !withChange && covered.length === send.length && covered.every(b => sel.has(zsKey(b)) && !blocked(b, false))) p.push("--" + bulk);else send.forEach(b => p.push((b.type === "tag" ? "--tag " : "--bookmark ") + b.name));
+  if (withChange) {
+    const nm = change.name;
+    p.push(nm != null && nm !== change.generated && nm.trim() ? "--named " + nm.trim() + "=@" : "--change @");
+  }
+  const reasons = new Set([...send.flatMap(b => zsList(b.refused)), ...(withChange ? zsList(change.refused) : [])]);
+  Object.entries(ZS_ALLOW).forEach(([k, v]) => {
+    if (reasons.has(k) && allow[v[3]]) p.push(v[1]);
+  });
+  return p.join(" ");
+};
+// errors that stop the whole push before anything is sent
+PushDialog.errors = {
+  network: {
+    text: r => "Couldn’t reach " + r + ". Check the connection, then try again."
+  },
+  auth: {
+    text: r => r + " refused the credentials. Check your SSH key or token, then try again."
+  }
+};
+// per ref and remote after a push — jj checks the lease ref by ref and pushes the rest ("Failed to push some bookmarks")
+PushDialog.outcomes = {
+  pushed: {
+    tone: "new",
+    icon: "check",
+    label: () => "pushed",
+    text: () => ""
+  },
+  lease: {
+    tone: "warn",
+    icon: "conflict",
+    label: r => "moved on " + r,
+    text: (n, r) => r + " has moved " + n + " since the last fetch. Fetch, point " + n + " where it should be, then push again."
+  },
+  rejected: {
+    tone: "error",
+    icon: "alert",
+    label: () => "rejected",
+    text: (n, r, m) => r + " rejected the update" + (m ? ": " + m : "") + "."
+  }
+};
+Object.assign(__ds_scope, { PushDialog });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/push/PushDialog.jsx", error: String((e && e.message) || e) }); }
 
 // components/surfaces/Island.jsx
 try { (() => {
@@ -3112,7 +4927,8 @@ function OptionRow({
   }, /*#__PURE__*/React.createElement("span", null, label), children);
 }
 
-// OptionLink — a row that leaves the popover for a bigger place: "Appearance, diffs and more" · "Settings… ⌘,"
+// OptionLink — a row that leaves the popover for a bigger place: "Appearance, diffs and more · Settings…" opens Settings › General — it
+// picks a tab, so it shows no ⌘, (a row that shows a shortcut does exactly what the shortcut does; ⌘, opens the tab shown last)
 function OptionLink({
   label,
   action,
@@ -3130,36 +4946,713 @@ function OptionLink({
 Object.assign(__ds_scope, { Popover, PopoverHeader, PopoverSeparator, OptionRow, OptionLink });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/surfaces/Popover.jsx", error: String((e && e.message) || e) }); }
 
+// components/surfaces/ResizeEdge.jsx
+try { (() => {
+// ResizeEdge — the grab zone on a floating island's edge toward the graph: the inspector's left edge (side "left": the island lies to its
+// right) and a pinned panel's right edge (side "right"), as a Finder or Mail sidebar. Panels clip their content, so the edge is a SIBLING of
+// the island in the same positioned container: `at` = the edge's distance from the side the island hangs from (inspector: from the
+// right, 12 + its width; panel: from the left), `top` / `bottom` = the island's. The zone is --resize-hit (10) wide — --resize-hit-out (7)
+// in the 12px gap, 3 on the island — and runs along the straight part only (the --radius-panel corners left out).
+// Hover: the resize cursor at once; after --delay-resize a 2px --edge-hov line fades in on the island's edge; dragging keeps it. At the
+// minimum or maximum the cursor shows the one direction left (w-resize / e-resize = AppKit's resizeLeft / resizeRight).
+// Drag: live, clamped to min … min(max, limit) — limit keeps --graph-min-w (320) of graph visible. Double-click: back to defaultValue.
+// Keyboard (a Tab stop): ← → 10pt (⇧ 50), Home / End = min / max, ↩ = default. role separator with aria-valuenow / -min / -max.
+function ResizeEdge({
+  side = "left",
+  at = 0,
+  top = 0,
+  bottom = 0,
+  value,
+  min,
+  max,
+  defaultValue,
+  limit,
+  step = 10,
+  label = "Width",
+  onChange,
+  onReset,
+  className = "",
+  style
+}) {
+  const [drag, setDrag] = React.useState(false);
+  const hi = Math.max(min, Math.min(max, limit != null ? limit : max));
+  const clamp = v => Math.round(Math.max(min, Math.min(hi, v)));
+  const grow = side === "left" ? -1 : 1; // the pointer direction that widens the island
+  const down = e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const x0 = e.clientX,
+      v0 = value,
+      el = e.currentTarget;
+    if (el.setPointerCapture) el.setPointerCapture(e.pointerId);
+    setDrag(true);
+    const mv = ev => onChange && onChange(clamp(v0 + (ev.clientX - x0) * grow));
+    const up = () => {
+      setDrag(false);
+      el.removeEventListener("pointermove", mv);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+    };
+    el.addEventListener("pointermove", mv);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  };
+  const reset = () => {
+    if (onReset) onReset();else if (onChange && defaultValue != null) onChange(clamp(defaultValue));
+  };
+  const onKey = e => {
+    const d = e.shiftKey ? step * 5 : step;
+    let v = null;
+    if (e.key === "ArrowLeft") v = value - grow * d;else if (e.key === "ArrowRight") v = value + grow * d;else if (e.key === "Home") v = min;else if (e.key === "End") v = hi;else if (e.key === "Enter") {
+      e.preventDefault();
+      reset();
+      return;
+    }
+    if (v != null) {
+      e.preventDefault();
+      if (onChange) onChange(clamp(v));
+    }
+  };
+  const atMin = value <= min,
+    atMax = value >= hi;
+  const cursor = atMin && atMax ? "default" : atMin ? grow < 0 ? "w-resize" : "e-resize" : atMax ? grow < 0 ? "e-resize" : "w-resize" : "col-resize";
+  const inset = "(var(--resize-hit) - var(--resize-hit-out))";
+  const pos = side === "left" ? {
+    right: "calc(" + at + "px - " + inset + ")"
+  } : {
+    left: "calc(" + at + "px - " + inset + ")"
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    role: "separator",
+    "aria-orientation": "vertical",
+    "aria-label": label,
+    "aria-valuenow": value,
+    "aria-valuemin": min,
+    "aria-valuemax": hi,
+    "aria-valuetext": label + ", " + value + " points",
+    tabIndex: 0,
+    className: ["zs-resize", "is-" + side, drag && "is-drag", className].filter(Boolean).join(" "),
+    style: {
+      ...pos,
+      top: "calc(" + top + "px + var(--radius-panel))",
+      bottom: "calc(" + bottom + "px + var(--radius-panel))",
+      cursor,
+      ...style
+    },
+    onPointerDown: down,
+    onDoubleClick: reset,
+    onKeyDown: onKey
+  });
+}
+Object.assign(__ds_scope, { ResizeEdge });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/surfaces/ResizeEdge.jsx", error: String((e && e.message) || e) }); }
+
 // components/window/TrafficLights.jsx
 try { (() => {
-// TrafficLights — macOS window controls. They belong to the window, not the project: they sit alone in the 52px chrome column.
+// TrafficLights — a mock of the system's window buttons (cards, the UI kit); in the app AppKit draws them where macOS puts them.
+// At rest: grey rings (Zanshin's TrafficLightOverlayView — the one deviation from the system, on purpose). Hovering the group shows
+// the system's buttons: enabled ones in colour with their symbols, disabled ones greyed. 14 × 14, pitch 23 (macOS 26 and later).
+// buttons — which are enabled: the project window all three · Projects { close, zoom } · Settings { close }.
 function TrafficLights({
-  idle = false,
+  buttons = {
+    close: true,
+    minimize: true,
+    zoom: true
+  },
+  hover = false,
   onClose,
   onMinimize,
-  onZoom
+  onZoom,
+  className = "",
+  style
 }) {
   return /*#__PURE__*/React.createElement("div", {
-    className: "zs-traffic" + (idle ? " is-idle" : "")
+    className: ["zs-traffic", hover && "is-hover", className].filter(Boolean).join(" "),
+    style: style,
+    role: "group",
+    "aria-label": "Window"
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
     className: "c",
-    "aria-label": "Close window",
+    "aria-label": "Close",
+    disabled: !buttons.close,
     onClick: onClose
   }), /*#__PURE__*/React.createElement("button", {
     type: "button",
     className: "m",
     "aria-label": "Minimize",
+    disabled: !buttons.minimize,
     onClick: onMinimize
   }), /*#__PURE__*/React.createElement("button", {
     type: "button",
     className: "z",
     "aria-label": "Zoom",
+    disabled: !buttons.zoom,
     onClick: onZoom
   }));
 }
 Object.assign(__ds_scope, { TrafficLights });
 })(); } catch (e) { __ds_ns.__errors.push({ path: "components/window/TrafficLights.jsx", error: String((e && e.message) || e) }); }
+
+// components/window/Window.jsx
+try { (() => {
+// Window — a macOS window of its own (Settings, Projects, jj log Configurations): closable, not minimisable, above the project window even in full screen.
+// The system draws corners, shadow and the open / close animation; Zanshin draws the content on --fl-sheen over --fl-bg-solid.
+// title: the window title — in the Window menu and Mission Control even when the header doesn't show it (titleHidden: Settings).
+// header: controls in the 52px header row, after the title (or centred with headerAlign "center"). Empty header space drags the window.
+// sidebar: a column that begins under the traffic lights (Projects); the header then runs over the main column only.
+// active false = not the key window: the accent role goes neutral and nothing shows focus (tokens/inactive.css).
+function Window({
+  title,
+  titleHidden = false,
+  active = true,
+  buttons = {
+    close: true
+  },
+  header,
+  headerAlign = "start",
+  sidebar,
+  sidebarWidth = 220,
+  width,
+  height,
+  onClose,
+  onZoom,
+  className = "",
+  style,
+  children
+}) {
+  const lights = /*#__PURE__*/React.createElement(__ds_scope.TrafficLights, {
+    buttons: buttons,
+    onClose: onClose,
+    onZoom: onZoom
+  });
+  const hd = /*#__PURE__*/React.createElement("header", {
+    className: "zs-win-hd" + (headerAlign === "center" ? " is-center" : ""),
+    "data-drag": "window"
+  }, !sidebar && lights, !titleHidden && /*#__PURE__*/React.createElement("h1", {
+    className: "zs-win-title"
+  }, title), header);
+  const cls = ["zs-win", !active && "is-inactive", sidebar && "has-side", className].filter(Boolean).join(" ");
+  return /*#__PURE__*/React.createElement("div", {
+    className: cls,
+    role: "dialog",
+    "aria-label": title,
+    "data-window": active ? undefined : "inactive",
+    style: {
+      width,
+      height,
+      ...style
+    }
+  }, sidebar ? /*#__PURE__*/React.createElement(React.Fragment, null, lights, /*#__PURE__*/React.createElement("aside", {
+    className: "zs-win-side",
+    style: {
+      width: sidebarWidth
+    }
+  }, sidebar), /*#__PURE__*/React.createElement("div", {
+    className: "zs-win-col"
+  }, hd, /*#__PURE__*/React.createElement("div", {
+    className: "zs-win-main"
+  }, children))) : /*#__PURE__*/React.createElement(React.Fragment, null, hd, /*#__PURE__*/React.createElement("div", {
+    className: "zs-win-bd"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-win-main"
+  }, children))));
+}
+Object.assign(__ds_scope, { Window });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/window/Window.jsx", error: String((e && e.message) || e) }); }
+
+// components/search/RevsetDialog.jsx
+try { (() => {
+const zsCopiedMs = () => {
+  try {
+    const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dur-copied"));
+    return isNaN(n) ? 1200 : n;
+  } catch (e) {
+    return 1200;
+  }
+};
+const ZS_RSD_FNS = ["author", "committer", "mine", "subject", "description", "files"];
+const ZS_RSD_HINT = {
+  author: "Author name or email",
+  committer: "Committer name or email",
+  mine: "Changes authored by your user.email",
+  subject: "First line of the description",
+  description: "Full description text",
+  files: "Changes touching these paths"
+};
+const ZS_RSD_TEXT = [["substring", "contains"], ["exact", "is exactly"], ["glob", "matches glob"], ["regex", "matches regex"]];
+const ZS_RSD_FILE = [["prefix", "path or folder"], ["file", "exact file"], ["glob", "glob"]];
+const zsRsdQ = v => '"' + String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+function zsRuleExpr(r) {
+  let e;
+  if (r.fn === "mine") e = "mine()";else if (r.fn === "files") e = "files(" + (r.mode === "prefix" ? "" : r.mode + ":") + zsRsdQ(r.value) + ")";else e = r.fn + "(" + r.mode + (r.ci ? "-i" : "") + ":" + zsRsdQ(r.value) + ")";
+  return (r.not ? "~" : "") + e;
+}
+function zsExprOf(cfg) {
+  if (!cfg.rules) return cfg.expr || "all()";
+  const rs = cfg.rules.filter(r => r.fn === "mine" || String(r.value || "").trim());
+  return rs.length ? rs.map(zsRuleExpr).join(cfg.op === "|" ? " | " : " & ") : "all()";
+}
+const zsNewRule = fn => fn === "mine" ? {
+  fn,
+  not: false
+} : fn === "files" ? {
+  fn,
+  mode: "prefix",
+  value: "",
+  not: false
+} : {
+  fn,
+  mode: "substring",
+  ci: false,
+  value: "",
+  not: false
+};
+const zsRsdId = () => "c-" + Math.random().toString(36).slice(2, 8);
+
+// RevsetDialog — "jj log Configurations" (the floating client's dialog, withHome). Built-ins (jj log, all()) are selectable and read-only;
+// custom configurations combine filters (author, committer, mine, subject, description, files). Every entry has a Default search switch:
+// the default is listed first in the search menu and ✕ in the search field returns to it; it carries a Default tag in the list.
+// jj log is the fallback default — its switch is locked on while it is the default; removing the default configuration falls back to it.
+// Controlled: configs/selected/defaultId come in, onChange/onSelect/onDefaultChange go out; Cancel · Apply (dirty) · OK.
+// A WINDOW of its own (Window scaffold, as Settings and Projects), not a sheet: you write a filter while looking things up in the graph.
+// 880 × 580 by default, resizable (min 680 × 460), the list stays 240 and the editor grows; close and zoom active, minimise grey. It floats
+// above the project window while Zanshin is active, moves freely and closes with the project window. Count, mine() and Apply / OK refer to
+// the project in the project window (`project`). ↩ outside the fields = OK · Esc, ⌘W and the red button = Cancel — with unsaved changes
+// it asks first ("Discard changes?", a sheet on this window). active false = the graph is key (tokens/inactive.css).
+function RevsetDialog({
+  builtins = RevsetDialog.builtins,
+  configs = [],
+  selected,
+  defaultId = "default",
+  me = "you",
+  matchCount,
+  total,
+  dirty = false,
+  active = true,
+  project,
+  width = 880,
+  height = 580,
+  onZoom,
+  discarding,
+  onDiscarding,
+  docHref = "https://docs.jj-vcs.dev/latest/revsets/",
+  onSelect,
+  onDefaultChange,
+  onChange,
+  onCancel,
+  onApply,
+  onOk,
+  onClose,
+  className = "",
+  style
+}) {
+  const [copied, setCopied] = React.useState(false);
+  const sheet = React.useRef(null);
+  __ds_scope.useSheetFocus(sheet, ".zs-rsd-item.is-on");
+  const cur = configs.find(c => c.id === selected) || null;
+  const curB = !cur ? builtins.find(b => b.id === selected) || null : null;
+  const home = defaultId === "default" || defaultId === "all" || configs.some(c => c.id === defaultId) ? defaultId : "default";
+  const isHome = selected === home,
+    lockHome = isHome && selected === "default";
+  const [askLocal, setAskLocal] = React.useState(false);
+  const ask = discarding != null ? discarding : askLocal;
+  const setAsk = v => onDiscarding ? onDiscarding(v) : setAskLocal(v);
+  const leave = onCancel || onClose;
+  const cancel = () => {
+    if (dirty) setAsk(true);else if (leave) leave();
+  };
+  const discard = () => {
+    setAsk(false);
+    if (leave) leave();
+  };
+  const onKey = e => {
+    if (ask) return;
+    const mod = e.metaKey || e.ctrlKey;
+    if (e.key === "Escape" || mod && e.key.toLowerCase() === "w") {
+      e.preventDefault();
+      e.stopPropagation();
+      cancel();
+    } else if (e.key === "Enter" && !mod && !e.target.closest('input,textarea,[contenteditable="true"],[role="listbox"],[aria-expanded="true"]')) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (onOk) onOk();
+    }
+  };
+  const set = (next, sel) => {
+    if (onChange) onChange(next);
+    if (sel !== undefined && onSelect) onSelect(sel);
+  };
+  const upd = fn => set(configs.map(c => c.id === selected ? fn(JSON.parse(JSON.stringify(c))) : c));
+  const updRule = (i, patch) => upd(c => {
+    const r = {
+      ...c.rules[i],
+      ...patch
+    };
+    if (patch.fn && patch.fn !== c.rules[i].fn) Object.assign(r, zsNewRule(patch.fn), {
+      not: c.rules[i].not,
+      value: patch.fn === "mine" ? undefined : c.rules[i].value
+    });
+    c.rules[i] = r;
+    return c;
+  });
+  const add = () => {
+    const c = {
+      id: zsRsdId(),
+      name: "New configuration",
+      op: "&",
+      rules: [zsNewRule("files")]
+    };
+    set([...configs, c], c.id);
+  };
+  const dup = () => {
+    if (!cur) return;
+    const i = configs.indexOf(cur),
+      c = {
+        ...JSON.parse(JSON.stringify(cur)),
+        id: zsRsdId(),
+        name: cur.name + " copy"
+      };
+    set([...configs.slice(0, i + 1), c, ...configs.slice(i + 1)], c.id);
+  };
+  const del = () => {
+    if (!cur) return;
+    const i = configs.indexOf(cur),
+      rest = configs.filter(x => x !== cur);
+    if (home === cur.id && onDefaultChange) onDefaultChange("default");
+    set(rest, rest.length ? rest[Math.min(i, rest.length - 1)].id : null);
+  };
+  const move = dir => {
+    const i = cur ? configs.indexOf(cur) : -1,
+      j = i + dir;
+    if (i < 0 || j < 0 || j >= configs.length) return;
+    const n = [...configs];
+    [n[i], n[j]] = [n[j], n[i]];
+    set(n);
+  };
+  const cmd = cur ? "jj log -r '" + zsExprOf(cur) + "'" : curB ? curB.cmd : "";
+  const copy = () => {
+    if (!cmd) return;
+    try {
+      navigator.clipboard.writeText(cmd);
+    } catch (e) {/* clipboard unavailable */}
+    setCopied(true);
+    setTimeout(() => setCopied(false), zsCopiedMs());
+  };
+  const tag = id => home === id && /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-tag"
+  }, "Default");
+  const idx = cur ? configs.indexOf(cur) : -1;
+  const homeUI = /*#__PURE__*/React.createElement("label", {
+    className: "zs-rsd-opt"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-opt-t"
+  }, /*#__PURE__*/React.createElement("span", null, "Default search"), /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-dim"
+  }, lockHome ? "Used whenever no other configuration is the default" : "Listed first in the search menu — ✕ in the search field returns to it")), /*#__PURE__*/React.createElement(__ds_scope.Switch, {
+    label: "Default search",
+    checked: isHome,
+    disabled: lockHome,
+    onChange: () => onDefaultChange && onDefaultChange(isHome ? "default" : selected)
+  }));
+  const preview = /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-block"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-lbl"
+  }, "Command"), /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-pv"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-pv-cmd"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-prompt"
+  }, "\u276F "), cmd), /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-pv-ft"
+  }, /*#__PURE__*/React.createElement("span", null, matchCount != null && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("b", null, matchCount), total != null ? " of " + total : "", " changes match", project && /*#__PURE__*/React.createElement(React.Fragment, null, " in ", /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-proj"
+  }, project)))), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-link",
+    onClick: copy
+  }, copied ? "Copied" : "Copy"))));
+  const box = /*#__PURE__*/React.createElement("div", {
+    ref: sheet,
+    className: "zs-rsd",
+    onKeyDown: onKey
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-bd"
+  }, /*#__PURE__*/React.createElement("aside", {
+    className: "zs-rsd-side"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-side-tb"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-ib",
+    onClick: add,
+    title: "Add configuration"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "plus",
+    size: "md"
+  })), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-ib",
+    onClick: del,
+    disabled: !cur,
+    title: "Remove"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "minus",
+    size: "md"
+  })), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-ib",
+    onClick: dup,
+    disabled: !cur,
+    title: "Duplicate"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "copy",
+    size: "md"
+  })), /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-tb-sep"
+  }), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-ib",
+    onClick: () => move(-1),
+    disabled: idx <= 0,
+    title: "Move up"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "chevron-up",
+    size: "md"
+  })), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-ib",
+    onClick: () => move(1),
+    disabled: idx < 0 || idx >= configs.length - 1,
+    title: "Move down"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "chevron-down",
+    size: "md"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-list"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-sec"
+  }, "Built-in"), builtins.map(b => /*#__PURE__*/React.createElement("button", {
+    key: b.id,
+    type: "button",
+    className: "zs-rsd-item is-b" + (b.id === selected ? " is-on" : ""),
+    onClick: () => onSelect && onSelect(b.id)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-nmrow"
+  }, /*#__PURE__*/React.createElement("code", null, b.cmd), tag(b.id)))), /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-sec"
+  }, "Custom"), configs.map(c => /*#__PURE__*/React.createElement("button", {
+    key: c.id,
+    type: "button",
+    className: "zs-rsd-item" + (c.id === selected ? " is-on" : ""),
+    onClick: () => onSelect && onSelect(c.id)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-nmrow"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-nm"
+  }, c.name || "Unnamed"), tag(c.id)), /*#__PURE__*/React.createElement("code", null, zsExprOf(c)))), !configs.length && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-empty",
+    onClick: add
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "plus",
+    size: "sm"
+  }), "Add configuration"))), cur ? /*#__PURE__*/React.createElement("main", {
+    className: "zs-rsd-main"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-field"
+  }, /*#__PURE__*/React.createElement("label", {
+    htmlFor: "zs-rsd-name"
+  }, "Name"), /*#__PURE__*/React.createElement("input", {
+    id: "zs-rsd-name",
+    className: "zs-rsd-in",
+    value: cur.name,
+    onChange: e => {
+      const v = e.target.value;
+      upd(c => {
+        c.name = v;
+        return c;
+      });
+    }
+  })), homeUI, /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-block"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-block-hd"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-lbl"
+  }, "Filters"), (cur.rules || []).length > 1 && /*#__PURE__*/React.createElement(__ds_scope.Segmented, {
+    label: "Combine",
+    value: cur.op === "|" ? "|" : "&",
+    onChange: v => upd(c => {
+      c.op = v;
+      return c;
+    }),
+    options: [{
+      value: "&",
+      label: /*#__PURE__*/React.createElement(React.Fragment, null, "Match all ", /*#__PURE__*/React.createElement("code", null, "&"))
+    }, {
+      value: "|",
+      label: /*#__PURE__*/React.createElement(React.Fragment, null, "Match any ", /*#__PURE__*/React.createElement("code", null, "|"))
+    }]
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-rules"
+  }, (cur.rules || []).map((r, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "zs-rsd-rule"
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-not" + (r.not ? " is-on" : ""),
+    onClick: () => updRule(i, {
+      not: !r.not
+    }),
+    title: r.not ? "Negated (~) — click to include" : "Click to exclude matches (~)"
+  }, r.not ? "~ not" : "is"), /*#__PURE__*/React.createElement(__ds_scope.Select, {
+    mono: true,
+    label: "Function",
+    value: r.fn,
+    onChange: v => updRule(i, {
+      fn: v
+    }),
+    title: ZS_RSD_HINT[r.fn],
+    options: ZS_RSD_FNS.map(f => ({
+      value: f,
+      label: f + "()",
+      text: f
+    }))
+  }), r.fn === "mine" ? /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-mine"
+  }, "authored by ", /*#__PURE__*/React.createElement("b", null, me), " ", /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-dim"
+  }, "\xB7 user.email")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(__ds_scope.Select, {
+    label: "Match",
+    value: r.mode,
+    onChange: v => updRule(i, {
+      mode: v
+    }),
+    options: (r.fn === "files" ? ZS_RSD_FILE : ZS_RSD_TEXT).map(([v, l]) => ({
+      value: v,
+      label: l
+    }))
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-val"
+  }, /*#__PURE__*/React.createElement("input", {
+    className: "zs-rsd-in is-mono",
+    value: r.value || "",
+    spellCheck: "false",
+    onChange: e => updRule(i, {
+      value: e.target.value
+    }),
+    placeholder: r.fn === "files" ? r.mode === "glob" ? "lib/**/*.dart" : "app/lib/main.dart" : ZS_RSD_HINT[r.fn]
+  }), r.fn !== "files" && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-ci" + (r.ci ? " is-on" : ""),
+    onClick: () => updRule(i, {
+      ci: !r.ci
+    }),
+    title: "Case-insensitive (-i)"
+  }, "Aa"))), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-ib",
+    onClick: () => upd(c => {
+      c.rules.splice(i, 1);
+      return c;
+    }),
+    title: "Remove filter"
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "close",
+    size: "xs"
+  })))), !(cur.rules || []).length && /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-none"
+  }, "No filters \u2014 shows every commit (", /*#__PURE__*/React.createElement("code", null, "all()"), ").")), /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-add"
+  }, ZS_RSD_FNS.map(f => /*#__PURE__*/React.createElement("button", {
+    key: f,
+    type: "button",
+    className: "zs-rsd-chip",
+    onClick: () => upd(c => {
+      c.rules = [...(c.rules || []), zsNewRule(f)];
+      return c;
+    }),
+    title: ZS_RSD_HINT[f]
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "plus",
+    size: "xs"
+  }), f)))), preview) : curB ? /*#__PURE__*/React.createElement("main", {
+    className: "zs-rsd-main"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-field"
+  }, /*#__PURE__*/React.createElement("label", null, "Name"), /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-fixed"
+  }, /*#__PURE__*/React.createElement("code", null, curB.cmd), /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-dim"
+  }, "Built-in \xB7 ", curB.desc))), homeUI, preview) : /*#__PURE__*/React.createElement("main", {
+    className: "zs-rsd-main is-empty"
+  }, /*#__PURE__*/React.createElement("p", null, "No custom configurations yet."), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-btn",
+    onClick: add
+  }, /*#__PURE__*/React.createElement(__ds_scope.Icon, {
+    name: "plus",
+    size: "sm"
+  }), "Add configuration"))), /*#__PURE__*/React.createElement("div", {
+    className: "zs-rsd-ft"
+  }, /*#__PURE__*/React.createElement("a", {
+    className: "zs-rsd-doc",
+    href: docHref,
+    target: "_blank",
+    rel: "noreferrer"
+  }, "Revset reference \u2197"), /*#__PURE__*/React.createElement("span", {
+    className: "zs-rsd-grow"
+  }), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-btn",
+    onClick: cancel
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-btn",
+    onClick: onApply,
+    disabled: !dirty
+  }, "Apply"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "zs-rsd-btn is-primary",
+    onClick: onOk
+  }, "OK")), ask && /*#__PURE__*/React.createElement(__ds_scope.ConfirmDialog, {
+    title: "Discard changes?",
+    confirmLabel: "Discard changes",
+    onConfirm: discard,
+    onCancel: () => setAsk(false)
+  }, "Your edits to the configurations haven\u2019t been applied. Cancel keeps them here."));
+  return /*#__PURE__*/React.createElement(__ds_scope.Window, {
+    title: "jj log Configurations",
+    active: active,
+    buttons: {
+      close: true,
+      zoom: true
+    },
+    onClose: cancel,
+    onZoom: onZoom,
+    width: width,
+    height: height,
+    className: ("zs-rsd-win " + className).trim(),
+    style: style
+  }, box);
+}
+RevsetDialog.builtins = [{
+  id: "default",
+  cmd: "jj log",
+  desc: "Default revset — your mutable changes plus trunk context"
+}, {
+  id: "all",
+  cmd: "jj log -r 'all()'",
+  desc: "Every visible commit, incl. immutable history and untracked remotes"
+}];
+RevsetDialog.exprOf = zsExprOf;
+RevsetDialog.ruleExpr = zsRuleExpr;
+Object.assign(__ds_scope, { RevsetDialog });
+})(); } catch (e) { __ds_ns.__errors.push({ path: "components/search/RevsetDialog.jsx", error: String((e && e.message) || e) }); }
 
 // ui_kits/desktop/app.jsx
 try { (() => {
@@ -3174,10 +5667,13 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     DragGhost,
     Toast,
     ChangeId,
-    RevsetDialog
+    RevsetDialog,
+    PushDialog,
+    ResizeEdge
   } = window.ZanshinDesignSystem_a33847;
+  // TOP = --chrome-top on the macOS 27 reference geometry (bar centred on the traffic lights at y 26: 26 + 22 + 12)
   const EDGE = 12,
-    TOP = 68,
+    TOP = 60,
     RAIL_R = 76,
     PANEL_W = 300,
     DETAIL_W = 460,
@@ -3427,7 +5923,8 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       ops: D.OPS,
       opCount: D.opCount
     });
-    const [hist, setHist] = React.useState([]);
+    const [hist, setHist] = React.useState([]),
+      [fut, setFut] = React.useState([]);
     const [sel, setSel] = React.useState(null);
     const [editing, setEditing] = React.useState(false);
     const [hover, setHover] = React.useState(null),
@@ -3440,13 +5937,48 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       cardW: 240
     });
     const [prefs, setPrefs] = React.useState({
-      theme: URLQ.get("theme") || "dark",
+      theme: {
+        light: "paper",
+        dark: "night"
+      }[URLQ.get("theme")] || URLQ.get("theme") || "night",
       density: "compact",
       autoHide: true,
-      diffMode: "unified"
+      diffMode: "unified",
+      accent: URLQ.get("accentMode") || "macos"
     });
+    // the macOS choice (System Settings › Appearance › Color) — the kit simulates it with ?accent=blue|purple|pink|red|orange|yellow|green|graphite (default: Multicolour)
+    const SYS_ACCENT = URLQ.get("accent") || "multicolor";
     const [menu, setMenu] = React.useState(null);
     const [pinned, setPinned] = React.useState(null);
+    // the inspector's and the panels' widths — resizable at their edge toward the graph (ResizeEdge), remembered app-wide
+    const zkLS = (k, d) => {
+      try {
+        const v = +localStorage.getItem(k);
+        return v > 0 ? v : d;
+      } catch (e) {
+        return d;
+      }
+    };
+    const [insW, setInsW0] = React.useState(() => zkLS("zk-inspector-w", DETAIL_W)),
+      [panW, setPanW0] = React.useState(() => zkLS("zk-panel-w", PANEL_W));
+    const setInsW = v => {
+      setInsW0(v);
+      try {
+        localStorage.setItem("zk-inspector-w", String(v));
+      } catch (e) {/* storage off */}
+    };
+    const setPanW = v => {
+      setPanW0(v);
+      try {
+        localStorage.setItem("zk-panel-w", String(v));
+      } catch (e) {/* storage off */}
+    };
+    const [vw, setVw] = React.useState(window.innerWidth);
+    React.useEffect(() => {
+      const r = () => setVw(window.innerWidth);
+      window.addEventListener("resize", r);
+      return () => window.removeEventListener("resize", r);
+    }, []);
     const [revset, setRevset] = React.useState("default");
     const [home, setHome] = React.useState("default"); // the default search — first in the search menu, ✕ returns to it
     const [configs, setConfigs] = React.useState(D.CONFIGS);
@@ -3454,8 +5986,59 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     const [goPend, setGoPend] = React.useState(null);
     const [tree, setTree] = React.useState(D.HOME_TREE);
     const [activeId, setActiveId] = React.useState(D.activeProjectId);
+    // Settings and Projects are windows of their own; `key` is the key window — the others are inactive (tokens/inactive.css)
     const [projectsOpen, setProjectsOpen] = React.useState(URLQ.has("projects"));
-    const [settings, setSettings] = React.useState(URLQ.get("settings"));
+    const [settingsOpen, setSettingsOpen] = React.useState(URLQ.has("settings"));
+    const [setTab, setSetTab] = React.useState(URLQ.get("settings") === "project" ? "project" : "general");
+    const [key, setKey] = React.useState(URLQ.has("settings") ? "settings" : URLQ.has("projects") ? "projects" : "project");
+    const [push, setPush] = React.useState(null);
+    // every row that shows ⌘, (Zanshin menu, project menu, the Projects sidebar) and ⌘, itself → the tab shown last, never switched ·
+    // "Project Settings…" → Project · "Appearance, diffs and more" → General (those two show no ⌘,) · no project + Project last → General
+    const openSettings = tab => {
+      if (tab === "general" || tab === "project") setSetTab(tab);
+      setSettingsOpen(true);
+      setKey("settings");
+    };
+    // ⌘W / the red button on the key window. Configurations asks first when dirty; the project window closes the project and shows Projects
+    // (the start window — the kit keeps the graph behind it); Settings and Projects just close
+    const closeWindow = w => {
+      if (w === "configs") {
+        setCfgDlg(d => d && (d.draft !== configs || d.home !== home) ? {
+          ...d,
+          ask: true
+        } : null);
+        if (!(cfgDlg && (cfgDlg.draft !== configs || cfgDlg.home !== home))) setKey("project");
+        return;
+      }
+      if (w === "project") {
+        setCfgDlg(null);
+        setProjectsOpen(true);
+        setKey("projects");
+        return;
+      }
+      if (w === "settings") setSettingsOpen(false);
+      if (w === "projects") setProjectsOpen(false);
+      setKey(w === "settings" && projectsOpen ? "projects" : "project");
+    };
+    const [cfgPos, setCfgPos] = React.useState({
+      x: 150,
+      y: 96
+    }); // remembered while the kit runs, like the window's frame
+    const dragWin = (e, pos, set) => {
+      if (!e.target.closest('[data-drag="window"]') || e.target.closest("button,input")) return;
+      const sx = e.clientX - pos.x,
+        sy = e.clientY - pos.y;
+      const mv = ev => set({
+        x: ev.clientX - sx,
+        y: Math.max(0, ev.clientY - sy)
+      });
+      const up = () => {
+        window.removeEventListener("mousemove", mv);
+        window.removeEventListener("mouseup", up);
+      };
+      window.addEventListener("mousemove", mv);
+      window.addEventListener("mouseup", up);
+    };
     const [toast, setToast] = React.useState(null);
     const [born, setBorn] = React.useState(null),
       [flash, setFlash] = React.useState([]);
@@ -3543,7 +6126,7 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       if (prefs.theme === "system") {
         const m = matchMedia("(prefers-color-scheme: dark)");
         const f = () => {
-          root.dataset.theme = m.matches ? "dark" : "light";
+          root.dataset.theme = m.matches ? "night" : "paper";
         };
         f();
         m.addEventListener("change", f);
@@ -3554,11 +6137,15 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     React.useEffect(() => {
       document.documentElement.dataset.density = prefs.density;
     }, [prefs.density]);
+    React.useEffect(() => {
+      const root = document.documentElement;
+      if (prefs.accent === "macos" && SYS_ACCENT !== "multicolor") root.dataset.accent = SYS_ACCENT;else delete root.dataset.accent;
+    }, [prefs.accent]);
 
     // ---- viewport, calm scrolling, @ locator ----
     const insets = {
-      left: pinned ? RAIL_R + PANEL_W + EDGE : RAIL_R,
-      right: sel ? DETAIL_W + EDGE * 2 : MINI + EDGE
+      left: pinned ? RAIL_R + panW + EDGE : RAIL_R,
+      right: sel ? insW + EDGE * 2 : MINI + EDGE
     };
     const measure = () => {
       const el = scRef.current;
@@ -3584,7 +6171,7 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       if (!prefs.autoHide || drag || Date.now() < quiet.current) return;
       setCalm(true);
       clearTimeout(calmT.current);
-      calmT.current = setTimeout(() => setCalm(false), 650);
+      calmT.current = setTimeout(() => setCalm(false), window.zkMs("--delay-calm-return", 650));
     };
     const scrollTo = id => {
       const p = L.pos.get(id),
@@ -3612,11 +6199,15 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       const run = nodes.find(n => n.stack && n.members.some(m => m.id === goPend));
       if (run) setExpanded(x => x.includes(run.members[0].id) ? x : [...x, run.members[0].id]);
     }, [goPend, L]);
-    const openConfigs = id => setCfgDlg({
-      draft: configs,
-      sel: id === "default" || id === "all" || configs.some(c => c.id === id) ? id : home,
-      home
-    });
+    // Edit Configurations… / ⌥⌘L: opens the window or brings it forward with its edits as they are
+    const openConfigs = id => {
+      setKey("configs");
+      setCfgDlg(d => d || {
+        draft: configs,
+        sel: id === "default" || id === "all" || configs.some(c => c.id === id) ? id : home,
+        home
+      });
+    };
     const applyConfigs = d => {
       setConfigs(d.draft);
       setHome(d.home);
@@ -3630,11 +6221,11 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       const p = L.pos.get(sel),
         el = scRef.current;
       if (!p || !el) return;
-      const right = el.scrollLeft + el.clientWidth - DETAIL_W - EDGE * 2;
+      const right = el.scrollLeft + el.clientWidth - insW - EDGE * 2;
       if (p.x + W > right) {
         quiet.current = Date.now() + 700;
         el.scrollTo({
-          left: p.x + W - el.clientWidth + DETAIL_W + EDGE * 3,
+          left: p.x + W - el.clientWidth + insW + EDGE * 3,
           behavior: "smooth"
         });
       }
@@ -3643,6 +6234,7 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     // ---- operations: every one lands in the op log and can be undone ----
     const commitRepo = (cmd, next, extra = {}) => {
       setHist(h => [...h.slice(-40), repo]);
+      setFut([]);
       setRepo({
         ...next,
         ops: [{
@@ -3651,17 +6243,12 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         }, ...repo.ops],
         opCount: repo.opCount + 1
       });
-      if (extra.toast) {
-        clearTimeout(toastT.current);
-        setToast({
-          text: extra.toast,
-          n: Date.now()
-        });
-        toastT.current = setTimeout(() => setToast(null), 6500);
-      }
+      if (extra.toast) showToast({
+        text: extra.toast
+      });
       if (extra.flash) {
         setFlash(extra.flash);
-        setTimeout(() => setFlash([]), 2400);
+        setTimeout(() => setFlash([]), window.zkMs("--dur-flash", 2400));
       }
       if (extra.born) {
         setBorn(extra.born);
@@ -4031,23 +6618,135 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         });
       }
     };
-    const undo = () => {
-      setHist(h => {
-        if (!h.length) return h;
-        const prev = h[h.length - 1];
-        setRepo({
-          ...prev,
-          ops: [{
-            cmd: "undo",
-            when: "just now"
-          }, ...prev.ops],
-          opCount: prev.opCount + 1
-        });
-        if (sel && !prev.changes.some(c => c.id === sel)) setSel(null);
-        return h.slice(0, -1);
-      });
+    // one toast at a time; success and warn hide after --dur-toast-hold (errors stay)
+    const showToast = t => {
       clearTimeout(toastT.current);
-      setToast(null);
+      setToast({
+        ...t,
+        n: Date.now()
+      });
+      if (t.tone !== "error") toastT.current = setTimeout(() => setToast(null), window.zkMs("--dur-toast-hold", 6500));
+    };
+    // ⌘Z / Edit › Undo ‹action›: only Zanshin's own last operation, only while it is still the current one; a toast offers Redo (⇧⌘Z).
+    // Undoing a push warns as the CLI does. Anything older is the Undo Timeline's job.
+    const undo = () => {
+      if (!hist.length) return;
+      const prev = hist[hist.length - 1],
+        last = repo.ops[0] ? repo.ops[0].cmd : "";
+      setHist(hist.slice(0, -1));
+      setFut(f => [...f, repo]);
+      setRepo({
+        ...prev,
+        ops: [{
+          cmd: "jj undo",
+          when: "just now"
+        }, ...repo.ops],
+        opCount: repo.opCount + 1
+      });
+      if (sel && !prev.changes.some(c => c.id === sel)) setSel(null);
+      showToast(last.startsWith("jj git push") ? {
+        tone: "warn",
+        redo: true,
+        text: ["Undoing a push operation often leads to conflicted bookmarks."]
+      } : {
+        redo: true,
+        text: ["Undid ", {
+          mono: last
+        }]
+      });
+    };
+    const redo = () => {
+      if (!fut.length) return;
+      const next = fut[fut.length - 1];
+      setFut(fut.slice(0, -1));
+      setHist(h => [...h, repo]);
+      setRepo({
+        ...next,
+        ops: [{
+          cmd: "jj redo",
+          when: "just now"
+        }, ...repo.ops],
+        opCount: repo.opCount + 1
+      });
+      showToast({
+        text: ["Redid ", {
+          mono: next.ops[0] ? next.ops[0].cmd : "the operation"
+        }]
+      });
+    };
+    // Push… — the sheet shows what jj git push would send; the kit maps each bookmark's sync state to the --dry-run kind
+    const pushRows = () => repo.changes.flatMap(c => c.bookmarks.map(b => {
+      const kind = {
+        ahead: "forward",
+        local: "new",
+        diverged: "sideways",
+        behind: "backward",
+        remote: "delete"
+      }[b.state] || "none";
+      return {
+        name: b.name,
+        tracked: b.state !== "local",
+        kind,
+        inDefault: kind === "forward",
+        from: kind === "new" ? null : c.parents[0] || null,
+        to: kind === "delete" ? null : c.id,
+        refused: !c.subject && kind !== "delete" ? "empty-description" : undefined,
+        refusedAt: c.id
+      };
+    }));
+    const openPush = () => setPush({
+      rows: pushRows(),
+      remote: ["origin"],
+      selected: null,
+      bulk: null,
+      change: {
+        id: repo.wc,
+        generated: "push-" + repo.wc.slice(0, 8),
+        refused: (repo.changes.find(c => c.id === repo.wc) || {}).subject ? undefined : "empty-description"
+      },
+      allow: {},
+      state: "ready",
+      error: null
+    });
+    const runPush = cmd => {
+      setPush(p => ({
+        ...p,
+        state: "pushing",
+        progress: 0
+      }));
+      let k = 0;
+      const iv = setInterval(() => {
+        k += 1;
+        setPush(p => p && {
+          ...p,
+          progress: Math.min(1, k / 8)
+        });
+        if (k >= 8) {
+          clearInterval(iv);
+          finishPush(cmd);
+        }
+      }, 140);
+    };
+    const finishPush = cmd => {
+      setPush(p => {
+        if (!p) return p;
+        const names = new Set(p.selected || p.rows.filter(r => r.inDefault).map(r => r.name));
+        const n = names.size + (p.change.on ? 1 : 0);
+        const changes = repo.changes.map(c => ({
+          ...c,
+          bookmarks: c.bookmarks.map(b => names.has(b.name) ? {
+            ...b,
+            state: "synced"
+          } : b)
+        }));
+        commitRepo(cmd, {
+          ...repo,
+          changes
+        }, {
+          toast: ["Pushed " + n + (n === 1 ? " bookmark" : " bookmarks") + " to " + p.remote.join(", ")]
+        });
+        return null;
+      });
     };
 
     // ---- direct manipulation ----
@@ -4113,7 +6812,7 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
                 }
               };
               setDrag(d);
-            }, 520);
+            }, window.zkMs("--delay-drop-menu", 520));
           }
         }
         d = next;
@@ -4170,27 +6869,48 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       window.addEventListener("pointermove", mv);
       window.addEventListener("pointerup", up);
     };
-
-    // ---- keyboard ----
+    React.useEffect(() => {
+      if (URLQ.has("push")) openPush();
+    }, []);
+    // ---- keyboard: ⌘, Settings (last tab) · ⌘W closes the key window · ⇧⌘O All Projects… · ⌘Z / ⇧⌘Z undo / redo · Esc ----
     React.useEffect(() => {
       const k = e => {
-        if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        const cmd = e.metaKey || e.ctrlKey;
+        if (cmd && e.key === ",") {
           e.preventDefault();
-          setSettings(s => s ? null : "general");
+          openSettings();
           return;
         }
-        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !/TEXTAREA|INPUT/.test(e.target.tagName)) {
+        if (cmd && e.key.toLowerCase() === "w") {
           e.preventDefault();
-          undo();
+          closeWindow(key);
           return;
         }
-        if (e.key === "Escape" && !settings && !projectsOpen) {
+        if (cmd && e.shiftKey && e.key.toLowerCase() === "o") {
+          e.preventDefault();
+          setProjectsOpen(true);
+          setKey("projects");
+          return;
+        }
+        if (key !== "project" || push) return;
+        if (cmd && e.key.toLowerCase() === "z" && !/TEXTAREA|INPUT/.test(e.target.tagName)) {
+          e.preventDefault();
+          if (e.shiftKey) redo();else undo();
+          return;
+        }
+        // ⌘J scrolls to the selected change (the HIG's "scroll to a selection") · ⇧⌘J to the working copy (Go › Working Copy (@))
+        if (cmd && e.key.toLowerCase() === "j") {
+          e.preventDefault();
+          if (e.shiftKey) scrollTo(repo.wc);else if (sel) scrollTo(sel);
+          return;
+        }
+        if (e.key === "Escape") {
           if (menu) setMenu(null);else if (editing) setEditing(false);else setSel(null);
         }
       };
       window.addEventListener("keydown", k);
       return () => window.removeEventListener("keydown", k);
-    }, [menu, editing, settings, projectsOpen, hist]);
+    }, [menu, editing, key, projectsOpen, settingsOpen, hist, fut, push, cfgDlg, repo]);
     const onSelect = (id, now) => {
       if (justDragged.current) return;
       clearTimeout(clickT.current);
@@ -4213,7 +6933,7 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         return;
       }
       const isStack = id.startsWith("s:");
-      peekT.current = setTimeout(() => setPeek(id), isStack ? 380 : 450);
+      peekT.current = setTimeout(() => setPeek(id), isStack ? window.zkMs("--delay-stack-list", 380) : window.zkMs("--delay-peek", 450));
     };
     const onMenu = (id, e, fromButton) => {
       const r = fromButton ? e.currentTarget.getBoundingClientRect() : null;
@@ -4239,12 +6959,18 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       isWCm = mc && mc.id === repo.wc;
     const off = (mut, idA) => mut && mc.immutable && idA !== "after" || idA === "edit" && isWCm;
     const canSquash = c => c && !c.immutable && c.parents.length === 1 && byId(c.parents[0]) && !byId(c.parents[0]).immutable;
-    const atR = sel ? DETAIL_W + EDGE * 2 : MINI + EDGE;
+    const atR = sel ? insW + EDGE * 2 : MINI + EDGE;
     const dragAct = drag && drag.actions[drag.sel];
     const visibleSet = new Set(nodes.flatMap(n => n.stack ? n.members.map(m => m.id) : [n.id]));
     const lift = drag && drag.payload.kind === "diff" ? drag.payload.hunkIds : null;
-    return /*#__PURE__*/React.createElement("div", {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "zk-win" + (calm ? " is-calm" : "") + (drag ? " is-dragging" : "") + (panning ? " is-panning" : ""),
+      "data-window": key === "project" ? undefined : "inactive",
+      style: {
+        "--inspector-w": insW + "px",
+        "--panel-w": panW + "px"
+      },
+      onMouseDown: () => key !== "project" && setKey("project"),
       onClick: () => menu && setMenu(null)
     }, /*#__PURE__*/React.createElement("div", {
       className: "zk-scroll",
@@ -4300,8 +7026,12 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       recent: recent,
       activeId: activeId,
       onPickProject: setActiveId,
-      onAllProjects: () => setProjectsOpen(true),
-      onSettings: setSettings,
+      onAllProjects: () => {
+        setProjectsOpen(true);
+        setKey("projects");
+      },
+      onSettings: openSettings,
+      onPush: openPush,
       revset: revset,
       setRevset: setRevset,
       home: home,
@@ -4327,6 +7057,30 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         setSel(id);
         scrollTo(id);
       }
+    }), pinned && ResizeEdge && /*#__PURE__*/React.createElement(ResizeEdge, {
+      side: "right",
+      at: RAIL_R + panW,
+      top: TOP,
+      bottom: EDGE,
+      value: panW,
+      min: 240,
+      max: 440,
+      defaultValue: PANEL_W,
+      limit: vw - RAIL_R - EDGE - 320 - (selected ? insW + EDGE * 2 : MINI + EDGE),
+      label: "Panel width",
+      onChange: setPanW
+    }), selected && ResizeEdge && /*#__PURE__*/React.createElement(ResizeEdge, {
+      side: "left",
+      at: EDGE + insW,
+      top: TOP,
+      bottom: EDGE,
+      value: insW,
+      min: 380,
+      max: 720,
+      defaultValue: DETAIL_W,
+      limit: vw - (pinned ? RAIL_R + panW + EDGE : RAIL_R) - EDGE * 2 - 320,
+      label: "Inspector width",
+      onChange: setInsW
     }), selected && /*#__PURE__*/React.createElement(window.ZKInspector, {
       key: selected.id + ":" + (selected.id === repo.wc),
       c: selected,
@@ -4363,7 +7117,9 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         left: (insets.left + view.w - atR) / 2
       }
     }, /*#__PURE__*/React.createElement(Toast, {
-      onUndo: undo,
+      tone: toast.tone,
+      onUndo: toast.redo ? redo : undo,
+      undoLabel: toast.redo ? "Redo" : "Undo",
       onClose: () => {
         clearTimeout(toastT.current);
         setToast(null);
@@ -4469,23 +7225,73 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     }, {
       command: drag.menu ? undefined : dragAct && dragAct.cmd,
       hint: drag.menu ? undefined : drag.payload.kind === "change" ? "Drop on a change" : drag.payload.kind === "bookmark" ? "Drop on the change it should point to" : "Drop on the change it belongs to"
-    }))), projectsOpen && /*#__PURE__*/React.createElement(window.ZKProjects, {
-      tree: tree,
-      setTree: setTree,
-      activeId: activeId,
-      onOpen: id => {
-        setActiveId(id);
-        setProjectsOpen(false);
-      },
-      onClose: () => setProjectsOpen(false)
-    }), cfgDlg && (() => {
+    }))), push && PushDialog && /*#__PURE__*/React.createElement(PushDialog, {
+      remotes: ["origin", "upstream"],
+      defaultRemotes: ["origin"],
+      bookmarks: push.rows,
+      remote: push.remote,
+      onRemote: r => setPush({
+        ...push,
+        remote: r
+      }),
+      selected: push.selected,
+      onSelect: s => setPush(p => ({
+        ...p,
+        selected: s
+      })),
+      bulk: push.bulk,
+      onBulk: b => setPush(p => ({
+        ...p,
+        bulk: b
+      })),
+      change: push.change,
+      onChange: c => setPush({
+        ...push,
+        change: c
+      }),
+      allow: push.allow,
+      onAllow: a => setPush({
+        ...push,
+        allow: a
+      }),
+      state: push.state,
+      progress: push.progress,
+      error: push.error,
+      onFetch: () => setPush({
+        ...push,
+        error: null
+      }),
+      onRetry: () => setPush({
+        ...push,
+        error: null
+      }),
+      onPush: runPush,
+      onCancel: () => setPush(null)
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "zk-winlayer"
+    }, cfgDlg && (() => {
       const d = cfgDlg,
         cnt = id => {
           const m = id === "default" || id === "all" ? () => true : window.zkRevsetMatch(id, d.draft, D.me);
           return repo.changes.filter(m).length;
         };
-      return /*#__PURE__*/React.createElement(RevsetDialog, {
-        overlay: true,
+      const done = () => {
+        setCfgDlg(null);
+        setKey("project");
+      };
+      return /*#__PURE__*/React.createElement("div", {
+        onMouseDown: e => {
+          setKey("configs");
+          dragWin(e, cfgPos, setCfgPos);
+        },
+        style: {
+          left: cfgPos.x,
+          top: cfgPos.y,
+          zIndex: key === "configs" ? 3 : 1
+        }
+      }, /*#__PURE__*/React.createElement(RevsetDialog, {
+        active: key === "configs",
+        project: project.name,
         configs: d.draft,
         selected: d.sel,
         defaultId: d.home,
@@ -4493,35 +7299,64 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         matchCount: d.sel ? cnt(d.sel) : undefined,
         total: repo.changes.length,
         dirty: d.draft !== configs || d.home !== home,
-        onSelect: sel => setCfgDlg({
-          ...d,
+        discarding: !!d.ask,
+        onDiscarding: v => setCfgDlg(x => x && {
+          ...x,
+          ask: v
+        }),
+        onSelect: sel => setCfgDlg(x => ({
+          ...x,
           sel
-        }),
-        onDefaultChange: h => setCfgDlg({
-          ...d,
+        })),
+        onDefaultChange: h => setCfgDlg(x => ({
+          ...x,
           home: h
-        }),
+        })),
         onChange: draft => setCfgDlg(x => ({
           ...x,
           draft
         })),
-        onCancel: () => setCfgDlg(null),
-        onClose: () => setCfgDlg(null),
+        onCancel: done,
         onApply: () => applyConfigs(d),
         onOk: () => {
           applyConfigs(d);
           if (d.sel) setRevset(d.sel);
-          setCfgDlg(null);
+          done();
         }
-      });
-    })(), settings && /*#__PURE__*/React.createElement(window.ZKSettings, {
-      tab: settings,
-      setTab: setSettings,
-      onClose: () => setSettings(null),
+      }));
+    })(), projectsOpen && window.ZanshinDesignSystem_a33847.Window && /*#__PURE__*/React.createElement(window.ZKProjects, {
+      tree: tree,
+      setTree: setTree,
+      activeId: activeId,
+      active: key === "projects",
+      onFocus: () => setKey("projects"),
+      style: {
+        left: settingsOpen ? 24 : "calc(50% - 450px)",
+        top: 56,
+        zIndex: key === "projects" ? 2 : 1
+      },
+      onOpen: id => {
+        setActiveId(id);
+        closeWindow("projects");
+      },
+      onClose: () => closeWindow("projects"),
+      onSettings: () => openSettings()
+    }), settingsOpen && window.ZanshinDesignSystem_a33847.Window && /*#__PURE__*/React.createElement(window.ZKSettings, {
+      tab: setTab,
+      setTab: setSetTab,
+      active: key === "settings",
+      onFocus: () => setKey("settings"),
+      style: {
+        left: projectsOpen ? "auto" : "calc(50% - 310px)",
+        right: projectsOpen ? 24 : "auto",
+        top: 40,
+        zIndex: key === "settings" ? 2 : 1
+      },
+      onClose: () => closeWindow("settings"),
       prefs: prefs,
       setPref: setPref,
       project: project
-    }));
+    })));
   }
   Object.assign(window, {
     ZKApp
@@ -4561,10 +7396,6 @@ try { (() => {
     label: "Bookmarks",
     icon: "branch"
   }, {
-    id: "workstreams",
-    label: "Workstreams",
-    icon: "workstream"
-  }, {
     id: "reviews",
     label: "Reviews",
     icon: "reviews"
@@ -4574,14 +7405,15 @@ try { (() => {
     icon: "undo"
   }];
   const ZK_STATUS = {
-    clean: "#9ca3af",
-    dirty: "#facc15",
-    ahead: "#4ade80",
-    behind: "#60a5fa",
-    diverged: "#fb923c",
-    conflict: "#f87171",
-    missing: "#71717a",
-    syncing: "#a78bfa"
+    clean: "var(--proj-clean)",
+    dirty: "var(--proj-dirty)",
+    ahead: "var(--proj-ahead)",
+    behind: "var(--proj-behind)",
+    diverged: "var(--proj-diverged)",
+    conflict: "var(--proj-conflict)",
+    missing: "var(--proj-missing)",
+    syncing: "var(--proj-syncing)",
+    stale: "var(--proj-stale)"
   };
   const ZK_BM_STATE = {
     synced: "in sync with origin",
@@ -4592,6 +7424,12 @@ try { (() => {
     diverged: "diverged from origin"
   };
   const zkBmShort = b => b.state === "ahead" ? "↑" + (b.ahead || 1) : b.state === "synced" ? "✓" : b.state === "diverged" ? "↕" : b.state === "behind" ? "↓" : b.state;
+
+  // motion tokens in ms (tokens/motion.css) — the kit reads them so its timers never drift from the system
+  const zkMs = (name, fallback) => {
+    const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+    return isNaN(n) ? fallback : n;
+  };
   function zkUseOutside(open, close, ignore) {
     const ref = React.useRef(null);
     React.useEffect(() => {
@@ -4704,7 +7542,8 @@ try { (() => {
     gaps,
     opts,
     setOpt,
-    onNew
+    onNew,
+    onPush
   }) {
     const [vw, setVw] = React.useState(false),
       [pm, setPm] = React.useState(false);
@@ -4717,11 +7556,13 @@ try { (() => {
       return () => window.removeEventListener("resize", f);
     }, []);
     const filtered = shown < total;
-    return /*#__PURE__*/React.createElement("div", {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(TrafficLights, {
+      className: "zk-lights"
+    }), /*#__PURE__*/React.createElement("div", {
       className: "zk-top"
     }, /*#__PURE__*/React.createElement("div", {
       className: "zk-tl"
-    }, /*#__PURE__*/React.createElement(TrafficLights, null), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "zk-anchor",
       ref: pmRef
     }, /*#__PURE__*/React.createElement(Island, {
@@ -4744,9 +7585,11 @@ try { (() => {
       }
     }), /*#__PURE__*/React.createElement(Icon, {
       name: "chevron-down",
-      size: 14
+      size: "md"
     })), pm && /*#__PURE__*/React.createElement(ProjectMenu, {
       className: "zk-pop-pm",
+      autoFocus: true,
+      onClose: () => setPm(false),
       recent: recent,
       activeId: activeId,
       onPick: p => {
@@ -4763,7 +7606,7 @@ try { (() => {
       },
       onSettings: () => {
         setPm(false);
-        onSettings("general");
+        onSettings();
       }
     }))), /*#__PURE__*/React.createElement(Island, {
       shape: "bar",
@@ -4839,7 +7682,6 @@ try { (() => {
     })), /*#__PURE__*/React.createElement(PopoverSeparator, null), /*#__PURE__*/React.createElement(OptionLink, {
       label: "Appearance, diffs and more",
       action: "Settings\u2026",
-      shortcut: "\u2318,",
       onClick: () => {
         setVw(false);
         onSettings("general");
@@ -4851,19 +7693,21 @@ try { (() => {
     }, /*#__PURE__*/React.createElement(IconButton, {
       icon: "fetch",
       label: "Fetch",
-      title: "Fetch \u2014 jj git fetch"
+      badge: 3,
+      title: "Fetch \u2014 jj git fetch \xB7 3 new changes on origin"
     }), /*#__PURE__*/React.createElement(IconButton, {
       icon: "push",
-      label: "Push",
-      title: "Push \u2014 jj git push"
+      label: "Push\u2026",
+      title: "Push\u2026 \u2014 choose what jj git push sends",
+      onClick: onPush
     })), /*#__PURE__*/React.createElement(Button, {
       variant: "primary",
       size: "lg",
       icon: "plus",
-      iconSize: 15,
+      iconSize: "lg",
       title: "jj new \u2014 start a new change on top of @",
       onClick: onNew
-    }, "New change")));
+    }, "New change"))));
   }
   function ZKBookmarkList({
     changes,
@@ -4888,7 +7732,7 @@ try { (() => {
       title: b.name + " — " + ZK_BM_STATE[b.state]
     }, /*#__PURE__*/React.createElement(Icon, {
       name: "bookmark-filled",
-      size: 12
+      size: "sm"
     }), /*#__PURE__*/React.createElement("span", {
       className: "zk-bl-text"
     }, /*#__PURE__*/React.createElement("span", {
@@ -4918,7 +7762,6 @@ try { (() => {
         className: "zk-co-more"
       }, "+", n - 5, " more"));
     }
-    if (id === "workstreams") return /*#__PURE__*/React.createElement(CalloutText, null, "No workstreams yet. Create one with ", /*#__PURE__*/React.createElement("code", null, "jj workstream new"), ".");
     if (id === "reviews") return /*#__PURE__*/React.createElement(CalloutText, null, "No open reviews.");
     return /*#__PURE__*/React.createElement("div", {
       className: "zk-ops"
@@ -4954,11 +7797,11 @@ try { (() => {
           it,
           top: r.top + r.height / 2
         };
-      if (co) setCo(next);else openT.current = setTimeout(() => setCo(next), 90);
+      if (co) setCo(next);else openT.current = setTimeout(() => setCo(next), zkMs("--delay-callout", 90));
     };
     const leave = () => {
       clear();
-      closeT.current = setTimeout(() => setCo(null), 200);
+      closeT.current = setTimeout(() => setCo(null), zkMs("--delay-callout-out", 200));
     };
     const count = id => id === "bookmarks" ? changes.reduce((s, c) => s + c.bookmarks.length, 0) : id === "undo" ? opCount + " ops" : null;
     const pin = ZK_RAIL.find(r => r.id === pinned);
@@ -4971,7 +7814,7 @@ try { (() => {
       key: it.id,
       size: "lg",
       icon: it.icon,
-      iconSize: 19,
+      iconSize: "rail",
       label: it.label,
       title: "",
       active: pinned === it.id,
@@ -5014,10 +7857,10 @@ try { (() => {
       className: "zk-panel-hd"
     }, /*#__PURE__*/React.createElement(Icon, {
       name: pin.icon,
-      size: 15
+      size: "lg"
     }), /*#__PURE__*/React.createElement("span", null, pin.label), /*#__PURE__*/React.createElement(IconButton, {
       icon: "close",
-      iconSize: 12,
+      iconSize: "sm",
       size: "sm",
       label: "Close",
       onClick: () => setPinned(null)
@@ -5037,7 +7880,8 @@ try { (() => {
     ZK_STATUS,
     ZK_BM_STATE,
     zkBmShort,
-    zkUseOutside
+    zkUseOutside,
+    zkMs
   });
 })();
 })(); } catch (e) { __ds_ns.__errors.push({ path: "ui_kits/desktop/chrome.jsx", error: String((e && e.message) || e) }); }
@@ -5767,16 +8611,16 @@ try { (() => {
 // ui_kits/desktop/dialogs.jsx
 try { (() => {
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
-// Dialogs — Projects (the IntelliJ-style project picker) and the Settings window (General · Project).
+// Windows — Projects (the project picker, the start window) and Settings (General · Project). Both are macOS windows of their own
+// (components/window: Window) above the project window: no scrim, no ✕ — the red button and ⌘W close them; the system draws the frame.
 (() => {
   const {
-    Dialog,
+    Window,
     SearchField,
     Button,
     ProjectRow,
     NamiMark,
     Icon,
-    IconButton,
     Segmented,
     Switch,
     Select,
@@ -5799,7 +8643,11 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     setTree,
     activeId,
     onOpen,
-    onClose
+    onClose,
+    onSettings,
+    active = true,
+    onFocus,
+    style
   }) {
     const [q, setQ] = React.useState("");
     const [sel, setSel] = React.useState(activeId);
@@ -5817,24 +8665,37 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       } : n);
       setTree(up(tree));
     };
+    // keys while this window is key: ↩ opens the selected project · Esc clears the search — it never closes the window
     React.useEffect(() => {
+      if (!active) return undefined;
       const k = e => {
-        if (e.key === "Enter" && sel) {
+        if (e.key === "Enter" && sel && !e.defaultPrevented) {
           const r = zkFlatten(tree, 0, true).find(x => x.node.id === sel);
           if (r && r.node.kind === "project") onOpen(r.node.id);
         }
-        if (e.key === "Escape") onClose();
+        if (e.key === "Escape" && q) {
+          e.preventDefault();
+          setQ("");
+        }
       };
       window.addEventListener("keydown", k);
       return () => window.removeEventListener("keydown", k);
-    }, [sel, tree]);
-    return /*#__PURE__*/React.createElement(Dialog, {
+    }, [sel, tree, q, active]);
+    return /*#__PURE__*/React.createElement("div", {
+      onMouseDown: onFocus,
+      style: style
+    }, /*#__PURE__*/React.createElement(Window, {
       title: "Projects",
+      active: active,
+      buttons: {
+        close: true,
+        zoom: true
+      },
       onClose: onClose,
-      width: "min(900px, 92%)",
-      height: "min(640px, 88%)",
-      activeNav: "projects",
-      navHeader: /*#__PURE__*/React.createElement("div", {
+      width: 900,
+      height: 640,
+      sidebarWidth: 210,
+      sidebar: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
         className: "zk-brand"
       }, /*#__PURE__*/React.createElement(NamiMark, {
         size: 32,
@@ -5843,21 +8704,31 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         className: "zk-brand-n"
       }, "Zanshin"), /*#__PURE__*/React.createElement("div", {
         className: "zk-brand-s"
-      }, "jj client \xB7 v0.24.0"))),
-      nav: [{
-        id: "projects",
-        label: "Projects",
-        icon: "folder-open"
-      }, {
-        id: "remotes",
-        label: "Remotes",
-        icon: "cloud"
-      }, {
-        id: "settings",
-        label: "Settings",
-        icon: "settings"
-      }],
-      navFooter: /*#__PURE__*/React.createElement("div", {
+      }, "jj client \xB7 v0.24.0"))), /*#__PURE__*/React.createElement("nav", {
+        className: "zk-side-nav",
+        "aria-label": "Sections"
+      }, /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        className: "zs-dialog-navitem is-on",
+        "aria-current": "page"
+      }, /*#__PURE__*/React.createElement(Icon, {
+        name: "folder-open",
+        size: "md"
+      }), /*#__PURE__*/React.createElement("span", null, "Projects")), /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        className: "zs-dialog-navitem"
+      }, /*#__PURE__*/React.createElement(Icon, {
+        name: "cloud",
+        size: "md"
+      }), /*#__PURE__*/React.createElement("span", null, "Remotes")), /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        className: "zs-dialog-navitem",
+        onClick: onSettings,
+        title: "Settings \u2014 \u2318, (the tab shown last)"
+      }, /*#__PURE__*/React.createElement(Icon, {
+        name: "settings",
+        size: "md"
+      }), /*#__PURE__*/React.createElement("span", null, "Settings\u2026"))), /*#__PURE__*/React.createElement("div", {
         className: "zk-signed"
       }, /*#__PURE__*/React.createElement("div", {
         className: "zk-signed-l"
@@ -5867,31 +8738,36 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         className: "zk-avatar"
       }, "A"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", null, "Alice Sralph"), /*#__PURE__*/React.createElement("div", {
         className: "zk-signed-m"
-      }, "alice@dasralph.de")))),
-      tools: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(SearchField, {
+      }, "alice@dasralph.de"))))),
+      header: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
+        className: "zs-win-grow"
+      }), /*#__PURE__*/React.createElement(SearchField, {
         placeholder: "Search projects, paths\u2026",
         value: q,
         onChange: setQ,
         autoFocus: true,
         style: {
-          flex: 1
+          width: 230
         }
       }), /*#__PURE__*/React.createElement(Button, {
         size: "md",
         variant: "primary",
         icon: "plus",
-        iconSize: 12
+        iconSize: "sm"
       }, "Add directory"), /*#__PURE__*/React.createElement(Button, {
         size: "md",
         icon: "cloud"
-      }, "Clone from remote"), /*#__PURE__*/React.createElement(Button, {
+      }, "Clone\u2026"), /*#__PURE__*/React.createElement(Button, {
         size: "md",
         variant: "ghost",
-        icon: "folder-plus"
-      }, "New group"))
+        icon: "folder-plus",
+        label: "New group",
+        title: "New group"
+      }))
     }, /*#__PURE__*/React.createElement("div", {
       className: "zk-tree",
-      role: "tree"
+      role: "tree",
+      "aria-label": "Projects"
     }, !rows.length && /*#__PURE__*/React.createElement("div", {
       className: "zk-empty"
     }, "No projects match \u201C", q, "\u201D"), rows.map(({
@@ -5909,7 +8785,9 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       onClick: () => {
         setSel(node.id);
         toggle(node.id);
-      }
+      },
+      onToggle: () => toggle(node.id),
+      onSelect: () => setSel(node.id)
     }) : /*#__PURE__*/React.createElement(ProjectRow, _extends({
       key: node.id
     }, node, {
@@ -5918,8 +8796,9 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       open: node.id === activeId,
       selected: sel === node.id,
       onClick: () => setSel(node.id),
+      onSelect: () => setSel(node.id),
       onDoubleClick: () => node.status !== "missing" && onOpen(node.id)
-    })))));
+    }))))));
   }
   function ZKSettings({
     tab,
@@ -5927,7 +8806,10 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     onClose,
     prefs,
     setPref,
-    project
+    project,
+    active = true,
+    onFocus,
+    style
   }) {
     const [g, setG] = React.useState({
       name: "Ralph Stein",
@@ -5946,54 +8828,49 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       ...o,
       [k]: v
     }));
-    React.useEffect(() => {
-      const k = e => {
-        if (e.key === "Escape") {
-          e.stopPropagation();
-          onClose();
-        }
-      };
-      window.addEventListener("keydown", k, true);
-      return () => window.removeEventListener("keydown", k, true);
-    }, []);
+    // the window title is the tab's name (Window menu, Mission Control); no Esc, no ✕ — changes apply at once
     return /*#__PURE__*/React.createElement("div", {
-      className: "zs-scrim zk-set-ov",
-      onMouseDown: e => {
-        if (e.target === e.currentTarget) onClose();
-      }
+      onMouseDown: onFocus,
+      style: style
+    }, /*#__PURE__*/React.createElement(Window, {
+      title: tab === "general" ? "General" : "Project",
+      titleHidden: true,
+      active: active,
+      buttons: {
+        close: true
+      },
+      onClose: onClose,
+      width: 620,
+      headerAlign: "center",
+      style: {
+        maxHeight: 740
+      },
+      header: /*#__PURE__*/React.createElement(Segmented, {
+        variant: "tabs",
+        label: "Settings",
+        value: tab,
+        onChange: setTab,
+        options: [{
+          value: "general",
+          label: "General",
+          icon: "settings"
+        }, project ? {
+          value: "project",
+          label: project.name,
+          icon: /*#__PURE__*/React.createElement("span", {
+            className: "zk-set-mark"
+          }, /*#__PURE__*/React.createElement(NamiMark, {
+            size: 14
+          }))
+        } : {
+          value: "project",
+          label: "Project",
+          icon: "folder",
+          disabled: true,
+          title: "Open a project first"
+        }]
+      })
     }, /*#__PURE__*/React.createElement("div", {
-      className: "zk-set",
-      role: "dialog",
-      "aria-label": "Settings"
-    }, /*#__PURE__*/React.createElement("header", {
-      className: "zk-set-hd"
-    }, /*#__PURE__*/React.createElement(Segmented, {
-      variant: "tabs",
-      label: "Scope",
-      value: tab,
-      onChange: setTab,
-      options: [{
-        value: "general",
-        label: "General",
-        icon: "settings"
-      }, {
-        value: "project",
-        label: project.name,
-        icon: /*#__PURE__*/React.createElement("span", {
-          className: "zk-set-mark"
-        }, /*#__PURE__*/React.createElement(NamiMark, {
-          size: 14
-        }))
-      }]
-    }), /*#__PURE__*/React.createElement(IconButton, {
-      className: "zk-set-x",
-      icon: "close",
-      iconSize: 12,
-      size: "sm",
-      label: "Close",
-      title: "Close (Esc)",
-      onClick: onClose
-    })), /*#__PURE__*/React.createElement("div", {
       className: "zk-set-scope"
     }, tab === "general" ? /*#__PURE__*/React.createElement(React.Fragment, null, "For Zanshin on this Mac \xB7 jj settings go to ", /*#__PURE__*/React.createElement("code", null, "~/.config/jj/config.toml")) : /*#__PURE__*/React.createElement(React.Fragment, null, "For ", project.name, " only \xB7 ", /*#__PURE__*/React.createElement("code", null, project.path, "/.jj/repo/config.toml"))), /*#__PURE__*/React.createElement("div", {
       className: "zk-set-bd"
@@ -6007,12 +8884,12 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       value: prefs.theme,
       onChange: v => setPref("theme", v),
       options: [{
-        value: "light",
-        label: "Light",
+        value: "paper",
+        label: "Paper",
         icon: "sun"
       }, {
-        value: "dark",
-        label: "Dark",
+        value: "night",
+        label: "Night",
         icon: "moon"
       }, {
         value: "system",
@@ -6035,6 +8912,21 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       }, {
         value: "comfy",
         label: "Comfy"
+      }]
+    })), /*#__PURE__*/React.createElement(SettingsRow, {
+      label: "Accent colour",
+      hint: "Selection, focus and controls take the colour from System Settings \u203A Appearance. Gold stays with @ and the primary action."
+    }, /*#__PURE__*/React.createElement(Segmented, {
+      variant: "inset",
+      label: "Accent colour",
+      value: prefs.accent || "macos",
+      onChange: v => setPref("accent", v),
+      options: [{
+        value: "macos",
+        label: "Follow macOS"
+      }, {
+        value: "zanshin",
+        label: "Zanshin"
       }]
     }))), /*#__PURE__*/React.createElement(SettingsGroup, {
       title: "While you scroll"
@@ -7003,7 +9895,7 @@ try { (() => {
       key: "new",
       variant: "primary",
       icon: "plus",
-      iconSize: 13,
+      iconSize: "md",
       onClick: () => onNew(c.id),
       title: "jj new " + c.id.slice(0, 8)
     }, "New change on top")] : [isWC ? /*#__PURE__*/React.createElement(Button, {
@@ -7052,7 +9944,7 @@ try { (() => {
       icon: "conflict"
     }, "Conflict")), /*#__PURE__*/React.createElement(IconButton, {
       icon: "close",
-      iconSize: 12,
+      iconSize: "sm",
       size: "sm",
       label: "Close",
       title: "Close (Esc)",
@@ -7082,7 +9974,7 @@ try { (() => {
       className: "zk-ins-subj" + (undescribed ? " is-dim" : "")
     }, undescribed ? mutable ? "Describe this change…" : "(no description set)" : c.subject, mutable && /*#__PURE__*/React.createElement(Icon, {
       name: "describe",
-      size: 12,
+      size: "sm",
       className: "zk-ins-pen"
     })), c.description && /*#__PURE__*/React.createElement("p", {
       className: "zk-ins-desc"
@@ -7134,7 +10026,7 @@ try { (() => {
       title: viewedN + " of " + files.length + " files viewed"
     }, viewedN === files.length ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Icon, {
       name: "check",
-      size: 10
+      size: "xs"
     }), "all viewed") : /*#__PURE__*/React.createElement(React.Fragment, null, viewedN, "/", files.length, " viewed"), /*#__PURE__*/React.createElement("button", {
       type: "button",
       onClick: () => files.forEach(f => setViewed(f.path, viewedN !== files.length))
@@ -8162,7 +11054,8 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     const [text, setText] = React.useState(() => active ? textOf(active, me) : "");
     const [focus, setFocus] = React.useState(false);
     const [pop, setPop] = React.useState(null);
-    const [hi, setHi] = React.useState(0);
+    const [hi, setHi] = React.useState(0),
+      [mHi, setMHi] = React.useState(0);
     const [, tick] = React.useState(0);
     const rootRef = React.useRef(null),
       inRef = React.useRef(null),
@@ -8226,8 +11119,9 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         e.preventDefault();
         setPop(null);
         revert();
-        const b = rootRef.current && rootRef.current.querySelector(".zs-gs-scope");
-        if (b) b.focus();
+        if (inRef.current) inRef.current.focus({
+          preventScroll: true
+        });
       };
       window.addEventListener("pointerdown", down, true);
       window.addEventListener("keydown", key, true);
@@ -8331,7 +11225,37 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       focusQuiet();
       setPop("sugg");
     };
+
+    // field-attached lists: focus stays in the field; ↑ ↓ Home End move the keyboard row (aria-activedescendant), ↩ runs it
+    const mCount = menuVariants.length + 6; // SearchMenu.count(menuVariants): the variants, five scopes, Edit Configurations…
+    const runMenuRow = i => {
+      const n = menuVariants.length,
+        scopes = ["change", "bookmark", "author", "file", "description"];
+      if (i < n) pickView(menuVariants[i].id);else if (i < n + 5) pickScope(scopes[i - n]);else {
+        close();
+        onEdit(active ? home : revset);
+      }
+    };
+    const openMenu = () => {
+      const i = active ? menuVariants.length + ["change", "bookmark", "author", "file", "description"].indexOf(scopeOf(active)) : Math.max(0, menuVariants.findIndex(v => v.id === revset));
+      focusQuiet();
+      setMHi(i);
+      setPop(x => x === "menu" ? null : "menu");
+    };
     const onKey = e => {
+      if (pop === "menu") {
+        const n = SearchMenu.navigate ? SearchMenu.navigate(e, mHi, mCount) : null;
+        if (n != null) {
+          e.preventDefault();
+          setMHi(n);
+          return;
+        }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          runMenuRow(mHi);
+          return;
+        }
+      }
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
         if (pop !== "sugg") {
@@ -8380,12 +11304,10 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
     const row = (r, i) => {
       const p = {
         key: r.key,
+        id: "zs-gs-pop-" + i,
         "data-i": i,
-        highlighted: i === hiN,
-        onClick: () => pick(r),
-        onMouseMove: () => {
-          if (i !== hiN) setHi(i);
-        }
+        active: i === hiN,
+        onClick: () => pick(r)
       };
       if (r.kind === "change") {
         const c = r.c,
@@ -8506,6 +11428,8 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
       defaultName: homeV.name,
       menuOpen: pop === "menu",
       expanded: pop === "sugg" && nav.length > 0,
+      controls: pop === "menu" ? "zs-gs-menu" : "zs-gs-pop",
+      activeDescendant: pop === "menu" ? "zs-gs-menu-" + mHi : pop === "sugg" && nav.length ? "zs-gs-pop-" + hiN : undefined,
       onChange: v => {
         setText(v);
         setHi(0);
@@ -8515,7 +11439,7 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         setScope(s);
         setHi(0);
       },
-      onMenu: () => setPop(x => x === "menu" ? null : "menu"),
+      onMenu: openMenu,
       onClear: clear,
       onKeyDown: onKey,
       onFocus: onFocus,
@@ -8538,7 +11462,7 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         tick(x => x + 1);
       }
     }), recentRows.map((r, i) => row(r, i)))), pop === "menu" && /*#__PURE__*/React.createElement(SearchMenu, {
-      autoFocus: true,
+      active: mHi,
       variants: menuVariants,
       current: active ? null : revset,
       scope: active ? scopeOf(active) : null,
@@ -8581,6 +11505,32 @@ __ds_ns.Kbd = __ds_scope.Kbd;
 
 __ds_ns.ProjectRow = __ds_scope.ProjectRow;
 
+__ds_ns.Badge = __ds_scope.Badge;
+
+__ds_ns.Chip = __ds_scope.Chip;
+
+__ds_ns.ConfirmDialog = __ds_scope.ConfirmDialog;
+
+__ds_ns.Disclosure = __ds_scope.Disclosure;
+
+__ds_ns.Link = __ds_scope.Link;
+
+__ds_ns.Presence = __ds_scope.Presence;
+
+__ds_ns.ProgressBar = __ds_scope.ProgressBar;
+
+__ds_ns.Radio = __ds_scope.Radio;
+
+__ds_ns.RadioGroup = __ds_scope.RadioGroup;
+
+__ds_ns.ScrollArea = __ds_scope.ScrollArea;
+
+__ds_ns.Skeleton = __ds_scope.Skeleton;
+
+__ds_ns.Spinner = __ds_scope.Spinner;
+
+__ds_ns.Tooltip = __ds_scope.Tooltip;
+
 __ds_ns.Checkbox = __ds_scope.Checkbox;
 
 __ds_ns.SearchField = __ds_scope.SearchField;
@@ -8596,6 +11546,8 @@ __ds_ns.Switch = __ds_scope.Switch;
 __ds_ns.TextField = __ds_scope.TextField;
 
 __ds_ns.AtBadge = __ds_scope.AtBadge;
+
+__ds_ns.WorkspaceTag = __ds_scope.WorkspaceTag;
 
 __ds_ns.BookmarkChip = __ds_scope.BookmarkChip;
 
@@ -8627,7 +11579,11 @@ __ds_ns.DragGhost = __ds_scope.DragGhost;
 
 __ds_ns.PeekCard = __ds_scope.PeekCard;
 
+__ds_ns.StaleNotice = __ds_scope.StaleNotice;
+
 __ds_ns.Toast = __ds_scope.Toast;
+
+__ds_ns.PushDialog = __ds_scope.PushDialog;
 
 __ds_ns.SearchScopes = __ds_scope.SearchScopes;
 
@@ -8675,6 +11631,10 @@ __ds_ns.OptionRow = __ds_scope.OptionRow;
 
 __ds_ns.OptionLink = __ds_scope.OptionLink;
 
+__ds_ns.ResizeEdge = __ds_scope.ResizeEdge;
+
 __ds_ns.TrafficLights = __ds_scope.TrafficLights;
+
+__ds_ns.Window = __ds_scope.Window;
 
 })();

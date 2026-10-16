@@ -1,32 +1,54 @@
-/* Button — 30 (sm, inspector) · 32 (md, dialogs) · 44 (lg, the bar's primary action) */
-.zs-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:30px;padding:0 12px;border:0;border-radius:var(--radius-btn);font:var(--type-control);white-space:nowrap;color:var(--text-muted);background:var(--fl-hover);cursor:default;transition:background var(--dur-hover),color var(--dur-hover),box-shadow var(--dur-hover)}
-.zs-btn:hover{background:var(--fl-on);color:var(--text)}
-.zs-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.zs-btn:disabled{opacity:.38;pointer-events:none}
-.zs-btn--md{height:32px}
-.zs-btn--lg{height:44px;padding:0 16px 0 13px;gap:8px;border-radius:var(--radius-island);font-size:13px}
-.zs-btn--primary{color:var(--text);background:linear-gradient(180deg,color-mix(in oklch,var(--fl-gold) 24%,transparent),color-mix(in oklch,var(--fl-gold) 9%,transparent));box-shadow:inset 0 0 0 1px color-mix(in oklch,var(--fl-gold) 55%,transparent)}
-.zs-btn--primary:hover{color:var(--text);background:linear-gradient(180deg,color-mix(in oklch,var(--fl-gold) 30%,transparent),color-mix(in oklch,var(--fl-gold) 12%,transparent));box-shadow:inset 0 0 0 1px var(--fl-gold)}
-.zs-btn--primary>.zs-icon{color:var(--fl-gold)}
-.zs-btn--lg.zs-btn--primary{background:linear-gradient(180deg,color-mix(in oklch,var(--fl-gold) 18%,transparent),color-mix(in oklch,var(--fl-gold) 5%,transparent)),var(--fl-bg);box-shadow:inset 0 0 0 1px color-mix(in oklch,var(--fl-gold) 60%,transparent),var(--fl-shadow);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
-.zs-btn--lg.zs-btn--primary:hover{background:linear-gradient(180deg,color-mix(in oklch,var(--fl-gold) 26%,transparent),color-mix(in oklch,var(--fl-gold) 9%,transparent)),var(--fl-bg);box-shadow:inset 0 0 0 1px var(--fl-gold),var(--fl-shadow)}
+/* Button — 30 (--control-md: inspector, dialogs, settings; md is the same height) · 44 (lg, --control-xl: the bar's primary action)
+   States (readme › Control states): rest → hover → pressed is one fill step each · focus + disabled from base.css · busy = spinner in the icon slot.
+   .st-hover / .st-press / .st-focus force a state for specimens (the state matrix). */
+.zs-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:7px;height:var(--control-md);padding:0 12px;border:0;border-radius:var(--radius-btn);font:var(--type-control);white-space:nowrap;color:var(--text-muted);background:var(--fl-hover);cursor:default;transition:background var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state),box-shadow var(--dur-hover) var(--ease-state)}
+.zs-btn:hover,.zs-btn.st-hover{background:var(--fl-on);color:var(--text)}
+.zs-btn:active,.zs-btn.st-press{background:var(--fl-press);color:var(--text)}
+.zs-btn--md{height:var(--control-md)}
+.zs-btn--lg{height:var(--control-xl);padding:0 16px 0 13px;gap:8px;border-radius:var(--radius-island);font-size:var(--fs-base)}
+.zs-btn--icon{width:var(--control-md);padding:0}.zs-btn--icon.zs-btn--lg{width:var(--control-xl);padding:0}
+/* primary — gold-tinted glass, ONE recipe for every size: a two-stop fill + a 1px inset ring; hover and press step fill AND ring */
+.zs-btn--primary{color:var(--text);background:linear-gradient(180deg,var(--primary-fill-a),var(--primary-fill-b));box-shadow:inset 0 0 0 1px var(--primary-ring)}
+.zs-btn--primary:hover,.zs-btn--primary.st-hover{color:var(--text);background:linear-gradient(180deg,var(--primary-fill-a-hover),var(--primary-fill-b-hover));box-shadow:inset 0 0 0 1px var(--primary-ring-hover)}
+.zs-btn--primary:active,.zs-btn--primary.st-press{color:var(--text);background:linear-gradient(180deg,var(--primary-fill-a-press),var(--primary-fill-b-press));box-shadow:inset 0 0 0 1px var(--primary-ring-hover)}
+.zs-btn--primary>.zs-icon,.zs-btn--primary>.zs-spinner{color:var(--primary-icon)}
+/* lg floats on the canvas: the same fill and ring, laid over the island glass */
+.zs-btn--lg.zs-btn--primary{background:linear-gradient(180deg,var(--primary-fill-a),var(--primary-fill-b)),var(--fl-bg);box-shadow:inset 0 0 0 1px var(--primary-ring),var(--fl-shadow);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
+.zs-btn--lg.zs-btn--primary:hover,.zs-btn--lg.zs-btn--primary.st-hover{background:linear-gradient(180deg,var(--primary-fill-a-hover),var(--primary-fill-b-hover)),var(--fl-bg);box-shadow:inset 0 0 0 1px var(--primary-ring-hover),var(--fl-shadow)}
+.zs-btn--lg.zs-btn--primary:active,.zs-btn--lg.zs-btn--primary.st-press{background:linear-gradient(180deg,var(--primary-fill-a-press),var(--primary-fill-b-press)),var(--fl-bg);box-shadow:inset 0 0 0 1px var(--primary-ring-hover),var(--fl-shadow)}
 .zs-btn--ghost{background:transparent;color:var(--text-dim)}
-.zs-btn--ghost:hover{background:var(--fl-hover);color:var(--text)}
+.zs-btn--ghost:hover,.zs-btn--ghost.st-hover{background:var(--fl-hover);color:var(--text)}
+.zs-btn--ghost:active,.zs-btn--ghost.st-press{background:var(--fl-on);color:var(--text)}
+/* danger — quiet until hover, then a red TINT with red text (never a solid red fill: white on #f87171 was 2.8:1) */
 .zs-btn--danger{background:transparent;color:var(--text-dim)}
-.zs-btn--danger:hover{background:var(--rem-bg);color:var(--rem)}
+.zs-btn--danger:hover,.zs-btn--danger.st-hover{background:var(--danger-hover);color:var(--rem)}
+.zs-btn--danger:active,.zs-btn--danger.st-press{background:var(--danger-press);color:var(--rem)}
+/* destructive — the confirmation's filled button: the primary's build in red. It IS that dialog's one primary (gold steps aside). */
+.zs-btn--destructive{color:var(--text);background:linear-gradient(180deg,var(--destructive-fill-a),var(--destructive-fill-b));box-shadow:inset 0 0 0 1px var(--destructive-ring)}
+.zs-btn--destructive:hover,.zs-btn--destructive.st-hover{color:var(--text);background:linear-gradient(180deg,var(--destructive-fill-a-hover),var(--destructive-fill-b-hover));box-shadow:inset 0 0 0 1px var(--destructive-ring-hover)}
+.zs-btn--destructive:active,.zs-btn--destructive.st-press{color:var(--text);background:linear-gradient(180deg,var(--destructive-fill-a-press),var(--destructive-fill-b-press));box-shadow:inset 0 0 0 1px var(--destructive-ring-hover)}
+.zs-btn--destructive>.zs-icon,.zs-btn--destructive>.zs-spinner{color:var(--rem)}
+/* busy — the spinner takes the icon slot, the label stays, width holds, clicks are ignored */
+.zs-btn[aria-busy="true"]{pointer-events:none}
 
-/* IconButton — 28 (sm, panel close) · 36 (md, inside islands) · 40 (lg, rail) */
-.zs-ib{display:grid;place-items:center;width:36px;height:36px;padding:0;border:0;border-radius:var(--radius-card);background:transparent;color:var(--text-muted);cursor:default;flex-shrink:0;transition:background var(--dur-hover),color var(--dur-hover)}
-.zs-ib:hover{background:var(--fl-hover);color:var(--text)}
+/* IconButton — 30 (sm, --control-md: panel close, the height of the row it sits in) · 36 (md, --control-lg: inside islands) · 40 (lg, rail: 52 − 2 × 6). on = toggled/open. Badge sits on the top-right corner. */
+.zs-ib{position:relative;display:grid;place-items:center;width:var(--control-lg);height:var(--control-lg);padding:0;border:0;border-radius:var(--radius-card);background:transparent;color:var(--text-muted);cursor:default;flex-shrink:0;transition:background var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}
+.zs-ib:hover,.zs-ib.st-hover{background:var(--fl-hover);color:var(--text)}
+.zs-ib:active,.zs-ib.st-press{background:var(--fl-on);color:var(--text)}
 .zs-ib.is-on{background:var(--fl-on);color:var(--text)}
-.zs-ib:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.zs-ib--sm{width:28px;height:28px;border-radius:var(--radius-md);color:var(--text-dim)}
-.zs-ib--lg{width:40px;height:40px;border-radius:var(--radius-rail);color:var(--text-dim)}
-.zs-ib--lg:focus-visible{outline-offset:-2px}
+.zs-ib.is-on:hover,.zs-ib.is-on.st-hover{background:var(--fl-on-hover)}
+.zs-ib.is-on:active,.zs-ib.is-on.st-press{background:var(--fl-press)}
+.zs-ib--sm{width:var(--control-md);height:var(--control-md);border-radius:var(--radius-md);color:var(--text-dim)}
+.zs-ib--lg{width:var(--chrome-rail-btn);height:var(--chrome-rail-btn);border-radius:var(--radius-rail);color:var(--text-dim)}
+.zs-ib>.zs-badge{position:absolute;top:4px;right:3px}
+.zs-ib--sm>.zs-badge{top:1px;right:0}
+.zs-ib--lg>.zs-badge{top:4px;right:4px}
 
-/* AtPill — exists only while @ is out of view; points toward it */
-.zs-atpill{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px 0 9px;border-radius:var(--radius-pill);font:var(--type-control);color:var(--text);white-space:nowrap;cursor:default;background:var(--fl-sheen),var(--fl-bg);border:1px solid color-mix(in oklch,var(--fl-gold) 38%,var(--fl-border));box-shadow:var(--fl-shadow);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);transition:background var(--dur-hover)}
-.zs-atpill:hover{background:linear-gradient(var(--fl-hover),var(--fl-hover)),var(--fl-sheen),var(--fl-bg)}
-.zs-atpill:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.zs-atpill>.zs-icon{color:var(--text-dim);transform:rotate(180deg);transition:transform 220ms var(--ease-glide)}
+/* AtPill — exists only while @ is out of view; points toward it. Its edge is @ chrome (--at-chrome-edge), not the primary action.
+   In: fade + 10px rise (--dur-slide, glide; the rise × --motion). It re-centres over the visible graph on --dur-move and its arrow turns
+   on --dur-toggle — both movement, so under Reduce motion the pill is simply there and the arrow simply points. */
+.zs-atpill{display:inline-flex;align-items:center;gap:8px;height:var(--control-lg);padding:0 12px 0 9px;border-radius:var(--radius-pill);font:var(--type-control);color:var(--text);white-space:nowrap;cursor:default;background:var(--fl-sheen),var(--fl-bg);border:1px solid var(--at-chrome-edge);box-shadow:var(--fl-shadow);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);transition:background var(--dur-hover) var(--ease-state)}
+.zs-atpill:hover,.zs-atpill.st-hover{background:linear-gradient(var(--fl-hover),var(--fl-hover)),var(--fl-sheen),var(--fl-bg)}
+.zs-atpill:active,.zs-atpill.st-press{background:linear-gradient(var(--fl-on),var(--fl-on)),var(--fl-sheen),var(--fl-bg)}
+.zs-atpill>.zs-icon{color:var(--text-dim);transform:rotate(180deg);transition:transform var(--dur-toggle) var(--ease-glide)}
 .zs-atpill.dir-up>.zs-icon{transform:none}.zs-atpill.dir-left>.zs-icon{transform:rotate(-90deg)}.zs-atpill.dir-right>.zs-icon{transform:rotate(90deg)}

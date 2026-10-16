@@ -1,0 +1,20 @@
+<!-- @dsCard group="Brand" viewport="700x150" name="Icon sizes" subtitle="Six tokens on a 16px drawing — size follows the control, nothing in between" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../styles.css"/>
+<link rel="stylesheet" href="specimen.css"/>
+<style>.row{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;align-items:end}.c{display:flex;flex-direction:column;align-items:center;gap:8px}.box{display:grid;place-items:center;width:44px;height:44px;border-radius:var(--radius-card);background:var(--fl-hover);color:var(--text)}.mi{display:block;background:currentColor;-webkit-mask:url(../assets/icons/ui/branch.svg) center/contain no-repeat;mask:url(../assets/icons/ui/branch.svg) center/contain no-repeat}.c .v{text-align:center}</style>
+</head>
+<body>
+<div class="row">
+<div class="c"><div class="box"><span class="mi" style="width:var(--icon-xs);height:var(--icon-xs)"></span></div><span class="k">xs 10</span><span class="v">✕ in chips, fields</span></div>
+<div class="c"><div class="box"><span class="mi" style="width:var(--icon-sm);height:var(--icon-sm)"></span></div><span class="k">sm 12</span><span class="v">rows, flags, close</span></div>
+<div class="c"><div class="box"><span class="mi" style="width:var(--icon-md);height:var(--icon-md)"></span></div><span class="k">md 14</span><span class="v">buttons, menus</span></div>
+<div class="c"><div class="box"><span class="mi" style="width:var(--icon-lg);height:var(--icon-lg)"></span></div><span class="k">lg 16</span><span class="v">panel heads, primary</span></div>
+<div class="c"><div class="box"><span class="mi" style="width:var(--icon-bar);height:var(--icon-bar)"></span></div><span class="k">bar 17</span><span class="v">top bar</span></div>
+<div class="c"><div class="box"><span class="mi" style="width:var(--icon-rail);height:var(--icon-rail)"></span></div><span class="k">rail 19</span><span class="v">rail</span></div>
+</div>
+</body>
+</html>

@@ -8,7 +8,7 @@ export declare const SearchScopes: Record<SearchScope, { label: string; icon: st
 /** The `$` row glyph: mono 600 13px, --text-dim, moon when selected. */
 export declare function SearchDollar(): JSX.Element;
 
-/** The top bar's graph search field: [menu ▾ | query | ✕] — a 36px well inside the 44px View capsule. */
+/** The top bar's graph search field: [menu ▾ | query | ✕] — a 36px well inside the 44px View capsule. States: rest · hover · focus (accent edge + halo) · has a query or a variant (the pill tinted: hover soft-hi, pressed ring) · menu open · suggestions open · width steps · inactive window (at rest). */
 export interface GraphSearchProps {
   /** scope of the typed text; Go to = change, bookmark; Filter by = author, file, description */
   scope?: SearchScope;
@@ -30,6 +30,10 @@ export interface GraphSearchProps {
   placeholder?: string;
   /** ⌘F and / focus the field (default true) */
   hotkey?: boolean;
+  /** id of the open list (aria-controls) */
+  controls?: string;
+  /** id of the keyboard row of the open list — focus stays in the field (aria-activedescendant) */
+  activeDescendant?: string;
   /** suggestions are open (aria-expanded on the input) */
   expanded?: boolean;
   onChange?: (text: string, e: React.ChangeEvent<HTMLInputElement>) => void;

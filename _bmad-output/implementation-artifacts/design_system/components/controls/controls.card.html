@@ -1,0 +1,82 @@
+<!-- @dsCard group="Controls" viewport="1100x560" name="Control library" subtitle="Radio, Chip, Badge, Tooltip, Link, Disclosure, ScrollArea — the additions the floating client doesn't show yet" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>
+body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text);font-family:var(--font-sans)}
+.g{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px 28px}
+.s{display:flex;flex-direction:column;gap:10px;min-width:0}
+.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim)}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.p{margin:0;font-size:12px;line-height:1.55;color:var(--text-muted);text-wrap:pretty}
+.sc{border-radius:12px;background:var(--fl-hover)}
+.li{display:flex;align-items:center;gap:8px;height:28px;padding:0 12px;font:11.5px var(--font-mono);color:var(--text-muted)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { RadioGroup, Chip, Badge, IconButton, Tooltip, Button, Link, Kbd, Disclosure, ScrollArea } = window.ZanshinDesignSystem_a33847;
+  function Demo() {
+    const [mode, setMode] = React.useState("new");
+    const [not, setNot] = React.useState(true);
+    const [cs, setCs] = React.useState(false);
+    const [f, setF] = React.useState(["author(“Lena”)", "files(lib/)"]);
+    const [n, setN] = React.useState(3);
+    const files = ["lib/swipe/controller.dart", "lib/swipe/velocity.dart", "lib/onboarding/page.dart", "lib/onboarding/steps.dart", "lib/theme/colors.dart", "lib/theme/type.dart", "test/swipe_test.dart", "test/velocity_test.dart", "pubspec.yaml", "README.md", "CHANGELOG.md", "analysis_options.yaml"];
+    return (
+      <div className="g">
+        <div className="s"><span className="lbl">Radio group</span>
+          <RadioGroup label="When @ has changes" value={mode} onChange={setMode} options={[
+            { value: "new", label: "Start a new change", hint: "jj new — @ stays as it is" },
+            { value: "squash", label: "Squash into @", hint: "jj squash" },
+            { value: "ask", label: "Ask every time", hint: "Needs a newer jj", disabled: true },
+          ]} />
+        </div>
+        <div className="s"><span className="lbl">Chips — rule building</span>
+          <div className="row">
+            <Chip kind="not" mono on={not} onChange={setNot} title="Exclude matches — ~">~</Chip>
+            <Chip mono on={cs} onChange={setCs} title="Match case">Aa</Chip>
+            <Chip kind="add" mono>author</Chip><Chip kind="add" mono>files</Chip>
+          </div>
+          <div className="row">{f.map((x) => <Chip key={x} kind="filter" mono onRemove={() => setF(f.filter((y) => y !== x))}>{x}</Chip>)}{!f.length && <span className="p">No filters.</span>}</div>
+          <p className="p">toggle on = soft accent · “~” on = red (it removes matches) · add = dashed until hover</p>
+        </div>
+        <div className="s"><span className="lbl">Badge · tooltip</span>
+          <div className="row" style={{ alignItems: "flex-start", height: 74 }}>
+            <Tooltip open label="Fetch" shortcut="⇧⌘F" cmd="jj git fetch"><IconButton icon="fetch" label="Fetch" badge={n} title="" onClick={() => setN(n ? 0 : 3)} /></Tooltip>
+            <span style={{ width: 64 }}></span>
+            <Badge count={12} tone="neutral" /><Badge count={140} /><Badge count={true} />
+          </div>
+          <p className="p">Tooltips: label + shortcut (plain text), the jj command under it. 700ms rest, then instant while warm.</p>
+        </div>
+        <div className="s"><span className="lbl">Links · key caps</span>
+          <p className="p">Immutable heads come from <Link>Project settings</Link>. Press <Kbd>⌘</Kbd><Kbd>,</Kbd> to open them.</p>
+          <div className="row"><Link quiet external href="https://jj-vcs.github.io/jj/latest/revsets/">Revset docs</Link><Link quiet>Clear</Link></div>
+          <p className="p">Two link kinds. Key caps only in prose and as the hint inside an empty search field; menus, tooltips and buttons write <code style={{ font: "11px var(--font-mono)" }}>⌘,</code> as text.</p>
+        </div>
+        <div className="s"><span className="lbl">Disclosure</span>
+          <div>
+            <Disclosure label="Changes" meta="4 files" defaultOpen><div style={{ padding: "2px 0 6px 26px" }}>{files.slice(0, 4).map((x) => <div key={x} className="li" style={{ padding: 0 }}>{x}</div>)}</div></Disclosure>
+            <Disclosure label="Hidden variants" meta="2"><div className="p" style={{ padding: "2px 0 8px 26px" }}>Configurations hidden from the search menu.</div></Disclosure>
+          </div>
+        </div>
+        <div className="s"><span className="lbl">ScrollArea — overlay scrollbar</span>
+          <ScrollArea height={170} className="sc">{files.map((x) => <div key={x} className="li">{x}</div>)}</ScrollArea>
+          <p className="p">Scroll to show it; move to the right edge to widen it; drag the thumb.</p>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo />);
+})();
+</script>
+</body>
+</html>

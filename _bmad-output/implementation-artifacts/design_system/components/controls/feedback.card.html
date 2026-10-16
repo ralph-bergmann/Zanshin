@@ -1,0 +1,68 @@
+<!-- @dsCard group="Controls" viewport="1100x560" name="Feedback — progress, toasts, confirmation" subtitle="Spinner, ProgressBar, Skeleton, the three toast tones, ConfirmDialog for what jj undo can't reverse" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>
+body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text);font-family:var(--font-sans)}
+.g{display:grid;grid-template-columns:minmax(0,1fr) 460px;gap:24px 32px}
+.s{display:flex;flex-direction:column;gap:10px;min-width:0}
+.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim)}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.p{margin:0;font-size:12px;line-height:1.55;color:var(--text-muted);text-wrap:pretty}
+.num{font:11px var(--font-mono);color:var(--text-dim);font-variant-numeric:tabular-nums}
+.stage{position:relative;height:300px;border-radius:16px;overflow:hidden;border:1px solid var(--border);display:grid;place-items:center;background:var(--canvas)}
+.stage .zs-scrim{position:absolute}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { Spinner, ProgressBar, Skeleton, Button, Toast, ChangeId, ConfirmDialog, Presence } = window.ZanshinDesignSystem_a33847;
+  function Demo() {
+    const [p, setP] = React.useState(412);
+    const [open, setOpen] = React.useState(true);
+    const [busy, setBusy] = React.useState(false);
+    React.useEffect(() => { const t = setInterval(() => setP((v) => (v >= 1280 ? 0 : v + 96)), 600); return () => clearInterval(t); }, []);
+    const confirm = () => { setBusy(true); setTimeout(() => { setBusy(false); setOpen(false); setTimeout(() => setOpen(true), 1200); }, 1100); };
+    return (
+      <div className="g">
+        <div className="s">
+          <span className="lbl">Waiting</span>
+          <div className="row"><Spinner size={12} /><Spinner size={14} /><Spinner size={16} label="Fetching" /><Button size="md" busy>Fetching…</Button><Button size="md" variant="primary" busy>Committing…</Button></div>
+          <div className="row"><ProgressBar label="Fetching" value={p} max={1280} width={220} /><span className="num">{p.toLocaleString("en")} / 1,280 objects</span></div>
+          <div className="row"><ProgressBar label="Connecting to origin" width={220} /><span className="num">connecting…</span></div>
+          <div className="row"><Skeleton kind="card" /><div style={{ width: 200 }}><Skeleton kind="row" width={140} /><Skeleton kind="row" width={110} /></div></div>
+          <p className="p">Spinner in controls, rows and toasts · ProgressBar when progress is measurable · Skeleton when the shape is known · the Nami loader only for the window itself (splash, opening a repository) after ~1s with nothing else to show.</p>
+          <span className="lbl" style={{ marginTop: 6 }}>Toasts — one at a time</span>
+          <Toast onUndo={() => {}} onClose={() => {}}>Moved <ChangeId id="ovknlmro" length={8} /> onto <ChangeId id="vruxwmqv" length={8} /></Toast>
+          <Toast tone="warn" onClose={() => {}}>Can’t move <ChangeId id="ovknlmro" length={8} /> onto its own descendant</Toast>
+          <Toast tone="error" action={{ label: "Retry", title: "jj git fetch" }} onClose={() => {}}>Fetch failed — origin is unreachable</Toast>
+        </div>
+        <div className="s">
+          <span className="lbl">Confirmation — only for what jj undo can’t take back</span>
+          <div className="stage">
+            <Presence open={open} exit={180}>{(closing) => (
+              <ConfirmDialog closing={closing} busy={busy} title="Clear the operation history?" confirmLabel="Clear history" onConfirm={confirm} onCancel={() => { setOpen(false); setTimeout(() => setOpen(true), 1200); }}
+                cmd="jj op abandon ..@-">
+                Every operation before the current one leaves the operation log. <code>jj undo</code> and the Undo Timeline can’t go back past this point. Your changes stay as they are.
+              </ConfirmDialog>
+            )}</Presence>
+            {!open && <span className="p">closed — it comes back</span>}
+          </div>
+          <p className="p">Destructive: the filled red button is the one primary; focus starts on Cancel; ↩ presses the focused button, ⌘↩ confirms, Esc cancels. Warnings use the gold primary with ↩.</p>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo />);
+})();
+</script>
+</body>
+</html>

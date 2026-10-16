@@ -1,0 +1,92 @@
+<!-- @dsCard group="Controls" viewport="1240x1180" name="Controls — state matrix" subtitle="Every control × every state, forced with .st-* classes. Night / Paper, increased contrast and the macOS accent switchable" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>
+body{margin:0;background:#0b0e1c;color:var(--text);font-family:var(--font-sans)}
+.page{min-height:100vh;padding:18px 22px 24px;background:var(--canvas)}
+.hd{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.hd h1{margin:0;font:600 17px/1.3 var(--font-sans);letter-spacing:-.01em;color:var(--text)}
+.hd .sp{flex:1}
+.grid{display:grid;grid-template-columns:150px repeat(10,minmax(0,1fr));border-top:1px solid var(--border-strong)}
+.h{padding:8px 6px;font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);border-bottom:1px solid var(--border-strong)}
+.n{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:8px 6px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:500;color:var(--text)}
+.n span{font:10.5px var(--font-mono);font-weight:400;color:var(--text-faint)}
+.c{display:flex;align-items:center;justify-content:center;min-height:52px;padding:8px 4px;border-bottom:1px solid var(--border)}
+.c.na{color:var(--text-faint);font-size:11px;opacity:.5}
+.mini{min-width:0!important;width:96px;padding:3px!important}
+.mini .zs-menu-item{padding:0 6px;gap:6px;grid-template-columns:10px minmax(0,1fr) auto}
+.foot{margin-top:12px;font-size:11.5px;line-height:1.5;color:var(--text-dim);max-width:980px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { Button, IconButton, Switch, Checkbox, TextField, Chip, Segmented, Icon } = window.ZanshinDesignSystem_a33847;
+  const COLS = ["rest", "hover", "press", "focus", "on", "mixed", "disabled", "error", "busy", "readonly"];
+  const HEAD = { rest: "Rest", hover: "Hover", press: "Pressed", focus: "Focus", on: "On / sel.", mixed: "Mixed", disabled: "Disabled", error: "Error", busy: "Busy", readonly: "Read-only" };
+  const st = (s) => (s === "hover" ? "st-hover" : s === "press" ? "st-press" : s === "focus" ? "st-focus" : "");
+  const chk = (d) => <svg className="zs-check-svg" viewBox="0 0 16 16"><path className="zs-check-mark" pathLength="1" d={d || "M3.6 8.4 L6.6 11.3 L12.6 4.9"}></path></svg>;
+  const ROWS = [
+    { n: "Button", s: "default", has: ["rest", "hover", "press", "focus", "disabled", "busy"], r: (x) => <Button className={st(x)} disabled={x === "disabled"} busy={x === "busy"}>Describe…</Button> },
+    { n: "Button", s: "primary · gold", has: ["rest", "hover", "press", "focus", "disabled", "busy"], r: (x) => <Button variant="primary" className={st(x)} disabled={x === "disabled"} busy={x === "busy"}>Commit</Button> },
+    { n: "Button", s: "ghost", has: ["rest", "hover", "press", "focus", "disabled"], r: (x) => <Button variant="ghost" className={st(x)} disabled={x === "disabled"}>Cancel</Button> },
+    { n: "Button", s: "danger · quiet", has: ["rest", "hover", "press", "focus", "disabled"], r: (x) => <Button variant="danger" icon="abandon" className={st(x)} disabled={x === "disabled"}>Abandon</Button> },
+    { n: "Button", s: "destructive · filled", has: ["rest", "hover", "press", "focus", "disabled", "busy"], r: (x) => <Button variant="destructive" className={st(x)} disabled={x === "disabled"} busy={x === "busy"}>Clear history</Button> },
+    { n: "IconButton", s: "md · badge", has: ["rest", "hover", "press", "focus", "on", "disabled"], r: (x) => <IconButton icon="fetch" label="Fetch" badge={x === "rest" || x === "hover" ? 3 : undefined} active={x === "on"} className={st(x)} disabled={x === "disabled"} /> },
+    { n: "Switch", s: "30 × 18", has: ["rest", "hover", "press", "focus", "on", "disabled"], r: (x) => <Switch label="Detailed cards" checked={x === "on"} className={st(x)} disabled={x === "disabled"} /> },
+    { n: "Checkbox", s: "15 · accent", has: ["rest", "hover", "press", "focus", "on", "mixed", "disabled"], r: (x) => <Checkbox label="Select hunk" checked={x === "on"} mixed={x === "mixed"} className={st(x)} disabled={x === "disabled"} /> },
+    { n: "Checkbox", s: "13 · Viewed", has: ["rest", "hover", "on"], r: (x) => <span className={"zs-viewed" + (x === "on" ? " is-on" : "")} style={{ marginLeft: 0, ...(x === "hover" ? { color: "var(--text)", borderColor: "var(--border-strong)" } : {}) }}><Checkbox presentational size="sm" tone="add" checked={x === "on"} className={x === "hover" ? "st-hover" : ""} /> Viewed</span> },
+    { n: "Radio", s: "15", has: ["rest", "hover", "press", "focus", "on", "disabled"], r: (x) => <span className={"zs-radio " + st(x) + (x === "on" ? " is-on" : "")} style={x === "disabled" ? { opacity: 0.4 } : null}><span className="zs-radio-dot"></span></span> },
+    { n: "Segmented", s: "state on “Compact”", has: ["rest", "hover", "press", "focus", "on", "disabled"], r: (x) => <span className="zs-seg"><span className={"zs-seg-btn" + (x === "on" ? "" : " is-on")}>Free</span><span className={"zs-seg-btn " + st(x) + (x === "on" ? " is-on" : "")} aria-disabled={x === "disabled" || undefined} style={x === "disabled" ? { opacity: 0.4 } : null}>Compact</span></span> },
+    { n: "Slider", s: "thumb", has: ["rest", "hover", "press", "focus", "disabled"], r: (x) => <span className={"zs-slider " + st(x) + (x === "disabled" ? " is-disabled" : "")}><span className="zs-slider-track"><input type="range" tabIndex={-1} defaultValue={55} style={{ width: 76, "--p": "55%" }} /></span></span> },
+    { n: "TextField", s: "sm 30", has: ["rest", "hover", "focus", "disabled", "error", "readonly"], r: (x) => <TextField defaultValue={x === "error" ? "autor(lena)" : "main"} mono={x === "error"} className={x === "focus" ? "st-focus" : st(x)} disabled={x === "disabled"} error={x === "error"} readOnly={x === "readonly"} style={{ width: 92 }} /> },
+    { n: "Select", s: "pop-up button", has: ["rest", "hover", "press", "focus", "on", "disabled"], r: (x) => <span className={"zs-select " + st(x) + (x === "on" ? " is-open" : "")} style={{ minWidth: 0, width: 96, opacity: x === "disabled" ? 0.4 : 1 }}><span className="zs-select-v">origin</span><Icon className="zs-select-chev" name="updown" size="sm" /></span> },
+    { n: "Chip", s: "toggle “Aa”", has: ["rest", "hover", "press", "focus", "on", "disabled"], r: (x) => <Chip mono on={x === "on"} className={st(x)} disabled={x === "disabled"}>Aa</Chip> },
+    { n: "Chip", s: "not “~”", has: ["rest", "hover", "press", "focus", "on", "disabled"], r: (x) => <Chip kind="not" mono on={x === "on"} className={st(x)} disabled={x === "disabled"}>~</Chip> },
+    { n: "Menu row", s: "command menu", has: ["rest", "hover", "press", "focus", "on", "disabled"], r: (x) => <span className="zs-menu is-static mini"><span className={"zs-menu-item" + (x === "hover" || x === "focus" ? " is-hi" : "") + (x === "press" ? " is-blink" : "")} style={x === "disabled" ? { opacity: 0.4 } : null}>{x === "on" ? <span className="zs-menu-chk"><Icon name="check" size="xs" /></span> : <span></span>}<span className="zs-menu-l">Edit</span><span></span></span></span> },
+    { n: "Menu row", s: "danger", has: ["rest", "hover", "press", "focus", "disabled"], r: (x) => <span className="zs-menu is-static mini"><span className={"zs-menu-item is-danger" + (x === "hover" || x === "focus" ? " is-hi" : "") + (x === "press" ? " is-blink" : "")} style={x === "disabled" ? { opacity: 0.4 } : null}><span></span><span className="zs-menu-l">Abandon</span><span></span></span></span> },
+    { n: "Nav row", s: "where you are · fl-on", has: ["rest", "hover", "press", "focus", "on"], r: (x) => <span className={"zs-dialog-navitem " + st(x) + (x === "on" ? " is-on" : "")} style={{ width: 96 }}>General</span> },
+    { n: "Data row", s: "what you picked · soft", has: ["rest", "hover", "press", "focus", "on"], r: (x) => <span className={"zs-proj " + st(x) + (x === "on" ? " is-sel" : "")} style={{ width: 96 }}><span className="zs-proj-name">MyApp</span></span> },
+    { n: "Link", s: "inline · quiet", has: ["rest", "hover", "press", "focus"], r: (x) => <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}><span className={"zs-link " + st(x)}>Settings…</span><span className={"zs-link zs-link--quiet " + st(x)}>jj docs ↗</span></span> },
+    { n: "Disclosure", s: "header", has: ["rest", "hover", "press", "focus", "on"], r: (x) => <span className={"zs-disc" + (x === "on" ? " is-open" : "")} style={{ width: 96 }}><span className={"zs-disc-hd " + st(x)}><Icon name="chevron-right" size="sm" className="zs-disc-chev" /><span className="zs-disc-l">Changes</span></span></span> },
+  ];
+  const ACC = ["multicolor", "blue", "purple", "pink", "red", "orange", "yellow", "green", "graphite"];
+  function Matrix() {
+    const [theme, setTheme] = React.useState("night");
+    const [acc, setAcc] = React.useState("multicolor");
+    const [hc, setHc] = React.useState("std");
+    return (
+      <div className="page" data-theme={theme === "paper" ? "paper" : undefined} data-accent={acc === "multicolor" ? undefined : acc} data-contrast={hc === "more" ? "more" : undefined}>
+        <div className="hd">
+          <h1>Controls — state matrix</h1><span className="sp"></span>
+          <Segmented variant="inset" label="Theme" value={theme} onChange={setTheme} options={[{ value: "night", label: "Night", icon: "moon" }, { value: "paper", label: "Paper", icon: "sun" }]} />
+          <Segmented variant="inset" label="Contrast" value={hc} onChange={setHc} options={[{ value: "std", label: "Standard" }, { value: "more", label: "Increased" }]} />
+          <Segmented variant="inset" label="macOS accent" value={acc} onChange={setAcc} options={ACC.map((a) => ({ value: a, label: a === "multicolor" ? "Multi" : a[0].toUpperCase() + a.slice(1, 4) }))} />
+        </div>
+        <div className="grid">
+          <div className="h">Control</div>
+          {COLS.map((c) => <div key={c} className="h" style={{ textAlign: "center" }}>{HEAD[c]}</div>)}
+          {ROWS.map((row, i) => (
+            <React.Fragment key={i}>
+              <div className="n">{row.n}<span>{row.s}</span></div>
+              {COLS.map((c) => row.has.includes(c) ? <div key={c} className="c">{row.r(c)}</div> : <div key={c} className="c na">—</div>)}
+            </React.Fragment>
+          ))}
+        </div>
+        <p className="foot">Forced with <code>.st-hover</code> · <code>.st-press</code> · <code>.st-focus</code> (the same rules as <code>:hover</code> · <code>:active</code> · <code>:focus-visible</code>). Menu rows: pressed = the activation blink frame, focus = the keyboard highlight. Not shown: the gold primary at lg (same recipe over glass), toast pills (the default button’s ladder), tooltips (no states).</p>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Matrix />);
+})();
+</script>
+</body>
+</html>

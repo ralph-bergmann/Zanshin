@@ -142,5 +142,6 @@ function SettingsWindow({ tab, setTab, onClose, t, setTweak, project }) {
   );
 }
 
-Object.assign(window, { ProjectMenu, SettingsWindow });
+// the panes also fill the Settings window of the floating client (windows.jsx); SettingsWindow stays for the studies
+Object.assign(window, { ProjectMenu, SettingsWindow, GeneralPane, ProjectPane });
 })();

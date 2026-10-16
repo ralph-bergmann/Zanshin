@@ -1,0 +1,74 @@
+<!-- @dsCard group="Controls" viewport="1100x520" name="Select, menus, fields" subtitle="The pop-up button opening over its trigger, menu rows in every kind, the text context menu, field error and clear" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>
+body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text);font-family:var(--font-sans)}
+.g{display:grid;grid-template-columns:280px 300px minmax(0,1fr);gap:24px 28px}
+.s{display:flex;flex-direction:column;gap:10px;min-width:0}
+.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim)}
+.p{margin:0;font-size:12px;line-height:1.55;color:var(--text-muted);text-wrap:pretty}
+.zs-setbox{width:100%}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { Select, Menu, TextField, SearchField, SettingsGroup, SettingsRow } = window.ZanshinDesignSystem_a33847;
+  function Demo() {
+    const [fetch, setFetch] = React.useState("origin");
+    const [trunk, setTrunk] = React.useState("main");
+    const [q, setQ] = React.useState("swipe");
+    const [rev, setRev] = React.useState("autor(lena)");
+    const bad = /autor\(/.test(rev);
+    return (
+      <div className="g">
+        <div className="s"><span className="lbl">Select — pop-up button</span>
+          <SettingsGroup title="Remotes">
+            <SettingsRow label="Fetch from"><Select label="Fetch from" value={fetch} onChange={setFetch} options={["origin", "upstream", "sep", { value: "fork", label: "fork — not configured", disabled: true }]} style={{ minWidth: 0 }} /></SettingsRow>
+            <SettingsRow label="Trunk"><Select label="Trunk" mono value={trunk} onChange={setTrunk} options={[{ header: "Bookmarks" }, "main", "develop", "release/1.5.x@origin", "sep", { value: "__custom", label: "Custom…" }]} /></SettingsRow>
+          </SettingsGroup>
+          <p className="p">Click a value: the list opens over the trigger with the chosen row on top of it. ↑↓ move, typing jumps, ↩ chooses (with the blink), Esc closes.</p>
+        </div>
+        <div className="s"><span className="lbl">Menu rows</span>
+          <Menu still id="kmnvxoqp" subject="feat(onboarding): swipe gestures" highlight={1} items={[
+            { id: "new", label: "New change on top", icon: "plus", cmd: "jj new" },
+            { id: "edit", label: "Edit", icon: "working-copy-at", cmd: "jj edit" },
+            { id: "copy", label: "Copy", icon: "copy", submenu: [{ id: "cid", label: "Change id", shortcut: "⌘C" }, { id: "cmt", label: "Commit id" }, { id: "msg", label: "Description" }] },
+            "sep", { header: "Show" },
+            { id: "stats", label: "Diff stats", checked: true }, { id: "auth", label: "Author", checked: false },
+            "sep",
+            { id: "split", label: "Split…", icon: "split-side", cmd: "jj split", disabled: true, title: "Immutable — on trunk" },
+            { id: "abandon", label: "Abandon", icon: "abandon", cmd: "jj abandon", danger: true },
+          ]} />
+        </div>
+        <div className="s"><span className="lbl">Text context menu · fields</span>
+          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+            <Menu still style={{ minWidth: 0, width: 190 }} highlight={2} items={[
+              { id: "undo", label: "Undo typing", shortcut: "⌘Z" }, { id: "redo", label: "Redo", shortcut: "⇧⌘Z", disabled: true }, "sep",
+              { id: "cut", label: "Cut", shortcut: "⌘X" }, { id: "copy", label: "Copy", shortcut: "⌘C" }, { id: "paste", label: "Paste", shortcut: "⌘V" }, "sep",
+              { id: "all", label: "Select all", shortcut: "⌘A" },
+            ]} />
+            <div className="s" style={{ flex: 1 }}>
+              <TextField mono value={rev} onChange={(e) => setRev(e.target.value)} aria-label="Revset" error={bad ? "Unknown function “autor”. Did you mean author()?" : undefined} message={bad ? undefined : "jj log -r '" + rev + "'"} />
+              <TextField value="~/.config/jj/config.toml" readOnly aria-label="Config file" />
+              <SearchField placeholder="Search projects, paths…" value={q} onChange={setQ} shortcut="/" />
+            </div>
+          </div>
+          <p className="p">Text selection is the macOS highlight (NSColor.selectedTextBackgroundColor, in Zanshin’s appearance) with the glyphs in <code style={{ font: "11px var(--font-mono)" }}>--text</code>; <code style={{ font: "11px var(--font-mono)" }}>--accent-select</code> is only the fallback. The text menu is a plain Menu: no icons, shortcuts in the right column.</p>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo />);
+})();
+</script>
+</body>
+</html>

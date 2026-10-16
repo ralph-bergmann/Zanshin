@@ -1,0 +1,111 @@
+<!-- @dsCard group="Controls" viewport="1240x1240" name="Controls — micro-animations" subtitle="Every control animation with its trigger, property, duration and curve tokens — play each one; preview reduce motion" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>
+body{margin:0;background:var(--canvas);color:var(--text);font-family:var(--font-sans);min-height:100vh}
+.page{padding:18px 22px 24px}
+.hd{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+.hd h1{margin:0;font:600 17px/1.3 var(--font-sans);letter-spacing:-.01em}
+.hd .sp{flex:1}
+.t{display:grid;grid-template-columns:160px 170px minmax(0,1fr) 150px 120px 170px 200px 64px;border-top:1px solid var(--border-strong)}
+.t>div{padding:8px 8px;border-bottom:1px solid var(--border);font-size:11.5px;line-height:1.4;color:var(--text-muted);display:flex;align-items:center;min-width:0}
+.t>.h{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);border-bottom-color:var(--border-strong)}
+.t>.nm{font-size:12.5px;font-weight:500;color:var(--text)}
+.t code{font:10.5px var(--font-mono);color:var(--text)}
+.t>.dm{gap:10px;min-height:46px;position:relative}
+.box{position:relative;height:40px;display:flex;align-items:center;gap:8px}
+.mini{min-width:0!important;width:150px;padding:3px!important}
+.exits{display:flex;gap:6px;flex-wrap:wrap}
+.xl{position:relative;width:180px;height:40px;display:flex;align-items:center}
+.ghost{font-size:11px;color:var(--text-faint)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { Button, IconButton, Switch, Checkbox, Radio, Segmented, Slider, Menu, Tooltip, Spinner, Skeleton, ProgressBar, Toast, Disclosure, FileRow, ChangeId, Icon, Popover, PopoverHeader, OptionRow } = window.ZanshinDesignSystem_a33847;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const Play = ({ onPlay, label = "Play" }) => <Button size="sm" icon="arrow-up" iconSize="sm" onClick={onPlay} style={{ transform: "none" }} title={label}>{label === "Play" ? "▶" : label}</Button>;
+
+  function Hover() { const [c, setC] = React.useState(""); return { demo: <Button className={c}>Describe…</Button>, play: async () => { setC("st-hover"); await wait(700); setC(""); } }; }
+  function Press() { const [c, setC] = React.useState(""); return { demo: <Button className={c}>Describe…</Button>, play: async () => { setC("st-hover"); await wait(250); setC("st-hover st-press"); await wait(160); setC("st-hover"); await wait(500); setC(""); } }; }
+  function Focus() { const [c, setC] = React.useState(""); return { demo: <span className="box"><Button className={c}>Describe…</Button><span className="zs-seg"><span className="zs-seg-btn is-on">Free</span><span className={"zs-seg-btn " + c}>Compact</span></span></span>, play: async () => { setC(""); await wait(30); setC("st-focus"); await wait(1400); setC(""); } }; }
+  function Sw() { const [on, setOn] = React.useState(false); const [c, setC] = React.useState(""); return { demo: <Switch label="Detailed cards" checked={on} onChange={setOn} className={c} />, play: async () => { setC("st-press"); await wait(220); setC(""); setOn((v) => !v); } }; }
+  function Chk() { const [s, setS] = React.useState(0); const seq = [[false, false], [true, false], [false, true], [true, false], [false, false]]; return { demo: <span className="box"><Checkbox label="Select hunk" checked={seq[s][0]} mixed={seq[s][1]} onChange={() => setS((s + 1) % 5)} /><span className="ghost">{["off", "checked — draws in", "mixed — points move", "checked — points move back", "off — clears at once"][s]}</span></span>, play: async () => { for (let i = 1; i <= 4; i++) { setS(i); await wait(650); } } }; }
+  function Rad() { const [v, setV] = React.useState("a"); return { demo: <span className="box" style={{ gap: 14 }}><Radio checked={v === "a"} onChange={() => setV("a")}>Rebase</Radio><Radio checked={v === "b"} onChange={() => setV("b")}>Merge</Radio></span>, play: () => setV((x) => (x === "a" ? "b" : "a")) }; }
+  function Seg() { const [v, setV] = React.useState("free"); return { demo: <Segmented label="Layout" value={v} onChange={setV} options={[{ value: "free", label: "Free" }, { value: "compact", label: "Compact" }, { value: "x", label: "Project", disabled: true, title: "Open a project first" }]} />, play: () => setV((x) => (x === "free" ? "compact" : "free")) }; }
+  function Sld() { const [v, setV] = React.useState(240); const [c, setC] = React.useState(""); return { demo: <Slider label="Card width" min={160} max={400} step={20} ticks value={v} unit="px" onChange={setV} className={c} width={110} />, play: async () => { setC("st-press"); for (let i = 0; i < 4; i++) { await wait(140); setV((x) => (x >= 400 ? 160 : x + 20)); } await wait(200); setC(""); } }; }
+  function Mnu() {
+    const [k, setK] = React.useState(0); const [hi, setHi] = React.useState(-1); const [closing, setClosing] = React.useState(false); const ref = React.useRef(null);
+    const items = [{ id: "new", label: "New change on top", cmd: "jj new" }, { id: "edit", label: "Edit", cmd: "jj edit" }, { id: "dup", label: "Duplicate", cmd: "jj duplicate" }];
+    return { demo: <span ref={ref} style={{ display: "block", height: 104 }}><Menu key={k} items={items} highlight={hi} closing={closing} className="mini" style={{ width: 196 }} onSelect={async () => { setClosing(true); await wait(140); setClosing(false); setHi(-1); setK(k + 1); }} /></span>,
+      play: async () => { const m = ref.current.querySelector(".zs-menu"); m.focus(); for (const i of [0, 1, 2]) { setHi(i); await wait(230); } m.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); } };
+  }
+  function Exits() {
+    const [n, setN] = React.useState(0); const [which, setWhich] = React.useState(null);
+    const L = { menu: "Menu", pop: "Popover", call: "Callout", dlg: "Dialog", toast: "Toast" };
+    const go = async (w) => { setWhich(w); setN((x) => x + 1); await wait(700); setWhich(w + ":out"); await wait(260); setWhich(null); };
+    const out = which && which.endsWith(":out"); const w = which && which.split(":")[0];
+    const el = !w ? <span className="ghost">pick one</span>
+      : w === "menu" ? <span key={n} className={"zs-menu is-static mini" + (out ? " is-closing" : "")} style={{ width: 150 }}><span className="zs-menu-item"><span></span><span className="zs-menu-l">Edit</span><span></span></span></span>
+      : w === "pop" ? <span key={n} className={"zs-popover" + (out ? " is-closing" : "")} style={{ padding: "6px 10px", width: 150, fontSize: 12 }}>View options</span>
+      : w === "call" ? <span key={n} className={"zs-callout no-arrow" + (out ? " is-closing" : "")} style={{ width: 150, padding: "8px 12px", fontSize: 12 }}>Bookmarks · 4</span>
+      : w === "dlg" ? <span key={n} className={"zs-alert" + (out ? " is-closing" : "")} style={{ padding: "8px 12px", fontSize: 12, width: 150, animation: out ? "zs-dialog-out var(--dur-exit-lg) var(--ease-exit) both" : undefined }}>Clear the history?</span>
+      : <span key={n} className={"zs-toast" + (out ? " is-closing" : "")} style={{ height: 30, fontSize: 12 }}>Moved ovknlmro</span>;
+    return { demo: <span className="box" style={{ gap: 12 }}><span className="exits">{Object.entries(L).map(([k, l]) => <Button key={k} size="sm" variant="ghost" onClick={() => go(k)}>{l}</Button>)}</span><span className="xl">{el}</span></span>, play: async () => { for (const k of Object.keys(L)) { await go(k); await wait(120); } } };
+  }
+  function Tip() { const [o, setO] = React.useState(false); return { demo: <span className="box" style={{ height: 70, alignItems: "flex-start", paddingTop: 2 }}><Tooltip open={o} label="New change" shortcut="⌘N" cmd="jj new"><IconButton icon="plus" label="New change" title="" /></Tooltip></span>, play: async () => { setO(true); await wait(1400); setO(false); } }; }
+  function Pend() { return { demo: <span className="box" style={{ gap: 12 }}><Spinner size={14} label="Fetching" /><Skeleton kind="bar" width={70} height={9} /><ProgressBar label="Connecting" width={60} /></span>, play: null }; }
+  function Bdg() { const [n, setN] = React.useState(2); return { demo: <span className="box"><IconButton icon="fetch" label="Fetch" badge={n} /><span className="ghost">{n ? n + " incoming" : "fetched — badge leaves"}</span></span>, play: async () => { setN(3); await wait(500); setN(4); await wait(500); setN(0); await wait(900); setN(2); } }; }
+  function Disc() { const [o, setO] = React.useState(false); return { demo: <span style={{ display: "block", width: 190 }}><Disclosure label="Changes" meta="2 files" open={o} onToggle={setO}><div style={{ padding: "4px 8px 2px 24px", font: "11.5px var(--font-mono)", color: "var(--text-muted)", lineHeight: 1.8 }}>lib/swipe.dart<br/>lib/velocity.dart</div></Disclosure></span>, play: () => setO((x) => !x) }; }
+
+  const ROWS = [
+    ["Hover fade", Hover, "pointer enters / leaves", "background, color", "--dur-hover 120", "--ease-state", "fill + colour change at once (≤ 120ms)"],
+    ["Press feedback", Press, "pointer down / up", "background (one step) — no scale", "--dur-instant 0 in · 120 out", "--ease-state", "unchanged"],
+    ["Focus ring", Focus, "focus by keyboard", "outline-color, outline-offset (+3 → 0)", "--dur-focus 160", "--ease-state", "ring fades in, no settle"],
+    ["Switch thumb", Sw, "toggle · press", "transform, width (12 → 15 on press) · track colour", "--dur-toggle 180 · colour --dur-hover 120", "glide · state", "knob jumps, colour fades"],
+    ["Check draw · morph", Chk, "toggle · partial selection", "stroke-dashoffset 1 → 0 · path d (3 points)", "--dur-toggle 180", "--ease-glide", "mark appears / switches at once"],
+    ["Radio dot", Rad, "choose", "dot transform scale 0 → 1", "--dur-toggle 180", "--ease-glide", "dot appears at once"],
+    ["Segment change", Seg, "choose · ←/→", "thumb translateX, width", "--dur-toggle 180", "--ease-glide", "thumb jumps"],
+    ["Slider thumb", Sld, "grab · drag · keys", "halo (instant on grab); value moves with the pointer, no tween; readout brightens", "--dur-instant · 120", "state", "unchanged"],
+    ["Menu highlight · blink", Mnu, "hover / ↑↓ · ↩ or click", "background (no fade between rows) · blink off 70 · on 70 · then exit", "--dur-blink 70 · --dur-exit 120", "steps · --ease-exit", "unchanged (colour only)"],
+    ["Exits", Exits, "close · Esc · choose", "opacity + 2–8px drift back (menu: fade only)", "--dur-exit 120 · dialog, toast --dur-exit-lg 180", "--ease-exit", "fade only"],
+    ["Tooltip", Tip, "700ms rest (warm: 0) · leave · press", "opacity + 2px", "in 120 · out 120", "glide · exit", "fade only"],
+    ["Spinner · skeleton · bar", Pend, "while waiting", "rotate · background-position sweep · translateX", "--dur-spin 800 · --dur-shimmer 1600", "--ease-linear", "spinner keeps turning; sweeps stop"],
+    ["Badge count", Bdg, "count changes · 0", "number rises 5px + fade · badge .6 → 1 / → .6 out", "--dur-pop 160 · out 120", "glide · exit", "fade only"],
+    ["Disclosure", Disc, "click · → / ←", "chevron rotate 90° · body height · body opacity", "--dur-expand 200 · fade --dur-panel 200", "glide · state", "opens at once, the body fades in"],
+  ];
+  function Row({ r }) {
+    const [nm, Hook, trig, prop, dur, curve, reduce] = r;
+    const h = Hook();
+    return (<>
+      <div className="nm">{nm}</div><div>{trig}</div><div>{prop}</div><div><code>{dur}</code></div><div><code>{curve}</code></div><div>{reduce}</div>
+      <div className="dm">{h.demo}</div>
+      <div>{h.play ? <Button size="sm" onClick={h.play}>Play</Button> : <span className="ghost">loops</span>}</div>
+    </>);
+  }
+  function Card() {
+    const [rm, setRm] = React.useState(false);
+    return (
+      <div className="page" data-motion={rm ? "reduce" : undefined}>
+        <div className="hd"><h1>Controls — micro-animations</h1><span className="sp"></span><span style={{ fontSize: 12, color: "var(--text-dim)" }}>Preview reduce motion</span><Switch label="Preview reduce motion" checked={rm} onChange={setRm} /></div>
+        <div className="t">
+          {["Animation", "Trigger", "Property", "Duration", "Curve", "Reduce motion", "Demo", ""].map((x, i) => <div key={i} className="h">{x}</div>)}
+          {ROWS.map((r) => <Row key={r[0]} r={r} />)}
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Card />);
+})();
+</script>
+</body>
+</html>

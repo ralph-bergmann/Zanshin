@@ -52,3 +52,7 @@
 .gtoast-x{flex-shrink:0;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:var(--text-dim)}
 .gtoast-x:hover{background:var(--fl-hover);color:var(--text)}
 .gtoast-undo:focus-visible,.gtoast-x:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* warn — undoing a push: the CLI's warning, Redo instead of Undo */
+.gtoast.is-warn{padding-left:12px}
+.gtoast-ic{flex-shrink:0;color:#f7c243}
+[data-theme="light"] .gtoast-ic{color:#895604}

@@ -18,7 +18,7 @@ export function DropMenu({ items = [], active = 0, place = "below", onSelect, on
             {k > 0 && rows[k - 1].a.group !== a.group && <div className="zs-drop-sep" role="separator"></div>}
             <button type="button" role="menuitem" className={"zs-drop-item" + (i === active ? " is-on" : "")}
               onPointerEnter={() => onActive && onActive(i)} onPointerUp={() => onSelect && onSelect(a.id, i)} onClick={() => onSelect && onSelect(a.id, i)}>
-              {a.icon ? <Icon name={a.icon} size={15} /> : <span></span>}
+              {a.icon ? <Icon name={a.icon} size="md" /> : <span></span>}
               <span className="zs-drop-l">{a.label}</span>
               {a.note ? <span className="zs-drop-note">{a.note}</span> : <span className="zs-drop-k">{a.hint}</span>}
             </button>

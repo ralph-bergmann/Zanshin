@@ -1,0 +1,71 @@
+/* ============================================================
+   ZANSHIN — motion: curves, durations, waits, and the Reduce-motion delta (readme › Motion)
+   Reduce motion is defined by PROPERTY, never by animation name:
+     colour, opacity           keep their tokens — every fade stays, every exit fades out, the edit flash stays a colour fade
+     movement, size, position,
+     rotation, stroke drawing  go to zero — keyframes multiply their distance, scale step and angle by --motion (1 → 0);
+                               transitions of geometry use the movement durations below (→ 0ms: the thing is simply there)
+   Component rule: a transition times colour/opacity with a fade token and geometry with a movement token — never one token for both.
+   Two exceptions, both information: the spinner keeps turning (as NSProgressIndicator); sweeps (skeleton, indeterminate bar) pulse instead.
+   Flutter: MediaQuery.disableAnimationsOf(context) (NSWorkspace.accessibilityDisplayShouldReduceMotion) applies the delta at the end.
+   ============================================================ */
+:root{
+  /* ---- curves by job ---- */
+  --ease-state:cubic-bezier(.25,.1,.25,1);/* @kind other */    /* colour, opacity, outline colour — Flutter Curves.ease */
+  --ease-glide:cubic-bezier(.32,.72,0,1);/* @kind other */     /* anything that moves, resizes or enters — fast out, long settle */
+  --ease-exit:cubic-bezier(.4,0,1,1);/* @kind other */         /* leaving: fade + a small drift */
+  --ease-linear:linear;/* @kind other */                        /* spinner, sweeps, the indeterminate bar */
+  --ease-loader:cubic-bezier(.65,.05,.35,.95);/* @kind other */ /* the Nami loader's swell */
+
+  --motion:1;/* @kind other */ /* 1 = full motion · 0 under Reduce motion. Every keyframe distance, scale step and angle is × this. */
+
+  /* ---- fades: colour, opacity, and the fade of every entrance and exit. Reduce motion keeps all of them. ---- */
+  --dur-instant:0ms;/* @kind other */   /* press in — the pressed fill appears at once */
+  --dur-hover:120ms;/* @kind other */   /* hover, press release, EVERY colour change — a toggle's colour too (never --dur-toggle) */
+  --dur-focus:160ms;/* @kind other */   /* the focus ring fades in (its 3px settle is × --motion) */
+  --dur-blink:70ms;/* @kind other */    /* menu activation blink — one phase (off, on) */
+  --dur-menu:110ms;/* @kind other */    /* menu in */
+  --dur-pop:160ms;/* @kind other */     /* popover, select list, scrim; badge in and a changed count */
+  --dur-exit:120ms;/* @kind other */    /* menu, popover, callout, tooltip, badge out · a replaced toast */
+  --dur-exit-lg:180ms;/* @kind other */ /* sheet and toast out */
+  --dur-panel:200ms;/* @kind other */   /* panels and the inspector in */
+  --dur-dialog:220ms;/* @kind other */  /* modal sheets in — ConfirmDialog, Push. Windows (Settings, Projects, jj log Configurations): the system's */
+  --dur-slide:260ms;/* @kind other */   /* toast, @ pill and minimap in */
+  --dur-birth:540ms;/* @kind other */   /* a new change appears out of its parent (its 60px rise × --motion) */
+  --dur-flash:2400ms;/* @kind other */  /* the moon ring an edited card wears, fading out — colour only */
+  --dur-spin:800ms;/* @kind other */    /* one spinner turn — keeps turning under Reduce motion */
+  --dur-shimmer:1600ms;/* @kind other */ /* one skeleton / indeterminate sweep; under Reduce motion one pulse */
+
+  /* ---- movement: position, size, rotation, stroke drawing of something that has to end up elsewhere. Reduce motion: 0ms. ---- */
+  --dur-nudge:120ms;/* @kind other */   /* small geometry: the scroll thumb widening, the card's ••• and bookmark buttons scaling in */
+  --dur-toggle:180ms;/* @kind other */  /* switch knob (and its press stretch), segment thumb, radio dot, check draw / morph, the @ pill's arrow */
+  --dur-expand:200ms;/* @kind other */  /* disclosure and tree height, their chevrons, the progress value */
+  --dur-move:260ms;/* @kind other */    /* the @ pill re-centring over the visible graph */
+  --dur-flip:460ms;/* @kind other */    /* graph re-layout (FLIP; the edges hide and are redrawn) */
+
+  /* ---- waits and holds ---- */
+  --delay-tooltip:700ms;/* @kind other */      /* first tooltip, after rest */
+  --dur-tooltip-warm:600ms;/* @kind other */   /* after a tooltip closes, the next one shows at once for this long (the warm window) */
+  --delay-peek:450ms;/* @kind other */         /* hover peek on a card */
+  --delay-stack-list:380ms;/* @kind other */   /* hover list of a stack */
+  --delay-callout:90ms;/* @kind other */       /* a rail callout opens */
+  --delay-callout-out:200ms;/* @kind other */  /* … and stays this long after the pointer leaves */
+  --delay-drop-menu:520ms;/* @kind other */    /* rest over a target while dragging before the drop menu opens */
+  --delay-submenu:150ms;/* @kind other */      /* hover on a row with › before its submenu opens (→, ↩ and a click open it at once) */
+  --delay-resize:150ms;/* @kind other */       /* hover on a ResizeEdge before its line shows (the cursor changes at once) */
+  --delay-submenu-out:300ms;/* @kind other */  /* the open submenu waits this long once the pointer leaves its row and the safe triangle */
+  --delay-skeleton:150ms;/* @kind other */     /* a skeleton shows only when loading takes longer than this */
+  --delay-scroll-hide:800ms;/* @kind other */  /* the overlay scrollbar fades this long after scrolling stops */
+  --dur-typeahead:600ms;/* @kind other */      /* letters typed within this window extend one typeahead match */
+  --dur-toast-hold:6500ms;/* @kind other */    /* success and warn toasts hide after this; hover pauses it; errors stay */
+  --dur-copied:1200ms;/* @kind other */        /* "Copied" stands in for Copy */
+
+  /* ---- calm scrolling: while the graph scrolls, the floating chrome steps aside (traffic lights and minimap stay) ---- */
+  --dur-calm-out:180ms;/* @kind other */       /* step aside: fade + drift (top bar −6px, rail and panel −8px, inspector +16px, × --motion), --ease-exit */
+  --dur-calm-in:340ms;/* @kind other */        /* come back: fade on --ease-state, drift on --ease-glide */
+  --delay-calm-in:60ms;/* @kind other */
+  --delay-calm-return:650ms;/* @kind other */  /* the chrome returns this long after the last scroll event */
+}
+/* ---- Reduce motion — the whole delta. Nothing else in the system switches on it. ---- */
+@media (prefers-reduced-motion:reduce){:root{--motion:0;/* @kind other */--dur-nudge:0ms;/* @kind other */--dur-toggle:0ms;/* @kind other */--dur-expand:0ms;/* @kind other */--dur-move:0ms;/* @kind other */--dur-flip:0ms;/* @kind other */}}
+[data-motion="reduce"]{--motion:0;/* @kind other */--dur-nudge:0ms;/* @kind other */--dur-toggle:0ms;/* @kind other */--dur-expand:0ms;/* @kind other */--dur-move:0ms;/* @kind other */--dur-flip:0ms;/* @kind other */}

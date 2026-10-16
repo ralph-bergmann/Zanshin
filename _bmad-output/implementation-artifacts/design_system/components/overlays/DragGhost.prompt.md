@@ -9,3 +9,4 @@ The drag chip that follows the pointer during direct manipulation (rebase by dra
 - Chip: 34px, `--card-solid-hi`, moon border + 3px ring, tilted −1.5°. Offset 14px / 12px from the pointer.
 - Under it, the command a plain drop would run (moon border) — or the hint while nothing is targeted.
 - Items keep the arrow cursor while dragging (Finder does); only a held canvas shows the closed hand.
+- Keyboard · VoiceOver · Reduce motion: follows the pointer only; Esc cancels the drag · hidden (the drop menu is announced) · no tilt animation, it simply follows.

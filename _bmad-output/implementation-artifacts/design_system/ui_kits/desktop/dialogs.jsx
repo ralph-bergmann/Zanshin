@@ -1,13 +1,14 @@
-// Dialogs — Projects (the IntelliJ-style project picker) and the Settings window (General · Project).
+// Windows — Projects (the project picker, the start window) and Settings (General · Project). Both are macOS windows of their own
+// (components/window: Window) above the project window: no scrim, no ✕ — the red button and ⌘W close them; the system draws the frame.
 (() => {
-const { Dialog, SearchField, Button, ProjectRow, NamiMark, Icon, IconButton, Segmented, Switch, Select, TextField, SettingsGroup, SettingsRow } = window.ZanshinDesignSystem_a33847;
+const { Window, SearchField, Button, ProjectRow, NamiMark, Icon, Segmented, Switch, Select, TextField, SettingsGroup, SettingsRow } = window.ZanshinDesignSystem_a33847;
 
 function zkFlatten(nodes, depth = 0, all = false, out = []) {
   nodes.forEach((n) => { out.push({ node: n, depth }); if (n.kind === "group" && (all || n.expanded)) zkFlatten(n.children || [], depth + 1, all, out); });
   return out;
 }
 
-function ZKProjects({ tree, setTree, activeId, onOpen, onClose }) {
+function ZKProjects({ tree, setTree, activeId, onOpen, onClose, onSettings, active = true, onFocus, style }) {
   const [q, setQ] = React.useState("");
   const [sel, setSel] = React.useState(activeId);
   const query = q.trim().toLowerCase();
@@ -18,62 +19,69 @@ function ZKProjects({ tree, setTree, activeId, onOpen, onClose }) {
     const up = (ns) => ns.map((n) => n.id === id ? { ...n, expanded: !n.expanded } : n.children ? { ...n, children: up(n.children) } : n);
     setTree(up(tree));
   };
+  // keys while this window is key: ↩ opens the selected project · Esc clears the search — it never closes the window
   React.useEffect(() => {
+    if (!active) return undefined;
     const k = (e) => {
-      if (e.key === "Enter" && sel) { const r = zkFlatten(tree, 0, true).find((x) => x.node.id === sel); if (r && r.node.kind === "project") onOpen(r.node.id); }
-      if (e.key === "Escape") onClose();
+      if (e.key === "Enter" && sel && !e.defaultPrevented) { const r = zkFlatten(tree, 0, true).find((x) => x.node.id === sel); if (r && r.node.kind === "project") onOpen(r.node.id); }
+      if (e.key === "Escape" && q) { e.preventDefault(); setQ(""); }
     };
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
-  }, [sel, tree]);
+  }, [sel, tree, q, active]);
   return (
-    <Dialog title="Projects" onClose={onClose} width="min(900px, 92%)" height="min(640px, 88%)" activeNav="projects"
-      navHeader={<div className="zk-brand"><NamiMark size={32} chip/><div><div className="zk-brand-n">Zanshin</div><div className="zk-brand-s">jj client · v0.24.0</div></div></div>}
-      nav={[{ id: "projects", label: "Projects", icon: "folder-open" }, { id: "remotes", label: "Remotes", icon: "cloud" }, { id: "settings", label: "Settings", icon: "settings" }]}
-      navFooter={<div className="zk-signed"><div className="zk-signed-l">Signed in</div><div className="zk-signed-u"><span className="zk-avatar">A</span><div><div>Alice Sralph</div><div className="zk-signed-m">alice@dasralph.de</div></div></div></div>}
-      tools={<>
-        <SearchField placeholder="Search projects, paths…" value={q} onChange={setQ} autoFocus style={{ flex: 1 }}/>
-        <Button size="md" variant="primary" icon="plus" iconSize={12}>Add directory</Button>
-        <Button size="md" icon="cloud">Clone from remote</Button>
-        <Button size="md" variant="ghost" icon="folder-plus">New group</Button>
-      </>}>
-      <div className="zk-tree" role="tree">
-        {!rows.length && <div className="zk-empty">No projects match “{q}”</div>}
-        {rows.map(({ node, depth }) => node.kind === "group" ? (
-          <ProjectRow key={node.id} kind="group" name={node.name} depth={depth} expanded={!!node.expanded || !!query} selected={sel === node.id}
-            count={(node.children || []).filter((c) => c.kind === "project").length} groups={(node.children || []).filter((c) => c.kind === "group").length}
-            onClick={() => { setSel(node.id); toggle(node.id); }}/>
-        ) : (
-          <ProjectRow key={node.id} {...node} kind="project" depth={depth} open={node.id === activeId} selected={sel === node.id}
-            onClick={() => setSel(node.id)} onDoubleClick={() => node.status !== "missing" && onOpen(node.id)}/>
-        ))}
-      </div>
-    </Dialog>
+    <div onMouseDown={onFocus} style={style}>
+      <Window title="Projects" active={active} buttons={{ close: true, zoom: true }} onClose={onClose} width={900} height={640} sidebarWidth={210}
+        sidebar={<>
+          <div className="zk-brand"><NamiMark size={32} chip/><div><div className="zk-brand-n">Zanshin</div><div className="zk-brand-s">jj client · v0.24.0</div></div></div>
+          <nav className="zk-side-nav" aria-label="Sections">
+            <button type="button" className="zs-dialog-navitem is-on" aria-current="page"><Icon name="folder-open" size="md"/><span>Projects</span></button>
+            <button type="button" className="zs-dialog-navitem"><Icon name="cloud" size="md"/><span>Remotes</span></button>
+            <button type="button" className="zs-dialog-navitem" onClick={onSettings} title="Settings — ⌘, (the tab shown last)"><Icon name="settings" size="md"/><span>Settings…</span></button>
+          </nav>
+          <div className="zk-signed"><div className="zk-signed-l">Signed in</div><div className="zk-signed-u"><span className="zk-avatar">A</span><div><div>Alice Sralph</div><div className="zk-signed-m">alice@dasralph.de</div></div></div></div>
+        </>}
+        header={<>
+          <span className="zs-win-grow"></span>
+          <SearchField placeholder="Search projects, paths…" value={q} onChange={setQ} autoFocus style={{ width: 230 }}/>
+          <Button size="md" variant="primary" icon="plus" iconSize="sm">Add directory</Button>
+          <Button size="md" icon="cloud">Clone…</Button>
+          <Button size="md" variant="ghost" icon="folder-plus" label="New group" title="New group"/>
+        </>}>
+        <div className="zk-tree" role="tree" aria-label="Projects">
+          {!rows.length && <div className="zk-empty">No projects match “{q}”</div>}
+          {rows.map(({ node, depth }) => node.kind === "group" ? (
+            <ProjectRow key={node.id} kind="group" name={node.name} depth={depth} expanded={!!node.expanded || !!query} selected={sel === node.id}
+              count={(node.children || []).filter((c) => c.kind === "project").length} groups={(node.children || []).filter((c) => c.kind === "group").length}
+              onClick={() => { setSel(node.id); toggle(node.id); }} onToggle={() => toggle(node.id)} onSelect={() => setSel(node.id)}/>
+          ) : (
+            <ProjectRow key={node.id} {...node} kind="project" depth={depth} open={node.id === activeId} selected={sel === node.id}
+              onClick={() => setSel(node.id)} onSelect={() => setSel(node.id)} onDoubleClick={() => node.status !== "missing" && onOpen(node.id)}/>
+          ))}
+        </div>
+      </Window>
+    </div>
   );
 }
 
-function ZKSettings({ tab, setTab, onClose, prefs, setPref, project }) {
+function ZKSettings({ tab, setTab, onClose, prefs, setPref, project, active = true, onFocus, style }) {
   const [g, setG] = React.useState({ name: "Ralph Stein", email: "ralph@dasralph.de" });
   const [p, setP] = React.useState({ fetch: "origin", push: "origin", auto: "15", trunk: "main", immutable: "builtin_immutable_heads()", own: false, email: "ralph@work.example" });
   const setp = (k, v) => setP((o) => ({ ...o, [k]: v }));
-  React.useEffect(() => {
-    const k = (e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
-    window.addEventListener("keydown", k, true); return () => window.removeEventListener("keydown", k, true);
-  }, []);
+  // the window title is the tab's name (Window menu, Mission Control); no Esc, no ✕ — changes apply at once
   return (
-    <div className="zs-scrim zk-set-ov" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="zk-set" role="dialog" aria-label="Settings">
-        <header className="zk-set-hd">
-          <Segmented variant="tabs" label="Scope" value={tab} onChange={setTab} options={[{ value: "general", label: "General", icon: "settings" }, { value: "project", label: project.name, icon: <span className="zk-set-mark"><NamiMark size={14}/></span> }]}/>
-          <IconButton className="zk-set-x" icon="close" iconSize={12} size="sm" label="Close" title="Close (Esc)" onClick={onClose}/>
-        </header>
+    <div onMouseDown={onFocus} style={style}>
+      <Window title={tab === "general" ? "General" : "Project"} titleHidden active={active} buttons={{ close: true }} onClose={onClose} width={620} headerAlign="center" style={{ maxHeight: 740 }}
+        header={<Segmented variant="tabs" label="Settings" value={tab} onChange={setTab} options={[{ value: "general", label: "General", icon: "settings" },
+          project ? { value: "project", label: project.name, icon: <span className="zk-set-mark"><NamiMark size={14}/></span> } : { value: "project", label: "Project", icon: "folder", disabled: true, title: "Open a project first" }]}/>}>
         <div className="zk-set-scope">
           {tab === "general" ? <>For Zanshin on this Mac · jj settings go to <code>~/.config/jj/config.toml</code></> : <>For {project.name} only · <code>{project.path}/.jj/repo/config.toml</code></>}
         </div>
         <div className="zk-set-bd">
           {tab === "general" ? <>
             <SettingsGroup title="Appearance">
-              <SettingsRow label="Theme"><Segmented variant="inset" label="Theme" value={prefs.theme} onChange={(v) => setPref("theme", v)} options={[{ value: "light", label: "Light", icon: "sun" }, { value: "dark", label: "Dark", icon: "moon" }, { value: "system", label: "Auto", icon: "auto" }]}/></SettingsRow>
+              <SettingsRow label="Theme"><Segmented variant="inset" label="Theme" value={prefs.theme} onChange={(v) => setPref("theme", v)} options={[{ value: "paper", label: "Paper", icon: "sun" }, { value: "night", label: "Night", icon: "moon" }, { value: "system", label: "Auto", icon: "auto" }]}/></SettingsRow>
               <SettingsRow label="Density"><Segmented variant="inset" label="Density" value={prefs.density} onChange={(v) => setPref("density", v)} options={[{ value: "compact", label: "Compact" }, { value: "balanced", label: "Balanced" }, { value: "comfy", label: "Comfy" }]}/></SettingsRow>
+              <SettingsRow label="Accent colour" hint="Selection, focus and controls take the colour from System Settings › Appearance. Gold stays with @ and the primary action."><Segmented variant="inset" label="Accent colour" value={prefs.accent || "macos"} onChange={(v) => setPref("accent", v)} options={[{ value: "macos", label: "Follow macOS" }, { value: "zanshin", label: "Zanshin" }]}/></SettingsRow>
             </SettingsGroup>
             <SettingsGroup title="While you scroll">
               <SettingsRow label="Hide controls" hint="Toolbars and panels step aside while you scroll the graph. The minimap stays."><Switch label="Hide controls while scrolling" checked={prefs.autoHide} onChange={(v) => setPref("autoHide", v)}/></SettingsRow>
@@ -104,7 +112,7 @@ function ZKSettings({ tab, setTab, onClose, prefs, setPref, project }) {
           </>}
         </div>
         <footer className="zk-set-ft">How the graph looks lives with the graph: <b>View options</b> in the toolbar.</footer>
-      </div>
+      </Window>
     </div>
   );
 }

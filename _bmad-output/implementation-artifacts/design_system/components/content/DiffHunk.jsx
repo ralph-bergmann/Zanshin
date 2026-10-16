@@ -37,7 +37,7 @@ export function DiffHunk({ range, oldStart = 1, newStart = 1, context, lines = [
         <code className="zs-hunk-range">{head}</code>
         {context && <span className="zs-hunk-ctx">{context}</span>}
         <span className="zs-hunk-stat">{a > 0 && <span className="a">+{a}</span>}{r > 0 && <span className="r">−{r}</span>}</span>
-        {onGrab && <Icon name="grip-dots" size={10} className="zs-hunk-grip" style={{ height: 12 }} />}
+        {onGrab && <Icon name="grip" size="xs" className="zs-hunk-grip" style={{ height: 12 }} />}
       </div>
       <div className={"zs-diff-body" + (mode === "split" ? " zs-diff-split" : "")}>{body}</div>
     </div>

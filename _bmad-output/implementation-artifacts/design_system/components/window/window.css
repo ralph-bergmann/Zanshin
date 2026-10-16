@@ -1,6 +1,43 @@
-/* TrafficLights — the window's, not the content's: 3 × 12px across the 52px chrome column */
-.zs-traffic{display:flex;align-items:center;justify-content:space-between;width:var(--chrome-col);flex-shrink:0}
-.zs-traffic button{width:12px;height:12px;padding:0;border:0;border-radius:50%;cursor:default;transition:filter var(--dur-hover)}
-.zs-traffic button:hover{filter:brightness(1.4)}
-.zs-traffic .c{background:var(--tl-close)}.zs-traffic .m{background:var(--tl-min)}.zs-traffic .z{background:var(--tl-zoom)}
-.zs-traffic.is-idle button{background:var(--border-strong)}
+/* TrafficLights — a MOCK of the system's window buttons (cards, the UI kit). In the app AppKit draws them and Zanshin never moves
+   them; it reads their frames and lays the top bar out from them (tokens/spacing.css › chrome: first island at block end + 12,
+   the bar centred on the block). Reference geometry (macOS 27): 14 × 14, pitch 23, block 60 wide at x 19–79, centre y 26.
+   Zanshin's one deviation, on purpose: at rest the system buttons are hidden and the app draws grey RINGS (TrafficLightOverlayView,
+   --tl-ring) — also for buttons that are greyed out; hovering the group shows the system's own buttons: enabled ones in their colours
+   with their symbols, disabled ones greyed (--tl-idle). Pressing darkens. No glow, ever. The same at rest in an inactive window. */
+.zs-traffic{display:flex;align-items:center;gap:calc(var(--tl-pitch) - var(--tl-size));width:var(--tl-block-w);flex-shrink:0}
+.zs-traffic button{position:relative;width:var(--tl-size);height:var(--tl-size);padding:0;border:0;border-radius:50%;background:transparent;box-shadow:inset 0 0 0 1px var(--tl-ring);cursor:default;transition:background var(--dur-hover) var(--ease-state),box-shadow var(--dur-hover) var(--ease-state)}
+.zs-traffic button::before,.zs-traffic button::after{content:"";position:absolute;left:3.5px;top:6.35px;width:7px;height:1.3px;border-radius:1px;background:rgba(0,0,0,.52);opacity:0;transition:opacity var(--dur-hover) var(--ease-state)}
+.zs-traffic .c::before{transform:rotate(45deg)}.zs-traffic .c::after{transform:rotate(-45deg)}
+.zs-traffic .m::after{display:none}.zs-traffic .z::after{transform:rotate(90deg)}
+.zs-traffic:is(:hover,.is-hover) button{box-shadow:inset 0 0 0 .5px rgba(0,0,0,.14)}
+.zs-traffic:is(:hover,.is-hover) .c:enabled{background:var(--tl-close)}
+.zs-traffic:is(:hover,.is-hover) .m:enabled{background:var(--tl-min)}
+.zs-traffic:is(:hover,.is-hover) .z:enabled{background:var(--tl-zoom)}
+.zs-traffic:is(:hover,.is-hover) button:enabled::before,.zs-traffic:is(:hover,.is-hover) button:enabled::after{opacity:1}
+.zs-traffic:is(:hover,.is-hover) button:disabled{background:var(--tl-idle);box-shadow:none}
+.zs-traffic button:enabled:active{filter:brightness(.82)}
+
+/* Window — a macOS window of its own: Settings, Projects. The SYSTEM draws its corners, its shadow, its opening and closing; the two
+   literal values below only fake them for mocks. No scrim, no 18px radius, no --shadow-dialog, no entrance — and no ✕ in the content:
+   the red button closes it. The fill is borderless and opaque: --fl-sheen over --fl-bg-solid (no vibrancy — the canvas is Zanshin's
+   own indigo, and every contrast here is measured on solid surfaces; Reduce transparency changes nothing).
+   Header: --window-hd-h (52) shares its row with the traffic lights; the title starts at block end + 12 and everything in it centres on
+   the block's centre line (--tl-mid-y). Its empty space drags the window. A hairline separates it from the content. */
+.zs-win{position:relative;display:flex;flex-direction:column;overflow:hidden;border-radius:12px;/* mock: the system's corner */background:var(--fl-sheen),var(--fl-bg-solid);color:var(--text);box-shadow:0 0 0 .5px rgba(0,0,0,.45),0 24px 64px -16px rgba(0,0,0,.5);/* mock: the system's shadow (the same in both appearances) */}
+.zs-win-hd{position:relative;flex-shrink:0;display:flex;align-items:center;gap:12px;height:var(--window-hd-h);padding:0 var(--chrome-inset) 0 var(--chrome-first-x);border-bottom:1px solid var(--fl-border)}
+.zs-win-hd>.zs-traffic{position:absolute;left:var(--tl-x);top:calc(var(--tl-mid-y) - var(--tl-size) / 2)}
+.zs-win-hd>*:not(.zs-traffic){margin-top:calc((var(--tl-mid-y) - var(--window-hd-h) / 2) * 2)}
+.zs-win-title{margin:0;font:600 var(--fs-base)/1.2 var(--font-sans);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.zs-win.is-inactive .zs-win-title{color:var(--text-dim)}
+.zs-win-grow{flex:1;align-self:stretch}
+/* centred header (Settings: the tabs sit in the middle of the window, the title is hidden — the system still knows it) */
+.zs-win-hd.is-center{justify-content:center;padding-left:var(--chrome-first-x);padding-right:var(--chrome-first-x)}
+.zs-win-bd{flex:1;min-height:0;display:flex}
+.zs-win-side{display:flex;flex-direction:column;flex-shrink:0;min-height:0;border-right:1px solid var(--fl-border)}
+.zs-win-main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
+/* with a sidebar (Projects) the sidebar begins under the traffic lights: the header runs across the main column only */
+.zs-win.has-side{flex-direction:row}
+.zs-win.has-side>.zs-win-side{padding-top:var(--window-hd-h)}
+.zs-win.has-side>.zs-win-col{flex:1;min-width:0;display:flex;flex-direction:column}
+.zs-win.has-side .zs-win-hd{padding-left:var(--chrome-inset)}
+.zs-win.has-side>.zs-traffic{position:absolute;z-index:1;left:var(--tl-x);top:calc(var(--tl-mid-y) - var(--tl-size) / 2)}

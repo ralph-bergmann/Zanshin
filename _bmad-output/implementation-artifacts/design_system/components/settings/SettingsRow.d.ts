@@ -1,6 +1,6 @@
 import * as React from "react";
 
-/** One setting: label, optional hint and config key on the left, the control on the right (min 46px). */
+/** One setting: label, optional hint and config key on the left, the control on the right (min 46px). States: none of its own — its control's; stack. */
 export interface SettingsRowProps {
   label: React.ReactNode;
   /** one plain sentence on what changes */

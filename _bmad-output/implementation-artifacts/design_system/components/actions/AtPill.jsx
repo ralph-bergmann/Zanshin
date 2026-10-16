@@ -9,7 +9,7 @@ export function AtPill({ direction = "down", label = "Working copy", className =
     <button type="button" className={("zs-atpill dir-" + direction + " " + className).trim()} title="Scroll to the working copy" {...rest}>
       <AtBadge />
       <span>{label}</span>
-      <Icon name="arrow-up" size={14} />
+      <Icon name="arrow-up" size="md" />
     </button>
   );
 }

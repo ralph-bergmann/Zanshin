@@ -1,5 +1,4 @@
 .zs-icon{display:inline-block;flex-shrink:0;vertical-align:middle;overflow:visible}
 .zs-mark{display:block;flex-shrink:0}
-.zs-mark-chip{display:grid;flex-shrink:0;box-shadow:0 0 0 .5px rgba(255,255,255,.16),0 1px 3px rgba(0,0,0,.35)}
-[data-theme="light"] .zs-mark-chip{box-shadow:0 0 0 .5px rgba(58,46,34,.22),0 1px 3px rgba(58,46,34,.22)}
+.zs-mark-chip{display:grid;flex-shrink:0;box-shadow:var(--shadow-mark)}
 .zs-wordmark{display:block;overflow:visible}

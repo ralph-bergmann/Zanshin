@@ -1,0 +1,58 @@
+<!-- @dsCard group="Components" viewport="1240x640" name="Resizable inspector and panels" subtitle="ResizeEdge — the grab zone on the edge toward the graph: 10px (7 in the gap), the line after a beat, min / max as tokens, 320 of graph always visible, double-click resets" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>
+body{margin:0;padding:20px 24px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text);font-family:var(--font-sans)}
+.stage{position:relative;height:440px;border-radius:12px;overflow:hidden;background:var(--canvas);box-shadow:0 0 0 1px var(--border-strong)}
+.rail{position:absolute;left:12px;top:60px;bottom:12px;width:52px}
+.panel,.ins{position:absolute;top:60px;bottom:12px}
+.panel{left:76px}.ins{right:12px}
+.hd{display:flex;align-items:center;gap:8px;padding:14px 16px 10px;font-size:var(--fs-base);font-weight:600}
+.num{font:var(--fs-sm) var(--font-mono);color:var(--text-dim);font-weight:400;font-variant-numeric:tabular-nums}
+.graph{position:absolute;top:60px;bottom:12px;display:grid;place-items:center;border:1px dashed var(--border-strong);border-radius:10px;font:var(--fs-sm) var(--font-mono);color:var(--text-dim)}
+.notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px}
+.p{margin:0;font-size:12px;line-height:1.55;color:var(--text-muted);text-wrap:pretty}.p b{color:var(--text);font-weight:600}
+code{font:11px var(--font-mono);color:var(--text)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { Island, ResizeEdge } = window.ZanshinDesignSystem_a33847;
+  const W = 1192, RAIL_R = 76, EDGE = 12, GRAPH_MIN = 320;
+  function Demo() {
+    const [pan, setPan] = React.useState(300), [ins, setIns] = React.useState(400);
+    const gl = RAIL_R + pan + EDGE, gr = ins + EDGE * 2;
+    return (
+      <div>
+        <div className="stage" style={{ width: W }}>
+          <Island shape="panel" className="rail" aria-hidden="true"></Island>
+          <Island shape="panel" className="panel" style={{ width: pan }}><div className="hd">Bookmarks <span className="num">{pan} pt</span></div></Island>
+          <ResizeEdge className="st-hover" side="right" at={RAIL_R + pan} top={60} bottom={12} value={pan} min={240} max={440} defaultValue={300}
+            limit={W - RAIL_R - EDGE - GRAPH_MIN - gr} label="Panel width" onChange={setPan}/>
+          <div className="graph" style={{ left: gl, right: gr }}>graph · {W - gl - gr} pt (≥ 320)</div>
+          <Island shape="panel" className="ins" style={{ width: ins }}><div className="hd">Change details <span className="num">{ins} pt</span></div></Island>
+          <ResizeEdge side="left" at={EDGE + ins} top={60} bottom={12} value={ins} min={380} max={720} defaultValue={460}
+            limit={W - gl - EDGE * 2 - GRAPH_MIN} label="Inspector width" onChange={setIns}/>
+        </div>
+        <div className="notes">
+          <p className="p"><b>Grab zone</b> — 10pt on the edge toward the graph, 7 of it in the 12pt gap, the 16pt corners left out. The panel’s edge shows its <b>hover line</b> (2pt <code>--edge-hov</code>, after <code>--delay-resize</code> 150); the inspector’s is at rest — hover or drag it.</p>
+          <p className="p"><b>Widths</b> — inspector <code>--inspector-w</code> 460 (380 – 720), panels <code>--panel-w</code> 300 (240 – 440), one width each, remembered app-wide. Double-click resets. At a limit the cursor shows the one way left.</p>
+          <p className="p"><b>The window</b> — at least <code>--graph-min-w</code> 320 of graph: a drag stops there; a narrower window shrinks the islands to their minimum first, then the panel detaches. Keys: ← → 10 (⇧ 50), Home / End, ↩ default.</p>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

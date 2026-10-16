@@ -1,22 +1,31 @@
 /* Overlays — transient layers above the graph: the undo toast, the hover peek, the drag ghost */
 
 /* Toast */
-.zs-toast{display:flex;width:max-content;max-width:100%;align-items:center;gap:8px;height:38px;padding:0 5px 0 15px;border-radius:var(--radius-pill);background:var(--fl-sheen),var(--fl-bg-strong);border:1px solid var(--fl-border);box-shadow:var(--fl-shadow);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);font-size:var(--fs-control);color:var(--text);white-space:nowrap;animation:zs-toast-in 280ms var(--ease-glide) both}
-@keyframes zs-toast-in{from{opacity:0;transform:translateY(10px)}}
+.zs-toast{display:flex;width:max-content;max-width:100%;align-items:center;gap:8px;height:var(--control-lg);padding:0 5px 0 15px;border-radius:var(--radius-pill);background:var(--fl-sheen),var(--fl-bg-strong);border:1px solid var(--fl-border);box-shadow:var(--fl-shadow);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);font-size:var(--fs-control);color:var(--text);white-space:nowrap;animation:zs-toast-in var(--dur-slide) var(--ease-glide) both}
+@keyframes zs-toast-in{from{opacity:0;transform:translateY(calc(10px * var(--motion)))}}
 .zs-toast-t{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* tones — success (the default: what happened + Undo) · warn (refused: nothing changed) · error (failed: Retry, stays until dismissed).
+   success and warn hide after --dur-toast-hold (6.5s, paused while hovered) */
+.zs-toast-ic{display:grid;place-items:center;flex-shrink:0;margin-left:-3px}
+.zs-toast.is-warn .zs-toast-ic{color:var(--warn)}
+.zs-toast.is-error .zs-toast-ic{color:var(--rem)}
+/* one toast at a time: a new one replaces the current — the old fades out in place (--dur-exit), the new rises in (--dur-slide) */
+.zs-toast.is-closing{animation:zs-toast-out var(--dur-exit-lg) var(--ease-exit) both;pointer-events:none}
+.zs-toast.is-replaced{animation:zs-out var(--dur-exit) var(--ease-exit) both;pointer-events:none}
 .zs-toast-t .zs-cid{vertical-align:-1px}
-.zs-toast-t code{font:600 12px var(--font-mono)}
-.zs-toast-undo{flex-shrink:0;height:28px;padding:0 13px;margin-left:4px;border:0;border-radius:var(--radius-pill);font:inherit;font-size:var(--fs-control);font-weight:500;color:var(--text);background:var(--fl-hover);cursor:default;transition:background var(--dur-hover)}
-.zs-toast-undo:hover{background:var(--fl-on)}
-.zs-toast-x{flex-shrink:0;width:26px;height:26px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;background:none;color:var(--text-dim);cursor:default}
+.zs-toast-t code{font:600 var(--fs-md) var(--font-mono)}
+.zs-toast-undo{flex-shrink:0;height:var(--control-sm);padding:0 13px;margin-left:4px;border:0;border-radius:var(--radius-pill);font:inherit;font-size:var(--fs-control);font-weight:500;color:var(--text);background:var(--fl-hover);cursor:default;transition:background var(--dur-hover) var(--ease-state)}
+.zs-toast-undo:hover,.zs-toast-undo.st-hover{background:var(--fl-on)}
+.zs-toast-undo:active,.zs-toast-undo.st-press{background:var(--fl-press)}
+.zs-toast-x{flex-shrink:0;width:var(--control-sm);height:var(--control-sm);padding:0;border:0;border-radius:50%;display:grid;place-items:center;background:none;color:var(--text-dim);cursor:default}
 .zs-toast-x:hover{background:var(--fl-hover);color:var(--text)}
-.zs-toast-undo:focus-visible,.zs-toast-x:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.zs-toast-x:active{background:var(--fl-on);color:var(--text)}
 
-/* PeekCard */
-.zs-peek{width:340px;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;padding:12px 14px 10px;background:var(--bg-elevated);border:1px solid var(--border-strong);border-radius:var(--radius-card);box-shadow:var(--shadow-popover);color:var(--text);text-align:left;cursor:default}
-.zs-peek-subj{font-size:13px;font-weight:600;line-height:1.35;color:var(--text);text-wrap:pretty;white-space:normal}
-.zs-peek-desc{font-size:12px;line-height:1.45;color:var(--text-dim);white-space:pre-line;text-wrap:pretty}
-.zs-peek-meta{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;font-size:11.5px;color:var(--text-dim)}
+/* PeekCard — the one menu material: 13px, --fl-sheen over --fl-bg-solid, --fl-border, --shadow-menu. Opens after --delay-peek (450ms). */
+.zs-peek{width:340px;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;padding:12px 14px 10px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);border-radius:var(--radius-popover);box-shadow:var(--shadow-menu);color:var(--text);text-align:left;cursor:default}
+.zs-peek-subj{font-size:var(--fs-base);font-weight:600;line-height:1.35;color:var(--text);text-wrap:pretty;white-space:normal}
+.zs-peek-desc{font-size:var(--fs-md);line-height:1.45;color:var(--text-dim);white-space:pre-line;text-wrap:pretty}
+.zs-peek-meta{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;font-size:var(--fs-id);color:var(--text-dim)}
 .zs-peek-dim{color:var(--text-faint);font-family:var(--font-mono)}
 .zs-peek-stats{display:flex;gap:10px;align-items:center;font:var(--fs-sm) var(--font-mono);padding-top:8px;border-top:1px solid var(--border)}
 .zs-peek-stats .fa,.zs-peek-stats .la{color:var(--add)}
@@ -26,20 +35,29 @@
 .zs-peek-hint{padding:8px 0 0;border-top:1px solid var(--border);font-size:var(--fs-sm);color:var(--text-dim)}
 
 /* DragGhost */
-.zs-ghost{pointer-events:none;transition:opacity 140ms}
+.zs-ghost{pointer-events:none;transition:opacity var(--dur-hover) var(--ease-state)}
 .zs-ghost.is-muted{opacity:.3}
-.zs-ghost-card{display:flex;align-items:center;gap:8px;width:max-content;max-width:280px;height:34px;padding:0 12px;border-radius:var(--radius-card);background:var(--card-solid-hi);border:1px solid var(--accent);box-shadow:var(--shadow-drag);font-size:var(--fs-control);font-weight:500;color:var(--text);rotate:-1.5deg}
+.zs-ghost-card{display:flex;align-items:center;gap:8px;width:max-content;max-width:280px;height:34px;padding:0 12px;border-radius:var(--radius-card);background:var(--card-solid-hi);border:1px solid var(--accent-line);box-shadow:var(--shadow-drag);font-size:var(--fs-control);font-weight:500;color:var(--text);rotate:-1.5deg}
 .zs-ghost-card .zs-cid{flex-shrink:0}
 .zs-ghost-subj{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.zs-ghost-subj.is-mono{font:12px var(--font-mono)}
+.zs-ghost-subj.is-mono{font:var(--fs-md) var(--font-mono)}
 .zs-ghost-card.is-bm{height:28px;padding:0 12px 0 9px;border-radius:var(--radius-pill);gap:6px}
 .zs-ghost-card.is-bm>.zs-icon{color:var(--text-muted);flex-shrink:0}
-.zs-ghost-bm{font:600 12px var(--font-mono);white-space:nowrap}
+.zs-ghost-bm{font:600 var(--fs-md) var(--font-mono);white-space:nowrap}
 .zs-ghost-rest{font:var(--fs-id) var(--font-mono);color:var(--text-dim);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .zs-ghost-card.is-diff{gap:9px}
 .zs-ghost-card .zs-file-status{flex-shrink:0}
 .zs-ghost-stat{display:flex;gap:6px;font:var(--fs-sm) var(--font-mono);flex-shrink:0}
 .zs-ghost-stat .a{color:var(--add)}.zs-ghost-stat .r{color:var(--rem)}
-.zs-ghost-cmd{display:flex;flex-direction:column;gap:3px;width:max-content;max-width:340px;margin-top:8px;padding:7px 10px;border-radius:var(--radius-md);background:var(--bg-elevated);border:1px solid var(--border-strong);font:var(--fs-id) var(--font-mono);color:var(--text-muted);box-shadow:0 10px 24px -12px rgba(0,0,0,.5)}
-.zs-ghost-cmd.is-on{color:var(--text);border-color:var(--accent)}
+/* the command a drop would run — the tooltip build (it is a label that follows the pointer): --tooltip-bg, --tooltip-border, --shadow-tooltip */
+.zs-ghost-cmd{display:flex;flex-direction:column;gap:3px;width:max-content;max-width:340px;margin-top:8px;padding:7px 10px;border-radius:var(--radius-chip);background:var(--tooltip-bg);border:1px solid var(--tooltip-border);font:var(--fs-id) var(--font-mono);color:var(--text-muted);box-shadow:var(--shadow-tooltip)}
+.zs-ghost-cmd.is-on{color:var(--text);border-color:var(--accent-line)}
 .zs-ghost-alt{font:var(--fs-sm) var(--font-sans);color:var(--text-dim)}
+
+/* StaleNotice — "Working copy is stale": a glass island top-centre over the graph while the state lasts */
+.zs-stale{display:inline-flex;align-items:center;gap:9px;height:var(--control-xl);padding:0 7px 0 16px;border-radius:var(--radius-pill);background:var(--fl-sheen),var(--fl-bg);border:1px solid var(--fl-border);box-shadow:var(--fl-shadow);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);color:var(--text);font-size:var(--fs-control);white-space:nowrap;animation:zs-fade var(--dur-panel) var(--ease-state) both}
+.zs-stale-ic{flex-shrink:0;color:var(--warn)}
+.zs-stale-t{font-weight:500}
+.zs-stale-sep{color:var(--text-faint)}
+.zs-stale-cmd{font:var(--fs-id) var(--font-mono);color:var(--text-muted)}
+.zs-stale>.zs-btn{margin-left:4px}

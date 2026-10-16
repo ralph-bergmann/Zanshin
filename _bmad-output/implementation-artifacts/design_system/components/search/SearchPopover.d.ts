@@ -1,14 +1,16 @@
 import * as React from "react";
 
-/** The suggestions popover under the graph search (540px min, menu material, radius 12). */
+/** The suggestions popover under the graph search (540px min, the one menu material, radius 13) — a field-attached list: focus stays in the field. States: open · keyboard row (aria-activedescendant) · empty (one sentence) · closing (fade). */
 export interface SearchPopoverProps extends React.HTMLAttributes<HTMLDivElement> {
   /** a line above the rows, e.g. 'No author matches “xyz” — found elsewhere:' */
   note?: React.ReactNode;
   /** shown when nothing matches, e.g. 'Nothing matches “xyz” — in any scope.' */
   empty?: React.ReactNode;
-  /** what Enter does for the highlighted row: the command (Filter) or the go-to sentence (Select / Show) */
+  /** what Enter does for the keyboard row: the command (Filter) or the go-to sentence (Select / Show) */
   footer?: { text: React.ReactNode; verb?: string };
   listRef?: React.Ref<HTMLDivElement>;
+  /** id of the listbox (the field's aria-controls); rows are listId-<index> by convention */
+  listId?: string;
   children?: React.ReactNode;
 }
 export declare function SearchPopover(props: SearchPopoverProps): JSX.Element;
@@ -16,7 +18,7 @@ export declare function SearchPopover(props: SearchPopoverProps): JSX.Element;
 /** Group header: small caps; quiet note (em) or action (Clear) on the right. */
 export declare function SearchGroup(props: { label: React.ReactNode; note?: React.ReactNode; action?: string; onAction?: () => void }): JSX.Element;
 
-/** One 34px suggestion row. */
+/** One 34px suggestion row. States: rest · hover (--fl-hover) · pressed (--fl-on) · keyboard row (active: --accent-soft, icon in accent). */
 export interface SearchRowProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onClick" | "onMouseMove"> {
   /** Icon name (change, bookmark, user, file, folder, description, search) or a node (SearchAvatar) */
   icon?: string | React.ReactNode;
@@ -36,7 +38,9 @@ export interface SearchRowProps extends Omit<React.HTMLAttributes<HTMLDivElement
   dim?: boolean;
   /** right column: counts (tabular), author · date, "not in view" */
   meta?: React.ReactNode;
-  /** keyboard/hover highlight: --accent-soft, icon in moon */
+  /** the keyboard row: --accent-soft, icon in accent (give it an id for the field's aria-activedescendant). Hover is --fl-hover and does not move it. */
+  active?: boolean;
+  /** @deprecated — use active */
   highlighted?: boolean;
   /** "3 more in Files" row — chevron on the right */
   more?: boolean;

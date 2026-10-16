@@ -1,0 +1,100 @@
+/* ============================================================
+   ZANSHIN — control states (readme › Control states)
+   One model for every control: rest → hover → pressed is one fill step each; on/selected, mixed, focus, disabled, error, busy, read-only.
+   Every value is fixed (hex / rgba / px) — no color-mix — so Flutter can take each token 1:1. Night first, paper below.
+   Secondary text on any fill takes the next rung (components/base.css): hover faint → dim · on / pressed / selected dim, faint → muted.
+   ============================================================ */
+:root,[data-theme="night"]{
+  /* ---- fill ladder for neutral controls (buttons, icon buttons, segments, chips, rows) ---- */
+  --fl-press:rgba(255,255,255,.15);/* pressed, momentary — one step above hover */
+  --fl-on-hover:rgba(255,255,255,.13);/* toggled-on + hover */
+  /* filled accent controls (switch on, checkbox on, radio on): hover/press lay one overlay over --accent */
+  --fill-on-hover:rgba(255,255,255,.14);--fill-on-press:rgba(255,255,255,.26);
+  --add-ink:#06210f;/* the Viewed check on --add */
+  /* the inset well under text fields and the pop-up button; the darker track of the inset segmented (inside a settings row) */
+  --field-bg:rgba(8,10,22,.45);--seg-inset-bg:rgba(0,0,0,.2);
+
+  /* ---- focus: one rule — a 2px --focus-ring outline 2px outside; rows and flush segments draw it 2px inside ---- */
+  --focus-w:2px;/* @kind spacing */
+  --focus-offset:2px;/* @kind spacing */
+  --focus-offset-inset:-2px;/* @kind spacing */
+  --focus-offset-card:3px;/* @kind spacing */ /* graph cards: clears the 3px selection halo */
+  --focus-settle:3px;/* @kind spacing */ /* the ring starts this much farther out and settles in */
+  --field-halo:3px;/* @kind spacing */ /* text entry: moon border + 3px --accent-ring */
+
+  /* ---- disabled: one value, the whole control ---- */
+  --disabled-opacity:.4;/* @kind other */
+
+  /* ---- gold primary — one recipe for sm / md / lg; lg only adds the glass base it floats on ---- */
+  --primary-fill-a:rgba(220,168,91,.22);--primary-fill-b:rgba(220,168,91,.08);
+  --primary-fill-a-hover:rgba(220,168,91,.30);--primary-fill-b-hover:rgba(220,168,91,.12);
+  --primary-fill-a-press:rgba(220,168,91,.38);--primary-fill-b-press:rgba(220,168,91,.17);
+  --primary-ring:rgba(220,168,91,.55);/* 3.2:1 on the card */--primary-ring-hover:#dca85b;--primary-icon:#dca85b;
+
+  /* ---- destructive (filled) — the confirmation's button: the primary's build in red ---- */
+  --destructive-fill-a:rgba(248,113,113,.30);--destructive-fill-b:rgba(248,113,113,.14);
+  --destructive-fill-a-hover:rgba(248,113,113,.38);--destructive-fill-b-hover:rgba(248,113,113,.20);
+  --destructive-fill-a-press:rgba(248,113,113,.46);--destructive-fill-b-press:rgba(248,113,113,.26);
+  --destructive-ring:rgba(248,113,113,.70);/* 3.5:1 */--destructive-ring-hover:#f87171;
+
+  /* ---- danger (quiet) — buttons and menu rows: red text at rest, a red TINT on hover, never a solid red fill ---- */
+  --danger-hover:rgba(248,113,113,.10);/* --rem text on it 4.5:1 at the top of a menu's sheen (#24293e), 5.1 on the menu (was .15: 4.16 under the sheen) */--danger-press:rgba(248,113,113,.15);
+
+  /* ---- tinted on-states (toggle chip, not chip, the Configurations dialog's ~ and -i): a tint + coloured text at rest; hover and press
+     step the tint and the label turns --text (coloured text on a stronger tint falls under 4.5 — rem on .20 is 4.3). Accent: soft → soft-hi → ring. ---- */
+  --rem-bg-hover:rgba(248,113,113,.20);--rem-bg-press:rgba(248,113,113,.26);
+  /* ---- error / invalid ---- */
+  --error:#f87171;--error-ring:rgba(248,113,113,.30);
+
+  /* ---- thumbs (slider; the switch knob uses --text-dim / --accent-ink) ---- */
+  --thumb:#f4f5fa;--thumb-edge:rgba(8,10,22,.35);
+  --thumb-shadow:0 1px 3px rgba(0,0,0,.5);
+  --thumb-shadow-hover:0 1px 4px rgba(0,0,0,.6),0 0 0 3px rgba(255,255,255,.06);
+  --track:rgba(255,255,255,.14);--track-hover:rgba(255,255,255,.2);--track-edge:transparent;--track-edge-hover:transparent;/* edges only with increased contrast */--tick:rgba(255,255,255,.22);
+  /* the progress bar's groove: lighter than the slider track so its fill (--accent-line) keeps 3:1 against it in every family (min 3.3) */
+  --progress-track:rgba(255,255,255,.10);
+
+  /* ---- overlay scrollbar ---- */
+  --scroll-thumb:rgba(255,255,255,.22);--scroll-thumb-hover:rgba(255,255,255,.34);--scroll-thumb-drag:rgba(255,255,255,.44);--scroll-track:rgba(255,255,255,.05);
+  --scroll-w:6px;/* @kind spacing */--scroll-w-hover:10px;/* @kind spacing */--scroll-gutter:14px;/* @kind spacing */
+
+  /* ---- tooltip ---- */
+  --tooltip-bg:#262c48;/* --text 11.3:1 · --text-dim 4.8:1 */--tooltip-border:rgba(255,255,255,.12);
+  --shadow-tooltip:0 8px 22px -8px rgba(0,0,0,.6),0 1px 3px rgba(0,0,0,.3);
+
+  /* ---- pending ---- */
+  --skeleton:rgba(255,255,255,.06);--skeleton-hi:rgba(255,255,255,.11);
+
+  /* ---- text selection. Flutter takes the macOS highlight (NSColor.selectedTextBackgroundColor — also for "Other…"), resolved in the
+     appearance that matches Zanshin's theme (Night → darkAqua, Paper → aqua); inactive window or unfocused field →
+     NSColor.unemphasizedSelectedTextBackgroundColor. These tokens are the fallback (no system value) and the web reference. ---- */
+  --selection-text:var(--text);/* every selected glyph turns --text — dim, faint, mono, diff colours included (like selectedTextColor) */
+  --selection-text-alt:#141831;/* only if --text falls below 4.5:1 on a custom ("Other…") highlight: take whichever is higher */
+  --select-inactive:rgba(231,233,242,.16);/* fallback for the unemphasized selection — --text 8.6:1 */
+}
+[data-theme="paper"],[data-theme="light"]{
+  --fl-press:rgba(58,46,34,.14);--fl-on-hover:rgba(58,46,34,.12);
+  --fill-on-hover:rgba(0,0,0,.10);--fill-on-press:rgba(0,0,0,.18);
+  --add-ink:#ffffff;
+  --field-bg:rgba(255,255,255,.9);--seg-inset-bg:rgba(58,46,34,.07);
+  --primary-fill-a:rgba(160,102,5,.20);--primary-fill-b:rgba(160,102,5,.07);
+  --primary-fill-a-hover:rgba(160,102,5,.27);--primary-fill-b-hover:rgba(160,102,5,.11);
+  --primary-fill-a-press:rgba(160,102,5,.34);--primary-fill-b-press:rgba(160,102,5,.15);
+  --primary-ring:rgba(160,102,5,.80);/* 3.3:1 — the night 55% falls to 2.2:1 on paper */--primary-ring-hover:#a06605;--primary-icon:#a06605;
+  --destructive-fill-a:rgba(194,58,58,.16);--destructive-fill-b:rgba(194,58,58,.07);
+  --destructive-fill-a-hover:rgba(194,58,58,.22);--destructive-fill-b-hover:rgba(194,58,58,.11);
+  --destructive-fill-a-press:rgba(194,58,58,.28);--destructive-fill-b-press:rgba(194,58,58,.15);
+  --destructive-ring:rgba(194,58,58,.80);/* 3.8:1 */--destructive-ring-hover:#c23a3a;
+  --danger-hover:rgba(194,58,58,.09);/* --rem 4.6:1 */--danger-press:rgba(194,58,58,.13);
+  --rem-bg-hover:rgba(194,58,58,.14);--rem-bg-press:rgba(194,58,58,.19);
+  --error:#c23a3a;--error-ring:rgba(194,58,58,.22);
+  --thumb:#ffffff;--thumb-edge:#958d85;/* 3.2:1 on the card — a white knob needs its edge on paper */
+  --thumb-shadow:0 1px 3px rgba(58,46,34,.28);
+  --thumb-shadow-hover:0 1px 4px rgba(58,46,34,.36),0 0 0 3px rgba(58,46,34,.06);
+  --track:rgba(58,46,34,.18);--track-hover:rgba(58,46,34,.26);--tick:rgba(58,46,34,.3);--progress-track:rgba(58,46,34,.12);/* fill ≥ 3.1 (orange line) */
+  --scroll-thumb:rgba(58,46,34,.28);--scroll-thumb-hover:rgba(58,46,34,.4);--scroll-thumb-drag:rgba(58,46,34,.5);--scroll-track:rgba(58,46,34,.05);
+  --tooltip-bg:#ffffff;--tooltip-border:rgba(58,46,34,.18);
+  --shadow-tooltip:0 8px 22px -8px rgba(58,46,34,.3),0 1px 3px rgba(58,46,34,.12);
+  --skeleton:rgba(58,46,34,.07);--skeleton-hi:rgba(58,46,34,.12);
+  --selection-text-alt:#ffffff;--select-inactive:rgba(58,46,34,.12);/* --text 12.1:1 */
+}

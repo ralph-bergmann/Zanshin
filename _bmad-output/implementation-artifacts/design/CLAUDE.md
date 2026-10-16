@@ -7,5 +7,6 @@
 - Before changing the app, archive the current state first: copy the floating client's files (`JJ Desktop Client Floating.html` + every file it loads) into `archive/vN <Name>/`.
 - App icon / brand mark: **Nami** (the three gold waves on indigo, `icons/zanshin-icon-04-nami-indigo.svg`). The enso is retired.
 - Accent system: gold = @ (working copy) + the one primary action; moon (`--accent`) = selection, focus, controls.
+- Windows (design system › Windows, sync #10): Settings and Projects are windows of their own above the project window (`windows.jsx` + `windows.css`, key window + inactive state); jj log Configurations and Push (`push-dialog.jsx` + `push.css`) stay sheets. The old dialogs (`settings.jsx › SettingsWindow`, `app-shared.jsx › HomeDialog`) remain only for the docked client and Search Study.
 - Design system: lives in its own project, **Zanshin Design System** (`a33847c9-000b-4914-ae7f-6291f117e05f`), read-only from here. Whenever the floating client's visual system changes (new or changed component, token, pattern, rule), append a numbered entry to `DESIGN-SYSTEM-SYNC.md` in the same turn — what changed, which app files/classes, what the design system should add or update. Never edit old entries.
 - Fonts: the client self-hosts Inter + JetBrains Mono via `fonts.css` → `assets/fonts/` (same files as the design system).

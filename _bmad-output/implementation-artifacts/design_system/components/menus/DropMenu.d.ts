@@ -14,7 +14,7 @@ export interface DropAction {
   /** items of different groups get a hairline between them: move · place · combine · copy */
   group?: string;
 }
-/** Menu over a drop target while dragging a change, bookmark, file or hunk. */
+/** Menu over a drop target while dragging a change, bookmark, file or hunk. States: open (after --delay-drop-menu) · active row (solid accent) · above / below · closing. */
 export interface DropMenuProps {
   items: DropAction[];
   /** index of the highlighted (default) action */

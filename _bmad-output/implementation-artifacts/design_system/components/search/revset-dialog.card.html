@@ -1,10 +1,10 @@
-<!-- @dsCard group="Components" viewport="920x1020" name="jj log Configurations" subtitle="RevsetDialog — selectable built-ins, the Default search switch and tag, filters, the full command" -->
+<!-- @dsCard group="Components" viewport="1840x700" name="jj log Configurations" subtitle="RevsetDialog — a window of its own: selectable built-ins, the Default search switch and tag, filters, the full command; inactive; Discard changes?" -->
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <link rel="stylesheet" href="../../styles.css"/>
-<style>body{margin:0;padding:16px 20px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.col{display:flex;flex-direction:column;gap:10px}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);margin-top:6px}</style>
+<style>body{margin:0;padding:16px 20px;background:var(--canvas);min-height:100vh;box-sizing:border-box;color:var(--text)}.col{display:grid;grid-template-columns:repeat(2,880px);gap:10px 32px;align-items:start}.lbl{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);margin-top:6px}</style>
 </head>
 <body>
 <div id="root"></div>
@@ -21,18 +21,19 @@
     { id: "c-fix", name: "My fixes", op: "&", rules: [{ fn: "mine", not: false }, { fn: "subject", mode: "glob", value: "fix*", not: false }] },
   ];
   const COUNT = { default: 33, all: 35, "c-onb": 7, "c-lena": 12, "c-fix": 1 };
-  function One({ sel0, home0 }) {
-    const [configs, setConfigs] = React.useState(SEED), [sel, setSel] = React.useState(sel0), [home, setHome] = React.useState(home0);
+  function One({ sel0, home0, active = true, ask0 = false, edited = false }) {
+    const [configs, setConfigs] = React.useState(edited ? SEED.map((c) => (c.id === "c-fix" ? { ...c, name: "My fixes this week" } : c)) : SEED), [sel, setSel] = React.useState(sel0), [home, setHome] = React.useState(home0);
+    const [ask, setAsk] = React.useState(ask0);
     const dirty = configs !== SEED || home !== home0;
-    return <RevsetDialog style={{ height: 452 }} configs={configs} selected={sel} defaultId={home} me="Ralph Stein" matchCount={COUNT[sel] != null ? COUNT[sel] : 0} total={35} dirty={dirty}
-      onSelect={setSel} onDefaultChange={setHome} onChange={setConfigs} onCancel={() => { setConfigs(SEED); setHome(home0); }} onApply={() => {}} onOk={() => {}} onClose={() => {}}/>;
+    return <RevsetDialog height={580} active={active} project="zanshin-app" configs={configs} selected={sel} defaultId={home} me="Ralph Stein" matchCount={COUNT[sel] != null ? COUNT[sel] : 0} total={35} dirty={dirty}
+      discarding={ask} onDiscarding={setAsk} onSelect={setSel} onDefaultChange={setHome} onChange={setConfigs} onCancel={() => { setConfigs(SEED); setHome(home0); }} onApply={() => {}} onOk={() => {}}/>;
   }
   const Demo = () => (
     <div className="col">
-      <div className="lbl">A built-in selected — jj log is the default, its switch locked on</div>
-      <One sel0="default" home0="default"/>
-      <div className="lbl">A configuration selected — another one is the default search</div>
-      <One sel0="c-fix" home0="c-onb"/>
+      <div className="lbl">A built-in selected — jj log is the default, its switch locked on · inactive: the graph is key</div>
+      <div className="lbl">A configuration edited — Esc, ⌘W or the red button asks first</div>
+      <One sel0="default" home0="default" active={false}/>
+      <One sel0="c-fix" home0="c-onb" edited ask0/>
     </div>
   );
   ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);

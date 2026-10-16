@@ -6,7 +6,7 @@ Click-through recreation of **`JJ Desktop Client Floating.html`** from the Zansh
 
 | File | What |
 |---|---|
-| `index.html` | Entry. `?projects` opens the Projects dialog on load (as the client does), `?settings=general|project` opens Settings, `?theme=light|system` |
+| `index.html` | Entry. `?projects` opens the Projects dialog on load (as the client does), `?settings=general|project` opens Settings, `?theme=paper|system` (`light` still works), `?accent=blue|purple|pink|red|orange|yellow|green|graphite` simulates the macOS accent choice (Settings › General › Accent colour: Follow macOS · Zanshin) |
 | `data.js` | The client's sample repo (MyApp, default `jj log` view), the Projects tree (`HOME_TREE`), built-in revsets, the client's three jj log configurations (rule-based), op log. Hunks for files without hand-written diffs are generated deterministically |
 | `layout.js` | The client's layout engine (graph-layout.jsx), ported: **Free** rows (default — gaps follow commit time, log-damped, capped at 3 pitches, an edge ≥ 1 pitch) and **Compact** rows (generation depth); columns shared by both layouts; one line per parent → child pair with own exits/entries (`GraphPorts`), nested tracks, gutter detours and bridges; the Free day axis |
 | `graph.jsx` | Stack folding (linear runs, never across a gap), the plane (cards, the router's lines, gap marks, end stubs, `DayAxis`, peek, stack popover), minimap (Free: the day axis's labels; Compact: one label per row) |
@@ -16,11 +16,16 @@ Click-through recreation of **`JJ Desktop Client Floating.html`** from the Zansh
 | `dialogs.jsx` | Projects dialog (tree, search, open marker) and the Settings window (General · Project) |
 | `app.jsx` | Repo state + jj operations, revsets (default search, configurations, `RevsetDialog`), go-to, drag-and-drop with the drop menu, undo toast, calm scrolling, keyboard |
 
+## Control states
+
+The kit picks up the control library through the components: pressed states and the one focus ring everywhere, the gold primary in one recipe (top bar, inspector, dialogs), the custom pop-up `Select` in Settings › Project, the Fetch badge, the accent setting. Try `?accent=green&settings=general`.
+
 ## Try
 
-- Click a card → inspector; double-click → `jj edit`; right-click or ••• → context menu.
+- Click a card → inspector; double-click → `jj edit`; right-click or ••• → context menu. ⌘J scrolls to the selected change, ⇧⌘J to @.
+- Drag the inspector's left edge or a pinned panel's right edge to resize it (double-click: the default width; remembered in the browser). ⌘W on the graph shows Projects (the kit keeps the graph behind it).
 - `⌘F` or `/` → the search field: recent searches; type `set`, `lena`, `f:lib/` or a change id. Enter on a file/author/description filters the graph (`jj log -r '…'` in the footer, runs in `all()`); Enter on a change selects it and leaves the graph alone. ✕ returns to the default search.
-- The pill opens the one menu: the default search, `all()`, the configurations, Go to · Filter by, **Edit Configurations…** (the `jj log Configurations` dialog — make any entry the default search).
+- The pill opens the one menu: the default search, `all()`, the configurations, Go to · Filter by, **Edit Configurations…** / ⌥⌘L (the `jj log Configurations` **window** — floats over the graph, drag it by its header, click the graph and it goes inactive; make any entry the default search; Esc / ⌘W ask first when something is unsaved).
 - View options → Layout **Free · Compact**: switching only moves cards up and down; in Free the day labels sit on the dashed dividers at the left edge.
 - Drag a card onto another, rest a moment → drop menu (Move here · Move only this change · Insert after/before · Squash · New merge · Duplicate). Release → toast with **Undo** (also ⌘Z).
 - Drag a bookmark chip, a file row or a hunk header from the inspector onto a change.

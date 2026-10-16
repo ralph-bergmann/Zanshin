@@ -27,7 +27,8 @@ export function OptionRow({ label, title, children }) {
   );
 }
 
-// OptionLink — a row that leaves the popover for a bigger place: "Appearance, diffs and more" · "Settings… ⌘,"
+// OptionLink — a row that leaves the popover for a bigger place: "Appearance, diffs and more · Settings…" opens Settings › General — it
+// picks a tab, so it shows no ⌘, (a row that shows a shortcut does exactly what the shortcut does; ⌘, opens the tab shown last)
 export function OptionLink({ label, action, shortcut, onClick }) {
   return (
     <button type="button" className="zs-option-link" onClick={onClick}>

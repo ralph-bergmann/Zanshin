@@ -1,6 +1,6 @@
 import * as React from "react";
 
-/** Nami — the Zanshin app mark: three gold waves on an indigo tile. */
+/** Nami — the Zanshin app mark: three gold waves on an indigo tile. States: none — a static mark. */
 export interface NamiMarkProps {
   /** px, default 28. ≤ 48px draws heavier waves (optical sizing). */
   size?: number;

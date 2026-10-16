@@ -6,13 +6,15 @@ const { Island, IslandSeparator, IconButton, Button, GraphSearch, Popover, Popov
 
 const ZK_RAIL = [
   { id: "bookmarks", label: "Bookmarks", icon: "branch" },
-  { id: "workstreams", label: "Workstreams", icon: "workstream" },
   { id: "reviews", label: "Reviews", icon: "reviews" },
   { id: "undo", label: "Undo Timeline", icon: "undo" },
 ];
-const ZK_STATUS = { clean: "#9ca3af", dirty: "#facc15", ahead: "#4ade80", behind: "#60a5fa", diverged: "#fb923c", conflict: "#f87171", missing: "#71717a", syncing: "#a78bfa" };
+const ZK_STATUS = { clean: "var(--proj-clean)", dirty: "var(--proj-dirty)", ahead: "var(--proj-ahead)", behind: "var(--proj-behind)", diverged: "var(--proj-diverged)", conflict: "var(--proj-conflict)", missing: "var(--proj-missing)", syncing: "var(--proj-syncing)", stale: "var(--proj-stale)" };
 const ZK_BM_STATE = { synced: "in sync with origin", ahead: "ahead of origin", behind: "behind origin", local: "local only", remote: "remote only", diverged: "diverged from origin" };
 const zkBmShort = (b) => b.state === "ahead" ? "↑" + (b.ahead || 1) : b.state === "synced" ? "✓" : b.state === "diverged" ? "↕" : b.state === "behind" ? "↓" : b.state;
+
+// motion tokens in ms (tokens/motion.css) — the kit reads them so its timers never drift from the system
+const zkMs = (name, fallback) => { const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)); return isNaN(n) ? fallback : n; };
 
 function zkUseOutside(open, close, ignore) {
   const ref = React.useRef(null);
@@ -52,25 +54,27 @@ function ZKGaps({ n, onShowAll }) {
   );
 }
 
-function ZKTopBar({ D, project, recent, activeId, onPickProject, onAllProjects, onSettings, revset, setRevset, home, configs, changes, visible, onGoTo, onEditConfigs, shown, total, gaps, opts, setOpt, onNew }) {
+function ZKTopBar({ D, project, recent, activeId, onPickProject, onAllProjects, onSettings, revset, setRevset, home, configs, changes, visible, onGoTo, onEditConfigs, shown, total, gaps, opts, setOpt, onNew, onPush }) {
   const [vw, setVw] = React.useState(false), [pm, setPm] = React.useState(false);
   const vwRef = zkUseOutside(vw, () => setVw(false)), pmRef = zkUseOutside(pm, () => setPm(false));
   const [ww, setWw] = React.useState(window.innerWidth);
   React.useEffect(() => { const f = () => setWw(window.innerWidth); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
   const filtered = shown < total;
   return (
+    <>
+    {/* the system's buttons (a mock); the bar starts at block end + 12 and centres on them */}
+    <TrafficLights className="zk-lights"/>
     <div className="zk-top">
       <div className="zk-tl">
-        <TrafficLights/>
         <div className="zk-anchor" ref={pmRef}>
           <Island shape="bar" as="button" className={"zk-proj" + (pm ? " is-on" : "")} onClick={() => setPm(!pm)} aria-haspopup="menu" aria-expanded={pm} title={project.path}>
             <NamiMark size={28} chip/>
             <span className="zk-proj-name">{project.name}</span>
             <span className="zk-dot" style={{ background: ZK_STATUS[project.status] }}></span>
-            <Icon name="chevron-down" size={14}/>
+            <Icon name="chevron-down" size="md"/>
           </Island>
-          {pm && <ProjectMenu className="zk-pop-pm" recent={recent} activeId={activeId} onPick={(p) => { setPm(false); onPickProject(p.id); }}
-            onAll={() => { setPm(false); onAllProjects(); }} onProjectSettings={() => { setPm(false); onSettings("project"); }} onSettings={() => { setPm(false); onSettings("general"); }}/>}
+          {pm && <ProjectMenu className="zk-pop-pm" autoFocus onClose={() => setPm(false)} recent={recent} activeId={activeId} onPick={(p) => { setPm(false); onPickProject(p.id); }}
+            onAll={() => { setPm(false); onAllProjects(); }} onProjectSettings={() => { setPm(false); onSettings("project"); }} onSettings={() => { setPm(false); onSettings(); }}/>}
         </div>
       </div>
       <Island shape="bar" className="zk-tc">
@@ -88,19 +92,20 @@ function ZKTopBar({ D, project, recent, activeId, onPickProject, onAllProjects, 
               <OptionRow label="Group stacks" title="Collapse linear runs of changes into one stack card"><Switch label="Group stacks" checked={opts.stacks} onChange={(v) => setOpt("stacks", v)}/></OptionRow>
               <OptionRow label="Card width"><Slider label="Card width" min={160} max={400} step={10} value={opts.cardW} unit="px" width={120} onChange={(v) => setOpt("cardW", v)}/></OptionRow>
               <PopoverSeparator/>
-              <OptionLink label="Appearance, diffs and more" action="Settings…" shortcut="⌘," onClick={() => { setVw(false); onSettings("general"); }}/>
+              <OptionLink label="Appearance, diffs and more" action="Settings…" onClick={() => { setVw(false); onSettings("general"); }}/>
             </Popover>
           )}
         </div>
       </Island>
       <div className="zk-tr">
         <Island shape="bar">
-          <IconButton icon="fetch" label="Fetch" title="Fetch — jj git fetch"/>
-          <IconButton icon="push" label="Push" title="Push — jj git push"/>
+          <IconButton icon="fetch" label="Fetch" badge={3} title="Fetch — jj git fetch · 3 new changes on origin"/>
+          <IconButton icon="push" label="Push…" title="Push… — choose what jj git push sends" onClick={onPush}/>
         </Island>
-        <Button variant="primary" size="lg" icon="plus" iconSize={15} title="jj new — start a new change on top of @" onClick={onNew}>New change</Button>
+        <Button variant="primary" size="lg" icon="plus" iconSize="lg" title="jj new — start a new change on top of @" onClick={onNew}>New change</Button>
       </div>
     </div>
+    </>
   );
 }
 
@@ -110,7 +115,7 @@ function ZKBookmarkList({ changes, visible, onPick, limit }) {
     <div className="zk-bl">
       {rows.map(({ b, c }) => (
         <button key={b.name} type="button" className={"zk-bl-row" + (visible.has(c.id) ? "" : " is-hidden")} onClick={() => onPick(c.id)} title={b.name + " — " + ZK_BM_STATE[b.state]}>
-          <Icon name="bookmark-filled" size={12}/>
+          <Icon name="bookmark-filled" size="sm"/>
           <span className="zk-bl-text"><span className="zk-bl-name">{b.name}</span><span className="zk-bl-sub"><b>{c.id.slice(0, 2)}</b>{c.id.slice(2, 8)} · {c.subject || "(no description set)"}</span></span>
           <span className={"zs-bm-state s-" + b.state}>{zkBmShort(b)}</span>
         </button>
@@ -124,7 +129,6 @@ function ZKRailContent({ id, changes, visible, ops, onPick, preview }) {
     const n = changes.reduce((s, c) => s + c.bookmarks.length, 0);
     return <>{<ZKBookmarkList changes={changes} visible={visible} onPick={onPick} limit={preview ? 5 : 0}/>}{preview && n > 5 && <div className="zk-co-more">+{n - 5} more</div>}</>;
   }
-  if (id === "workstreams") return <CalloutText>No workstreams yet. Create one with <code>jj workstream new</code>.</CalloutText>;
   if (id === "reviews") return <CalloutText>No open reviews.</CalloutText>;
   return <div className="zk-ops">{ops.slice(0, preview ? 3 : 12).map((o, i) => <div key={i} className="zk-op"><code>{o.cmd}</code><span>{o.when}</span></div>)}</div>;
 }
@@ -136,16 +140,16 @@ function ZKRail({ pinned, setPinned, changes, visible, ops, opCount, onPick }) {
   const enter = (it, e) => {
     clear(); if (pinned === it.id) { setCo(null); return; }
     const r = e.currentTarget.getBoundingClientRect(), next = { it, top: r.top + r.height / 2 };
-    if (co) setCo(next); else openT.current = setTimeout(() => setCo(next), 90);
+    if (co) setCo(next); else openT.current = setTimeout(() => setCo(next), zkMs("--delay-callout", 90));
   };
-  const leave = () => { clear(); closeT.current = setTimeout(() => setCo(null), 200); };
+  const leave = () => { clear(); closeT.current = setTimeout(() => setCo(null), zkMs("--delay-callout-out", 200)); };
   const count = (id) => id === "bookmarks" ? changes.reduce((s, c) => s + c.bookmarks.length, 0) : id === "undo" ? opCount + " ops" : null;
   const pin = ZK_RAIL.find((r) => r.id === pinned);
   return (
     <>
       <Island shape="rail" as="nav" className="zk-rail" aria-label="Panels">
         {ZK_RAIL.map((it) => (
-          <IconButton key={it.id} size="lg" icon={it.icon} iconSize={19} label={it.label} title="" active={pinned === it.id} className={co && co.it.id === it.id ? "is-hov" : ""}
+          <IconButton key={it.id} size="lg" icon={it.icon} iconSize="rail" label={it.label} title="" active={pinned === it.id} className={co && co.it.id === it.id ? "is-hov" : ""}
             onClick={() => { clear(); setCo(null); setPinned(pinned === it.id ? null : it.id); }} onMouseEnter={(e) => enter(it, e)} onMouseLeave={leave} aria-pressed={pinned === it.id}/>
         ))}
       </Island>
@@ -158,7 +162,7 @@ function ZKRail({ pinned, setPinned, changes, visible, ops, opCount, onPick }) {
       )}
       {pin && (
         <Island shape="panel" className="zk-panel" key={pin.id} aria-label={pin.label}>
-          <div className="zk-panel-hd"><Icon name={pin.icon} size={15}/><span>{pin.label}</span><IconButton icon="close" iconSize={12} size="sm" label="Close" onClick={() => setPinned(null)}/></div>
+          <div className="zk-panel-hd"><Icon name={pin.icon} size="lg"/><span>{pin.label}</span><IconButton icon="close" iconSize="sm" size="sm" label="Close" onClick={() => setPinned(null)}/></div>
           <div className="zk-panel-bd"><ZKRailContent id={pin.id} changes={changes} visible={visible} ops={ops} onPick={onPick}/></div>
         </Island>
       )}
@@ -166,5 +170,5 @@ function ZKRail({ pinned, setPinned, changes, visible, ops, opCount, onPick }) {
   );
 }
 
-Object.assign(window, { ZKTopBar, ZKRail, ZK_STATUS, ZK_BM_STATE, zkBmShort, zkUseOutside });
+Object.assign(window, { ZKTopBar, ZKRail, ZK_STATUS, ZK_BM_STATE, zkBmShort, zkUseOutside, zkMs });
 })();

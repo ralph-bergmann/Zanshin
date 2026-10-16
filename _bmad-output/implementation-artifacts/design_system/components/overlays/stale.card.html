@@ -1,0 +1,45 @@
+<!-- @dsCard group="Components" viewport="980x380" name="Working copy is stale" subtitle="A project-level state over the graph — the last valid layout stays; one sentence and the command. Notice only · with the action" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;background:var(--canvas);min-height:100vh;color:var(--text);font-family:var(--font-sans)}.wrap{display:flex;flex-direction:column;gap:18px;padding:22px 26px}.row{display:flex;align-items:flex-start;gap:26px}.lbl{width:170px;flex-shrink:0;padding-top:10px;font:var(--fs-sm) var(--font-mono);color:var(--text-dim);line-height:1.5}.lbl b{display:block;font:600 var(--fs-md) var(--font-sans);color:var(--text)}.cards{display:flex;gap:26px;flex-wrap:wrap;padding-top:12px}.stage{position:relative;height:300px;border-radius:12px;overflow:hidden;box-shadow:0 0 0 1px var(--border)}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { StaleNotice, ChangeCard, Island, NamiMark, Icon, TrafficLights } = window.ZanshinDesignSystem_a33847;
+  const Stage = ({ action }) => (
+    <div className="stage">
+      <TrafficLights style={{ position: "absolute", left: 19, top: 19 }}/>
+      <div style={{ position: "absolute", left: 91, top: 4 }}>
+        <Island shape="bar" className="zs-glass" style={{ gap: 10, padding: "0 12px 0 8px" }} title="Working copy is stale">
+          <NamiMark size={28} chip/><span style={{ fontWeight: 600 }}>MyApp</span>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--proj-stale)" }} title="working copy is stale"></span>
+          <Icon name="chevron-down" size="md" style={{ color: "var(--text-dim)" }}/>
+        </Island>
+      </div>
+      <div style={{ position: "absolute", top: 60, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 2 }}>
+        {action ? <StaleNotice onUpdate={() => {}}/> : <StaleNotice onCopy={() => {}}/>}
+      </div>
+      <ChangeCard style={{ position: "absolute", left: 120, top: 136 }} id="ovknlmro" subject="feat(onboarding): swipe gestures" author="Ralph Stein" date="now" workingCopy workspaces={["default"]} ownWorkspace="default"/>
+      <ChangeCard style={{ position: "absolute", left: 120, top: 222 }} id="xyzrmwpo" subject="feat(onboarding): animated page indicator" author="Ralph Stein" date="5h"/>
+    </div>
+  );
+  const Demo = () => (
+    <div className="wrap" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22 }}>
+      <div><div className="lbl" style={{ width: "auto", paddingTop: 0, marginBottom: 8 }}><b>Notice only</b>the sentence, the command, Copy — no Retry</div><Stage/></div>
+      <div><div className="lbl" style={{ width: "auto", paddingTop: 0, marginBottom: 8 }}><b>With the action</b>Update working copy — the command in its tooltip, then the result toast</div><Stage action/></div>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

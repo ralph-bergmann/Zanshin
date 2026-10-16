@@ -2,6 +2,7 @@ import * as React from "react";
 
 /**
  * One jj change in the graph.
+ * States: rest · hover · selected (accent edge + 3px ring) · @ (saffron edge, wash, glow) · @ + selected · focus-visible (3px outside) · drop target · drag source · dragged from · menu open · dim · flash (the moon ring fading) · immutable · root · compact / detailed · conflict · workspaces (name@) · inactive window (the ring goes neutral).
  */
 export interface ChangeCardProps extends React.HTMLAttributes<HTMLDivElement> {
   id: string;
@@ -11,6 +12,10 @@ export interface ChangeCardProps extends React.HTMLAttributes<HTMLDivElement> {
   /** relative time: "now", "3h", "Sep 19" */
   date?: string;
   bookmarks?: string[];
+  /** the workspaces whose working copy is this commit — only when the repo has two or more (jj prints no marker with one): ours = the saffron name@, others = quiet name@ tags (two, then +N) */
+  workspaces?: string[];
+  /** this window's workspace (e.g. "default") */
+  ownWorkspace?: string;
   workingCopy?: boolean;
   selected?: boolean;
   hover?: boolean;

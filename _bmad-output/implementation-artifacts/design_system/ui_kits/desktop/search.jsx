@@ -134,7 +134,7 @@ function ZKSearch({ D, revset, setRevset, home, configs, changes, visible, size,
   const [text, setText] = React.useState(() => (active ? textOf(active, me) : ""));
   const [focus, setFocus] = React.useState(false);
   const [pop, setPop] = React.useState(null);
-  const [hi, setHi] = React.useState(0);
+  const [hi, setHi] = React.useState(0), [mHi, setMHi] = React.useState(0);
   const [, tick] = React.useState(0);
   const rootRef = React.useRef(null), inRef = React.useRef(null), listRef = React.useRef(null);
   const focusRef = React.useRef(false), leaving = React.useRef(false), quiet = React.useRef(false), justFocused = React.useRef(false);
@@ -160,7 +160,7 @@ function ZKSearch({ D, revset, setRevset, home, configs, changes, visible, size,
     const key = (e) => {
       if (e.key !== "Escape" || pop !== "menu") return;
       e.stopPropagation(); e.preventDefault(); setPop(null); revert();
-      const b = rootRef.current && rootRef.current.querySelector(".zs-gs-scope"); if (b) b.focus();
+      if (inRef.current) inRef.current.focus({ preventScroll: true });
     };
     window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true);
     return () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("keydown", key, true); };
@@ -194,7 +194,22 @@ function ZKSearch({ D, revset, setRevset, home, configs, changes, visible, size,
   const pickView = (id) => { close(); setText(""); setScope("any"); setRevset(id); };
   const pickScope = (id) => { const draft = text !== (active ? textOf(active, me) : ""); setScope(id); setHi(0); if (!draft) setText(""); focusQuiet(); setPop("sugg"); };
 
+  // field-attached lists: focus stays in the field; ↑ ↓ Home End move the keyboard row (aria-activedescendant), ↩ runs it
+  const mCount = menuVariants.length + 6; // SearchMenu.count(menuVariants): the variants, five scopes, Edit Configurations…
+  const runMenuRow = (i) => {
+    const n = menuVariants.length, scopes = ["change", "bookmark", "author", "file", "description"];
+    if (i < n) pickView(menuVariants[i].id); else if (i < n + 5) pickScope(scopes[i - n]); else { close(); onEdit(active ? home : revset); }
+  };
+  const openMenu = () => {
+    const i = active ? menuVariants.length + ["change", "bookmark", "author", "file", "description"].indexOf(scopeOf(active)) : Math.max(0, menuVariants.findIndex((v) => v.id === revset));
+    focusQuiet(); setMHi(i); setPop((x) => (x === "menu" ? null : "menu"));
+  };
   const onKey = (e) => {
+    if (pop === "menu") {
+      const n = SearchMenu.navigate ? SearchMenu.navigate(e, mHi, mCount) : null;
+      if (n != null) { e.preventDefault(); setMHi(n); return; }
+      if (e.key === "Enter") { e.preventDefault(); runMenuRow(mHi); return; }
+    }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       if (pop !== "sugg") { setPop("sugg"); setHi(0); return; }
@@ -213,7 +228,7 @@ function ZKSearch({ D, revset, setRevset, home, configs, changes, visible, size,
 
   const notInView = (c) => c && !visible.has(c.id) && <SearchTag>not in view</SearchTag>;
   const row = (r, i) => {
-    const p = { key: r.key, "data-i": i, highlighted: i === hiN, onClick: () => pick(r), onMouseMove: () => { if (i !== hiN) setHi(i); } };
+    const p = { key: r.key, id: "zs-gs-pop-" + i, "data-i": i, active: i === hiN, onClick: () => pick(r) };
     if (r.kind === "change") {
       const c = r.c, n = r.how === "id" ? r.q.length : 2;
       return <SearchRow {...p} icon="change" dim={!c.subject}
@@ -241,7 +256,8 @@ function ZKSearch({ D, revset, setRevset, home, configs, changes, visible, size,
     <div ref={rootRef} className="zk-search">
       <GraphSearch inputRef={inRef} size={size} scope={scope} value={text} view={active ? "search" : atHome ? "default" : "variant"} variantName={viewName(revset)} variantMono={builtin(revset)}
         defaultName={homeV.name} menuOpen={pop === "menu"} expanded={pop === "sugg" && nav.length > 0}
-        onChange={(v) => { setText(v); setHi(0); setPop("sugg"); }} onScopeChange={(s) => { setScope(s); setHi(0); }} onMenu={() => setPop((x) => (x === "menu" ? null : "menu"))} onClear={clear}
+        controls={pop === "menu" ? "zs-gs-menu" : "zs-gs-pop"} activeDescendant={pop === "menu" ? "zs-gs-menu-" + mHi : pop === "sugg" && nav.length ? "zs-gs-pop-" + hiN : undefined}
+        onChange={(v) => { setText(v); setHi(0); setPop("sugg"); }} onScopeChange={(s) => { setScope(s); setHi(0); }} onMenu={openMenu} onClear={clear}
         onKeyDown={onKey} onFocus={onFocus} onBlur={onBlur} onMouseUp={onMouseUp}>
         {pop === "sugg" && (groups || recentRows.length > 0) && (
           <SearchPopover listRef={listRef} footer={footer(cur)} note={groups && groups.other ? "No " + SLABEL[scope].toLowerCase() + " matches “" + q + "” — found elsewhere:" : null}
@@ -257,7 +273,7 @@ function ZKSearch({ D, revset, setRevset, home, configs, changes, visible, size,
             </>}
           </SearchPopover>
         )}
-        {pop === "menu" && <SearchMenu autoFocus variants={menuVariants} current={active ? null : revset} scope={active ? scopeOf(active) : null} value={active ? textOf(active, me) : ""}
+        {pop === "menu" && <SearchMenu active={mHi} variants={menuVariants} current={active ? null : revset} scope={active ? scopeOf(active) : null} value={active ? textOf(active, me) : ""}
           onPickVariant={pickView} onPickScope={pickScope} onEdit={() => { close(); onEdit(active ? home : revset); }}/>}
       </GraphSearch>
     </div>

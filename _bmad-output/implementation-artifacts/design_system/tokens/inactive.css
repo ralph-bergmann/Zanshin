@@ -1,0 +1,31 @@
+/* ============================================================
+   ZANSHIN — the inactive window (not the key window) — readme › Window › Inactive
+   Settings and Projects are windows of their own, so an inactive project window is the normal case, not an edge.
+   As macOS does with its own accent: the ACCENT ROLE goes neutral — the selected card's ring, selected rows (--accent-soft), switches,
+   checkboxes and radios that are on, slider fills, the search pill — and nothing shows focus (no ring, no field halo; focus is kept
+   and returns when the window becomes key). Text selection takes the unemphasized grey.
+   Stays as it is: gold (@ and the one primary action — Zanshin's, not the system accent), every data colour (add, rem, M, hunk,
+   remote, warn, conflict, project status), the traffic lights (rings at rest anyway), and what is live information or content —
+   progress, the edit flash, drop targets (a drop from the Finder always lands in a window that is not key), links. Those read the
+   live copies --accent-live-line / -ring / -text (tokens/accents.css), which this delta never touches; --ring-drop is built from them.
+   Goes neutral with the role: the badge (a count on a control — the number stays legible, ink 5.5 / 5.8:1).
+   On: data-window="inactive" on the element that carries data-theme / data-accent (the delta must sit where the family is declared).
+   Flutter: NSWindow.isKeyWindow (windowDidBecomeKey / windowDidResignKey).
+   Measured: night fill #8a90a8 · ink #141831 5.5:1 · line #8189a5 4.7:1 on the card ·
+             paper fill #a69e96 · ink #26242c 5.8:1 · line #867e75 3.9:1 on the card, 3.1 on the darkest canvas
+   ============================================================ */
+[data-window="inactive"]{--accent:#8a90a8;--accent-ink:#141831;--accent-line:#8189a5;--accent-text:#b3b9d0;--accent-soft:rgba(231,233,242,.08);--accent-soft-hi:rgba(231,233,242,.14);--accent-ring:rgba(231,233,242,.16);--accent-select:rgba(231,233,242,.16);--focus-ring:transparent;--selection:var(--accent);--ring-select:0 0 0 3px var(--accent-ring);--ring-wc-select:0 0 0 1px var(--co-deep),0 0 0 4px var(--accent-ring)}
+[data-window="inactive"][data-theme="paper"],[data-window="inactive"][data-theme="light"],[data-theme="paper"] [data-window="inactive"],[data-theme="light"] [data-window="inactive"],[data-window="inactive"] [data-theme="paper"],[data-window="inactive"] [data-theme="light"]{--accent:#a69e96;--accent-ink:#26242c;--accent-line:#867e75;--accent-text:#514c47;--accent-soft:rgba(58,46,34,.07);--accent-soft-hi:rgba(58,46,34,.11);--accent-ring:rgba(58,46,34,.14);--accent-select:rgba(58,46,34,.12);--focus-ring:transparent;--selection:var(--accent);--ring-select:0 0 0 3px var(--accent-ring);--ring-wc-select:0 0 0 1px var(--co-deep),0 0 0 4px var(--accent-ring)}
+/* a focused field looks at rest until the window is key again (the caret goes too) */
+[data-window="inactive"] :is(.zs-field,.zs-search,.zs-gs,.zs-rsd-in):is(:focus,:focus-within,.st-focus,.is-focus){border-color:var(--fl-border);box-shadow:none}
+[data-window="inactive"] :is(.zs-search,.zs-gs){border-color:transparent}
+[data-window="inactive"] :is(input,textarea){caret-color:transparent}
+/* inactive × increased contrast: the neutral line would equal the contrast mode's card edge (paper #867e75 = --border-strong, 1.00:1;
+   night #8189a5 vs #78809c 1.13:1) — the selected card, the selected row's edge and every on-state edge take the text colour instead:
+   night #e7e9f2 3.23:1 to #78809c (13.4 on the card) · paper #26242c 3.83:1 to #867e75 (15.1 on the card) */
+[data-window="inactive"][data-contrast="more"]{--accent-line:#e7e9f2}
+[data-window="inactive"][data-contrast="more"]:is([data-theme="paper"],[data-theme="light"]),:is([data-theme="paper"],[data-theme="light"]) [data-window="inactive"][data-contrast="more"]{--accent-line:#26242c}
+@media (prefers-contrast:more){
+[data-window="inactive"]{--accent-line:#e7e9f2}
+[data-window="inactive"]:is([data-theme="paper"],[data-theme="light"]),:is([data-theme="paper"],[data-theme="light"]) [data-window="inactive"]{--accent-line:#26242c}
+}

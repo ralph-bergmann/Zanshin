@@ -64,7 +64,7 @@ function App() {
   const [dropTarget, setDropTarget] = useState(null); // { kind: 'slot-top'|'slot-bot'|'slot-between'|'slot-edge'|'merge', slotId?, idx?, side? }
   const [flyout, setFlyout] = useState(null);
   const flyoutTimer = useRef(null);
-  const [leftPanel, setLeftPanel] = useState("history"); // history | branches | workstream | reviews | undo
+  const [leftPanel, setLeftPanel] = useState("history"); // history | branches | reviews | undo
 
   // Flatten branches for sidebar "open" highlighting + tags
   const openBranches = useMemo(() => slots.flatMap(s => s.branches), [slots]);
@@ -345,7 +345,6 @@ function App() {
               onClose={() => setFlyout(null)}
             />
           )}
-          {flyout === "workstream" && <PlaceholderFlyout title="Workstreams" onClose={() => setFlyout(null)}/>}
           {flyout === "reviews"    && <PlaceholderFlyout title="Reviews"     onClose={() => setFlyout(null)}/>}
           {flyout === "undo"       && <PlaceholderFlyout title="Undo Timeline" onClose={() => setFlyout(null)}/>}
         </Flyout>

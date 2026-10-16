@@ -1,6 +1,6 @@
 import * as React from "react";
 
-/** jj change id with bold unique prefix. */
+/** jj change id with bold unique prefix. States: none — immutable adds ◆. */
 export interface ChangeIdProps {
   id: string;
   /** characters shown, default 5 (8 in detailed cards, menus, toasts, search rows) */

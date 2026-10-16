@@ -11,3 +11,4 @@ One row in a SettingsGroup: what it is, what it writes, and the control.
 
 - `configKey` shows the exact jj key in mono under the label — Zanshin never hides what it writes.
 - Controls: `Switch`, `Segmented variant="inset"`, `Select`, `TextField` (240px; full width when `stack`).
+- Keyboard · VoiceOver · Reduce motion: the control is the Tab stop; its label and hint name it (the config key is read as part of the hint) · static.

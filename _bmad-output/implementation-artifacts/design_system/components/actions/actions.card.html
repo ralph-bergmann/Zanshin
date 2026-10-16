@@ -18,9 +18,9 @@
   const Demo = () => (
     <div className="col">
       <div className="row"><span className="lbl">Primary</span>
-        <Button variant="primary" size="lg" icon="plus" iconSize={15} title="jj new — start a new change on top of @">New change</Button>
+        <Button variant="primary" size="lg" icon="plus" iconSize="lg" title="jj new — start a new change on top of @">New change</Button>
         <Button variant="primary" icon="plus" title="jj new vruxwmqv">New change on top</Button>
-        <Button variant="primary" size="md" icon="plus" iconSize={12}>Add directory</Button>
+        <Button variant="primary" size="md" icon="plus" iconSize="sm">Add directory</Button>
       </div>
       <div className="row"><span className="lbl">Quiet</span>
         <Button>New change</Button>
@@ -31,10 +31,10 @@
         <Button disabled>Squash into parent</Button>
       </div>
       <div className="row"><span className="lbl">Icon</span>
-        <Island shape="bar"><IconButton icon="fetch" label="Fetch — jj git fetch"/><IconButton icon="push" label="Push — jj git push"/></Island>
+        <Island shape="bar"><IconButton icon="fetch" label="Fetch — jj git fetch"/><IconButton icon="push" label="Push… — choose what jj git push sends"/></Island>
         <Island shape="bar"><IconButton icon="view-options" label="View options" active/></Island>
-        <Island shape="rail" style={{ flexDirection: "row" }}><IconButton size="lg" icon="branch" iconSize={19} label="Bookmarks" active/><IconButton size="lg" icon="workstream" iconSize={19} label="Workstreams"/><IconButton size="lg" icon="reviews" iconSize={19} label="Reviews"/><IconButton size="lg" icon="undo" iconSize={19} label="Undo Timeline"/></Island>
-        <IconButton size="sm" icon="close" iconSize={12} label="Close (Esc)"/>
+        <Island shape="rail" style={{ flexDirection: "row" }}><IconButton size="lg" icon="branch" iconSize="rail" label="Bookmarks" active/><IconButton size="lg" icon="reviews" iconSize="rail" label="Reviews"/><IconButton size="lg" icon="undo" iconSize="rail" label="Undo Timeline"/></Island>
+        <IconButton size="sm" icon="close" iconSize="sm" label="Close (Esc)"/>
       </div>
       <div className="row"><span className="lbl">Locator</span>
         <AtPill direction="down"/><AtPill direction="up"/><AtPill direction="right"/>

@@ -25,8 +25,10 @@ export function SearchDollar() {
 //   view "variant" — another jj log variant: the pill shows $, the field shows the variant's name as a value; clicking in empties it
 // ✕ always returns to the default search. Typed prefixes c: b: a: f: d: switch the scope; Backspace in an empty field returns to Any;
 // ⌘F or / focuses the field. Popovers (SearchMenu, SearchPopover) go in as children and anchor under the field.
+// Field-attached lists: focus STAYS in this input. ↑/↓ move the keyboard row of the open list (SearchMenu / SearchPopover), which the
+// input names with aria-activedescendant (pass activeDescendant + controls); ↩ runs that row, Esc closes the list, a click runs any row.
 export function GraphSearch({ scope = "any", value = "", view = "default", variantName = "", variantMono = false, defaultName = "jj log",
-  focused, menuOpen = false, size = "full", placeholder, hotkey = true, expanded = false,
+  focused, menuOpen = false, size = "full", placeholder, hotkey = true, expanded = false, activeDescendant, controls,
   onChange, onScopeChange, onMenu, onClear, onKeyDown, onFocus, onBlur, onMouseUp, inputRef, children, className = "", style }) {
   const [hasFocus, setHasFocus] = React.useState(false);
   const own = React.useRef(null), ref = inputRef || own;
@@ -61,17 +63,17 @@ export function GraphSearch({ scope = "any", value = "", view = "default", varia
     <div className={["zs-gs", focus && "is-focus", !atDefault && "has-q", size !== "full" && "is-" + size, className].filter(Boolean).join(" ")} style={style}>
       <button type="button" className={"zs-gs-scope" + (showVariant || scope === "any" ? " is-any" : "") + (menuOpen ? " is-open" : "")} onClick={onMenu}
         aria-haspopup="listbox" aria-expanded={menuOpen} aria-label="Search menu" title={title}>
-        {showVariant ? <SearchDollar/> : <><Icon name={sc.icon} size={14}/>{scope !== "any" && <span className="zs-gs-sl">{sc.label}</span>}</>}
-        <Icon name="chevron-down" size={12} className="zs-gs-chev"/>
+        {showVariant ? <SearchDollar/> : <><Icon name={sc.icon} size="md"/>{scope !== "any" && <span className="zs-gs-sl">{sc.label}</span>}</>}
+        <Icon name="chevron-down" size="sm" className="zs-gs-chev"/>
       </button>
-      <input ref={ref} className={inCls} value={value} placeholder={ph} spellCheck="false" autoComplete="off" role="combobox" aria-label="Search the graph" aria-expanded={expanded}
+      <input ref={ref} className={inCls} value={value} placeholder={ph} spellCheck="false" autoComplete="off" role="combobox" aria-label="Search the graph" aria-expanded={expanded || menuOpen} aria-autocomplete="list" aria-controls={controls} aria-activedescendant={activeDescendant}
         onChange={change} onKeyDown={key} onMouseUp={onMouseUp}
         onFocus={(e) => { setHasFocus(true); if (onFocus) onFocus(e); }} onBlur={(e) => { setHasFocus(false); if (onBlur) onBlur(e); }}/>
       {!value && !focus && atDefault && size !== "narrow" && <kbd className="zs-gs-k" aria-hidden="true">⌘F</kbd>}
       {(value || !atDefault) && (
         <button type="button" className="zs-gs-x" onMouseDown={(e) => { if (focus) e.preventDefault(); }} onClick={onClear}
           aria-label={atDefault ? "Clear" : "Back to the default search"} title={atDefault ? "Clear" : "Back to the default search — " + defaultName}>
-          <Icon name="close" size={10}/>
+          <Icon name="close" size="xs"/>
         </button>
       )}
       {children}

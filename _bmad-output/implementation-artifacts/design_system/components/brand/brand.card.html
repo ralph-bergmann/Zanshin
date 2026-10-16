@@ -1,4 +1,4 @@
-<!-- @dsCard group="Components" viewport="700x400" name="Brand" subtitle="NamiMark, Wordmark, Icon (65 glyphs)" -->
+<!-- @dsCard group="Components" viewport="700x400" name="Brand" subtitle="NamiMark, Wordmark, Icon (59 glyphs)" -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -21,11 +21,11 @@
         <NamiMark size={96}/><NamiMark size={56}/><NamiMark size={28} chip/><NamiMark size={16}/><NamiMark size={56} bare/>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginLeft: "auto" }}>
           <Wordmark height={22}/>
-          <div className="paper" data-theme="light"><Wordmark height={14} variant="ink"/></div>
+          <div className="paper" data-theme="paper"><Wordmark height={14} variant="ink"/></div>
           <div className="black"><Wordmark height={14} variant="white"/></div>
         </div>
       </div>
-      <div className="grid">{Icon.names.map(n => <span key={n} className="ic" title={n}><Icon name={n} size={16}/></span>)}</div>
+      <div className="grid">{Icon.names.map(n => <span key={n} className="ic" title={n}><Icon name={n} size="lg"/></span>)}</div>
       <div className="cap">{Icon.names.length} glyphs · 16px grid · currentColor · hover for names</div>
     </div>
   );

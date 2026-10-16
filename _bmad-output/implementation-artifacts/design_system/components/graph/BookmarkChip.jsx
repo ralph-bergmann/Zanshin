@@ -18,7 +18,7 @@ export function BookmarkChip({ name, more = 0, state, ahead, variant = "legend",
   if (variant === "tag") {
     return (
       <span className={("zs-bm is-tag " + className).trim()} title={title || (state ? name + " — " + (ZS_BM_STATE[state] || state) : name)} {...rest}>
-        <Icon name="bookmark-filled" size={11} />
+        <Icon name="bookmark-filled" size="sm" />
         <span className="zs-bm-name">{name}</span>
         {state && <span className={"zs-bm-state s-" + state}>{zsBmShort(state, ahead)}</span>}
       </span>
@@ -27,7 +27,7 @@ export function BookmarkChip({ name, more = 0, state, ahead, variant = "legend",
   const b = zsSplitBookmark(name);
   return (
     <span className={("zs-bm " + className).trim()} title={title || name} {...rest}>
-      <Icon name="bookmark-filled" size={12} />
+      <Icon name="bookmark-filled" size="sm" />
       {b.prefix && <span className="zs-bm-rest is-prefix">{b.prefix}</span>}
       <span className="zs-bm-main">{b.main}</span>
       {b.rest && <span className="zs-bm-rest">{b.rest}</span>}

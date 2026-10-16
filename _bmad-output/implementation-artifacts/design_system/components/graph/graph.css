@@ -1,12 +1,11 @@
 /* ChangeCard — one jj change. 40px compact / 62px detailed, 240px default width. */
-.zs-card{position:relative;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:5px;width:var(--card-w);height:var(--card-h-detailed);padding:0 var(--card-pad-x);background:var(--card-solid);border:1px solid var(--border-strong);border-radius:var(--radius-card);color:var(--text);cursor:default;user-select:none;text-align:left;transition:border-color var(--dur-hover),box-shadow 160ms,background var(--dur-hover),opacity 160ms}
+.zs-card{position:relative;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:5px;width:var(--card-w);height:var(--card-h-detailed);padding:0 var(--card-pad-x);background:var(--card-solid);border:1px solid var(--border-strong);border-radius:var(--radius-card);color:var(--text);cursor:default;user-select:none;text-align:left;transition:border-color var(--dur-hover) var(--ease-state),box-shadow var(--dur-pop) var(--ease-state),background var(--dur-hover) var(--ease-state),opacity var(--dur-pop) var(--ease-state)}
 .zs-card.is-compact{height:var(--card-h-compact)}
 .zs-card:hover,.zs-card.is-hover{border-color:var(--edge-hov);background:var(--card-solid-hi)}
-.zs-card:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-.zs-card.is-sel{border-color:var(--accent);box-shadow:var(--ring-select)}
+.zs-card.is-sel{border-color:var(--accent-line);box-shadow:var(--ring-select)}
 .zs-card.is-wc{border-color:var(--co);background:linear-gradient(135deg,var(--co-soft),transparent 70%),var(--card-solid);box-shadow:var(--ring-wc)}
 .zs-card.is-wc.is-sel{box-shadow:var(--ring-wc-select)}
-.zs-card.is-drop{border-color:var(--accent);background:var(--card-solid-hi);box-shadow:var(--ring-drop)}
+.zs-card.is-drop{border-color:var(--accent-live-line);background:var(--card-solid-hi);box-shadow:var(--ring-drop)}
 .zs-card.is-dim{opacity:.4}
 .zs-card-line{display:flex;align-items:center;gap:7px;min-width:0;white-space:nowrap}
 .zs-card-subj{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font:var(--type-card-subject);color:var(--text)}
@@ -21,7 +20,7 @@
 .zs-card-flag.is-conflict{color:var(--conflict)}
 .zs-card>.zs-bm{position:absolute;right:10px;top:-11px;max-width:calc(100% - 20px);z-index:2}
 .zs-card:hover>.zs-bm{background:var(--card-solid-hi);border-color:var(--edge-hov)}
-.zs-card.is-sel>.zs-bm{border-color:var(--accent)}
+.zs-card.is-sel>.zs-bm{border-color:var(--accent-line)}
 .zs-card.is-wc>.zs-bm{border-color:var(--co)}
 
 /* StackCard — linear run of changes folded into one card */
@@ -34,23 +33,29 @@
 /* ChangeId — first two characters carry the identity */
 .zs-cid{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;font:var(--type-id);color:var(--text-faint);letter-spacing:.01em}
 .zs-cid b{color:var(--text);font-weight:700}
-.zs-cid-imm{font-size:9px;color:var(--text-faint)}
+.zs-cid-imm{font-size:var(--fs-2xs);color:var(--text-faint)}
 
 /* AtBadge — @, the working copy */
 .zs-at{display:inline-grid;place-items:center;flex-shrink:0;height:16px;padding:0 5px;border-radius:var(--radius-xs);background:var(--co);color:var(--co-ink);font:700 var(--fs-sm)/1 var(--font-mono)}
-.zs-at.is-sm{height:14px;padding:0 4px;font-size:10px}
+.zs-at.is-sm{height:14px;padding:0 4px;font-size:var(--fs-xs)}
+/* name@ — with two or more workspaces (jj prints every working copy so, ours included). Ours: the saffron badge; others: quiet tags */
+.zs-at.is-named{display:inline-flex;max-width:96px}
+.zs-at-n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zs-ws{display:inline-flex;align-items:center;flex-shrink:0;height:16px;max-width:96px;padding:0 5px;border-radius:var(--radius-xs);box-shadow:inset 0 0 0 1px var(--border-strong);font:600 var(--fs-sm)/1 var(--font-mono);color:var(--text-muted);white-space:nowrap}
+.zs-ws-n{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.zs-ws.is-more{font-weight:400;color:var(--text-dim)}
 
 /* BookmarkChip */
-.zs-bm{display:inline-flex;align-items:center;gap:4px;box-sizing:border-box;height:20px;max-width:100%;min-width:0;padding:0 8px 0 6px;border-radius:var(--radius-pill);background:var(--card-solid);border:1px solid var(--border-strong);color:var(--text);overflow:hidden;transition:background var(--dur-hover),border-color var(--dur-hover)}
+.zs-bm{display:inline-flex;align-items:center;gap:4px;box-sizing:border-box;height:20px;max-width:100%;min-width:0;padding:0 8px 0 6px;border-radius:var(--radius-pill);background:var(--card-solid);border:1px solid var(--border-strong);color:var(--text);overflow:hidden;transition:background var(--dur-hover) var(--ease-state),border-color var(--dur-hover) var(--ease-state)}
 .zs-bm>.zs-icon{color:var(--text-dim)}
 .zs-bm-main{font:600 var(--fs-sm) var(--font-mono);flex-shrink:0;white-space:nowrap}
 .zs-bm-rest{font:var(--fs-sm) var(--font-mono);color:var(--text-dim);white-space:nowrap;flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
-.zs-bm-more{font:10px var(--font-mono);color:var(--text-dim);flex-shrink:0;padding-left:2px}
+.zs-bm-more{font:var(--fs-xs) var(--font-mono);color:var(--text-dim);flex-shrink:0;padding-left:2px}
 .zs-bm-rest.is-prefix{flex-shrink:50;max-width:4ch}
 .zs-bm-name{font:var(--fs-id) var(--font-mono);color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.zs-bm.is-tag{height:auto;padding:4px 9px;border-radius:7px;background:var(--fl-hover);border-color:transparent;gap:6px;overflow:visible}
+.zs-bm.is-tag{height:auto;padding:4px 9px;border-radius:var(--radius-chip);background:var(--fl-hover);border-color:transparent;gap:6px;overflow:visible}
 .zs-bm-state{font:var(--fs-xs) var(--font-mono);color:var(--text-dim);white-space:nowrap}
-.zs-bm-state.s-ahead{color:var(--add)}.zs-bm-state.s-behind{color:var(--rem)}.zs-bm-state.s-remote{color:var(--hunk)}
+.zs-bm-state.s-ahead{color:var(--add)}.zs-bm-state.s-behind{color:var(--rem)}.zs-bm-state.s-remote{color:var(--remote)}
 
 /* Flag — status pills in the inspector header */
 .zs-flag{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:var(--radius-pill);font-size:var(--fs-sm);font-weight:500;line-height:1;white-space:nowrap;color:var(--text-dim);background:var(--fl-hover)}
@@ -58,15 +63,15 @@
 .zs-flag.is-warn{background:var(--warn-bg);color:var(--warn)}
 
 /* GraphEdge — SVG; parents below, children above */
-.zs-edge{fill:none;stroke:var(--edge);stroke-width:1.5;transition:stroke 140ms,opacity 160ms}
+.zs-edge{fill:none;stroke:var(--edge);stroke-width:1.5;transition:stroke var(--dur-hover) var(--ease-state),opacity var(--dur-pop) var(--ease-state)}
 .zs-edge.is-gap{stroke-dasharray:3 5}
 .zs-edge.is-hover{stroke:var(--edge-hov)}
 .zs-edge.is-wc{stroke:var(--co);stroke-width:2.25;filter:drop-shadow(0 0 4px var(--co-glow))}
 .zs-edge.is-dim{opacity:.28}
 
 /* hidden history — the "break" mark on dashed edges, and the end stub ("~ elided") */
-.zs-gap{transition:opacity 160ms}
-.zs-gap-cut{stroke:var(--text-faint);stroke-width:1.5;stroke-linecap:round;fill:none;transition:stroke 140ms}
+.zs-gap{transition:opacity var(--dur-pop) var(--ease-state)}
+.zs-gap-cut{stroke:var(--text-faint);stroke-width:1.5;stroke-linecap:round;fill:none;transition:stroke var(--dur-hover) var(--ease-state)}
 .zs-gap-txt{font:var(--fs-sm) var(--font-mono);fill:var(--text-faint)}
 .zs-gap.is-hover .zs-gap-cut{stroke:var(--text)}.zs-gap.is-hover .zs-gap-txt{fill:var(--text-muted)}
 .zs-gap.is-wc .zs-gap-cut{stroke:var(--co)}
@@ -74,19 +79,21 @@
 
 /* ChangeCard — direct-manipulation states */
 .zs-card.is-drag-src{opacity:.35}
-.zs-card.is-drag-from{border-style:dashed;border-color:var(--accent)}
-.zs-card.is-flash{animation:zs-flash 2.4s ease-out both}
-@keyframes zs-flash{0%,35%{box-shadow:0 0 0 2px var(--accent),0 0 0 6px var(--accent-ring)}100%{box-shadow:0 0 0 0 transparent}}
+.zs-card.is-drag-from{border-style:dashed;border-color:var(--accent-line)}
+/* the edit flash is colour only (a ring fading out) — it stays exactly as it is under Reduce motion, and in an inactive window (live copies) */
+.zs-card.is-flash{animation:zs-flash var(--dur-flash) var(--ease-state) both}
+@keyframes zs-flash{0%,35%{box-shadow:0 0 0 2px var(--accent-live-line),0 0 0 6px var(--accent-live-ring)}100%{box-shadow:0 0 0 0 transparent}}
 .zs-card.is-menu{border-color:var(--edge-hov);background:var(--card-solid-hi);z-index:35}
 
 /* ChangeCard — hover affordances on the card edge: ••• (bottom right) and, without bookmarks, a bookmark button (top right) */
-.zs-card-more,.zs-card-bmadd{position:absolute;right:10px;z-index:3;display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:var(--radius-pill);background:var(--card-solid);border:1px solid var(--border-strong);color:var(--text-faint);cursor:default;opacity:0;pointer-events:none;transform:scale(.85);transition:opacity 140ms,transform 140ms,color var(--dur-hover),background var(--dur-hover),border-color var(--dur-hover)}
+.zs-card-more,.zs-card-bmadd{position:absolute;right:10px;z-index:3;display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border-radius:var(--radius-pill);background:var(--card-solid);border:1px solid var(--border-strong);color:var(--text-faint);cursor:default;opacity:0;pointer-events:none;transform:scale(calc(1 - .15 * var(--motion)));transition:opacity var(--dur-hover) var(--ease-state),transform var(--dur-nudge) var(--ease-glide),color var(--dur-hover) var(--ease-state),background var(--dur-hover) var(--ease-state),border-color var(--dur-hover) var(--ease-state)}
 .zs-card-more{bottom:-11px}.zs-card-bmadd{top:-11px}
 .zs-card:hover>.zs-card-more,.zs-card:focus-within>.zs-card-more,.zs-card.is-menu>.zs-card-more,.zs-card:hover>.zs-card-bmadd,.zs-card:focus-within>.zs-card-bmadd{opacity:1;pointer-events:auto;transform:scale(1)}
 .zs-card:hover>.zs-card-more,.zs-card:hover>.zs-card-bmadd{background:var(--card-solid-hi);border-color:var(--edge-hov)}
-.zs-card.is-sel>.zs-card-more,.zs-card.is-sel>.zs-card-bmadd{border-color:var(--accent)}
+.zs-card.is-sel>.zs-card-more,.zs-card.is-sel>.zs-card-bmadd{border-color:var(--accent-line)}
 .zs-card.is-wc>.zs-card-more,.zs-card.is-wc>.zs-card-bmadd{border-color:var(--co)}
-.zs-card-more:hover,.zs-card.is-menu>.zs-card-more{color:var(--text);background:var(--bg-elevated);border-color:var(--edge-hov)}
+.zs-card-more:hover,.zs-card.is-menu>.zs-card-more{color:var(--text);background:var(--card-solid-hi);border-color:var(--edge-hov)}
+.zs-card-more:active,.zs-card-bmadd:active{background:linear-gradient(var(--fl-on),var(--fl-on)),var(--card-solid-hi)}
 .zs-card-bmadd:hover{color:var(--text)}
 
 /* DayAxis — Free layout: dashed dividers between calendar days, one sticky label per day on the divider, at the left edge */
@@ -94,5 +101,5 @@
 .zs-days-guides{position:absolute;left:0;top:0;overflow:visible}
 .zs-day-guide{stroke:var(--border-strong);stroke-width:1;stroke-dasharray:2 6}
 .zs-days-col{position:sticky;top:0;width:88px;z-index:8}
-.zs-day-label{position:absolute;transform:translateY(-50%);font:11px var(--font-mono);color:var(--text-muted);white-space:nowrap;padding:2px 7px;border-radius:5px;background:var(--card-solid);border:1px solid var(--border)}
+.zs-day-label{position:absolute;transform:translateY(-50%);font:var(--fs-sm) var(--font-mono);color:var(--text-muted);white-space:nowrap;padding:2px 7px;border-radius:var(--radius-tag);background:var(--card-solid);border:1px solid var(--border)}
 .zs-days-col>.zs-day-label{left:14px}

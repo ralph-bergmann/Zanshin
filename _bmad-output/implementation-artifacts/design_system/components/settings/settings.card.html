@@ -26,7 +26,7 @@
         <div className="scope">For Zanshin on this Mac · jj settings go to <code>~/.config/jj/config.toml</code></div>
         <div className="bd">
           <SettingsGroup title="Appearance">
-            <SettingsRow label="Theme"><Segmented variant="inset" label="Theme" value={th} onChange={setTh} options={[{ value: "light", label: "Light", icon: "sun" }, { value: "dark", label: "Dark", icon: "moon" }, { value: "system", label: "Auto", icon: "auto" }]}/></SettingsRow>
+            <SettingsRow label="Theme"><Segmented variant="inset" label="Theme" value={th} onChange={setTh} options={[{ value: "paper", label: "Paper", icon: "sun" }, { value: "night", label: "Night", icon: "moon" }, { value: "system", label: "Auto", icon: "auto" }]}/></SettingsRow>
             <SettingsRow label="Density"><Segmented variant="inset" label="Density" value={den} onChange={setDen} options={[{ value: "compact", label: "Compact" }, { value: "balanced", label: "Balanced" }, { value: "comfy", label: "Comfy" }]}/></SettingsRow>
           </SettingsGroup>
           <SettingsGroup title="While you scroll">

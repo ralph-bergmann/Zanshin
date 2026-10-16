@@ -1,6 +1,6 @@
 import * as React from "react";
 
-/** The chip under the pointer while dragging a change, bookmark, file or hunk — plus the command a drop would run. */
+/** The chip under the pointer while dragging a change, bookmark, file or hunk — plus the command a drop would run. States: dragging · over a target (its command, accent edge) · over the drop menu (muted). */
 export interface DragGhostProps {
   kind?: "change" | "bookmark" | "diff";
   /** change: id, subject, workingCopy */

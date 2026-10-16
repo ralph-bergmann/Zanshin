@@ -4,33 +4,38 @@
 .zs-island--panel{flex-direction:column;align-items:stretch;gap:0;border-radius:var(--radius-panel);overflow:hidden;background:var(--fl-sheen),var(--fl-bg-strong);-webkit-backdrop-filter:var(--glass-blur-strong);backdrop-filter:var(--glass-blur-strong)}
 .zs-island--rail{flex-direction:column;gap:4px;padding:5px;border-radius:var(--radius-panel)}
 .zs-island-sep{width:1px;height:20px;background:var(--fl-border);flex-shrink:0;margin:0 4px}
-[data-material="solid"] .zs-island--panel{background:var(--fl-sheen),var(--fl-bg-solid)}
 
 /* Popover — view options and other settings sheets */
-.zs-popover{display:flex;flex-direction:column;gap:2px;padding:6px 8px 10px;border-radius:var(--radius-island);background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:var(--shadow-menu);color:var(--text);animation:zs-pop var(--dur-pop) var(--ease-glide);transform-origin:top right}
+.zs-popover{display:flex;flex-direction:column;gap:2px;padding:6px 8px 10px;border-radius:var(--radius-popover);background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:var(--shadow-menu);color:var(--text);animation:zs-pop var(--dur-pop) var(--ease-glide);transform-origin:top right}
 .zs-popover-h{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);padding:10px 8px 4px}
 .zs-popover-sep{height:1px;background:var(--fl-border);margin:6px 4px 2px}
 .zs-option{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:36px;padding:0 8px;border-radius:var(--radius-md);font-size:var(--fs-control);color:var(--text-muted);cursor:default}
 
-/* Callout — rail hover preview, arrow points at its button */
-.zs-callout{position:relative;width:290px;border-radius:var(--radius-popover);background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:var(--shadow-callout);color:var(--text);animation:zs-callout-in 140ms var(--ease-glide)}
+/* Callout — rail hover preview, arrow points at its button. The one menu material (13px, sheen over --fl-bg-solid, --shadow-menu).
+   Opens after --delay-callout (90ms), stays --delay-callout-out (200ms) after the pointer leaves. */
+.zs-callout{position:relative;width:290px;border-radius:var(--radius-popover);background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:var(--shadow-menu);color:var(--text);animation:zs-callout-in var(--dur-pop) var(--ease-glide)}
 .zs-callout::before{content:"";position:absolute;left:-6px;top:16px;width:10px;height:10px;background:var(--fl-bg-solid);border-left:1px solid var(--fl-border);border-bottom:1px solid var(--fl-border);transform:rotate(45deg)}
 .zs-callout.no-arrow::before{display:none}
-.zs-callout-hd{display:flex;align-items:center;gap:8px;padding:11px 14px 8px;font-size:13px;font-weight:600}
+.zs-callout-hd{display:flex;align-items:center;gap:8px;padding:11px 14px 8px;font-size:var(--fs-base);font-weight:600}
 .zs-callout-hd>.zs-icon{color:var(--text-muted)}
 .zs-callout-n{margin-left:auto;font:var(--fs-sm) var(--font-mono);font-weight:400;color:var(--text-dim)}
 .zs-callout-bd{padding:0 0 8px}
 .zs-callout-text{padding:2px 14px 6px;font-size:var(--fs-md);color:var(--text-dim);line-height:1.5;text-wrap:pretty}
 .zs-callout-text code{font:var(--fs-sm) var(--font-mono);background:var(--fl-hover);padding:1px 5px;border-radius:var(--radius-xs);white-space:nowrap}
 
-/* Dialog — modal sheet over a blurred scrim */
-.zs-scrim{position:absolute;inset:0;display:grid;place-items:center;background:var(--scrim);-webkit-backdrop-filter:var(--scrim-blur);backdrop-filter:var(--scrim-blur);z-index:50}
-.zs-dialog{display:grid;grid-template-columns:minmax(0,1fr);max-width:calc(100% - 48px);max-height:calc(100% - 48px);border-radius:var(--radius-dialog);overflow:hidden;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:var(--shadow-dialog);color:var(--text);animation:zs-pop var(--dur-pop) var(--ease-glide)}
+/* Dialog — a modal SHEET over a blurred scrim: ConfirmDialog and Push (short modal tasks).
+   (Settings, Projects and jj log Configurations are windows of their own — components/window/window.css.) Esc closes it; the scrim takes no clicks. */
+.zs-scrim{position:absolute;inset:0;display:grid;place-items:center;background:var(--scrim);-webkit-backdrop-filter:var(--scrim-blur);backdrop-filter:var(--scrim-blur);z-index:var(--z-dialog);animation:zs-fade var(--dur-pop) var(--ease-state)}
+.zs-dialog:focus-visible{outline:none;animation:none}
+.zs-dialog{display:grid;grid-template-columns:minmax(0,1fr);max-width:calc(100% - 48px);max-height:calc(100% - 48px);border-radius:var(--radius-dialog);overflow:hidden;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:var(--shadow-dialog);color:var(--text);animation:zs-dialog-in var(--dur-dialog) var(--ease-glide)}
 .zs-dialog.has-nav{grid-template-columns:200px minmax(0,1fr)}
 .zs-dialog-nav{display:flex;flex-direction:column;gap:14px;padding:18px 12px 14px;border-right:1px solid var(--fl-border);min-height:0}
-.zs-dialog-navitem{display:flex;align-items:center;gap:8px;height:32px;padding:0 9px;border:0;border-radius:var(--radius-btn);background:transparent;font-size:var(--fs-control);color:var(--text-muted);text-align:left;cursor:default}
-.zs-dialog-navitem:hover{background:var(--fl-hover);color:var(--text)}
+.zs-dialog-navitem{display:flex;align-items:center;gap:8px;height:var(--control-md);padding:0 9px;border:0;border-radius:var(--radius-btn);background:transparent;font-size:var(--fs-control);color:var(--text-muted);text-align:left;cursor:default}
+.zs-dialog-navitem:hover,.zs-dialog-navitem.st-hover{background:var(--fl-hover);color:var(--text)}
+.zs-dialog-navitem:active,.zs-dialog-navitem.st-press{background:var(--fl-on);color:var(--text)}
 .zs-dialog-navitem.is-on{background:var(--fl-on);color:var(--text)}
+.zs-dialog-navitem.is-on:hover{background:var(--fl-on-hover)}
+.zs-dialog-navitem.is-on:active{background:var(--fl-press)}
 .zs-dialog-navitem>.zs-icon{color:var(--text-dim)}
 .zs-dialog-navcount{margin-left:auto;font:var(--fs-sm) var(--font-mono);color:var(--text-faint)}
 .zs-dialog-main{display:flex;flex-direction:column;min-width:0;min-height:0}
@@ -43,6 +48,22 @@
 
 /* OptionLink — the popover's way out ("Appearance, diffs and more · Settings… ⌘,") */
 .zs-option-link{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:36px;padding:0 8px;border:0;border-radius:var(--radius-md);background:none;font:inherit;font-size:var(--fs-control);color:var(--text-muted);text-align:left;cursor:default}
-.zs-option-link:hover{background:var(--fl-hover);color:var(--text)}
+.zs-option-link:hover,.zs-option-link.st-hover{background:var(--fl-hover);color:var(--text)}
+.zs-option-link:active,.zs-option-link.st-press{background:var(--fl-on);color:var(--text)}
 .zs-option-k{display:flex;align-items:center;gap:6px;font-size:var(--fs-md);color:var(--text-dim);white-space:nowrap}
-.zs-option-k kbd{font:12px var(--font-sans);color:var(--text-faint)}
+.zs-option-k kbd{font:var(--fs-md) var(--font-sans);color:var(--text-faint)}
+
+/* exits — the parent keeps the element mounted for the exit (Presence), then removes it */
+.zs-popover.is-closing,.zs-gs-pop.is-closing,.zs-gs-menu.is-closing{animation:zs-pop-out var(--dur-exit) var(--ease-exit) both;pointer-events:none}
+.zs-callout.is-closing{animation:zs-out var(--dur-exit) var(--ease-exit) both;pointer-events:none}
+.zs-scrim.is-closing{animation:zs-out var(--dur-exit-lg) var(--ease-exit) both;pointer-events:none}
+.zs-scrim.is-closing>.zs-dialog,.zs-scrim.is-closing>.zs-alert{animation:zs-dialog-out var(--dur-exit-lg) var(--ease-exit) both}
+/* ResizeEdge — the grab zone on an island's edge toward the graph (inspector: its left edge · a pinned panel: its right edge). A sibling of
+   the island; 10px: 7 in the 12px gap, 3 on the island, the --radius-panel corners left out. The line: 2px --edge-hov centred on the island's
+   1px edge, after --delay-resize on hover, at once while dragging. No accent — a handle, not a selection. */
+.zs-resize{position:absolute;width:var(--resize-hit);z-index:3;touch-action:none}
+.zs-resize::after{content:"";position:absolute;top:0;bottom:0;width:2px;border-radius:var(--radius-pill);background:var(--edge-hov);opacity:0;transition:opacity var(--dur-hover) var(--ease-state)}
+.zs-resize.is-left::after{left:calc(var(--resize-hit-out) - .5px)}
+.zs-resize.is-right::after{right:calc(var(--resize-hit-out) - .5px)}
+.zs-resize:hover::after{opacity:1;transition-delay:var(--delay-resize)}
+.zs-resize:is(.is-drag,.st-hover)::after{opacity:1;transition-delay:0s}

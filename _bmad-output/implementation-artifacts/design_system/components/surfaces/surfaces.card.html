@@ -34,7 +34,7 @@
             <OptionLink label="Appearance, diffs and more" action="Settings…" shortcut="⌘,"/>
           </Popover>
           <div className="stack">
-            <Callout icon="workstream" title="Workstreams"><CalloutText>No workstreams yet. Create one with <code>jj workstream new</code>.</CalloutText></Callout>
+            <Callout icon="branch" title="Bookmarks" count={0}><CalloutText>No bookmarks yet. Create one with <code>jj bookmark create &lt;name&gt;</code>.</CalloutText></Callout>
             <Callout icon="undo" title="Undo Timeline" count="142 ops"><CalloutText>describe -m "wip: refactor" · 8 min ago</CalloutText></Callout>
           </div>
         </div>
@@ -42,7 +42,7 @@
           <Dialog title="Projects" width={640} height={262} onClose={() => {}}
             navHeader={<div className="brand"><NamiMark size={32} chip/><div><div className="brand-n">Zanshin</div><div className="brand-s">jj client · v0.24.0</div></div></div>}
             nav={[{ id: "projects", label: "Projects", icon: "folder-open" }, { id: "remotes", label: "Remotes", icon: "cloud" }, { id: "settings", label: "Settings", icon: "settings" }]} activeNav="projects"
-            tools={<><SearchField placeholder="Search projects, paths…" style={{ flex: 1 }}/><Button size="md" variant="primary" icon="plus" iconSize={12}>Add directory</Button></>}>
+            tools={<><SearchField placeholder="Search projects, paths…" style={{ flex: 1 }}/><Button size="md" variant="primary" icon="plus" iconSize="sm">Add directory</Button></>}>
             <ProjectRow kind="group" name="Work" expanded count={1} groups={2}/>
             <ProjectRow depth={1} name="MyApp" path="~/code/work/mobile/myapp" branch="feature/new-ui" status="dirty" ahead={6} lastOpened="now" open selected/>
             <ProjectRow depth={1} name="api-server" path="~/code/work/backend/api-server" branch="develop" status="ahead" ahead={2} lastOpened="1h ago"/>

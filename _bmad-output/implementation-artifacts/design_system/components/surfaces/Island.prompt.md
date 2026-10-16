@@ -2,7 +2,7 @@ Glass island — the floating container for all chrome over the graph (top-bar g
 
 ~~~jsx
 <Island shape="bar">
-  <CommandField command="jj log -r 'trunk()..@'" />
+  <GraphSearch />
   <IslandSeparator />
   <IconButton icon="settings" label="View options" />
 </Island>
@@ -11,4 +11,5 @@ Glass island — the floating container for all chrome over the graph (top-bar g
 ~~~
 
 - 12px from the window edge and from each other. Never nest islands; never put a card inside an island.
-- `data-material="solid"` on an ancestor swaps glass for the opaque surface.
+- Reduce transparency (system, or `data-transparency="reduce"`) and increased contrast turn the glass solid through tokens (`tokens/transparency.css`) — no component rule.
+- Keyboard · VoiceOver · Reduce motion: not focusable itself; its controls are, left to right · a group or toolbar labelled by its content · steps aside while the graph scrolls (fade; the drift × `--motion`).

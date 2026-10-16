@@ -8,7 +8,6 @@ const { useState, useEffect, useRef, useMemo, useCallback } = React;
 const I = {
   folder: <path d="M3 5.5h4.5l1.5 1.5h6V14H3V5.5z" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinejoin="round"/>,
   branch: <g stroke="currentColor" strokeWidth="1.5" fill="none"><circle cx="4" cy="4" r="1.8"/><circle cx="4" cy="12" r="1.8"/><circle cx="12" cy="8" r="1.8"/><path d="M4 5.8v4.4M5.6 4q3 0 5 2.5"/></g>,
-  workstream: <g stroke="currentColor" strokeWidth="1.4" fill="none"><circle cx="3.5" cy="4" r="1.5"/><circle cx="3.5" cy="12" r="1.5"/><circle cx="12.5" cy="4" r="1.5"/><circle cx="12.5" cy="12" r="1.5"/><path d="M3.5 5.5v5M12.5 5.5v5M5 4h6M5 12h6"/></g>,
   reviews: <g stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round"><path d="M3 11.5V4a1 1 0 0 1 1-1h7l3 3v5.5a1 1 0 0 1-1 1H6L3 14v-2.5z"/></g>,
   history: <g stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 4.5V8l2.2 2.2"/></g>,
   undo: <g stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round"><path d="M3.5 6.5H10a3.5 3.5 0 1 1 0 7H6"/><path d="M5.5 4L3 6.5 5.5 9"/></g>,
@@ -24,6 +23,7 @@ const I = {
   fileText: <g stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinejoin="round"><path d="M4 2h5l3 3v9H4V2z"/><path d="M9 2v3h3M6 8.5h4M6 11h3" strokeLinecap="round"/></g>,
   merge: <g stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round"><path d="M5 3v6a3 3 0 0 0 3 3h3"/><circle cx="5" cy="3" r="1.5"/><circle cx="11" cy="12" r="1.5"/></g>,
   conflict: <g stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M8 1.5L1.5 13.5h13L8 1.5z"/><path d="M8 6v3.5M8 11v0.4"/></g>,
+  alert: <g stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"><circle cx="8" cy="8" r="5.75"/><path d="M8 5.5v2.25"/><circle cx="8" cy="10.35" r=".85" fill="currentColor" stroke="none"/></g>,
   splitInline: <g stroke="currentColor" strokeWidth="1.3" fill="none"><rect x="2" y="3" width="12" height="10" rx="1.2"/><path d="M2 8h12"/></g>,
   splitSide:   <g stroke="currentColor" strokeWidth="1.3" fill="none"><rect x="2" y="3" width="12" height="10" rx="1.2"/><path d="M8 3v10"/></g>,
   sun: <g stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"><circle cx="8" cy="8" r="2.8"/><path d="M8 1.5V3M8 13v1.5M14.5 8H13M3 8H1.5M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7L3.6 3.6"/></g>,
@@ -163,7 +163,6 @@ function ThemeSwitch({ value, onChange }) {
 function FunctionRail({ active, onSet }) {
   const items = [
     { id: "branches",   label: "Branches",      icon: "branch" },
-    { id: "workstream", label: "Workstreams",   icon: "workstream" },
     { id: "reviews",    label: "Reviews",       icon: "reviews" },
     { id: "undo",       label: "Undo Timeline", icon: "undo" },
   ];
@@ -301,7 +300,6 @@ function NavRail({ activePanel, onSelectPanel, onOpenHome, homeOpen, activeProje
   const items = [
     { id: "history",    label: "Log",           icon: "history" },
     { id: "branches",   label: "Branches",      icon: "branch" },
-    { id: "workstream", label: "Workstreams",   icon: "workstream" },
     { id: "reviews",    label: "Reviews",       icon: "reviews" },
     { id: "undo",       label: "Undo Timeline", icon: "undo" },
   ];
@@ -343,7 +341,6 @@ function Sidebar({ openColumns, onToggle }) {
   const [activeNav, setActiveNav] = useState("branches");
   const items = [
     { id: "branches",   label: "Branches",     icon: "branch" },
-    { id: "workstream", label: "Workstreams",  icon: "workstream" },
     { id: "reviews",    label: "Reviews",      icon: "reviews" },
     { id: "history",    label: "History",      icon: "history" },
     { id: "undo",       label: "Undo Timeline",icon: "undo" },
@@ -991,7 +988,6 @@ function HeaderIconRow({ leftPanel, onSet, onHover, flyout }) {
   const items = [
     { id: "history",    label: "History",       icon: "history" },
     { id: "branches",   label: "Branches",      icon: "branch" },
-    { id: "workstream", label: "Workstreams",   icon: "workstream" },
     { id: "reviews",    label: "Reviews",       icon: "reviews" },
     { id: "undo",       label: "Undo Timeline", icon: "undo" },
   ];
@@ -1039,13 +1035,6 @@ function LeftPanel({ kind, onClose, selected, checkedOut, hoveredId, onCommitCli
     return (
       <SidePanel title="Branches" icon="branch" onClose={onClose}>
         <BranchesPanelBody openColumns={openColumns} onToggle={onToggleBranch}/>
-      </SidePanel>
-    );
-  }
-  if (kind === "workstream") {
-    return (
-      <SidePanel title="Workstreams" icon="workstream" onClose={onClose}>
-        <div className="side-empty">No workstreams yet.<br/>Create one with <code>jj workstream new</code>.</div>
       </SidePanel>
     );
   }

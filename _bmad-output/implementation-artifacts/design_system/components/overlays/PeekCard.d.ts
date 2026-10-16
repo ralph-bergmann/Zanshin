@@ -1,6 +1,6 @@
 import * as React from "react";
 
-/** Hover card for a change (graph peek, stack rows, gap callouts). */
+/** Hover card for a change (graph peek, stack rows, gap callouts). States: shown after --delay-peek · flipped left near the right edge. */
 export interface PeekCardProps {
   /** change id (first 2 bold, 8 shown) */
   id?: string;

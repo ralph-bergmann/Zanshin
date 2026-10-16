@@ -1,12 +1,29 @@
-<!-- @dsCard group="Spacing" viewport="700x150" name="Radii" subtitle="Radius grows with the size of the surface — 4px badges to 18px dialogs" -->
+<!-- @dsCard group="Spacing" viewport="700x190" name="Radii — one concentric scale" subtitle="Inside a rounded container: radius = outer − inset. 3px key caps to 18px dialogs, pill for anything that is height / 2" -->
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <link rel="stylesheet" href="../styles.css"/>
 <link rel="stylesheet" href="specimen.css"/>
+<style>.row{display:flex;gap:8px;align-items:flex-start}.b{width:38px;height:38px;background:var(--card-solid);border:1px solid var(--border-strong)}.sw{align-items:center;width:38px}.sw .v{text-align:center;white-space:nowrap}.rule{margin-top:14px;font:var(--fs-md)/1.5 var(--font-mono);color:var(--text-muted)}.rule b{color:var(--text);font-weight:600}</style>
 </head>
 <body>
-<div style="display:flex;gap:14px;align-items:flex-end"><div class="sw" style="align-items:center"><div style="width:46px;height:46px;border-radius:4px;background:var(--card-solid);border:1px solid var(--border-strong)"></div><span class="k">4</span><span class="v">badge</span></div><div class="sw" style="align-items:center"><div style="width:46px;height:46px;border-radius:6px;background:var(--card-solid);border:1px solid var(--border-strong)"></div><span class="k">6</span><span class="v">menu item</span></div><div class="sw" style="align-items:center"><div style="width:46px;height:46px;border-radius:8px;background:var(--card-solid);border:1px solid var(--border-strong)"></div><span class="k">8</span><span class="v">row</span></div><div class="sw" style="align-items:center"><div style="width:46px;height:46px;border-radius:9px;background:var(--card-solid);border:1px solid var(--border-strong)"></div><span class="k">9</span><span class="v">button</span></div><div class="sw" style="align-items:center"><div style="width:46px;height:46px;border-radius:10px;background:var(--card-solid);border:1px solid var(--border-strong)"></div><span class="k">10</span><span class="v">card</span></div><div class="sw" style="align-items:center"><div style="width:46px;height:46px;border-radius:11px;background:var(--card-solid);border:1px solid var(--border-strong)"></div><span class="k">11</span><span class="v">rail btn</span></div><div class="sw" style="align-items:center"><div style="width:46px;height:46px;border-radius:12px;background:var(--card-solid);border:1px solid var(--border-strong)"></div><span class="k">12</span><span class="v">callout</span></div><div class="sw" style="align-items:center"><div style="width:46px;height:46px;border-radius:14px;background:var(--card-solid);border:1px solid var(--border-strong)"></div><span class="k">14</span><span class="v">island</span></div><div class="sw" style="align-items:center"><div style="width:46px;height:46px;border-radius:16px;background:var(--card-solid);border:1px solid var(--border-strong)"></div><span class="k">16</span><span class="v">panel</span></div><div class="sw" style="align-items:center"><div style="width:46px;height:46px;border-radius:18px;background:var(--card-solid);border:1px solid var(--border-strong)"></div><span class="k">18</span><span class="v">dialog</span></div><div class="sw" style="align-items:center"><div style="width:46px;height:46px;border-radius:999px;background:var(--card-solid);border:1px solid var(--border-strong)"></div><span class="k">999</span><span class="v">pill</span></div></div>
+<div class="row">
+<div class="sw"><div class="b" style="border-radius:var(--radius-kbd)"></div><span class="k">3</span><span class="v">kbd</span></div>
+<div class="sw"><div class="b" style="border-radius:var(--radius-xs)"></div><span class="k">4</span><span class="v">@ badge</span></div>
+<div class="sw"><div class="b" style="border-radius:var(--radius-tag)"></div><span class="k">5</span><span class="v">tag</span></div>
+<div class="sw"><div class="b" style="border-radius:var(--radius-sm)"></div><span class="k">6</span><span class="v">segment</span></div>
+<div class="sw"><div class="b" style="border-radius:var(--radius-chip)"></div><span class="k">7</span><span class="v">chip</span></div>
+<div class="sw"><div class="b" style="border-radius:var(--radius-md)"></div><span class="k">8</span><span class="v">row</span></div>
+<div class="sw"><div class="b" style="border-radius:var(--radius-btn)"></div><span class="k">9</span><span class="v">button</span></div>
+<div class="sw"><div class="b" style="border-radius:var(--radius-card)"></div><span class="k">10</span><span class="v">card</span></div>
+<div class="sw"><div class="b" style="border-radius:var(--radius-rail)"></div><span class="k">11</span><span class="v">rail</span></div>
+<div class="sw"><div class="b" style="border-radius:var(--radius-well)"></div><span class="k">12</span><span class="v">well</span></div>
+<div class="sw"><div class="b" style="border-radius:var(--radius-popover)"></div><span class="k">13</span><span class="v">menu</span></div>
+<div class="sw"><div class="b" style="border-radius:var(--radius-island)"></div><span class="k">14</span><span class="v">island</span></div>
+<div class="sw"><div class="b" style="border-radius:var(--radius-panel)"></div><span class="k">16</span><span class="v">panel</span></div>
+<div class="sw"><div class="b" style="border-radius:var(--radius-dialog)"></div><span class="k">18</span><span class="v">dialog</span></div>
+</div>
+<p class="rule"><b>inner = outer − inset</b> · island 14 − 4 = 10 · menu 13 − 5 = 8 · rail 16 − 5 = 11 · tabs 10 − 3 = 7</p>
 </body>
 </html>

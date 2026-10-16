@@ -12,7 +12,7 @@ export function FileRow({ status = "M", path = "", added, removed, selected = fa
       {selectable && <Checkbox checked={checked} mixed={mixed} onChange={onCheck} label={"Select " + name} />}
       <span className={"zs-file-status s-" + status}>{status}</span>
       <span className="zs-file-path"><span>{path}</span></span>
-      {viewed && <span className="zs-file-vw" title="Viewed"><Icon name="check" size={10} /></span>}
+      {viewed && <span className="zs-file-vw" title="Viewed"><Icon name="check" size="xs" /></span>}
       <span className="zs-file-stat">
         {added > 0 && <span className="a">+{added}</span>}
         {removed > 0 && <span className="r">−{removed}</span>}

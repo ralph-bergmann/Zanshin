@@ -1,6 +1,6 @@
 import * as React from "react";
 
-/** Bookmark as a card legend (ticket id leads) or as a tag with its sync state. */
+/** Bookmark as a card legend (ticket id leads) or as a tag with its sync state. States: rest · on a hovered card (hover edge) · on a selected or @ card (that edge) · tag with its sync state. */
 export interface BookmarkChipProps extends React.HTMLAttributes<HTMLSpanElement> {
   /** full bookmark name, e.g. "feature/ZAN-412_onboarding-swipe-gestures" or "main@origin" */
   name: string;

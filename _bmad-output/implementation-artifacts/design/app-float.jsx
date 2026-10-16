@@ -19,7 +19,6 @@ const URL_TWEAKS = Object.fromEntries([["theme", URLQ.get("th") || URLQ.get("the
 
 const RAIL = [
   { id: "branches",   label: "Bookmarks",     icon: "branch" },
-  { id: "workstream", label: "Workstreams",   icon: "workstream" },
   { id: "reviews",    label: "Reviews",       icon: "reviews" },
   { id: "undo",       label: "Undo Timeline", icon: "undo" },
 ];
@@ -81,7 +80,7 @@ function ViewMenu({ api, t, setTweak, onOpenSettings }) {
 // ============================================================
 // FLOAT CHROME — everything that hovers over the graph
 // ============================================================
-function FloatChrome({ api, t, setTweak, pinned, setPinned, project, onOpenHome, insets, tree, activeProjectId, onPickProject, onOpenSettings }) {
+function FloatChrome({ api, t, setTweak, pinned, setPinned, project, onOpenProjects, insets, tree, activeProjectId, onPickProject, onOpenSettings, isKey }) {
   const flRef = useRef(null), viewRef = useRef(null);
   const openT = useRef(null), closeT = useRef(null);
   const [co, setCo] = useState(null);
@@ -91,6 +90,20 @@ function FloatChrome({ api, t, setTweak, pinned, setPinned, project, onOpenHome,
   if (api.wcDir) lastDir.current = api.wcDir;
   const clear = () => { clearTimeout(openT.current); clearTimeout(closeT.current); };
   useEffect(() => clear, []);
+
+  // Push… opens the sheet (push-dialog.jsx) instead of pushing — also ⇧⌘P while this window is key. ?push opens it on load
+  // (?push=network|auth|stale: with that error). The default remote is Settings › Project › Push to (git.push).
+  const [push, setPush] = useState(null);
+  const openPush = (error = null) => setPush({ plan: window.pushPlan(api.all, api.wcId), error, n: Date.now() });
+  const pushFns = useRef(null); pushFns.current = { openPush, isKey };
+  useEffect(() => {
+    const q = URLQ.get("push");
+    if (q != null) openPush(["network", "auth", "stale"].includes(q) ? { kind: q } : null);
+    const k = (e) => { if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "p" && pushFns.current.isKey) { e.preventDefault(); pushFns.current.openPush(); } };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, []);
+  const pushRemote = () => { try { return JSON.parse(localStorage.getItem("zanshin.settings.project." + (project ? project.id : "_")) || "{}").push || "origin"; } catch { return "origin"; } };
 
   const enter = (id, e) => {
     clear();
@@ -121,7 +134,6 @@ function FloatChrome({ api, t, setTweak, pinned, setPinned, project, onOpenHome,
         {bmCount > 5 && <div className="fl-co-more">+{bmCount - 5} more</div>}
       </>
     );
-    if (id === "workstream") return <div className="fl-co-empty">No workstreams yet. Create one with <code>jj workstream new</code>.</div>;
     if (id === "reviews") return <div className="fl-co-empty">No open reviews.</div>;
     return (
       <div className="fl-co-ops">
@@ -139,11 +151,7 @@ function FloatChrome({ api, t, setTweak, pinned, setPinned, project, onOpenHome,
       <div className="fl-top">
         {/* PLACE — the window, and which repository it shows */}
         <div className="fl-tl">
-          <div className="window-controls fl-traffic">
-            <button className="win-ctrl win-close" aria-label="Close window"></button>
-            <button className="win-ctrl win-min" aria-label="Minimize"></button>
-            <button className="win-ctrl win-max" aria-label="Zoom"></button>
-          </div>
+          <window.TrafficLights className="fl-traffic"/>
           <div className="fl-pm">
             <button className={"fl-proj fl-glass" + (pm ? " on" : "")} onClick={() => setPm(o => !o)} aria-haspopup="menu" aria-expanded={pm} title={project ? project.path : "Projects"}>
               <span className="fl-proj-mark"><window.ZanshinMark size={28}/></span>
@@ -152,7 +160,7 @@ function FloatChrome({ api, t, setTweak, pinned, setPinned, project, onOpenHome,
               <Icon name="chevronDown" size={14}/>
             </button>
             {pm && <window.ProjectMenu tree={tree} activeId={activeProjectId} onClose={() => setPm(false)}
-              onPick={(p) => { setPm(false); onPickProject(p); }} onAll={() => { setPm(false); onOpenHome(); }} onSettings={(tab) => { setPm(false); onOpenSettings(tab); }}/>}
+              onPick={(p) => { setPm(false); onPickProject(p); }} onAll={() => { setPm(false); onOpenProjects(); }} onSettings={(tab) => { setPm(false); onOpenSettings(tab); }}/>}
           </div>
         </div>
 
@@ -174,7 +182,7 @@ function FloatChrome({ api, t, setTweak, pinned, setPinned, project, onOpenHome,
         <div className="fl-tr">
           <div className="fl-group fl-glass">
             <button className="fl-ib" title="Fetch — jj git fetch" aria-label="Fetch"><Icon name="fetch" size={17}/></button>
-            <button className="fl-ib" title="Push — jj git push" aria-label="Push"><Icon name="push" size={17}/></button>
+            <button className="fl-ib" title="Push… — choose what jj git push sends" aria-label="Push…" aria-haspopup="dialog" onClick={() => openPush()}><Icon name="push" size={17}/></button>
           </div>
           <button className="fl-primary" onClick={() => api.newChange()} title="jj new — start a new change on top of @"><Icon name="plus" size={15}/><span>New change</span></button>
         </div>
@@ -215,25 +223,60 @@ function FloatChrome({ api, t, setTweak, pinned, setPinned, project, onOpenHome,
         onClick={api.onLocate} tabIndex={api.wcDir ? 0 : -1} aria-hidden={!api.wcDir} title="Scroll to the working copy">
         <span className="gat">@</span><span>Working copy</span>{ARROW}
       </button>
+      {push && ReactDOM.createPortal(
+        <window.PushDialog key={push.n} plan={push.plan} remotes={["origin", "upstream"]} defaultRemote={pushRemote()} error={push.error}
+          onCancel={() => setPush(null)} onDone={(r) => { setPush(null); api.push(r); }}/>,
+        (flRef.current && flRef.current.closest(".fwin")) || document.body)}
     </div>
   );
 }
 
 // ============================================================
-// APP
+// APP — the project window, and above it the windows of their own (windows.jsx): Projects (All Projects… ⇧⌘O) and Settings (⌘,).
+// `stack` is the window order, front first; its head is the key window, the others are inactive. ⌘W closes the key window
+// (where the browser lets it — the red button always does).
 // ============================================================
+const TAB_KEY = "zanshin.settings.tab";
 function FloatApp() {
   const [tw, setTweak] = useTweaks({ ...TWEAK_DEFAULTS, ...URL_TWEAKS });
   const t = { ...tw, ...FIXED };
   const [homeTree, setHomeTree] = useState(() => window.HOME_TREE);
-  const [homeOpen, setHomeOpen] = useState(!URLQ.has("embed"));
   const [activeProjectId, setActiveProjectId] = useState(window.ACTIVE_PROJECT_ID || "p_myapp");
   const [pinned, setPinned] = useState(null);
-  const [settings, setSettings] = useState(null);
+  // Projects opens on load (?embed: not) · ?settings=general|project opens Settings too
+  const [wins, setWins] = useState(() => {
+    const o = {};
+    if (!URLQ.has("embed")) o.projects = window.placeWindow("projects", o);
+    if (URLQ.has("settings")) o.settings = window.placeWindow("settings", o);
+    return o;
+  });
+  const [stack, setStack] = useState(() => [...(URLQ.has("settings") ? ["settings"] : []), ...(URLQ.has("embed") ? [] : ["projects"]), "project"]);
+  const key = stack[0];
+  const [tab, setTabState] = useState(() => { const q = URLQ.get("settings"); if (q === "general" || q === "project") return q; try { return localStorage.getItem(TAB_KEY) || "general"; } catch { return "general"; } });
+  const setTab = (v) => { setTabState(v); try { localStorage.setItem(TAB_KEY, v); } catch {} };
+  const front = (w) => setStack(s => s[0] === w ? s : [w, ...s.filter(x => x !== w)]);
+  const openWin = (w) => { setWins(o => o[w] ? o : { ...o, [w]: window.placeWindow(w, o) }); front(w); };
+  const closeWin = (w) => { setWins(o => { const n = { ...o }; delete n[w]; return n; }); setStack(s => s.filter(x => x !== w)); };
+  const setGeo = (w) => (g) => setWins(o => o[w] ? { ...o, [w]: g } : o);
+  const zoom = (w) => setWins(o => {
+    const g = o[w]; if (!g) return o;
+    return { ...o, [w]: g.zoomed ? { ...g.zoomed, zoomed: null } : { x: 12, y: 12, w: window.innerWidth - 24, h: window.innerHeight - 24, zoomed: g } };
+  });
+  const zOf = (w) => 10 - stack.filter(x => x !== "project").indexOf(w);
+  // "Settings…" and "Appearance, diffs and more" → General · "Project Settings…" → Project · ⌘, → the tab shown last, never switched
+  const openSettings = (which) => { if (which === "general" || which === "project") setTab(which); openWin("settings"); };
+  const fns = useRef(null); fns.current = { openSettings, openWin, closeWin, key };
   useEffect(() => {
-    const k = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === ",") { e.preventDefault(); setSettings(s => s ? null : "general"); } };
-    window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
+    const k = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const c = e.key.toLowerCase(), f = fns.current;
+      if (c === "," && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); f.openSettings(); }
+      else if (c === "o" && e.shiftKey) { e.preventDefault(); e.stopPropagation(); f.openWin("projects"); }
+      else if (c === "w" && !e.shiftKey && f.key !== "project") { e.preventDefault(); e.stopPropagation(); f.closeWin(f.key); }
+    };
+    const r = () => setWins(o => Object.fromEntries(Object.entries(o).map(([w, g]) => [w, window.clampWindow(g)])));
+    window.addEventListener("keydown", k, true); window.addEventListener("resize", r);
+    return () => { window.removeEventListener("keydown", k, true); window.removeEventListener("resize", r); };
   }, []);
 
   useEffect(() => {
@@ -252,19 +295,20 @@ function FloatApp() {
   const insets = { left: pinned ? RAIL_R + PANEL_W + EDGE : RAIL_R, right: EDGE, top: TOP, bottom: EDGE, detail: DETAIL_W + EDGE };
 
   return (
-    <div className="fwin">
-      <window.GraphWorkspace t={t} setTweak={setTweak} floating floatInsets={insets}
-        chrome={(api) => <FloatChrome api={api} t={t} setTweak={setTweak} pinned={pinned} setPinned={setPinned} project={project} insets={insets} onOpenHome={() => setHomeOpen(true)}
-          tree={homeTree} activeProjectId={activeProjectId} onPickProject={(p) => setActiveProjectId(p.id)} onOpenSettings={setSettings}/>}/>
-
-      {settings && <window.SettingsWindow tab={settings} setTab={setSettings} onClose={() => setSettings(null)} t={t} setTweak={setTweak} project={project}/>}
-
-      {homeOpen && (
-        <HomeDialog tree={homeTree} setTree={setHomeTree} activeProjectId={activeProjectId}
-          onOpenProject={(p) => { setActiveProjectId(p.id); setHomeOpen(false); }}
-          onClose={() => setHomeOpen(false)} canClose={true}/>
-      )}
-    </div>
+    <>
+      <div className="fwin" data-window={key === "project" ? undefined : "inactive"} onPointerDownCapture={() => front("project")}>
+        <window.GraphWorkspace t={t} setTweak={setTweak} floating floatInsets={insets}
+          chrome={(api) => <FloatChrome api={api} t={t} setTweak={setTweak} pinned={pinned} setPinned={setPinned} project={project} insets={insets} isKey={key === "project"}
+            onOpenProjects={() => openWin("projects")} tree={homeTree} activeProjectId={activeProjectId} onPickProject={(p) => setActiveProjectId(p.id)} onOpenSettings={openSettings}/>}/>
+      </div>
+      <div className="zwl">
+        {wins.projects && <window.ProjectsWin tree={homeTree} setTree={setHomeTree} activeProjectId={activeProjectId} active={key === "projects"} z={zOf("projects")}
+          geo={wins.projects} setGeo={setGeo("projects")} onActivate={() => front("projects")} onClose={() => closeWin("projects")} onZoom={() => zoom("projects")}
+          onSettings={() => openSettings("general")} onOpenProject={(p) => { setActiveProjectId(p.id); closeWin("projects"); front("project"); }}/>}
+        {wins.settings && <window.SettingsWin tab={tab} setTab={setTab} project={project} t={t} setTweak={setTweak} active={key === "settings"} z={zOf("settings")}
+          geo={wins.settings} setGeo={setGeo("settings")} onActivate={() => front("settings")} onClose={() => closeWin("settings")}/>}
+      </div>
+    </>
   );
 }
 

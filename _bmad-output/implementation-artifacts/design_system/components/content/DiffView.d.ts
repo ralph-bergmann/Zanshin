@@ -1,7 +1,7 @@
 import * as React from "react";
 
 export type DiffLine = string | { t: "add" | "rem" | "hunk" | "ctx"; s: string };
-/** Diff block: toolbar (path · tools · Viewed) over hunks or plain unified lines. */
+/** Diff block: toolbar (path · tools · Viewed) over hunks or plain unified lines. States: unified · split · viewed (folded, green edge; the folded row has hover and focus). */
 export interface DiffViewProps {
   /** path shown in the toolbar */
   file?: string;

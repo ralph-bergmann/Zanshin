@@ -3,12 +3,13 @@ import { Icon } from "../brand/Icon.jsx";
 
 // SearchPopover — the suggestions under the graph search, in menu material. Empty field: recent searches (go-tos and filters, with
 // their change counts). While typing: matches grouped by kind (Changes, Bookmarks, Authors, Files, Descriptions).
-// footer states what Enter does: { text, verb } — the full `jj log -r '…'` command with "Filter", or
+// footer states what Enter does for the KEYBOARD row: { text, verb } — the full `jj log -r '…'` command with "Filter", or
 // "Selects the change — the graph stays as it is" with "Select".
-export function SearchPopover({ note, empty, footer, children, listRef, className = "", style, ...rest }) {
+// A field-attached list: focus stays in the search field (aria-activedescendant names the keyboard row); the popover never takes it.
+export function SearchPopover({ note, empty, footer, children, listRef, listId = "zs-gs-pop", className = "", style, ...rest }) {
   return (
     <div className={("zs-gs-pop " + className).trim()} style={style} onMouseDown={(e) => { if (!e.target.closest("input")) e.preventDefault(); }} {...rest}>
-      <div className="zs-gs-list" role="listbox" aria-label="Suggestions" ref={listRef}>
+      <div className="zs-gs-list" id={listId} role="listbox" aria-label="Suggestions" ref={listRef}>
         {note && <div className="zs-gs-note">{note}</div>}
         {children}
         {empty && <div className="zs-gs-empty">{empty}</div>}
@@ -30,12 +31,15 @@ export function SearchGroup({ label, note, action, onAction }) {
   );
 }
 
-// SearchRow — one 34px suggestion: icon · before + label (+ quote, sub, after) · meta. highlighted = moon tint, icon in moon.
+// SearchRow — one 34px suggestion: icon · before + label (+ quote, sub, after) · meta.
+// active = the keyboard row (--accent-soft, icon in accent; give it an id for the field's aria-activedescendant). Hover is --fl-hover
+// and does NOT move the keyboard row — ↩ and the footer stay with the keyboard row, a click runs the clicked one.
 // mono = a path (folder part dimmed via SearchMatch split); dim = "(no description set)"; more = "3 more in Files" row with a chevron.
-export function SearchRow({ icon, label, quote, before, after, sub, mono = false, dim = false, meta, highlighted = false, more = false, onClick, onMouseMove, className = "", ...rest }) {
+export function SearchRow({ icon, label, quote, before, after, sub, mono = false, dim = false, meta, active, highlighted = false, more = false, onClick, onMouseMove, className = "", ...rest }) {
+  const on = active != null ? active : highlighted;
   return (
-    <div role="option" aria-selected={highlighted} className={"zs-gs-row" + (highlighted ? " is-on" : "") + (more ? " is-more" : "") + (className ? " " + className : "")} onClick={onClick} onMouseMove={onMouseMove} {...rest}>
-      <span className="zs-gs-ic">{typeof icon === "string" ? <Icon name={icon} size={14}/> : icon}</span>
+    <div role="option" aria-selected={on} className={"zs-gs-row" + (on ? " is-active" : "") + (more ? " is-more" : "") + (className ? " " + className : "")} onMouseDown={(e) => e.preventDefault()} onClick={onClick} onMouseMove={onMouseMove} {...rest}>
+      <span className="zs-gs-ic">{typeof icon === "string" ? <Icon name={icon} size="md"/> : icon}</span>
       <span className="zs-gs-main">
         {before}
         {more ? <span className="zs-gs-more">{label}</span>
@@ -43,7 +47,7 @@ export function SearchRow({ icon, label, quote, before, after, sub, mono = false
         {sub && <code className="zs-gs-sub">{sub}</code>}
         {after}
       </span>
-      <span className="zs-gs-meta">{more ? <Icon name="chevron-right" size={12}/> : meta}</span>
+      <span className="zs-gs-meta">{more ? <Icon name="chevron-right" size="sm"/> : meta}</span>
     </div>
   );
 }
@@ -75,7 +79,7 @@ export function SearchTag({ children }) {
   return <span className="zs-gs-tag">{children}</span>;
 }
 
-// SearchAvatar — an author's initial (moon ring on the highlighted row)
+// SearchAvatar — an author's initial (accent ring on the keyboard row)
 export function SearchAvatar({ name = "" }) {
   return <span className="zs-gs-av" aria-hidden="true">{name.trim().slice(0, 1)}</span>;
 }

@@ -114,7 +114,7 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
   const dragHunk = (e, h) => beginDrag(e, payload(sel.size > 1 && sel.has(h.id) ? [...sel] : [h.id]));
 
   const actions = !mutable
-    ? [<Button key="new" variant="primary" icon="plus" iconSize={13} onClick={() => onNew(c.id)} title={"jj new " + c.id.slice(0, 8)}>New change on top</Button>]
+    ? [<Button key="new" variant="primary" icon="plus" iconSize="md" onClick={() => onNew(c.id)} title={"jj new " + c.id.slice(0, 8)}>New change on top</Button>]
     : [
       isWC ? <Button key="new" onClick={() => onNew(c.id)} title="jj new — leave this change as it is and start a new one">New change</Button>
         : <Button key="edit" variant={composing ? "default" : "primary"} icon={<AtBadge size="sm"/>} onClick={onEdit} title="Move the working copy here — jj edit">Edit</Button>,
@@ -133,7 +133,7 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
           {c.merge && <Flag>Merge</Flag>}
           {c.conflict && <Flag kind="warn" icon="conflict">Conflict</Flag>}
         </span>
-        <IconButton icon="close" iconSize={12} size="sm" label="Close" title="Close (Esc)" onClick={onClose}/>
+        <IconButton icon="close" iconSize="sm" size="sm" label="Close" title="Close (Esc)" onClick={onClose}/>
       </header>
       <div className="zk-ins-scroll">
         {editing && mutable ? (
@@ -142,7 +142,7 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
           <div className={"zk-ins-title" + (mutable ? " is-editable" : "")} onClick={mutable ? () => setEditing(true) : undefined}
             onKeyDown={mutable ? (e) => { if (e.key === "Enter") { e.preventDefault(); setEditing(true); } } : undefined}
             role={mutable ? "button" : undefined} tabIndex={mutable ? 0 : undefined} title={mutable ? "Edit description — jj describe" : undefined}>
-            <h2 className={"zk-ins-subj" + (undescribed ? " is-dim" : "")}>{undescribed ? (mutable ? "Describe this change…" : "(no description set)") : c.subject}{mutable && <Icon name="describe" size={12} className="zk-ins-pen"/>}</h2>
+            <h2 className={"zk-ins-subj" + (undescribed ? " is-dim" : "")}>{undescribed ? (mutable ? "Describe this change…" : "(no description set)") : c.subject}{mutable && <Icon name="describe" size="sm" className="zk-ins-pen"/>}</h2>
             {c.description && <p className="zk-ins-desc">{c.description}</p>}
           </div>
         )}
@@ -172,7 +172,7 @@ function ZKInspector({ c, isWC, canSquash, diffMode, setDiffMode, editing, setEd
               <span className="zk-ch-meta">{files.length} {files.length === 1 ? "file" : "files"}<span className="a">+{tot.a}</span><span className="r">−{tot.r}</span></span>
               {viewedN > 0 && (
                 <span className="zk-ch-viewed" title={viewedN + " of " + files.length + " files viewed"}>
-                  {viewedN === files.length ? <><Icon name="check" size={10}/>all viewed</> : <>{viewedN}/{files.length} viewed</>}
+                  {viewedN === files.length ? <><Icon name="check" size="xs"/>all viewed</> : <>{viewedN}/{files.length} viewed</>}
                   <button type="button" onClick={() => files.forEach((f) => setViewed(f.path, viewedN !== files.length))}>{viewedN === files.length ? "Reset" : "Mark all"}</button>
                 </span>
               )}

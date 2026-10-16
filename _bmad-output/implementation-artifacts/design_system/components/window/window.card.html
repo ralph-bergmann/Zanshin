@@ -1,10 +1,10 @@
-<!-- @dsCard group="Components" viewport="700x150" name="Window" subtitle="TrafficLights + the Place island they sit beside" -->
+<!-- @dsCard group="Components" viewport="1500x1290" name="Window" subtitle="The top bar from the system's traffic lights (block end + 12, centred on the block) · Settings and Projects as windows, Night and Paper, active and inactive" -->
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <link rel="stylesheet" href="../../styles.css"/>
-<style>body{margin:0;background:var(--canvas);min-height:100vh}.bar{display:flex;align-items:center;gap:12px;padding:12px}.proj{display:flex;align-items:center;gap:10px;padding:0 12px 0 8px;font:600 13px var(--font-sans);letter-spacing:-.005em;color:var(--text);cursor:pointer}.dot{width:7px;height:7px;border-radius:50%;background:var(--co)}.cap{padding:8px 12px 0 12px;font:var(--fs-sm) var(--font-mono);color:var(--text-dim)}</style>
+<style>body{margin:0;background:#0b0e1c;min-height:100vh;color:var(--text);font-family:var(--font-sans)}.wrap{display:flex;flex-direction:column;gap:22px;padding:22px 26px}.h{font:600 var(--fs-base) var(--font-sans);color:#e7e9f2;margin:0 0 8px}.h span{font:var(--fs-sm) var(--font-mono);color:#9299b4;font-weight:400;margin-left:10px}.geo{display:grid;grid-template-columns:1fr 1fr;gap:22px}.frame{position:relative;height:150px;border-radius:12px;overflow:hidden;background:var(--canvas)}.frame .zs-traffic{position:absolute;left:var(--tl-x);top:calc(var(--tl-mid-y) - var(--tl-size) / 2)}.bar{position:absolute;left:var(--chrome-first-x);top:var(--chrome-bar-y);display:flex;gap:12px}.content{position:absolute;left:0;right:0;top:var(--chrome-top);border-top:1px dashed var(--accent-line);opacity:.8}.dim{position:absolute;font:var(--fs-xs) var(--font-mono);color:var(--text-dim);white-space:nowrap}.vline{position:absolute;top:0;bottom:0;border-left:1px dashed var(--border-strong)}.hline{position:absolute;left:0;right:0;border-top:1px dashed var(--border-strong)}.wins{display:grid;grid-template-columns:1fr 1fr;gap:22px}.theme{position:relative;height:560px;border-radius:12px;overflow:hidden;background:var(--canvas)}.theme>.lbl{position:absolute;left:16px;top:12px;font:var(--fs-sm) var(--font-mono);color:var(--text-dim)}.sc{position:absolute;transform-origin:top left}.tree{display:flex;flex-direction:column;gap:1px;padding:8px 10px}.brand{display:flex;align-items:center;gap:9px;padding:6px 14px 12px;font-weight:600}.nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}.setbd{display:flex;flex-direction:column;gap:16px;padding:16px 22px 20px}.ia{display:grid;grid-template-columns:repeat(2,1fr);gap:22px}.ia .theme{height:auto;padding:38px 18px 18px}.ctl{display:flex;align-items:center;gap:16px;flex-wrap:wrap}</style>
 </head>
 <body>
 <div id="root"></div>
@@ -14,14 +14,75 @@
 <script src="../../_ds_bundle.js"></script>
 <script type="text/babel">
 (() => {
-  const { TrafficLights, Island, NamiMark, Icon } = window.ZanshinDesignSystem_a33847;
-  const Demo = () => (
-    <div>
-      <div className="bar">
-        <TrafficLights/>
-        <Island shape="bar" as="button" className="proj"><NamiMark size={28} chip/><span>MyApp</span><span className="dot" title="uncommitted changes"></span><Icon name="chevron-down" size={14} style={{ color: "var(--text-dim)" }}/></Island>
+  const { TrafficLights, Island, NamiMark, Icon, Window, Segmented, SettingsGroup, SettingsRow, Switch, Select, SearchField, Button, ProjectRow, Checkbox, ChangeCard, TextField } = window.ZanshinDesignSystem_a33847;
+  const Capsule = () => <Island shape="bar" as="button" style={{ gap: 10, padding: "0 12px 0 8px" }}><NamiMark size={28} chip/><span style={{ fontWeight: 600 }}>MyApp</span><Icon name="chevron-down" size="md" style={{ color: "var(--text-dim)" }}/></Island>;
+  const Geo = ({ full }) => (
+    <div className="frame" data-fullscreen={full ? "" : undefined}>
+      {!full && <TrafficLights/>}
+      <div className="bar"><Capsule/><Island shape="bar" style={{ width: 260 }}></Island></div>
+      <div className="content"></div>
+      {!full ? <>
+        <span className="vline" style={{ left: 79 }}></span><span className="vline" style={{ left: 91 }}></span>
+        <span className="hline" style={{ top: 26 }}></span>
+        <span className="dim" style={{ left: 19, top: 42 }}>block 19–79</span>
+        <span className="dim" style={{ left: 95, top: 54 }}>first island = block end + 12 = 91</span>
+        <span className="dim" style={{ right: 12, top: 14 }}>bar centred on the block: y 26 (top 4)</span>
+        <span className="dim" style={{ left: 12, top: 66 }}>content = bar bottom + 12 = 60</span>
+      </> : <>
+        <span className="dim" style={{ left: 12, top: 72 }}>full screen: no block → first island 12, bar top 12, content 68</span>
+      </>}
+    </div>
+  );
+  const SettingsWin = ({ active, tab = "general" }) => (
+    <Window title={tab === "general" ? "General" : "Project"} titleHidden active={active} buttons={{ close: true }} width={620} headerAlign="center"
+      header={<Segmented variant="tabs" label="Settings" value={tab} onChange={() => {}} options={[{ value: "general", label: "General", icon: "settings" }, { value: "project", label: "MyApp", icon: <span style={{ display: "grid", borderRadius: 4, overflow: "hidden" }}><NamiMark size={14}/></span> }]}/>}>
+      <div className="setbd">
+        <SettingsGroup title="While you scroll"><SettingsRow label="Hide controls" hint="Toolbars and panels step aside while you scroll the graph."><Switch label="Hide controls" checked onChange={() => {}}/></SettingsRow></SettingsGroup>
+        <SettingsGroup title="Remotes"><SettingsRow label="Push to" configKey="git.push"><Select label="Push to" value="origin" onChange={() => {}} options={["origin", "upstream"]}/></SettingsRow></SettingsGroup>
       </div>
-      <div className="bar"><TrafficLights idle/><span className="cap" style={{ padding: 0 }}>unfocused window · lights sit alone in the 52px column, 12px from the edge</span></div>
+    </Window>
+  );
+  const ProjectsWin = ({ active }) => (
+    <Window title="Projects" active={active} buttons={{ close: true, zoom: true }} width={900} height={560} sidebarWidth={200}
+      sidebar={<><div className="brand"><NamiMark size={28} chip/>Zanshin</div><div className="nav"><button className="zs-dialog-navitem is-on"><Icon name="folder-open" size="md"/><span>Projects</span></button><button className="zs-dialog-navitem"><Icon name="cloud" size="md"/><span>Remotes</span></button><button className="zs-dialog-navitem"><Icon name="settings" size="md"/><span>Settings…</span></button></div></>}
+      header={<><span className="zs-win-grow"></span><SearchField placeholder="Search projects, paths…" value="" onChange={() => {}} style={{ width: 220 }}/><Button size="md" variant="primary" icon="plus" iconSize="sm">Add directory</Button></>}>
+      <div className="tree" role="tree">
+        <ProjectRow kind="group" name="Work" expanded count={3} depth={0}/>
+        <ProjectRow depth={1} name="MyApp" path="~/code/work/myapp" branch="feature/new-ui" status="dirty" ahead={6} lastOpened="now" open selected/>
+        <ProjectRow depth={1} name="api-server" path="~/code/work/api-server" branch="develop" status="ahead" ahead={2} lastOpened="2h ago"/>
+        <ProjectRow depth={1} name="design-kit" path="~/code/work/design-kit" branch="main" status="behind" behind={3} lastOpened="5d ago"/>
+      </div>
+    </Window>
+  );
+  const Controls = () => (
+    <div className="ctl">
+      <ChangeCard id="ovknlmro" subject="feat(onboarding): swipe gestures" author="Ralph" date="now" selected/>
+      <Switch label="On" checked onChange={() => {}}/><Checkbox checked label="On" onChange={() => {}}/>
+      <div style={{ width: 200 }}><ProjectRow name="MyApp" branch="main" status="clean" selected more={false}/></div>
+      <div style={{ width: 160 }}><TextField className="st-focus" defaultValue="main" aria-label="Focused field"/></div>
+      <Button variant="primary" icon="plus">New change</Button>
+    </div>
+  );
+  const Demo = () => (
+    <div className="wrap">
+      <div><p className="h">The top bar from the system's buttons <span>reference: macOS 27.0.1, standard buttons, the app's toolbar — 14 × 14, pitch 23</span></p>
+        <div className="geo"><Geo/><Geo full/></div></div>
+      <div><p className="h">Settings and Projects — windows of their own <span>no scrim · no ✕ · the system's corners and shadow · grey rings at rest, also for greyed buttons</span></p>
+        <div className="wins">
+          <div className="theme" data-theme="night"><span className="lbl">Night · Projects inactive, Settings key</span>
+            <div className="sc" style={{ left: 16, top: 40, transform: "scale(.56)" }}><ProjectsWin active={false}/></div>
+            <div className="sc" style={{ left: 300, top: 250, transform: "scale(.56)" }}><SettingsWin active/></div></div>
+          <div className="theme" data-theme="paper"><span className="lbl">Paper · Settings inactive, Projects key</span>
+            <div className="sc" style={{ left: 300, top: 40, transform: "scale(.56)" }}><SettingsWin active={false} tab="project"/></div>
+            <div className="sc" style={{ left: 16, top: 200, transform: "scale(.56)" }}><ProjectsWin active/></div></div>
+        </div></div>
+      <div><p className="h">The inactive window <span>the accent role goes neutral, nothing shows focus; gold, data colours and progress stay</span></p>
+        <div className="ia">
+          <div className="theme" data-theme="night"><span className="lbl">key window</span><Controls/></div>
+          <div className="theme" data-theme="night" data-window="inactive"><span className="lbl">inactive (another window is key)</span><Controls/></div>
+          <div className="theme" data-theme="paper"><span className="lbl">key window</span><Controls/></div>
+          <div className="theme" data-theme="paper" data-window="inactive"><span className="lbl">inactive</span><Controls/></div>
+        </div></div>
     </div>
   );
   ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);

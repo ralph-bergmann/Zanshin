@@ -1,0 +1,179 @@
+<!-- @dsCard group="Colors" viewport="1320x4400" name="Accent variants" subtitle="macOS Appearance › Color → the moon role. C1 + D: gold, @ and every data colour stay; real FileRow / DiffHunk; increased-contrast layer; measured live" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../styles.css"/>
+<link rel="stylesheet" href="specimen.css"/>
+<style>
+body{padding:22px 24px 28px}
+h1{margin:0 0 4px;font:600 17px/1.3 var(--font-sans);letter-spacing:-.01em}
+.lead{margin:0 0 14px;max-width:1020px;font-size:12.5px;line-height:1.55;color:var(--text-muted);text-wrap:pretty}
+.lead b{color:var(--text);font-weight:600}
+.top{display:grid;grid-template-columns:minmax(0,1fr) 520px;gap:18px;align-items:start;margin-bottom:18px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font:var(--fs-xs) var(--font-mono);color:var(--text-dim)}
+.rows{display:flex;flex-direction:column;gap:12px}
+.row{display:grid;grid-template-columns:120px 1fr 1fr;gap:12px;align-items:stretch}
+.name{display:flex;flex-direction:column;gap:4px;padding-top:6px}
+.name b{font:600 13px var(--font-sans)}
+.name span{font:var(--fs-xs) var(--font-mono);color:var(--text-dim);line-height:1.5}
+.mac{width:22px;height:22px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.panel{position:relative;display:grid;grid-template-columns:212px minmax(0,1fr);gap:10px 14px;min-width:0;padding:12px 14px 10px;border-radius:14px;background:var(--canvas);border:1px solid var(--border);color:var(--text);overflow:hidden}
+.bar{grid-column:1/-1;display:flex;align-items:center;gap:10px}
+.gs{width:auto;flex:1;min-width:0}.bar>.zs-island{flex:1;min-width:0}.bar>.zs-btn{flex-shrink:0}
+.cards{display:flex;flex-direction:column;gap:8px}
+.ctl{display:flex;align-items:center;gap:12px}
+.stack{display:flex;flex-direction:column;gap:8px;min-width:0}
+.menu{min-width:0!important;width:100%;max-width:300px}
+.dv{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);align-items:start}
+.dv-files{display:flex;flex-direction:column;gap:1px;padding:5px;border-right:1px solid var(--fl-border)}
+.dv .zs-file{padding:4px 6px}
+.sw-c{display:flex;align-items:center;gap:10px;margin:0 0 14px;font-size:12px;color:var(--text-dim)}
+.m{grid-column:1/-1;min-width:0;display:flex;flex-wrap:wrap;gap:3px 12px;padding-top:7px;border-top:1px solid var(--border);font:10.5px/1.4 var(--font-mono);color:var(--text-dim)}
+.m b{font-weight:600;color:var(--text-muted)}
+.m .bad{color:var(--rem)}
+.zs-card{width:212px}
+</style>
+</head>
+<body>
+<h1>Accent variants — macOS “Appearance › Color” takes the moon role</h1>
+<p class="lead"><b>Recommendation: C1 + D.</b> Multicolour = Zanshin exactly as designed. A named choice re-colours only what macOS gives its accent: selection, focus, switches, checkboxes, radios, sliders, menu highlight. <b>Gold stays</b> — the @ working copy, the one primary action (“New change”) and the brand — and so does every data colour: add / rem, status M, the hunk band, remote, warn / conflict, project status. Settings › General › Appearance gets <b>Accent colour: Follow macOS · Zanshin</b> (default Follow macOS). Each family is 8 fixed tokens (<code>--accent</code> fill · <code>-ink</code> · <code>-line</code> · <code>-text</code> · <code>-soft</code> · <code>-soft-hi</code> · <code>-ring</code> · <code>-select</code>) plus the live copies <code>--accent-live-line / -ring / -text</code> that stay in an inactive window; on paper the light hues split a bright fill from a darker line. Measured below on the panel’s own tokens: targets fill or line ≥ 3:1 on card, canvas (and lift on night) · ink on fill ≥ 4.5 · text ≥ 4.5 · ΔE OKLab of fill, line <b>and text</b> to every data colour (incl. the @ text), project status and text step ≥ .06 — the accepted near-misses (status dots; Graphite and moon ≈ the text ladder) are listed, not marked.</p>
+<div class="top">
+<div class="legend"><span>card #1a1f35 · canvas #12162a · lift #2b3555</span><span>paper card #fffdfa · canvas #f0ece7</span><span>ΔE below .06 = confusable</span><span>app accent reported to macOS: #4757a1 / dark #5162ad (white on it 6.7 / 5.7)</span></div>
+<div class="zs-setgrp"><h3 class="zs-setgrp-h">Appearance</h3><div class="zs-setbox">
+<div class="zs-setrow"><div class="zs-setrow-lbl">Theme</div><div class="zs-setrow-ctl"><span class="zs-seg zs-seg--inset"><span class="zs-seg-btn">Light</span><span class="zs-seg-btn">Dark</span><span class="zs-seg-btn is-on">Auto</span></span></div></div>
+<div class="zs-setrow"><div class="zs-setrow-lbl">Accent colour<span class="zs-setrow-hint">Selection, focus and controls take the colour from System Settings › Appearance. Gold stays with @ and the primary action.</span></div><div class="zs-setrow-ctl"><span class="zs-seg zs-seg--inset"><span class="zs-seg-btn is-on">Follow macOS</span><span class="zs-seg-btn">Zanshin</span></span></div></div>
+</div></div>
+</div>
+<div class="sw-c"><span>Increased contrast</span><span class="zs-seg zs-seg--inset" id="hc"><button class="zs-seg-btn is-on" type="button" data-v="std">Standard</button><button class="zs-seg-btn" type="button" data-v="more">Increased</button></span><span>— one delta layer (tokens/contrast.css) over every theme and family: lines ≥ 3:1, text incl. faint ≥ 4.5:1, solid glass, 3px focus</span></div>
+<div class="rows" id="rows"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="../_ds_bundle.js"></script>
+<script>
+(() => {
+  const FAM = [
+    ["multicolor", "Multicolour", "default · Zanshin moon", "conic-gradient(#ff5257,#f7821b,#ffc726,#62ba46,#007aff,#a550a7,#f74f9e,#ff5257)"],
+    ["blue", "Blue", "mac #007AFF · h257", "#007AFF"], ["purple", "Purple", "mac #A550A7 · h327", "#A550A7"], ["pink", "Pink", "mac #F74F9E · h356", "#F74F9E"],
+    ["red", "Red", "mac #FF5257 · h23", "#FF5257"], ["orange", "Orange", "mac #F7821B · h54", "#F7821B"], ["yellow", "Yellow", "mac #FFC600 · h87", "#FFC600"],
+    ["green", "Green", "mac #62BA46 · h139", "#62BA46"], ["graphite", "Graphite", "mac #8C8C8C · no hue", "#8C8C8C"],
+  ];
+  const NOTE = {
+    multicolor: "unchanged — moon is also status M by design",
+    blue: "more chroma, h252: reads blue, not moon (ΔE .10 to M)",
+    purple: "chroma above moon so it reads purple",
+    pink: "h354 keeps clear of rem (h22)",
+    red: "crimson h12, deeper than rem; danger rows use a red TINT, accent rows a solid fill",
+    orange: "h44 between @ saffron (h75) and rem (h22); paper: bright fill, darker line",
+    yellow: "lemon h103, away from saffron and the warn amber; paper line is a dark ochre",
+    green: "yellow-green h130, away from add (h152); paper: bright fill, darker line",
+    graphite: "truly neutral (C 0, as macOS), L .78: ΔE .073 to M (the indigo cast gave .062)",
+  };
+  const plus = '<svg class="zs-icon" width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  const chk = '<svg class="zs-check-svg" viewBox="0 0 16 16" aria-hidden="true"><path class="zs-check-mark" pathLength="1" d="M3.6 8.4 L6.6 11.3 L12.6 4.9"/></svg>';
+  const panel = (k, th) => `
+    <div class="panel" ${th === "paper" ? 'data-theme="paper"' : ""} ${k !== "multicolor" ? 'data-accent="' + k + '"' : ""}>
+      <div class="bar">
+        <div class="zs-island zs-island--bar zs-glass" style="height:44px;padding:0 4px">
+          <div class="zs-gs has-q is-focus gs"><span class="zs-gs-scope"><span class="zs-gs-sl">Author</span></span><span class="zs-gs-in" style="display:flex;align-items:center">lena<span style="display:inline-block;width:1.5px;height:15px;margin-left:1px;background:var(--accent-line)"></span></span></div>
+        </div>
+        <button class="zs-btn zs-btn--primary zs-btn--lg" type="button">${plus}<span>New change</span></button>
+      </div>
+      <div class="cards">
+        <div class="zs-card is-compact is-wc"><div class="zs-card-line"><span class="zs-at is-sm">@</span><span class="zs-cid"><b>ov</b>knl</span><span class="zs-card-subj">wip: swipe velocity</span></div></div>
+        <div class="zs-card is-compact is-sel"><div class="zs-card-line"><span class="zs-cid"><b>tn</b>rks</span><span class="zs-card-subj">exp: drop ChangeNotifier</span></div></div>
+        <div class="ctl"><span class="zs-switch is-on"></span><span class="zs-check is-on">${chk}</span><span class="zs-slider"><span class="zs-slider-track"><input type="range" value="62" tabindex="-1" style="--p:62%;width:92px"></span></span></div>
+      </div>
+      <div class="stack">
+        <div class="zs-menu is-static menu">
+          <div class="zs-menu-row"><button class="zs-menu-item is-hi" type="button"><span></span><span class="zs-menu-l">New change on top</span><span class="zs-menu-r"><span class="zs-menu-cmd">jj new</span></span></button></div>
+          <div class="zs-menu-row"><button class="zs-menu-item" type="button"><span></span><span class="zs-menu-l">Edit</span><span class="zs-menu-r"><span class="zs-menu-cmd">jj edit</span></span></button></div>
+          <div class="zs-menu-sep"></div>
+          <div class="zs-menu-row"><button class="zs-menu-item is-danger st-hover" type="button"><span></span><span class="zs-menu-l">Abandon</span><span class="zs-menu-r"><span class="zs-menu-cmd">jj abandon</span></span></button></div>
+        </div>
+      </div>
+      <div class="zs-diff dv" data-diff></div>
+      <div class="m" data-m></div>
+    </div>`;
+  const root = document.getElementById("rows");
+  root.innerHTML = FAM.map(([k, n, s, sw]) => `<div class="row"><div class="name"><span class="mac" style="background:${sw}"></span><b>${n}</b><span>${s}</span><span>${NOTE[k]}</span></div>${panel(k, "night")}${panel(k, "paper")}</div>`).join("");
+
+  // colour maths — hex / rgb(a) / oklch → linear sRGB; WCAG contrast; ΔE in OKLab
+  const lin = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  const gam = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+  function parse(str) {
+    str = str.trim();
+    let m;
+    if (str[0] === "#") { const h = str.slice(1); return { rgb: [0, 2, 4].map((i) => parseInt(h.substr(i, 2), 16) / 255), a: 1 }; }
+    if ((m = str.match(/rgba?\(([^)]+)\)/))) { const p = m[1].split(",").map(parseFloat); return { rgb: [p[0] / 255, p[1] / 255, p[2] / 255], a: p[3] == null ? 1 : p[3] }; }
+    if ((m = str.match(/oklch\(([\d.]+)%\s+([\d.]+)\s+([\d.]+)/))) {
+      const L = +m[1] / 100, C = +m[2], H = (+m[3] * Math.PI) / 180, a = C * Math.cos(H), b = C * Math.sin(H);
+      const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3, mm = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3, s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+      const r = [4.0767416621 * l - 3.3077115913 * mm + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * mm - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * mm + 1.707614701 * s];
+      return { rgb: r.map((v) => Math.max(0, Math.min(1, gam(v)))), a: 1 };
+    }
+    return { rgb: [0, 0, 0], a: 1 };
+  }
+  const over = (fg, bg) => ({ rgb: fg.rgb.map((v, i) => v * fg.a + bg.rgb[i] * (1 - fg.a)), a: 1 });
+  const Y = (c) => { const [r, g, b] = c.rgb.map(lin); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const cr = (a, b) => { const x = Y(a), y = Y(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const lab = (c) => {
+    const [r, g, b] = c.rgb.map(lin);
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+  };
+  const dE = (a, b) => { const x = lab(a), y = lab(b); return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]); };
+  function measure() { document.querySelectorAll(".panel").forEach((p) => {
+    const cs = getComputedStyle(p), t = (n) => parse(cs.getPropertyValue(n));
+    const night = !p.hasAttribute("data-theme");
+    const card = night ? parse("#1a1f35") : parse("#fffdfa"), canvas = night ? parse("#12162a") : parse("#f0ece7"), lift = parse("#2b3555");
+    const fill = t("--accent"), line = t("--accent-line"), ink = t("--accent-ink"), text = t("--accent-text");
+    const code = over(t("--code-bg"), card);
+    const f = (v, min) => `<span class="${v < min ? "bad" : ""}">${v.toFixed(1)}</span>`;
+    const data = { "@": t("--co"), "@ text": t("--co-text"), primary: t("--primary-action"), add: t("--add"), rem: t("--rem"), warn: t("--warn"), conflict: t("--conflict"), M: t("--status-m") };
+    const status = Object.fromEntries(["clean", "dirty", "ahead", "behind", "diverged", "conflict", "missing", "syncing", "stale"].map((n) => ["status " + n, t("--proj-" + n)]));
+    const ladder = { "--text": t("--text"), "--text-muted": t("--text-muted"), "--text-dim": t("--text-dim"), "--text-faint": t("--text-faint") };
+    const isMC = !p.hasAttribute("data-accent"), fam = p.getAttribute("data-accent");
+    // fill, line AND text against every data colour, project status and text step; under .06 is a collision unless the readme accepts it
+    // (project status dots · Graphite and moon ≈ the text ladder) — accepted pairs are listed, not marked
+    const pairs = [];
+    for (const [r, rc] of [["fill", fill], ["line", line], ["text", text]]) for (const [g, set] of [["data", data], ["status", status], ["ladder", ladder]]) for (const [n, c] of Object.entries(set)) if (!(isMC && n === "M")) pairs.push({ r, g, n, e: dE(rc, c) });
+    pairs.sort((a, b) => a.e - b.e);
+    const ok = (x) => x.g === "status" || (x.g === "ladder" && (isMC || fam === "graphite"));
+    const near = pairs.find((x) => !ok(x)) || pairs[0];
+    const under = pairs.filter((x) => x.e < 0.06).filter((x, i, a) => a.findIndex((y) => y.n === x.n && y.e.toFixed(3) === x.e.toFixed(3)) === i);
+    const lineMin = Math.min(cr(line, card), cr(line, canvas), night ? cr(line, lift) : 99);
+    p.querySelector("[data-m]").innerHTML =
+      `<span><b>${night ? "night" : "paper"}</b></span>` +
+      `<span>line/card ${f(cr(line, card), 3)} · /canvas ${f(cr(line, canvas), 3)}${night ? " · /lift " + f(cr(line, lift), 3) : ""}</span>` +
+      (fill.rgb.join() !== line.rgb.join() ? `<span>fill/card ${cr(fill, card).toFixed(1)} (bright fill, line carries 3:1)</span>` : "") +
+      `<span>ink/fill ${f(cr(ink, fill), 4.5)}</span><span>text/card ${f(cr(text, card), 4.5)}</span>` +
+      `<span>nearest ${near.r} ↔ ${near.n} ΔE <span class="${near.e < 0.06 ? "bad" : ""}">${near.e.toFixed(3)}</span>${isMC ? " (M = moon by design)" : ""}</span>` +
+      (under.length ? `<span>under .06: ${under.map((x) => `${x.r} ≈ ${x.n} <span class="${ok(x) ? "" : "bad"}">${x.e.toFixed(3)}</span>${ok(x) ? " accepted" : ""}`).join(" · ")}</span>` : "") +
+      `<span>danger tint rem/row (menu sheen top) ${f(cr(t("--rem"), over(t("--danger-hover"), over(parse("rgba(255,255,255," + (night ? ".045" : ".6") + ")"), parse(night ? "#1a1f35" : "#fffdfa")))), 4.5)}</span>` +
+      `<span>accent↔M ΔE ${isMC ? "— (same by design)" : '<span class="' + (Math.min(dE(fill, data.M), dE(line, data.M)) < 0.07 ? "bad" : "") + '">' + Math.min(dE(fill, data.M), dE(line, data.M)).toFixed(3) + "</span>"}</span>` +
+      `<span>sel. hunk band↔hunk band ΔE ${dE(over(t("--accent-soft-hi"), code), over(t("--hunk-bg"), code)).toFixed(3)}</span>` +
+      (p.hasAttribute("data-contrast") ? `<span>border/card ${f(cr(t("--border-strong"), card), 3)} · /canvas ${f(cr(t("--border-strong"), canvas), 3)} · faint/card ${f(cr(t("--text-faint"), card), 4.5)}</span>` : "");
+  }); }
+  const { FileRow, DiffHunk } = window.ZanshinDesignSystem_a33847;
+  const h = React.createElement;
+  const Diff = () => h(React.Fragment, null,
+    h("div", { className: "dv-files", role: "list" },
+      h(FileRow, { status: "M", path: "lib/swipe/controller.dart", added: 12, removed: 3, selected: true, selectable: true, checked: true }),
+      h(FileRow, { status: "A", path: "lib/swipe/velocity.dart", added: 40, selectable: true, checked: true }),
+      h(FileRow, { status: "D", path: "lib/legacy_swipe.dart", removed: 18, selectable: true })),
+    h("div", null,
+      h(DiffHunk, { selected: true, selectable: true, className: "st-focus", range: "@@ −12,6 +12,9 @@", context: "class Swipe", lines: ["+  final v = velocity(dx);", "   return v;"] }),
+      h(DiffHunk, { selectable: true, range: "@@ −40,3 +43,4 @@", context: "build()", lines: ["-  legacy();", "+  next();"] })));
+  document.querySelectorAll("[data-diff]").forEach((el) => ReactDOM.createRoot(el).render(h(Diff)));
+  setTimeout(measure, 60);
+  document.querySelectorAll("#hc .zs-seg-btn").forEach((b) => b.addEventListener("click", () => {
+    const more = b.dataset.v === "more";
+    document.querySelectorAll("#hc .zs-seg-btn").forEach((x) => x.classList.toggle("is-on", x === b));
+    document.querySelectorAll(".panel").forEach((p) => (more ? p.setAttribute("data-contrast", "more") : p.removeAttribute("data-contrast")));
+    measure();
+  }));
+})();
+</script>
+</body>
+</html>

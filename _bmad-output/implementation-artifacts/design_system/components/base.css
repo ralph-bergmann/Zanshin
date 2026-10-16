@@ -1,14 +1,65 @@
 /* base — element defaults every Zanshin surface assumes (the client runs a global border-box reset; so does every zs- element) */
 [class*="zs-"],[class*="zs-"]::before,[class*="zs-"]::after{box-sizing:border-box}
 body{font-family:var(--font-sans);font-size:var(--fs-base);color:var(--text);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
-a{color:var(--accent);text-decoration:none}a:hover{color:var(--text)}
 code,kbd,samp{font-family:var(--font-mono)}
+::selection{background:var(--accent-select);color:var(--selection-text)}
 .zs-canvas{background:var(--canvas)}
-.zs-dots{background-image:radial-gradient(circle,var(--grid-dot) 1px,transparent 1.3px);background-size:var(--grid-step) var(--grid-step);background-position:4px 4px}
 .zs-glass{background:var(--fl-sheen),var(--fl-bg);border:1px solid var(--fl-border);box-shadow:var(--fl-shadow);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
-[data-material="solid"] .zs-glass{background:var(--fl-sheen),var(--fl-bg-solid);-webkit-backdrop-filter:none;backdrop-filter:none}
-@keyframes zs-pop{from{opacity:0;transform:translateY(-4px) scale(.98)}}
-@keyframes zs-menu-in{from{opacity:0;transform:scale(.97)}}
-@keyframes zs-panel-in{from{opacity:0;transform:translateX(12px)}}
-@keyframes zs-callout-in{from{opacity:0;transform:translateX(-4px)}}
-@media (prefers-reduced-motion:reduce){[class*="zs-"]{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}}
+
+/* ---- cursor: the arrow everywhere (no pointing hand on controls); the I-beam over text entry; progress while busy;
+   grabbing only while the canvas is held; a pointing hand only for links with an href ---- */
+input:not([type=range],[type=checkbox],[type=radio],[type=button],[type=submit]),textarea{cursor:text}
+[class*="zs-"][aria-busy="true"]{cursor:progress}
+
+/* ---- links: inline (accent text — the live copy: links are content and keep their colour in an inactive window — underline on hover) · quiet (.zs-link--quiet: dim → text). Arrow cursor except real hrefs. ---- */
+a{color:var(--accent-live-text);text-decoration:none;border-radius:var(--radius-kbd);transition:color var(--dur-hover) var(--ease-state),text-decoration-color var(--dur-hover) var(--ease-state)}
+a:not([class]):hover{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}
+a:focus-visible{outline:var(--focus-w) solid var(--focus-ring);outline-offset:var(--focus-offset)}
+
+/* ---- focus: ONE rule. 2px --focus-ring outline, 2px outside, keyboard only; fades in on --ease-state while it settles 3px (× --motion).
+   Specificity (0,2,0) on purpose: a component's rest `outline:none` (0,1,0) never hides it, and a component's own
+   `:focus-visible{outline:none}` (0,2,0, later in the cascade) can still opt out — open-menu rows, whose highlight is the focus.
+   Exceptions (listed right below): rows and flush segments −2px (inside, containers clip) · graph cards 3px (clears the selection halo).
+   Text entry is the other exception — border + 3px halo on any focus (forms.css). ---- */
+[class*="zs-"]:where(:not(input,textarea,select)):focus-visible,[class*="zs-"]:where(:not(input,textarea,select)).st-focus{outline:var(--focus-w) solid var(--focus-ring);outline-offset:var(--focus-offset);animation:zs-focus-in var(--dur-focus) var(--ease-state)}
+/* inside: rows in lists, menus and scroll areas, flush segments, rail buttons, scroll viewports, anything in a clipping well */
+:is(.zs-ib--lg,.zs-hunk,.zs-seg-btn,.zs-search-x,.zs-chip-x,.zs-disc-hd,.zs-file,.zs-proj,.zs-proj-more,.zs-dialog-navitem,.zs-option-link,.zs-gs-scope,.zs-gs-x,.zs-rsd-item,.zs-rsd-empty,.zs-drop-item,.zs-scroll-vp,.zs-diff-collapsed,.zs-push-row):is(:focus-visible,.st-focus){outline-offset:var(--focus-offset-inset);animation-name:zs-focus-in-inset}
+/* graph cards: 3px, outside the 3px selection halo */
+.zs-card:is(:focus-visible,.st-focus){outline-offset:var(--focus-offset-card);animation-name:zs-focus-in-card}
+@keyframes zs-focus-in{from{outline-color:transparent;outline-offset:calc(var(--focus-offset) + var(--focus-settle) * var(--motion))}}
+@keyframes zs-focus-in-inset{from{outline-color:transparent;outline-offset:calc(var(--focus-offset-inset) + var(--focus-settle) * var(--motion))}}
+@keyframes zs-focus-in-card{from{outline-color:transparent;outline-offset:calc(var(--focus-offset-card) + var(--focus-settle) * var(--motion))}}
+
+/* ---- disabled: ONE value, .4 on the whole control.
+   :disabled — out of the tab order and out of the pointer's way.
+   Disabled with a reason (aria-disabled="true") — looks the same and does nothing: no hover fill, no press, no activation by
+   pointer or keyboard, not a Tab stop (arrow keys in a group skip it). The pointer finds the reason on the WRAPPER — Tooltip's anchor,
+   or a title on the wrapping element — which still takes hover. VoiceOver still reaches it and reads it "dimmed" with the reason.
+   Flutter: Tooltip(message: reason, child: IgnorePointer(child: …)) + Semantics(enabled: false, hint: reason). ---- */
+[class*="zs-"]:disabled,[class*="zs-"][aria-disabled="true"],[class*="zs-"].st-disabled{opacity:var(--disabled-opacity)}
+[class*="zs-"]:disabled,[class*="zs-"][aria-disabled="true"]{pointer-events:none}
+
+/* ---- pressed: the fill appears at once, release fades back at --dur-hover ---- */
+[class*="zs-"]:active,[class*="zs-"].st-press{transition-duration:var(--dur-instant)}
+
+/* ---- secondary text on a fill takes the next rung, so it keeps 4.5:1 on the fill (night faint on a pressed row was 2.9):
+   hover → faint reads as dim · on, pressed, selected, highlighted → dim and faint read as muted · tooltips → faint reads as dim.
+   Done with the tokens themselves, so every meta line, count, hash and shortcut inside the row follows. ---- */
+:is(.zs-btn,.zs-ib,.zs-chip,.zs-file,.zs-proj,.zs-disc-hd,.zs-option-link,.zs-dialog-navitem,.zs-gs-row,.zs-gs-srow,.zs-rsd-item,.zs-rsd-empty,.zs-push-row):is(:hover,.st-hover){--text-faint:var(--text-dim)}
+:is(.zs-btn,.zs-ib,.zs-chip,.zs-file,.zs-proj,.zs-disc-hd,.zs-option-link,.zs-dialog-navitem,.zs-gs-row,.zs-gs-srow,.zs-rsd-item,.zs-rsd-empty,.zs-push-row):is(:active,.st-press,.is-on,.is-sel,.is-active){--text-dim:var(--text-muted);--text-faint:var(--text-muted)}
+.zs-tip{--text-faint:var(--text-dim)}
+
+/* ---- the shared entrances and exits. Distances, scales and angles are × --motion, so under Reduce motion each one is a pure fade. ---- */
+@keyframes zs-pop{from{opacity:0;transform:translateY(calc(-4px * var(--motion))) scale(calc(1 - .02 * var(--motion)))}}
+@keyframes zs-menu-in{from{opacity:0;transform:scale(calc(1 - .03 * var(--motion)))}}
+@keyframes zs-panel-in{from{opacity:0;transform:translateX(calc(12px * var(--motion)))}}
+@keyframes zs-callout-in{from{opacity:0;transform:translateX(calc(-4px * var(--motion)))}}
+@keyframes zs-dialog-in{from{opacity:0;transform:translateY(calc(8px * var(--motion))) scale(calc(1 - .015 * var(--motion)))}}
+@keyframes zs-fade{from{opacity:0}}
+/* exits — fade + a 2–4px drift in the direction the thing came from; --dur-exit / --dur-exit-lg on --ease-exit */
+@keyframes zs-out{to{opacity:0}}
+@keyframes zs-pop-out{to{opacity:0;transform:translateY(calc(-2px * var(--motion))) scale(calc(1 - .01 * var(--motion)))}}
+@keyframes zs-dialog-out{to{opacity:0;transform:translateY(calc(4px * var(--motion))) scale(calc(1 - .01 * var(--motion)))}}
+@keyframes zs-toast-out{to{opacity:0;transform:translateY(calc(8px * var(--motion)))}}
+/* the spinner is information, not motion between states: it keeps turning under Reduce motion (as NSProgressIndicator) */
+@keyframes zs-spin{to{transform:rotate(360deg)}}

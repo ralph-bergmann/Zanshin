@@ -1,6 +1,6 @@
 import * as React from "react";
 
-/** One changed file: status, left-truncating path, +/− counts. */
+/** One changed file: status, left-truncating path, +/− counts. States: rest · hover · pressed · on (its diff shows) · on + hover · on + pressed · focus-visible (inside) · viewed · lifted · with checkbox (on / mixed). */
 export interface FileRowProps extends React.HTMLAttributes<HTMLDivElement> {
   /** M modified (moon) · A added (green) · D deleted (red) */
   status?: "M" | "A" | "D";

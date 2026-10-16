@@ -3,7 +3,7 @@ import * as React from "react";
 type Pt = [number, number];
 type Rect = { x: number; y: number; w: number; h: number };
 
-/** One parent → child line, rendered inside an <svg>. */
+/** One parent → child line, rendered inside an <svg>. States: rest · hover · @ path · gap (dashed + cuts) · dim · hidden while the layout moves. */
 export interface GraphEdgeProps {
   /** the line's exit on the parent's top edge — centre for a straight line, else GraphPorts.exits */
   from?: Pt;

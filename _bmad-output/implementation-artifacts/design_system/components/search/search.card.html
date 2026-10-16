@@ -37,7 +37,7 @@
             <GraphSearch hotkey={false} focused expanded>
               <SearchPopover footer={cur.go ? { text: "Selects the change — the graph stays as it is", verb: "Select" } : { text: <code>{cur.cmd}</code>, verb: "Filter" }}>
                 <SearchGroup label="Recent" action="Clear"/>
-                {recents.map((r, i) => <SearchRow key={r.key} icon={r.icon} before={r.before} label={r.label} sub={r.sub} mono={r.key === "f"} meta={r.meta} highlighted={i === hi} onMouseMove={() => setHi(i)}/>)}
+                {recents.map((r, i) => <SearchRow key={r.key} icon={r.icon} before={r.before} label={r.label} sub={r.sub} mono={r.key === "f"} meta={r.meta} active={i === hi}/>)}
               </SearchPopover>
             </GraphSearch>
           </Cap>

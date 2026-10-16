@@ -1,55 +1,119 @@
-/* Segmented */
-.zs-seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--fl-hover)}
-.zs-seg-btn{display:flex;align-items:center;gap:5px;height:22px;padding:0 9px;border:0;border-radius:var(--radius-sm);background:transparent;font-size:var(--fs-md);color:var(--text-muted);cursor:default;transition:background var(--dur-hover),color var(--dur-hover)}
-.zs-seg-btn:hover{color:var(--text)}
+/* ============================================================
+   FORMS — every control follows the one state model (readme › Control states). .st-* classes force a state for specimens.
+   ============================================================ */
+
+/* Segmented — a sliding thumb (--dur-toggle on glide; Reduce motion: it is simply there) shows the choice. Hover brightens the label only:
+   the thumb is the one fill in the track (as macOS). A disabled segment is aria-disabled inside a wrapper that carries its reason. */
+.zs-seg{position:relative;display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--fl-hover)}
+.zs-seg-thumb{position:absolute;top:2px;bottom:2px;left:0;border-radius:var(--radius-sm);background:var(--fl-on);pointer-events:none;transition:transform var(--dur-toggle) var(--ease-glide),width var(--dur-toggle) var(--ease-glide)}
+.zs-seg-btn{position:relative;z-index:1;display:flex;align-items:center;gap:5px;height:calc(var(--control-sm) - 4px);padding:0 9px;border:0;border-radius:var(--radius-sm);background:transparent;font-size:var(--fs-md);color:var(--text-muted);cursor:default;transition:background var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}
+.zs-seg-btn:hover,.zs-seg-btn.st-hover{color:var(--text)}
+.zs-seg-btn:not(.is-on):active,.zs-seg-btn.st-press{background:var(--fl-hover);color:var(--text)}
 .zs-seg-btn.is-on{background:var(--fl-on);color:var(--text)}
-.zs-seg-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.zs-seg.has-thumb .zs-seg-btn.is-on{background:transparent}
+.zs-seg-why{display:flex}
 
-/* Switch */
-.zs-switch{position:relative;flex-shrink:0;width:30px;height:18px;padding:0;border-radius:9px;background:var(--bg-card-2);border:1px solid var(--border-strong);cursor:default;transition:background 160ms,border-color 160ms}
-.zs-switch::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--text-dim);transition:transform 160ms,background 160ms}
-.zs-switch.is-on{background:var(--accent);border-color:var(--accent)}
+/* Segmented variants — default 26 (view options) · tabs 36 (window header: Settings General | Project) · inset 30 (inside a settings row, darker track) · sm 22 (icon toggles in a diff toolbar) */
+.zs-seg--tabs{padding:3px;border-radius:var(--radius-card);min-width:0}
+.zs-seg--tabs .zs-seg-thumb{top:3px;bottom:3px;border-radius:var(--radius-chip)}
+.zs-seg--tabs .zs-seg-btn{height:calc(var(--control-lg) - 6px);padding:0 14px;gap:7px;border-radius:var(--radius-chip);font-size:var(--fs-control);white-space:nowrap}
+.zs-seg--inset{background:var(--seg-inset-bg)}
+.zs-seg--inset .zs-seg-btn{height:calc(var(--control-md) - 4px);padding:0 10px;white-space:nowrap}
+.zs-seg--sm .zs-seg-btn{height:calc(var(--control-xs) - 4px);padding:0 7px;font-size:var(--fs-xs);display:grid;place-items:center}
+
+/* Switch — 30 × 18, moon when on. Rest: 1px --border-strong; hover borrows --edge-hov (the hover edge cards and chips use).
+   Press stretches the knob 12 → 15px toward its travel; release slides it (--dur-toggle, glide). Colour always fades on --dur-hover. */
+.zs-switch{position:relative;flex-shrink:0;width:30px;height:18px;padding:0;border-radius:var(--radius-pill);background:var(--bg-card-2);border:1px solid var(--border-strong);cursor:default;transition:background var(--dur-hover) var(--ease-state),border-color var(--dur-hover) var(--ease-state),box-shadow var(--dur-hover) var(--ease-state)}
+.zs-switch::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:var(--radius-pill);background:var(--text-dim);transition:transform var(--dur-toggle) var(--ease-glide),width var(--dur-toggle) var(--ease-glide),background var(--dur-hover) var(--ease-state)}
+.zs-switch:hover,.zs-switch.st-hover{border-color:var(--edge-hov)}
+.zs-switch:hover::after,.zs-switch.st-hover::after{background:var(--text-muted)}
+.zs-switch:active::after,.zs-switch.st-press::after{width:15px}
+.zs-switch.is-on{background:var(--accent);border-color:var(--accent-line)}
 .zs-switch.is-on::after{transform:translateX(12px);background:var(--accent-ink)}
-.zs-switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.zs-switch.is-on:hover,.zs-switch.is-on.st-hover{border-color:var(--accent-line);box-shadow:inset 0 0 0 9px var(--fill-on-hover)}
+.zs-switch.is-on:hover::after,.zs-switch.is-on.st-hover::after{background:var(--accent-ink)}
+.zs-switch.is-on:active::after,.zs-switch.is-on.st-press::after{transform:translateX(9px);width:15px}
 
-/* Slider */
+/* Slider — 4px track, the fill in --accent-line (the light paper families' fill would vanish), --thumb knob (white on paper with a 3:1 edge),
+   tabular readout. The focus ring is the one rule drawn around the thumb: --focus-offset gap, --focus-w ring. The value never tweens. */
 .zs-slider{display:inline-flex;align-items:center;gap:10px}
-.zs-slider input{-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:linear-gradient(to right,var(--accent) var(--p),var(--border-strong) var(--p));outline:none;cursor:default;margin:0}
-.zs-slider input::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.45)}
-.zs-slider input::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.45)}
-.zs-slider input:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px var(--accent-ring),0 1px 4px rgba(0,0,0,.45)}
-.zs-slider-val{font:var(--fs-sm) var(--font-mono);color:var(--text-dim);min-width:38px}
+.zs-slider-track{position:relative;display:inline-flex;align-items:center;height:18px}
+.zs-slider input{-webkit-appearance:none;appearance:none;height:4px;border-radius:var(--radius-pill);background:linear-gradient(to right,var(--accent-line) var(--p),var(--track) var(--p));box-shadow:0 0 0 1px var(--track-edge);outline:none;cursor:default;margin:0}
+.zs-slider input:hover{background:linear-gradient(to right,var(--accent-line) var(--p),var(--track-hover) var(--p));box-shadow:0 0 0 1px var(--track-edge-hover)}
+.zs-slider input::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--thumb);box-shadow:0 0 0 1px var(--thumb-edge),var(--thumb-shadow);transition:box-shadow var(--dur-hover) var(--ease-state)}
+.zs-slider input::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:var(--thumb);box-shadow:0 0 0 1px var(--thumb-edge),var(--thumb-shadow);transition:box-shadow var(--dur-hover) var(--ease-state)}
+.zs-slider input:hover::-webkit-slider-thumb,.zs-slider.st-hover input::-webkit-slider-thumb{box-shadow:0 0 0 1px var(--thumb-edge),var(--thumb-shadow-hover)}
+.zs-slider input:hover::-moz-range-thumb{box-shadow:0 0 0 1px var(--thumb-edge),var(--thumb-shadow-hover)}
+.zs-slider input:active::-webkit-slider-thumb,.zs-slider.st-press input::-webkit-slider-thumb{box-shadow:0 0 0 1px var(--thumb-edge),var(--thumb-shadow),0 0 0 5px var(--accent-ring);transition-duration:var(--dur-instant)}
+.zs-slider input:active::-moz-range-thumb{box-shadow:0 0 0 1px var(--thumb-edge),var(--thumb-shadow),0 0 0 5px var(--accent-ring)}
+.zs-slider input:focus-visible::-webkit-slider-thumb,.zs-slider.st-focus input::-webkit-slider-thumb{box-shadow:0 0 0 1px var(--thumb-edge),0 0 0 calc(1px + var(--focus-offset)) var(--card-solid),0 0 0 calc(1px + var(--focus-offset) + var(--focus-w)) var(--focus-ring)}
+.zs-slider input:focus-visible::-moz-range-thumb{box-shadow:0 0 0 1px var(--thumb-edge),0 0 0 calc(1px + var(--focus-offset)) var(--card-solid),0 0 0 calc(1px + var(--focus-offset) + var(--focus-w)) var(--focus-ring)}
+.zs-slider-ticks{position:absolute;left:7px;right:7px;top:13px;height:3px;display:flex;justify-content:space-between;pointer-events:none}
+.zs-slider-tick{width:1px;height:3px;background:var(--tick)}
+.zs-slider-val{font:var(--fs-sm) var(--font-mono);font-variant-numeric:tabular-nums;color:var(--text-dim);min-width:38px;transition:color var(--dur-hover) var(--ease-state)}
+.zs-slider.is-drag .zs-slider-val,.zs-slider.st-press .zs-slider-val{color:var(--text)}
+.zs-slider.is-disabled{opacity:var(--disabled-opacity);pointer-events:none}
+.zs-slider.st-focus,.zs-search.st-focus,.zs-search.st-hover{outline:none;animation:none}
 
-/* SearchField */
-.zs-search{display:flex;align-items:center;gap:7px;height:32px;padding:0 9px;min-width:0;border-radius:var(--radius-btn);background:var(--fl-hover);border:1px solid transparent;color:var(--text-dim);transition:border-color var(--dur-hover),box-shadow var(--dur-hover)}
-.zs-search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+/* SearchField — 30px (--control-md). A named exception to text entry: a quiet FILL at rest (--fl-hover, hover --fl-on) instead of the inset
+   well and its edge — it sits in toolbars and list headers, as NSSearchField does; focus is text entry's (accent edge + halo).
+   Clear ✕ while there is a query; Esc clears, a second Esc leaves. */
+.zs-search{display:flex;align-items:center;gap:7px;height:var(--control-md);padding:0 5px 0 9px;min-width:0;border-radius:var(--radius-btn);background:var(--fl-hover);border:1px solid transparent;color:var(--text-dim);transition:border-color var(--dur-hover) var(--ease-state),box-shadow var(--dur-hover) var(--ease-state),background var(--dur-hover) var(--ease-state)}
+.zs-search:hover,.zs-search.st-hover{background:var(--fl-on)}
+.zs-search:focus-within,.zs-search.st-focus{background:var(--fl-hover);border-color:var(--accent-line);box-shadow:0 0 0 var(--field-halo) var(--accent-ring)}
 .zs-search input{flex:1;min-width:0;border:0;outline:0;background:none;font:inherit;font-size:var(--fs-control);color:var(--text)}
 .zs-search input::placeholder{color:var(--text-faint)}
+.zs-search-x{width:20px;height:20px;flex-shrink:0;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:none;color:var(--text-faint);cursor:default;transition:background var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}
+.zs-search-x:hover{background:var(--fl-on);color:var(--text)}
+.zs-search-x:active{background:var(--fl-press);color:var(--text)}
+.zs-search>.zs-kbd{margin-right:3px}
 
-/* Segmented variants — tabs (settings scope), inset (inside a settings row), sm (icon toggles in a diff toolbar) */
-.zs-seg--tabs{padding:3px;border-radius:10px;min-width:0}
-.zs-seg--tabs .zs-seg-btn{height:28px;padding:0 14px;gap:7px;border-radius:7px;font-size:var(--fs-control);white-space:nowrap}
-.zs-seg--inset{background:rgba(0,0,0,.2)}
-[data-theme="light"] .zs-seg--inset{background:rgba(58,46,34,.07)}
-.zs-seg--inset .zs-seg-btn{height:24px;padding:0 10px;white-space:nowrap}
-.zs-seg--sm .zs-seg-btn{height:18px;padding:0 7px;font-size:var(--fs-xs);display:grid;place-items:center}
+/* Checkbox — one component: md 15px (files, hunks, settings) · sm 13px (the Viewed chip); tone accent (selection) · add (Viewed = review state, green).
+   The mark is one 3-point path: it draws in (dashoffset 1 → 0) and morphs check ↔ mixed by moving its points (d). */
+.zs-check{position:relative;flex-shrink:0;width:15px;height:15px;padding:0;border-radius:4.5px;display:grid;place-items:center;border:1.5px solid var(--text-faint);color:var(--accent-ink);background:transparent;cursor:default;transition:background var(--dur-hover) var(--ease-state),border-color var(--dur-hover) var(--ease-state),box-shadow var(--dur-hover) var(--ease-state)}
+.zs-check:hover,.zs-check.st-hover{border-color:var(--text-muted)}
+.zs-check:active,.zs-check.st-press{background:var(--fl-on);border-color:var(--text-muted)}
+.zs-check.is-on,.zs-check.is-mixed{background:var(--accent);border-color:var(--accent-line)}
+.zs-check.is-on:hover,.zs-check.is-mixed:hover,.zs-check.is-on.st-hover,.zs-check.is-mixed.st-hover{border-color:var(--accent-line);box-shadow:inset 0 0 0 8px var(--fill-on-hover)}
+.zs-check.is-on:active,.zs-check.is-mixed:active,.zs-check.is-on.st-press,.zs-check.is-mixed.st-press{background:var(--accent);box-shadow:inset 0 0 0 8px var(--fill-on-press)}
+.zs-check-svg{width:10px;height:10px;overflow:visible}
+.zs-check-mark{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;d:path("M3.6 8.4 L6.6 11.3 L12.6 4.9")}
+.zs-check.is-on .zs-check-mark,.zs-check.is-mixed .zs-check-mark{stroke-dashoffset:0;transition:stroke-dashoffset var(--dur-toggle) var(--ease-glide),d var(--dur-toggle) var(--ease-glide)}
+.zs-check.is-mixed .zs-check-mark{d:path("M4 8 L8 8 L12 8")}
+.zs-check--sm{width:13px;height:13px;border-radius:3.5px;border-width:1.4px}
+.zs-check--sm .zs-check-svg{width:9px;height:9px}
+.zs-check--add{color:var(--add-ink)}
+.zs-check--add:hover{border-color:var(--add)}
+.zs-check--add.is-on,.zs-check--add.is-mixed{background:var(--add);border-color:var(--add)}
+.zs-viewed:hover .zs-check--add:not(.is-on){border-color:var(--add)}
+span.zs-check{pointer-events:none}
 
-/* Checkbox — files and hunks; moon like every other selection */
-.zs-check{flex-shrink:0;width:15px;height:15px;padding:0;border-radius:4.5px;display:grid;place-items:center;border:1.5px solid var(--text-faint);color:var(--accent-ink);background:transparent;cursor:default;transition:background var(--dur-hover),border-color var(--dur-hover)}
-.zs-check:hover{border-color:var(--text-muted)}
-.zs-check.is-on,.zs-check.is-mixed{background:var(--accent);border-color:var(--accent)}
-.zs-check:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.zs-check:disabled{opacity:.38;pointer-events:none}
-
-/* TextField + Select — the inset well */
-.zs-field{box-sizing:border-box;width:100%;min-width:0;border-radius:var(--radius-md);border:1px solid var(--fl-border);background:rgba(8,10,22,.45);color:var(--text);font-family:var(--font-sans);outline:none;transition:border-color var(--dur-hover),box-shadow var(--dur-hover)}
-[data-theme="light"] .zs-field{background:rgba(255,255,255,.9)}
-.zs-field:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+/* TextField + Select trigger — the inset well. Text entry is the focus exception: moon border + 3px halo on ANY focus (the caret is the state). */
+.zs-field{box-sizing:border-box;width:100%;min-width:0;border-radius:var(--radius-md);border:1px solid var(--fl-border);background:var(--field-bg);color:var(--text);font-family:var(--font-sans);outline:none;transition:border-color var(--dur-hover) var(--ease-state),box-shadow var(--dur-hover) var(--ease-state)}
+.zs-field:hover,.zs-field.st-hover{border-color:var(--border-strong)}
+.zs-field:focus,.zs-field.st-focus{border-color:var(--accent-line);box-shadow:0 0 0 var(--field-halo) var(--accent-ring);outline:none}
 .zs-field::placeholder{color:var(--text-faint)}
-.zs-field--sm{height:30px;padding:0 10px;font-size:var(--fs-control)}
-.zs-field--md{height:34px;padding:0 10px;font-size:13.5px;font-weight:600}
-.zs-field--lg{height:36px;padding:0 10px;font-size:15px;font-weight:600}
-.zs-field--area{display:block;padding:8px 10px;font-size:13px;line-height:1.5;resize:vertical;min-height:62px}
+.zs-field[aria-invalid="true"],.zs-field.st-error{border-color:var(--error)}
+.zs-field[aria-invalid="true"]:focus,.zs-field.st-error.st-focus{border-color:var(--error);box-shadow:0 0 0 var(--field-halo) var(--error-ring)}
+.zs-field[readonly],.zs-field.st-readonly{background:transparent;border-style:dashed;color:var(--text-muted)}
+.zs-field[readonly]:hover{border-color:var(--fl-border)}
+.zs-field--sm{height:var(--control-md);padding:0 10px;font-size:var(--fs-control)}
+.zs-field--md{height:var(--control-lg);padding:0 10px;font-size:var(--fs-base);font-weight:600}
+.zs-field--lg{height:var(--control-lg);padding:0 10px;font-size:var(--fs-lg);font-weight:600}
+.zs-field--area{display:block;padding:8px 10px;font-size:var(--fs-base);line-height:1.5;resize:vertical;min-height:62px}
 .zs-field--area.is-compact{min-height:44px;resize:none}
-.zs-field.is-mono{font-family:var(--font-mono);font-size:12px;font-weight:400}
-.zs-select{height:30px;padding:0 8px;font-size:var(--fs-control);width:auto;min-width:170px;cursor:default}
+.zs-field.is-mono{font-family:var(--font-mono);font-size:var(--fs-md);font-weight:400}
+.zs-fieldwrap{display:flex;flex-direction:column;gap:5px;min-width:0}
+.zs-field-msg{display:flex;align-items:flex-start;gap:5px;padding-left:1px;font-size:var(--fs-sm);line-height:1.35;color:var(--text-dim);text-wrap:pretty}
+.zs-field-msg>.zs-icon{flex-shrink:0;margin-top:1px}
+.zs-field-msg.is-error{color:var(--rem)}
+
+/* Select — the pop-up button: the field's well, the value, a double chevron. Its list opens OVER it (SelectMenu, controls.css). */
+.zs-select{display:inline-flex;align-items:center;justify-content:space-between;gap:8px;height:var(--control-md);padding:0 5px 0 10px;min-width:170px;max-width:100%;border-radius:var(--radius-md);border:1px solid var(--fl-border);background:var(--field-bg);font:inherit;font-size:var(--fs-control);color:var(--text);text-align:left;cursor:default;transition:border-color var(--dur-hover) var(--ease-state),background var(--dur-hover) var(--ease-state)}
+.zs-select:hover,.zs-select.st-hover,.zs-select.is-open{border-color:var(--border-strong)}
+.zs-select:active,.zs-select.st-press{background:linear-gradient(var(--fl-hover),var(--fl-hover)),var(--field-bg)}
+.zs-select-v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zs-select-v.is-mono{font:var(--fs-md) var(--font-mono)}
+.zs-select-chev{flex-shrink:0;color:var(--text-dim)}
+.zs-select-wrap{position:relative;display:inline-flex;max-width:100%}
+.zs-select-code{font:var(--fs-md) var(--font-mono)}

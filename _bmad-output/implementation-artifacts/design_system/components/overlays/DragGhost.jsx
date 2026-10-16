@@ -9,7 +9,7 @@ export function DragGhost({ kind = "change", id = "", subject, workingCopy = fal
   if (kind === "bookmark") {
     chip = (
       <div className="zs-ghost-card is-bm">
-        <Icon name="bookmark" size={12} />
+        <Icon name="bookmark" size="sm" />
         <span className="zs-ghost-bm">{bookmark}</span>
         {rest && <span className="zs-ghost-rest">{rest}</span>}
       </div>

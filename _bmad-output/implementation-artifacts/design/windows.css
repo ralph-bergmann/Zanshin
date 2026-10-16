@@ -1,0 +1,75 @@
+/* ============================================================
+   WINDOWS — Settings and Projects are windows of their own (design system › Windows · round G)
+   · the system draws corners, shadow and appearing; the two literal values on .zw only fake them (the mock)
+   · borderless and opaque: --fl-sheen over --fl-bg-solid, no vibrancy, no scrim, no 18px radius, no entrance, no ✕
+   · header 52 shares its row with the traffic lights; the title starts at block end + 12 (x 91 with the reference block 19–79)
+   · sheets (jj log Configurations, Push) stay on the project window
+   ============================================================ */
+:root{--tl-close:#ff5f57;--tl-min:#febc2e;--tl-zoom:#28c840;--tl-idle:rgba(255,255,255,.14);--tl-ring:rgba(255,255,255,.26);--moon-soft:oklch(80% .07 272 / .14)}
+[data-theme="light"]{--tl-idle:rgba(58,46,34,.22);--tl-ring:rgba(58,46,34,.30);--moon-soft:oklch(48% .12 272 / .09)}
+
+/* traffic lights — a MOCK of the system's buttons. Reference geometry (macOS 27): 14 × 14, pitch 23, block x 19–79, centre y 26.
+   At rest grey rings (Zanshin's deviation, also for greyed buttons); hovering the group shows the system's: enabled ones in colour
+   with their symbols, disabled ones greyed. Pressing darkens. No glow. */
+.ztl{--tl-size:14px;--tl-pitch:23px;display:flex;align-items:center;gap:calc(var(--tl-pitch) - var(--tl-size));flex-shrink:0}
+.ztl button{position:relative;width:var(--tl-size);height:var(--tl-size);padding:0;border:0;border-radius:50%;background:transparent;box-shadow:inset 0 0 0 1px var(--tl-ring);transition:background 120ms,box-shadow 120ms}
+.ztl button::before,.ztl button::after{content:"";position:absolute;left:25%;top:calc(50% - .65px);width:50%;height:1.3px;border-radius:1px;background:rgba(0,0,0,.52);opacity:0;transition:opacity 120ms}
+.ztl .c::before{transform:rotate(45deg)}.ztl .c::after{transform:rotate(-45deg)}.ztl .m::after{display:none}.ztl .z::after{transform:rotate(90deg)}
+.ztl:hover button{box-shadow:inset 0 0 0 .5px rgba(0,0,0,.14)}
+.ztl:hover .c:enabled{background:var(--tl-close)}.ztl:hover .m:enabled{background:var(--tl-min)}.ztl:hover .z:enabled{background:var(--tl-zoom)}
+.ztl:hover button:enabled::before,.ztl:hover button:enabled::after{opacity:1}
+.ztl:hover button:disabled{background:var(--tl-idle);box-shadow:none}
+.ztl button:enabled:active{filter:brightness(.82)}
+.ztl button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* the project window keeps its own geometry for now: 12px buttons at a 20px pitch, x 12–64, above the rail */
+.fl-traffic.ztl{--tl-size:12px;--tl-pitch:20px}
+
+/* the layer windows live on — above the project window and its sheets; the key window is in front */
+.zwl{position:fixed;inset:0;z-index:2000;pointer-events:none}
+.zwl,.zwl *{cursor:default}
+.zwl :is(input:not([type=range]):not([type=checkbox]):not([type=radio]),textarea){cursor:text}
+.zw{position:absolute;display:flex;flex-direction:column;overflow:hidden;pointer-events:auto;outline:none;border-radius:12px;background:var(--fl-sheen),var(--fl-bg-solid);color:var(--text);box-shadow:0 0 0 .5px rgba(0,0,0,.45),0 24px 64px -16px rgba(0,0,0,.5)}
+.zw-hd{position:relative;flex-shrink:0;display:flex;align-items:center;gap:12px;height:52px;padding:0 12px 0 91px;border-bottom:1px solid var(--fl-border)}
+.zw>.ztl,.zw-hd>.ztl{position:absolute;z-index:3;left:19px;top:19px}
+.zw-title{margin:0;font:600 13px/1.2 var(--font-sans);letter-spacing:0;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.zw.is-inactive .zw-title{color:var(--text-dim)}
+.zw-grow{flex:1;align-self:stretch}
+.zw-hd.is-center{justify-content:center;padding:0 91px}
+.zw-main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
+/* with a sidebar (Projects) the sidebar begins under the traffic lights; the header runs over the main column only */
+.zw.has-side{flex-direction:row}
+.zw-side{position:relative;display:flex;flex-direction:column;flex-shrink:0;min-height:0;border-right:1px solid var(--fl-border)}
+.zw-side-drag{position:absolute;left:0;right:0;top:0;height:52px}
+.zw-col{flex:1;min-width:0;display:flex;flex-direction:column}
+.zw.has-side .zw-hd{padding-left:12px}
+/* resizing: the window's edges (the system's cursors) */
+.zw-rz{position:absolute;z-index:4}
+.zw-rz.e{top:0;right:0;bottom:0;width:5px;cursor:ew-resize}.zw-rz.w{top:0;left:0;bottom:0;width:5px;cursor:ew-resize}
+.zw-rz.s{left:0;right:0;bottom:0;height:5px;cursor:ns-resize}
+.zw-rz.se{right:0;bottom:0;width:12px;height:12px;cursor:nwse-resize}.zw-rz.sw{left:0;bottom:0;width:12px;height:12px;cursor:nesw-resize}
+
+/* Settings — the tabs centred in the header; the scope line, the groups, the footer below the hairline */
+.zsw .gset-tabs button:disabled{opacity:.4}
+.zsw-off{display:flex}
+.zsw .gset-scope{padding:14px 28px 12px}
+
+/* Projects — the brand block sits below the header row; the tree has the header's hairline above it */
+.zpw .zw-side{gap:14px;padding:58px 12px 14px}
+.zpw .home-list{border-top:0;padding:8px 10px 12px}
+.zpw-search{flex:0 1 230px;min-width:120px}
+.zpw .home-action{flex-shrink:0}
+.zpw.drag-over::after{content:"";position:absolute;inset:6px;z-index:5;border:2px dashed var(--accent);border-radius:8px;background:var(--accent-soft);pointer-events:none}
+
+/* ============================================================
+   INACTIVE — not the key window (normal while Settings or Projects is key). As macOS does with its accent: the accent role goes
+   neutral (selected card, selected rows, switches and checkboxes that are on, slider fills, the search pill) and nothing shows focus.
+   Gold (@, the primary action), every data colour (add, rem, M, the hunk band, warn, project status) and progress stay.
+   ============================================================ */
+[data-window="inactive"]{--accent:#8a90a8;--accent-ink:#141831;--accent-soft:rgba(231,233,242,.08);--accent-ring:rgba(231,233,242,.16)}
+[data-theme="light"] [data-window="inactive"]{--accent:#a69e96;--accent-ink:#26242c;--accent-soft:rgba(58,46,34,.07);--accent-ring:rgba(58,46,34,.14)}
+[data-window="inactive"] :focus-visible{outline-color:transparent!important}
+[data-window="inactive"] :is(input,textarea,select):focus{border-color:var(--fl-border)!important;box-shadow:none!important}
+[data-window="inactive"] :is(.home-search:focus-within,.gs.is-focus){border-color:transparent!important;box-shadow:none!important}
+[data-window="inactive"] :is(input,textarea){caret-color:transparent}
+[data-window="inactive"] .status-M{background:var(--moon-soft);color:var(--hunk)}
+[data-window="inactive"] :is(.gins .diff-hunk,.ghunk:not(.is-sel) .ghunk-hd){background:var(--moon-soft)}

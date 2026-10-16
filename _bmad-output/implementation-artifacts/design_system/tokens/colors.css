@@ -1,19 +1,25 @@
 /* ============================================================
    ZANSHIN — colour tokens
-   Night (indigo) is the default theme; [data-theme="light"] is warm paper.
+   Two themes: night (indigo, the default — :root or data-theme="night") and paper (warm off-white — data-theme="paper";
+   "light" stays as an alias). Every comment's oklch is computed from the hex beside it; the hex is the value.
    Names mirror the client source (app.css / graph.css / float.css) so code and designs share one vocabulary.
    Accent system: gold = @ (working copy) + the ONE primary action · moon (--accent) = selection, focus, controls.
+   macOS accent colours: tokens/accents.css. Control states (pressed, disabled, primary/destructive mixes, thumb, scrollbar…): tokens/states.css.
    ============================================================ */
-:root{
+:root,[data-theme="night"]{
   color-scheme:dark;
   /* ---- base palette ---- */
   --night-0:#0e1224;--night-1:#12162a;--night-2:#131831;--night-3:#1a1f35;--night-4:#1c2138;--night-5:#1f2540;--night-icon:#1d2540;--night-lift:#6078b2;
   --paper-0:#fffdfa;--paper-1:#f7f4f0;--paper-2:#f0ece7;--paper-3:#e8e3dd;--paper-4:#cbc7c2;--paper-ink:#26242c;--umber:#3a2e22;
-  --gold-50:#fff6e4;--gold-200:#f4cf80;--gold-400:#dca85b;--gold-500:#d9a755;--gold-600:#b58346;--gold-ink:#26304d;
-  --saffron:oklch(78% .16 75);--saffron-paper:oklch(58% .16 65);
-  --moon:oklch(80% .07 272);--moon-paper:oklch(48% .12 272);
-  --green-400:#4ade80;--green-700:#1a7f45;--red-400:#f87171;--red-600:#c23a3a;--amber-400:#fbbf24;--amber-paper:oklch(52% .13 70);
-  --tl-close:#ef4444;--tl-min:#eab308;--tl-zoom:#22c55e;
+  --gold-50:#fff6e4;--gold-200:#f4cf80;--gold-400:#dca85b;--gold-600:#b58346;--gold-ink:#26304d;
+  /* paper values are sRGB-safe (the old oklch(58% .16 65) / (52% .13 70) sat outside sRGB and P3: browsers clipped, Flutter would not) */
+  --saffron:#f2a618;/* oklch(78.0% .160 75.0) */--saffron-paper:#a56205;/* oklch(55.9% .124 64.7) */
+  --moon:#aebcec;/* oklch(80.1% .070 272.1) */--moon-paper:#4757a1;/* oklch(48.1% .120 272.0) */
+  --green-400:#4ade80;--green-700:#1a7f45;--red-400:#f87171;--red-600:#c23a3a;--amber-400:#fbbf24;--amber-paper:#915c05;/* oklch(52.1% .111 70.3) */
+  /* traffic lights — a Zanshin deviation from the system (readme › Window): at rest the app hides the system buttons and draws
+     grey rings (TrafficLightOverlayView, --tl-ring); hovering the group shows the system's own buttons. The colours below only
+     paint those system buttons in mocks; --tl-idle is a system button that is greyed out (Settings: minimise and zoom). */
+  --tl-close:#ff5f57;--tl-min:#febc2e;--tl-zoom:#28c840;--tl-idle:rgba(255,255,255,.14);--tl-ring:rgba(255,255,255,.26);
 
   /* ---- window canvas: two static shaders (linear + flat radial lift) ---- */
   --canvas:radial-gradient(115% 85% at 10% -12%,rgba(96,120,178,.24),rgba(96,120,178,0) 62%),linear-gradient(165deg,#1a2038,#12162a 68%,#0e1224);/* @kind other */
@@ -21,7 +27,7 @@
   --gold:#dca85b;
 
   /* ---- solid surfaces ---- */
-  --card-solid:#1a1f35;--card-solid-hi:#1f2540;--bg-elevated:#1c2138;
+  --card-solid:#1a1f35;--card-solid-hi:#1f2540;
   --bg-card:rgba(255,255,255,.045);--bg-card-2:rgba(255,255,255,.075);
   --border:rgba(255,255,255,.07);--border-strong:rgba(255,255,255,.14);
   --code-bg:rgba(8,10,22,.42);--scrim:rgba(7,9,20,.48);
@@ -29,53 +35,78 @@
   /* ---- floating glass (fl-*) ---- */
   --fl-bg:rgba(26,31,56,.66);--fl-bg-strong:rgba(24,29,52,.86);--fl-bg-solid:#1a1f35;--fl-border:rgba(255,255,255,.09);
   --fl-sheen:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,0) 46px);/* @kind other */
-  --fl-hover:rgba(255,255,255,.07);--fl-on:rgba(255,255,255,.11);--fl-gold:#dca85b;
+  --fl-hover:rgba(255,255,255,.07);--fl-on:rgba(255,255,255,.11);
+  /* gold split by role — the primary action vs. the chrome of @ */
+  --primary-action:#dca85b;/* the one primary action: New change, Commit, OK */
+  --at-chrome:#dca85b;/* @ pill edge, minimap day pill, minimap connector */
+  --at-chrome-edge:rgba(220,168,91,.42);/* the @ pill's border (was a color-mix with --fl-border) */
 
   /* ---- text ladder: every step ≥ 4.5:1 on #1a1f35 (muted 8.3 · dim 5.8 · faint 4.7) ---- */
   --text:#e7e9f2;--text-muted:#b3b9d0;--text-dim:#9299b4;--text-faint:#8189a5;
 
   /* ---- graph lines ---- */
-  --edge:rgba(214,222,245,.34);--edge-hov:rgba(234,238,250,.72);--grid-dot:rgba(255,255,255,.07);
+  --edge:rgba(214,222,245,.34);--edge-hov:rgba(234,238,250,.72);
 
   /* ---- @ working copy (saffron) ---- */
-  --co:oklch(78% .16 75);--co-soft:oklch(78% .16 75 / .14);--co-deep:oklch(78% .16 75 / .55);--co-glow:oklch(78% .16 75 / .30);--co-text:oklch(86% .10 75);--co-ink:#1a1206;
+  --co:#f2a618;/* oklch(78.0% .160 75.0) */--co-soft:rgba(242,166,24,.14);--co-deep:rgba(242,166,24,.55);--co-glow:rgba(242,166,24,.30);--co-text:#f8c885;/* oklch(86.0% .100 75.0) */--co-ink:#1a1206;
 
   /* ---- moon accent: selection, focus, controls ---- */
-  --accent:oklch(80% .07 272);--accent-ink:#141831;--accent-soft:oklch(80% .07 272 / .14);--accent-ring:oklch(80% .07 272 / .3);--hunk:oklch(80% .07 272);
+  /* the role macOS gives its accent; data-accent (tokens/accents.css) swaps this whole family — see the header there for each token */
+  --accent:#aebcec;/* oklch(80.1% .070 272.1) */--accent-ink:#141831;--accent-line:#aebcec;--accent-text:#aebcec;--accent-soft:rgba(174,188,236,.14);--accent-soft-hi:rgba(174,188,236,.24);--accent-ring:rgba(174,188,236,.3);--accent-select:rgba(174,188,236,.34);
+  /* live copies — what stays when the window is not key: progress, the edit flash, drop targets, links (tokens/inactive.css never touches them) */
+  --accent-live-line:#aebcec;--accent-live-ring:rgba(174,188,236,.3);--accent-live-text:#aebcec;
+
+  /* ---- moon as DATA — fixed, never follows the accent ---- */
+  --status-m:#aebcec;--status-m-bg:rgba(174,188,236,.14);/* file status M */
+  --hunk:#aebcec;--hunk-bg:rgba(174,188,236,.14);/* hunk header range + band */
+  --remote:#aebcec;/* bookmark remote-only state */
+
+  /* ---- project status (dots in the Projects tree and the project capsule) — fixed data colours ---- */
+  --proj-clean:#9ca3af;--proj-dirty:#facc15;--proj-ahead:#4ade80;--proj-behind:#60a5fa;--proj-diverged:#fb923c;--proj-conflict:#f87171;--proj-missing:#71717a;--proj-syncing:#a78bfa;--proj-stale:#22d3ee;/* oklch(79.7% .134 211.5) — working copy is stale: ΔE ≥ .11 to every status, data colour and accent (dirty .30) */
 
   /* ---- semantic ---- */
   --add:#4ade80;--add-bg:rgba(74,222,128,.13);--rem:#f87171;--rem-bg:rgba(248,113,113,.13);
-  --conflict:#fbbf24;--warn:oklch(84% .15 85);--warn-bg:oklch(80% .15 85 / .16);
+  --add-bg-hi:rgba(74,222,128,.18);--add-edge:rgba(74,222,128,.24);--add-ring:rgba(74,222,128,.35);/* viewed: folded-diff hover · diff border · chip border */
+  --conflict:#fbbf24;--warn:#f7c243;/* oklch(84.0% .150 85.2) */--warn-bg:rgba(234,181,50,.16);/* #eab532 oklch(80.1% .150 84.9) / .16 */
 
   /* ---- readable aliases ---- */
-  --surface-window:var(--canvas);/* @kind other */--surface-card:var(--card-solid);--surface-card-hover:var(--card-solid-hi);--surface-glass:var(--fl-bg);--surface-glass-strong:var(--fl-bg-strong);--surface-popover:var(--fl-bg-solid);--surface-menu:var(--bg-elevated);--surface-hover:var(--fl-hover);--surface-pressed:var(--fl-on);--surface-code:var(--code-bg);
+  --surface-window:var(--canvas);/* @kind other */--surface-card:var(--card-solid);--surface-card-hover:var(--card-solid-hi);--surface-glass:var(--fl-bg);--surface-glass-strong:var(--fl-bg-strong);--surface-popover:var(--fl-bg-solid);--surface-menu:var(--fl-bg-solid);--surface-hover:var(--fl-hover);--surface-pressed:var(--fl-on);--surface-code:var(--code-bg);
   --fg-1:var(--text);--fg-2:var(--text-muted);--fg-3:var(--text-dim);--fg-4:var(--text-faint);
   --line:var(--border);--line-strong:var(--border-strong);--line-glass:var(--fl-border);
-  --primary:var(--fl-gold);--working-copy:var(--co);--selection:var(--accent);--focus-ring:var(--accent);
+  --primary:var(--primary-action);--working-copy:var(--co);--selection:var(--accent);--focus-ring:var(--accent-line);
 }
 
-[data-theme="light"]{
+[data-theme="paper"],[data-theme="light"]{
   color-scheme:light;
+  --tl-idle:rgba(58,46,34,.22);--tl-ring:rgba(58,46,34,.30);
   --canvas:radial-gradient(115% 85% at 10% -12%,rgba(220,168,91,.20),rgba(220,168,91,0) 62%),linear-gradient(165deg,#f7f4f0,#f0ece7 68%,#e8e3dd);/* @kind other */
   --canvas-base:#f0ece7;
-  --card-solid:#fffdfa;--card-solid-hi:#ffffff;--bg-elevated:#fffdfa;
+  --card-solid:#fffdfa;--card-solid-hi:#ffffff;
   --bg-card:rgba(255,253,250,.90);--bg-card-2:rgba(58,46,34,.07);
   --border:rgba(58,46,34,.12);--border-strong:rgba(58,46,34,.22);
   --code-bg:rgba(255,255,255,.66);--scrim:rgba(58,46,34,.18);
   --fl-bg:rgba(255,253,250,.74);--fl-bg-strong:rgba(255,253,250,.9);--fl-bg-solid:#fffdfa;--fl-border:rgba(58,46,34,.12);
   --fl-sheen:linear-gradient(180deg,rgba(255,255,255,.6),rgba(255,255,255,0) 46px);/* @kind other */
-  --fl-hover:rgba(58,46,34,.06);--fl-on:rgba(58,46,34,.1);--fl-gold:oklch(56% .12 70);
+  --fl-hover:rgba(58,46,34,.06);--fl-on:rgba(58,46,34,.1);
+  --primary-action:#a06605;/* oklch(56.0% .120 70.4) */--at-chrome:#a06605;--at-chrome-edge:rgba(160,102,5,.45);
   /* text ladder: every step ≥ 4.5:1 on #fffdfa (muted 8.3 · dim 6.9 · faint 5.1) */
   --text:#26242c;--text-muted:#514c47;--text-dim:#5f5852;--text-faint:#736c65;
-  --edge:rgba(58,46,34,.30);--edge-hov:rgba(58,46,34,.62);--grid-dot:rgba(58,46,34,.10);
-  --co:oklch(58% .16 65);--co-soft:oklch(58% .16 65 / .10);--co-deep:oklch(58% .16 65 / .45);--co-glow:oklch(58% .16 65 / .22);--co-text:oklch(45% .14 65);--co-ink:#fff8ec;
-  --accent:oklch(48% .12 272);--accent-ink:#fff;--accent-soft:oklch(48% .12 272 / .09);--accent-ring:oklch(48% .12 272 / .22);--hunk:oklch(48% .12 272);
+  --edge:rgba(58,46,34,.30);--edge-hov:rgba(58,46,34,.62);
+  /* sRGB-safe: co oklch(55.9% .124 64.7) · co-text oklch(45.1% .100 65.7) — co-ink on co 4.6:1, co on the card 4.8:1, co-text 7.5:1 */
+  --co:#a56205;--co-soft:rgba(165,98,5,.10);--co-deep:rgba(165,98,5,.45);--co-glow:rgba(165,98,5,.22);--co-text:#7a4802;--co-ink:#fff8ec;
+  --accent:#4757a1;/* oklch(48.1% .120 272.0) */--accent-ink:#ffffff;--accent-line:#4757a1;--accent-text:#4757a1;--accent-soft:rgba(71,87,161,.09);--accent-soft-hi:rgba(71,87,161,.16);--accent-ring:rgba(71,87,161,.22);--accent-select:rgba(71,87,161,.22);
+  --accent-live-line:#4757a1;--accent-live-ring:rgba(71,87,161,.22);--accent-live-text:#4757a1;
+  --status-m:#4757a1;--status-m-bg:rgba(71,87,161,.09);--hunk:#4757a1;--hunk-bg:rgba(71,87,161,.09);--remote:#4757a1;
+  /* paper status dots: the night values fall to 1.5–2.4:1 on paper; these are ≥ 3.5:1 on #fffdfa */
+  --proj-clean:#84868c;--proj-dirty:#a38207;--proj-ahead:#218a45;--proj-behind:#0f74c5;--proj-diverged:#c75d04;--proj-conflict:#c23a3a;--proj-missing:#6f7178;--proj-syncing:#795bbf;--proj-stale:#0e7490;/* oklch(52.0% .094 223.1) 5.3:1 — ΔE ≥ .085 to every status (dirty .25) */
   /* diff colours darkened for paper: the night greens/reds fall below 2:1 here */
   --add:#1a7f45;--add-bg:rgba(26,127,69,.10);--rem:#c23a3a;--rem-bg:rgba(194,58,58,.09);
-  --conflict:oklch(52% .13 70);--warn:oklch(50% .13 70);--warn-bg:oklch(80% .15 85 / .16);
-  --surface-window:var(--canvas);/* @kind other */--surface-card:var(--card-solid);--surface-card-hover:var(--card-solid-hi);--surface-glass:var(--fl-bg);--surface-glass-strong:var(--fl-bg-strong);--surface-popover:var(--fl-bg-solid);--surface-menu:var(--bg-elevated);--surface-hover:var(--fl-hover);--surface-pressed:var(--fl-on);--surface-code:var(--code-bg);
+  --add-bg-hi:rgba(26,127,69,.14);--add-edge:rgba(26,127,69,.28);--add-ring:rgba(26,127,69,.35);
+  /* sRGB-safe: conflict oklch(52.1% .111 70.3) 5.5:1 · warn oklch(49.9% .107 69.7) 6.1:1 on the card */
+  --conflict:#915c05;--warn:#895604;--warn-bg:rgba(234,181,50,.16);
+  --surface-window:var(--canvas);/* @kind other */--surface-card:var(--card-solid);--surface-card-hover:var(--card-solid-hi);--surface-glass:var(--fl-bg);--surface-glass-strong:var(--fl-bg-strong);--surface-popover:var(--fl-bg-solid);--surface-menu:var(--fl-bg-solid);--surface-hover:var(--fl-hover);--surface-pressed:var(--fl-on);--surface-code:var(--code-bg);
   --fg-1:var(--text);--fg-2:var(--text-muted);--fg-3:var(--text-dim);--fg-4:var(--text-faint);
   --line:var(--border);--line-strong:var(--border-strong);--line-glass:var(--fl-border);
-  --primary:var(--fl-gold);--working-copy:var(--co);--selection:var(--accent);--focus-ring:var(--accent);
+  --primary:var(--primary-action);--working-copy:var(--co);--selection:var(--accent);--focus-ring:var(--accent-line);
 }
 

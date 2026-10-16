@@ -1,0 +1,137 @@
+/* ============================================================
+   CONTROL LIBRARY — components/controls/ (readme › Intentional additions › Control library)
+   Every control follows the one state model: rest → hover → pressed one fill step each · focus + disabled from base.css.
+   ============================================================ */
+
+/* Spinner */
+.zs-spinner{flex-shrink:0;animation:zs-spin var(--dur-spin) var(--ease-linear) infinite}
+
+/* Badge — the fill may be light (paper orange / yellow / green): its 1px --accent-line edge carries the 3:1 (invisible where line = fill) */
+.zs-badge{display:inline-grid;place-items:center;min-width:15px;height:15px;padding:0 4px;border-radius:var(--radius-pill);background:var(--accent);color:var(--accent-ink);font:700 var(--fs-2xs)/1 var(--font-mono);font-variant-numeric:tabular-nums;box-shadow:inset 0 0 0 1px var(--accent-line),0 0 0 2px var(--fl-bg-solid);overflow:hidden;pointer-events:none;animation:zs-badge-in var(--dur-pop) var(--ease-glide) both}
+.zs-badge--neutral{background:var(--fl-on);color:var(--text-muted);box-shadow:none}
+.zs-badge.is-dot{min-width:8px;width:8px;height:8px;padding:0}
+.zs-badge-n{display:block;animation:zs-badge-roll var(--dur-pop) var(--ease-glide) both}
+.zs-badge.is-closing{animation:zs-badge-out var(--dur-exit) var(--ease-exit) both}
+@keyframes zs-badge-in{from{opacity:0;transform:scale(calc(1 - .4 * var(--motion)))}}
+@keyframes zs-badge-roll{from{opacity:0;transform:translateY(calc(5px * var(--motion)))}}
+@keyframes zs-badge-out{to{opacity:0;transform:scale(calc(1 - .4 * var(--motion)))}}
+
+/* Radio */
+.zs-radiogroup{display:flex;flex-direction:column;gap:10px}
+.zs-radiogroup.is-row{flex-direction:row;flex-wrap:wrap;gap:8px 18px}
+.zs-radio-row{display:inline-flex;align-items:flex-start;gap:8px;font-size:var(--fs-control);color:var(--text);cursor:default}
+.zs-radio-row.is-disabled{opacity:var(--disabled-opacity)}
+.zs-radio-row.is-disabled .zs-radio{opacity:1}
+.zs-radio{position:relative;flex-shrink:0;width:15px;height:15px;padding:0;border-radius:50%;border:1.5px solid var(--text-faint);background:transparent;display:grid;place-items:center;cursor:default;transition:background var(--dur-hover) var(--ease-state),border-color var(--dur-hover) var(--ease-state),box-shadow var(--dur-hover) var(--ease-state)}
+.zs-radio:hover,.zs-radio.st-hover,.zs-radio-row:hover .zs-radio:not(.is-on){border-color:var(--text-muted)}
+.zs-radio:active,.zs-radio.st-press{background:var(--fl-on)}
+.zs-radio.is-on{background:var(--accent);border-color:var(--accent-line)}
+.zs-radio.is-on:hover,.zs-radio.is-on.st-hover{box-shadow:inset 0 0 0 8px var(--fill-on-hover)}
+.zs-radio.is-on:active,.zs-radio.is-on.st-press{background:var(--accent);box-shadow:inset 0 0 0 8px var(--fill-on-press)}
+.zs-radio-dot{width:6px;height:6px;border-radius:50%;background:var(--accent-ink);transform:scale(0);transition:transform var(--dur-toggle) var(--ease-glide)}
+.zs-radio.is-on .zs-radio-dot{transform:scale(1)}
+.zs-radio-l{display:flex;flex-direction:column;gap:2px;line-height:15px;min-width:0}
+.zs-radio-hint{font-size:var(--fs-id);line-height:1.4;color:var(--text-dim);text-wrap:pretty}
+
+/* Tooltip — 8px from the control; flips to the other side and clamps 8px inside the window (Tooltip.jsx measures, --tip-dx / --tip-dy shift it) */
+.zs-tip-anchor{position:relative;display:inline-flex}
+.zs-tip{position:absolute;z-index:var(--z-tooltip);display:flex;flex-direction:column;gap:2px;width:max-content;max-width:300px;padding:5px 8px 6px;border-radius:var(--radius-chip);background:var(--tooltip-bg);border:1px solid var(--tooltip-border);box-shadow:var(--shadow-tooltip);font:500 var(--fs-id)/1.35 var(--font-sans);color:var(--text);text-align:left;white-space:normal;pointer-events:none;animation:zs-tip-in var(--dur-hover) var(--ease-glide) both}
+.zs-tip.is-bottom{top:calc(100% + 8px);left:50%;translate:calc(-50% + var(--tip-dx,0px)) 0}
+.zs-tip.is-top{bottom:calc(100% + 8px);left:50%;translate:calc(-50% + var(--tip-dx,0px)) 0;animation-name:zs-tip-in-up}
+.zs-tip.is-right{left:calc(100% + 8px);top:50%;translate:0 calc(-50% + var(--tip-dy,0px));animation-name:zs-tip-in-x}
+.zs-tip.is-left{right:calc(100% + 8px);top:50%;translate:0 calc(-50% + var(--tip-dy,0px));animation-name:zs-tip-in-xl}
+.zs-tip.is-closing{animation:zs-out var(--dur-exit) var(--ease-exit) both}
+.zs-tip-l{display:flex;align-items:baseline;justify-content:space-between;gap:14px}
+.zs-tip-k{font-weight:400;color:var(--text-faint);white-space:nowrap}
+.zs-tip-cmd{font:400 var(--fs-sm)/1.35 var(--font-mono);color:var(--text-dim);white-space:nowrap}
+@keyframes zs-tip-in{from{opacity:0;transform:translateY(calc(-2px * var(--motion)))}}
+@keyframes zs-tip-in-up{from{opacity:0;transform:translateY(calc(2px * var(--motion)))}}
+@keyframes zs-tip-in-x{from{opacity:0;transform:translateX(calc(-2px * var(--motion)))}}
+@keyframes zs-tip-in-xl{from{opacity:0;transform:translateX(calc(2px * var(--motion)))}}
+
+/* ProgressBar — the fill IS the information, so it is the line tone on the lighter --progress-track — its live copy
+   (--accent-live-line), so it keeps its colour in an inactive window: ≥ 3:1 in every family
+   (night 3.3 · paper 3.1; the paper yellow fill on the slider track was 1.03). The value moves on --dur-expand (Reduce motion: it jumps).
+   Indeterminate: a 32% sweep, linear; with --motion 0 the fill spans the groove and pulses (opacity only). */
+.zs-progress{position:relative;display:block;height:4px;border-radius:var(--radius-pill);background:var(--progress-track);overflow:hidden}
+.zs-progress-fill{display:block;height:100%;border-radius:inherit;background:var(--accent-live-line);transition:width var(--dur-expand) var(--ease-glide)}
+.zs-progress.is-ind .zs-progress-fill{width:calc(100% - 68% * var(--motion));animation:zs-ind var(--dur-shimmer) var(--ease-linear) infinite}
+@keyframes zs-ind{0%{transform:translateX(calc(-100% * var(--motion)));opacity:1}50%{opacity:calc(1 - .55 * (1 - var(--motion)))}100%{transform:translateX(calc(320% * var(--motion)));opacity:1}}
+
+/* Skeleton — shows only after --delay-skeleton (150ms); a load that finishes sooner never flashes it */
+.zs-skel{display:block;flex-shrink:0;border-radius:var(--radius-xs);background:linear-gradient(90deg,transparent 0,var(--skeleton-hi) 50%,transparent 100%) var(--skeleton);background-size:200% 100%;background-repeat:no-repeat;background-position:150% 0;animation:zs-shimmer var(--dur-shimmer) var(--ease-linear) infinite}
+.zs-skel-card{display:flex;flex-direction:column;justify-content:center;gap:9px;width:240px;height:62px;padding:0 12px;border-radius:var(--radius-card);background:var(--card-solid);border:1px solid var(--border-strong)}
+.zs-skel-line{display:flex;gap:8px;align-items:center}
+.zs-skel-row{display:flex;align-items:center;gap:8px;height:30px;padding:0 8px}
+/* the sweep moves the highlight across; with --motion 0 the highlight stays off the bar and the bar pulses instead */
+@keyframes zs-shimmer{0%{background-position:150% 0;opacity:1}50%{opacity:calc(1 - .45 * (1 - var(--motion)))}100%{background-position:calc(150% - 200% * var(--motion)) 0;opacity:1}}
+
+/* Chip — neutral: rest --fl-hover → hover --fl-on → pressed --fl-press. Toggle on (data selection): --accent-soft + accent text → hover
+   --accent-soft-hi → pressed --accent-ring, the label turns --text on both. Not on: --rem-bg + rem → --rem-bg-hover → --rem-bg-press, label --text. */
+.zs-chip{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:var(--control-sm);padding:0 10px;border:0;border-radius:var(--radius-chip);background:var(--fl-hover);font:500 var(--fs-md) var(--font-sans);color:var(--text-muted);white-space:nowrap;cursor:default;transition:background var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state),border-color var(--dur-hover) var(--ease-state)}
+.zs-chip.is-mono{font:var(--fs-id) var(--font-mono)}
+button.zs-chip:hover,.zs-chip.st-hover{background:var(--fl-on);color:var(--text)}
+button.zs-chip:active,.zs-chip.st-press{background:var(--fl-press);color:var(--text)}
+.zs-chip--toggle.is-on{background:var(--accent-soft);color:var(--accent-text)}
+.zs-chip--toggle.is-on:hover,.zs-chip--toggle.is-on.st-hover{background:var(--accent-soft-hi);color:var(--text)}
+.zs-chip--toggle.is-on:active,.zs-chip--toggle.is-on.st-press{background:var(--accent-ring);color:var(--text)}
+.zs-chip--not.is-on{background:var(--rem-bg);color:var(--rem)}
+.zs-chip--not.is-on:hover,.zs-chip--not.is-on.st-hover{background:var(--rem-bg-hover);color:var(--text)}
+.zs-chip--not.is-on:active,.zs-chip--not.is-on.st-press{background:var(--rem-bg-press);color:var(--text)}
+.zs-chip--add{background:transparent;border:1px dashed var(--border-strong);border-radius:var(--radius-pill);padding:0 10px 0 8px;color:var(--text-muted)}
+button.zs-chip--add:hover,.zs-chip--add.st-hover{border-style:solid;background:var(--fl-hover);color:var(--text)}
+button.zs-chip--add:active,.zs-chip--add.st-press{border-style:solid;background:var(--fl-on);color:var(--text)}
+.zs-chip--filter{padding:0 3px 0 9px;gap:4px;background:var(--fl-on);color:var(--text)}
+.zs-chip-l{min-width:0;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.zs-chip-x{width:20px;height:20px;display:grid;place-items:center;flex-shrink:0;padding:0;border:0;border-radius:var(--radius-tag);background:none;color:var(--text-dim);cursor:default;transition:background var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}
+.zs-chip-x:hover{background:var(--fl-on);color:var(--text)}
+.zs-chip-x:active{background:var(--fl-press)}
+.zs-chip--sm{height:var(--control-xs);padding:0 8px;font-size:var(--fs-id);border-radius:var(--radius-sm)}
+
+/* Link — two kinds (base.css styles bare <a> in prose the same as inline) */
+.zs-link{display:inline;padding:0;border:0;background:none;font:inherit;color:var(--accent-live-text);text-decoration:none;cursor:default;border-radius:var(--radius-kbd);transition:color var(--dur-hover) var(--ease-state)}
+a.zs-link[href]{cursor:pointer}
+.zs-link:hover,.zs-link.st-hover{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}
+.zs-link:active,.zs-link.st-press{color:var(--text)}
+.zs-link--quiet{color:var(--text-dim)}
+.zs-link--quiet:hover,.zs-link--quiet.st-hover{color:var(--text);text-decoration:none}
+
+/* Disclosure */
+.zs-disc{display:flex;flex-direction:column}
+.zs-disc-hd{display:flex;align-items:center;gap:6px;width:100%;min-height:30px;padding:0 8px 0 6px;border:0;border-radius:var(--radius-md);background:none;font:600 var(--fs-md) var(--font-sans);color:var(--text-muted);text-align:left;cursor:default;transition:background var(--dur-hover) var(--ease-state),color var(--dur-hover) var(--ease-state)}
+.zs-disc-hd:hover,.zs-disc-hd.st-hover{background:var(--fl-hover);color:var(--text)}
+.zs-disc-hd:active,.zs-disc-hd.st-press{background:var(--fl-on)}
+.zs-disc-chev{flex-shrink:0;color:var(--text-dim);transition:transform var(--dur-expand) var(--ease-glide)}
+.zs-disc.is-open>.zs-disc-hd .zs-disc-chev{transform:rotate(90deg)}
+.zs-disc-l{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zs-disc-meta{margin-left:auto;font:400 var(--fs-sm) var(--font-mono);color:var(--text-faint)}
+.zs-disc-bd{overflow:hidden;transition:height var(--dur-expand) var(--ease-glide),opacity var(--dur-panel) var(--ease-state)}
+.zs-disc:not(.is-open)>.zs-disc-bd{opacity:0}
+
+/* ScrollArea — overlay scrollbar */
+.zs-scroll{position:relative;overflow:hidden}
+.zs-scroll-vp{height:100%;overflow:auto;overscroll-behavior:contain;scrollbar-width:none}
+.zs-scroll-vp::-webkit-scrollbar{display:none}
+.zs-scroll-bar{position:absolute;top:2px;bottom:2px;right:0;width:var(--scroll-gutter);cursor:default;border-radius:var(--radius-chip);opacity:0;transition:opacity var(--dur-exit-lg) var(--ease-state),background var(--dur-hover) var(--ease-state)}
+.zs-scroll.is-show .zs-scroll-bar,.zs-scroll.is-hover .zs-scroll-bar,.zs-scroll.is-drag .zs-scroll-bar{opacity:1;transition-duration:var(--dur-hover)}
+.zs-scroll.is-hover .zs-scroll-bar,.zs-scroll.is-drag .zs-scroll-bar{background:var(--scroll-track)}
+.zs-scroll-thumb{position:absolute;top:0;right:4px;width:var(--scroll-w);border-radius:var(--radius-pill);background:var(--scroll-thumb);transition:width var(--dur-nudge) var(--ease-glide),right var(--dur-nudge) var(--ease-glide),background var(--dur-hover) var(--ease-state)}
+.zs-scroll.is-hover .zs-scroll-thumb{width:var(--scroll-w-hover);right:2px;background:var(--scroll-thumb-hover)}
+.zs-scroll.is-drag .zs-scroll-thumb{width:var(--scroll-w-hover);right:2px;background:var(--scroll-thumb-drag)}
+.zs-scroll-bar.is-x{top:auto;left:2px;right:2px;bottom:0;width:auto;height:var(--scroll-gutter)}
+.zs-scroll-bar.is-x .zs-scroll-thumb{top:auto;bottom:4px;left:0;right:auto;width:auto;height:var(--scroll-w);transition:height var(--dur-nudge) var(--ease-glide),bottom var(--dur-nudge) var(--ease-glide),background var(--dur-hover) var(--ease-state)}
+.zs-scroll.is-hover-x .zs-scroll-bar.is-x .zs-scroll-thumb,.zs-scroll.is-drag-x .zs-scroll-bar.is-x .zs-scroll-thumb{height:var(--scroll-w-hover);bottom:2px}
+.zs-scroll.is-hover-x .zs-scroll-bar.is-x{opacity:1;background:var(--scroll-track)}
+
+/* ConfirmDialog — the alert sheet */
+.zs-alert{display:flex;flex-direction:column;gap:10px;max-width:calc(100% - 48px);padding:20px 20px 16px;border-radius:var(--radius-dialog);background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:var(--shadow-dialog);color:var(--text);animation:zs-dialog-in var(--dur-dialog) var(--ease-glide)}
+.zs-alert-hd{display:flex;align-items:center;gap:8px}
+.zs-alert-ic{color:var(--warn);flex-shrink:0}
+
+.zs-alert-title{margin:0;font:600 var(--fs-lg)/1.35 var(--font-sans);letter-spacing:var(--tracking-dialog);text-wrap:pretty}
+.zs-alert-body{font-size:var(--fs-control);line-height:1.5;color:var(--text-muted);text-wrap:pretty}
+.zs-alert-body code{font:var(--fs-id) var(--font-mono);color:var(--text)}
+.zs-alert-cmd{display:block;padding:8px 10px;border-radius:var(--radius-md);background:var(--code-bg);border:1px solid var(--fl-border);font:var(--fs-id)/1.55 var(--font-mono);color:var(--text-muted);white-space:pre-wrap;word-break:break-all}
+.zs-alert-ft{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:8px}
+.zs-alert-key{margin-right:auto;font-size:var(--fs-sm);color:var(--text-faint)}
+

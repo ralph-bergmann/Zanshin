@@ -1,20 +1,52 @@
 /* ============================================================
    ZANSHIN — spacing & geometry
-   One 12px rhythm for the chrome: traffic lights + rail form the left column (12 → 64),
-   content starts at 76; the top bar is 44px tall at 12px, so content starts at 68.
+   One 12px rhythm for the chrome: 12 between islands, 12 to the window edge, 12 after the system's traffic-light block.
+   The rail is 52 wide at x 12, so content starts at 76; the top bar centres on the traffic lights, so content starts at 60 (macOS 27).
    ============================================================ */
 :root{
   --space-0:0;--space-px:1px;--space-0-5:2px;--space-1:4px;--space-1-5:6px;--space-2:8px;--space-2-5:10px;--space-3:12px;--space-3-5:14px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:28px;--space-8:32px;
 
-  --chrome-inset:12px;   /* every island sits 12px from the window edge and 12px from its neighbour */
-  --chrome-h:44px;       /* top-bar islands, primary action */
-  --chrome-control:36px; /* icon buttons and fields inside an island */
+  /* control heights — one scale for everything that can share a row: buttons, fields, selects, segmented, chips, icon buttons.
+     A control nested in another is the outer height minus twice the inset (chip 26 − 2 × 3 = 20 · toast 36 − 2 × 5 = 26 · tabs 36 − 2 × 3 = 30). */
+  --control-xs:22px;  /* small chips, the sm segmented */
+  --control-sm:26px;  /* chips, segmented, toolbar icon buttons, toast actions */
+  --control-md:30px;  /* the default: buttons, fields, selects, search field, settings controls, panel close */
+  --control-lg:36px;  /* inside islands (icon buttons, the bar's search field), title fields, settings tabs, toast, @ pill */
+  --control-xl:44px;  /* the top bar and its primary action */
+
+  /* icon sizes — the set is drawn on 16; size follows the control, never decoration. Icon takes the same names: size="sm". */
+  --icon-xs:10px;   /* the ✕ inside chips and fields */
+  --icon-sm:12px;   /* rows, chips, flags, card meta, close buttons */
+  --icon-md:14px;   /* buttons, menu and list rows */
+  --icon-lg:16px;   /* panel headers, the primary action — the drawing grid, 1:1 */
+  --icon-bar:17px;  /* top-bar icon buttons */
+  --icon-rail:19px; /* rail buttons */
+
+  /* the traffic lights are the SYSTEM's. Zanshin never moves them: it reads their frames at runtime
+     (NSWindow.standardWindowButton(.closeButton … .zoomButton).frame) and derives the bar from them — version-independent:
+       first island x = block end + 12 (--chrome-first-x) · bar centre y = the block's centre (--tl-mid-y) · content top = bar bottom + 12.
+     The values here are the REFERENCE geometry, measured on macOS 27.0.1 (standard buttons, the toolbar the app uses): 14 × 14pt,
+     pitch 23, the block 60 wide at x 19–79, centre y 26. (Without a toolbar the system puts them at x 9–69, y 16; before macOS 26
+     they were 12pt at a 20pt pitch — no fixed number is "native".) Full screen: no block → [data-fullscreen] below. */
+  --tl-size:14px;--tl-pitch:23px;--tl-x:19px;--tl-block-w:60px;--tl-mid-y:26px;
+  --chrome-inset:12px;   /* every island sits 12px from the window edge, from its neighbour and from the traffic-light block */
+  --chrome-h:var(--control-xl);  /* top-bar islands, primary action */
+  --chrome-control:var(--control-lg); /* icon buttons and fields inside an island */
   --chrome-rail-btn:40px;
-  --chrome-col:52px;     /* traffic-light column = rail width */
-  --chrome-top:68px;     /* 12 + 44 + 12 */
+  --chrome-col:52px;     /* rail width */
+  --chrome-first-x:calc(var(--tl-x) + var(--tl-block-w) + var(--chrome-inset)); /* 91: block end + 12 */
+  --chrome-bar-y:calc(var(--tl-mid-y) - var(--chrome-h) / 2);                     /* 4: the bar's top, centred on the block */
+  --chrome-top:calc(var(--tl-mid-y) + var(--chrome-h) / 2 + var(--chrome-inset)); /* 60: bar bottom + 12 */
   --chrome-left:76px;    /* 12 + 52 + 12 */
-  --inspector-w:460px;--panel-w:300px;--minimap-w:134px;
+  --window-hd-h:52px;    /* Settings / Projects: the header shares its row with the traffic lights; controls centre on --tl-mid-y */
+  --inspector-w:460px;--inspector-w-min:380px;--inspector-w-max:720px;--panel-w:300px;--panel-w-min:240px;--panel-w-max:440px;/* defaults · resizable at the edge toward the graph (ResizeEdge), remembered app-wide */
+  --graph-min-w:320px;/* graph that always stays visible: a resize stops here, a narrowing window shrinks the islands first */
+  --resize-hit:10px;--resize-hit-out:7px;/* the grab zone on an island's edge: 7 of its 10 in the 12px gap */
+  --minimap-w:134px;
 
   --card-w:240px;--card-h-compact:40px;--card-h-detailed:62px;--card-pad-x:12px;
-  --graph-gap-x:56px;--graph-gap-y:48px;--graph-pad:56px;--grid-step:24px;
+  --graph-gap-x:56px;--graph-gap-y:48px;--graph-pad:56px;
 }
+/* full screen — the system hides the buttons (they return with the menu bar): no block, so the bar takes the plain 12px rhythm
+   (first island 12, bar top 12, content 68). Derived tokens are re-declared because custom properties resolve where declared. */
+[data-fullscreen]{--tl-block-w:0px;--tl-x:0px;--tl-mid-y:34px;--chrome-first-x:12px;--chrome-bar-y:12px;--chrome-top:68px}

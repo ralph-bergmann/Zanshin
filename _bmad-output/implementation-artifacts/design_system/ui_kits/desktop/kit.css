@@ -1,6 +1,7 @@
 /* Zanshin desktop UI kit — window composition. Components come from ../../styles.css; this file only places them and adds the
-   few product-specific pieces (gap legend, minimap, inspector layout, composer, dialog chrome). Geometry: one 12px rhythm —
-   traffic lights + rail form the left column (12 → 64), content starts at 76; the top bar is 44px at 12px, so content starts at 68. */
+   few product-specific pieces (gap legend, minimap, inspector layout, composer). Geometry (tokens/spacing.css › chrome): the traffic
+   lights are the system's (reference: macOS 27, block x 19–79, centre y 26); the top bar starts at block end + 12 and centres on the
+   block, content starts at bar bottom + 12 (60); the rail is 52 wide at x 12, content starts at 76. Motion: tokens/motion.css only. */
 html,body{height:100%;margin:0;overflow:hidden}
 .zk-win{position:fixed;inset:0;background:var(--canvas);overflow:hidden;user-select:none;-webkit-user-select:none}
 .zk-win,.zk-win *{cursor:default}
@@ -9,31 +10,31 @@ html,body{height:100%;margin:0;overflow:hidden}
 .zk-scroll{position:absolute;inset:0;overflow:auto;scrollbar-width:none;z-index:0}
 .zk-scroll::-webkit-scrollbar{display:none}
 .zk-plane{position:relative;min-width:100%;min-height:100%}
-.zk-edges{position:absolute;left:0;top:0;pointer-events:none;overflow:visible;transition:opacity 260ms ease-out}
+.zk-edges{position:absolute;left:0;top:0;pointer-events:none;overflow:visible;transition:opacity var(--dur-slide) var(--ease-state)}
 .zk-plane.is-moving .zk-edges{opacity:0;transition:none}
-.zk-node{position:absolute!important;transition:left var(--dur-flip) var(--ease-glide),top var(--dur-flip) var(--ease-glide),width var(--dur-flip) var(--ease-glide),height var(--dur-flip) var(--ease-glide),border-color var(--dur-hover),background var(--dur-hover),box-shadow 160ms,opacity 180ms}
+.zk-node{position:absolute!important;transition:left var(--dur-flip) var(--ease-glide),top var(--dur-flip) var(--ease-glide),width var(--dur-flip) var(--ease-glide),height var(--dur-flip) var(--ease-glide),border-color var(--dur-hover) var(--ease-state),background var(--dur-hover) var(--ease-state),box-shadow var(--dur-pop) var(--ease-state),opacity var(--dur-pop) var(--ease-state)}
 .zk-node:hover{z-index:35}
 .zk-born{animation:zk-born var(--dur-birth) var(--ease-glide)}
-@keyframes zk-born{from{opacity:0;transform:translateY(60px) scale(.96)}30%{opacity:1}}
-.zk-peek{position:absolute;z-index:45;animation:zk-fade 160ms ease-out both}
-@keyframes zk-fade{from{opacity:0}}
-.zk-stackpop{position:absolute;z-index:40;min-width:280px;max-width:380px;display:flex;flex-direction:column;padding:6px;background:var(--bg-elevated);border:1px solid var(--border-strong);border-radius:var(--radius-card);box-shadow:var(--shadow-popover);animation:zk-fade 160ms ease-out both}
-.zk-stackpop-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:5px 8px;border-radius:6px;font-size:12px;color:var(--text)}
+@keyframes zk-born{from{opacity:0;transform:translateY(calc(60px * var(--motion))) scale(calc(1 - .04 * var(--motion)))}30%{opacity:1}}
+.zk-peek{position:absolute;z-index:var(--z-preview);animation:zs-fade var(--dur-pop) var(--ease-state) both}
+/* the stack list and the gap legend: the one menu material (13px, sheen over --fl-bg-solid, --fl-border, --shadow-menu) */
+.zk-stackpop{position:absolute;z-index:var(--z-preview);min-width:280px;max-width:380px;display:flex;flex-direction:column;padding:5px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);border-radius:var(--radius-popover);box-shadow:var(--shadow-menu);animation:zs-pop var(--dur-pop) var(--ease-glide) both}
+.zk-stackpop-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:5px 8px;border-radius:var(--radius-md);font-size:var(--fs-md);color:var(--text)}
 .zk-stackpop-subj{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .zk-stackpop-date{font:var(--fs-sm) var(--font-mono);color:var(--text-faint)}
 .zk-stackpop-hint{margin-top:4px;padding:7px 8px 3px;border-top:1px solid var(--border);font-size:var(--fs-sm);color:var(--text-dim)}
 
 /* overlay layer */
-.zk-fl{position:absolute;inset:0;z-index:20;pointer-events:none}
+.zk-fl{position:absolute;inset:0;z-index:var(--z-chrome);pointer-events:none}
 .zk-fl>*,.zk-top>*{pointer-events:auto}
 /* narrow windows: the centre gives way (its search input absorbs the squeeze), the side groups keep their size */
-.zk-top{position:absolute;z-index:3;top:12px;left:12px;right:12px;display:grid;grid-template-columns:minmax(max-content,1fr) minmax(0,max-content) minmax(max-content,1fr);align-items:center;gap:12px;pointer-events:none!important}
+.zk-lights{position:absolute;z-index:4;left:var(--tl-x);top:calc(var(--tl-mid-y) - var(--tl-size) / 2)}
+.zk-top{position:absolute;z-index:3;top:var(--chrome-bar-y);left:var(--chrome-first-x);right:var(--chrome-inset);display:grid;grid-template-columns:minmax(max-content,1fr) minmax(0,max-content) minmax(max-content,1fr);align-items:center;gap:12px;pointer-events:none!important}
 .zk-tl{justify-self:start;display:flex;align-items:center;gap:12px;min-width:0;max-width:100%}
 .zk-anchor{position:relative;display:flex;min-width:0}
-.zk-proj{gap:10px;padding:0 12px 0 8px;font:inherit;color:var(--text);text-align:left;transition:background var(--dur-hover),opacity 280ms ease 60ms,transform 340ms var(--ease-glide) 60ms}
+.zk-proj{gap:10px;padding:0 12px 0 8px;font:inherit;color:var(--text);text-align:left;transition:background var(--dur-hover) var(--ease-state),opacity var(--dur-calm-in) var(--ease-state) var(--delay-calm-in),transform var(--dur-calm-in) var(--ease-glide) var(--delay-calm-in)}
 .zk-proj:hover{background:linear-gradient(var(--fl-hover),var(--fl-hover)),var(--fl-sheen),var(--fl-bg)}
 .zk-proj.is-on{background:linear-gradient(var(--fl-on),var(--fl-on)),var(--fl-sheen),var(--fl-bg)}
-.zk-proj:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .zk-proj>.zs-icon{color:var(--text-dim)}
 .zk-proj-name{flex:none;max-width:220px;font-size:13px;font-weight:600;letter-spacing:var(--tracking-label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .zk-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
@@ -44,9 +45,9 @@ html,body{height:100%;margin:0;overflow:hidden}
 .zk-gaps-btn{display:flex;align-items:center;gap:6px;height:36px;padding:0 9px 0 7px;border:0;border-radius:10px;background:none;font:var(--fs-sm) var(--font-mono);color:var(--text-faint);white-space:nowrap}
 .zk-gaps-btn svg{overflow:visible}
 .zk-gaps:hover .zk-gaps-btn,.zk-gaps:focus-within .zk-gaps-btn{background:var(--fl-hover);color:var(--text-muted)}
-.zk-gaps-pop{position:absolute;top:100%;left:0;padding-top:10px;z-index:60;opacity:0;visibility:hidden;transition:opacity 120ms,visibility 0s linear 120ms}
-.zk-gaps:hover .zk-gaps-pop,.zk-gaps:focus-within .zk-gaps-pop{opacity:1;visibility:visible;transition:opacity 140ms 200ms,visibility 0s linear 200ms}
-.zk-gaps-inner{width:320px;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;padding:12px 14px;background:var(--bg-elevated);border:1px solid var(--border-strong);border-radius:var(--radius-card);box-shadow:var(--shadow-popover)}
+.zk-gaps-pop{position:absolute;top:100%;left:0;padding-top:10px;z-index:var(--z-menu);opacity:0;visibility:hidden;transition:opacity var(--dur-exit) var(--ease-exit),visibility 0s linear var(--dur-exit)}
+.zk-gaps:hover .zk-gaps-pop,.zk-gaps:focus-within .zk-gaps-pop{opacity:1;visibility:visible;transition:opacity var(--dur-pop) var(--ease-state) var(--delay-callout-out),visibility 0s linear var(--delay-callout-out)}
+.zk-gaps-inner{width:320px;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;padding:12px 14px;background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);border-radius:var(--radius-popover);box-shadow:var(--shadow-menu)}
 .zk-gaps-inner svg{overflow:visible;flex-shrink:0}
 .zk-gaps-title{font-size:13px;font-weight:600;color:var(--text)}
 .zk-gaps-row{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-dim)}
@@ -61,7 +62,7 @@ html,body{height:100%;margin:0;overflow:hidden}
 .zk-tr{justify-self:end;display:flex;align-items:center;gap:8px}
 
 /* rail, callout, pinned panel */
-.zk-rail{position:absolute;left:12px;top:68px}
+.zk-rail{position:absolute;left:var(--chrome-inset);top:var(--chrome-top)}
 .zk-rail .zs-ib.is-hov{background:var(--fl-hover);color:var(--text)}
 .zk-callout{position:absolute;left:76px;z-index:3;transform:translateY(-22px)}
 .zk-co-more{padding:2px 14px 4px;font-size:11.5px;color:var(--text-dim)}
@@ -78,16 +79,15 @@ html,body{height:100%;margin:0;overflow:hidden}
 .zk-bl-name{font:12px var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .zk-bl-sub{font-size:var(--fs-sm);color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .zk-bl-sub b{font-family:var(--font-mono);color:var(--text-muted)}
-.zk-panel{position:absolute;left:76px;top:68px;bottom:12px;width:300px;animation:zk-panel-in 200ms var(--ease-glide)}
-@keyframes zk-panel-in{from{opacity:0;transform:translateX(-8px)}}
+.zk-panel{position:absolute;left:var(--chrome-left);top:var(--chrome-top);bottom:12px;width:var(--panel-w);animation:zk-panel-in var(--dur-panel) var(--ease-glide)}
+@keyframes zk-panel-in{from{opacity:0;transform:translateX(calc(-8px * var(--motion)))}}
 .zk-panel-hd{display:flex;align-items:center;gap:8px;padding:14px 12px 12px 16px;font-size:13px;font-weight:600}
 .zk-panel-hd>.zs-icon{color:var(--text-muted)}
 .zk-panel-hd>span{flex:1}
 .zk-panel-bd{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;padding-bottom:10px}
 
 /* inspector — no boxes in boxes: type and spacing carry the hierarchy */
-.zk-ins{position:absolute;top:68px;right:12px;bottom:12px;width:460px;max-width:calc(100% - 100px);z-index:2;animation:zk-ins-in 220ms var(--ease-glide)}
-@keyframes zk-ins-in{from{opacity:0;transform:translateX(12px)}}
+.zk-ins{position:absolute;top:var(--chrome-top);right:12px;bottom:12px;width:var(--inspector-w);max-width:calc(100% - 100px);z-index:2;animation:zs-panel-in var(--dur-panel) var(--ease-glide)}
 .zk-ins-hd{display:flex;align-items:center;gap:10px;min-height:42px;padding:14px 12px 0 20px;flex-shrink:0}
 .zk-ins-id{font:12px var(--font-mono);color:var(--text-faint);white-space:nowrap;letter-spacing:.01em}
 .zk-ins-id b{color:var(--text);font-weight:600}
@@ -95,12 +95,12 @@ html,body{height:100%;margin:0;overflow:hidden}
 .zk-ins-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
 .zk-ins-scroll>*{flex-shrink:0}
 .zk-ins-scroll::-webkit-scrollbar{width:6px}.zk-ins-scroll::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:3px}
-.zk-ins-title{margin:8px 12px 0;padding:4px 8px 6px;border-radius:10px;outline:none;transition:background var(--dur-hover)}
+.zk-ins-title{margin:8px 12px 0;padding:4px 8px 6px;border-radius:10px;outline:none;transition:background var(--dur-hover) var(--ease-state)}
 .zk-ins-title.is-editable:hover,.zk-ins-title.is-editable:focus-visible{background:var(--fl-hover)}
 .zk-ins-title.is-editable:focus-visible{box-shadow:0 0 0 2px var(--accent-ring)}
 .zk-ins-subj{margin:0;font:var(--type-inspector-title);letter-spacing:var(--tracking-title);color:var(--text);text-wrap:pretty}
 .zk-ins-subj.is-dim{color:var(--text-dim);font-weight:500;font-style:italic}
-.zk-ins-pen{display:inline-block;margin-left:8px;vertical-align:1px;color:var(--text-faint);opacity:0;transition:opacity var(--dur-hover)}
+.zk-ins-pen{display:inline-block;margin-left:8px;vertical-align:1px;color:var(--text-faint);opacity:0;transition:opacity var(--dur-hover) var(--ease-state)}
 .zk-ins-title.is-editable:hover .zk-ins-pen,.zk-ins-title.is-editable:focus-visible .zk-ins-pen{opacity:1}
 .zk-ins-desc{margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--text-muted);white-space:pre-line;text-wrap:pretty}
 .zk-ins-meta{display:flex;flex-wrap:wrap;align-items:baseline;row-gap:2px;padding:4px 20px 0;font-size:12.5px;color:var(--text-dim)}
@@ -126,14 +126,13 @@ html,body{height:100%;margin:0;overflow:hidden}
 .zk-desc-fields{display:flex;flex-direction:column;gap:6px}
 .zk-desc-ft{display:flex;align-items:center;gap:6px}
 .zk-desc-ft code,.zk-comp-cmd{flex:1;min-width:0;font:var(--fs-sm) var(--font-mono);color:var(--text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.zk-comp{flex-shrink:0;display:flex;flex-direction:column;gap:10px;padding:14px 16px;border-top:1px solid var(--fl-border);background:linear-gradient(180deg,rgba(255,255,255,.025),transparent 48px);animation:zk-comp-in 260ms var(--ease-glide) both}
-[data-theme="light"] .zk-comp{background:linear-gradient(180deg,rgba(255,255,255,.5),transparent 48px)}
-@keyframes zk-comp-in{from{opacity:0;transform:translateY(12px)}}
+.zk-comp{flex-shrink:0;display:flex;flex-direction:column;gap:10px;padding:14px 16px;border-top:1px solid var(--fl-border);background:var(--fl-sheen);animation:zk-comp-in var(--dur-slide) var(--ease-glide) both}
+@keyframes zk-comp-in{from{opacity:0;transform:translateY(calc(12px * var(--motion)))}}
 .zk-comp-result{display:flex;flex-direction:column;gap:2px;padding:0 2px}
 .zk-comp-node{position:relative;display:flex;align-items:center;gap:8px;height:24px;min-width:0;font-size:12px;color:var(--text-dim)}
 .zk-comp-dot{flex-shrink:0;width:9px;height:9px;margin:0 2.5px;border-radius:50%;border:1.5px solid var(--text-faint)}
 .zk-comp-node.is-rest::after{content:"";position:absolute;left:6.25px;top:17px;width:1.5px;height:16px;background:var(--text-faint);opacity:.7}
-.zk-comp-node.is-sel .zk-comp-dot{background:var(--accent);border-color:var(--accent)}
+.zk-comp-node.is-sel .zk-comp-dot{background:var(--accent);border-color:var(--accent-line)}
 .zk-comp-node.is-wc .zk-comp-dot{border-color:var(--co);box-shadow:0 0 0 3px var(--co-soft)}
 .zk-comp-l{font-weight:600;color:var(--text);white-space:nowrap}
 .zk-comp-m{display:flex;align-items:center;gap:6px;white-space:nowrap}
@@ -145,8 +144,8 @@ html,body{height:100%;margin:0;overflow:hidden}
 .zk-comp-hint{font-size:11.5px;line-height:1.45;color:var(--text-dim);text-wrap:pretty}
 
 /* minimap — the graph's scroll indicator */
-.zk-mini{position:absolute;right:12px;top:68px;bottom:12px;width:134px;z-index:15;border-radius:14px;background:var(--fl-sheen),var(--fl-bg-strong);border:1px solid var(--fl-border);box-shadow:var(--fl-shadow);-webkit-backdrop-filter:var(--glass-blur-strong);backdrop-filter:var(--glass-blur-strong);transition:opacity 200ms,transform 260ms var(--ease-glide),visibility 0s}
-.zk-mini.is-hidden{opacity:0;transform:translateX(18px);visibility:hidden;pointer-events:none;transition:opacity 160ms,transform 260ms var(--ease-glide),visibility 0s linear 260ms}
+.zk-mini{position:absolute;right:12px;top:var(--chrome-top);bottom:12px;width:134px;z-index:15;border-radius:var(--radius-island);background:var(--fl-sheen),var(--fl-bg-strong);border:1px solid var(--fl-border);box-shadow:var(--fl-shadow);-webkit-backdrop-filter:var(--glass-blur-strong);backdrop-filter:var(--glass-blur-strong);transition:opacity var(--dur-panel) var(--ease-state),transform var(--dur-slide) var(--ease-glide),visibility 0s}
+.zk-mini.is-hidden{opacity:0;transform:translateX(calc(18px * var(--motion)));visibility:hidden;pointer-events:none;transition:opacity var(--dur-exit-lg) var(--ease-exit),transform var(--dur-slide) var(--ease-glide),visibility 0s linear var(--dur-slide)}
 .zk-mini-strip{position:absolute;inset:12px 8px;touch-action:none}
 .zk-mini-svg{position:absolute;left:0;top:0;overflow:visible}
 .zk-mini-e{fill:none;stroke:var(--text-faint);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:0 3}
@@ -155,63 +154,61 @@ html,body{height:100%;margin:0;overflow:hidden}
 .zk-mini-n.grp{fill:none;stroke:var(--text-faint);stroke-width:1.2}
 .zk-mini-g{opacity:.6}.zk-mini-g.in{opacity:1}
 .zk-mini-g.in .zk-mini-e{stroke:var(--text-muted)}.zk-mini-g.in .zk-mini-n{fill:var(--text)}.zk-mini-g.in .zk-mini-n.grp{fill:none;stroke:var(--text)}
-.zk-mini-n.wc{fill:var(--co)}.zk-mini-n.sel{fill:var(--accent)}
+.zk-mini-n.wc{fill:var(--co)}.zk-mini-n.sel{fill:var(--accent-line)}
 .zk-mini-view{fill:var(--fl-hover)}
-.zk-mini-conn{stroke:var(--fl-gold);stroke-width:1}
+.zk-mini-conn{stroke:var(--at-chrome);stroke-width:1}
 .zk-mini-hline{stroke:var(--text-dim);stroke-width:1;stroke-dasharray:2 2}
 .zk-mini-lbl{position:absolute;transform:translateY(-50%);font:10.5px var(--font-mono);color:var(--text-dim);white-space:nowrap;text-align:right;pointer-events:none}
-.zk-mini-pill{position:absolute;transform:translateY(-50%);padding:3px 9px;border-radius:999px;border:1px solid var(--fl-gold);background:var(--fl-bg-solid);font:600 11.5px var(--font-mono);color:var(--text);white-space:nowrap;box-shadow:0 4px 14px -4px rgba(0,0,0,.5);pointer-events:none}
+.zk-mini-pill{position:absolute;transform:translateY(-50%);padding:3px 9px;border-radius:999px;border:1px solid var(--at-chrome);background:var(--fl-bg-solid);font:600 11.5px var(--font-mono);color:var(--text);white-space:nowrap;box-shadow:0 4px 14px -4px rgba(0,0,0,.5);pointer-events:none}
 .zk-mini-pill.is-hov{border-color:var(--border-strong);color:var(--text-muted);font-weight:400;box-shadow:none}
 
 /* @ locator + toast — centred over the part of the graph that is visible */
-.zk-at{position:absolute;bottom:20px;opacity:0;visibility:hidden;transform:translate(-50%,10px) scale(.96);transition:opacity 140ms,transform 260ms var(--ease-glide),visibility 0s linear 260ms,left 260ms var(--ease-glide)}
-.zk-at.is-on{opacity:1;visibility:visible;transform:translate(-50%,0);transition:opacity 200ms,transform 320ms var(--ease-glide),visibility 0s,left 260ms var(--ease-glide)}
+/* the @ pill: in = fade + rise (--dur-slide; the rise × --motion); re-centring is movement (--dur-move → 0 under Reduce motion) */
+.zk-at{position:absolute;bottom:20px;opacity:0;visibility:hidden;transform:translate(-50%,calc(10px * var(--motion))) scale(calc(1 - .04 * var(--motion)));transition:opacity var(--dur-exit) var(--ease-exit),transform var(--dur-slide) var(--ease-glide),visibility 0s linear var(--dur-slide),left var(--dur-move) var(--ease-glide)}
+.zk-at.is-on{opacity:1;visibility:visible;transform:translate(-50%,0);transition:opacity var(--dur-pop) var(--ease-state),transform var(--dur-slide) var(--ease-glide),visibility 0s,left var(--dur-move) var(--ease-glide)}
 .zk-toast{position:absolute;bottom:20px;z-index:4;transform:translateX(-50%);max-width:calc(100% - 48px)}
-.zk-menu{position:fixed;z-index:80}
-.zk-dropwrap{position:fixed;z-index:70}
+.zk-menu{position:fixed;z-index:var(--z-menu)}
+.zk-dropwrap{position:fixed;z-index:var(--z-drop)}
 .zk-dropwrap.is-below{transform:translate(-50%,0)}.zk-dropwrap.is-above{transform:translate(-50%,-100%)}
-.zk-ghost{position:fixed;z-index:90;pointer-events:none;transform:translate(14px,12px)}
+.zk-ghost{position:fixed;z-index:var(--z-drag);pointer-events:none;transform:translate(14px,12px)}
 .zk-win.is-dragging,.zk-win.is-dragging *{cursor:default!important}
 .zk-win.is-dragging .zk-peek,.zk-win.is-dragging .zk-stackpop{display:none}
 
-/* calm scrolling — while the graph scrolls, the floating controls step aside (the traffic lights belong to the window and stay) */
-.zk-tc,.zk-tr,.zk-rail,.zk-panel,.zk-ins{transition:opacity 280ms ease 60ms,transform 340ms var(--ease-glide) 60ms}
-.zk-win.is-calm .zk-proj,.zk-win.is-calm .zk-tc,.zk-win.is-calm .zk-tr{opacity:0;transform:translateY(-6px);pointer-events:none;transition:opacity 150ms ease,transform 220ms ease}
-.zk-win.is-calm .zk-rail,.zk-win.is-calm .zk-panel{opacity:0;transform:translateX(-8px);pointer-events:none;transition:opacity 150ms ease,transform 220ms ease}
-.zk-win.is-calm .zk-ins{opacity:0;transform:translateX(16px);pointer-events:none;transition:opacity 150ms ease,transform 240ms ease}
-.zk-win.is-calm .zk-at{opacity:0;visibility:hidden;transition:opacity 120ms,visibility 0s linear 120ms}
+/* calm scrolling — while the graph scrolls, the floating controls step aside (the traffic lights belong to the window and stay; so does the
+   minimap). Out: fade + drift on --dur-calm-out, --ease-exit. Back --delay-calm-return after the last scroll: --dur-calm-in after
+   --delay-calm-in, fade on --ease-state, drift on --ease-glide. Drifts × --motion: under Reduce motion the chrome only fades. */
+.zk-tc,.zk-tr,.zk-rail,.zk-panel,.zk-ins{transition:opacity var(--dur-calm-in) var(--ease-state) var(--delay-calm-in),transform var(--dur-calm-in) var(--ease-glide) var(--delay-calm-in)}
+.zk-win.is-calm .zk-proj,.zk-win.is-calm .zk-tc,.zk-win.is-calm .zk-tr{opacity:0;transform:translateY(calc(-6px * var(--motion)));pointer-events:none;transition:opacity var(--dur-calm-out) var(--ease-exit),transform var(--dur-calm-out) var(--ease-exit)}
+.zk-win.is-calm .zk-rail,.zk-win.is-calm .zk-panel{opacity:0;transform:translateX(calc(-8px * var(--motion)));pointer-events:none;transition:opacity var(--dur-calm-out) var(--ease-exit),transform var(--dur-calm-out) var(--ease-exit)}
+.zk-win.is-calm .zk-ins{opacity:0;transform:translateX(calc(16px * var(--motion)));pointer-events:none;transition:opacity var(--dur-calm-out) var(--ease-exit),transform var(--dur-calm-out) var(--ease-exit)}
+.zk-win.is-calm .zs-resize{display:none}
+.zk-win.is-calm .zk-at{opacity:0;visibility:hidden;transition:opacity var(--dur-exit) var(--ease-exit),visibility 0s linear var(--dur-exit)}
 .zk-win.is-calm .zk-callout,.zk-win.is-calm .zk-peek,.zk-win.is-calm .zk-stackpop{display:none}
 .zk-win.is-calm .zk-tc:has(.zs-gs.is-focus,.zs-gs-pop,.zs-gs-menu){opacity:1;transform:none;pointer-events:auto}
 
-/* projects dialog */
-.zk-win>.zs-scrim{z-index:50}
-.zk-brand{display:flex;align-items:center;gap:9px;padding:0 4px 6px}
-.zk-brand-n{font-size:14px;font-weight:600;letter-spacing:.02em}
-.zk-brand-s{font:10.5px var(--font-mono);color:var(--text-dim);margin-top:1px}
-.zk-signed{padding:8px 4px 0;border-top:1px solid var(--fl-border)}
-.zk-signed-l{font-size:10px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
-.zk-signed-u{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-muted)}
-.zk-avatar{width:24px;height:24px;border-radius:50%;background:var(--fl-on);color:var(--text);font-size:11px;font-weight:600;display:grid;place-items:center;flex-shrink:0}
-.zk-signed-m{font:10.5px var(--font-mono);color:var(--text-dim);margin-top:1px}
-.zk-tree{display:flex;flex-direction:column;gap:1px}
-.zk-empty{padding:30px 16px;text-align:center;font-size:12px;color:var(--text-dim)}
-
-/* settings window */
-.zk-set-ov{z-index:100;padding:24px;animation:zk-fade 160ms ease-out}
-.zk-set{width:min(620px,100%);max-height:min(740px,100%);display:flex;flex-direction:column;overflow:hidden;border-radius:var(--radius-dialog);background:var(--fl-sheen),var(--fl-bg-solid);border:1px solid var(--fl-border);box-shadow:var(--shadow-dialog);color:var(--text);animation:zk-set-in 240ms var(--ease-glide)}
-@keyframes zk-set-in{from{opacity:0;transform:translateY(8px) scale(.985)}}
-.zk-set-hd{position:relative;display:flex;align-items:center;justify-content:center;padding:16px 56px 2px}
-.zk-set-x{position:absolute!important;right:14px;top:16px}
-.zk-set-mark{display:grid;border-radius:4px;overflow:hidden}
-.zk-set-scope{padding:10px 28px 14px;text-align:center;font-size:12px;line-height:1.5;color:var(--text-dim);text-wrap:pretty}
-.zk-set-scope code{font:11.5px var(--font-mono);color:var(--text-muted)}
-.zk-set-bd{overflow-x:hidden;overflow-y:auto;display:flex;flex-direction:column;gap:18px;min-height:0;padding:2px 24px 18px}
-.zk-set-ft{padding:12px 24px 15px;border-top:1px solid var(--fl-border);text-align:center;font-size:11.5px;color:var(--text-dim)}
+/* Settings and Projects — windows of their own, floating above the project window (the system orders them; no scrim) */
+.zk-winlayer{position:fixed;inset:0;z-index:100;pointer-events:none}
+.zk-winlayer>div{position:absolute;pointer-events:auto}
+.zk-brand{display:flex;align-items:center;gap:9px;padding:6px 14px 12px}
+.zk-brand-n{font-size:var(--fs-lg);font-weight:600;letter-spacing:.02em}
+.zk-brand-s{font:var(--fs-xs) var(--font-mono);color:var(--text-dim);margin-top:1px}
+.zk-side-nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}
+.zk-signed{margin-top:auto;padding:10px 14px 14px;border-top:1px solid var(--fl-border)}
+.zk-signed-l{font:var(--type-caps);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-dim);margin-bottom:6px}
+.zk-signed-u{display:flex;align-items:center;gap:8px;font-size:var(--fs-id);color:var(--text-muted)}
+.zk-avatar{width:24px;height:24px;border-radius:50%;background:var(--fl-on);color:var(--text);font-size:var(--fs-sm);font-weight:600;display:grid;place-items:center;flex-shrink:0}
+.zk-signed-m{font:var(--fs-xs) var(--font-mono);color:var(--text-dim);margin-top:1px}
+.zk-tree{display:flex;flex-direction:column;gap:1px;padding:8px 10px 12px;overflow:auto;min-height:0;flex:1}
+.zk-empty{padding:30px 16px;text-align:center;font-size:var(--fs-md);color:var(--text-dim)}
+.zk-set-mark{display:grid;border-radius:var(--radius-xs);overflow:hidden}
+.zk-set-scope{padding:12px 28px 4px;text-align:center;font-size:var(--fs-md);line-height:1.5;color:var(--text-dim);text-wrap:pretty}
+.zk-set-scope code{font:var(--fs-id) var(--font-mono);color:var(--text-muted)}
+.zk-set-bd{overflow-x:hidden;overflow-y:auto;display:flex;flex-direction:column;gap:18px;min-height:0;padding:12px 24px 18px}
+.zk-set-ft{padding:12px 24px 15px;border-top:1px solid var(--fl-border);text-align:center;font-size:var(--fs-id);color:var(--text-dim)}
 .zk-set-ft b{font-weight:500;color:var(--text-muted)}
 
 @media (max-width:1040px){.zk-n,.zk-n+.zs-island-sep{display:none}}
 @media (max-width:920px){.zk-tr .zs-btn--lg span{display:none}.zk-tr .zs-btn--lg{padding:0 14px}}
-@media (prefers-reduced-motion:reduce){.zk-win *{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 
 /* thin scrollbars wherever a panel scrolls (the graph itself scrolls without one — the minimap is its indicator) */
 .zk-win ::-webkit-scrollbar{width:6px;height:6px}

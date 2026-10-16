@@ -1,9 +1,11 @@
 import * as React from "react";
 
 /**
- * Modal sheet on a blurred scrim.
+ * Modal SHEET on a blurred scrim, for short modal tasks — the two: ConfirmDialog, Push. Settings, Projects and jj log Configurations are Windows.
+ * Esc (and ✕ / Cancel) call onClose — a click on the scrim does nothing; focus starts on initialFocus (or the first control), stays inside, returns on close (useSheetFocus).
  */
 export interface DialogNavItem { id: string; label: string; icon?: string; count?: number; }
+/** States: open · closing. */
 export interface DialogProps {
   title: string;
   onClose?: () => void;
@@ -22,6 +24,10 @@ export interface DialogProps {
   height?: number | string;
   /** render the scrim (fills the positioned parent) */
   scrim?: boolean;
+  /** play the exit (scrim fade + sheet drop, --dur-exit-lg) */
+  closing?: boolean;
+  /** selector of the control that gets focus on open */
+  initialFocus?: string;
   className?: string;
   children?: React.ReactNode;
 }

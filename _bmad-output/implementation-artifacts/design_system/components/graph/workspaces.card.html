@@ -1,0 +1,38 @@
+<!-- @dsCard group="Components" viewport="860x430" name="Workspaces on cards — name@" subtitle="One workspace: no marker (as jj log). Two or more: every working copy reads name@ — ours the saffron badge, others quiet tags" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../../styles.css"/>
+<style>body{margin:0;background:var(--canvas);min-height:100vh;color:var(--text);font-family:var(--font-sans)}.wrap{display:flex;flex-direction:column;gap:18px;padding:22px 26px}.row{display:flex;align-items:flex-start;gap:26px}.lbl{width:170px;flex-shrink:0;padding-top:10px;font:var(--fs-sm) var(--font-mono);color:var(--text-dim);line-height:1.5}.lbl b{display:block;font:600 var(--fs-md) var(--font-sans);color:var(--text)}.cards{display:flex;gap:26px;flex-wrap:wrap;padding-top:12px}.stage{position:relative;height:300px;border-radius:12px;overflow:hidden;box-shadow:0 0 0 1px var(--border)}</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+(() => {
+  const { ChangeCard } = window.ZanshinDesignSystem_a33847;
+  const Row = ({ t, s, children }) => <div className="row"><span className="lbl"><b>{t}</b>{s}</span><div className="cards">{children}</div></div>;
+  const Demo = () => (
+    <div className="wrap">
+      <Row t="One workspace" s="jj prints no marker — the plain @">
+        <ChangeCard id="ovknlmro" subject="feat(onboarding): swipe gestures" author="Ralph Stein" date="now" workingCopy/>
+      </Row>
+      <Row t="Ours, two workspaces" s="default@ in saffron; ci@ elsewhere">
+        <ChangeCard id="ovknlmro" subject="feat(onboarding): swipe gestures" author="Ralph Stein" date="now" workingCopy workspaces={["default"]} ownWorkspace="default"/>
+        <ChangeCard id="tnrkslqw" subject="exp: drop legacy wrappers" author="Ralph Stein" date="40m" workspaces={["ci"]} ownWorkspace="default"/>
+      </Row>
+      <Row t="Several on one card" s="ours first, then two by name, then +N (its title lists the rest)">
+        <ChangeCard id="vruxwmqv" subject="Release v1.0.0" date="2d" workingCopy workspaces={["default", "docs", "review", "ci"]} ownWorkspace="default"/>
+        <ChangeCard id="mrplxqwv" subject="docs: auth flow diagrams" date="12h" detailed={false} workspaces={["docs", "review"]} ownWorkspace="default"/>
+      </Row>
+    </div>
+  );
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo/>);
+})();
+</script>
+</body>
+</html>

@@ -27,7 +27,7 @@
       <div className="col">
         <div className="row"><span className="lbl">Segmented</span>
           <Segmented label="Layout" value={lay} onChange={setLay} options={[{ value: "free", label: "Free", title: "Rows follow commit time" }, { value: "compact", label: "Compact", title: "Rows = dependency depth" }]}/>
-          <Segmented variant="inset" label="Theme" value={th} onChange={setTh} options={[{ value: "light", label: "Light", icon: "sun" }, { value: "dark", label: "Dark", icon: "moon" }, { value: "system", label: "Auto", icon: "auto" }]}/>
+          <Segmented variant="inset" label="Theme" value={th} onChange={setTh} options={[{ value: "paper", label: "Paper", icon: "sun" }, { value: "night", label: "Night", icon: "moon" }, { value: "system", label: "Auto", icon: "auto" }]}/>
           <Segmented size="sm" label="Diff layout" value={mode} onChange={setMode} options={[{ value: "unified", icon: "split-inline", title: "Unified" }, { value: "split", icon: "split-side", title: "Side by side" }]}/>
         </div>
         <div className="row"><span className="lbl">Toggles</span>

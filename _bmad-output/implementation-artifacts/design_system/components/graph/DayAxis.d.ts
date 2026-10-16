@@ -10,7 +10,7 @@ export interface DayAxisDay {
   guide?: number | null;
 }
 
-/** The Free layout's day axis: dashed dividers between calendar days, one sticky label per day at the left edge. */
+/** The Free layout's day axis: dashed dividers between calendar days, one sticky label per day at the left edge. States: none — labels stick to the left edge. */
 export interface DayAxisProps {
   days: DayAxisDay[];
   /** plane size */

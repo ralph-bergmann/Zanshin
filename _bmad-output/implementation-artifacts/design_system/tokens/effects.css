@@ -1,52 +1,61 @@
 /* ============================================================
-   ZANSHIN — radii, elevation, material, motion
+   ZANSHIN — radii, elevation, material, layers   (motion: tokens/motion.css)
    ============================================================ */
-:root{
-  --radius-xs:4px;      /* @ badge, inline code */
-  --radius-kbd:3px;
-  --radius-sm:6px;      /* menu items */
-  --radius-md:8px;      /* option rows, file rows, close buttons */
-  --radius-btn:9px;     /* inspector + dialog buttons, search */
-  --radius-card:10px;   /* change cards, context menus, controls inside islands */
-  --radius-rail:11px;   /* rail buttons */
-  --radius-popover:12px;/* callouts, diff block */
-  --radius-island:14px; /* top-bar islands, view menu */
+:root,[data-theme="night"]{
+  /* radii — concentric: inside a rounded container, radius = the container's radius minus the inset
+     (island 14 − 4 = 10 · menu 13 − 5 = 8 · rail 16 − 5 = 11 · tabs 10 − 3 = 7). Use the token, never the number. */
+  --radius-kbd:3px;     /* key caps, the focus shape of links */
+  --radius-xs:4px;      /* @ badge, inline code, skeleton bars */
+  --radius-tag:5px;     /* tags, day labels, key-cap hints, the ✕ in a chip */
+  --radius-sm:6px;      /* segments, small chips, the ✕ in a field */
+  --radius-chip:7px;    /* chips, tooltips, tab thumbs, bookmark tags, scroll bars */
+  --radius-md:8px;      /* rows, fields, menu items (13 − 5), option rows */
+  --radius-btn:9px;     /* buttons, dialog navigation, search field */
+  --radius-card:10px;   /* change cards, controls inside islands (14 − 4), tab bars */
+  --radius-rail:11px;   /* rail buttons (16 − 5) */
+  --radius-well:12px;   /* inset wells: diff block, settings groups, command preview */
+  --radius-popover:13px;/* everything that floats for a moment: menus, popovers, suggestions, callouts, select lists, the peek */
+  --radius-island:14px; /* top-bar islands, the primary action */
   --radius-panel:16px;  /* inspector, rail, pinned panels */
-  --radius-dialog:18px;
-  --radius-pill:999px;
+  --radius-dialog:18px; /* modal sheets — the two: ConfirmDialog, Push. Windows (Settings, Projects, jj log Configurations) take the system's corners */
+  --radius-pill:999px;  /* toasts, @ pill, switches, tracks, badges, dashed add chips */
   --radius-icon:22.66%;/* @kind radius */ /* app icon (58 / 256) */
 
+  /* shadows — four builds: island (glass on the canvas) · menu (everything on the one menu material) · dialog (modal sheets) · tooltip */
   --fl-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 14px 36px -12px rgba(0,0,0,.6),0 2px 8px rgba(0,0,0,.22);
   --shadow-island:var(--fl-shadow);
   --shadow-menu:0 24px 60px -16px rgba(0,0,0,.6),0 2px 8px rgba(0,0,0,.2);
-  --shadow-popover:0 14px 40px rgba(0,0,0,.45);
-  --shadow-callout:0 18px 44px -12px rgba(0,0,0,.55);
   --shadow-dialog:0 40px 100px -24px rgba(0,0,0,.72),0 2px 10px rgba(0,0,0,.2);
+  --shadow-mark:0 0 0 .5px rgba(255,255,255,.16),0 1px 3px rgba(0,0,0,.35);/* the Nami chip: a hairline and a small drop */
   --shadow-drag:0 0 0 3px var(--accent-ring),0 20px 44px -14px rgba(0,0,0,.6);
   --ring-select:0 0 0 3px var(--accent-ring);
   --ring-wc:0 0 0 1px var(--co-deep),0 0 0 4px var(--co-glow),0 8px 28px -10px var(--co-glow);
   --ring-wc-select:0 0 0 1px var(--co-deep),0 0 0 4px var(--accent-ring);
-  --ring-drop:0 0 0 4px var(--accent-ring),0 14px 32px -14px rgba(0,0,0,.55);
+  --ring-drop:0 0 0 4px var(--accent-live-ring),0 14px 32px -14px rgba(0,0,0,.55);
 
   --glass-blur:blur(18px) saturate(1.4);/* @kind other */
   --glass-blur-strong:blur(22px) saturate(1.4);/* @kind other */
   --scrim-blur:blur(12px) saturate(1.2);/* @kind other */
 
-  --ease-glide:cubic-bezier(.32,.72,0,1);/* @kind other */  /* panels, pills, graph FLIP — fast out, long settle */
-  --ease-spring:cubic-bezier(.3,1.4,.5,1);/* @kind other */ /* quick-action fan-out only */
-  --ease-loader:cubic-bezier(.65,.05,.35,.95);/* @kind other */
-  --dur-hover:120ms;/* @kind other */--dur-menu:110ms;/* @kind other */--dur-pop:160ms;/* @kind other */--dur-panel:200ms;/* @kind other */--dur-slide:260ms;/* @kind other */--dur-flip:460ms;/* @kind other */--dur-birth:540ms;/* @kind other */
+  /* layers — one global order. Numbers inside a component (1–3, a card lifted over its neighbours) stay local.
+     Settings and Projects are windows of their own: the system orders them, no layer here. */
+  --z-chrome:20;/* @kind other */  /* islands, rail, panels, inspector, minimap, toast — over the graph */
+  --z-preview:40;/* @kind other */ /* hover previews: peek card, stack list, callouts */
+  --z-dialog:50;/* @kind other */  /* scrim + modal sheet: ConfirmDialog, Push */
+  --z-menu:60;/* @kind other */    /* menus, popovers, select lists — above the sheet that opened them */
+  --z-drop:70;/* @kind other */    /* the drop menu while dragging */
+  --z-tooltip:80;/* @kind other */
+  --z-drag:90;/* @kind other */    /* the drag ghost follows the pointer over everything */
 }
-[data-theme="light"]{
+[data-theme="paper"],[data-theme="light"]{
   --fl-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 14px 34px -14px rgba(58,46,34,.32),0 2px 8px rgba(58,46,34,.08);
   --shadow-island:var(--fl-shadow);
   --shadow-menu:0 24px 60px -18px rgba(58,46,34,.3),0 2px 8px rgba(58,46,34,.08);
-  --shadow-popover:0 14px 40px -12px rgba(58,46,34,.28);
-  --shadow-callout:0 18px 44px -14px rgba(58,46,34,.3);
   --shadow-dialog:0 40px 100px -28px rgba(58,46,34,.34),0 2px 10px rgba(58,46,34,.08);
+  --shadow-mark:0 0 0 .5px rgba(58,46,34,.22),0 1px 3px rgba(58,46,34,.22);
   --shadow-drag:0 0 0 3px var(--accent-ring),0 20px 44px -16px rgba(58,46,34,.35);
   --ring-select:0 0 0 3px var(--accent-ring);
   --ring-wc:0 0 0 1px var(--co-deep),0 0 0 4px var(--co-glow),0 8px 28px -10px var(--co-glow);
   --ring-wc-select:0 0 0 1px var(--co-deep),0 0 0 4px var(--accent-ring);
-  --ring-drop:0 0 0 4px var(--accent-ring),0 14px 32px -14px rgba(58,46,34,.3);
+  --ring-drop:0 0 0 4px var(--accent-live-ring),0 14px 32px -14px rgba(58,46,34,.3);
 }

@@ -745,21 +745,50 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
     if (r.born) { setBornId(r.born); clearTimeout(bornT.current); bornT.current = setTimeout(() => setBornId(null), 1400); }
     if (r.toast) { clearTimeout(toastT.current); setToast({ ...r.toast, prev, n: Date.now() }); toastT.current = setTimeout(() => setToast(null), 6500); }
   };
-  const undo = () => {
-    const p = toast && toast.prev;
-    clearTimeout(toastT.current); setToast(null);
-    if (!p) return;
+  const restore = (p) => {
     flip.current = { anchor: null, rects: snapshot() };
     pendingScroll.current = null;
     commitAll(p.all); setDiffs(p.diffs); setWcId(p.wcId);
     setSelectedId(p.selectedId && p.all.some(c => c.id === p.selectedId) ? p.selectedId : null);
   };
+  const showToast = (tt) => { clearTimeout(toastT.current); setToast({ ...tt, n: Date.now() }); toastT.current = setTimeout(() => setToast(null), 6500); };
+  const undo = () => {
+    const tt = toast, p = tt && tt.prev;
+    clearTimeout(toastT.current); setToast(null);
+    if (!p) return;
+    const s = stateRef.current, now = { all: s.all, diffs: s.diffs, wcId: s.wcId, selectedId: s.selectedId };
+    restore(p);
+    // undoing a push warns as the CLI does; Redo (jj redo) puts it back
+    if (tt.kind === "push") showToast({ tone: "warn", text: ["Undoing a push operation often leads to conflicted bookmarks."], redo: now, again: tt });
+  };
+  const redo = () => {
+    const tt = toast, r = tt && tt.redo;
+    clearTimeout(toastT.current); setToast(null);
+    if (!r) return;
+    const s = stateRef.current, prev = { all: s.all, diffs: s.diffs, wcId: s.wcId, selectedId: s.selectedId };
+    restore(r);
+    showToast({ ...tt.again, prev });
+  };
   useEffect(() => {
     if (!toast) return;
-    const k = (e) => { if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z" && !/INPUT|TEXTAREA/.test((document.activeElement || {}).tagName || "")) { e.preventDefault(); undo(); } };
+    const k = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z" || /INPUT|TEXTAREA/.test((document.activeElement || {}).tagName || "")) return;
+      if (e.shiftKey ? toast.redo : toast.prev) { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+    };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [toast]);
+  // jj git push (the Push sheet, push-dialog.jsx): what was pushed to origin is in sync with it; a pushed change gets its new bookmark
+  const pushRefs = ({ names, change, remotes }) => apply((all) => {
+    const set = new Set(names), toOrigin = remotes.includes("origin"), n = names.length + (change ? 1 : 0);
+    const next = all.map(c => {
+      let bms = c.bookmarks;
+      if (toOrigin && bms.some(b => set.has(b.name))) bms = bms.map(b => set.has(b.name) ? { name: b.name, state: "synced" } : b);
+      if (change && c.id === change.id) bms = [...bms, { name: change.name, state: toOrigin ? "synced" : "local" }];
+      return bms === c.bookmarks ? c : { ...c, bookmarks: bms };
+    });
+    return { all: next, toast: { kind: "push", text: ["Pushed " + n + (n === 1 ? " bookmark" : " bookmarks") + " to " + remotes.join(", ")] } };
+  });
   const editAt = (id) => apply((all) => ({ all, wc: id }));
   const describeChange = (id, sub, body) => apply((all) => ({ all: ops.describe(all, id, sub, body) }));
   const splitChange = (id, hunkIds, msg) => apply((all, diffs, mk) => {
@@ -1170,14 +1199,14 @@ function GraphWorkspace({ t, setTweak, leftPanel, onCloseLeft, floating = false,
       {floating && chrome && chrome({
         revset, setRevset, layout, setLayout, detailed, setDetailed, stacks, setStacks, cardW, setCardW,
         shown: shownCount, total: all.length, gapInfo, onLocate: () => scrollToNode(wcId),
-        all, visibleSet, pickBookmark, detailOpen: !!selected, wcDir, newChange: () => newChange(wcId), beginDrag, calm: !!calm, toastOn: !!toast,
+        all, visibleSet, pickBookmark, detailOpen: !!selected, wcDir, wcId, newChange: () => newChange(wcId), push: pushRefs, beginDrag, calm: !!calm, toastOn: !!toast,
       })}
       {menu && L.N.get(menu.id) && (
         <CardMenu key={menu.id + menu.x + "," + menu.y} menu={menu} c={L.N.get(menu.id).c} isWC={wcId === menu.id} onClose={closeMenu}
           onAction={(a) => { closeMenu(); cardAction(menu.id, a); }}/>
       )}
       {drag && <window.DragGhost drag={drag} commit={drag.payload.kind === "change" ? (all.find(c => c.id === drag.payload.id) || null) : null} isWC={drag.payload.kind === "change" && drag.payload.id === wcId}/>}
-      {toast && <window.OpToast toast={toast} onUndo={undo} onClose={() => { clearTimeout(toastT.current); setToast(null); }}
+      {toast && <window.OpToast toast={toast} onUndo={undo} onRedo={redo} onClose={() => { clearTimeout(toastT.current); setToast(null); }}
         style={{ left: `calc((${floating ? (fi.left || 0) : 0}px + 100% - ${(selected ? (fi.detail || 0) + (fi.right || 0) : floating ? MINI_CARD + 12 + (fi.right || 0) : 0)}px) / 2)` }}/>}
     </div>
   );

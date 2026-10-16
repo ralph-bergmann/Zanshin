@@ -1,0 +1,18 @@
+<!-- @dsCard group="Spacing" viewport="700x330" name="Control heights" subtitle="One scale for everything that can share a row — 22 · 26 · 30 · 36 · 44; nested = outer − 2 × inset" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../styles.css"/>
+<link rel="stylesheet" href="specimen.css"/>
+<style>body{background:var(--canvas)}.r{display:grid;grid-template-columns:150px minmax(0,1fr);align-items:center;gap:16px;padding:7px 0;border-bottom:1px solid var(--border)}.r:last-of-type{border-bottom:0}.ex{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.n{display:flex;flex-direction:column;gap:2px}.n b{font:600 var(--fs-control) var(--font-mono);color:var(--text)}.n span{font-size:var(--fs-sm);color:var(--text-dim)}.mi{display:block;background:currentColor;-webkit-mask:var(--i) center/contain no-repeat;mask:var(--i) center/contain no-repeat}.rule{margin-top:10px;font:var(--fs-md)/1.5 var(--font-mono);color:var(--text-muted)}</style>
+</head>
+<body>
+<div class="r"><div class="n"><b>22 · xs</b><span>small chips, sm segmented</span></div><div class="ex"><span class="zs-chip zs-chip--sm is-mono">main</span><span class="zs-seg zs-seg--sm"><button class="zs-seg-btn is-on">A</button><button class="zs-seg-btn">B</button></span></div></div>
+<div class="r"><div class="n"><b>26 · sm</b><span>chips, segmented, toast actions</span></div><div class="ex"><span class="zs-chip">Author</span><span class="zs-seg"><button class="zs-seg-btn is-on">Free</button><button class="zs-seg-btn">Compact</button></span></div></div>
+<div class="r"><div class="n"><b>30 · md</b><span>the default — buttons, fields, selects, close</span></div><div class="ex"><button class="zs-btn">Describe…</button><input class="zs-field zs-field--sm" style="width:160px" value="main"/><button class="zs-ib zs-ib--sm" aria-label="Close"><span class="mi" style="--i:url(../assets/icons/ui/close.svg);width:var(--icon-sm);height:var(--icon-sm)"></span></button></div></div>
+<div class="r"><div class="n"><b>36 · lg</b><span>in islands, title fields, toast</span></div><div class="ex"><div class="zs-toast"><span class="zs-toast-t">Moved <b>ov</b>knlmro onto <b>vr</b>uxwmqv</span><button class="zs-toast-undo">Undo</button></div></div></div>
+<div class="r"><div class="n"><b>44 · xl</b><span>the top bar and its primary action</span></div><div class="ex"><button class="zs-btn zs-btn--lg zs-btn--primary"><span class="mi" style="--i:url(../assets/icons/ui/plus.svg);width:var(--icon-lg);height:var(--icon-lg);color:var(--primary-icon)"></span>New change</button></div></div>
+<p class="rule">nested = outer − 2 × inset · chip 26 → ✕ 20 · toast 36 → Undo 26 · tabs 36 → 30</p>
+</body>
+</html>

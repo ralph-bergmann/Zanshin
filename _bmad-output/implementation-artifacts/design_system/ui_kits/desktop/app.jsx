@@ -1,8 +1,9 @@
 // App — repository state and jj operations (new · edit · describe · squash · abandon · commit · split · rebase by drag · undo),
 // direct manipulation (drag a change, bookmark, file or hunk onto a change), calm scrolling, and the floating composition.
 (() => {
-const { AtPill, Menu, DropMenu, DragGhost, Toast, ChangeId, RevsetDialog } = window.ZanshinDesignSystem_a33847;
-const EDGE = 12, TOP = 68, RAIL_R = 76, PANEL_W = 300, DETAIL_W = 460, MINI = 146;
+const { AtPill, Menu, DropMenu, DragGhost, Toast, ChangeId, RevsetDialog, PushDialog, ResizeEdge } = window.ZanshinDesignSystem_a33847;
+// TOP = --chrome-top on the macOS 27 reference geometry (bar centred on the traffic lights at y 26: 26 + 22 + 12)
+const EDGE = 12, TOP = 60, RAIL_R = 76, PANEL_W = 300, DETAIL_W = 460, MINI = 146;
 const s8 = (id) => id.slice(0, 8);
 const short = (name) => { const m = name.match(/[A-Z][A-Z0-9]+-\d+/); return m ? m[0] : name.split("/").pop(); };
 
@@ -74,15 +75,24 @@ function ZKApp() {
   const D = window.ZK_DATA;
   const URLQ = new URLSearchParams(location.search);
   const [repo, setRepo] = React.useState({ changes: D.changes, wc: D.wc, ops: D.OPS, opCount: D.opCount });
-  const [hist, setHist] = React.useState([]);
+  const [hist, setHist] = React.useState([]), [fut, setFut] = React.useState([]);
   const [sel, setSel] = React.useState(null);
   const [editing, setEditing] = React.useState(false);
   const [hover, setHover] = React.useState(null), [peek, setPeek] = React.useState(null);
   const [expanded, setExpanded] = React.useState([]);
   const [opts, setOpts] = React.useState({ layout: "free", detailed: true, stacks: true, cardW: 240 });
-  const [prefs, setPrefs] = React.useState({ theme: URLQ.get("theme") || "dark", density: "compact", autoHide: true, diffMode: "unified" });
+  const [prefs, setPrefs] = React.useState({ theme: ({ light: "paper", dark: "night" })[URLQ.get("theme")] || URLQ.get("theme") || "night", density: "compact", autoHide: true, diffMode: "unified", accent: URLQ.get("accentMode") || "macos" });
+  // the macOS choice (System Settings › Appearance › Color) — the kit simulates it with ?accent=blue|purple|pink|red|orange|yellow|green|graphite (default: Multicolour)
+  const SYS_ACCENT = URLQ.get("accent") || "multicolor";
   const [menu, setMenu] = React.useState(null);
   const [pinned, setPinned] = React.useState(null);
+  // the inspector's and the panels' widths — resizable at their edge toward the graph (ResizeEdge), remembered app-wide
+  const zkLS = (k, d) => { try { const v = +localStorage.getItem(k); return v > 0 ? v : d; } catch (e) { return d; } };
+  const [insW, setInsW0] = React.useState(() => zkLS("zk-inspector-w", DETAIL_W)), [panW, setPanW0] = React.useState(() => zkLS("zk-panel-w", PANEL_W));
+  const setInsW = (v) => { setInsW0(v); try { localStorage.setItem("zk-inspector-w", String(v)); } catch (e) { /* storage off */ } };
+  const setPanW = (v) => { setPanW0(v); try { localStorage.setItem("zk-panel-w", String(v)); } catch (e) { /* storage off */ } };
+  const [vw, setVw] = React.useState(window.innerWidth);
+  React.useEffect(() => { const r = () => setVw(window.innerWidth); window.addEventListener("resize", r); return () => window.removeEventListener("resize", r); }, []);
   const [revset, setRevset] = React.useState("default");
   const [home, setHome] = React.useState("default");          // the default search — first in the search menu, ✕ returns to it
   const [configs, setConfigs] = React.useState(D.CONFIGS);
@@ -90,8 +100,30 @@ function ZKApp() {
   const [goPend, setGoPend] = React.useState(null);
   const [tree, setTree] = React.useState(D.HOME_TREE);
   const [activeId, setActiveId] = React.useState(D.activeProjectId);
+  // Settings and Projects are windows of their own; `key` is the key window — the others are inactive (tokens/inactive.css)
   const [projectsOpen, setProjectsOpen] = React.useState(URLQ.has("projects"));
-  const [settings, setSettings] = React.useState(URLQ.get("settings"));
+  const [settingsOpen, setSettingsOpen] = React.useState(URLQ.has("settings"));
+  const [setTab, setSetTab] = React.useState(URLQ.get("settings") === "project" ? "project" : "general");
+  const [key, setKey] = React.useState(URLQ.has("settings") ? "settings" : URLQ.has("projects") ? "projects" : "project");
+  const [push, setPush] = React.useState(null);
+  // every row that shows ⌘, (Zanshin menu, project menu, the Projects sidebar) and ⌘, itself → the tab shown last, never switched ·
+  // "Project Settings…" → Project · "Appearance, diffs and more" → General (those two show no ⌘,) · no project + Project last → General
+  const openSettings = (tab) => { if (tab === "general" || tab === "project") setSetTab(tab); setSettingsOpen(true); setKey("settings"); };
+  // ⌘W / the red button on the key window. Configurations asks first when dirty; the project window closes the project and shows Projects
+  // (the start window — the kit keeps the graph behind it); Settings and Projects just close
+  const closeWindow = (w) => {
+    if (w === "configs") { setCfgDlg((d) => (d && (d.draft !== configs || d.home !== home) ? { ...d, ask: true } : null)); if (!(cfgDlg && (cfgDlg.draft !== configs || cfgDlg.home !== home))) setKey("project"); return; }
+    if (w === "project") { setCfgDlg(null); setProjectsOpen(true); setKey("projects"); return; }
+    if (w === "settings") setSettingsOpen(false); if (w === "projects") setProjectsOpen(false); setKey(w === "settings" && projectsOpen ? "projects" : "project");
+  };
+  const [cfgPos, setCfgPos] = React.useState({ x: 150, y: 96 });   // remembered while the kit runs, like the window's frame
+  const dragWin = (e, pos, set) => {
+    if (!e.target.closest('[data-drag="window"]') || e.target.closest("button,input")) return;
+    const sx = e.clientX - pos.x, sy = e.clientY - pos.y;
+    const mv = (ev) => set({ x: ev.clientX - sx, y: Math.max(0, ev.clientY - sy) });
+    const up = () => { window.removeEventListener("mousemove", mv); window.removeEventListener("mouseup", up); };
+    window.addEventListener("mousemove", mv); window.addEventListener("mouseup", up);
+  };
   const [toast, setToast] = React.useState(null);
   const [born, setBorn] = React.useState(null), [flash, setFlash] = React.useState([]);
   const [moving, setMoving] = React.useState(false), [calm, setCalm] = React.useState(false);
@@ -123,19 +155,23 @@ function ZKApp() {
   React.useEffect(() => { if (first.current) { first.current = false; return; } setMoving(true); clearTimeout(moveT.current); moveT.current = setTimeout(() => setMoving(false), 470); }, [L]);
   React.useEffect(() => {
     const root = document.documentElement;
-    if (prefs.theme === "system") { const m = matchMedia("(prefers-color-scheme: dark)"); const f = () => { root.dataset.theme = m.matches ? "dark" : "light"; }; f(); m.addEventListener("change", f); return () => m.removeEventListener("change", f); }
+    if (prefs.theme === "system") { const m = matchMedia("(prefers-color-scheme: dark)"); const f = () => { root.dataset.theme = m.matches ? "night" : "paper"; }; f(); m.addEventListener("change", f); return () => m.removeEventListener("change", f); }
     root.dataset.theme = prefs.theme;
   }, [prefs.theme]);
   React.useEffect(() => { document.documentElement.dataset.density = prefs.density; }, [prefs.density]);
+  React.useEffect(() => {
+    const root = document.documentElement;
+    if (prefs.accent === "macos" && SYS_ACCENT !== "multicolor") root.dataset.accent = SYS_ACCENT; else delete root.dataset.accent;
+  }, [prefs.accent]);
 
   // ---- viewport, calm scrolling, @ locator ----
-  const insets = { left: pinned ? RAIL_R + PANEL_W + EDGE : RAIL_R, right: sel ? DETAIL_W + EDGE * 2 : MINI + EDGE };
+  const insets = { left: pinned ? RAIL_R + panW + EDGE : RAIL_R, right: sel ? insW + EDGE * 2 : MINI + EDGE };
   const measure = () => { const el = scRef.current; if (!el) return; setView({ top: el.scrollTop + TOP, bottom: el.scrollTop + el.clientHeight - EDGE, left: el.scrollLeft + insets.left, right: el.scrollLeft + el.clientWidth - insets.right, w: el.clientWidth, h: el.clientHeight }); };
   React.useEffect(() => { measure(); const ro = new ResizeObserver(measure); ro.observe(scRef.current); return () => ro.disconnect(); }, [sel, pinned]);
   const onScroll = () => {
     measure(); setPeek(null);
     if (!prefs.autoHide || drag || Date.now() < quiet.current) return;
-    setCalm(true); clearTimeout(calmT.current); calmT.current = setTimeout(() => setCalm(false), 650);
+    setCalm(true); clearTimeout(calmT.current); calmT.current = setTimeout(() => setCalm(false), window.zkMs("--delay-calm-return", 650));
   };
   const scrollTo = (id) => {
     const p = L.pos.get(id), el = scRef.current; if (!p || !el) return;
@@ -149,22 +185,23 @@ function ZKApp() {
     const run = nodes.find((n) => n.stack && n.members.some((m) => m.id === goPend));
     if (run) setExpanded((x) => x.includes(run.members[0].id) ? x : [...x, run.members[0].id]);
   }, [goPend, L]);
-  const openConfigs = (id) => setCfgDlg({ draft: configs, sel: id === "default" || id === "all" || configs.some((c) => c.id === id) ? id : home, home });
+  // Edit Configurations… / ⌥⌘L: opens the window or brings it forward with its edits as they are
+  const openConfigs = (id) => { setKey("configs"); setCfgDlg((d) => d || { draft: configs, sel: id === "default" || id === "all" || configs.some((c) => c.id === id) ? id : home, home }); };
   const applyConfigs = (d) => { setConfigs(d.draft); setHome(d.home); if (!d.draft.some((c) => c.id === revset) && !(revset === "default" || revset === "all") && !window.zkParseSearch(revset)) setRevset(d.home); };
   const wcPos = L.pos.get(repo.wc);
   const wcDir = !wcPos ? null : wcPos.y + H < view.top + 8 ? "up" : wcPos.y > view.bottom - 8 ? "down" : wcPos.x + W < view.left + 8 ? "left" : wcPos.x > view.right - 8 ? "right" : null;
   React.useEffect(() => { // keep the selected card clear of the inspector
     if (!sel) return; const p = L.pos.get(sel), el = scRef.current; if (!p || !el) return;
-    const right = el.scrollLeft + el.clientWidth - DETAIL_W - EDGE * 2;
-    if (p.x + W > right) { quiet.current = Date.now() + 700; el.scrollTo({ left: p.x + W - el.clientWidth + DETAIL_W + EDGE * 3, behavior: "smooth" }); }
+    const right = el.scrollLeft + el.clientWidth - insW - EDGE * 2;
+    if (p.x + W > right) { quiet.current = Date.now() + 700; el.scrollTo({ left: p.x + W - el.clientWidth + insW + EDGE * 3, behavior: "smooth" }); }
   }, [sel]);
 
   // ---- operations: every one lands in the op log and can be undone ----
   const commitRepo = (cmd, next, extra = {}) => {
-    setHist((h) => [...h.slice(-40), repo]);
+    setHist((h) => [...h.slice(-40), repo]); setFut([]);
     setRepo({ ...next, ops: [{ cmd, when: "just now" }, ...repo.ops], opCount: repo.opCount + 1 });
-    if (extra.toast) { clearTimeout(toastT.current); setToast({ text: extra.toast, n: Date.now() }); toastT.current = setTimeout(() => setToast(null), 6500); }
-    if (extra.flash) { setFlash(extra.flash); setTimeout(() => setFlash([]), 2400); }
+    if (extra.toast) showToast({ text: extra.toast });
+    if (extra.flash) { setFlash(extra.flash); setTimeout(() => setFlash([]), window.zkMs("--dur-flash", 2400)); }
     if (extra.born) { setBorn(extra.born); setTimeout(() => setBorn(null), 700); }
     if (extra.select !== undefined) setSel(extra.select);
   };
@@ -242,15 +279,45 @@ function ZKApp() {
       return commitRepo(act.cmd.slice(3), { ...repo, changes: [n, ...cs] }, { born: nid, toast: ["Moved " + p.label + " into a new change " + (act.id === "after" ? "after " : "before "), { id: tid }] });
     }
   };
+  // one toast at a time; success and warn hide after --dur-toast-hold (errors stay)
+  const showToast = (t) => { clearTimeout(toastT.current); setToast({ ...t, n: Date.now() }); if (t.tone !== "error") toastT.current = setTimeout(() => setToast(null), window.zkMs("--dur-toast-hold", 6500)); };
+  // ⌘Z / Edit › Undo ‹action›: only Zanshin's own last operation, only while it is still the current one; a toast offers Redo (⇧⌘Z).
+  // Undoing a push warns as the CLI does. Anything older is the Undo Timeline's job.
   const undo = () => {
-    setHist((h) => {
-      if (!h.length) return h;
-      const prev = h[h.length - 1];
-      setRepo({ ...prev, ops: [{ cmd: "undo", when: "just now" }, ...prev.ops], opCount: prev.opCount + 1 });
-      if (sel && !prev.changes.some((c) => c.id === sel)) setSel(null);
-      return h.slice(0, -1);
+    if (!hist.length) return;
+    const prev = hist[hist.length - 1], last = repo.ops[0] ? repo.ops[0].cmd : "";
+    setHist(hist.slice(0, -1)); setFut((f) => [...f, repo]);
+    setRepo({ ...prev, ops: [{ cmd: "jj undo", when: "just now" }, ...repo.ops], opCount: repo.opCount + 1 });
+    if (sel && !prev.changes.some((c) => c.id === sel)) setSel(null);
+    showToast(last.startsWith("jj git push") ? { tone: "warn", redo: true, text: ["Undoing a push operation often leads to conflicted bookmarks."] } : { redo: true, text: ["Undid ", { mono: last }] });
+  };
+  const redo = () => {
+    if (!fut.length) return;
+    const next = fut[fut.length - 1];
+    setFut(fut.slice(0, -1)); setHist((h) => [...h, repo]);
+    setRepo({ ...next, ops: [{ cmd: "jj redo", when: "just now" }, ...repo.ops], opCount: repo.opCount + 1 });
+    showToast({ text: ["Redid ", { mono: next.ops[0] ? next.ops[0].cmd : "the operation" }] });
+  };
+  // Push… — the sheet shows what jj git push would send; the kit maps each bookmark's sync state to the --dry-run kind
+  const pushRows = () => repo.changes.flatMap((c) => c.bookmarks.map((b) => {
+    const kind = { ahead: "forward", local: "new", diverged: "sideways", behind: "backward", remote: "delete" }[b.state] || "none";
+    return { name: b.name, tracked: b.state !== "local", kind, inDefault: kind === "forward", from: kind === "new" ? null : c.parents[0] || null, to: kind === "delete" ? null : c.id,
+      refused: !c.subject && kind !== "delete" ? "empty-description" : undefined, refusedAt: c.id };
+  }));
+  const openPush = () => setPush({ rows: pushRows(), remote: ["origin"], selected: null, bulk: null, change: { id: repo.wc, generated: "push-" + repo.wc.slice(0, 8), refused: (repo.changes.find((c) => c.id === repo.wc) || {}).subject ? undefined : "empty-description" }, allow: {}, state: "ready", error: null });
+  const runPush = (cmd) => {
+    setPush((p) => ({ ...p, state: "pushing", progress: 0 }));
+    let k = 0; const iv = setInterval(() => { k += 1; setPush((p) => p && { ...p, progress: Math.min(1, k / 8) }); if (k >= 8) { clearInterval(iv); finishPush(cmd); } }, 140);
+  };
+  const finishPush = (cmd) => {
+    setPush((p) => {
+      if (!p) return p;
+      const names = new Set((p.selected || p.rows.filter((r) => r.inDefault).map((r) => r.name)));
+      const n = names.size + (p.change.on ? 1 : 0);
+      const changes = repo.changes.map((c) => ({ ...c, bookmarks: c.bookmarks.map((b) => names.has(b.name) ? { ...b, state: "synced" } : b) }));
+      commitRepo(cmd, { ...repo, changes }, { toast: ["Pushed " + n + (n === 1 ? " bookmark" : " bookmarks") + " to " + p.remote.join(", ")] });
+      return null;
     });
-    clearTimeout(toastT.current); setToast(null);
   };
 
   // ---- direct manipulation ----
@@ -269,7 +336,7 @@ function ZKApp() {
         next = { ...next, target: actions.length ? f.target : null, actions, sel: 0, menu: null };
         if (actions.length) {
           const r = f.card.getBoundingClientRect(), below = window.innerHeight - r.bottom > 60 + actions.length * 31;
-          restT = setTimeout(() => { d = { ...d, menu: { x: r.left + r.width / 2, y: below ? r.bottom + 8 : r.top - 8, place: below ? "below" : "above" } }; setDrag(d); }, 520);
+          restT = setTimeout(() => { d = { ...d, menu: { x: r.left + r.width / 2, y: below ? r.bottom + 8 : r.top - 8, place: below ? "below" : "above" } }; setDrag(d); }, window.zkMs("--delay-drop-menu", 520));
         }
       }
       d = next; setDrag(d);
@@ -298,19 +365,26 @@ function ZKApp() {
     window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
   };
 
-  // ---- keyboard ----
+  React.useEffect(() => { if (URLQ.has("push")) openPush(); }, []);
+  // ---- keyboard: ⌘, Settings (last tab) · ⌘W closes the key window · ⇧⌘O All Projects… · ⌘Z / ⇧⌘Z undo / redo · Esc ----
   React.useEffect(() => {
     const k = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === ",") { e.preventDefault(); setSettings((s) => s ? null : "general"); return; }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !/TEXTAREA|INPUT/.test(e.target.tagName)) { e.preventDefault(); undo(); return; }
-      if (e.key === "Escape" && !settings && !projectsOpen) { if (menu) setMenu(null); else if (editing) setEditing(false); else setSel(null); }
+      const cmd = e.metaKey || e.ctrlKey;
+      if (cmd && e.key === ",") { e.preventDefault(); openSettings(); return; }
+      if (cmd && e.key.toLowerCase() === "w") { e.preventDefault(); closeWindow(key); return; }
+      if (cmd && e.shiftKey && e.key.toLowerCase() === "o") { e.preventDefault(); setProjectsOpen(true); setKey("projects"); return; }
+      if (key !== "project" || push) return;
+      if (cmd && e.key.toLowerCase() === "z" && !/TEXTAREA|INPUT/.test(e.target.tagName)) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
+      // ⌘J scrolls to the selected change (the HIG's "scroll to a selection") · ⇧⌘J to the working copy (Go › Working Copy (@))
+      if (cmd && e.key.toLowerCase() === "j") { e.preventDefault(); if (e.shiftKey) scrollTo(repo.wc); else if (sel) scrollTo(sel); return; }
+      if (e.key === "Escape") { if (menu) setMenu(null); else if (editing) setEditing(false); else setSel(null); }
     };
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
-  }, [menu, editing, settings, projectsOpen, hist]);
+  }, [menu, editing, key, projectsOpen, settingsOpen, hist, fut, push, cfgDlg, repo]);
 
   const onSelect = (id, now) => { if (justDragged.current) return; clearTimeout(clickT.current); const go = () => { setSel(id); setEditing(false); setMenu(null); }; if (now) go(); else clickT.current = setTimeout(go, 200); };
   const onDouble = (id) => { clearTimeout(clickT.current); edit(id); };
-  const onHover = (id) => { setHover(id); clearTimeout(peekT.current); if (!id) { setPeek(null); return; } const isStack = id.startsWith("s:"); peekT.current = setTimeout(() => setPeek(id), isStack ? 380 : 450); };
+  const onHover = (id) => { setHover(id); clearTimeout(peekT.current); if (!id) { setPeek(null); return; } const isStack = id.startsWith("s:"); peekT.current = setTimeout(() => setPeek(id), isStack ? window.zkMs("--delay-stack-list", 380) : window.zkMs("--delay-peek", 450)); };
   const onMenu = (id, e, fromButton) => {
     const r = fromButton ? e.currentTarget.getBoundingClientRect() : null;
     setPeek(null);
@@ -327,13 +401,15 @@ function ZKApp() {
   const mc = menu && byId(menu.id), isWCm = mc && mc.id === repo.wc;
   const off = (mut, idA) => (mut && mc.immutable && idA !== "after") || (idA === "edit" && isWCm);
   const canSquash = (c) => c && !c.immutable && c.parents.length === 1 && byId(c.parents[0]) && !byId(c.parents[0]).immutable;
-  const atR = sel ? DETAIL_W + EDGE * 2 : MINI + EDGE;
+  const atR = sel ? insW + EDGE * 2 : MINI + EDGE;
   const dragAct = drag && drag.actions[drag.sel];
   const visibleSet = new Set(nodes.flatMap((n) => n.stack ? n.members.map((m) => m.id) : [n.id]));
   const lift = drag && drag.payload.kind === "diff" ? drag.payload.hunkIds : null;
 
   return (
-    <div className={"zk-win" + (calm ? " is-calm" : "") + (drag ? " is-dragging" : "") + (panning ? " is-panning" : "")} onClick={() => menu && setMenu(null)}>
+    <>
+    <div className={"zk-win" + (calm ? " is-calm" : "") + (drag ? " is-dragging" : "") + (panning ? " is-panning" : "")} data-window={key === "project" ? undefined : "inactive"} style={{ "--inspector-w": insW + "px", "--panel-w": panW + "px" }}
+      onMouseDown={() => key !== "project" && setKey("project")} onClick={() => menu && setMenu(null)}>
       <div className="zk-scroll" ref={scRef} onScroll={onScroll} onPointerDown={onCanvasDown}>
         <window.ZKPlane nodes={nodes} L={L} W={W} H={H} axisLeft={insets.left} detailed={opts.detailed} wcId={repo.wc} selId={sel} hoverId={hover} menuId={menu && menu.id} peekId={calm ? null : peek}
           dnd={drag} bornId={born} flashIds={flash} moving={moving} view={view}
@@ -343,10 +419,14 @@ function ZKApp() {
       <window.ZKMinimap nodes={nodes} L={L} W={W} H={H} wcId={repo.wc} selId={sel} view={view} scrollH={Math.max(L.height, view.h)} hidden={!!sel && !calm}
         onJump={(y) => { const el = scRef.current; quiet.current = Date.now() + 300; el.scrollTop = y - (TOP + (view.h - TOP - EDGE) / 2); }}/>
       <div className="zk-fl">
-        <window.ZKTopBar D={D} project={project} recent={recent} activeId={activeId} onPickProject={setActiveId} onAllProjects={() => setProjectsOpen(true)} onSettings={setSettings}
+        <window.ZKTopBar D={D} project={project} recent={recent} activeId={activeId} onPickProject={setActiveId} onAllProjects={() => { setProjectsOpen(true); setKey("projects"); }} onSettings={openSettings} onPush={openPush}
           revset={revset} setRevset={setRevset} home={home} configs={configs} changes={repo.changes} visible={visibleSet} onGoTo={goTo} onEditConfigs={openConfigs}
           shown={visibleChanges.length} total={repo.changes.length} gaps={gaps} opts={opts} setOpt={setOpt} onNew={() => newChange(repo.wc)}/>
         <window.ZKRail pinned={pinned} setPinned={setPinned} changes={repo.changes} visible={visibleSet} ops={repo.ops} opCount={repo.opCount} onPick={(id) => { setSel(id); scrollTo(id); }}/>
+        {pinned && ResizeEdge && <ResizeEdge side="right" at={RAIL_R + panW} top={TOP} bottom={EDGE} value={panW} min={240} max={440} defaultValue={PANEL_W}
+          limit={vw - RAIL_R - EDGE - 320 - (selected ? insW + EDGE * 2 : MINI + EDGE)} label="Panel width" onChange={setPanW}/>}
+        {selected && ResizeEdge && <ResizeEdge side="left" at={EDGE + insW} top={TOP} bottom={EDGE} value={insW} min={380} max={720} defaultValue={DETAIL_W}
+          limit={vw - (pinned ? RAIL_R + panW + EDGE : RAIL_R) - EDGE * 2 - 320} label="Inspector width" onChange={setInsW}/>}
         {selected && (
           <window.ZKInspector key={selected.id + ":" + (selected.id === repo.wc)} c={selected} isWC={selected.id === repo.wc} canSquash={canSquash(selected)}
             diffMode={prefs.diffMode} setDiffMode={(v) => setPref("diffMode", v)} editing={editing} setEditing={setEditing} lift={lift} beginDrag={beginDrag}
@@ -359,7 +439,7 @@ function ZKApp() {
         </div>
         {toast && (
           <div className="zk-toast" key={toast.n} style={{ left: (insets.left + view.w - atR) / 2 }}>
-            <Toast onUndo={undo} onClose={() => { clearTimeout(toastT.current); setToast(null); }}><ZKToastText text={toast.text}/></Toast>
+            <Toast tone={toast.tone} onUndo={toast.redo ? redo : undo} undoLabel={toast.redo ? "Redo" : "Undo"} onClose={() => { clearTimeout(toastT.current); setToast(null); }}><ZKToastText text={toast.text}/></Toast>
           </div>
         )}
       </div>
@@ -393,17 +473,35 @@ function ZKApp() {
             hint={drag.menu ? undefined : drag.payload.kind === "change" ? "Drop on a change" : drag.payload.kind === "bookmark" ? "Drop on the change it should point to" : "Drop on the change it belongs to"}/>
         </div>
       )}
-      {projectsOpen && <window.ZKProjects tree={tree} setTree={setTree} activeId={activeId} onOpen={(id) => { setActiveId(id); setProjectsOpen(false); }} onClose={() => setProjectsOpen(false)}/>}
+      {push && PushDialog && (
+        <PushDialog remotes={["origin", "upstream"]} defaultRemotes={["origin"]} bookmarks={push.rows} remote={push.remote} onRemote={(r) => setPush({ ...push, remote: r })}
+          selected={push.selected} onSelect={(s) => setPush((p) => ({ ...p, selected: s }))} bulk={push.bulk} onBulk={(b) => setPush((p) => ({ ...p, bulk: b }))}
+          change={push.change} onChange={(c) => setPush({ ...push, change: c })} allow={push.allow} onAllow={(a) => setPush({ ...push, allow: a })}
+          state={push.state} progress={push.progress} error={push.error} onFetch={() => setPush({ ...push, error: null })} onRetry={() => setPush({ ...push, error: null })}
+          onPush={runPush} onCancel={() => setPush(null)}/>
+      )}
+    </div>
+    {/* windows of their own, above the project window — the last one clicked is key */}
+    <div className="zk-winlayer">
       {cfgDlg && (() => {
         const d = cfgDlg, cnt = (id) => { const m = id === "default" || id === "all" ? () => true : window.zkRevsetMatch(id, d.draft, D.me); return repo.changes.filter(m).length; };
-        return <RevsetDialog overlay configs={d.draft} selected={d.sel} defaultId={d.home} me={D.me} matchCount={d.sel ? cnt(d.sel) : undefined} total={repo.changes.length}
-          dirty={d.draft !== configs || d.home !== home}
-          onSelect={(sel) => setCfgDlg({ ...d, sel })} onDefaultChange={(h) => setCfgDlg({ ...d, home: h })} onChange={(draft) => setCfgDlg((x) => ({ ...x, draft }))}
-          onCancel={() => setCfgDlg(null)} onClose={() => setCfgDlg(null)} onApply={() => applyConfigs(d)}
-          onOk={() => { applyConfigs(d); if (d.sel) setRevset(d.sel); setCfgDlg(null); }}/>;
+        const done = () => { setCfgDlg(null); setKey("project"); };
+        return <div onMouseDown={(e) => { setKey("configs"); dragWin(e, cfgPos, setCfgPos); }} style={{ left: cfgPos.x, top: cfgPos.y, zIndex: key === "configs" ? 3 : 1 }}>
+          <RevsetDialog active={key === "configs"} project={project.name} configs={d.draft} selected={d.sel} defaultId={d.home} me={D.me} matchCount={d.sel ? cnt(d.sel) : undefined} total={repo.changes.length}
+            dirty={d.draft !== configs || d.home !== home} discarding={!!d.ask} onDiscarding={(v) => setCfgDlg((x) => x && { ...x, ask: v })}
+            onSelect={(sel) => setCfgDlg((x) => ({ ...x, sel }))} onDefaultChange={(h) => setCfgDlg((x) => ({ ...x, home: h }))} onChange={(draft) => setCfgDlg((x) => ({ ...x, draft }))}
+            onCancel={done} onApply={() => applyConfigs(d)}
+            onOk={() => { applyConfigs(d); if (d.sel) setRevset(d.sel); done(); }}/>
+        </div>;
       })()}
-      {settings && <window.ZKSettings tab={settings} setTab={setSettings} onClose={() => setSettings(null)} prefs={prefs} setPref={setPref} project={project}/>}
+      {projectsOpen && window.ZanshinDesignSystem_a33847.Window && <window.ZKProjects tree={tree} setTree={setTree} activeId={activeId} active={key === "projects"} onFocus={() => setKey("projects")}
+        style={{ left: settingsOpen ? 24 : "calc(50% - 450px)", top: 56, zIndex: key === "projects" ? 2 : 1 }}
+        onOpen={(id) => { setActiveId(id); closeWindow("projects"); }} onClose={() => closeWindow("projects")} onSettings={() => openSettings()}/>}
+      {settingsOpen && window.ZanshinDesignSystem_a33847.Window && <window.ZKSettings tab={setTab} setTab={setSetTab} active={key === "settings"} onFocus={() => setKey("settings")}
+        style={{ left: projectsOpen ? "auto" : "calc(50% - 310px)", right: projectsOpen ? 24 : "auto", top: 40, zIndex: key === "settings" ? 2 : 1 }}
+        onClose={() => closeWindow("settings")} prefs={prefs} setPref={setPref} project={project}/>}
     </div>
+    </>
   );
 }
 

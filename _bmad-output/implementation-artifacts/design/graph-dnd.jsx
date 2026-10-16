@@ -133,13 +133,15 @@ function DragGhost({ drag, commit, isWC }) {
 }
 
 // ------------------------------------------------------------
-// TOAST — every graph edit can be taken back (jj undo)
+// TOAST — every graph edit can be taken back (jj undo); a warn toast (undoing a push) offers Redo (jj redo) instead
 // ------------------------------------------------------------
-function OpToast({ toast, onUndo, onClose, style }) {
+function OpToast({ toast, onUndo, onRedo, onClose, style }) {
+  const redo = !!toast.redo;
   return (
-    <div className="gtoast" style={style} role="status" key={toast.n}>
+    <div className={"gtoast" + (toast.tone === "warn" ? " is-warn" : "")} style={style} role="status" key={toast.n}>
+      {toast.tone === "warn" && <svg className="gtoast-ic" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 1.75L1.75 13.5h12.5z"/><path d="M8 6.05v2.25"/><circle cx="8" cy="10.9" r=".85" fill="currentColor" stroke="none"/></g></svg>}
       <span className="gtoast-t">{toast.text.map((s, i) => typeof s === "string" ? <React.Fragment key={i}>{s}</React.Fragment> : s.id ? <ID key={i} id={s.id}/> : <code key={i}>{s.mono}</code>)}</span>
-      <button className="gtoast-undo" onClick={onUndo} title="jj undo">Undo</button>
+      <button className="gtoast-undo" onClick={redo ? onRedo : onUndo} title={redo ? "jj redo" : "jj undo"}>{redo ? "Redo" : "Undo"}</button>
       <button className="gtoast-x" onClick={onClose} aria-label="Dismiss"><svg width="10" height="10" viewBox="0 0 16 16"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg></button>
     </div>
   );
