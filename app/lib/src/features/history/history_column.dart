@@ -3,6 +3,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../shared/data/mock_data.dart';
+import '../../shared/design/zs_metrics.dart';
 import '../../shared/theme/zanshin_colors.dart';
 import '../../shared/widgets/zanshin_icon.dart';
 
@@ -60,7 +61,7 @@ class _HistoryColumnState extends State<HistoryColumn> {
             child: Row(
               spacing: 6,
               children: [
-                ZanshinIcon(ZI.history, size: 13, color: zc.textDim),
+                ZanshinIcon(ZI.history, size: ZsIconSize.md, color: zc.textDim),
                 Text(
                   'History',
                   style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: zc.textPrimary),

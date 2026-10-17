@@ -3,6 +3,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 
+import '../../shared/design/zs_metrics.dart';
 import '../../shared/theme/zanshin_colors.dart';
 import '../../shared/widgets/zanshin_icon.dart';
 
@@ -107,7 +108,11 @@ class _HeaderBtnState extends State<_HeaderBtn> {
           mainAxisSize: MainAxisSize.min,
           spacing: 6,
           children: [
-            ZanshinIcon(widget.icon, size: 13, color: _hovered ? widget.zc.textPrimary : widget.zc.textMuted),
+            ZanshinIcon(
+              widget.icon,
+              size: ZsIconSize.md,
+              color: _hovered ? widget.zc.textPrimary : widget.zc.textMuted,
+            ),
             Text(
               widget.label,
               style: TextStyle(fontSize: 12, color: _hovered ? widget.zc.textPrimary : widget.zc.textMuted),
@@ -177,7 +182,9 @@ class _ThemeBtn extends StatelessWidget {
         color: active ? zc.bgCard2 : Colors.transparent,
         borderRadius: BorderRadius.circular(5),
       ),
-      child: Center(child: ZanshinIcon(icon, size: 14, color: active ? zc.textPrimary : zc.textDim)),
+      child: Center(
+        child: ZanshinIcon(icon, size: ZsIconSize.md, color: active ? zc.textPrimary : zc.textDim),
+      ),
     ),
   );
 }

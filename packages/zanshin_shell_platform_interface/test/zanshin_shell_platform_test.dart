@@ -34,6 +34,57 @@ void main() {
     expect(a.toString(), contains('dark'));
   });
 
+  test('ShellTheme defaults the accessibility, accent and selection state', () {
+    const theme = ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF007AFF));
+    expect(theme.appleAccentColor, isNull);
+    expect(theme.reduceMotion, isFalse);
+    expect(theme.reduceTransparency, isFalse);
+    expect(theme.increaseContrast, isFalse);
+    expect(theme.selectedTextBackgroundDark, isNull);
+    expect(theme.selectedTextBackgroundLight, isNull);
+    expect(theme.unemphasizedSelectedTextBackgroundDark, isNull);
+    expect(theme.unemphasizedSelectedTextBackgroundLight, isNull);
+    expect(theme.scrollerStyle, ScrollerStyle.overlay);
+    expect(theme.jumpToClickedSpot, isFalse);
+  });
+
+  test('every ShellTheme field takes part in equality, hashCode and toString', () {
+    const base = ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF007AFF));
+    const variants = <ShellTheme>[
+      ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF007AFF), appleAccentColor: 4),
+      ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF007AFF), reduceMotion: true),
+      ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF007AFF), reduceTransparency: true),
+      ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF007AFF), increaseContrast: true),
+      ShellTheme(
+        brightness: Brightness.dark,
+        accentColor: Color(0xFF007AFF),
+        selectedTextBackgroundDark: Color(0xFF3F638B),
+      ),
+      ShellTheme(
+        brightness: Brightness.dark,
+        accentColor: Color(0xFF007AFF),
+        selectedTextBackgroundLight: Color(0xFFB3D7FF),
+      ),
+      ShellTheme(
+        brightness: Brightness.dark,
+        accentColor: Color(0xFF007AFF),
+        unemphasizedSelectedTextBackgroundDark: Color(0xFF464646),
+      ),
+      ShellTheme(
+        brightness: Brightness.dark,
+        accentColor: Color(0xFF007AFF),
+        unemphasizedSelectedTextBackgroundLight: Color(0xFFDCDCDC),
+      ),
+      ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF007AFF), scrollerStyle: ScrollerStyle.legacy),
+      ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF007AFF), jumpToClickedSpot: true),
+    ];
+    for (final variant in variants) {
+      expect(variant, isNot(equals(base)), reason: '$variant');
+      expect(variant.hashCode, isNot(equals(base.hashCode)), reason: '$variant');
+      expect(variant.toString(), isNot(equals(base.toString())));
+    }
+  });
+
   test('default methods throw UnimplementedError', () {
     final platform = _FakePlatform();
     expect(platform.getTheme, throwsUnimplementedError);

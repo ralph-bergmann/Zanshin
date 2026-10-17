@@ -1,49 +1,19 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show Brightness, Color;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
-import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:zanshin/src/features/app/zanshin_app_view_model.dart';
+import 'package:zanshin/src/shared/design/zs_appearance.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 
+import '../../helpers/recording_shell.dart';
+
 const _darkShell = ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFFBF5AF2));
 const _lightShell = ShellTheme(brightness: Brightness.light, accentColor: Color(0xFF0A84FF));
-
-/// Records shell calls; `getTheme` answers when the test completes [theme].
-final class RecordingShell extends ZanshinShellPlatform with MockPlatformInterfaceMixin {
-  RecordingShell() : super.forTesting();
-
-  final List<String> calls = [];
-  final theme = Completer<ShellTheme>();
-  final changes = StreamController<ShellTheme>.broadcast();
-
-  Future<void> close() => changes.close();
-
-  @override
-  Future<ShellTheme> getTheme() {
-    calls.add('getTheme');
-    return theme.future;
-  }
-
-  @override
-  Stream<ShellTheme> get onThemeChanged => changes.stream;
-
-  @override
-  Future<void> setWindowAppearance(WindowAppearance appearance) async {
-    calls.add('setWindowAppearance:${appearance.name}');
-  }
-
-  @override
-  Future<void> startWindowDrag() async {}
-
-  @override
-  Future<void> performTitlebarDoubleClickAction() async {}
-}
 
 void main() {
   late Directory dir;
@@ -149,5 +119,52 @@ void main() {
     // A disposed ChangeNotifier asserts on notifyListeners; reaching here
     // without an error and with no theme applied is the assertion.
     expect(vm.shellTheme, isNull);
+  });
+
+  test('before the shell answers the appearance is the default one', () async {
+    final ZanshinAppViewModel vm = await viewModelWith(ThemeMode.system);
+    expect(vm.appearance, const ZsAppearance());
+    vm.dispose();
+  });
+
+  test('the appearance follows the effective mode, the accent source and the shell flags', () async {
+    final ZanshinAppViewModel vm = await viewModelWith(ThemeMode.system);
+    vm.init();
+    shell.theme.complete(
+      const ShellTheme(
+        brightness: Brightness.light,
+        accentColor: Color(0xFF007AFF),
+        appleAccentColor: 4,
+        reduceMotion: true,
+        reduceTransparency: true,
+        increaseContrast: true,
+      ),
+    );
+    await pumpEventQueue();
+    expect(
+      vm.appearance,
+      const ZsAppearance(
+        theme: ZsTheme.paper,
+        family: ZsAccentFamily.blue,
+        increasedContrast: true,
+        reduceMotion: true,
+        reduceTransparency: true,
+      ),
+    );
+
+    await vm.setThemeMode(ThemeMode.dark);
+    expect(vm.appearance.theme, ZsTheme.night);
+    vm.dispose();
+  });
+
+  test('the Zanshin accent source shows moon whatever the shell reports', () async {
+    await file.writeAsString('{"appearance": {"themeMode": "dark", "accentSource": "zanshin"}}');
+    final vm = ZanshinAppViewModel(await SettingsStore.load(file))..init();
+    shell.theme.complete(
+      const ShellTheme(brightness: Brightness.dark, accentColor: Color(0xFF007AFF), appleAccentColor: 4),
+    );
+    await pumpEventQueue();
+    expect(vm.appearance.family, ZsAccentFamily.multicolor);
+    vm.dispose();
   });
 }

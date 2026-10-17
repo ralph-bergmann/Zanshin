@@ -3,6 +3,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../shared/data/mock_data.dart';
+import '../../shared/design/zs_metrics.dart';
 import '../../shared/theme/zanshin_colors.dart';
 import '../../shared/widgets/commit_tags.dart';
 import '../../shared/widgets/zanshin_icon.dart';
@@ -76,7 +77,9 @@ class _CommitDetailState extends State<CommitDetail> {
                     width: 22,
                     height: 22,
                     decoration: BoxDecoration(borderRadius: BorderRadius.circular(5)),
-                    child: Center(child: ZanshinIcon(ZI.close, size: 12, color: zc.textDim)),
+                    child: Center(
+                      child: ZanshinIcon(ZI.close, size: ZsIconSize.sm, color: zc.textDim),
+                    ),
                   ),
                 ),
               ],
@@ -166,7 +169,7 @@ class _MetaCard extends StatelessWidget {
         _MetaRow(icon: ZI.calendar, text: commit.date == 'now' ? 'just now' : commit.date, zc: zc),
         _MetaRow(icon: ZI.hash, text: commit.changeId, mono: true, zc: zc),
         if (commit.parents.isNotEmpty)
-          _MetaRow(icon: ZI.arrowLeft, label: 'parent', text: commit.parents.first, mono: true, zc: zc),
+          _MetaRow(icon: ZI.chevronLeft, label: 'parent', text: commit.parents.first, mono: true, zc: zc),
       ],
     ),
   );
@@ -184,7 +187,7 @@ class _MetaRow extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     spacing: 6,
     children: [
-      ZanshinIcon(icon, size: 11, color: zc.textDim),
+      ZanshinIcon(icon, size: ZsIconSize.sm, color: zc.textDim),
       if (label != null) Text(label!, style: TextStyle(fontSize: 11, color: zc.textDim)),
       Text(
         text,
@@ -221,7 +224,7 @@ class _FilesSection extends StatelessWidget {
       Row(
         spacing: 6,
         children: [
-          ZanshinIcon(ZI.fileText, size: 12, color: zc.textDim),
+          ZanshinIcon(ZI.fileText, size: ZsIconSize.sm, color: zc.textDim),
           Text(
             'Changed files (${files.length})',
             style: TextStyle(fontSize: 11, color: zc.textDim, fontWeight: FontWeight.w600),

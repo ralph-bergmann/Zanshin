@@ -2,6 +2,7 @@
 
 import 'package:material_ui/material_ui.dart';
 
+import '../../shared/design/zs_metrics.dart';
 import '../../shared/theme/zanshin_colors.dart';
 import '../../shared/widgets/zanshin_icon.dart';
 
@@ -44,38 +45,38 @@ class MainNavRail extends StatelessWidget {
             active: activePanel == NavPanel.history,
             onTap: () => onSelectPanel(NavPanel.history),
             zc: zc,
-            child: const ZanshinIcon(ZI.history, size: 22),
+            child: const ZanshinIcon(ZI.history, size: ZsIconSize.rail),
           ),
           _NavActivityBtn(
             active: activePanel == NavPanel.branches,
             onTap: () => onSelectPanel(NavPanel.branches),
             zc: zc,
-            child: const ZanshinIcon(ZI.branch, size: 22),
+            child: const ZanshinIcon(ZI.branch, size: ZsIconSize.rail),
           ),
           _NavActivityBtn(
             active: activePanel == NavPanel.workstream,
             onTap: () => onSelectPanel(NavPanel.workstream),
             zc: zc,
-            child: const ZanshinIcon(ZI.workstream, size: 22),
+            child: const ZanshinIcon(ZI.workstream, size: ZsIconSize.rail),
           ),
           _NavActivityBtn(
             active: activePanel == NavPanel.reviews,
             onTap: () => onSelectPanel(NavPanel.reviews),
             zc: zc,
-            child: const ZanshinIcon(ZI.reviews, size: 22),
+            child: const ZanshinIcon(ZI.reviews, size: ZsIconSize.rail),
           ),
           _NavActivityBtn(
             active: activePanel == NavPanel.undo,
             onTap: () => onSelectPanel(NavPanel.undo),
             zc: zc,
-            child: const ZanshinIcon(ZI.undo, size: 22),
+            child: const ZanshinIcon(ZI.undo, size: ZsIconSize.rail),
           ),
           const Spacer(),
           _NavActivityBtn(
             active: false,
             onTap: () {},
             zc: zc,
-            child: const ZanshinIcon(ZI.settings, size: 20),
+            child: const ZanshinIcon(ZI.settings, size: ZsIconSize.rail),
           ),
           const SizedBox(height: 4),
         ],

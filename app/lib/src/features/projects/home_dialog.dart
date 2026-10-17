@@ -3,6 +3,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../shared/data/mock_data.dart';
+import '../../shared/design/zs_metrics.dart';
 import '../../shared/theme/zanshin_colors.dart';
 import '../../shared/widgets/zanshin_icon.dart';
 
@@ -235,7 +236,7 @@ class _SideNavItem extends StatelessWidget {
     child: Row(
       spacing: 10,
       children: [
-        ZanshinIcon(icon, size: 14, color: active ? zc.textPrimary : zc.textMuted),
+        ZanshinIcon(icon, size: ZsIconSize.md, color: active ? zc.textPrimary : zc.textMuted),
         Text(label, style: TextStyle(fontSize: 13, color: active ? zc.textPrimary : zc.textMuted)),
       ],
     ),
@@ -287,7 +288,9 @@ class _HomeMain extends StatelessWidget {
                 width: 26,
                 height: 26,
                 decoration: BoxDecoration(color: zc.bgCard2, borderRadius: BorderRadius.circular(6)),
-                child: Center(child: ZanshinIcon(ZI.close, size: 12, color: zc.textDim)),
+                child: Center(
+                  child: ZanshinIcon(ZI.close, size: ZsIconSize.sm, color: zc.textDim),
+                ),
               ),
             ),
           ],
@@ -315,7 +318,7 @@ class _HomeMain extends StatelessWidget {
                 child: Row(
                   spacing: 8,
                   children: [
-                    ZanshinIcon(ZI.search, size: 13, color: zc.textDim),
+                    ZanshinIcon(ZI.search, size: ZsIconSize.md, color: zc.textDim),
                     Expanded(
                       child: TextField(
                         onChanged: onQueryChanged,
@@ -365,7 +368,7 @@ class _HomeMain extends StatelessWidget {
         child: Row(
           spacing: 8,
           children: [
-            ZanshinIcon(ZI.download, size: 13, color: zc.textDim),
+            ZanshinIcon(ZI.fetch, size: ZsIconSize.md, color: zc.textDim),
             Text('Drop a folder here to add it as a project', style: TextStyle(fontSize: 12, color: zc.textDim)),
           ],
         ),
@@ -394,7 +397,7 @@ class _ToolbarBtn extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       spacing: 6,
       children: [
-        ZanshinIcon(icon, size: 12, color: primary ? Colors.white : zc.textMuted),
+        ZanshinIcon(icon, size: ZsIconSize.sm, color: primary ? Colors.white : zc.textMuted),
         Text(label, style: TextStyle(fontSize: 12, color: primary ? Colors.white : zc.textMuted)),
       ],
     ),
@@ -483,7 +486,7 @@ class _ProjectRowState extends State<_ProjectRow> {
                           mainAxisSize: MainAxisSize.min,
                           spacing: 3,
                           children: [
-                            ZanshinIcon(ZI.branch, size: 10, color: zc.textDim),
+                            ZanshinIcon(ZI.branch, size: ZsIconSize.xs, color: zc.textDim),
                             Text(widget.project.branch, style: TextStyle(fontSize: 11, color: zc.textDim)),
                           ],
                         ),
@@ -513,7 +516,7 @@ class _ProjectRowState extends State<_ProjectRow> {
                   ],
                 ),
               ),
-              ZanshinIcon(ZI.more, size: 13, color: _hovered ? zc.textDim : Colors.transparent),
+              ZanshinIcon(ZI.more, size: ZsIconSize.md, color: _hovered ? zc.textDim : Colors.transparent),
             ],
           ),
         ),

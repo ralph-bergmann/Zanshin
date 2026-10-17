@@ -34,13 +34,28 @@ class ZanshinShellMacOS extends ZanshinShellPlatform {
     return null;
   }
 
+  /// Decodes a theme map. `brightness` and `accentColor` are required; every later key is optional, so a native
+  /// side that does not send one yields the constructor's default (or null), never an error.
   static ShellTheme _themeFromMap(Object? arguments) {
     final Map<String, Object?> map = (arguments! as Map).cast<String, Object?>();
     return ShellTheme(
       brightness: map['brightness'] == 'dark' ? Brightness.dark : Brightness.light,
       accentColor: Color(map['accentColor']! as int),
+      appleAccentColor: map['appleAccentColor'] as int?,
+      reduceMotion: map['reduceMotion'] as bool? ?? false,
+      reduceTransparency: map['reduceTransparency'] as bool? ?? false,
+      increaseContrast: map['increaseContrast'] as bool? ?? false,
+      selectedTextBackgroundDark: _color(map['selectedTextBackgroundDark']),
+      selectedTextBackgroundLight: _color(map['selectedTextBackgroundLight']),
+      unemphasizedSelectedTextBackgroundDark: _color(map['unemphasizedSelectedTextBackgroundDark']),
+      unemphasizedSelectedTextBackgroundLight: _color(map['unemphasizedSelectedTextBackgroundLight']),
+      scrollerStyle: map['scrollerStyle'] == 'legacy' ? ScrollerStyle.legacy : ScrollerStyle.overlay,
+      jumpToClickedSpot: map['jumpToClickedSpot'] as bool? ?? false,
     );
   }
+
+  /// An ARGB int as a colour, like `accentColor`; absent stays null.
+  static Color? _color(Object? argb) => argb == null ? null : Color(argb as int);
 
   @override
   Future<ShellTheme> getTheme() async {

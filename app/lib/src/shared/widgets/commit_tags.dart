@@ -2,6 +2,7 @@
 
 import 'package:material_ui/material_ui.dart';
 
+import '../design/zs_metrics.dart';
 import '../theme/zanshin_colors.dart';
 import 'zanshin_icon.dart';
 
@@ -62,7 +63,7 @@ class CommitTag extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       spacing: 4,
       children: [
-        if (icon != null) ZanshinIcon(icon!, size: 10, color: fg),
+        if (icon != null) ZanshinIcon(icon!, size: ZsIconSize.xs, color: fg),
         Text(
           label,
           style: TextStyle(

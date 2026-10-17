@@ -10,6 +10,9 @@ import 'package:material_ui/material_ui.dart';
 import 'package:yaru/yaru.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 
+import '../../shared/design/zs_app_theme.dart';
+import '../../shared/design/zs_appearance.dart';
+import '../../shared/design/zs_root.dart';
 import '../home/home_page.dart';
 import 'zanshin_app_view_model.dart';
 
@@ -91,30 +94,20 @@ class ZanshinApp extends StatelessWidget {
         );
       }
 
-      final ShellTheme? shellTheme = vm.shellTheme;
-      if (shellTheme == null) {
-        // First frame before the platform answered: follow the system via
-        // Flutter's own brightness until the shell theme arrives.
-        return _ExampleHome(
-          themeMode: vm.effectiveMode,
-          selectedMode: vm.selectedMode,
-          onModeChanged: onModeChanged,
-          lightTheme: null,
-          darkTheme: null,
-        );
-      }
-
+      // The token theme for both modes. The window root follows the theme
+      // the MaterialApp resolved, so the first frame before the shell
+      // answered follows the system's brightness too.
+      final ZsAppearance appearance = vm.appearance;
       return _ExampleHome(
         themeMode: vm.effectiveMode,
         selectedMode: vm.selectedMode,
         onModeChanged: onModeChanged,
-        lightTheme: createYaruLightTheme(
-          primaryColor: shellTheme.accentColor,
-          lightBaseColor: const Color(0xFFF0ECE7),
-        ),
-        darkTheme: createYaruDarkTheme(
-          primaryColor: shellTheme.accentColor,
-          darkBaseColor: const Color(0xFF12162A),
+        lightTheme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.paper)),
+        darkTheme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.night)),
+        builder: (context, child) => ZsRoot(
+          appearance: appearance.copyWith(theme: ZsTheme.of(Theme.of(context).brightness)),
+          shellTheme: vm.shellTheme,
+          child: child ?? const SizedBox.shrink(),
         ),
       );
     },
@@ -128,6 +121,7 @@ class _ExampleHome extends StatelessWidget {
     required this.themeMode,
     required this.selectedMode,
     required this.onModeChanged,
+    this.builder,
   });
 
   final ThemeData? lightTheme;
@@ -138,12 +132,16 @@ class _ExampleHome extends StatelessWidget {
   final ThemeMode selectedMode;
   final ValueChanged<ThemeMode> onModeChanged;
 
+  /// Wraps the navigator; the window's root scope on macOS.
+  final TransitionBuilder? builder;
+
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Yaru Test',
     theme: lightTheme ?? yaruLight,
     themeMode: themeMode,
     darkTheme: darkTheme ?? yaruDark,
+    builder: builder,
     home: _Example(selectedMode: selectedMode, onModeChanged: onModeChanged),
   );
 }

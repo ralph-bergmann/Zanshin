@@ -1207,3 +1207,24 @@ _Ralph re-downloaded the design-system project twice (rounds 2 and 3; the DS rea
   - `packages/zanshin_shell/lib/src/window_drag_area.dart:3` imports `package:flutter/material.dart`, against the house rule that Material types come from `package:material_ui` only; 11.12 touches that package.
   - Until Yaru leaves (11.10), a git dependency on the `material_ui` bookmark rather than a path (RC §5).
   - **Follow-up:** check them when 11.1 or 11.12 starts.
+
+## Surfaced in Story 11.1 (bmad-build-auto, 2026-10-17)
+
+- **A real Multicolor Mac resolves to the Blue accent family until Story 11.4 adds the Runner AccentColor asset.** Medium.
+  - Without `NSAccentColorName`, `controlAccentColor` at Multicolor is Blue #007AFF (RC research :190), so the rule "key absent and the colour equals Zanshin's app accent #4757a1" (`app/lib/src/shared/design/zs_appearance.dart:79`) never matches; `app/macos/Runner/Assets.xcassets` holds only `Contents.json`, and epics.md Story 11.1 item 1 assigns `--accent-native` to 11.4.
+  - **Follow-up:** 11.4 adds the AccentColor colorset (`--accent-native` #4757a1, dark #5162ad; DS tokens/accents.css:57) and `ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME`.
+- **The inactive-window and full-screen deltas are resolved by the token layer but nothing drives them yet.** Low.
+  - `ZsAppearance.inactive` and `fullScreen` default to false (`app/lib/src/shared/design/zs_appearance.dart:160-161`); epics.md Story 11.1 item 7 leaves the per-window key status to 11.12, and full screen (DS tokens/spacing.css:52) belongs to 11.4.
+  - **Follow-up:** 11.12 feeds `inactive` per window, 11.4 feeds `fullScreen`.
+- **The Swift side of the extended ShellTheme has no automated test, and `cargo make test` never compiles it.** Medium.
+  - `packages/zanshin_shell_macos/macos/zanshin_shell_macos/Package.swift:17` declares no test target and `Makefile.toml:47-75` (the `test` flow) runs no `flutter build`; only the Dart decoding in `packages/zanshin_shell_macos/lib/zanshin_shell_macos.dart` is tested.
+  - **Follow-up:** a Swift test target or a runtime smoke check; until then `flutter build macos --debug` is the compile check.
+- **`AppleScrollerPagingBehavior` has no change notification, so ShellTheme carries a value that is only refreshed on the next emitted change.** Low.
+  - `packages/zanshin_shell_macos/macos/zanshin_shell_macos/Sources/zanshin_shell_macos/ZanshinShellPlugin.swift:140` re-reads the UserDefaults key on every emit; no NSNotification exists for the "Click in the scroll bar to" preference.
+  - **Follow-up:** 11.11 decides whether a stale value matters for the track click.
+- **The Multicolor check compares the reported aqua accent with #4757a1 exactly, so an off-by-one channel from 11.4's AccentColor asset would show the Blue family.** Medium (unverified).
+  - `app/lib/src/shared/design/zs_appearance.dart:79` compares `shell.accentColor == ZsAccents.native`; the shell packs `controlAccentColor.usingColorSpace(.sRGB)` rounded to 8 bits (review pass 2026-10-17).
+  - **Follow-up:** on a Mac with 11.4's colorset, check that Multicolor reports exactly 0xFF4757A1 (an sRGB colorset should); if not, compare per channel with a ±1 tolerance.
+- **The live half of the reduce-motion, contrast and accent witnesses ("toggling updates the running app") is verified only against a fake shell.** Medium.
+  - `app/test/features/app/zanshin_app_test.dart` and `packages/zanshin_shell_macos/test/zanshin_shell_macos_test.dart` drive the `RecordingShell` fake and a mocked MethodChannel; the new observers in `ZanshinShellPlugin.swift:47-66` and the splash feed in `app/lib/src/features/bootstrap/boot_window_host.dart` run only in the real app (no Swift test target; the host needs a live engine).
+  - **Follow-up:** Ralph's manual check (toggle macOS Reduce motion, Increase contrast and the accent with the app running); later a Swift test target or a runtime smoke check.

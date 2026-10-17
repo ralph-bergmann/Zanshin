@@ -21,6 +21,7 @@ import 'src/features/app/zanshin_app.dart';
 import 'src/features/bootstrap/boot_window_host.dart';
 import 'src/features/bootstrap/zanshin_bootstrap.dart';
 import 'src/features/window/app_windows.dart';
+import 'src/shared/widgets/icon_registry.dart';
 
 final _log = Logger('zanshin.bootstrap');
 
@@ -66,11 +67,14 @@ Future<void> main() async {
 
       // Every window is created from Dart, so nothing is on screen until the
       // sequence opens one: the splash if the boot is slow, else the main
-      // window straight away.
+      // window straight away. The icons reach every window through the host
+      // and the DI graph through `startApp`.
+      final icons = ValueNotifier<IconRegistry?>(null);
       await ZanshinBootSequence(
-        host: ZanshinWindowHost(windows: AppWindows()),
+        host: ZanshinWindowHost(windows: AppWindows(), icons: icons),
         openSettings: SettingsStore.open,
         adoptShellEnvironment: _adoptShellEnvironment,
+        loadIcons: () async => icons.value = await IconRegistry.load(),
         startApp: _startApp,
       ).run();
     },
@@ -95,18 +99,28 @@ Future<void> _adoptShellEnvironment() async {
   }
 }
 
-/// Second boot step: the DI graph over the loaded settings (resolved before
-/// the graph so the DI chain stays synchronous — no @asynchronous provider),
-/// then the worker, whose provision listener wires the AppLifecycleListener
-/// for graceful shutdown on macOS, then the app widget.
-Future<Widget> _startApp(SettingsStore settings) async {
+/// Second boot step: the DI graph over the loaded settings and icons (resolved
+/// before the graph so the DI chain stays synchronous — no @asynchronous
+/// provider), then the worker, whose provision listener wires the
+/// AppLifecycleListener for graceful shutdown on macOS, then the app widget.
+Future<Widget> _startApp(SettingsStore settings, IconRegistry icons) async {
   // ignore: specify_nonobvious_local_variable_types
-  final mainComponent = MainComponent.create(settingsModule: SettingsModule(store: settings));
+  final mainComponent = MainComponent.create(
+    settingsModule: SettingsModule(store: settings),
+    iconModule: IconModule(registry: icons),
+  );
   await mainComponent.worker;
   return mainComponent.zanshinAppFactory.create();
 }
 
-@Component([ZanshinFfiModule, ZanshinDiagnosticsModule, WorkerModule, WorkerLifecycleModule, SettingsModule])
+@Component([
+  ZanshinFfiModule,
+  ZanshinDiagnosticsModule,
+  WorkerModule,
+  WorkerLifecycleModule,
+  SettingsModule,
+  IconModule,
+])
 abstract class MainComponent {
   // ignore: specify_nonobvious_property_types
   static const create = g.MainComponent$Component.create;

@@ -3,6 +3,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../shared/data/mock_data.dart';
+import '../../shared/design/zs_metrics.dart';
 import '../../shared/theme/zanshin_colors.dart';
 import '../../shared/widgets/commit_tags.dart';
 import '../../shared/widgets/zanshin_icon.dart';
@@ -115,7 +116,7 @@ class _BranchHeader extends StatelessWidget {
     ),
     child: Row(
       children: [
-        ZanshinIcon(ZI.branch, size: 13, color: color),
+        ZanshinIcon(ZI.branch, size: ZsIconSize.md, color: color),
         const SizedBox(width: 6),
         Text(
           name,
@@ -183,7 +184,11 @@ class _CloseBtnState extends State<_CloseBtn> {
           borderRadius: BorderRadius.circular(4),
         ),
         child: Center(
-          child: ZanshinIcon(ZI.close, size: 11, color: _hovered ? widget.zc.textPrimary : widget.zc.textDim),
+          child: ZanshinIcon(
+            ZI.close,
+            size: ZsIconSize.sm,
+            color: _hovered ? widget.zc.textPrimary : widget.zc.textDim,
+          ),
         ),
       ),
     ),
@@ -303,7 +308,7 @@ class _CommitCardState extends State<_CommitCard> {
                     mainAxisSize: MainAxisSize.min,
                     spacing: 3,
                     children: [
-                      ZanshinIcon(ZI.user, size: 11, color: zc.textDim),
+                      ZanshinIcon(ZI.user, size: ZsIconSize.sm, color: zc.textDim),
                       Text(commit.author.split(' ').first, style: TextStyle(fontSize: 10, color: zc.textDim)),
                     ],
                   ),
@@ -311,7 +316,7 @@ class _CommitCardState extends State<_CommitCard> {
                     mainAxisSize: MainAxisSize.min,
                     spacing: 3,
                     children: [
-                      ZanshinIcon(ZI.calendar, size: 11, color: zc.textDim),
+                      ZanshinIcon(ZI.calendar, size: ZsIconSize.sm, color: zc.textDim),
                       Text(commit.date, style: TextStyle(fontSize: 10, color: zc.textDim)),
                     ],
                   ),

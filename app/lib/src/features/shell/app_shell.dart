@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../shared/data/mock_data.dart';
+import '../../shared/design/zs_metrics.dart';
 import '../../shared/theme/zanshin_colors.dart';
 import '../../shared/widgets/zanshin_icon.dart';
 import '../branches/branches_panel.dart';
@@ -168,7 +169,7 @@ class _MainArea extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               spacing: 12,
               children: [
-                ZanshinIcon(ZI.branch, size: 32, color: zc.textFaint),
+                ZanshinIcon(ZI.branch, size: ZsIconSize.rail, color: zc.textFaint),
                 Text('No branch columns open', style: TextStyle(fontSize: 14, color: zc.textDim)),
                 Text('Open a branch from the Branches panel', style: TextStyle(fontSize: 12, color: zc.textFaint)),
               ],
@@ -208,7 +209,7 @@ class _LeftPanel extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             spacing: 8,
             children: [
-              ZanshinIcon(ZI.workstream, size: 28, color: zc.textFaint),
+              ZanshinIcon(ZI.workstream, size: ZsIconSize.rail, color: zc.textFaint),
               Text('No workstreams yet.', style: TextStyle(color: zc.textDim, fontSize: 12)),
               Text(
                 'Create one with\njj workstream new',

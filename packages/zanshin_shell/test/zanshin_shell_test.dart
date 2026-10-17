@@ -19,6 +19,9 @@ final class RecordingPlatform extends ZanshinShellPlatform with MockPlatformInte
   static const theme = ShellTheme(
     brightness: Brightness.dark,
     accentColor: Color(0xFFBF5AF2),
+    appleAccentColor: 5,
+    reduceMotion: true,
+    scrollerStyle: ScrollerStyle.legacy,
   );
 
   @override
@@ -98,5 +101,12 @@ void main() {
     final Future<ShellTheme> future = ZanshinShell.onThemeChanged.first;
     platform.themeController.add(RecordingPlatform.theme);
     expect(await future, RecordingPlatform.theme);
+  });
+
+  test('the accessibility, accent and scroll bar state reaches the app unchanged', () async {
+    final ShellTheme theme = await ZanshinShell.getTheme();
+    expect(theme.appleAccentColor, 5);
+    expect(theme.reduceMotion, isTrue);
+    expect(theme.scrollerStyle, ScrollerStyle.legacy);
   });
 }

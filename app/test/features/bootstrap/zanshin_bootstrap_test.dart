@@ -12,7 +12,12 @@ import 'package:zanshin/src/features/bootstrap/boot_failure.dart';
 import 'package:zanshin/src/features/bootstrap/splash_card.dart';
 import 'package:zanshin/src/features/bootstrap/splash_card_render.dart';
 import 'package:zanshin/src/features/bootstrap/zanshin_bootstrap.dart';
+import 'package:zanshin/src/shared/design/zs_appearance.dart';
+import 'package:zanshin/src/shared/design/zs_colors.dart';
+import 'package:zanshin/src/shared/widgets/icon_registry.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
+
+import '../../helpers/icon_registry.dart';
 
 /// Stands in for the app widget `startApp` returns.
 class AppMarker extends StatelessWidget {
@@ -109,29 +114,39 @@ String _statusText(WidgetTester tester) =>
 
 /// Pumps a [SplashCard] on a surface the size of the card, so the assertions
 /// can be written in the design's own coordinates.
-Future<void> _pumpCard(WidgetTester tester, {required String status, required SplashVersion? version}) {
+Future<void> _pumpCard(
+  WidgetTester tester, {
+  required String status,
+  required SplashVersion? version,
+  bool reduceMotion = false,
+}) {
   final statusNotifier = ValueNotifier<String>(status);
   addTearDown(statusNotifier.dispose);
   final versionNotifier = ValueNotifier<SplashVersion?>(version);
   addTearDown(versionNotifier.dispose);
-  return _pumpCardWith(tester, status: statusNotifier, version: versionNotifier);
+  final reduceMotionNotifier = ValueNotifier<bool>(reduceMotion);
+  addTearDown(reduceMotionNotifier.dispose);
+  return _pumpCardWith(tester, status: statusNotifier, version: versionNotifier, reduceMotion: reduceMotionNotifier);
 }
 
 Future<void> _pumpCardWith(
   WidgetTester tester, {
   required ValueListenable<String> status,
   required ValueListenable<SplashVersion?> version,
+  required ValueListenable<bool> reduceMotion,
 }) async {
   tester.view
     ..physicalSize = splashWindowSize
     ..devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  await tester.pumpWidget(SplashCard(status: status, version: version));
+  await tester.pumpWidget(SplashCard(status: status, version: version, reduceMotion: reduceMotion));
 }
 
 void main() {
   late Directory dir;
   late File file;
+
+  setUpIconRegistry();
 
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('zanshin_bootstrap_test');
@@ -166,7 +181,8 @@ void main() {
         host: host,
         openSettings: () => settings.future,
         adoptShellEnvironment: () async {},
-        startApp: (_) => app.future,
+        loadIcons: () async => testIconRegistry,
+        startApp: (_, _) => app.future,
       ).run(),
     );
     return host;
@@ -316,7 +332,7 @@ void main() {
     expect((host.content! as BootFailure).mode, ThemeMode.system);
   });
 
-  testWidgets('with reduced motion the splash is dismissed without a fade', (tester) async {
+  testWidgets('with reduced motion the splash still fades out: the cross-fade is opacity', (tester) async {
     tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
       disableAnimations: true,
     );
@@ -331,7 +347,7 @@ void main() {
     await flush(tester);
 
     expect(host.calls, <String>['splash', 'main', 'dismiss']);
-    expect(host.fade, Duration.zero);
+    expect(host.fade, splashFadeOut);
   });
 
   testWidgets('a host that cannot open a window logs at SEVERE and still finishes the boot', (tester) async {
@@ -348,7 +364,8 @@ void main() {
         host: host,
         openSettings: () async => store,
         adoptShellEnvironment: () async {},
-        startApp: (_) => app.future,
+        loadIcons: () async => testIconRegistry,
+        startApp: (_, _) => app.future,
       ).run().then((_) => finished = true),
     );
 
@@ -382,7 +399,8 @@ void main() {
       host: host,
       openSettings: () => settings.future,
       adoptShellEnvironment: () async {},
-      startApp: (_) => app.future,
+      loadIcons: () async => testIconRegistry,
+      startApp: (_, _) => app.future,
     );
     final seen = <String>[];
     sequence.status.addListener(() => seen.add(sequence.status.value));
@@ -393,16 +411,17 @@ void main() {
     app.completeError(StateError('worker refused to start'));
     await flush(tester);
 
-    expect(seen, <String>['lade Settings…', 'starte App…']);
-    expect(sequence.status.value, 'starte App…');
+    expect(seen, <String>['Loading settings…', 'Starting Zanshin…']);
+    expect(sequence.status.value, 'Starting Zanshin…');
   });
 
-  testWidgets('the login shell environment is read alongside the settings, and the app starts only after it', (
+  testWidgets('the shell environment and the icons load alongside the settings, and the app starts only after them', (
     tester,
   ) async {
     final SettingsStore store = await storeWith(tester, ThemeMode.system);
     final settings = Completer<SettingsStore>();
     final shell = Completer<void>();
+    final icons = Completer<IconRegistry>();
     final app = Completer<Widget>();
     await tester.pumpWidget(const SizedBox.shrink());
     final host = FakeBootWindowHost();
@@ -417,8 +436,13 @@ void main() {
         steps.add('shell');
         return shell.future;
       },
-      startApp: (_) {
+      loadIcons: () {
+        steps.add('icons');
+        return icons.future;
+      },
+      startApp: (_, registry) {
         steps.add('app');
+        expect(registry, same(testIconRegistry));
         return app.future;
       },
     );
@@ -426,21 +450,25 @@ void main() {
     sequence.status.addListener(() => seen.add(sequence.status.value));
 
     unawaited(sequence.run());
-    expect(steps, <String>['shell', 'settings'], reason: 'both start at once');
+    expect(steps, <String>['shell', 'icons', 'settings'], reason: 'all three start at once');
 
     settings.complete(store);
     await flush(tester);
-    expect(steps, <String>['shell', 'settings'], reason: 'the app waits for the shell environment');
-    expect(sequence.status.value, 'lese Shell-Umgebung…');
+    expect(steps, <String>['shell', 'icons', 'settings'], reason: 'the app waits for the shell environment');
+    expect(sequence.status.value, 'Reading the shell environment…');
 
     shell.complete();
     await flush(tester);
-    expect(steps, <String>['shell', 'settings', 'app']);
+    expect(steps, <String>['shell', 'icons', 'settings'], reason: 'the app waits for the icons');
+
+    icons.complete(testIconRegistry);
+    await flush(tester);
+    expect(steps, <String>['shell', 'icons', 'settings', 'app']);
 
     app.complete(const AppMarker());
     await flush(tester);
     expect(host.calls, <String>['main']);
-    expect(seen, <String>['lade Settings…', 'lese Shell-Umgebung…', 'starte App…']);
+    expect(seen, <String>['Loading settings…', 'Reading the shell environment…', 'Starting Zanshin…']);
   });
 
   testWidgets('a failed shell environment adoption fails the boot like a settings failure', (tester) async {
@@ -454,7 +482,8 @@ void main() {
         host: host,
         openSettings: () => settings.future,
         adoptShellEnvironment: () async => throw StateError('the shell environment broke'),
-        startApp: (_) async {
+        loadIcons: () async => testIconRegistry,
+        startApp: (_, _) async {
           appStarted = true;
           return const AppMarker();
         },
@@ -472,8 +501,37 @@ void main() {
     expect((host.content! as BootFailure).mode, ThemeMode.dark);
   });
 
+  testWidgets('icons that fail to load fail the boot like a settings failure', (tester) async {
+    final SettingsStore store = await storeWith(tester, ThemeMode.dark);
+    final settings = Completer<SettingsStore>();
+    await tester.pumpWidget(const SizedBox.shrink());
+    final host = FakeBootWindowHost();
+    var appStarted = false;
+    unawaited(
+      ZanshinBootSequence(
+        host: host,
+        openSettings: () => settings.future,
+        adoptShellEnvironment: () async {},
+        loadIcons: () async => throw StateError('an icon would not decode'),
+        startApp: (_, _) async {
+          appStarted = true;
+          return const AppMarker();
+        },
+      ).run(),
+    );
+
+    // The failure lands while the settings still load; it fails the boot only once awaited.
+    await flush(tester);
+    settings.complete(store);
+    await flush(tester);
+
+    expect(appStarted, isFalse);
+    expect(host.calls, <String>['main']);
+    expect((host.content! as BootFailure).mode, ThemeMode.dark);
+  });
+
   testWidgets('the splash card lays its footer out on the design grid', (tester) async {
-    await _pumpCard(tester, status: 'lade Settings…', version: (version: '2026.9.1', build: '1'));
+    await _pumpCard(tester, status: 'Loading settings…', version: (version: '2026.9.1', build: '1'));
 
     expect(tester.getSize(find.byType(SplashCardBody)), splashWindowSize);
     expect(tester.getTopLeft(find.byKey(splashVersionKey)).dx, _cardPadding);
@@ -484,11 +542,12 @@ void main() {
     );
     expect(
       tester.getTopLeft(find.byKey(splashStatusKey)).dy,
-      closeTo(_topForBaseline(const TextSpan(text: 'lade Settings…', style: splashStatusStyle)), 0.01),
+      closeTo(_topForBaseline(const TextSpan(text: 'Loading settings…', style: splashStatusStyle)), 0.01),
     );
 
     // The dot hangs off the left edge of the status box, wherever that lands.
-    final double statusLeft = _statusRight - _widthOf(const TextSpan(text: 'lade Settings…', style: splashStatusStyle));
+    final double statusLeft =
+        _statusRight - _widthOf(const TextSpan(text: 'Loading settings…', style: splashStatusStyle));
     expect(
       find.byType(SplashCardBody),
       paints
@@ -510,16 +569,18 @@ void main() {
   });
 
   testWidgets('the status line follows its listenable and stays right-aligned', (tester) async {
-    final status = ValueNotifier<String>('lade Settings…');
+    final status = ValueNotifier<String>('Loading settings…');
     addTearDown(status.dispose);
     final version = ValueNotifier<SplashVersion?>(null);
     addTearDown(version.dispose);
-    await _pumpCardWith(tester, status: status, version: version);
+    final reduceMotion = ValueNotifier<bool>(false);
+    addTearDown(reduceMotion.dispose);
+    await _pumpCardWith(tester, status: status, version: version, reduceMotion: reduceMotion);
 
-    status.value = 'starte App…';
+    status.value = 'Starting Zanshin…';
     await tester.pump();
 
-    expect(_statusText(tester), 'starte App…');
+    expect(_statusText(tester), 'Starting Zanshin…');
     expect(tester.getTopRight(find.byKey(splashStatusKey)).dx, _statusRight);
   });
 
@@ -540,16 +601,14 @@ void main() {
     );
   });
 
-  testWidgets('the splash card runs a ticker, and schedules nothing at all with reduced motion', (tester) async {
-    await _pumpCard(tester, status: 'lade Settings…', version: null);
+  testWidgets('the splash card runs a ticker, and schedules nothing at all when the shell reports reduce motion', (
+    tester,
+  ) async {
+    await _pumpCard(tester, status: 'Loading settings…', version: null);
     expect(SchedulerBinding.instance.transientCallbackCount, 1);
 
-    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
-      disableAnimations: true,
-    );
-    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
     await tester.pumpWidget(const SizedBox.shrink());
-    await _pumpCard(tester, status: 'lade Settings…', version: null);
+    await _pumpCard(tester, status: 'Loading settings…', version: null, reduceMotion: true);
 
     expect(SchedulerBinding.instance.transientCallbackCount, 0);
     // Frozen means lit: the dot keeps the full opacity its pulse peaks at.
@@ -562,13 +621,16 @@ void main() {
   });
 
   testWidgets('reduced motion switched on under a card that is already up stops its ticker', (tester) async {
-    await _pumpCard(tester, status: 'lade Settings…', version: null);
+    final status = ValueNotifier<String>('Loading settings…');
+    addTearDown(status.dispose);
+    final version = ValueNotifier<SplashVersion?>(null);
+    addTearDown(version.dispose);
+    final reduceMotion = ValueNotifier<bool>(false);
+    addTearDown(reduceMotion.dispose);
+    await _pumpCardWith(tester, status: status, version: version, reduceMotion: reduceMotion);
     expect(SchedulerBinding.instance.transientCallbackCount, 1);
 
-    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
-      disableAnimations: true,
-    );
-    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    reduceMotion.value = true;
     await tester.pump();
 
     // Reaches the mounted render box through `set animate`, not a fresh one.
@@ -582,14 +644,11 @@ void main() {
   });
 
   testWidgets('the splash card stays dark under a light platform brightness', (tester) async {
-    tester.platformDispatcher
-      ..platformBrightnessTestValue = Brightness.light
-      // Pins the dot's pulse, so its colour is the design's, not a phase of it.
-      ..accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(disableAnimations: true);
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
     addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
-    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
 
-    await _pumpCard(tester, status: 'lade Settings…', version: null);
+    // Reduce motion pins the dot's pulse, so its colour is the design's, not a phase of it.
+    await _pumpCard(tester, status: 'Loading settings…', version: null, reduceMotion: true);
 
     // The card brings its own ground and never reads a theme: the design's
     // colours reach the canvas whatever the desktop is set to.
@@ -607,5 +666,9 @@ void main() {
 
     expect(find.text('Zanshin could not start.'), findsOneWidget);
     expect(find.textContaining('worker refused to start'), findsOneWidget);
+    // The page sits on the token theme and the window root: paper under the test platform's light brightness.
+    final BuildContext page = tester.element(find.byType(Scaffold));
+    expect(Theme.of(page).extension<ZsColors>(), ZsColors.paper);
+    expect(ZsAppearance.maybeOf(page), isNotNull);
   });
 }

@@ -1,0 +1,14 @@
+Shippori Mincho is subset to the two glyphs of 残心 (U+6B8B 残, U+5FC3 心) for the
+weights the app declares, 500 and 600 — the design system's own subset
+(DS tokens/fonts.css:6-7). The OFL names no Reserved Font Name (OFL.txt:1), so
+the subset keeps its family name. Story 11.1, 2026-10-17.
+
+Tool: fonttools 4.67.0 (pyftsubset), run through uv:
+
+  uvx --from fonttools==4.67.0 pyftsubset ShipporiMincho-Medium.ttf \
+    --unicodes=U+5FC3,U+6B8B --output-file=<tmp>/ShipporiMincho-Medium.ttf
+  uvx --from fonttools==4.67.0 pyftsubset ShipporiMincho-SemiBold.ttf \
+    --unicodes=U+5FC3,U+6B8B --output-file=<tmp>/ShipporiMincho-SemiBold.ttf
+
+Each output then replaced its input in place. The full fonts are in the git
+history before Story 11.1 (Google Fonts, Shippori Mincho).

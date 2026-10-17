@@ -11,10 +11,11 @@ import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interfac
 abstract final class ZanshinShell {
   static ZanshinShellPlatform get _platform => ZanshinShellPlatform.instance;
 
-  /// The current system theme (day/night mode + accent color).
+  /// The current system theme: day/night mode, the accent, the text-selection colours, the accessibility display
+  /// options (reduce motion, reduce transparency, increase contrast) and the scroll bar preferences.
   static Future<ShellTheme> getTheme() => _platform.getTheme();
 
-  /// Emits whenever the system brightness or accent color changes.
+  /// Emits whenever any part of [getTheme]'s answer changes.
   static Stream<ShellTheme> get onThemeChanged => _platform.onThemeChanged;
 
   /// Forces the window chrome (blur background, traffic lights) to the given

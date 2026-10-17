@@ -9,8 +9,11 @@ import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 
-/// Theme state for the app root: the persisted [ThemeMode] choice plus the
-/// live macOS shell theme, resolved into the mode `MaterialApp` should use.
+import '../../shared/design/zs_appearance.dart';
+
+/// Theme state for the app root: the persisted [ThemeMode] and accent choice
+/// plus the live macOS shell theme, resolved into the mode `MaterialApp` should
+/// use and the [ZsAppearance] its windows show.
 @inject
 class ZanshinAppViewModel extends ChangeNotifier {
   ZanshinAppViewModel(this._settings) {
@@ -42,6 +45,22 @@ class ZanshinAppViewModel extends ChangeNotifier {
         shellTheme.brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
       _ => selectedMode,
     };
+  }
+
+  /// What the app's windows show: the theme from [effectiveMode] (night until the shell resolves `system`; the window
+  /// root follows the `MaterialApp`'s resolved brightness either way), the accent family from the Settings choice
+  /// and the shell's report (decision 16.2; [ZsAccentFamily.resolve]), and the shell's accessibility flags.
+  ///
+  /// The window's key status and full screen are not driven yet (11.12, 11.4) and stay false.
+  ZsAppearance get appearance {
+    final ShellTheme? shell = _shellTheme;
+    return ZsAppearance(
+      theme: effectiveMode == ThemeMode.light ? ZsTheme.paper : ZsTheme.night,
+      family: ZsAccentFamily.resolve(source: _settings.value.appearance.accentSource, shell: shell),
+      increasedContrast: shell?.increaseContrast ?? false,
+      reduceMotion: shell?.reduceMotion ?? false,
+      reduceTransparency: shell?.reduceTransparency ?? false,
+    );
   }
 
   /// One-shot setup for `ViewModelBuilder`'s `init`.
@@ -81,8 +100,9 @@ class ZanshinAppViewModel extends ChangeNotifier {
   static bool get _onMacOS => !kIsWeb && Platform.isMacOS;
 
   void _applyShellTheme(ShellTheme theme) {
-    // A late getTheme() answer after dispose must not notify a disposed notifier.
-    if (_disposed) {
+    // A late getTheme() answer after dispose must not notify a disposed notifier;
+    // an unchanged report (the plugin emits on several notifications) rebuilds nothing.
+    if (_disposed || theme == _shellTheme) {
       return;
     }
     _shellTheme = theme;

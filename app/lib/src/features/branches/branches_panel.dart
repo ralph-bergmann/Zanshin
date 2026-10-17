@@ -3,6 +3,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../shared/data/mock_data.dart';
+import '../../shared/design/zs_metrics.dart';
 import '../../shared/theme/zanshin_colors.dart';
 import '../../shared/widgets/zanshin_icon.dart';
 
@@ -47,7 +48,7 @@ class _BranchesPanelState extends State<BranchesPanel> {
             child: Row(
               spacing: 8,
               children: [
-                ZanshinIcon(ZI.branch, size: 13, color: zc.textDim),
+                ZanshinIcon(ZI.branch, size: ZsIconSize.md, color: zc.textDim),
                 Text(
                   'Branches',
                   style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: zc.textPrimary),
@@ -72,7 +73,7 @@ class _BranchesPanelState extends State<BranchesPanel> {
               child: Row(
                 spacing: 6,
                 children: [
-                  ZanshinIcon(ZI.search, size: 12, color: zc.textDim),
+                  ZanshinIcon(ZI.search, size: ZsIconSize.sm, color: zc.textDim),
                   Expanded(
                     child: TextField(
                       onChanged: (v) => setState(() => _query = v),
@@ -297,7 +298,7 @@ class SidePanel extends StatelessWidget {
             child: Row(
               spacing: 8,
               children: [
-                ZanshinIcon(icon, size: 13, color: zc.textDim),
+                ZanshinIcon(icon, size: ZsIconSize.md, color: zc.textDim),
                 Text(
                   title,
                   style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: zc.textPrimary),

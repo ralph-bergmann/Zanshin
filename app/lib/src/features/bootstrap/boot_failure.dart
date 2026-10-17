@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:material_ui/material_ui.dart';
-import 'package:yaru/yaru.dart';
+
+import '../../shared/design/zs_app_theme.dart';
+import '../../shared/design/zs_appearance.dart';
+import '../../shared/design/zs_root.dart';
 
 /// The main window's content when the boot failed: a headline and the
 /// selectable error text on the app's own background. No retry — ⌘Q quits as
 /// usual.
 ///
 /// Themed by the persisted [ThemeMode], which is [ThemeMode.system] when the
-/// boot did not get as far as reading the settings.
+/// boot did not get as far as reading the settings. Like every window root it
+/// sits on the token theme and `ZsRoot` — Multicolor, without a shell report,
+/// since the boot never got that far (Claude's proposal, Story 11.1).
 class BootFailure extends StatelessWidget {
   const BootFailure({required this.error, required this.mode, super.key});
 
@@ -20,9 +25,13 @@ class BootFailure extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    theme: yaruLight,
-    darkTheme: yaruDark,
+    theme: ZsAppTheme.build(const ZsAppearance(theme: ZsTheme.paper)),
+    darkTheme: ZsAppTheme.build(const ZsAppearance()),
     themeMode: mode,
+    builder: (context, child) => ZsRoot(
+      appearance: ZsAppearance(theme: ZsTheme.of(Theme.of(context).brightness)),
+      child: child ?? const SizedBox.shrink(),
+    ),
     home: Scaffold(
       body: Center(
         child: Padding(

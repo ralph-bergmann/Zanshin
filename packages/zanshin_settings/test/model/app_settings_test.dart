@@ -18,12 +18,25 @@ void main() {
   test('toJson nests the sub-model as a map and encodes the enum by name', () {
     const settings = AppSettings(appearance: AppearanceSettings(themeMode: ThemeMode.dark));
     expect(settings.toJson(), {
-      'appearance': {'themeMode': 'dark'},
+      'appearance': {'themeMode': 'dark', 'accentSource': 'followMacOS'},
     });
   });
 
   test('a missing key takes its default', () {
     expect(AppearanceSettings.fromJson({}).themeMode, ThemeMode.system);
+  });
+
+  test('a settings file without accentSource follows the macOS accent', () {
+    expect(AppearanceSettings.fromJson({'themeMode': 'dark'}).accentSource, AccentSource.followMacOS);
+    expect(AppSettings.fromJson({'appearance': <String, Object?>{}}).appearance.accentSource, AccentSource.followMacOS);
+  });
+
+  test('the Zanshin accent source survives a JSON round trip', () {
+    const settings = AppSettings(appearance: AppearanceSettings(accentSource: AccentSource.zanshin));
+    expect(settings.toJson(), {
+      'appearance': {'themeMode': 'system', 'accentSource': 'zanshin'},
+    });
+    expect(AppSettings.fromJson(settings.toJson()), settings);
   });
 
   test('a missing sub-model takes its default', () {

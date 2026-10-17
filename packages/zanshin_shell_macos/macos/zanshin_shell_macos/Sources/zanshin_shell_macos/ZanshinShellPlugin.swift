@@ -5,8 +5,9 @@ import FlutterMacOS
 
 /// Native half of the bidirectional "zanshin_shell" channel.
 ///
-/// Pushes system theme changes (dark/light + accent color) to Dart and
-/// executes window commands (drag, appearance override, titlebar
+/// Pushes system theme changes (dark/light, the accent, the text-selection
+/// colours, the accessibility display options and the scroll bar style) to
+/// Dart and executes window commands (drag, appearance override, titlebar
 /// double-click action) on the window that hosts the Flutter view. It also
 /// owns the `FolderDropHost` behind the "zanshin_shell/folder_drop" channel.
 public class ZanshinShellPlugin: NSObject, FlutterPlugin {
@@ -43,10 +44,32 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
             name: NSNotification.Name("AppleColorPreferencesChangedNotification"),
             object: nil
         )
+        // Flutter's macOS embedder reports none of these, so the theme map
+        // carries them and is re-sent whenever one changes.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleSystemChanged),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSystemChanged),
+            name: NSColor.systemColorsDidChangeNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSystemChanged),
+            name: NSScroller.preferredScrollerStyleDidChangeNotification,
+            object: nil
+        )
     }
 
     deinit {
         DistributedNotificationCenter.default().removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        NotificationCenter.default.removeObserver(self)
     }
 
     @objc private func handleAccentChanged(_ notification: Notification) {
@@ -55,6 +78,12 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
         DispatchQueue.main.async { [weak self] in
             self?.emitThemeChanged()
         }
+    }
+
+    /// Accessibility display options, system colours or the scroller style
+    /// changed; AppKit has the new values once the notification is posted.
+    @objc private func handleSystemChanged(_ notification: Notification) {
+        emitThemeChanged()
     }
 
     private func emitThemeChanged() {
@@ -90,16 +119,52 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
     }
 
     private func currentTheme() -> [String: Any] {
-        let appearance = NSApp.effectiveAppearance
         let isDark =
-            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let aqua = NSAppearance(named: .aqua)
+        let darkAqua = NSAppearance(named: .darkAqua)
+        let workspace = NSWorkspace.shared
 
-        // controlAccentColor is appearance-dependent; resolve it under the
-        // current effective appearance so the ARGB value matches what the
-        // user sees. Fallback: the accent blue that macOS defaults to.
-        var argb = isDark ? 0xFF0A84FF : 0xFF007AFF
+        // controlAccentColor is resolved in aqua, the appearance the "This Mac"
+        // hue mapping and the Multicolor check are defined in. Fallback: the
+        // aqua blue that macOS defaults to.
+        var theme: [String: Any] = [
+            "brightness": isDark ? "dark" : "light",
+            "accentColor": Self.argb(NSColor.controlAccentColor, in: aqua) ?? 0xFF007AFF,
+            "reduceMotion": workspace.accessibilityDisplayShouldReduceMotion,
+            "reduceTransparency": workspace.accessibilityDisplayShouldReduceTransparency,
+            "increaseContrast": workspace.accessibilityDisplayShouldIncreaseContrast,
+            "scrollerStyle": NSScroller.preferredScrollerStyle == .legacy ? "legacy" : "overlay",
+            // No change notification exists for this preference; the value
+            // is re-read on every emit.
+            "jumpToClickedSpot": UserDefaults.standard.bool(forKey: "AppleScrollerPagingBehavior"),
+        ]
+        // Absent means Multicolor or an iMac's "This Mac" colour; omitted, so
+        // Dart reads null.
+        if let accent = UserDefaults.standard.object(forKey: "AppleAccentColor") as? Int {
+            theme["appleAccentColor"] = accent
+        }
+        let selection: [(String, NSColor, NSAppearance?)] = [
+            ("selectedTextBackgroundDark", .selectedTextBackgroundColor, darkAqua),
+            ("selectedTextBackgroundLight", .selectedTextBackgroundColor, aqua),
+            ("unemphasizedSelectedTextBackgroundDark", .unemphasizedSelectedTextBackgroundColor, darkAqua),
+            ("unemphasizedSelectedTextBackgroundLight", .unemphasizedSelectedTextBackgroundColor, aqua),
+        ]
+        for (key, color, appearance) in selection {
+            if let argb = Self.argb(color, in: appearance) {
+                theme[key] = argb
+            }
+        }
+        return theme
+    }
+
+    /// - Returns: `color` resolved under `appearance` as an sRGB ARGB int, or
+    ///   nil when either is unavailable
+    private static func argb(_ color: NSColor, in appearance: NSAppearance?) -> Int? {
+        guard let appearance = appearance else { return nil }
+        var argb: Int?
         appearance.performAsCurrentDrawingAppearance {
-            if let c = NSColor.controlAccentColor.usingColorSpace(.sRGB) {
+            if let c = color.usingColorSpace(.sRGB) {
                 argb =
                     (Int(round(c.alphaComponent * 255)) << 24)
                     | (Int(round(c.redComponent * 255)) << 16)
@@ -107,8 +172,7 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
                     | Int(round(c.blueComponent * 255))
             }
         }
-
-        return ["brightness": isDark ? "dark" : "light", "accentColor": argb]
+        return argb
     }
 
     public func handle(

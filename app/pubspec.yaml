@@ -14,7 +14,6 @@ dependencies:
   flat_buffers: ^25.9.23
   flutter:
     sdk: flutter
-  flutter_svg: ^2.3.0
   inject_annotation: ^1.2.1
   inject_flutter: ^1.2.1
   logging: ^1.3.0
@@ -23,6 +22,8 @@ dependencies:
   marionette_flutter: ^0.6.0
   material_ui: ^1.1.0
   package_info_plus: ^10.2.1
+  # Paints the icons precompiled by vector_graphics_compiler (the asset transformer below).
+  vector_graphics: ^1.2.3
   # The pure-Dart Rust↔Dart bridge (FFI + worker). Provides the zanshin-ffi native
   # asset via its own build hook; the app aggregates it at build time.
   yaru:
@@ -43,6 +44,8 @@ dev_dependencies:
   inject_generator: ^1.2.1
   # Test-only: the fake ZanshinShellPlatform in test/ mixes in MockPlatformInterfaceMixin.
   plugin_platform_interface: ^2.1.8
+  # The asset transformer that precompiles assets/icons/svg/ at build time (decision 16.32).
+  vector_graphics_compiler: ^1.3.0
   zanshin_shell_platform_interface:
     path: ../packages/zanshin_shell_platform_interface
   # theme_tailor: ^3.1.3
@@ -50,7 +53,9 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/icons/svg/
+    - path: assets/icons/svg/
+      transformers:
+        - package: vector_graphics_compiler
     - assets/lottie/nami_loader.json
     - assets/lottie/nami_loader_transparent.json
   fonts:

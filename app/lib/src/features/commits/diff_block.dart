@@ -3,6 +3,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../shared/data/mock_data.dart';
+import '../../shared/design/zs_metrics.dart';
 import '../../shared/theme/zanshin_colors.dart';
 import '../../shared/widgets/zanshin_icon.dart';
 
@@ -135,7 +136,7 @@ class _SegBtn extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         spacing: 4,
         children: [
-          ZanshinIcon(icon, size: 11, color: active ? zc.textPrimary : zc.textDim),
+          ZanshinIcon(icon, size: ZsIconSize.sm, color: active ? zc.textPrimary : zc.textDim),
           Text(label, style: TextStyle(fontSize: 11, color: active ? zc.textPrimary : zc.textDim)),
         ],
       ),
@@ -165,7 +166,11 @@ class _ViewedToggle extends StatelessWidget {
             border: Border.all(color: viewed ? zc.accent : zc.borderStrong),
             borderRadius: BorderRadius.circular(3),
           ),
-          child: viewed ? const Center(child: ZanshinIcon(ZI.check, size: 10, color: Colors.white)) : null,
+          child: viewed
+              ? const Center(
+                  child: ZanshinIcon(ZI.check, size: ZsIconSize.xs, color: Colors.white),
+                )
+              : null,
         ),
         Text('Viewed', style: TextStyle(fontSize: 11, color: viewed ? zc.textPrimary : zc.textMuted)),
       ],
@@ -186,7 +191,7 @@ class _CollapsedDiff extends StatelessWidget {
       child: Row(
         spacing: 8,
         children: [
-          ZanshinIcon(ZI.check, size: 11, color: zc.add),
+          ZanshinIcon(ZI.check, size: ZsIconSize.sm, color: zc.add),
           Text(
             'Reviewed — diff hidden. Click to expand.',
             style: TextStyle(fontSize: 12, color: zc.textDim, fontStyle: FontStyle.italic),

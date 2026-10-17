@@ -4,10 +4,15 @@
 // imports; see https://github.com/flutter/flutter/issues/30701.
 // ignore_for_file: invalid_use_of_internal_member, implementation_imports
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
+import 'package:logging/logging.dart';
+import 'package:zanshin_shell/zanshin_shell.dart';
 
+import '../../shared/widgets/icon_registry.dart';
 import '../window/app_windows.dart';
 import '../window/splash_window_controller.dart';
 import 'splash_card.dart';
@@ -20,6 +25,8 @@ const mainWindowKey = 'main';
 /// Title of the main window.
 const mainWindowTitle = 'Zanshin';
 
+final _log = Logger('zanshin.bootstrap');
+
 /// The real [BootWindowHost]: the only place that creates windows.
 ///
 /// Not unit-tested — everything it touches (`runWidget`, the macOS window
@@ -27,13 +34,22 @@ const mainWindowTitle = 'Zanshin';
 /// serves is tested against a fake host instead; this class is covered by the
 /// runtime smoke check.
 class ZanshinWindowHost implements BootWindowHost {
-  ZanshinWindowHost({required this.windows});
+  ZanshinWindowHost({required this.windows, required this.icons});
 
   /// Keyed registry of the app's windows; also the exit-when-empty rule.
   final AppWindows windows;
 
+  /// The boot-loaded icons, provided above every window (Claude's proposal,
+  /// Story 11.1), so the dialog windows share them; null until loaded.
+  final ValueListenable<IconRegistry?> icons;
+
   SplashWindowController? _splash;
   WindowEntry? _splashEntry;
+
+  /// macOS Reduce motion for the splash card; Flutter's embedder never
+  /// reports it, the shell does.
+  final _reduceMotion = ValueNotifier<bool>(false);
+  StreamSubscription<ShellTheme>? _shellChanges;
 
   /// Whether `runWidget` has already run — it may only run once.
   var _presented = false;
@@ -44,9 +60,10 @@ class ZanshinWindowHost implements BootWindowHost {
     required ValueListenable<SplashVersion?> version,
   }) async {
     final SplashWindowController splash = await SplashWindowController.create(size: splashWindowSize);
+    _followReduceMotion();
     final entry = WindowEntry(
       controller: splash,
-      builder: windows.capture((_) => SplashCard(status: status, version: version)),
+      builder: windows.capture((_) => SplashCard(status: status, version: version, reduceMotion: _reduceMotion)),
     );
     _splash = splash;
     _splashEntry = entry;
@@ -75,6 +92,20 @@ class ZanshinWindowHost implements BootWindowHost {
     await splash.fadeOut(duration: fade);
     windows.unregister(entry);
     splash.destroy();
+    await _shellChanges?.cancel();
+    _shellChanges = null;
+  }
+
+  /// Feeds [_reduceMotion] from the shell for as long as the splash is up. A
+  /// shell that does not answer leaves the loader animating.
+  void _followReduceMotion() {
+    void apply(ShellTheme theme) => _reduceMotion.value = theme.reduceMotion;
+    _shellChanges = ZanshinShell.onThemeChanged.listen(apply);
+    unawaited(
+      ZanshinShell.getTheme().then(apply).catchError((Object error, StackTrace stackTrace) {
+        _log.warning('The shell theme could not be read for the splash', error, stackTrace);
+      }),
+    );
   }
 
   /// Hands [entry] to the engine.
@@ -91,6 +122,12 @@ class ZanshinWindowHost implements BootWindowHost {
       return;
     }
     _presented = true;
-    runWidget(WindowManager(initialWindows: <WindowEntry>[entry]));
+    runWidget(
+      ValueListenableBuilder<IconRegistry?>(
+        valueListenable: icons,
+        builder: (context, registry, child) => IconRegistryScope(registry: registry, child: child!),
+        child: WindowManager(initialWindows: <WindowEntry>[entry]),
+      ),
+    );
   }
 }

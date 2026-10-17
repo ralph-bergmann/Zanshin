@@ -44,6 +44,57 @@ void main() {
     expect(log.single.method, 'getTheme');
   });
 
+  test('a theme map without the accessibility, accent and selection keys decodes to the defaults', () async {
+    final ShellTheme theme = await shell.getTheme();
+    expect(theme.appleAccentColor, isNull);
+    expect(theme.reduceMotion, isFalse);
+    expect(theme.reduceTransparency, isFalse);
+    expect(theme.increaseContrast, isFalse);
+    expect(theme.selectedTextBackgroundDark, isNull);
+    expect(theme.selectedTextBackgroundLight, isNull);
+    expect(theme.unemphasizedSelectedTextBackgroundDark, isNull);
+    expect(theme.unemphasizedSelectedTextBackgroundLight, isNull);
+    expect(theme.scrollerStyle, ScrollerStyle.overlay);
+    expect(theme.jumpToClickedSpot, isFalse);
+  });
+
+  test('a theme map with every key decodes the sent values', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      channel,
+      (call) async => <String, Object?>{
+        'brightness': 'light',
+        'accentColor': 0xFF4757A1,
+        'appleAccentColor': -1,
+        'reduceMotion': true,
+        'reduceTransparency': true,
+        'increaseContrast': true,
+        'selectedTextBackgroundDark': 0xFF3F638B,
+        'selectedTextBackgroundLight': 0xFFB3D7FF,
+        'unemphasizedSelectedTextBackgroundDark': 0xFF464646,
+        'unemphasizedSelectedTextBackgroundLight': 0xFFDCDCDC,
+        'scrollerStyle': 'legacy',
+        'jumpToClickedSpot': true,
+      },
+    );
+    expect(
+      await shell.getTheme(),
+      const ShellTheme(
+        brightness: Brightness.light,
+        accentColor: Color(0xFF4757A1),
+        appleAccentColor: -1,
+        reduceMotion: true,
+        reduceTransparency: true,
+        increaseContrast: true,
+        selectedTextBackgroundDark: Color(0xFF3F638B),
+        selectedTextBackgroundLight: Color(0xFFB3D7FF),
+        unemphasizedSelectedTextBackgroundDark: Color(0xFF464646),
+        unemphasizedSelectedTextBackgroundLight: Color(0xFFDCDCDC),
+        scrollerStyle: ScrollerStyle.legacy,
+        jumpToClickedSpot: true,
+      ),
+    );
+  });
+
   test('setWindowAppearance sends the enum name', () async {
     await shell.setWindowAppearance(WindowAppearance.dark);
     expect(log.single.method, 'setWindowAppearance');

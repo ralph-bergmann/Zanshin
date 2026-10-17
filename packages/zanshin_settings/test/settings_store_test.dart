@@ -13,7 +13,7 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 
 const _dark = AppSettings(appearance: AppearanceSettings(themeMode: ThemeMode.dark));
 const _light = AppSettings(appearance: AppearanceSettings(themeMode: ThemeMode.light));
-const _darkJson = '{\n  "appearance": {\n    "themeMode": "dark"\n  }\n}\n';
+const _darkJson = '{\n  "appearance": {\n    "themeMode": "dark",\n    "accentSource": "followMacOS"\n  }\n}\n';
 
 /// Answers `getApplicationSupportPath` with a fixed directory.
 final class FakePathProvider extends PathProviderPlatform with MockPlatformInterfaceMixin {

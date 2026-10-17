@@ -38,10 +38,11 @@ abstract class ZanshinShellPlatform extends PlatformInterface {
     _instance = value;
   }
 
-  /// The current system theme.
+  /// The current system theme and accessibility state.
   Future<ShellTheme> getTheme() => throw UnimplementedError();
 
-  /// Emits whenever the system brightness or accent color changes.
+  /// Emits whenever the system brightness, the accent colour, a system colour, an accessibility display option
+  /// (reduce motion, reduce transparency, increase contrast) or the scroll bar style changes.
   Stream<ShellTheme> get onThemeChanged => throw UnimplementedError();
 
   /// Forces the window (blur background + traffic lights) to the given

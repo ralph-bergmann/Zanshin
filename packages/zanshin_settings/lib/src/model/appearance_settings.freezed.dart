@@ -17,7 +17,8 @@ T _$identity<T>(T value) => value;
 mixin _$AppearanceSettings {
 
 /// The user's day/night choice; `system` follows the OS.
- ThemeMode get themeMode;
+ ThemeMode get themeMode;/// Where the accent colour comes from; [AccentSource.followMacOS] by default.
+ AccentSource get accentSource;
 /// Create a copy of AppearanceSettings
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -31,20 +32,20 @@ $AppearanceSettingsCopyWith<AppearanceSettings> get copyWith => _$AppearanceSett
 @override
 bool operator ==(Object other) {
   final _this = this as AppearanceSettings;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceSettings&&(identical(other.themeMode, _this.themeMode) || other.themeMode == _this.themeMode));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppearanceSettings&&(identical(other.themeMode, _this.themeMode) || other.themeMode == _this.themeMode)&&(identical(other.accentSource, _this.accentSource) || other.accentSource == _this.accentSource));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as AppearanceSettings;
-  return Object.hash(runtimeType,_this.themeMode);
+  return Object.hash(runtimeType,_this.themeMode,_this.accentSource);
 }
 
 @override
 String toString() {
   final _this = this as AppearanceSettings;
-  return 'AppearanceSettings(themeMode: ${_this.themeMode})';
+  return 'AppearanceSettings(themeMode: ${_this.themeMode}, accentSource: ${_this.accentSource})';
 }
 
 
@@ -55,7 +56,7 @@ abstract mixin class $AppearanceSettingsCopyWith<$Res>  {
   factory $AppearanceSettingsCopyWith(AppearanceSettings value, $Res Function(AppearanceSettings) _then) = _$AppearanceSettingsCopyWithImpl;
 @useResult
 $Res call({
- ThemeMode themeMode
+ ThemeMode themeMode, AccentSource accentSource
 });
 
 
@@ -72,10 +73,11 @@ class _$AppearanceSettingsCopyWithImpl<$Res>
 
 /// Create a copy of AppearanceSettings
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? themeMode = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? themeMode = null,Object? accentSource = null,}) {
   return _then(AppearanceSettings(
 themeMode: null == themeMode ? _self.themeMode : themeMode // ignore: cast_nullable_to_non_nullable
-as ThemeMode,
+as ThemeMode,accentSource: null == accentSource ? _self.accentSource : accentSource // ignore: cast_nullable_to_non_nullable
+as AccentSource,
   ));
 }
 
@@ -160,10 +162,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( ThemeMode themeMode)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( ThemeMode themeMode,  AccentSource accentSource)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _AppearanceSettings() when $default != null:
-return $default(_that.themeMode);case _:
+return $default(_that.themeMode,_that.accentSource);case _:
   return orElse();
 
 }
@@ -181,10 +183,10 @@ return $default(_that.themeMode);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( ThemeMode themeMode)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( ThemeMode themeMode,  AccentSource accentSource)  $default,) {final _that = this;
 switch (_that) {
 case _AppearanceSettings():
-return $default(_that.themeMode);case _:
+return $default(_that.themeMode,_that.accentSource);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -201,10 +203,10 @@ return $default(_that.themeMode);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( ThemeMode themeMode)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( ThemeMode themeMode,  AccentSource accentSource)?  $default,) {final _that = this;
 switch (_that) {
 case _AppearanceSettings() when $default != null:
-return $default(_that.themeMode);case _:
+return $default(_that.themeMode,_that.accentSource);case _:
   return null;
 
 }
@@ -216,11 +218,13 @@ return $default(_that.themeMode);case _:
 @JsonSerializable()
 
 class _AppearanceSettings implements AppearanceSettings {
-  const _AppearanceSettings({this.themeMode = ThemeMode.system});
+  const _AppearanceSettings({this.themeMode = ThemeMode.system, this.accentSource = AccentSource.followMacOS});
   factory _AppearanceSettings.fromJson(Map<String, dynamic> json) => _$AppearanceSettingsFromJson(json);
 
 /// The user's day/night choice; `system` follows the OS.
 @override@JsonKey() final  ThemeMode themeMode;
+/// Where the accent colour comes from; [AccentSource.followMacOS] by default.
+@override@JsonKey() final  AccentSource accentSource;
 
 /// Create a copy of AppearanceSettings
 /// with the given fields replaced by the non-null parameter values.
@@ -235,18 +239,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppearanceSettings&&(identical(other.themeMode, themeMode) || other.themeMode == themeMode));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppearanceSettings&&(identical(other.themeMode, themeMode) || other.themeMode == themeMode)&&(identical(other.accentSource, accentSource) || other.accentSource == accentSource));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,themeMode);
+    return Object.hash(runtimeType,themeMode,accentSource);
 }
 
 @override
 String toString() {
-    return 'AppearanceSettings(themeMode: $themeMode)';
+    return 'AppearanceSettings(themeMode: $themeMode, accentSource: $accentSource)';
 }
 
 
@@ -257,7 +261,7 @@ abstract mixin class _$AppearanceSettingsCopyWith<$Res> implements $AppearanceSe
   factory _$AppearanceSettingsCopyWith(_AppearanceSettings value, $Res Function(_AppearanceSettings) _then) = __$AppearanceSettingsCopyWithImpl;
 @override @useResult
 $Res call({
- ThemeMode themeMode
+ ThemeMode themeMode, AccentSource accentSource
 });
 
 
@@ -274,10 +278,11 @@ class __$AppearanceSettingsCopyWithImpl<$Res>
 
 /// Create a copy of AppearanceSettings
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? themeMode = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? themeMode = null,Object? accentSource = null,}) {
   return _then(_AppearanceSettings(
 themeMode: null == themeMode ? _self.themeMode : themeMode // ignore: cast_nullable_to_non_nullable
-as ThemeMode,
+as ThemeMode,accentSource: null == accentSource ? _self.accentSource : accentSource // ignore: cast_nullable_to_non_nullable
+as AccentSource,
   ));
 }
 

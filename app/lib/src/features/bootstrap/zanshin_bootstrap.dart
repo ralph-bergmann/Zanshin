@@ -8,6 +8,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
+import '../../shared/widgets/icon_registry.dart';
 import 'boot_failure.dart';
 
 /// The app's version and build number, as the splash's footer shows them.
@@ -50,7 +51,7 @@ abstract interface class BootWindowHost {
 
 /// Runs the asynchronous boot and opens the app's windows around it.
 ///
-/// The boot (`openSettings` alongside `adoptShellEnvironment` → `startApp`)
+/// The boot (`openSettings` alongside `adoptShellEnvironment` and `loadIcons` → `startApp`)
 /// starts before any window exists and races [splashIndicatorDelay]:
 ///
 /// * the boot wins — the main window is the first and only window, no splash
@@ -70,6 +71,7 @@ class ZanshinBootSequence {
     required this.host,
     required this.openSettings,
     required this.adoptShellEnvironment,
+    required this.loadIcons,
     required this.startApp,
   });
 
@@ -85,9 +87,14 @@ class ZanshinBootSequence {
   /// it; a throw fails the boot like a settings failure.
   final Future<void> Function() adoptShellEnvironment;
 
-  /// Second boot step: builds the DI graph over the loaded settings, starts
-  /// the worker and returns the app widget.
-  final Future<Widget> Function(SettingsStore settings) startApp;
+  /// Runs alongside [openSettings]: decodes every icon once (decision 16.32),
+  /// so no icon pops in a frame late. [startApp] waits for it; a throw fails
+  /// the boot like a settings failure.
+  final Future<IconRegistry> Function() loadIcons;
+
+  /// Second boot step: builds the DI graph over the loaded settings and icons,
+  /// starts the worker and returns the app widget.
+  final Future<Widget> Function(SettingsStore settings, IconRegistry icons) startApp;
 
   final _done = Completer<void>();
 
@@ -155,21 +162,27 @@ class ZanshinBootSequence {
 
   /// The boot steps; the persisted mode is known before the app starts, in
   /// time for a failure in the last one. The login shell's environment is read
-  /// while the settings load, so its time is hidden behind theirs.
+  /// and the icons are decoded while the settings load, so their time is
+  /// hidden behind theirs.
+  ///
+  /// The status lines are English (decision 16.9); the wording is Claude's
+  /// proposal (Story 11.1).
   Future<Widget> _load() async {
-    log('lade Settings…');
+    log('Loading settings…');
     var shellPending = true;
     // `ignore` only keeps an early failure from counting as unhandled while
-    // the settings load: the await below still throws it.
+    // the settings load: the awaits below still throw it.
     final Future<void> shellEnvironment = adoptShellEnvironment().whenComplete(() => shellPending = false)..ignore();
+    final Future<IconRegistry> icons = loadIcons()..ignore();
     final SettingsStore settings = await openSettings();
     _persistedMode = settings.value.appearance.themeMode;
     if (shellPending) {
-      log('lese Shell-Umgebung…');
+      log('Reading the shell environment…');
     }
     await shellEnvironment;
-    log('starte App…');
-    return startApp(settings);
+    final IconRegistry registry = await icons;
+    log('Starting Zanshin…');
+    return startApp(settings, registry);
   }
 
   /// [splashIndicatorDelay] elapsed and the boot is still running.
@@ -215,7 +228,9 @@ class ZanshinBootSequence {
       await _splashOpening;
       await host.openMain(_content);
       if (_splashShown) {
-        await host.dismissSplash(_splashFade);
+        // The cross-fade is opacity, so it keeps its duration under Reduce
+        // motion too (decision 16.4).
+        await host.dismissSplash(splashFadeOut);
       }
     } catch (error, stackTrace) {
       // Same blanket catch as _boot, and for a harder reason: `main` awaits
@@ -228,10 +243,4 @@ class ZanshinBootSequence {
       }
     }
   }
-
-  /// "Reduce motion" skips the native cross-fade, the same accessibility rule
-  /// the loader animation follows.
-  static Duration get _splashFade => WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations
-      ? Duration.zero
-      : splashFadeOut;
 }
