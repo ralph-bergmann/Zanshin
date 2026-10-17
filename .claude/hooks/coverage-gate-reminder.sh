@@ -2,7 +2,7 @@
 # Stop hook: remind the agent to run the coverage gate when Rust/Dart source has
 # changed since the last successful `cargo make coverage` run.
 #
-# Tracked in git; registered in .claude/settings.local.json (personal, gitignored).
+# Tracked in git; registered in .claude/settings.json.
 # It NEVER breaks the session: on any unexpected condition it exits 0 (silent).
 #
 # Logic:
