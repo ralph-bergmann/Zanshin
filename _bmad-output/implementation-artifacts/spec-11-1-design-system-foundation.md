@@ -27,6 +27,8 @@ deferred:
     evidence: 'No NSNotification exists for the "Click in the scroll bar to" preference; the plugin re-reads UserDefaults on every emit.'
     location: 'packages/zanshin_shell_macos/macos/zanshin_shell_macos/Sources/zanshin_shell_macos/ZanshinShellPlugin.swift'
     severity: low
+    resolved: >-
+      2026-10-18 — fixed (spec-11-11-zs-control-library-widgetbook, commit ff1ccc6): the shell plugin re-emits the theme on didBecomeActive, so the value is fresh for every track press.
   - summary: >-
       The Multicolor check compares the reported aqua accent with #4757a1 exactly, so an off-by-one channel from 11.4's AccentColor asset would show the Blue family.
     evidence: |-

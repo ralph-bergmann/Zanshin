@@ -34,6 +34,8 @@ deferred:
     location: >-
       app/lib/src/shared/materials/zs_sheet.dart:116
     severity: medium (unverified)
+    resolved: >-
+      2026-10-18 — fixed (spec-11-11-zs-control-library-widgetbook, commit ff1ccc6): ZsMenuAnchor refocuses its opener before the command runs, so ZsSheet records the opener; ZsSheet unchanged.
   - summary: >-
       The glass nesting assertion walks the element tree, so glass mounted through an OverlayPortal under an island (a panel pinned from a rail button) trips it although nothing overlaps.
     evidence: |-
