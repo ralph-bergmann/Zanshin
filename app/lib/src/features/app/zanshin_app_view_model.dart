@@ -8,8 +8,7 @@ import 'package:inject_annotation/inject_annotation.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
-
-import '../../shared/design/zs_appearance.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
 /// Theme state for the app root: the persisted [ThemeMode] and accent choice
 /// plus the live macOS shell theme, resolved into the mode `MaterialApp` should

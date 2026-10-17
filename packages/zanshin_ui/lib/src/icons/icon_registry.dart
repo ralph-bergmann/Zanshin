@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:flutter/widgets.dart';
-import 'package:inject_annotation/inject_annotation.dart';
 import 'package:vector_graphics/vector_graphics.dart';
 
 import 'zanshin_icon.dart';
@@ -17,7 +16,9 @@ class IconRegistry {
   static Future<IconRegistry> load() async {
     final List<MapEntry<String, PictureInfo>> entries = await Future.wait(<Future<MapEntry<String, PictureInfo>>>[
       for (final String name in ZI.all)
-        vg.loadPicture(AssetBytesLoader('assets/icons/svg/$name.svg'), null).then((picture) => MapEntry(name, picture)),
+        vg
+            .loadPicture(AssetBytesLoader('assets/icons/svg/$name.svg', packageName: 'zanshin_ui'), null)
+            .then((picture) => MapEntry(name, picture)),
     ]);
     return IconRegistry._(Map<String, PictureInfo>.fromEntries(entries));
   }
@@ -43,20 +44,4 @@ class IconRegistryScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(IconRegistryScope oldWidget) => !identical(registry, oldWidget.registry);
-}
-
-/// DI module handing the boot-loaded [IconRegistry] to the graph, like `SettingsModule(store:)`: the registry is
-/// loaded before the component exists, so the graph stays synchronous.
-@module
-class IconModule {
-  /// Wraps an already loaded [registry].
-  IconModule({required this.registry});
-
-  /// The registry every consumer receives.
-  final IconRegistry registry;
-
-  /// Provides the app-wide [IconRegistry].
-  @provides
-  @singleton
-  IconRegistry iconRegistry() => registry;
 }

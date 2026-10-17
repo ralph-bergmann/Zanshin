@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:material_ui/material_ui.dart';
-
-import '../../shared/design/zs_app_theme.dart';
-import '../../shared/design/zs_appearance.dart';
-import '../../shared/design/zs_root.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
 /// The main window's content when the boot failed: a headline and the
 /// selectable error text on the app's own background. No retry — ⌘Q quits as

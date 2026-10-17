@@ -2,7 +2,7 @@
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/shared/design/zs_values.dart';
+import 'package:zanshin_ui/src/design/zs_values.dart';
 
 /// Whether [actual], read back from a `Paint` (its channels are stored as 32-bit floats), is [expected].
 bool sameColor(Color actual, Color expected) =>

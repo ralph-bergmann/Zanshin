@@ -11,7 +11,7 @@ import '../design/zs_values.dart';
 /// The one paint path every material shares: the CSS box of `.zs-glass` and its siblings (DS components/base.css:2,
 /// :7), painted in one render box from 11.1's tokens. `ZsGlass`, `ZsMenuMaterial`, `ZsSheet` and `ZsWindowFill`
 /// pick the values; the other glass builds (the @ pill with its own `--at-chrome-edge` border, the large primary's
-/// gold layer over the glass) compose or extend `ZsSurface` in their own stories. The folder `shared/materials/` is
+/// gold layer over the glass) compose or extend `ZsSurface` in their own stories. The folder `materials/` is
 /// Claude's proposal (Story 11.2).
 ///
 /// **Geometry** (CSS Backgrounds 3, border-box sizing): the outer shape is the box at [radius], each corner clamped

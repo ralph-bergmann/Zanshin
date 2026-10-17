@@ -7,8 +7,8 @@ import 'package:logging/logging.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
-import '../../shared/widgets/icon_registry.dart';
 import 'boot_failure.dart';
 
 /// The app's version and build number, as the splash's footer shows them.

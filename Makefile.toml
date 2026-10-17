@@ -72,6 +72,9 @@ dependencies = [
     "gate-test-settings",
     "gate-test-settings-analyze",
     "gate-test-settings-format",
+    "gate-test-ui",
+    "gate-test-ui-analyze",
+    "gate-test-ui-format",
     "gate-test-cargo-deny",
     "gate-test-cargo-hygiene",
     "gate-test-jj-adapter-hygiene",
@@ -236,6 +239,24 @@ private = true
 command = "dart"
 args = ["format", "--output=none", "--set-exit-if-changed", "."]
 cwd = "packages/zanshin_settings"
+
+[tasks.test-ui]
+private = true
+command = "flutter"
+args = ["test"]
+cwd = "packages/zanshin_ui"
+
+[tasks.test-ui-analyze]
+private = true
+command = "dart"
+args = ["analyze", "--fatal-infos", "--fatal-warnings"]
+cwd = "packages/zanshin_ui"
+
+[tasks.test-ui-format]
+private = true
+command = "dart"
+args = ["format", "--output=none", "--set-exit-if-changed", "."]
+cwd = "packages/zanshin_ui"
 
 [tasks.test-cargo-deny]
 private = true
@@ -433,6 +454,18 @@ run_task = "test-settings-analyze"
 [tasks.gate-test-settings-format]
 extend = "gate-step"
 run_task = "test-settings-format"
+
+[tasks.gate-test-ui]
+extend = "gate-step"
+run_task = "test-ui"
+
+[tasks.gate-test-ui-analyze]
+extend = "gate-step"
+run_task = "test-ui-analyze"
+
+[tasks.gate-test-ui-format]
+extend = "gate-step"
+run_task = "test-ui-format"
 
 [tasks.gate-test-cargo-deny]
 extend = "gate-step"

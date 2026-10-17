@@ -2,12 +2,12 @@
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/shared/design/zs_colors.dart';
-import 'package:zanshin/src/shared/design/zs_metrics.dart';
-import 'package:zanshin/src/shared/widgets/icon_registry.dart';
-import 'package:zanshin/src/shared/widgets/zanshin_icon.dart';
+import 'package:zanshin_ui/src/design/zs_colors.dart';
+import 'package:zanshin_ui/src/design/zs_metrics.dart';
+import 'package:zanshin_ui/src/icons/icon_registry.dart';
+import 'package:zanshin_ui/src/icons/zanshin_icon.dart';
 
-import '../../helpers/icon_registry.dart';
+import '../helpers/icon_registry.dart';
 
 bool _isSaveLayer(Symbol method, List<dynamic> arguments) => method == #saveLayer;
 

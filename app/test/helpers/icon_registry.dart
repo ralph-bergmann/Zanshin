@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/shared/widgets/icon_registry.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
 /// The app's icon registry, loaded once per test file by [setUpIconRegistry].
 late IconRegistry testIconRegistry;

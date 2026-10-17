@@ -11,8 +11,8 @@ import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
-import '../../shared/widgets/icon_registry.dart';
 import '../window/app_windows.dart';
 import '../window/splash_window_controller.dart';
 import 'splash_card.dart';

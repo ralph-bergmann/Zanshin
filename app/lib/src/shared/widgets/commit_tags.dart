@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:material_ui/material_ui.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
-import '../design/zs_metrics.dart';
 import '../theme/zanshin_colors.dart';
-import 'zanshin_icon.dart';
 
 class CommitTag extends StatelessWidget {
   const CommitTag._({required this.label, required this.bg, required this.fg, this.icon});

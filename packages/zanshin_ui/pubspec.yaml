@@ -1,0 +1,50 @@
+name: zanshin_ui
+description: Zanshin's design system - tokens, glass materials and the DS icons and fonts.
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.14.0-143.0.dev
+  flutter: ^3.48.0-1.0.pre-295
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # WHY: the app's Material library is material_ui, whose ThemeMode and ThemeData are distinct types from
+  # package:flutter/material.dart's — the theme built here must use the ones the app feeds into MaterialApp.
+  material_ui: ^1.1.0
+  # Paints the icons precompiled by vector_graphics_compiler (the asset transformer below).
+  vector_graphics: ^1.2.3
+  zanshin_settings:
+    path: ../zanshin_settings
+  zanshin_shell:
+    path: ../zanshin_shell
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+  # The asset transformer that precompiles assets/icons/svg/ at build time (decision 16.32).
+  # WHY: the app's build needs it too: flutter_tools runs `dart run vector_graphics_compiler` from the app's
+  # directory, which resolves it through the pub workspace's shared package config. The app does not list it.
+  vector_graphics_compiler: ^1.3.0
+
+flutter:
+  assets:
+    - path: assets/icons/svg/
+      transformers:
+        - package: vector_graphics_compiler
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: 'assets/fonts/Inter/Inter-VariableFont_opsz,wght.ttf'
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrains_Mono/JetBrainsMono-VariableFont_wght.ttf
+    - family: ShipporiMincho
+      fonts:
+        - asset: assets/fonts/Shippori_Mincho/ShipporiMincho-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Shippori_Mincho/ShipporiMincho-SemiBold.ttf
+          weight: 600

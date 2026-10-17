@@ -12,10 +12,8 @@ import 'package:zanshin/src/features/bootstrap/boot_failure.dart';
 import 'package:zanshin/src/features/bootstrap/splash_card.dart';
 import 'package:zanshin/src/features/bootstrap/splash_card_render.dart';
 import 'package:zanshin/src/features/bootstrap/zanshin_bootstrap.dart';
-import 'package:zanshin/src/shared/design/zs_appearance.dart';
-import 'package:zanshin/src/shared/design/zs_colors.dart';
-import 'package:zanshin/src/shared/widgets/icon_registry.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/icon_registry.dart';
 
@@ -559,7 +557,7 @@ void main() {
     final versionSpan = tester.widget<RichText>(find.byKey(splashVersionKey)).text as TextSpan;
     expect(versionSpan.style, splashVersionStyle);
     expect(versionSpan.style?.color, const Color(0xFFE7DCC4));
-    expect(versionSpan.style?.fontFamily, 'JetBrainsMono');
+    expect(versionSpan.style?.fontFamily, ZsType.monoFamily);
     expect(versionSpan.style?.fontSize, 13);
     final List<InlineSpan> parts = versionSpan.children!;
     expect((parts[0] as TextSpan).text, '2026.9.1');

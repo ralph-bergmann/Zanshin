@@ -3,9 +3,9 @@
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/shared/design/zs_appearance.dart';
-import 'package:zanshin/src/shared/design/zs_colors.dart';
-import 'package:zanshin/src/shared/design/zs_values.dart';
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
+import 'package:zanshin_ui/src/design/zs_colors.dart';
+import 'package:zanshin_ui/src/design/zs_values.dart';
 
 /// Matches a colour matrix entry by entry within 1e-9.
 Matcher _matrix(List<double> expected) => pairwiseCompare<double, double>(

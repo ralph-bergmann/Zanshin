@@ -19,6 +19,7 @@ import 'package:flutter/src/widgets/_window.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:yaru/yaru.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
 import 'src/features/window/app_windows.dart';
 
@@ -183,7 +184,7 @@ class _WindowContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DefaultTextStyle(
-    style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: tone.dim),
+    style: TextStyle(fontFamily: ZsType.sansFamily, fontSize: 12, color: tone.dim),
     child: Column(
       children: [
         _TitleBar(tone: tone),
@@ -335,7 +336,7 @@ class _Card extends StatelessWidget {
             ),
           ],
         ),
-        Text(meta, style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 10.5)),
+        Text(meta, style: const TextStyle(fontFamily: ZsType.monoFamily, fontSize: 10.5)),
         for (final width in skeletons)
           FractionallySizedBox(
             alignment: Alignment.centerLeft,

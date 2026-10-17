@@ -2,11 +2,10 @@
 
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../shared/data/mock_data.dart';
-import '../../shared/design/zs_metrics.dart';
 import '../../shared/theme/zanshin_colors.dart';
-import '../../shared/widgets/zanshin_icon.dart';
 import '../branches/branches_panel.dart';
 import '../commits/commit_card.dart';
 import '../history/history_column.dart';

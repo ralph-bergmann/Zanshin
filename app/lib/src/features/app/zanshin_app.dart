@@ -9,10 +9,8 @@ import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:yaru/yaru.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
-import '../../shared/design/zs_app_theme.dart';
-import '../../shared/design/zs_appearance.dart';
-import '../../shared/design/zs_root.dart';
 import '../home/home_page.dart';
 import 'zanshin_app_view_model.dart';
 

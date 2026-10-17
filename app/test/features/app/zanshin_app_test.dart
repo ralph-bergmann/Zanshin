@@ -9,12 +9,9 @@ import 'package:material_ui/material_ui.dart';
 import 'package:zanshin/src/features/app/zanshin_app.dart';
 import 'package:zanshin/src/features/app/zanshin_app_view_model.dart';
 import 'package:zanshin/src/features/home/home_page.dart';
-import 'package:zanshin/src/shared/design/zs_appearance.dart';
-import 'package:zanshin/src/shared/design/zs_colors.dart';
-import 'package:zanshin/src/shared/design/zs_elevation.dart';
-import 'package:zanshin/src/shared/design/zs_motion.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/recording_shell.dart';
 

@@ -5,16 +5,16 @@ import 'dart:ui';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/shared/design/zs_appearance.dart';
-import 'package:zanshin/src/shared/design/zs_colors.dart';
-import 'package:zanshin/src/shared/design/zs_elevation.dart';
-import 'package:zanshin/src/shared/design/zs_values.dart';
-import 'package:zanshin/src/shared/materials/zs_glass.dart';
-import 'package:zanshin/src/shared/materials/zs_sheet.dart';
-import 'package:zanshin/src/shared/materials/zs_surface.dart';
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
+import 'package:zanshin_ui/src/design/zs_colors.dart';
+import 'package:zanshin_ui/src/design/zs_elevation.dart';
+import 'package:zanshin_ui/src/design/zs_values.dart';
+import 'package:zanshin_ui/src/materials/zs_glass.dart';
+import 'package:zanshin_ui/src/materials/zs_sheet.dart';
+import 'package:zanshin_ui/src/materials/zs_surface.dart';
 
-import '../../helpers/material_paints.dart';
-import '../../helpers/zs_host.dart';
+import '../helpers/material_paints.dart';
+import '../helpers/zs_host.dart';
 
 /// One glass build of the DS and what it should paint around a child.
 typedef _Glass = ({String name, Widget Function(Widget child) build, Size size, double radius, bool strong});

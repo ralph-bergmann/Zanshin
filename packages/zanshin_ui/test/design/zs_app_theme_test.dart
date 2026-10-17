@@ -2,10 +2,10 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:zanshin/src/shared/design/zs_app_theme.dart';
-import 'package:zanshin/src/shared/design/zs_appearance.dart';
-import 'package:zanshin/src/shared/design/zs_colors.dart';
-import 'package:zanshin/src/shared/design/zs_type.dart';
+import 'package:zanshin_ui/src/design/zs_app_theme.dart';
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
+import 'package:zanshin_ui/src/design/zs_colors.dart';
+import 'package:zanshin_ui/src/design/zs_type.dart';
 
 void main() {
   for (final ZsTheme zsTheme in ZsTheme.values) {

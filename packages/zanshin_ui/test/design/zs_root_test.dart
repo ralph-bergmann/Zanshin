@@ -2,14 +2,14 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:zanshin/src/shared/design/zs_appearance.dart';
-import 'package:zanshin/src/shared/design/zs_colors.dart';
-import 'package:zanshin/src/shared/design/zs_elevation.dart';
-import 'package:zanshin/src/shared/design/zs_metrics.dart';
-import 'package:zanshin/src/shared/design/zs_motion.dart';
-import 'package:zanshin/src/shared/design/zs_root.dart';
-import 'package:zanshin/src/shared/design/zs_type.dart';
 import 'package:zanshin_shell/zanshin_shell.dart' show ShellTheme;
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
+import 'package:zanshin_ui/src/design/zs_colors.dart';
+import 'package:zanshin_ui/src/design/zs_elevation.dart';
+import 'package:zanshin_ui/src/design/zs_metrics.dart';
+import 'package:zanshin_ui/src/design/zs_motion.dart';
+import 'package:zanshin_ui/src/design/zs_root.dart';
+import 'package:zanshin_ui/src/design/zs_type.dart';
 
 const _shell = ShellTheme(
   brightness: Brightness.dark,

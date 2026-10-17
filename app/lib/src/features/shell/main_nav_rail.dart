@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:material_ui/material_ui.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
-import '../../shared/design/zs_metrics.dart';
 import '../../shared/theme/zanshin_colors.dart';
-import '../../shared/widgets/zanshin_icon.dart';
 
 enum NavPanel { history, branches, workstream, reviews, undo }
 

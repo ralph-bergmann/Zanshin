@@ -7,20 +7,25 @@ import 'package:flutter/painting.dart' show TextStyle;
 /// The design system's type (DS tokens/typography.css:6-39): Inter for the UI, JetBrains Mono for anything jj prints
 /// (ids, revsets, commands, paths, diffs, counts), Shippori Mincho only for 残心.
 ///
-/// The roles are [TextStyle]s with the pubspec family names, `fontWeight` plus the variable fonts' `wght` axis
+/// The roles are [TextStyle]s with the registered family names, `fontWeight` plus the variable fonts' `wght` axis
 /// ([FontVariation.weight], as the splash does), CSS half-leading (`height` with [TextLeadingDistribution.even]) and
 /// no colour — a view takes it from `ZsColors`. Flutter has no text-transform, so [caps] upper-cases the string.
 // WHY: a namespace of constants like `ZI`; `caps` and `toCss` belong with them, and there is nothing to construct.
 // ignore: avoid_classes_with_only_static_members
 abstract final class ZsType {
-  /// The pubspec family of the UI font (app/pubspec.yaml).
-  static const sansFamily = 'Inter';
+  // WHY: the families are declared in packages/zanshin_ui/pubspec.yaml, and Flutter registers a dependency's fonts as
+  // `packages/zanshin_ui/<family>` — the names below, which the app's FontManifest test pins. In this package's own
+  // `flutter test` they register unprefixed, and no test there loads them from the manifest.
 
-  /// The pubspec family of the mono font.
-  static const monoFamily = 'JetBrainsMono';
+  /// The registered family of the UI font, `Inter` in packages/zanshin_ui/pubspec.yaml.
+  static const sansFamily = 'packages/zanshin_ui/Inter';
 
-  /// The pubspec family of Shippori Mincho, subset to 残心 and used for nothing else.
-  static const kanjiFamily = 'ShipporiMincho';
+  /// The registered family of the mono font, `JetBrainsMono` in the pubspec.
+  static const monoFamily = 'packages/zanshin_ui/JetBrainsMono';
+
+  /// The registered family of Shippori Mincho (`ShipporiMincho` in the pubspec), subset to 残心 and used for nothing
+  /// else.
+  static const kanjiFamily = 'packages/zanshin_ui/ShipporiMincho';
 
   // ---- font stacks · DS tokens/typography.css:7-9 (the web stacks; Flutter uses the pubspec families) ----
 

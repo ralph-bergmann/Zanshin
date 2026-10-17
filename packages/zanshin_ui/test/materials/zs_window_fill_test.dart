@@ -4,15 +4,15 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/shared/design/zs_appearance.dart';
-import 'package:zanshin/src/shared/design/zs_colors.dart';
-import 'package:zanshin/src/shared/design/zs_values.dart';
-import 'package:zanshin/src/shared/materials/zs_sheet.dart';
-import 'package:zanshin/src/shared/materials/zs_surface.dart';
-import 'package:zanshin/src/shared/materials/zs_window_fill.dart';
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
+import 'package:zanshin_ui/src/design/zs_colors.dart';
+import 'package:zanshin_ui/src/design/zs_values.dart';
+import 'package:zanshin_ui/src/materials/zs_sheet.dart';
+import 'package:zanshin_ui/src/materials/zs_surface.dart';
+import 'package:zanshin_ui/src/materials/zs_window_fill.dart';
 
-import '../../helpers/material_paints.dart';
-import '../../helpers/zs_host.dart';
+import '../helpers/material_paints.dart';
+import '../helpers/zs_host.dart';
 
 void main() {
   for (final appearance in const <ZsAppearance>[

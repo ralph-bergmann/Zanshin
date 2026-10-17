@@ -2,12 +2,12 @@
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/shared/design/zs_appearance.dart';
-import 'package:zanshin/src/shared/design/zs_motion.dart';
-import 'package:zanshin/src/shared/materials/zs_menu_material.dart';
-import 'package:zanshin/src/shared/materials/zs_surface_transition.dart';
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
+import 'package:zanshin_ui/src/design/zs_motion.dart';
+import 'package:zanshin_ui/src/materials/zs_menu_material.dart';
+import 'package:zanshin_ui/src/materials/zs_surface_transition.dart';
 
-import '../../helpers/zs_host.dart';
+import '../helpers/zs_host.dart';
 
 /// `translate(dx, dy) scale(scale)` as the transition writes it.
 Matrix4 _pose({double dx = 0, double dy = 0, double scale = 1}) =>

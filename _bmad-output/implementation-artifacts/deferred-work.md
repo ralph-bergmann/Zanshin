@@ -1261,3 +1261,12 @@ _Ralph asked whether the design, theme and UI code that 11.1 and 11.2 put in `ap
   - `zs_appearance.dart` reads `AccentSource` from the settings package and `ShellTheme` from the shell package, and `zs_root.dart` reads `ShellTheme`. So a change to either package reruns the UI package's gate steps, and the design layer knows the settings model.
   - **Follow-up:** if it ever hurts, the appearance scope takes plain values (an accent-source enum of its own, a theme snapshot), and the app maps the settings and the shell onto them.
 - **Older paths in this file.** Info. The "Surfaced in Story 11.1" and "Surfaced in Story 11.2" sections cite `app/lib/src/shared/design/`, `materials/` and `widgets/`. After 11.14 those files are in `packages/zanshin_ui/lib/src/design/`, `materials/` and `icons/`; read the old paths that way. The sections stay as written.
+
+## Surfaced in Story 11.14 (bmad-build-auto, 2026-10-17)
+
+- **The gate-plan rules list each Dart package's dependents by hand, and nothing checks them against the pubspecs, so a new path dependency makes the gate under-plan without an error.** Medium.
+  - `crates/xtask/src/tasks/gate_plan.rs` `RULES` hard-codes the dependents of `zanshin_settings`, the three shell packages and `zanshin_ui`; the inline test `every_package_zanshin_ui_depends_on_plans_zanshin_ui_and_the_app` hard-codes the same paths. Pre-existing since `d81ebd9`; 11.14 added one more package.
+  - **Follow-up:** an inline test that reads the `path:` dependencies of `app/pubspec.yaml` and `packages/*/pubspec.yaml`, follows them transitively and asserts every package rule plans each dependent's group (the test module already reads `Makefile.toml` that way). Worth doing before 11.11 adds a dependency to `zanshin_ui`.
+- **The OFL texts of Inter, JetBrains Mono and Shippori Mincho may not reach the shipped app's licence notices.** Medium (unverified).
+  - The debug bundle's `NOTICES.Z` holds no OFL text; `packages/zanshin_ui/assets/fonts/*/OFL.txt` sit next to the fonts, but no `LICENSE` file or `LicenseRegistry` entry brings them in. Pre-existing before the move.
+  - **Follow-up:** check whether the licence fields in the TTFs' name tables satisfy the OFL; if not, add a `LICENSE` to `packages/zanshin_ui` (flutter_tools collects package licences into the notices) or register the texts with `LicenseRegistry.addLicense`.

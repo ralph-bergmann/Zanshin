@@ -18,11 +18,11 @@ import 'dart:io';
 import 'dart:ui' show Color;
 
 import 'package:flutter/animation.dart' show Curves;
-import 'package:zanshin/src/shared/design/zs_appearance.dart';
-import 'package:zanshin/src/shared/design/zs_values.dart';
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
+import 'package:zanshin_ui/src/design/zs_values.dart';
 
-/// The design system, relative to `app/`, where `flutter test` runs.
-const dsRoot = '../_bmad-output/implementation-artifacts/design_system';
+/// The design system, relative to `packages/zanshin_ui/`, where `flutter test` runs.
+const dsRoot = '../../_bmad-output/implementation-artifacts/design_system';
 
 /// The attribute each `@media (prefers-…)` feature mirrors.
 const _mediaFeatures = <String, (String, String)>{

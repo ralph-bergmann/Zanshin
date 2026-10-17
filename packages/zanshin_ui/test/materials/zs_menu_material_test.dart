@@ -4,15 +4,15 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/shared/design/zs_appearance.dart';
-import 'package:zanshin/src/shared/design/zs_colors.dart';
-import 'package:zanshin/src/shared/design/zs_elevation.dart';
-import 'package:zanshin/src/shared/design/zs_values.dart';
-import 'package:zanshin/src/shared/materials/zs_menu_material.dart';
-import 'package:zanshin/src/shared/materials/zs_surface.dart';
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
+import 'package:zanshin_ui/src/design/zs_colors.dart';
+import 'package:zanshin_ui/src/design/zs_elevation.dart';
+import 'package:zanshin_ui/src/design/zs_values.dart';
+import 'package:zanshin_ui/src/materials/zs_menu_material.dart';
+import 'package:zanshin_ui/src/materials/zs_surface.dart';
 
-import '../../helpers/material_paints.dart';
-import '../../helpers/zs_host.dart';
+import '../helpers/material_paints.dart';
+import '../helpers/zs_host.dart';
 
 const _box = Size(290, 120);
 

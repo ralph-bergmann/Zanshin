@@ -58,6 +58,9 @@ const ALL_STEPS: &[&str] = &[
     "test-settings",
     "test-settings-analyze",
     "test-settings-format",
+    "test-ui",
+    "test-ui-analyze",
+    "test-ui-format",
     "test-cargo-deny",
     "test-cargo-hygiene",
     "test-jj-adapter-hygiene",
@@ -86,6 +89,7 @@ const SHELL_MACOS: &[&str] = &[
     "test-shell-macos-format",
 ];
 const SHELL_PI: &[&str] = &["test-shell-pi", "test-shell-pi-analyze", "test-shell-pi-format"];
+const UI: &[&str] = &["test-ui", "test-ui-analyze", "test-ui-format"];
 
 /// What one changed path needs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -135,8 +139,8 @@ const RULES: &[(Pattern, &str, Need)] = &[
     ),
     (
         Pattern::Prefix("_bmad-output/implementation-artifacts/design_system/"),
-        "read by the app's DS parity test",
-        Need::Groups(&[APP]),
+        "read by zanshin_ui's DS parity test",
+        Need::Groups(&[UI]),
     ),
     // Docs, planning and agent files.
     (Pattern::Suffix(".md"), "docs", Need::Nothing),
@@ -225,22 +229,27 @@ const RULES: &[(Pattern, &str, Need)] = &[
     (
         Pattern::Prefix("packages/zanshin_settings/"),
         "zanshin_settings",
-        Need::Groups(&[SETTINGS, APP]),
+        Need::Groups(&[SETTINGS, UI, APP]),
     ),
     (
         Pattern::Prefix("packages/zanshin_shell_platform_interface/"),
         "zanshin_shell_platform_interface",
-        Need::Groups(&[SHELL_PI, SHELL_MACOS, SHELL, APP]),
+        Need::Groups(&[SHELL_PI, SHELL_MACOS, SHELL, UI, APP]),
     ),
     (
         Pattern::Prefix("packages/zanshin_shell_macos/"),
         "zanshin_shell_macos",
-        Need::Groups(&[SHELL_MACOS, SHELL, APP]),
+        Need::Groups(&[SHELL_MACOS, SHELL, UI, APP]),
     ),
     (
         Pattern::Prefix("packages/zanshin_shell/"),
         "zanshin_shell",
-        Need::Groups(&[SHELL, APP]),
+        Need::Groups(&[SHELL, UI, APP]),
+    ),
+    (
+        Pattern::Prefix("packages/zanshin_ui/"),
+        "zanshin_ui",
+        Need::Groups(&[UI, APP]),
     ),
     (Pattern::Prefix("app/"), "app", Need::Groups(&[APP])),
 ];
@@ -536,10 +545,45 @@ mod tests {
     fn a_flutter_package_plans_itself_and_every_package_depending_on_it() {
         assert_eq!(steps(classify("app/lib/main.dart").1), APP);
         let pi = steps(classify("packages/zanshin_shell_platform_interface/lib/x.dart").1);
-        for step in SHELL_PI.iter().chain(SHELL_MACOS).chain(SHELL).chain(APP) {
+        for step in SHELL_PI.iter().chain(SHELL_MACOS).chain(SHELL).chain(UI).chain(APP) {
             assert!(pi.contains(step), "{step} missing from {pi:?}");
         }
         assert!(!pi.contains(&"coverage"), "no Rust step for a pure Flutter package");
+    }
+
+    #[test]
+    fn zanshin_ui_plans_itself_and_the_app_and_the_app_plans_only_itself() {
+        let plan = |path: &str| match plan_for(&[path.to_owned()]) {
+            Plan::Steps { steps, .. } => steps,
+            Plan::Full(reason) => panic!("expected steps for {path}, got every step: {reason}"),
+        };
+        assert_eq!(
+            plan("packages/zanshin_ui/lib/a.dart"),
+            [
+                "test-flutter",
+                "test-dart-analyze",
+                "test-dart-format",
+                "test-ui",
+                "test-ui-analyze",
+                "test-ui-format"
+            ]
+        );
+        assert_eq!(plan("app/lib/a.dart"), APP);
+    }
+
+    #[test]
+    fn every_package_zanshin_ui_depends_on_plans_zanshin_ui_and_the_app() {
+        for path in [
+            "packages/zanshin_settings/lib/a.dart",
+            "packages/zanshin_shell/lib/a.dart",
+            "packages/zanshin_shell_macos/lib/a.dart",
+            "packages/zanshin_shell_platform_interface/lib/a.dart",
+        ] {
+            let planned = steps(classify(path).1);
+            for step in UI.iter().chain(APP) {
+                assert!(planned.contains(step), "{step} missing for {path}: {planned:?}");
+            }
+        }
     }
 
     #[test]
@@ -601,10 +645,10 @@ mod tests {
         );
         assert_eq!(steps(classify("docs/ffi-abi.md").1), RUST);
         let ds = "_bmad-output/implementation-artifacts/design_system/tokens/colors.css";
-        assert_eq!(steps(classify(ds).1), APP);
+        assert_eq!(steps(classify(ds).1), UI);
         assert_eq!(
             steps(classify("_bmad-output/implementation-artifacts/design_system/readme.md").1),
-            APP
+            UI
         );
     }
 

@@ -14,14 +14,15 @@ import 'package:logging/logging.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
 import 'main.inject.dart' as g;
 import 'src/app/worker_lifecycle_module.dart';
 import 'src/features/app/zanshin_app.dart';
 import 'src/features/bootstrap/boot_window_host.dart';
+import 'src/features/bootstrap/icon_module.dart';
 import 'src/features/bootstrap/zanshin_bootstrap.dart';
 import 'src/features/window/app_windows.dart';
-import 'src/shared/widgets/icon_registry.dart';
 
 final _log = Logger('zanshin.bootstrap');
 

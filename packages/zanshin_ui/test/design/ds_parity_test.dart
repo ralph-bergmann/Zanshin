@@ -6,13 +6,13 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vector_graphics_compiler/vector_graphics_compiler.dart' as vgc;
-import 'package:zanshin/src/shared/design/zs_appearance.dart';
-import 'package:zanshin/src/shared/design/zs_colors.dart';
-import 'package:zanshin/src/shared/design/zs_elevation.dart';
-import 'package:zanshin/src/shared/design/zs_metrics.dart';
-import 'package:zanshin/src/shared/design/zs_motion.dart';
-import 'package:zanshin/src/shared/design/zs_type.dart';
-import 'package:zanshin/src/shared/widgets/zanshin_icon.dart';
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
+import 'package:zanshin_ui/src/design/zs_colors.dart';
+import 'package:zanshin_ui/src/design/zs_elevation.dart';
+import 'package:zanshin_ui/src/design/zs_metrics.dart';
+import 'package:zanshin_ui/src/design/zs_motion.dart';
+import 'package:zanshin_ui/src/design/zs_type.dart';
+import 'package:zanshin_ui/src/icons/zanshin_icon.dart';
 
 import 'css_token_reader.dart';
 

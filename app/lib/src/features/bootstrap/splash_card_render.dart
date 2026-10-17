@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
+import 'package:zanshin_ui/zanshin_ui.dart';
 
 import 'splash_card.dart';
 
@@ -35,27 +36,27 @@ const _railWhite = Color(0x12FFFFFF);
 
 /// The version part of the footer's version line.
 const splashVersionStyle = TextStyle(
-  fontFamily: 'JetBrainsMono',
+  fontFamily: ZsType.monoFamily,
   fontSize: 13,
   color: Color(0xFFE7DCC4),
 );
 
 /// The `· Build <n>` part of the footer's version line.
 const splashBuildStyle = TextStyle(
-  fontFamily: 'JetBrainsMono',
+  fontFamily: ZsType.monoFamily,
   fontSize: 13,
   color: Color(0xFF8792B4),
 );
 
 /// The boot status line, bottom right.
 const splashStatusStyle = TextStyle(
-  fontFamily: 'Inter',
+  fontFamily: ZsType.sansFamily,
   fontSize: 13,
   color: Color(0xFF98A3C2),
 );
 
 const _kanjiStyle = TextStyle(
-  fontFamily: 'ShipporiMincho',
+  fontFamily: ZsType.kanjiFamily,
   fontSize: 44,
   fontWeight: FontWeight.w500,
   letterSpacing: 1.8,
@@ -63,7 +64,7 @@ const _kanjiStyle = TextStyle(
 );
 
 const _watermarkStyle = TextStyle(
-  fontFamily: 'ShipporiMincho',
+  fontFamily: ZsType.kanjiFamily,
   fontSize: 144,
   fontWeight: FontWeight.w600,
   height: 1,
@@ -71,7 +72,7 @@ const _watermarkStyle = TextStyle(
 );
 
 const _taglineStyle = TextStyle(
-  fontFamily: 'Inter',
+  fontFamily: ZsType.sansFamily,
   fontSize: 13,
   fontWeight: FontWeight.w500,
   fontVariations: <FontVariation>[FontVariation.weight(500)],

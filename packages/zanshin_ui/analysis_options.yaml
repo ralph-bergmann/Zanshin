@@ -1,0 +1,5 @@
+include: ../../linter/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**

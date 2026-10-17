@@ -6,16 +6,16 @@ import 'dart:typed_data' show ByteData;
 import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zanshin/src/shared/design/zs_accents.dart';
-import 'package:zanshin/src/shared/design/zs_appearance.dart';
-import 'package:zanshin/src/shared/design/zs_colors.dart';
-import 'package:zanshin/src/shared/design/zs_elevation.dart';
-import 'package:zanshin/src/shared/design/zs_metrics.dart';
-import 'package:zanshin/src/shared/design/zs_motion.dart';
-import 'package:zanshin/src/shared/design/zs_type.dart';
-import 'package:zanshin/src/shared/design/zs_values.dart';
 import 'package:zanshin_settings/zanshin_settings.dart' show AccentSource;
 import 'package:zanshin_shell/zanshin_shell.dart' show ShellTheme;
+import 'package:zanshin_ui/src/design/zs_accents.dart';
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
+import 'package:zanshin_ui/src/design/zs_colors.dart';
+import 'package:zanshin_ui/src/design/zs_elevation.dart';
+import 'package:zanshin_ui/src/design/zs_metrics.dart';
+import 'package:zanshin_ui/src/design/zs_motion.dart';
+import 'package:zanshin_ui/src/design/zs_type.dart';
+import 'package:zanshin_ui/src/design/zs_values.dart';
 
 const _accentNames = <String>[
   '--accent',
@@ -181,15 +181,15 @@ void main() {
         expect(style.letterSpacing, letterSpacing, reason: key);
         expect(style.color, isNull, reason: key);
         final bool mono = const <String>{'--type-id', '--type-command', '--type-code'}.contains(key);
-        expect(style.fontFamily, mono ? 'JetBrainsMono' : 'Inter', reason: key);
-        expect(style.fontFamilyFallback, mono ? <String>['Inter'] : isNull, reason: key);
+        expect(style.fontFamily, mono ? 'packages/zanshin_ui/JetBrainsMono' : 'packages/zanshin_ui/Inter', reason: key);
+        expect(style.fontFamilyFallback, mono ? <String>['packages/zanshin_ui/Inter'] : isNull, reason: key);
       }
       expect(ZsType.caps('Bookmarks'), 'BOOKMARKS');
-      expect(ZsType.kanjiFamily, 'ShipporiMincho');
+      expect(ZsType.kanjiFamily, 'packages/zanshin_ui/ShipporiMincho');
     });
 
     test('the variable Inter font applies the weight axis: a 600 line is wider than a 400 line', () async {
-      final loader = FontLoader('Inter')
+      final loader = FontLoader(ZsType.sansFamily)
         ..addFont(
           File(
             'assets/fonts/Inter/Inter-VariableFont_opsz,wght.ttf',

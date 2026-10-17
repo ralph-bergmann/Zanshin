@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 import 'package:flutter/widgets.dart';
-import 'package:zanshin/src/shared/design/zs_appearance.dart';
-import 'package:zanshin/src/shared/design/zs_root.dart';
+import 'package:zanshin_ui/src/design/zs_appearance.dart';
+import 'package:zanshin_ui/src/design/zs_root.dart';
 
 /// A window root for material tests: [ZsRoot] for [appearance], the default key bindings of a `WidgetsApp` (Tab and
 /// Shift+Tab traversal, Esc) with a traversal policy, a [BackdropGroup] unless [group] is false (11.3's per-window
