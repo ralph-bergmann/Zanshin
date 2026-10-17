@@ -1264,10 +1264,10 @@ _Ralph asked whether the design, theme and UI code that 11.1 and 11.2 put in `ap
 
 ## Surfaced in Story 11.14 (bmad-build-auto, 2026-10-17)
 
-- **The gate-plan rules list each Dart package's dependents by hand, and nothing checks them against the pubspecs, so a new path dependency makes the gate under-plan without an error.** Medium.
+- ~~**The gate-plan rules list each Dart package's dependents by hand, and nothing checks them against the pubspecs, so a new path dependency makes the gate under-plan without an error.**~~ — RESOLVED 2026-10-17 (spec-11-14-closing-gate-rules-and-font-licences, commit cc8f353): an inline test derives each workspace member's dependents from the pubspecs and checks every package rule against them; a changed member pubspec now plans every step. Medium.
   - `crates/xtask/src/tasks/gate_plan.rs` `RULES` hard-codes the dependents of `zanshin_settings`, the three shell packages and `zanshin_ui`; the inline test `every_package_zanshin_ui_depends_on_plans_zanshin_ui_and_the_app` hard-codes the same paths. Pre-existing since `d81ebd9`; 11.14 added one more package.
   - **Follow-up:** an inline test that reads the `path:` dependencies of `app/pubspec.yaml` and `packages/*/pubspec.yaml`, follows them transitively and asserts every package rule plans each dependent's group (the test module already reads `Makefile.toml` that way). Worth doing before 11.11 adds a dependency to `zanshin_ui`.
-- **The OFL texts of Inter, JetBrains Mono and Shippori Mincho may not reach the shipped app's licence notices.** Medium (unverified).
+- ~~**The OFL texts of Inter, JetBrains Mono and Shippori Mincho may not reach the shipped app's licence notices.**~~ — RESOLVED 2026-10-17 (spec-11-14-closing-gate-rules-and-font-licences, commit 4795404): the TTF name tables fall short of OFL §2, so `zanshin_ui` lists the three `OFL.txt` under `flutter: licenses:`, and an app test checks the bundle's `NOTICES.Z` holds each verbatim. Medium (unverified).
   - The debug bundle's `NOTICES.Z` holds no OFL text; `packages/zanshin_ui/assets/fonts/*/OFL.txt` sit next to the fonts, but no `LICENSE` file or `LicenseRegistry` entry brings them in. Pre-existing before the move.
   - **Follow-up:** check whether the licence fields in the TTFs' name tables satisfy the OFL; if not, add a `LICENSE` to `packages/zanshin_ui` (flutter_tools collects package licences into the notices) or register the texts with `LicenseRegistry.addLicense`.
 

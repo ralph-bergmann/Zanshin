@@ -18,6 +18,8 @@ deferred:
     location: >-
       crates/xtask/src/tasks/gate_plan.rs
     severity: medium
+    resolved: >-
+      2026-10-17 — fixed (spec-11-14-closing-gate-rules-and-font-licences, commit cc8f353): the inline test a_flutter_package_plans_itself_and_every_package_depending_on_it derives each workspace member's dependents from the pubspecs and checks every package rule against them; a changed member pubspec now plans every step.
   - summary: >-
       The OFL texts of Inter, JetBrains Mono and Shippori Mincho may not reach the shipped app's licence notices, which may fall short of the OFL's redistribution terms.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       packages/zanshin_ui/assets/fonts/
     severity: medium (unverified)
+    resolved: >-
+      2026-10-17 — fixed (spec-11-14-closing-gate-rules-and-font-licences, commit 4795404): the TTF name tables fall short of OFL §2, so zanshin_ui's pubspec lists the three OFL.txt under flutter: licenses: and an app test checks the bundle's NOTICES.Z holds each verbatim.
 ---
 
 <intent-contract>
