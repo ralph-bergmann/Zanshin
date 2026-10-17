@@ -48,3 +48,10 @@ flutter:
           weight: 500
         - asset: assets/fonts/Shippori_Mincho/ShipporiMincho-SemiBold.ttf
           weight: 600
+  # WHY: OFL §2 — every bundled copy of a font carries its copyright notice and the licence. The fonts' name tables
+  # hold only a link to it (the Shippori subset not even that); flutter_tools appends these files to the NOTICES of
+  # every app depending on this package.
+  licenses:
+    - assets/fonts/Inter/OFL.txt
+    - assets/fonts/JetBrains_Mono/OFL.txt
+    - assets/fonts/Shippori_Mincho/OFL.txt

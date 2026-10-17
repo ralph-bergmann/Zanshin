@@ -115,8 +115,17 @@ args = ["fmt", "--all", "--check"]
 
 [tasks.test-flutter]
 private = true
-command = "flutter"
-args = ["test"]
+# WHY: `flutter test` rewrites build/unit_test_assets only when the app's own pubspec or a file-backed
+# asset is newer than its AssetManifest.bin (flutter_tools commands/test.dart `_needsRebuild`); the
+# NOTICES bundle is not file-backed, so a dependency's `flutter: licenses:` change would leave a stale
+# NOTICES.Z that the notices test in test/assets/font_manifest_test.dart reads. Deleting the manifest
+# makes every gate run rebuild the test bundle.
+script_runner = "bash"
+script = '''
+set -euo pipefail
+rm -f build/unit_test_assets/AssetManifest.bin
+flutter test
+'''
 cwd = "app"
 # WHY: pin jj/git global config so the Dart suite (which now drives real
 # zanshin_repo_init/open through the cdylib) is deterministic on a clean CI
