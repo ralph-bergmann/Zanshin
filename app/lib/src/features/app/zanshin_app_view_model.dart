@@ -51,16 +51,11 @@ class ZanshinAppViewModel extends ChangeNotifier {
   /// and the shell's report (decision 16.2; [ZsAccentFamily.resolve]), and the shell's accessibility flags.
   ///
   /// The window's key status and full screen are not driven yet (11.12, 11.4) and stay false.
-  ZsAppearance get appearance {
-    final ShellTheme? shell = _shellTheme;
-    return ZsAppearance(
-      theme: effectiveMode == ThemeMode.light ? ZsTheme.paper : ZsTheme.night,
-      family: ZsAccentFamily.resolve(source: _settings.value.appearance.accentSource, shell: shell),
-      increasedContrast: shell?.increaseContrast ?? false,
-      reduceMotion: shell?.reduceMotion ?? false,
-      reduceTransparency: shell?.reduceTransparency ?? false,
-    );
-  }
+  ZsAppearance get appearance => ZsAppearance.fromShell(
+    theme: effectiveMode == ThemeMode.light ? ZsTheme.paper : ZsTheme.night,
+    accentSource: _settings.value.appearance.accentSource,
+    shell: _shellTheme,
+  );
 
   /// One-shot setup for `ViewModelBuilder`'s `init`.
   ///

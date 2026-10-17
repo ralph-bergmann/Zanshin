@@ -18,6 +18,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import 'main.inject.dart' as g;
 import 'src/app/worker_lifecycle_module.dart';
+import 'src/app/zanshin_marionette.dart';
 import 'src/features/app/zanshin_app.dart';
 import 'src/features/bootstrap/boot_window_host.dart';
 import 'src/features/bootstrap/icon_module.dart';
@@ -33,7 +34,7 @@ Future<void> main() async {
   await runZonedGuarded(
     () async {
       if (kDebugMode) {
-        MarionetteBinding.ensureInitialized();
+        MarionetteBinding.ensureInitialized(zanshinMarionetteConfiguration);
       } else {
         WidgetsFlutterBinding.ensureInitialized();
       }

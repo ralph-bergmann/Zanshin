@@ -56,6 +56,11 @@ the `zanshin-graph` lane crate was removed)*
 - `hooks` (Dart Hooks runtime)
 - `package:flutter_lints` + a hand-curated rule set in `app/analysis_options.yaml`
   (no `very_good_analysis` dependency — rules are listed inline)
+- `marionette_flutter` `^0.7.0` (debug builds only — the agent driver; one configuration for the app and
+  the catalogue, `app/lib/src/app/zanshin_marionette.dart`; Story 11.11)
+- `widgetbook` `3.25.0` (dev_dependency, pinned **exactly** — the review catalogue in `app/widgetbook/`;
+  3.25.0 is the last 3.x, and 4.x boots only through `runApp`, which the view-less windowing runner cannot
+  run; Story 11.11)
 - ~~`pana`~~ — license-gate deferred to release phase
 
 **Build & distribution:**
@@ -537,6 +542,23 @@ the `zanshin-graph` lane crate was removed)*
 - `flutter run -d macos` — for UI work only (Ralph's separate scope; Changed 2026-10-14
   (Ralph): also Claude's Epic 10 / Epic 11 stories).
   Requires a prior `cargo make build` so the cdylib is present.
+
+**UI tooling (Story 11.11):**
+- The Zs controls live in `packages/zanshin_ui` (`lib/src/controls/`), on Flutter's widgets-layer primitives
+  and one state core (`ZsControlCore`); the app imports them from `package:zanshin_ui/zanshin_ui.dart`.
+- Every control takes an optional `identifier`, rendered as `Semantics(identifier:)`. Agents (Marionette,
+  tests) match by identifier or by text, **never by coordinates** — coordinate gestures hit the first view,
+  not the window the control is in.
+- An `@experimental`, `@Deprecated` or `@internal` API is used only with one explicit `// ignore:` naming
+  the diagnostic and a `// WHY:` line above it — or it stays out.
+- Widgetbook is pinned exactly at `3.25.0`; no Widgetbook 4 (it boots only through `runApp`), no generator,
+  no Widgetbook Cloud.
+- The catalogue runs with `flutter run -d macos -t widgetbook/main.dart` from `app/`, in a window of its own.
+- `marionette_mcp` is installed with `dart pub global activate marionette_mcp` and must match the app's
+  `marionette_flutter` version exactly.
+- The catalogue's Marionette extension `zanshinCatalogue.open` (debug builds) opens a use case by its
+  Widgetbook path in an appearance: `path=controls/switch/state-matrix` (names joined by `/`, spaces as `-`,
+  lower case), optional `theme`, `accent`, `contrast`, `reduceMotion`, `reduceTransparency`, `inactive`.
 
 **Deferred targets (release phase, not WIP):**
 - `cargo make sign` / `cargo make notarize`

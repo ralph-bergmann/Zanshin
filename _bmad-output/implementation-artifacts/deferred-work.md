@@ -1282,3 +1282,24 @@ _Ralph asked whether the design, theme and UI code that 11.1 and 11.2 put in `ap
 - **The app bundles Yaru's Ubuntu and Ubuntu Mono fonts without the Ubuntu Font Licence in its NOTICES.** Medium.
   - The test bundle's `FontManifest.json` lists `packages/yaru/Ubuntu` and `packages/yaru/UbuntuMono`; the gunzipped `NOTICES.Z` holds no "UBUNTU FONT LICENCE". Ralph's fork (`../yaru.dart/assets/fonts/LICENCE.txt`) has the text but no `flutter: licenses:` entry. UFL 1.0 asks every copy to carry the notice and the licence, like OFL §2. Pre-existing.
   - **Follow-up:** Story 11.10 retires Yaru and its fonts; if Yaru stays past it, add `flutter: licenses: [assets/fonts/LICENCE.txt]` to the fork's pubspec.
+
+## Surfaced in Story 11.11 (bmad-build-auto, 2026-10-17)
+
+- **On a real Mac a busy control shows the arrow, not a busy cursor: the macOS embedder maps `SystemMouseCursors.progress` to the arrow.** Low.
+  - `engine/src/flutter/shell/platform/darwin/macos/framework/Source/FlutterMouseCursorPlugin.mm:34-61` maps no `progress` or `wait`; they fall back to the arrow. The Zs controls set `progress` while busy (DS readme.md:106, :129); widget tests see it, the screen does not.
+  - **Follow-up:** accept it, or draw a busy cursor natively (a custom `NSCursor` through the runner) if Ralph wants the DS's `progress` on screen.
+- **VoiceOver on macOS may not read what the Zs controls put in semantics hints and tooltips (the disabled reason), nor a checkbox's mixed state or menu roles.** Medium (unverified).
+  - Read from the engine, not run: `accessibility_bridge.cc:313-362` derives the AX role from flags only (`SemanticsRole` is never copied, :591-645), uses the hint only for the ignored-node check (:381-384); `ax_platform_node_mac.mm:585-596` (AXHelp) never reads the stored tooltip, and AXValue reports mixed as 0 (:617-623). 11.11 follows the DS and puts the disabled reason in the hint (DS components/base.css:38).
+  - **Follow-up:** check a disabled-with-reason button, a mixed checkbox and a menu with Accessibility Inspector; if confirmed, carry the reason in the label or value, or fix it upstream.
+- **The catalogue has no Graph folder until 10.1 adds it: 10.1's 2026-10-16 note covers only the case that 10.1 lands before 11.11.** Low.
+  - epics.md:8151-8152; 10.1 is backlog and `GraphViewOptions` does not exist yet; the folder's only content is 10.1's demo host (decision 16.30).
+  - **Follow-up:** 10.1 adds the folder "Graph" to `app/widgetbook/catalogue.dart`, its use cases join the smoke test.
+- **material_ui's `TextField` paints no selection while unfocused, so a Zs text field never shows the unemphasized selection of an unfocused field.** Low.
+  - `material_ui-1.5.0/lib/src/text_field.dart:1740` passes the selection colour only while focused; DS readme.md:177 asks for the unemphasized grey in an unfocused field. Inside an inactive window the focused field does show it.
+  - **Follow-up:** none until a screen needs a kept selection in an unfocused field; then paint it in the well (`getBoxesForSelection`) or wrap `EditableText`.
+- **The optional parity test "every component in DS `_ds_manifest.json` has a use case" is not built.** Low.
+  - epics.md:12890 makes it optional; the manifest's 77 entries include the graph, search, push, settings and window components of later stories, so it would fail until they land.
+  - **Follow-up:** add it with the last story that builds a manifest component (11.10 at the latest), or with a list of the entries still owned by open stories.
+- **The rule "`marionette_mcp` must match `marionette_flutter` exactly" cannot be kept as written: the app allows `^0.7.0` and the documented install command takes the newest `marionette_mcp`.** Low. (Surfaced in the review.)
+  - `marionette_mcp-0.7.0/lib/src/vm_service/vm_service_context.dart:110-125` refuses any other binding version; `app/pubspec.yaml:22` allows `^0.7.0` (the lockfile holds 0.7.0 until a `pub upgrade`), and `project-context.md:557-558` installs with a bare `dart pub global activate marionette_mcp`, so either side can move to 0.7.x alone and agents can no longer connect.
+  - **Follow-up:** Ralph's call: pin `marionette_flutter` exactly, or document `dart pub global activate marionette_mcp <the lockfile's version>` and bump both together.

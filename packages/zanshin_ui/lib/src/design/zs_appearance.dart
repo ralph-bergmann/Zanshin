@@ -164,6 +164,23 @@ class ZsAppearance {
   /// The nearest installed appearance, or the default one (night, Multicolor, no delta) outside any window root.
   factory ZsAppearance.of(BuildContext context) => maybeOf(context) ?? const ZsAppearance();
 
+  /// What a window shows for [theme], the Settings choice [accentSource] and the shell's report [shell]: the family
+  /// from [ZsAccentFamily.resolve] (decision 16.2) and the shell's three accessibility flags (all off until the shell
+  /// answered). The window's key status and full screen stay false; 11.12 and 11.4 drive them.
+  ///
+  /// Claude's proposal (Story 11.11): one derivation for the app's view model and the catalogue.
+  factory ZsAppearance.fromShell({
+    required ZsTheme theme,
+    required AccentSource accentSource,
+    required ShellTheme? shell,
+  }) => ZsAppearance(
+    theme: theme,
+    family: ZsAccentFamily.resolve(source: accentSource, shell: shell),
+    increasedContrast: shell?.increaseContrast ?? false,
+    reduceMotion: shell?.reduceMotion ?? false,
+    reduceTransparency: shell?.reduceTransparency ?? false,
+  );
+
   /// Night or paper.
   final ZsTheme theme;
 

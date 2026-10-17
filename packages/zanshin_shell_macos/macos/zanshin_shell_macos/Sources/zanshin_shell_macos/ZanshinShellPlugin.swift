@@ -64,6 +64,17 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
             name: NSScroller.preferredScrollerStyleDidChangeNotification,
             object: nil
         )
+        // `AppleScrollerPagingBehavior` ("Click in the scroll bar to") posts
+        // no change notification, and System Settings or `defaults` can only
+        // change it while another app is active; re-sending the theme when
+        // Zanshin becomes active keeps it fresh for the next track press.
+        // Dart ignores a report that changes nothing.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSystemChanged),
+            name: NSApplication.didBecomeActiveNotification,
+            object: nil
+        )
     }
 
     deinit {
@@ -81,7 +92,8 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
     }
 
     /// Accessibility display options, system colours or the scroller style
-    /// changed; AppKit has the new values once the notification is posted.
+    /// changed, or Zanshin became active; AppKit has the new values once the
+    /// notification is posted.
     @objc private func handleSystemChanged(_ notification: Notification) {
         emitThemeChanged()
     }
