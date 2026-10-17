@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:math' as math;
-import 'dart:ui' show Color, Offset, lerpDouble;
+import 'dart:ui' as ui show Gradient;
+import 'dart:ui' show Color, ColorFilter, ImageFilter, Offset, Rect, Shader, lerpDouble;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart' show BoxShadow;
 
 /// One part of a CSS `box-shadow`, as the design system writes it: offsets, blur and spread in logical pixels.
 ///
-/// Inset parts (such as `--fl-shadow`'s 1 px highlight, DS tokens/effects.css:25) have no [BoxShadow]; 11.2 paints
-/// them, see [ZsShadowStack.inset].
+/// Inset parts (such as `--fl-shadow`'s 1 px highlight, DS tokens/effects.css:25) have no [BoxShadow]; `ZsSurface`
+/// paints them, see [ZsShadowStack.inset].
 @immutable
 class ZsShadow {
   /// Creates a shadow part.
@@ -121,7 +122,7 @@ class ZsShadowStack {
       if (!part.inset) part.toBoxShadow(),
   ];
 
-  /// The inset parts, which no [BoxShadow] can draw; 11.2 paints them.
+  /// The inset parts, which no [BoxShadow] can draw; `ZsSurface` paints them.
   List<ZsShadow> get inset => <ZsShadow>[
     for (final ZsShadow part in parts)
       if (part.inset) part,
@@ -187,6 +188,68 @@ class ZsLinearGradient {
 
   /// The stops, in order.
   final List<ZsGradientStop> stops;
+
+  /// The paint inputs of this gradient over [rect], the box it fills (CSS Images 3 §3.1).
+  ///
+  /// The gradient line runs through the box's centre at [angle] (0 points up, 90 right) and is |w·sin θ| + |h·cos θ|
+  /// long. A stop in percent sits at that share of the line, one in px that far along it; the first stop without a
+  /// position sits at 0 %, the last at 100 %, a position behind an earlier one moves up to it, and every other run
+  /// of unpositioned stops is spread evenly between its neighbours. The result runs from the first stop (`from`) to
+  /// the last (`to`), with the stops normalised to that span — what `ui.Gradient.linear` takes.
+  ({Offset from, Offset to, List<Color> colors, List<double> stops}) resolve(Rect rect) {
+    final double radians = angle * math.pi / 180;
+    final direction = Offset(math.sin(radians), -math.cos(radians));
+    final double length = (rect.width * math.sin(radians)).abs() + (rect.height * math.cos(radians)).abs();
+    final Offset start = rect.center - direction * (length / 2);
+    final positions =
+        <double?>[
+            for (final ZsGradientStop stop in stops)
+              stop.px ?? (stop.percent == null ? null : stop.percent! / 100 * length),
+          ]
+          ..first ??= 0
+          ..last ??= length;
+    double floor = double.negativeInfinity;
+    for (var i = 0; i < positions.length; i++) {
+      final double? at = positions[i];
+      if (at != null) {
+        floor = math.max(floor, at);
+        positions[i] = floor;
+      }
+    }
+    for (var i = 1; i < positions.length - 1; i++) {
+      if (positions[i] != null) {
+        continue;
+      }
+      var next = i;
+      while (positions[next] == null) {
+        next++;
+      }
+      final double before = positions[i - 1]!;
+      final double after = positions[next]!;
+      for (var k = i; k < next; k++) {
+        positions[k] = before + (after - before) * (k - i + 1) / (next - i + 1);
+      }
+      i = next;
+    }
+    final double first = positions.first!;
+    final double span = positions.last! - first;
+    return (
+      from: start + direction * first,
+      to: start + direction * positions.last!,
+      colors: <Color>[for (final ZsGradientStop stop in stops) stop.color],
+      stops: <double>[
+        for (final double? at in positions)
+          if (span == 0) 0 else (at! - first) / span,
+      ],
+    );
+  }
+
+  /// A shader that paints this gradient over [rect] (see [resolve]); past the first and the last stop it keeps their
+  /// colours, as CSS does.
+  Shader createShader(Rect rect) {
+    final ({Offset from, Offset to, List<Color> colors, List<double> stops}) line = resolve(rect);
+    return ui.Gradient.linear(line.from, line.to, line.colors, line.stops);
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -293,6 +356,23 @@ class ZsGlassFilter {
 
   /// The saturation factor (1 leaves colours as they are).
   final double saturate;
+
+  /// The CSS `saturate(s)` colour matrix (Filter Effects 1 §"saturate"), row-major as [ColorFilter.matrix] takes it,
+  /// with [alpha] in the alpha row: below 1 it fades the filtered result into what lies beneath, as CSS opacity does
+  /// (`ZsSheet`'s scrim fades its blur this way).
+  static List<double> saturateMatrix(double s, {double alpha = 1}) => <double>[
+    ...<double>[.213 + .787 * s, .715 - .715 * s, .072 - .072 * s, 0, 0],
+    ...<double>[.213 - .213 * s, .715 + .285 * s, .072 - .072 * s, 0, 0],
+    ...<double>[.213 - .213 * s, .715 - .715 * s, .072 + .928 * s, 0, 0],
+    ...<double>[0, 0, 0, alpha, 0],
+  ];
+
+  /// This filter as one [ImageFilter], for a `BackdropFilter`: the blur first (CSS `blur(N)` takes σ = N), then the
+  /// saturation ([saturateMatrix], with [alpha]), in the order CSS applies a filter list.
+  ImageFilter toImageFilter({double alpha = 1}) => ImageFilter.compose(
+    outer: ColorFilter.matrix(saturateMatrix(saturate, alpha: alpha)),
+    inner: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+  );
 
   /// Interpolates two filters; with `none` on one side the filter switches at the midpoint.
   static ZsGlassFilter? lerp(ZsGlassFilter? a, ZsGlassFilter? b, double t) {
