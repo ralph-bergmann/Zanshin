@@ -330,6 +330,12 @@ the `zanshin-graph` lane crate was removed)*
   the slow part; folded in deliberately, revisit if it bites). After a run that
   raised coverage, commit the updated `coverage-baseline.txt` with the code that
   earned it (improvements raise the baseline in place; it never lowers).
+- Changed 2026-10-17 (Ralph): `coverage` is also where the gate runs the Rust
+  test suites and the `packages/zanshin_core` suite — `test-cargo` / `test-core`
+  left the gate flow (a separate `test-cargo-doc` keeps the doctests, which
+  cargo llvm-cov skips), and `cargo make test` runs `coverage` only when Rust,
+  `packages/zanshin_core`, test fixtures or root config changed since the last
+  green run (see the build-commands bullet below).
 - A regression (a tracked file dropping below baseline, or a new file under the
   `new_file_floor_pct`) FAILS the gate. The fix is to ADD TESTS — never lower the
   baseline to pass. Lowering the floor or adding an `exclude_prefix` is a
@@ -512,7 +518,14 @@ the `zanshin-graph` lane crate was removed)*
 - `cargo make test` — Rust workspace tests + Dart bootstrap tests +
   `cargo deny check advisories bans` + the **coverage ratchet** (runs
   `cargo make coverage`; gates per-file Rust coverage, see `docs/coverage.md`).
-  (Full license-gate + `pana` deferred.)
+  (Full license-gate + `pana` deferred.) Changed 2026-10-17 (Ralph): it runs only
+  the steps the paths changed since its last green run need — `cargo xtask
+  gate-plan` maps each path to its package plus every package depending on it
+  (rules in `crates/xtask/src/tasks/gate_plan.rs`; the stamp lives in
+  `target/gate/last-green`); docs/planning-only changes run nothing, root
+  manifests / toolchains / the gate itself / unknown paths run everything. A test
+  that reads a file outside its own package needs that path in the rules.
+- `cargo make test-full` — every gate step, whatever changed.
 - `cargo make coverage` — measure unified Rust coverage (FFI-path + cargo tests)
   and gate it against `coverage-baseline.txt`; raises the baseline on improvement.
   Standalone form of the ratchet that `cargo make test` also runs.

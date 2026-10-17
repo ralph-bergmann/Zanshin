@@ -77,6 +77,7 @@ cargo install cargo-make
 
 ```sh
 cargo make build   # Rust workspace (release) + Flutter macOS
-cargo make test    # full quality gate
+cargo make test      # quality gate for what changed since the last green run
+cargo make test-full # every quality-gate step
 cargo make codegen # regenerate C header, Dart bindings, and FlatBuffers accessors (manual, commit result)
 ```

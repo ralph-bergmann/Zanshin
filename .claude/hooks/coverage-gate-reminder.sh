@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Stop hook: remind the agent to run the coverage gate when Rust/Dart source has
-# changed since the last successful `cargo make coverage` run.
+# Stop hook: remind the agent to run the quality gate when Rust/Dart source has
+# changed since the last green `cargo make test` run.
 #
 # Tracked in git; registered in .claude/settings.json.
 # It NEVER breaks the session: on any unexpected condition it exits 0 (silent).
@@ -9,8 +9,9 @@
 #   * skip if jq is missing or this Stop is already a hook-triggered continuation
 #     (stop_hook_active) — prevents loops, incl. when the gate genuinely fails;
 #   * skip if no uncommitted .rs/.dart source (generated files excluded);
-#   * skip if every changed source file is OLDER than target/coverage/.gate-ok
-#     (the marker `cargo make coverage` touches on success) — gate already ran;
+#   * skip if every changed source file is OLDER than target/gate/last-green
+#     (the stamp a green `cargo make test` run writes last; the run only executes
+#     the steps the change needs) — gate already ran;
 #   * otherwise block once and tell the model to run `cargo make test`.
 set -euo pipefail
 
@@ -29,7 +30,7 @@ changed="$( { git diff --name-only -- '*.rs' '*.dart'; \
             | grep -vE '(_generated\.rs|bindings\.dart|\.ffi_generated\.dart)$' || true )"
 [ -z "$changed" ] && exit 0
 
-marker="target/coverage/.gate-ok"
+marker="target/gate/last-green"
 need=false
 if [ ! -f "$marker" ]; then
     need=true
@@ -46,5 +47,5 @@ fi
 
 jq -n '{
   decision: "block",
-  reason: "Rust/Dart source changed since the last coverage gate run. Run `cargo make test` (it ends with the per-file coverage ratchet) and make it pass before finishing. If coverage rose, commit the updated coverage-baseline.txt — never lower the baseline to pass; add tests. See docs/coverage.md."
+  reason: "Rust/Dart source changed since the last green gate run. Run `cargo make test` (it runs the steps the change needs, ending with the per-file coverage ratchet when Rust or zanshin_core changed) and make it pass before finishing. If coverage rose, commit the updated coverage-baseline.txt — never lower the baseline to pass; add tests. See docs/coverage.md."
 }'

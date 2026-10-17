@@ -7,6 +7,13 @@ that lowers a file's coverage (or adds a new, under-tested file) fails the gate.
 It is **local-only** (no CI/CD; GitHub is code storage). The gate runs as part of
 `cargo make test` and standalone via `cargo make coverage`.
 
+Inside `cargo make test` the coverage step is also where the Rust test suites and
+the `packages/zanshin_core` suite run (since 2026-10-17 there is no separate
+`cargo test` / `dart test` step; `test-cargo-doc` keeps the doctests, which
+cargo-llvm-cov skips). `cargo make test` runs it only when Rust,
+`packages/zanshin_core`, test fixtures or root config changed since the last green
+run (`cargo xtask gate-plan`); `cargo make test-full` always runs it.
+
 ## What is measured
 
 Coverage here is **Rust-only**. It is the *union* of two separate measurements

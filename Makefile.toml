@@ -45,43 +45,60 @@ cwd = "app"
 # ─── test ───────────────────────────────────────────────────────────────────
 
 [tasks.test]
-description = "Run the WIP-minimal quality gate (cargo test + clippy + fmt + flutter test + dart analyze + dart format + cargo deny advisories+bans + cargo hygiene)."
+description = "Run the quality gate for what changed since the last green run (clippy + fmt + doctests + flutter test + dart analyze + dart format + cargo deny advisories+bans + cargo hygiene + the coverage ratchet, which runs the Rust and zanshin_core test suites). `cargo make test-full` runs every step."
+# WHY: `gate-plan` (cargo xtask gate-plan) maps every path changed since the last green run to the
+# steps it needs and writes them to target/gate/plan; each `gate-*` wrapper runs its step only when
+# the plan lists it, and `gate-stamp` records the verified tree once everything passed. No stamp, a
+# changed toolchain, a root manifest or a path no rule knows plans every step.
 dependencies = [
-    "test-cargo",
-    "test-clippy",
-    "test-fmt",
-    "test-flutter",
-    "test-dart-analyze",
-    "test-dart-format",
-    "test-core",
-    "test-core-analyze",
-    "test-core-format",
-    "test-shell",
-    "test-shell-analyze",
-    "test-shell-format",
-    "test-shell-pi",
-    "test-shell-pi-analyze",
-    "test-shell-pi-format",
-    "test-shell-macos",
-    "test-shell-macos-analyze",
-    "test-shell-macos-format",
-    "test-settings",
-    "test-settings-analyze",
-    "test-settings-format",
-    "test-cargo-deny",
-    "test-cargo-hygiene",
-    "test-jj-adapter-hygiene",
-    "coverage",
+    "gate-plan",
+    "gate-test-clippy",
+    "gate-test-fmt",
+    "gate-test-cargo-doc",
+    "gate-test-flutter",
+    "gate-test-dart-analyze",
+    "gate-test-dart-format",
+    "gate-test-core-analyze",
+    "gate-test-core-format",
+    "gate-test-shell",
+    "gate-test-shell-analyze",
+    "gate-test-shell-format",
+    "gate-test-shell-pi",
+    "gate-test-shell-pi-analyze",
+    "gate-test-shell-pi-format",
+    "gate-test-shell-macos",
+    "gate-test-shell-macos-analyze",
+    "gate-test-shell-macos-format",
+    "gate-test-settings",
+    "gate-test-settings-analyze",
+    "gate-test-settings-format",
+    "gate-test-cargo-deny",
+    "gate-test-cargo-hygiene",
+    "gate-test-jj-adapter-hygiene",
+    "gate-coverage",
+    "gate-stamp",
 ]
+
+[tasks.test-full]
+description = "Run every quality-gate step, whatever changed."
+env = { ZANSHIN_GATE_FULL = "1" }
+run_task = "test"
 
 [tasks.test-cargo]
 private = true
+# WHY: not in the gate flow — `coverage` runs these tests (cargo llvm-cov); kept for manual runs.
 command = "cargo"
 args = ["test", "--workspace"]
 # WHY: redirect the tracing file sink to a throwaway dir so any test that boots the cdylib and
 # triggers zanshin_logging_init never writes into the developer's real ~/Library/Logs/Zanshin
 # (test-isolation). No Rust test inits tracing today, but this future-proofs cheaply.
 env = { ZANSHIN_LOG_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-logs" }
+
+[tasks.test-cargo-doc]
+private = true
+# WHY: the gate's Rust tests run inside `coverage`, and cargo llvm-cov runs no doctests.
+command = "cargo"
+args = ["test", "--workspace", "--doc"]
 
 [tasks.test-clippy]
 private = true
@@ -126,6 +143,7 @@ cwd = "app"
 [tasks.test-core]
 private = true
 description = "Run the pure-Dart zanshin_core bridge suite (real worker isolate + real cdylib) under `dart test`."
+# WHY: not in the gate flow — `coverage` runs this suite against the instrumented cdylib; kept for manual runs.
 command = "dart"
 args = ["test"]
 cwd = "packages/zanshin_core"
@@ -308,6 +326,129 @@ if [ "$violations" -ne 0 ]; then
     exit 1
 fi
 '''
+
+# ─── gate selection ─────────────────────────────────────────────────────────
+
+[tasks.gate-plan]
+private = true
+description = "Plan the gate steps the changes since the last green run need (target/gate/plan)."
+script_runner = "bash"
+script = '''
+set -euo pipefail
+args=(--workspace-root "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}")
+if [ "${ZANSHIN_GATE_FULL:-}" = "1" ]; then
+    args+=(--full)
+fi
+cargo run -q -p xtask -- gate-plan "${args[@]}"
+'''
+
+[tasks.gate-stamp]
+private = true
+description = "Record the tree this green gate run verified (target/gate/last-green)."
+command = "cargo"
+args = ["run", "-q", "-p", "xtask", "--", "gate-stamp", "--workspace-root", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}"]
+
+[tasks.gate-step]
+private = true
+# WHY: the wrappers below run their step only when gate-plan listed them; the steps themselves stay
+# unconditional, so `cargo make coverage` and `cargo make --allow-private test-…` keep working alone.
+condition_script = ['grep -qx "$CARGO_MAKE_CURRENT_TASK_NAME" "$CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY/target/gate/plan"']
+
+[tasks.gate-test-clippy]
+extend = "gate-step"
+run_task = "test-clippy"
+
+[tasks.gate-test-fmt]
+extend = "gate-step"
+run_task = "test-fmt"
+
+[tasks.gate-test-cargo-doc]
+extend = "gate-step"
+run_task = "test-cargo-doc"
+
+[tasks.gate-test-flutter]
+extend = "gate-step"
+run_task = "test-flutter"
+
+[tasks.gate-test-dart-analyze]
+extend = "gate-step"
+run_task = "test-dart-analyze"
+
+[tasks.gate-test-dart-format]
+extend = "gate-step"
+run_task = "test-dart-format"
+
+[tasks.gate-test-core-analyze]
+extend = "gate-step"
+run_task = "test-core-analyze"
+
+[tasks.gate-test-core-format]
+extend = "gate-step"
+run_task = "test-core-format"
+
+[tasks.gate-test-shell]
+extend = "gate-step"
+run_task = "test-shell"
+
+[tasks.gate-test-shell-analyze]
+extend = "gate-step"
+run_task = "test-shell-analyze"
+
+[tasks.gate-test-shell-format]
+extend = "gate-step"
+run_task = "test-shell-format"
+
+[tasks.gate-test-shell-pi]
+extend = "gate-step"
+run_task = "test-shell-pi"
+
+[tasks.gate-test-shell-pi-analyze]
+extend = "gate-step"
+run_task = "test-shell-pi-analyze"
+
+[tasks.gate-test-shell-pi-format]
+extend = "gate-step"
+run_task = "test-shell-pi-format"
+
+[tasks.gate-test-shell-macos]
+extend = "gate-step"
+run_task = "test-shell-macos"
+
+[tasks.gate-test-shell-macos-analyze]
+extend = "gate-step"
+run_task = "test-shell-macos-analyze"
+
+[tasks.gate-test-shell-macos-format]
+extend = "gate-step"
+run_task = "test-shell-macos-format"
+
+[tasks.gate-test-settings]
+extend = "gate-step"
+run_task = "test-settings"
+
+[tasks.gate-test-settings-analyze]
+extend = "gate-step"
+run_task = "test-settings-analyze"
+
+[tasks.gate-test-settings-format]
+extend = "gate-step"
+run_task = "test-settings-format"
+
+[tasks.gate-test-cargo-deny]
+extend = "gate-step"
+run_task = "test-cargo-deny"
+
+[tasks.gate-test-cargo-hygiene]
+extend = "gate-step"
+run_task = "test-cargo-hygiene"
+
+[tasks.gate-test-jj-adapter-hygiene]
+extend = "gate-step"
+run_task = "test-jj-adapter-hygiene"
+
+[tasks.gate-coverage]
+extend = "gate-step"
+run_task = "coverage"
 
 # ─── codegen ────────────────────────────────────────────────────────────────
 
@@ -587,11 +728,6 @@ if [ -n "$extern_uncovered" ]; then
     exit 1
 fi
 echo "extern-coverage: OK — every zanshin-ffi extern \"C\" fn is covered (allow: $EXTERN_COV_ALLOW)."
-
-# Success marker: only reached when the gate above passed (set -e). The Stop-hook
-# reminder (.claude/hooks/coverage-gate-reminder.sh) compares source mtimes against
-# this file to decide whether the gate still needs to run.
-touch "$COV/.gate-ok"
 '''
 
 # ─── clean ──────────────────────────────────────────────────────────────────

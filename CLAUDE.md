@@ -49,14 +49,23 @@ rather than baking in defaults. See project-context.md § zanshin-jj for the can
 
 `cargo make test` is the single local quality gate (there is no CI — GitHub is
 code storage only). Run it — and make it pass — before considering any code
-change complete. It runs: `cargo test` + clippy (pedantic, `-D warnings`) +
-rustfmt + `flutter test` + `dart analyze`/`format` (app + `packages/zanshin_core`)
-+ `cargo deny` + the **coverage ratchet**.
+change complete. Its steps: clippy (pedantic, `-D warnings`) + rustfmt + Rust
+doctests + `flutter test` / `dart analyze` / `dart format` per Dart package +
+`cargo deny` + the **coverage ratchet**, which also runs the Rust test suites and
+the `packages/zanshin_core` suite.
+
+Changed 2026-10-17 (Ralph): **the gate runs only the steps the changes since its
+last green run need** — a path maps to its package plus every package depending
+on it (`cargo xtask gate-plan`, rules in `crates/xtask/src/tasks/gate_plan.rs`);
+docs/planning-only changes run nothing; root manifests, toolchains, the gate
+itself and unknown paths run everything. `cargo make test-full` runs every step.
+A test that reads a file outside its own package needs that path in the rules.
 
 ## Coverage ratchet (always check coverage after tests)
 
-`cargo make test` ends with `cargo make coverage`, which gates **per-file Rust
-line coverage** against the committed `coverage-baseline.txt`:
+`cargo make test` ends with `cargo make coverage` whenever Rust or
+`packages/zanshin_core` changed; it gates **per-file Rust line coverage**
+against the committed `coverage-baseline.txt`:
 
 - Coverage may **rise but never drop**; a regression fails the gate. The fix is
   to **add tests**, never to lower the baseline.
