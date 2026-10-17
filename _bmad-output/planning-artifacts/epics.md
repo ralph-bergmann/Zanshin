@@ -639,6 +639,8 @@ The epic follows the pass-through rule (`project-context.md:202`; FR-JJ-17 as Ep
 - **User outcome, amended:** ⌘W on the project window closes the project and shows Projects (decision 16.16). A named macOS accent colour recolours selection and controls (decision 16.2).
 - **Sequencing:** 11.1 → 11.2 → 11.11 → 11.3; 11.12 after 11.4 and before 11.5–11.7 and 10.22; 11.13 after 11.12, 10.9 and 10.23, and before 11.5–11.8, which wire their handlers to it. Details in the Epic 11 header.
 
+**Update 2026-10-17** (Ralph, console session after 11.1 and 11.2 landed): Story 11.14 moves the tokens, the materials and the DS icons from `app/lib/src/shared/` into `packages/zanshin_ui`, and 11.11 builds its controls there. It supersedes 11.1's design question (a). The order becomes 11.1 → 11.2 → 11.14 → 11.11 → 11.3, and 11.14 also precedes 10.1.
+
 ---
 
 ### Cross-Cutting Concerns (no dedicated epic)
@@ -652,6 +654,7 @@ These are reviewed in every epic's acceptance criteria rather than implemented o
 
 > **Sequencing recap (WIP):** Epic 1 → Epic 2 → Epic 3, then Epics 4, 5, 6 parallelizable, then Epic 7. Epic 8 is concurrent with Epic 1 (just the unsigned build target). Epic 3 (FFI Keystone) blocks all downstream epics that need the FFI envelope/handle/watcher patterns. Epic 9 (the ADR-0003 operation build-out) follows Epic 6 and is post-WIP-minimal (scheduling TBD). **2026-09-26:** Epic 4 is reopened for Stories 4.10–4.12 (topology/content split, the Dart layout engine on the worker isolate, the topology wire); Epic 10 (the commit-graph view — Flutter UI built by Claude at Ralph's request) runs 10.1–10.4 on fake data and adopts 4.10–4.12 in 10.11 / 10.12. **2026-09-28:** the design update adds Story 4.13 (commit stacks in the engine) and Story 10.17 (commit stacks in the view). **2026-09-30:** the gaps study and the animation showcase add Stories 10.19 (hidden history) and 10.20 (graph animations). **2026-10-14:** the floating-client export and the design system add Stories 4.14, 4.15, 9.48–9.50 and 10.21–10.27, and Epic 11, the floating app shell, which Claude builds after Ralph's scope change.
 > **2026-10-16:** the design-system rounds 1–3 add Stories 11.11 (the Zs control library and the Widgetbook catalogue), 11.12 (the window foundation) and 11.13 (the menu bar and shortcuts); the decisions 16.1–16.47 are in the Epic 11 header.
+> **2026-10-17:** Story 11.14 (the `zanshin_ui` package: tokens, materials, DS icons and later the controls leave `app/`) comes before 11.11.
 
 ---
 
@@ -7983,7 +7986,7 @@ Added with the design update of 2026-10-14 (cited at `e74ced3`; Epic 11's defect
 - **Code and tests.** Code goes in `app/lib/src/features/graph/`, tests in `app/test/features/graph/` (mirroring). The POC (`app/lib/src/features/graph_poc/`, `app/lib/main4.dart`) is reference only.
 - **Bridge imports.** The app imports only `package:zanshin_core/zanshin_core.dart`. That library exports none of the handle, show, bookmark, mutation, exception or graph types today (`zanshin_core.dart:9-33`). Each story adds the types it consumes to the `show` list; that is what the `[UI/bridge]` tag means.
 - **Material.** Material types come from `package:material_ui` only; its `ThemeMode` is not Flutter's.
-  - *Amended 2026-10-16 (decision 16.1):* no visible control is Material or Yaru. Controls are 11.11's Zs library on Flutter's widgets-layer primitives (`app/lib/src/shared/controls/`), and text entry is Flutter's `TextField` without decoration. The Material types that remain (`MaterialApp`, `ThemeData`) still come from `package:material_ui` only. Yaru leaves by 11.10.
+  - *Amended 2026-10-16 (decision 16.1):* no visible control is Material or Yaru. Controls are 11.11's Zs library on Flutter's widgets-layer primitives (`app/lib/src/shared/controls/`; *since 2026-10-17 `packages/zanshin_ui`, Story 11.14*), and text entry is Flutter's `TextField` without decoration. The Material types that remain (`MaterialApp`, `ThemeData`) still come from `package:material_ui` only. Yaru leaves by 11.10.
 - **Visuals.** Designed visuals are a `RenderBox` with text slots (the `splash_card_render.dart` pattern), not nested `Column`/`Row` trees.
 - **Theme.** *(Amended 2026-10-14: decision (f) of the design update; the earlier text read "Colours and sizes live in a `GraphTheme` `ThemeExtension`, whose dark and light values come from the design tokens (GC:4-5, SC:9-56, SC:2363-2376).")* Colours and sizes come from the design system, `DS` = `_bmad-output/implementation-artifacts/design_system/`, cited as `DS <path>:<line>`.
   - **The token layer (Story 11.1)** holds every DS token once:
@@ -11526,6 +11529,8 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 > - **House rule Code locations** gains `app/lib/src/shared/controls/`, `app/widgetbook/`, `app/lib/src/features/window/` and the menu bar's place in `app/lib/src/features/shell/` (in place below).
 > - **Sequencing** gains 11.11–11.13 (in place below).
 
+> **Update 2026-10-17 (Ralph, console session after 11.1 and 11.2 landed): the `zanshin_ui` package.** Tokens, materials and the DS icons move from `app/lib/src/shared/` into `packages/zanshin_ui`, and 11.11's controls are built there (Story 11.14). This supersedes 11.1's design question (a), "a package only once a second consumer outside the app appears", and its 2026-10-16 restatement. It amends the house rule Code locations and the Sequencing in place, 11.11 items 2 and 3 and its non-goal on a separate Widgetbook package (11.11's note), and the path in the Epic 10 house rule Material. It adds Story 11.14.
+
 **Decisions 2026-10-15/16 (design-system rounds 1–3).** Ralph's decisions of 2026-10-15 (E1–E12 and the evening addendum) and of 2026-10-16 (round 2's decisions 1–6, round 3's proposals 1–6, "mit deinen Vorschlägen"). They apply to Epics 9–11. Claude's proposals are marked. Sources:
 - V1 = `_bmad-output/planning-artifacts/research/design-system-validation-2026-10-15.md` (§3 E1–E12 and Ralph's "Stand" block, §4, §6);
 - V2 = `…/research/design-system-validation-round-2-2026-10-16.md` (§4 "what we do right in Flutter", §5, §6);
@@ -11649,6 +11654,7 @@ Epic 11 hosts them through 11.3's slots and 10.5's contract. Insets go into the 
   - `app/lib/src/features/undo_timeline/`: 11.9;
   - `app/lib/src/shared/design/`: 11.1's tokens;
   - `app/lib/src/shared/controls/`: 11.11's Zs controls *(added 2026-10-16, Claude's proposal)*;
+  - *Amended 2026-10-17 (Ralph; Story 11.14):* the two lines above are superseded. `packages/zanshin_ui` holds the tokens (`lib/src/design/`), 11.2's materials (`lib/src/materials/`), the DS icons (`lib/src/icons/`) and 11.11's Zs controls (`lib/src/controls/`); its tests are under `packages/zanshin_ui/test/`. The app imports only `package:zanshin_ui/zanshin_ui.dart`;
   - `app/widgetbook/`: 11.11's Widgetbook catalogue, a dev entrypoint *(added 2026-10-16; decision 16.29)*;
   - `app/lib/src/features/window/`: 11.12's window foundation *(added 2026-10-16; `AppWindows` already lives there)*;
   - the menu bar (11.13) goes in `app/lib/src/features/shell/` *(added 2026-10-16, Claude's proposal)*;
@@ -11666,6 +11672,7 @@ Epic 11 hosts them through 11.3's slots and 10.5's contract. Insets go into the 
   - 11.12 (the window foundation) follows 11.4 and comes before 11.5, 11.6, 11.7 and 10.22.
   - 11.13 (the menu bar) follows 11.12, 10.9 and 10.23. It comes before 11.5, 11.6, 11.7, 11.8 and 10.16: they wire their handlers to its items and list 11.13 in their Depends on (11.13's Depends on; their dated notes). So 11.5–11.8 now also wait for 10.9 and 10.23. The other handler owners (10.5, 10.6, 10.7, 10.21, 10.22, 9.21) wire theirs when both they and 11.13 have landed; until a handler lands, its item stays grey (11.13 item 3; Claude's proposal).
   - 11.10 also follows 11.11: Yaru, `flutter_svg` and the separate `main*.dart` demo hosts leave once the Zs controls and the Widgetbook catalogue exist (Claude's proposal).
+- *Added 2026-10-17 (Ralph; Story 11.14):* 11.14 (the `zanshin_ui` package) follows 11.1 and 11.2 and comes before 11.11, so the order is 11.1 → 11.2 → 11.14 → 11.11 → 11.3. It also comes before 10.1, whose `GraphTheme` derives from the tokens.
 
 ### Story 11.0: Record the scope change in the canonical rules [docs]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`.)*
@@ -11740,6 +11747,7 @@ Epic 11 hosts them through 11.3's slots and 10.5's contract. Insets go into the 
 > - **Non-goals.** "Controls … The first story that needs each one builds it on these tokens" (second non-goal) is superseded: the controls are 11.11 (decision 16.3). "the icon font (if (d) picks SVG)" now reads "the icon font": (d) is answered.
 > - **Design questions.**
 >   - (a) stays answered `app/lib/src/shared/design/`. The in-app Widgetbook catalogue (11.11) is not "a second consumer outside the app" (r3out tooling.md story impacts).
+>     - *Superseded 2026-10-17 (Ralph; Story 11.14):* the token layer moves to `packages/zanshin_ui`, together with 11.2's materials and the DS icons. The trigger is the enforced dependency direction and the per-package gate, not a second consumer.
 >   - (b) stays yes, and the parity test now includes the icon check (item 12).
 >   - (c) is answered by decision 16.2: the accent role follows the macOS accent through Zanshin's own families, Multicolor is moon, and Settings offers "Follow macOS · Zanshin". It supersedes the recommendation "moon, as the DS says".
 >   - (d) is answered SVG (decision 16.6), precompiled through the asset transformer and held in a boot-time registry (item 11).
@@ -11834,7 +11842,7 @@ This story turns the DS tokens into Dart once. `GraphTheme` (10.1) and every Epi
 **Depends on.** 11.0.
 
 **Design status.** FINAL: the DS tokens as cited, and decisions (c) and (f). NEEDS DESIGN, each with Claude's recommendation (decision (g)):
-- (a) **Where the token layer lives.** Recommended: `app/lib/src/shared/design/`. It becomes a package only once a second consumer outside the app appears.
+- (a) **Where the token layer lives.** Recommended: `app/lib/src/shared/design/`. It becomes a package only once a second consumer outside the app appears. *(Superseded 2026-10-17 by Story 11.14: `packages/zanshin_ui`.)*
 - (b) **The parity test inside `cargo make test`.** Recommended: yes. A DS re-download that changes a token then turns the gate red until the token layer follows. The alternative is a separate task outside the gate.
 - (c) **The accent of the app's controls:** the macOS system accent, as today, or moon. Recommended: moon, as the DS says (`DS readme.md:76`). Gold stays with @ and the one primary action.
 - (d) **One icon mechanism:** SVG through `ZanshinIcon`, or the icon font `Zanshin.ttf` (`app/lib/src/shared/theme/zanshin_icons.dart`; 45 glyphs, used nowhere yet). Recommended: SVG. Its files come straight from the DS and need no generator. The font lacks change, description, view-options and the 17 inline glyphs, and every new glyph needs a manual regeneration. With SVG, 11.10 deletes the font.
@@ -12833,6 +12841,13 @@ Its colours live in `ZanshinColors` (`context.zc`). The running app no longer sh
 ### Story 11.11: Zs control library, Widgetbook catalogue and shared Marionette configuration [UI]
 *(Added 2026-10-16, Ralph — console session on the design-system rounds 1–3; decisions 16.1, 16.3, 16.4, 16.10, 16.29–16.33 and 16.41 of the Epic 11 header. Built against the DS downloaded on 2026-10-16 (round 3), DS synced through #9.)*
 
+> **Update 2026-10-17 (Ralph; Story 11.14, the `zanshin_ui` package):** the controls are built in the package. This note amends items 2, 3 and 4, a non-goal and the Depends on line.
+> - **Item 2, the code location.** "Code goes in `app/lib/src/shared/controls/`, tests in `app/test/shared/controls/`" now reads: code in `packages/zanshin_ui/lib/src/controls/`, tests in `packages/zanshin_ui/test/controls/`, exported through `package:zanshin_ui/zanshin_ui.dart`.
+> - **Item 3, why the catalogue lives in `app/`.** The fonts and SVGs are the package's now (11.14 item 2), so "the fonts, SVG and Lottie assets are declared only there" no longer holds for them. `app/widgetbook/` stays in the app all the same: its Windows folder opens the app's real windows, its Graph folder needs Epic 10's features, and the splash's Lottie files stay in the app.
+> - **Item 4, Marionette.** The shared `MarionetteConfiguration` lives in the app, beside the two mains that pass it. The controls only take their optional `Semantics(identifier:)`, so the package does not depend on `marionette_flutter` (Claude's proposal).
+> - **Non-goal "A separate `packages/zanshin_widgetbook` app".** Controls and tokens are a package now, but this stays a non-goal for item 3's reasons.
+> - **Depends on** adds 11.14.
+
 **Motivation.** Yaru and Material cannot reach the DS's switch, checkbox, segmented control, select or menus (RC §2–§3). Ralph decided on 2026-10-15 that Zanshin draws its own controls on Flutter's widgets-layer primitives, with text entry from Flutter (decision 16.1), and that they get a story of their own after 11.1 and 11.2 and before 10.7 (decision 16.3). Otherwise each story builds focus, motion and semantics again, and the drift returns that the DS showed before round 1: four disabled values and five focus treatments (RC §5). The DS now specifies every state a control needs (`DS readme.md:114-145`).
 
 The same story sets up the tools to review and drive them. Widgetbook 3.25.0 becomes the one review catalogue; it replaces the galleries and the demo host that 10.1, 10.20 and 11.2 planned (decisions 16.29, 16.30). Marionette 0.7.0 carries Ralph's multi-view fix, but it sees custom controls only through one shared configuration and Semantics identifiers (decision 16.31).
@@ -13046,5 +13061,59 @@ The handlers come from the stories that own them: 10.5 (scroll API), 10.6 (selec
 - No two items share a key equivalent (the stock "Jump to Selection ⌘J" and "Find… ⌘F" are gone).
 
 **Related:** 10.5, 10.6, 10.7, 10.9, 10.21, 10.22, 10.23, 11.5, 11.6, 11.7, 11.8, 11.12, 9.21; r4out windows W-9–W-11; r5out windows window-lifecycle-edges.
+
+---
+
+### Story 11.14: The `zanshin_ui` package — tokens, materials and the DS icons leave `app/` [UI]
+*(Added 2026-10-17, Ralph — console session after 11.1 and 11.2 landed; Claude builds it under the scope change of 11.0. It supersedes 11.1's design question (a) and comes before 11.11.)*
+
+**Motivation.** 11.1 put the token layer in `app/lib/src/shared/design/`, and 11.2 put the materials next to it in `shared/materials/`. 11.1's design question (a) chose that place: "It becomes a package only once a second consumer outside the app appears" (Claude's recommendation, accepted, and restated on 2026-10-16). On 2026-10-17 Ralph asked whether design, theme and UI code should move into packages of their own, and decided yes. The "second consumer" was the wrong trigger. A package boundary pays off for other reasons:
+- **The dependency direction is enforced.** Today nothing stops `shared/design/` or 11.11's controls from importing `features/`. A package cannot import the app.
+- **The gate runs per package** since 2026-10-17 (`d81ebd9`, `cargo xtask gate-plan`). A change to a feature no longer reruns the token, material and control tests. A change to the package still reruns the app, which depends on it.
+- **The move is cheapest now.** Only 11.1 and 11.2 have landed: about 6.7k lines in `design/` and `materials/`, imported by some 30 files in `app/lib` and `app/test`. 11.11 would add the control library in `shared/controls/`, and 11.3 and 10.1 would add many more importers.
+- It matches the repo, where the settings, the shell and the bridge are packages already.
+
+**Scope.**
+1. **The package** `packages/zanshin_ui` (Ralph, 2026-10-17): a Flutter package in the pub workspace (`resolution: workspace`; the root pubspec's `packages/*` picks it up), with `include: ../../linter/flutter.yaml` as its analysis options like the other packages.
+   - `lib/src/design/` ← all files of `app/lib/src/shared/design/`;
+   - `lib/src/materials/` ← all files of `app/lib/src/shared/materials/`;
+   - `lib/src/icons/` ← `ZanshinIcon`, `ZI`, `IconRegistry` and `IconRegistryScope` (`app/lib/src/shared/widgets/zanshin_icon.dart`, `icon_registry.dart`).
+   - `lib/zanshin_ui.dart` exports the public API. The app imports only that library, never `src/`; `flutter_lints`' `implementation_imports` already enforces it. Like the bridge's, the export list grows with what the app consumes (Claude's proposal).
+   - The code is moved, not rewritten. Behaviour, public names and doc comments stay; only the import paths and the asset and font paths of item 2 change.
+2. **The DS assets move with it** (Claude's proposal): the fonts Inter, JetBrains Mono and Shippori Mincho (`app/pubspec.yaml`'s families `Inter`, `JetBrainsMono`, `ShipporiMincho`) and `assets/icons/svg/` with its `vector_graphics_compiler` transformer (decision 16.32).
+   - A package's font registers as `packages/zanshin_ui/<family>`. The three `ZsType` family constants carry that prefix, so `fontFamilyFallback: [sansFamily]` and the `== monoFamily` check (`zs_type.dart:229`, `:318`) keep working without a `package:` argument (Claude's proposal). The remaining bare family literals switch to `ZsType` (e.g. `app/lib/main2.dart:186`, `:338`); the mock UI's generic `'monospace'` stays until 11.10.
+   - `IconRegistry.load` reads `AssetBytesLoader('assets/icons/svg/$name.svg', packageName: 'zanshin_ui')` (`vector_graphics` 1.2.3, `lib/src/loader.dart:51`, `:78`).
+   - flutter_tools parses a dependency's assets through the same `_parseAssets` as the app's, transformers included (`packages/flutter_tools/lib/src/asset.dart:495-502`, `:1081`, `:1095` in the local SDK), so the precompile should hold for package assets. It is proved first, before anything else moves: one `flutter build macos --debug` with the moved SVGs, and `flutter test` in the package loads the `IconRegistry`. If it fails, the SVGs stay in the app and `IconRegistry.load` takes the app's asset bundle (the fallback; Claude's proposal).
+   - The splash's Lottie files and the icon font `Zanshin.ttf` stay in the app; 11.10 deletes the font.
+3. **Dependencies.** The package depends on `flutter`, `material_ui` (Material types only from there; the Epic 10 house rule Material), `vector_graphics`, `zanshin_settings` (`AccentSource`, `zs_appearance.dart:6`) and `zanshin_shell` (`ShellTheme`, `zs_appearance.dart:7`, `zs_root.dart:5`). It never depends on `zanshin_core`, `inject_*` or the app.
+   - `IconModule`, the inject module in `icon_registry.dart:48-60`, stays in the app next to the boot wiring (`zanshin_bootstrap.dart`, `main.dart`), so the package needs no DI (Claude's proposal).
+4. **The tests move with their code.** `app/test/shared/design/`, `app/test/shared/materials/`, `app/test/shared/widgets/zanshin_icon_test.dart` and `app/test/assets/shippori_subset_test.dart` go to `packages/zanshin_ui/test/`, in the same subfolders. The helpers they use move with them (`zs_host.dart`, `material_paints.dart`). `setUpIconRegistry` (`app/test/helpers/icon_registry.dart`, ten lines) gets a copy in the package, because the app's bootstrap test keeps using it; the package's `lib/` stays free of `flutter_test` (Claude's proposal).
+   - The DS parity test's paths follow: `dsRoot` becomes `../../_bmad-output/implementation-artifacts/design_system` (`css_token_reader.dart:25`), and `_appIcons` the package's `assets/icons/svg` (`ds_parity_test.dart:65`).
+5. **The gate.**
+   - `Makefile.toml`: `test-ui`, `test-ui-analyze` and `test-ui-format` (cwd `packages/zanshin_ui`) and their `gate-*` wrappers, built like the `test-settings*` tasks (`Makefile.toml:222-239`, `:425-431`).
+   - `crates/xtask/src/tasks/gate_plan.rs`: the three steps in `ALL_STEPS`; a `UI` group; the rule `packages/zanshin_ui/` → UI + APP. The rules of `zanshin_settings`, `zanshin_shell`, `zanshin_shell_macos` and `zanshin_shell_platform_interface` gain UI, because the package depends on them. The `design_system/` rule (`gate_plan.rs:137`) becomes "read by zanshin_ui's DS parity test" → UI. The inline tests follow (`gate_plan.rs:603-606` expects APP today).
+   - Coverage stays Rust-only. On the Rust side only `gate_plan.rs` changes, and its inline tests cover the new rules.
+6. **The app sheds what moved:** its imports point to `package:zanshin_ui/zanshin_ui.dart`; `app/pubspec.yaml` loses the three font families, the SVG asset entry and, if nothing in the app needs them any more, `vector_graphics` and `vector_graphics_compiler`. `project-context.md` names no UI code location (checked 2026-10-17); 11.11, which writes its tooling rules there, names the package.
+
+**Non-goals.**
+- Splitting tokens, materials and controls into several packages: there is one consumer (Claude's proposal).
+- Moving the Widgetbook catalogue out of `app/`. `app/widgetbook/` stays, because its Windows and Graph folders need the app's windows and features (decisions 16.29, 16.30).
+- `shared/theme/` (`ZanshinColors`, the icon font's `zanshin_icons.dart`), `shared/widgets/commit_tags.dart` and `shared/data/mock_data.dart`: they belong to the mock UI, which 11.10 retires.
+- Any change of behaviour or visuals, and any refactor beyond paths.
+- Moving `AccentSource` out of `zanshin_settings` or `ShellTheme` out of `zanshin_shell`.
+
+**Depends on.** 11.1 and 11.2 (both done). It blocks 11.11, which builds its controls in the package.
+
+**Design status.** FINAL: Ralph's decision of 2026-10-17 — the package, its name, its contents and its place before 11.11. Claude's proposals are marked. Nothing NEEDS DESIGN. The one open technical point, the transformer for package assets, is checked first (item 2) and has a fallback.
+
+**Witnesses.**
+- `app/lib/src/shared/design/`, `app/lib/src/shared/materials/`, `zanshin_icon.dart` and `icon_registry.dart` are gone from `app/lib/src/shared/`; no file in `app/` imports `package:zanshin_ui/src/`.
+- `packages/zanshin_ui/pubspec.yaml` names neither `zanshin_core`, nor an `inject_*` package, nor a path into `app/`.
+- Every moved test passes in the package, the DS parity test included (the tokens over 576 appearances and the icon check), and the app's tests pass.
+- A debug build shows the icons and the three fonts as before, the splash's 残心 included: screenshots of the splash and the main window, before and after.
+- `cargo xtask gate-plan` lists the UI and APP steps for a path in `packages/zanshin_ui/`, only APP for a path in `app/lib/`, and only UI for a `design_system/` file.
+- `cargo make test-full` is green.
+
+**Related:** 11.1, 11.2, 11.10, 11.11, 10.1; the Epic 11 house rule Code locations; `d81ebd9` (the change-aware gate).
 
 ---

@@ -1252,3 +1252,12 @@ _Ralph re-downloaded the design-system project twice (rounds 2 and 3; the DS rea
 - **An open sheet does not stop the window's other shortcuts and menu items, so a command could act on the project window behind an open ConfirmDialog or Push.** Medium.
   - `app/lib/src/shared/materials/zs_sheet.dart` binds only Esc inside its `FocusScope`; key events bubble from the focused node to the `Shortcuts` above the sheet, and `PlatformMenuBar` items act regardless of focus. No window shortcut or menu item exists before 11.13 (review pass 2026-10-17, blind hunter).
   - **Follow-up:** 11.13 disables or routes the window's shortcuts and menu items while a sheet shows (for example through a modal flag the sheet publishes).
+
+## Surfaced 2026-10-17 while reviewing where 11.1 and 11.2 put their code (console session, Ralph)
+
+_Ralph asked whether the design, theme and UI code that 11.1 and 11.2 put in `app/lib/src/shared/` should live in packages of their own. He decided yes: Story 11.14 moves the tokens, the materials and the DS icons into `packages/zanshin_ui` before 11.11, and 11.11 builds its controls there. It supersedes 11.1's design question (a) ("a package only once a second consumer outside the app appears"). Epics.md and sprint-status.yaml carry it; what follows is only what 11.14 leaves open._
+
+- **`zanshin_ui` depends on `zanshin_settings` and `zanshin_shell`.** Low; not in 11.14's scope (its non-goal).
+  - `zs_appearance.dart` reads `AccentSource` from the settings package and `ShellTheme` from the shell package, and `zs_root.dart` reads `ShellTheme`. So a change to either package reruns the UI package's gate steps, and the design layer knows the settings model.
+  - **Follow-up:** if it ever hurts, the appearance scope takes plain values (an accent-source enum of its own, a theme snapshot), and the app maps the settings and the shell onto them.
+- **Older paths in this file.** Info. The "Surfaced in Story 11.1" and "Surfaced in Story 11.2" sections cite `app/lib/src/shared/design/`, `materials/` and `widgets/`. After 11.14 those files are in `packages/zanshin_ui/lib/src/design/`, `materials/` and `icons/`; read the old paths that way. The sections stay as written.
