@@ -1270,3 +1270,15 @@ _Ralph asked whether the design, theme and UI code that 11.1 and 11.2 put in `ap
 - **The OFL texts of Inter, JetBrains Mono and Shippori Mincho may not reach the shipped app's licence notices.** Medium (unverified).
   - The debug bundle's `NOTICES.Z` holds no OFL text; `packages/zanshin_ui/assets/fonts/*/OFL.txt` sit next to the fonts, but no `LICENSE` file or `LicenseRegistry` entry brings them in. Pre-existing before the move.
   - **Follow-up:** check whether the licence fields in the TTFs' name tables satisfy the OFL; if not, add a `LICENSE` to `packages/zanshin_ui` (flutter_tools collects package licences into the notices) or register the texts with `LicenseRegistry.addLicense`.
+
+## Surfaced in the closing run of Story 11.14 (bmad-build-auto, 2026-10-17)
+
+- **The Shippori Mincho subset lost the name table's licence description and licence URL (name IDs 13 and 14), so the two shipped TTFs carry only their copyright line.** Low.
+  - `packages/zanshin_ui/assets/fonts/Shippori_Mincho/ShipporiMincho-{Medium,SemiBold}.ttf` hold only name IDs 0–6 (pyftsubset's default `--name-IDs`; the command is in `SUBSET.txt`), while Inter and JetBrains Mono keep 13/14. The OFL text now ships in the bundle's NOTICES, so the licence still travels with the app; OFL-FAQ 2.4/2.8 ask a modified font to keep its licence metadata.
+  - **Follow-up:** re-run the subset with `--name-IDs='*'` (or `0-6,13,14`) from the full fonts in git history and note it in `SUBSET.txt`.
+- **The fonts' OFL entries in the NOTICES belong to no package, so a licence page (`LicensePage`, `showAboutDialog`) would not list them.** Low.
+  - The three `OFL.txt` files use CRLF line endings; Flutter's runtime parser (`services/binding.dart` `_parseLicenses`) splits a chunk's package names off at the first `\n\n`, finds none and files each OFL text under no package. The texts are in `NOTICES.Z` (the OFL's containment condition holds); the app has no licence page yet, and before the closing run the texts were not in the NOTICES at all.
+  - **Follow-up:** with the story that adds a licence page or About box: register the texts under their family names (an LF copy headed by the name, or `LicenseRegistry.addLicense`).
+- **The app bundles Yaru's Ubuntu and Ubuntu Mono fonts without the Ubuntu Font Licence in its NOTICES.** Medium.
+  - The test bundle's `FontManifest.json` lists `packages/yaru/Ubuntu` and `packages/yaru/UbuntuMono`; the gunzipped `NOTICES.Z` holds no "UBUNTU FONT LICENCE". Ralph's fork (`../yaru.dart/assets/fonts/LICENCE.txt`) has the text but no `flutter: licenses:` entry. UFL 1.0 asks every copy to carry the notice and the licence, like OFL §2. Pre-existing.
+  - **Follow-up:** Story 11.10 retires Yaru and its fonts; if Yaru stays past it, add `flutter: licenses: [assets/fonts/LICENCE.txt]` to the fork's pubspec.
