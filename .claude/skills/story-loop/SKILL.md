@@ -6,7 +6,7 @@ argument-hint: "<story-id> [<story-id> …]"
 
 # Story loop
 
-You orchestrate; `story-builder` subagents implement. Each story gets one story run and **at most one closing run** that works off the deferrals the story run left behind. You edit only bookkeeping (spec frontmatter, `deferred-work.md`), never code, and judge deferred items by their text — the closing run verifies them against the code.
+You orchestrate; `story-builder` subagents implement. Each story gets one story run and **at most one closing run** that works off the deferrals the story run left behind. Open ledger items that name a story travel into that story's run as **inbound items**: build-auto never reads the ledger, so the story-run prompt is their only way in. You edit only bookkeeping (spec frontmatter, `deferred-work.md`), never code, and judge ledger items by their text — the story and closing runs verify them against the code.
 
 Paths: specs, `deferred-work.md` ("the ledger") and `sprint-status.yaml` live in `_bmad-output/implementation-artifacts/`. "The spec" = the story run's spec/plan file (newer build-auto calls it a plan and ends with `built` instead of `done`).
 
@@ -20,15 +20,24 @@ From here on, never ask Ralph anything; collect questions for the final report.
 
 ## Per story
 
-1. **Story run.** Dispatch `story-builder` (`run_in_background: false`) with the story-run prompt below.
-2. **Check the result** — the report is a claim, not proof. Take the spec path from the report, check the file exists, read its frontmatter `status` and run `git status --short`.
-   - `done` / `built` and clean tree → step 3. A red `cargo make test` in its verification notes goes into the final report; it does not stop the loop.
+1. **Inbound items.** Search the ledger for open bullets (not struck), in any section, that name this story as the one to fix or settle them — by number (`11.3`, `Story 11.3`) or by its `sprint-status.yaml` key. Newer bullets say so in their Follow-up line; older ones have none, so read the whole bullet. Read every hit: a story named only as evidence or background (`epics.md Story 11.3 item 2`), or a longer number (`11.31`), is no inbound item. Leave out a bullet whose part for this story is only a decision for Ralph or a manual check (a running app, Ralph's real repo, hardware); it goes on Ralph's list. Number the rest I1, I2, …; when a bullet also names other stories, note which part is this story's.
+2. **Story run.** Dispatch `story-builder` (`run_in_background: false`) with the story-run prompt below.
+3. **Check the result** — the report is a claim, not proof. Take the spec path from the report, check the file exists, read its frontmatter `status` and run `git status --short`.
+   - `done` / `built` and clean tree → step 4. A red `cargo make test` in its verification notes goes into the final report; it does not stop the loop.
    - No final report, or the spec is still `in-progress` / `in-review` (rate limit, cut-off) → dispatch a fresh `story-builder` whose whole intent is the spec's path; build-auto resumes it. At most two resumes, then treat it as blocked.
-   - `blocked` → no closing run. Continue with the next story unless that story builds on this one (its `sprint-status.yaml` comment or epics.md text names it); then stop the loop and go to the final report.
-3. **Collect** the spec's `deferred:` items without a `resolved:` field, each together with its ledger bullet (match by subject, title or body) under `## Surfaced in Story <id> (bmad-build-auto, …)`. Skip an item whose ledger bullet is already struck. Add a missing bullet in the ledger-bullet shape below, then commit right away (`--no-gpg-sign`, the Co-Authored-By line from `.claude/agents/story-builder.md`, message `chore(ledger): mirror Story <id> deferrals`) — build-auto halts on a dirty tree.
-4. **Sort** each item into the first bucket that fits, in this order, reading its spec entry and its ledger bullet together (a condition in either one counts):
+   - `blocked` → no closing run; its inbound items stay open, untouched. Continue with the next story unless that story builds on this one (its `sprint-status.yaml` comment or epics.md text names it); then stop the loop and go to the final report.
+4. **Close inbound items** — only when step 1 found some. The spec's `## Auto Run Result` lists each by its number:
+   - fixed, while another story's part of the bullet is still open → as partly done.
+   - fixed → strike its bullet: `~~**<title>**~~ — RESOLVED <date> (<spec slug>, commit <hash>): <one line>`. If the bullet sits under `## Surfaced in Story <x> …` and Story <x>'s spec still holds the matching `deferred:` item without `resolved:`, give that item `resolved: >-` `<date> — fixed (<spec slug>, commit <hash>): <one line>`.
+   - rejected → same, with `REJECTED` / `rejected`, no commit, and the reason.
+   - partly done → leave the bullet open and add the sub-bullet `- **<date>, Story <id>:** <what was done> (commit <hash>); left: <what remains>`.
+   - not done, or missing from the Auto Run Result → leave the bullet open; its reason goes into the final report.
+
+   Commit right away (`--no-gpg-sign`, the Co-Authored-By line from `.claude/agents/story-builder.md`, message `chore(ledger): close items handed to Story <id>`) — build-auto halts on a dirty tree.
+5. **Collect** the spec's `deferred:` items without a `resolved:` field, each together with its ledger bullet (match by subject, title or body) under `## Surfaced in Story <id> (bmad-build-auto, …)`. Skip an item whose ledger bullet is already struck, and an inbound item the run deferred again (step 4 handled it). Add a missing bullet in the ledger-bullet shape below.
+6. **Sort** each item into the first bucket that fits, in this order, reading its spec entry and its ledger bullet together (a condition in either one counts):
    - **record** — the ledger calls it a record, or its Follow-up is "none" in substance. No action.
-   - **covered** — a later story's `sprint-status.yaml` comment or epics.md text names this same fix. Note that story; partial overlap does not count.
+   - **covered** — a later story that is not done yet names this same fix in its `sprint-status.yaml` comment or epics.md text. Note that story; partial overlap does not count. The bullet stays open until that story's run closes it as an inbound item; if the bullet's Follow-up line does not name that story, append ` Covered by Story <x>.` to it.
    - **closing run** — all of these hold:
      - it names a concrete defect, gap or missing test in this repo's code, tests or docs;
      - its text asks for no product or scope decision: no "decision for Ralph" / "Ralph decides", no options to choose between, no conditional follow-up ("if the gate time bites"), no CLI-behavior or API change to agree on;
@@ -36,15 +45,18 @@ From here on, never ask Ralph anything; collect questions for the final report.
      - its fix touches no agent-context or planning file (CLAUDE.md, AGENTS.md, `project-context.md`, `epic-*-context.md`, `epics.md`, ADRs, `sprint-status.yaml`, `decisions-review-*.md`).
 
      A severity marked `(unverified)` does not disqualify an item.
+   - **handed on** — its text names one or more later stories that are not done yet as the ones to fix or settle it, and their part is more than a decision or a manual check by Ralph. Note those stories; the bullet stays open and each one's run gets it as an inbound item. A manual check or a decision for Ralph the item also asks for goes on Ralph's list.
    - **for Ralph** — everything else, with a one-phrase reason.
-5. **Closing run** — only when step 4 put at least one item in the closing-run bucket. Dispatch `story-builder` with the closing-run prompt below. Never a closing run of a closing run.
-6. **Close the books** — only after a closing run. Read its spec (the path from its report; check the file exists) and its `## Auto Run Result`, which lists every item's outcome:
+
+   If steps 5–6 changed the ledger, commit as in step 4, message `chore(ledger): mirror Story <id> deferrals`.
+7. **Closing run** — only when step 6 put at least one item in the closing-run bucket. Dispatch `story-builder` with the closing-run prompt below. Never a closing run of a closing run.
+8. **Close the books** — only after a closing run. Read its spec (the path from its report; check the file exists) and its `## Auto Run Result`, which lists every item's outcome:
    - fixed → origin spec item gets `resolved: >-` `<date> — fixed (<closing spec slug>, commit <hash>): <one line>`; its ledger bullet is struck: `~~**<title>**~~ — RESOLVED <date> (<closing spec slug>, commit <hash>): <one line>`.
    - rejected → same, with `rejected` / `REJECTED`, no commit, and the reason.
    - deferred by the closing run → leave origin item and ledger bullet open; it goes to Ralph.
 
-   Commit as in step 3, message `chore(ledger): close Story <id> deferrals`.
-7. Next story.
+   Commit as in step 4, message `chore(ledger): close Story <id> deferrals`.
+9. Next story.
 
 ## Ledger-bullet shape
 
@@ -58,12 +70,27 @@ Under a heading `## Surfaced in <Story <id> | the closing run of Story <id>> (bm
 
 ## Prompts
 
-Never put the origin spec's path into a closing-run prompt: build-auto would treat it as the plan to resume and start a follow-up review of the finished story instead. Quote the items in full instead, rewriting self-references ("this spec", "this story") as "Story <id>'s spec" / "Story <id>".
+Never put a spec's path into a closing-run prompt or an inbound item: build-auto would treat it as the plan to resume and start a follow-up review of the finished story instead. Quote the items in full instead, rewriting self-references ("this spec", "this story") and spec paths as "Story <id>'s spec" / "Story <id>".
 
-**Story run:**
+**Story run** — the block from `Also part of` to `or not done (why).` goes in only when step 1 found inbound items:
 
 ```text
 Story <id> — <title> (sprint-status.yaml key <key>; epics.md Story <id>).
+
+Also part of Story <id>: these open items in _bmad-output/implementation-artifacts/deferred-work.md name
+Story <id> as the one to fix or settle them.
+
+I1. <summary> <severity>. (deferred-work.md, section "<section heading>")
+    <every evidence line of the bullet, in full>
+    Follow-up: <the bullet's Follow-up line, if it has one>
+    Story <id>'s part: <only when the bullet also names other stories>
+I2. …
+
+For each item: verify it against the code as Story <id> leaves it. Fix or settle it if it is real; reject it
+with the reason if it is false or no longer applies; defer it only when it needs a decision from Ralph or a
+story after Story <id> — do not mirror such an item into deferred-work.md again, it is already there. Under
+`## Auto Run Result`, list every item by its number with its outcome: fixed (commit hash), rejected (reason),
+partly done (what is left) or not done (why).
 
 Extra rule for this run: mirror every item you add to the spec's `deferred:` list into
 _bmad-output/implementation-artifacts/deferred-work.md, in the same commit as the spec, in this shape:
@@ -96,4 +123,4 @@ _bmad-output/implementation-artifacts/deferred-work.md, in the same commit as th
 
 ## Final report
 
-One block per story: final status and commits; deferred items counted as fixed / rejected / record / covered (with the story) / for Ralph; `followup_review_recommended: true` if set — the loop runs no follow-up review pass. Then one list of everything waiting for Ralph across all stories — the for-Ralph items with their reasons and ledger sections, closing-run deferrals, and blocked conditions — merging items that ask Ralph for the same action.
+One block per story: final status and commits; inbound items counted as fixed / rejected / partly done / not done; deferred items counted as fixed / rejected / record / covered (with the story) / handed on (with the story) / for Ralph; `followup_review_recommended: true` if set — the loop runs no follow-up review pass. Then one list of everything waiting for Ralph across all stories — the for-Ralph items with their reasons and ledger sections, the inbound bullets step 1 left out, inbound items not done for a reason Ralph must settle, manual checks of handed-on items, closing-run deferrals, and blocked conditions — merging items that ask Ralph for the same action.
