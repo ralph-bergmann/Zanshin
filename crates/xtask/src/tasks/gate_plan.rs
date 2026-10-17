@@ -176,6 +176,11 @@ const RULES: &[(Pattern, &str, Need)] = &[
     (Pattern::Prefix(".cargo/"), "cargo config", Need::Everything),
     (Pattern::Exact("pubspec.yaml"), "Dart workspace", Need::Everything),
     (Pattern::Exact("pubspec.lock"), "Dart dependencies", Need::Everything),
+    (
+        Pattern::Suffix("/pubspec.yaml"),
+        "a Dart package's dependencies, read by the dependents test",
+        Need::Everything,
+    ),
     (Pattern::Prefix("linter/"), "Dart lint rules", Need::Everything),
     // Linked into the zanshin-ffi cdylib, which the zanshin_core suite and the app tests load.
     (
@@ -220,7 +225,10 @@ const RULES: &[(Pattern, &str, Need)] = &[
         "Rust test helpers",
         Need::Groups(&[RUST]),
     ),
-    // Dart packages: the package plus every package depending on it (pubspec path dependencies).
+    // Dart packages: the package plus every package depending on it (by name in a pubspec's
+    // `dependencies:` or `dev_dependencies:`, whatever the source — pub resolves a workspace member's
+    // name to the member). `a_flutter_package_plans_itself_and_every_package_depending_on_it` checks
+    // these entries against the pubspecs.
     (
         Pattern::Prefix("packages/zanshin_core/"),
         "zanshin_core",
@@ -529,6 +537,8 @@ fn toolchains(root: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
 
     fn steps(need: Need) -> Vec<&'static str> {
@@ -541,14 +551,334 @@ mod tests {
         }
     }
 
+    /// Each Dart workspace member's own gate steps.
+    const OWN_STEPS: &[(&str, &[&str])] = &[
+        ("app", APP),
+        ("packages/zanshin_core", CORE),
+        ("packages/zanshin_settings", SETTINGS),
+        ("packages/zanshin_shell", SHELL),
+        ("packages/zanshin_shell_macos", SHELL_MACOS),
+        ("packages/zanshin_shell_platform_interface", SHELL_PI),
+        ("packages/zanshin_ui", UI),
+    ];
+
+    /// `line` without its comment.
+    fn code(line: &str) -> &str {
+        line.split_once('#').map_or(line, |(code, _)| code)
+    }
+
+    /// The Dart workspace members the root `pubspec.yaml`'s `workspace:` list names, repo-relative.
+    /// An entry ending in `/*` names every subdirectory holding a `pubspec.yaml`.
+    fn dart_members(root: &Path) -> BTreeSet<String> {
+        let pubspec = fs::read_to_string(root.join("pubspec.yaml")).expect("the root pubspec.yaml");
+        pubspec
+            .lines()
+            .map(|line| code(line).trim_end())
+            .skip_while(|line| *line != "workspace:")
+            .skip(1)
+            .filter(|line| !line.is_empty())
+            .map_while(|line| line.trim_start().strip_prefix("- "))
+            .map(|entry| entry.trim().trim_matches(['\'', '"']))
+            .flat_map(|entry| match entry.strip_suffix("/*") {
+                Some(parent) => fs::read_dir(root.join(parent))
+                    .expect("a workspace glob's directory")
+                    .map(|dir| {
+                        format!(
+                            "{parent}/{}",
+                            dir.expect("a directory entry").file_name().to_string_lossy()
+                        )
+                    })
+                    .collect(),
+                None => vec![entry.to_owned()],
+            })
+            .filter(|member| root.join(member).join("pubspec.yaml").is_file())
+            .collect()
+    }
+
+    /// The package name a pubspec declares.
+    fn package_name(pubspec: &str) -> Option<&str> {
+        pubspec
+            .lines()
+            .find_map(|line| code(line).strip_prefix("name:"))
+            .map(|name| name.trim().trim_matches(['\'', '"']))
+    }
+
+    /// The members a pubspec depends on, by section.
+    #[derive(Debug, Default, PartialEq, Eq)]
+    struct Dependencies {
+        regular: BTreeSet<String>,
+        dev: BTreeSet<String>,
+    }
+
+    /// The members `pubspec` depends on: the first-level keys of its top-level `dependencies:` and
+    /// `dev_dependencies:` sections that name a member (`members_by_name`: package name → member),
+    /// whatever their source — pub resolves a workspace member's name to the member.
+    fn dependencies(pubspec: &str, members_by_name: &BTreeMap<String, String>) -> Dependencies {
+        let mut found = Dependencies::default();
+        let mut section = None;
+        let mut key_indent = None;
+        for line in pubspec
+            .lines()
+            .map(|line| code(line).trim_end())
+            .filter(|line| !line.is_empty())
+        {
+            let text = line.trim_start();
+            let indent = line.len() - text.len();
+            if indent == 0 {
+                section = match line {
+                    "dependencies:" => Some(&mut found.regular),
+                    "dev_dependencies:" => Some(&mut found.dev),
+                    _ => None,
+                };
+                key_indent = None;
+                continue;
+            }
+            let Some(set) = section.as_deref_mut() else {
+                continue;
+            };
+            if indent != *key_indent.get_or_insert(indent) || text.starts_with('-') {
+                continue;
+            }
+            let key = text.split_once(':').map_or(text, |(key, _)| key);
+            if let Some(member) = members_by_name.get(key.trim().trim_matches(['\'', '"'])) {
+                set.insert(member.clone());
+            }
+        }
+        found
+    }
+
+    /// The members whose code `member`'s tests run: its regular and dev dependencies, then their
+    /// regular dependencies transitively (a dependency's dev dependencies are not part of it).
+    fn reached(deps: &BTreeMap<String, Dependencies>, member: &str) -> BTreeSet<String> {
+        let mut seen: BTreeSet<String> = deps[member].regular.union(&deps[member].dev).cloned().collect();
+        let mut todo: Vec<String> = seen.iter().cloned().collect();
+        while let Some(next) = todo.pop() {
+            for dep in &deps[&next].regular {
+                if seen.insert(dep.clone()) {
+                    todo.push(dep.clone());
+                }
+            }
+        }
+        seen
+    }
+
+    /// What is wrong with the package rules for the Dart workspace under `root`, one line per
+    /// problem: each member's rule must plan exactly its own steps and those of every member whose
+    /// tests run its code by the pubspecs ([`reached`]).
+    fn package_rule_problems(root: &Path) -> Vec<String> {
+        let members = dart_members(root);
+        let mut problems = Vec::new();
+        for (entry, _) in OWN_STEPS {
+            if !members.contains(*entry) {
+                problems.push(format!(
+                    "{entry} in OWN_STEPS is no Dart workspace member (no {entry}/pubspec.yaml): remove its entry"
+                ));
+            }
+        }
+        let own = |member: &str| -> &'static [&'static str] {
+            OWN_STEPS
+                .iter()
+                .find(|(entry, _)| *entry == member)
+                .map_or(&[], |&(_, steps)| steps)
+        };
+        let pubspecs: BTreeMap<&str, String> = members
+            .iter()
+            .map(|member| {
+                let pubspec = fs::read_to_string(root.join(member).join("pubspec.yaml")).expect("a member's pubspec");
+                (member.as_str(), pubspec)
+            })
+            .collect();
+        let members_by_name: BTreeMap<String, String> = pubspecs
+            .iter()
+            .filter_map(|(member, pubspec)| Some((package_name(pubspec)?.to_owned(), (*member).to_owned())))
+            .collect();
+        let deps: BTreeMap<String, Dependencies> = pubspecs
+            .iter()
+            .map(|(member, pubspec)| ((*member).to_owned(), dependencies(pubspec, &members_by_name)))
+            .collect();
+
+        for member in &members {
+            if own(member).is_empty() {
+                problems.push(format!(
+                    "{member} is a Dart workspace member without gate steps: add its steps to \
+                     Makefile.toml and ALL_STEPS, a RULES entry and an OWN_STEPS entry"
+                ));
+            }
+            let dependents: BTreeSet<&str> = members
+                .iter()
+                .filter(|other| *other != member && reached(&deps, other).contains(member))
+                .map(String::as_str)
+                .collect();
+            let wanted: BTreeSet<&str> = std::iter::once(member.as_str())
+                .chain(dependents.iter().copied())
+                .flat_map(|package| own(package).iter().copied())
+                .collect();
+            let expected: Vec<&str> = ALL_STEPS.iter().copied().filter(|step| wanted.contains(step)).collect();
+
+            let need = classify(&format!("{member}/lib/a.dart")).1;
+            if !matches!(need, Need::Groups(_)) {
+                problems.push(format!(
+                    "{member} has no package rule in RULES: add one planning its own steps and those of \
+                     every package depending on it"
+                ));
+                continue;
+            }
+            let planned = steps(need);
+            let missing: Vec<_> = expected.iter().filter(|step| !planned.contains(step)).collect();
+            let unexpected: Vec<_> = planned.iter().filter(|step| !expected.contains(step)).collect();
+            if !missing.is_empty() || !unexpected.is_empty() {
+                problems.push(format!(
+                    "the RULES entry of {member} must plan its own steps and those of every package \
+                     depending on it ({dependents:?}): missing {missing:?}, unexpected {unexpected:?}"
+                ));
+            }
+        }
+        problems
+    }
+
+    /// A temp dir holding a copy of the real workspace's root and member pubspecs.
+    fn copy_of_the_workspace_pubspecs() -> tempfile::TempDir {
+        let real = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let copy = tempfile::tempdir().expect("tempdir");
+        fs::copy(real.join("pubspec.yaml"), copy.path().join("pubspec.yaml")).expect("copy the root pubspec");
+        for member in dart_members(&real) {
+            fs::create_dir_all(copy.path().join(&member)).expect("create the member dir");
+            fs::copy(
+                real.join(&member).join("pubspec.yaml"),
+                copy.path().join(&member).join("pubspec.yaml"),
+            )
+            .expect("copy the pubspec");
+        }
+        copy
+    }
+
     #[test]
     fn a_flutter_package_plans_itself_and_every_package_depending_on_it() {
-        assert_eq!(steps(classify("app/lib/main.dart").1), APP);
-        let pi = steps(classify("packages/zanshin_shell_platform_interface/lib/x.dart").1);
-        for step in SHELL_PI.iter().chain(SHELL_MACOS).chain(SHELL).chain(UI).chain(APP) {
-            assert!(pi.contains(step), "{step} missing from {pi:?}");
+        let problems = package_rule_problems(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."));
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
+    }
+
+    #[test]
+    fn a_dependency_the_rules_miss_or_invent_and_an_unknown_or_stale_member_are_problems() {
+        let workspace = copy_of_the_workspace_pubspecs();
+        let edit = |member: &str, from: &str, to: &str| {
+            let path = workspace.path().join(member).join("pubspec.yaml");
+            let pubspec = fs::read_to_string(&path).expect("read the pubspec");
+            let edited = pubspec.replacen(from, to, 1);
+            assert_ne!(edited, pubspec, "{member}'s pubspec holds {from:?}");
+            fs::write(&path, edited).expect("write the pubspec");
+        };
+        // A version-only dependency on a member resolves to the member (never legitimate here:
+        // zanshin_core is pure Dart).
+        edit(
+            "packages/zanshin_core",
+            "\ndependencies:\n",
+            "\ndependencies:\n  zanshin_ui: any\n",
+        );
+        edit(
+            "packages/zanshin_ui",
+            "  zanshin_settings:\n    path: ../zanshin_settings\n",
+            "",
+        );
+        fs::remove_file(
+            workspace
+                .path()
+                .join("packages/zanshin_shell_platform_interface/pubspec.yaml"),
+        )
+        .expect("delete a member's pubspec");
+        fs::create_dir_all(workspace.path().join("packages/zanshin_new")).expect("create a new package");
+        fs::write(
+            workspace.path().join("packages/zanshin_new/pubspec.yaml"),
+            "name: zanshin_new\n",
+        )
+        .expect("write its pubspec");
+
+        let problems = package_rule_problems(workspace.path());
+        let found = |start: &str, part: &str| problems.iter().any(|p| p.starts_with(start) && p.contains(part));
+        assert!(
+            found(
+                "the RULES entry of packages/zanshin_ui",
+                r#"missing ["test-core-analyze", "test-core-format", "coverage"]"#
+            ),
+            "{problems:#?}"
+        );
+        assert!(
+            found(
+                "the RULES entry of packages/zanshin_settings",
+                r#"missing [], unexpected ["test-ui", "test-ui-analyze", "test-ui-format"]"#
+            ),
+            "{problems:#?}"
+        );
+        assert!(
+            found(
+                "packages/zanshin_shell_platform_interface in OWN_STEPS is no Dart workspace member",
+                ""
+            ),
+            "{problems:#?}"
+        );
+        assert!(
+            found("packages/zanshin_new is a Dart workspace member without gate steps", ""),
+            "{problems:#?}"
+        );
+        assert!(found("packages/zanshin_new has no package rule", ""), "{problems:#?}");
+    }
+
+    #[test]
+    fn dependencies_are_first_level_member_keys_whatever_their_source() {
+        let pubspec = [
+            "name: a",
+            "dependencies:",
+            "  b:",
+            "    path: ../b",
+            "  c: any",
+            "  d: {path: '../d', }",
+            "  # e: any",
+            "  hosted_dep:",
+            "    g: any",
+            "dev_dependencies:",
+            "  f: ^1.0.0",
+            "flutter:",
+            "  assets:",
+            "    - path: assets/icons/",
+            "  plugin:",
+            "    platforms:",
+            "      macos:",
+            "        default_package: h",
+        ]
+        .join("\n");
+        let members_by_name: BTreeMap<String, String> = ["b", "c", "d", "e", "f", "g", "h", "path"]
+            .map(|name| (name.to_owned(), format!("packages/{name}")))
+            .into();
+        assert_eq!(
+            dependencies(&pubspec, &members_by_name),
+            Dependencies {
+                regular: ["packages/b", "packages/c", "packages/d"].map(str::to_owned).into(),
+                dev: ["packages/f"].map(str::to_owned).into(),
+            }
+        );
+    }
+
+    #[test]
+    fn the_members_are_the_workspace_entries_holding_a_pubspec() {
+        let workspace = tempfile::tempdir().expect("tempdir");
+        let root = workspace.path();
+        fs::write(
+            root.join("pubspec.yaml"),
+            "name: w\nworkspace:\n  - app\n  - packages/*\n  # - old\n  - tools/gen\n\ndev_dependencies:\n  melos: any\n",
+        )
+        .expect("write the root pubspec");
+        for member in ["app", "packages/a", "packages/b", "tools/gen", "tools/other"] {
+            fs::create_dir_all(root.join(member)).expect("create a package");
+            fs::write(root.join(member).join("pubspec.yaml"), "name: x\n").expect("write its pubspec");
         }
-        assert!(!pi.contains(&"coverage"), "no Rust step for a pure Flutter package");
+        fs::create_dir_all(root.join("packages/no_pubspec")).expect("create a dir");
+        fs::write(root.join("packages/.DS_Store"), "").expect("write a file");
+        assert_eq!(
+            dart_members(root),
+            ["app", "packages/a", "packages/b", "tools/gen"]
+                .map(str::to_owned)
+                .into()
+        );
     }
 
     #[test]
@@ -569,21 +899,6 @@ mod tests {
             ]
         );
         assert_eq!(plan("app/lib/a.dart"), APP);
-    }
-
-    #[test]
-    fn every_package_zanshin_ui_depends_on_plans_zanshin_ui_and_the_app() {
-        for path in [
-            "packages/zanshin_settings/lib/a.dart",
-            "packages/zanshin_shell/lib/a.dart",
-            "packages/zanshin_shell_macos/lib/a.dart",
-            "packages/zanshin_shell_platform_interface/lib/a.dart",
-        ] {
-            let planned = steps(classify(path).1);
-            for step in UI.iter().chain(APP) {
-                assert!(planned.contains(step), "{step} missing for {path}: {planned:?}");
-            }
-        }
     }
 
     #[test]
@@ -618,6 +933,8 @@ mod tests {
             "crates/zanshin-jj/Cargo.toml",
             "crates/xtask/src/main.rs",
             "pubspec.lock",
+            "app/pubspec.yaml",
+            "packages/zanshin_ui/pubspec.yaml",
             "coverage-baseline.txt",
             "rust-toolchain.toml",
         ] {
@@ -638,6 +955,11 @@ mod tests {
             Need::Nothing
         );
         assert_eq!(classify("crates/zanshin-jj/README.md").1, Need::Nothing);
+        assert_eq!(
+            classify("spikes/ffi-payload-bench/dart/pubspec.yaml").1,
+            Need::Nothing,
+            "a spike's pubspec is no workspace member"
+        );
         assert_eq!(
             classify("packages/.DS_Store").1,
             Need::Nothing,

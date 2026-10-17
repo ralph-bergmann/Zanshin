@@ -11,8 +11,9 @@ Inside `cargo make test` the coverage step is also where the Rust test suites an
 the `packages/zanshin_core` suite run (since 2026-10-17 there is no separate
 `cargo test` / `dart test` step; `test-cargo-doc` keeps the doctests, which
 cargo-llvm-cov skips). `cargo make test` runs it only when Rust,
-`packages/zanshin_core`, test fixtures or root config changed since the last green
-run (`cargo xtask gate-plan`); `cargo make test-full` always runs it.
+`packages/zanshin_core`, a Dart package's `pubspec.yaml`, test fixtures or root
+config changed since the last green run (`cargo xtask gate-plan`); `cargo make
+test-full` always runs it.
 
 ## What is measured
 
