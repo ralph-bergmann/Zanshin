@@ -1,6 +1,12 @@
 # AI
 _bmad/
-.claude/
+# .claude/: track the shared parts (agents, hooks, skills, launch configs);
+# settings.local.json, worktrees and runtime locks stay local.
+.claude/*
+!.claude/agents/
+!.claude/hooks/
+!.claude/skills/
+!.claude/launch.json
 .serena/
 
 # Dart

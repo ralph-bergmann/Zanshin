@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "design-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", "_bmad-output/implementation-artifacts/design"],
+      "port": 8765
+    },
+    {
+      "name": "design-system-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8767", "--bind", "127.0.0.1", "--directory", "_bmad-output/implementation-artifacts/design_system"],
+      "port": 8767
+    },
+    {
+      "name": "graph-layout-viewer",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8766", "--bind", "127.0.0.1", "--directory", "spikes/graph-layout-ab/viewer"],
+      "port": 8766
+    }
+  ]
+}
