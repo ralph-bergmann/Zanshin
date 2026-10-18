@@ -559,6 +559,14 @@ the `zanshin-graph` lane crate was removed)*
 - The catalogue's Marionette extension `zanshinCatalogue.open` (debug builds) opens a use case by its
   Widgetbook path in an appearance: `path=controls/switch/state-matrix` (names joined by `/`, spaces as `-`,
   lower case), optional `theme`, `accent`, `contrast`, `reduceMotion`, `reduceTransparency`, `inactive`.
+- **Claude checks every UI change visually before it counts as done** (Ralph, 2026-10-18; epics.md house
+  rule "Tests"): run the catalogue (or the app), connect Marionette, open the affected use cases with
+  `zanshinCatalogue.open`, take screenshots and compare them with the DS cards rendered at full size
+  (headless Chrome over the `design-system-preview` server, `.claude/launch.json`). Widget tests do not
+  replace this check, and Ralph's review comes on top of it.
+  - Marionette cannot hover: a surface that shows only on hover needs a use case that shows it open.
+  - Screenshots are the Flutter layer only and come out scaled: compare proportions, not absolute pixels; the
+    native chrome stays the CGWindowList probe's.
 
 **Deferred targets (release phase, not WIP):**
 - `cargo make sign` / `cargo make notarize`
