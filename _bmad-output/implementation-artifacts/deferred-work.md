@@ -1412,3 +1412,30 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **A Project menu opened by keyboard during a running calm phase opens faded: the hold stops a new phase but, by 11.3's rule, does not end a running one.** Low. (Surfaced in the review.)
   - `app/lib/src/features/shell/calm_controller.dart` ("a hold taken during a phase does not end it"); a capsule that kept keyboard focus still opens its menu on ↓ while PLACE is faded, and the menu inherits the island's `ZsFade` until the phase ends (650 ms after the last scroll). The same holds for 10.7's, 10.21's and 11.8's surfaces.
   - **Follow-up:** the shell ends a running calm phase when a surface hold is taken (Claude's proposal), or a slot refuses to open while calm.
+
+## Surfaced in Story 11.6 (bmad-build-auto, 2026-10-18)
+
+- **The Projects sidebar's version line shows only the app's version: nothing exposes jj-lib's.** Low.
+  - Story 11.6 item 2 proposes "the app's version with jj-lib's" (Claude's proposal, epics.md:12411). The only FFI version is zanshin-ffi's own (`zanshin_ffi_version`, `crates/zanshin-ffi/src/lib.rs:69-72`, "0.1.0 (<sha>)"); `Diagnostics` carries appVersion/gitSha/logPath; the jj-lib pin lives only in the root `Cargo.toml` (`=0.46.0`).
+  - **Follow-up:** a bridge story exposes the jj-lib version (a build-time constant through the FFI or `Diagnostics`), and the brand block appends it (`app/lib/src/features/projects/projects_window.dart`, `_Brand`).
+- **The creation report and a failed open show in the Projects content's notice; once 11.12 closes Projects on a successful open, a report that came with it needs another place.** Low.
+  - epics.md:12370 ("Opening a project closes Projects"); the content calls `onOpened(outcome)` with the warnings and keeps them in its notice; the host is 11.12's, the toast 10.23's (backlog).
+  - **Follow-up:** 11.12's host shows `ProjectOpened.warnings` (10.23's toast, or the project window) when it closes Projects (`app/lib/src/features/projects/projects_window.dart`, `onOpened`).
+- **Groups can be created, nested and moved, but not renamed or deleted: the DS gives group rows no ••• and no other surface.** Low.
+  - DS `components/content/ProjectRow.jsx:42-51` (group row: chevron, folder, name, count only); epics.md:12442 (item 8 names only creating and nesting).
+  - **Follow-up:** a DS round designs renaming and deleting a group (and what happens to its members); `ProjectRegistry` and the tree add them (`app/lib/src/features/projects/project_registry.dart`, `projects_tree.dart`).
+- **Reordering rows has no keyboard path; the keyboard regroups only through ••• › Move to group.** Low.
+  - epics.md:12428 (drag into groups and order); epic-11-context "a keyboard path" on every surface; no reorder key is designed (DS `ProjectRow.prompt.md:11` lists ↑ ↓ Home End → ← ↩ only).
+  - **Follow-up:** a DS round names the keys (for example ⌥⌘↑ / ⌥⌘↓) and the tree maps them onto `ProjectRegistry.move` / `moveGroup` (`app/lib/src/features/projects/projects_tree.dart`).
+- **The identity footer reads `user.name` / `user.email` when the content opens and when the open project changes, not after a config edit made elsewhere.** Low.
+  - No config-change event exists (9.28's verbs are request/response only); 11.7 will write identity rows; an external `jj config set` is invisible until the next read.
+  - **Follow-up:** 11.7 re-reads after its identity writes (or the content re-reads on window activation, 11.12) (`app/lib/src/features/projects/projects_window.dart`, the footer).
+- **Clone shows no progress and cannot be cancelled, and the CLI's destination rules (create the folder, refuse a non-empty one, remove a folder it created after a failure) run app-side until 9.20 brings them into the verb.** Low.
+  - `ZanshinWorker.cloneRepo({url, targetPath})` takes no progress or cancel and requires an existing target, accepting a non-empty one (`packages/zanshin_core/lib/src/worker/isolate.dart:421`; 9.20 backlog); the CLI's rules are `cli/src/commands/git/clone.rs:186-196`, `:259-270` @ v0.46.0; `ProjectSession.clone` ports them (`app/lib/src/features/projects/project_session.dart`).
+  - **Follow-up:** 9.20 gives `cloneRepo` the CLI's destination rules, progress (6.4a's callback) and cancel; the session's port then goes and the form shows progress (`project_session.dart`, `projects_window.dart`).
+- **A successful clone is witnessed only on a fake port in the app: under `dart`/`flutter test` the VM reaps git's child, so jj-lib's fetch fails; whether the running app's clone works is unverified.** Medium.
+  - `packages/zanshin_core/test/worker/creation_test.dart:63-90` (only the refusal runs); this file's "No Dart real-cdylib witness for a SUCCESSFUL clone" (the running app); Rust witnesses `crates/zanshin-ffi/tests/repo_ffi.rs:280`, `repo_write_ffi.rs:679-725`.
+  - **Follow-up:** clone a `file://` bare repository from the running app (11.12's Projects window or the catalogue's Windows › Projects window over the real worker); if it fails with "Failed to wait for the git process", fix the child reaping for the app (`app/lib/src/features/projects/worker_project_repos.dart`, clone).
+- **The native folder picker and Reveal in Finder are unverified: only their Dart channel half is tested, and nobody has seen the NSOpenPanel sheet or the Finder selection.** Medium. (Surfaced in the review.)
+  - `packages/zanshin_shell_macos/test/zanshin_shell_macos_test.dart` pins the method names and argument maps against a mocked channel; `ZanshinShellPlugin.swift` (`chooseDirectory`, `revealInFinder`) and `DirectoryPanel.swift` have no test harness (`app/macos/RunnerTests` is a stub); the run's visual check could not drive the panel (Marionette taps reach the catalogue's view only).
+  - **Follow-up:** a manual check in the catalogue's Windows › Projects window: Add directory opens the panel as a sheet on that window with an "Add" button and adds the chosen folder; Clone's Choose… shows "Choose"; ••• › Reveal in Finder selects the folder in Finder (Ralph, or 11.12's run on its CGWindowList probe seat).
