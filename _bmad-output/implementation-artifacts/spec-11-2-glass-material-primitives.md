@@ -43,6 +43,8 @@ deferred:
     location: >-
       app/lib/src/shared/materials/zs_glass.dart:79
     severity: medium (unverified)
+    resolved: >-
+      2026-10-18 — rejected (spec-11-3-floating-overlay-host): no glass of the overlay host mounts through an OverlayPortal inside an island, so the nesting check stays on the element tree; ZsGlass's doc states the rule.
   - summary: >-
       An open sheet does not stop the window's other shortcuts and menu items, so a command could act on the project window behind an open ConfirmDialog or Push.
     evidence: |-
