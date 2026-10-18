@@ -52,6 +52,8 @@ deferred:
     location: >-
       app/lib/src/features/home/home_page.dart:27
     severity: low
+    resolved: >-
+      2026-10-18 — fixed (spec-11-3-closing-home-page-unused-ffi-version, commit d96bb16): HomePage drops the parameter and MainComponent drops ZanshinFfiModule, whose only consumer it was.
 ---
 
 <intent-contract>

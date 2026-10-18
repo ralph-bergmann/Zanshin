@@ -1347,7 +1347,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **A resize edge removed during its own drag never reports the drag's end, so the shell would keep its calm hold and its edge-drag flag until the window closes.** Medium (unverified). (Surfaced in the review.)
   - `ZsResizeEdge` (`packages/zanshin_ui/lib/src/controls/zs_resize_edge.dart`) calls onDragEnd only from the recognizer's end and cancel, and a recognizer disposed with its widget fires neither; in 11.3 nothing removes the panel edge during a mouse drag (a window resize, the inspector opening and an unpin each need a second input).
   - **Follow-up:** 10.8 checks whether its inspector can close while its edge is dragged (a deselect from elsewhere); if any path removes an edge mid-drag, `ZsResizeEdge` ends the drag in `dispose`.
-- **`HomePage` injects `ZanshinFfiVersion` and never reads it.** Low. (Surfaced in the review; pre-existing.)
+- ~~**`HomePage` injects `ZanshinFfiVersion` and never reads it.**~~ — RESOLVED 2026-10-18 (spec-11-3-closing-home-page-unused-ffi-version, commit d96bb16): `HomePage` drops the parameter and `MainComponent` drops `ZanshinFfiModule`, whose only consumer it was. Low. (Surfaced in the review; pre-existing.)
   - `app/lib/src/features/home/home_page.dart:22-27`; before this story `HomePage` returned `const AppShell()` and did not read it either.
   - **Follow-up:** drop it with the next change to the home (11.10).
 
