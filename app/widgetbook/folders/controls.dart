@@ -126,61 +126,69 @@ class StateMatrix extends StatelessWidget {
     ];
     final TextStyle head = ZsType.capsLabel.copyWith(color: colors.textDim);
     Widget pad(Widget child) => Padding(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8), child: child);
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Table(
-          columnWidths: const <int, TableColumnWidth>{0: FixedColumnWidth(150)},
-          defaultColumnWidth: FixedColumnWidth(columnWidth),
-          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-          border: TableBorder(
-            top: BorderSide(color: colors.borderStrong),
-            horizontalInside: BorderSide(color: colors.border),
-            bottom: BorderSide(color: colors.border),
-          ),
-          children: <TableRow>[
-            TableRow(
-              children: <Widget>[
-                pad(Text(ZsType.caps('Control'), style: head)),
-                for (final MatrixState state in columns) pad(Text(ZsType.caps(state.label), style: head)),
-              ],
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(22, 18, 22, 24),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Table(
+            columnWidths: const <int, TableColumnWidth>{0: FixedColumnWidth(150)},
+            // The state columns shrink to the use-case area, down to two thirds of [columnWidth]; past that the table
+            // scrolls sideways. A column past the right edge went unseen (Ralph, 2026-10-18: the Checkbox's Disabled).
+            defaultColumnWidth: FixedColumnWidth(
+              box.hasBoundedWidth
+                  ? ((box.maxWidth - 2 * 22 - 150) / columns.length).clamp(columnWidth * 2 / 3, columnWidth)
+                  : columnWidth,
             ),
-            for (final MatrixRow row in rows)
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            border: TableBorder(
+              top: BorderSide(color: colors.borderStrong),
+              horizontalInside: BorderSide(color: colors.border),
+              bottom: BorderSide(color: colors.border),
+            ),
+            children: <TableRow>[
               TableRow(
                 children: <Widget>[
-                  pad(
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      spacing: 2,
-                      children: <Widget>[
-                        Text(
-                          row.name,
-                          style: ZsType.control.copyWith(color: colors.text, fontWeight: FontWeight.w500),
-                        ),
-                        Text(row.spec, style: ZsType.meta.copyWith(color: colors.textFaint)),
-                      ],
-                    ),
-                  ),
-                  for (final MatrixState state in columns)
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 52),
-                      child: Center(
-                        child: row.states.contains(state)
-                            ? Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                                // A control wider than its column (a long label, a large text scale) shrinks to fit.
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: _MatrixCell(state: state, build: row.build),
-                                ),
-                              )
-                            : Text('—', style: ZsType.meta.copyWith(color: colors.textFaint)),
-                      ),
-                    ),
+                  pad(Text(ZsType.caps('Control'), style: head)),
+                  for (final MatrixState state in columns) pad(Text(ZsType.caps(state.label), style: head)),
                 ],
               ),
-          ],
+              for (final MatrixRow row in rows)
+                TableRow(
+                  children: <Widget>[
+                    pad(
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        spacing: 2,
+                        children: <Widget>[
+                          Text(
+                            row.name,
+                            style: ZsType.control.copyWith(color: colors.text, fontWeight: FontWeight.w500),
+                          ),
+                          Text(row.spec, style: ZsType.meta.copyWith(color: colors.textFaint)),
+                        ],
+                      ),
+                    ),
+                    for (final MatrixState state in columns)
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 52),
+                        child: Center(
+                          child: row.states.contains(state)
+                              ? Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                  // A control wider than its column (a long label, a large text scale) shrinks to fit.
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: _MatrixCell(state: state, build: row.build),
+                                  ),
+                                )
+                              : Text('—', style: ZsType.meta.copyWith(color: colors.textFaint)),
+                        ),
+                      ),
+                  ],
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -254,12 +262,13 @@ VoidCallback? _enabled(MatrixCell cell) => cell.state == MatrixState.disabled ? 
 // ---- Button ----
 
 Widget _buttonMatrix(BuildContext context) {
-  MatrixRow row(String spec, String label, ZsButtonVariant variant, {bool busy = false}) => MatrixRow(
+  MatrixRow row(String spec, String label, ZsButtonVariant variant, {bool busy = false, String? icon}) => MatrixRow(
     'Button',
     spec,
     <MatrixState>[..._interaction, MatrixState.disabled, if (busy) MatrixState.busy],
     (cell) => ZsButton(
       label: label,
+      icon: icon,
       variant: variant,
       busy: cell.state == MatrixState.busy,
       onPressed: _enabled(cell),
@@ -270,7 +279,7 @@ Widget _buttonMatrix(BuildContext context) {
     row('default', 'Describe…', ZsButtonVariant.quiet, busy: true),
     row('primary · gold', 'Commit', ZsButtonVariant.primary, busy: true),
     row('ghost', 'Cancel', ZsButtonVariant.ghost),
-    row('danger · quiet', 'Abandon', ZsButtonVariant.danger),
+    row('danger · quiet', 'Abandon', ZsButtonVariant.danger, icon: ZI.abandon),
     row('destructive · filled', 'Clear history', ZsButtonVariant.destructive, busy: true),
     for (final ZsButtonSize size in ZsButtonSize.values)
       MatrixRow(
@@ -333,10 +342,11 @@ Widget _iconButtonMatrix(BuildContext context) => StateMatrix(<MatrixRow>[
     'IconButton',
     'md · badge',
     const <MatrixState>[..._interaction, MatrixState.on, MatrixState.disabled],
+    // As DS components/controls/state-matrix.card.html:43: the badge at rest and on hover only.
     (cell) => ZsIconButton(
-      icon: ZI.conflict,
-      label: 'Conflicts',
-      badge: 3,
+      icon: ZI.fetch,
+      label: 'Fetch',
+      badge: cell.state == MatrixState.rest || cell.state == MatrixState.hover ? 3 : null,
       active: cell.state == MatrixState.on,
       onPressed: _enabled(cell),
       statesController: cell.states,
@@ -490,17 +500,23 @@ Widget _radioMatrix(BuildContext context) => StateMatrix(<MatrixRow>[
 ]);
 
 Widget _radioInteractive(BuildContext context) => _live(
+  // The options of DS components/controls/controls.card.html ("Radio group").
   _Stateful<String>(
-    initial: 'merge',
+    initial: 'new',
     build: (value, set) => ZsRadioGroup<String>(
-      label: 'Strategy',
+      label: 'When @ has changes',
       value: value,
       onChanged: set,
       identifier: 'radio',
       options: const <ZsRadioOption<String>>[
-        ZsRadioOption<String>(value: 'merge', label: 'Merge', hint: 'A merge commit with both parents'),
-        ZsRadioOption<String>(value: 'rebase', label: 'Rebase'),
-        ZsRadioOption<String>(value: 'squash', label: 'Squash', disabledReason: 'Only one change to land'),
+        ZsRadioOption<String>(value: 'new', label: 'Start a new change', hint: 'jj new — @ stays as it is'),
+        ZsRadioOption<String>(value: 'squash', label: 'Squash into @', hint: 'jj squash'),
+        ZsRadioOption<String>(
+          value: 'ask',
+          label: 'Ask every time',
+          hint: 'Needs a newer jj',
+          disabledReason: 'Needs a newer jj',
+        ),
       ],
     ),
   ),
@@ -939,7 +955,56 @@ Widget _tooltipMatrix(BuildContext context) => StateMatrix(<MatrixRow>[
         child: ZsButton(icon: ZI.fetch, label: 'Fetch', onPressed: () {}),
       ),
     ),
+  // Last, so its bubble hangs below the table (DS components/controls/controls.card.html, "Badge · Tooltip").
+  MatrixRow(
+    'Tooltip',
+    'open · below',
+    const <MatrixState>[MatrixState.rest],
+    (cell) => _OpenTooltip(
+      child: ZsTooltip(
+        message: 'Fetch',
+        cmd: 'jj git fetch',
+        shortcut: '⇧⌘F',
+        child: ZsIconButton(icon: ZI.fetch, label: 'Fetch', badge: 3, onPressed: () {}),
+      ),
+    ),
+  ),
 ]);
+
+/// Opens the tooltip below it once laid out: Marionette and screenshots cannot hover, so the matrix shows one bubble
+/// without a pointer (Ralph, 2026-10-18). A click anywhere closes it, as it closes any tooltip.
+class _OpenTooltip extends StatefulWidget {
+  const _OpenTooltip({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_OpenTooltip> createState() => _OpenTooltipState();
+}
+
+class _OpenTooltipState extends State<_OpenTooltip> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      void open(Element element) {
+        if (element is StatefulElement && element.state is RawTooltipState) {
+          (element.state as RawTooltipState).ensureTooltipVisible();
+          return;
+        }
+        element.visitChildElements(open);
+      }
+
+      context.visitChildElements(open);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
 
 Widget _tooltipInteractive(BuildContext context) {
   final String message = context.knobs.string(label: 'message', initialValue: 'Push');
@@ -977,44 +1042,50 @@ Widget _popoverMatrix(BuildContext context) => StateMatrix(<MatrixRow>[
 ]);
 
 Widget _popoverInteractive(BuildContext context) => _live(
+  // The Graph view popover of DS components/surfaces/surfaces.card.html.
   ZsPopover(
-    label: 'View',
+    label: 'Graph view',
     identifier: 'popover',
+    width: 300,
     child: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       spacing: 2,
       children: <Widget>[
-        const ZsPopoverHeader('View'),
+        const ZsPopoverHeader('Graph view'),
         ZsOptionRow(
-          label: 'Show elided changes',
-          child: _Stateful<bool>(
-            initial: true,
-            build: (value, set) => ZsSwitch(value: value, onChanged: set, label: 'Show elided changes'),
-          ),
-        ),
-        ZsOptionRow(
-          label: 'Density',
+          label: 'Layout',
           child: _Stateful<String>(
             initial: 'free',
             build: (value, set) => ZsSegmented<String>(
-              segments: _density,
+              segments: const <ZsSegment<String>>[
+                ZsSegment<String>(value: 'free', label: 'Free', tooltip: 'Rows follow commit time'),
+                ZsSegment<String>(value: 'compact', label: 'Compact', tooltip: 'Rows = dependency depth'),
+              ],
               value: value,
               onChanged: set,
-              label: 'Density',
-              size: ZsSegmentedSize.sm,
+              label: 'Layout',
             ),
           ),
         ),
+        for (final String option in const <String>['Detailed cards', 'Group stacks'])
+          ZsOptionRow(
+            label: option,
+            child: _Stateful<bool>(
+              initial: true,
+              build: (value, set) => ZsSwitch(value: value, onChanged: set, label: option),
+            ),
+          ),
         ZsOptionRow(
           label: 'Card width',
           child: _Stateful<double>(
             initial: 240,
-            build: (value, set) => ZsSlider(value: value, onChanged: set, min: 180, max: 320, label: 'Card width'),
+            build: (value, set) =>
+                ZsSlider(value: value, onChanged: set, min: 160, max: 400, step: 10, unit: 'px', label: 'Card width'),
           ),
         ),
         const ZsPopoverSeparator(),
-        ZsOptionLink(label: 'More view options', action: 'Settings…', shortcut: '⌘,', onPressed: () {}),
+        ZsOptionLink(label: 'Appearance, diffs and more', action: 'Settings…', shortcut: '⌘,', onPressed: () {}),
       ],
     ),
   ),
@@ -1072,14 +1143,47 @@ Widget _confirmInteractive(BuildContext context) {
 
 // ---- ScrollArea ----
 
-Widget _scrollList(ScrollController controller) => ListView.builder(
-  controller: controller,
-  itemCount: 40,
-  itemBuilder: (context, i) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-    child: Text('src/feature_$i.dart'),
-  ),
+Widget _scrollList(ScrollController controller) => Builder(
+  builder: (context) {
+    final ZsColors colors = ZsColors.of(context);
+    // DS components/controls/controls.card.html:14-15 (`.sc`, `.li`): a 12-radius `--fl-hover` box, 28-high rows,
+    // padding 0 12, mono 11.5 in `--text-muted`.
+    return DecoratedBox(
+      decoration: BoxDecoration(color: colors.flHover, borderRadius: BorderRadius.circular(12)),
+      child: ListView.builder(
+        controller: controller,
+        itemCount: _files.length,
+        itemExtent: 28,
+        itemBuilder: (context, i) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(
+              _files[i],
+              style: ZsType.command.copyWith(fontSize: ZsType.fsId, color: colors.textMuted),
+            ),
+          ),
+        ),
+      ),
+    );
+  },
 );
+
+/// The files of the DS ScrollArea demo (DS components/controls/controls.card.html, `files`).
+const _files = <String>[
+  'lib/swipe/controller.dart',
+  'lib/swipe/velocity.dart',
+  'lib/onboarding/page.dart',
+  'lib/onboarding/steps.dart',
+  'lib/theme/colors.dart',
+  'lib/theme/type.dart',
+  'test/swipe_test.dart',
+  'test/velocity_test.dart',
+  'pubspec.yaml',
+  'README.md',
+  'CHANGELOG.md',
+  'analysis_options.yaml',
+];
 
 Widget _scrollAreaMatrix(BuildContext context) {
   MatrixRow row(String spec, {bool? always}) => MatrixRow(
@@ -1100,7 +1204,8 @@ Widget _scrollAreaMatrix(BuildContext context) {
 
 Widget _scrollAreaInteractive(BuildContext context) {
   final bool? jump = context.knobs.booleanOrNull(label: 'jump to the spot (null: the shell)');
-  return _live(SizedBox(width: 280, height: 320, child: _ScrollDemo(jumpToClickedSpot: jump)));
+  // `<ScrollArea height={170}>` in a column of the DS card (DS components/controls/controls.card.html:72).
+  return _live(SizedBox(width: 380, height: 170, child: _ScrollDemo(jumpToClickedSpot: jump)));
 }
 
 class _ScrollDemo extends StatefulWidget {
