@@ -723,7 +723,8 @@ class _ZsSearchFieldState extends State<ZsSearchField> {
     final ZsMotion motion = ZsMotion.of(context);
     final appearance = ZsAppearance.of(context);
     final bool inactive = appearance.inactive;
-    final bool focused = (_focus.hasFocus || _forced.contains(WidgetState.focused)) && !inactive;
+    final bool hasFocus = _focus.hasFocus || _forced.contains(WidgetState.focused);
+    final bool focused = hasFocus && !inactive;
     final bool hover = (_hovered || _forced.contains(WidgetState.hovered)) && !inactive;
     final _SearchLook look = (
       fill: !focused && hover ? colors.flOn : colors.flHover,
@@ -802,7 +803,7 @@ class _ZsSearchFieldState extends State<ZsSearchField> {
                         ),
                         if (query)
                           _ClearButton(onPressed: () => _clearQuery(refocus: true))
-                        else if (shortcut != null && !_focus.hasFocus)
+                        else if (shortcut != null && !hasFocus)
                           Padding(padding: const EdgeInsets.only(right: 3), child: ZsKbd(shortcut)),
                       ],
                     ),

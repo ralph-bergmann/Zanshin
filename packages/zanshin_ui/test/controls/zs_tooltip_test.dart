@@ -18,6 +18,7 @@ Widget _window({
   required Offset at,
   ZsTooltipPlacement placement = ZsTooltipPlacement.below,
   String message = 'New change',
+  String cmd = 'jj new',
   FocusNode? focusNode,
   VoidCallback? onActivate,
 }) => zsHost(
@@ -30,7 +31,7 @@ Widget _window({
           child: ZsTooltip(
             message: message,
             shortcut: '⌘N',
-            cmd: 'jj new',
+            cmd: cmd,
             placement: placement,
             child: ZsControlCore(
               identifier: 'control',
@@ -70,6 +71,21 @@ void main() {
     expect(find.text('New change'), findsOneWidget);
     expect(find.text('⌘N'), findsOneWidget);
     expect(find.text('jj new'), findsOneWidget);
+    await mouse.moveTo(Offset.zero);
+    await tester.pump(_m.durExit);
+    await tester.pump(_m.durTooltipWarm);
+  });
+
+  testWidgets('the shortcut keeps to the right edge above a wider command (`justify-content:space-between`)', (
+    tester,
+  ) async {
+    const cmd = 'jj new --insert-after main';
+    await tester.pumpWidget(_window(at: const Offset(300, 200), cmd: cmd));
+    final TestGesture mouse = await hover(tester, find.byType(ZsControlCore));
+    await tester.pump(_m.delayTooltip);
+    await _fade(tester, _m.durHover);
+    // DS components/controls/controls.css:44 (`.zs-tip-l`).
+    expect(tester.getRect(find.text('⌘N')).right, tester.getRect(find.text(cmd)).right);
     await mouse.moveTo(Offset.zero);
     await tester.pump(_m.durExit);
     await tester.pump(_m.durTooltipWarm);

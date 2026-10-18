@@ -298,6 +298,13 @@ void main() {
       expect(field, paints..something(ringOf(color: c.accentLine)));
     });
 
+    testWidgets('a forced focus hides the key cap, as real focus does', (tester) async {
+      final states = WidgetStatesController(<WidgetState>{WidgetState.focused});
+      addTearDown(states.dispose);
+      await tester.pumpWidget(_field(ZsSearchField(statesController: states, shortcutLabel: '/')));
+      expect(find.byType(ZsKbd), findsNothing);
+    });
+
     testWidgets('the key cap shows while empty and unfocused; the ✕ replaces it with a query', (tester) async {
       final controller = ZsTextEditingController();
       addTearDown(controller.dispose);

@@ -297,33 +297,39 @@ class _BubbleState extends State<_Bubble> {
                 shadow: ZsElevation.of(context).shadowTooltip,
                 radius: ZsMetrics.of(context).radiusChip,
                 padding: const EdgeInsets.fromLTRB(8, 5, 8, 6),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  spacing: 2,
-                  children: <Widget>[
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      spacing: 14,
-                      children: <Widget>[
-                        Flexible(child: Text(widget.message, style: label)),
-                        if (shortcut != null)
-                          Text(
-                            shortcut,
-                            style: zsWeighted(label, FontWeight.w400).copyWith(color: colors.textDim),
-                            softWrap: false,
-                          ),
-                      ],
-                    ),
-                    if (cmd != null)
-                      Text(
-                        cmd,
-                        style: zsMono(ZsType.fsSm, height: 1.35).copyWith(color: colors.textDim),
-                        softWrap: false,
+                // `width:max-content` with `.zs-tip-l{justify-content:space-between}`: the bubble is as wide as
+                // its widest line, and the shortcut keeps to its right edge (DS components/controls/controls.css:38,
+                // :44).
+                child: IntrinsicWidth(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    spacing: 2,
+                    children: <Widget>[
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        spacing: 14,
+                        children: <Widget>[
+                          Flexible(child: Text(widget.message, style: label)),
+                          if (shortcut != null)
+                            Text(
+                              shortcut,
+                              style: zsWeighted(label, FontWeight.w400).copyWith(color: colors.textDim),
+                              softWrap: false,
+                            ),
+                        ],
                       ),
-                  ],
+                      if (cmd != null)
+                        Text(
+                          cmd,
+                          style: zsMono(ZsType.fsSm, height: 1.35).copyWith(color: colors.textDim),
+                          softWrap: false,
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
