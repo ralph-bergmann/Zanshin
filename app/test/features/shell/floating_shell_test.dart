@@ -483,6 +483,23 @@ void main() {
     expect(find.byKey(_stale), findsNothing);
   });
 
+  testWidgets('without a canvas the shell fills the window with a plain --canvas-base box', (tester) async {
+    useShellWindow(tester);
+    final controller = ShellController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(shellHost(FloatingShell(controller: controller)));
+
+    final Finder fill = find.descendant(
+      of: find.byType(FloatingShell),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is ColoredBox && widget.color == ZsColors.night.canvasBase,
+      ),
+    );
+    expect(fill, findsOneWidget);
+    expect(tester.getRect(fill), Offset.zero & shellWindow);
+    expect(ZsColors.of(tester.element(fill)).canvasBase, ZsColors.night.canvasBase);
+  });
+
   testWidgets('below the bar row a press between islands reaches the graph; on an island it does not', (tester) async {
     final _Rig rig = await _pump(tester, _Rig());
     await tester.pumpAndSettle();

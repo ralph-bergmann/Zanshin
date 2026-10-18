@@ -348,7 +348,8 @@ abstract final class ZsAccents {
   );
 
   /// `--accent-native`: the app accent reported to macOS under Multicolor, any appearance — a deeper moon,
-  /// because native controls put white text on it (DS tokens/accents.css:57). 11.4 adds the asset.
+  /// because native controls put white text on it (DS tokens/accents.css:57); the runner's AccentColor colour set
+  /// (Story 11.4).
   static const native = Color(0xFF4757A1);
 
   /// `--accent-native-dark`: the dark appearance's app accent (DS tokens/accents.css:57).

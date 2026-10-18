@@ -18,8 +18,9 @@ abstract final class ZanshinShell {
   /// Emits whenever any part of [getTheme]'s answer changes.
   static Stream<ShellTheme> get onThemeChanged => _platform.onThemeChanged;
 
-  /// Forces the window chrome (blur background, traffic lights) to the given
-  /// appearance - use this when the in-app theme mode overrides the system.
+  /// Forces the window chrome (background, traffic lights and their rings) to
+  /// the given appearance - use this when the in-app theme mode overrides the
+  /// system.
   static Future<void> setWindowAppearance(WindowAppearance appearance) => _platform.setWindowAppearance(appearance);
 
   /// Starts a native window drag; call from an active drag gesture.
@@ -27,4 +28,15 @@ abstract final class ZanshinShell {
 
   /// Performs the user-configured titlebar double-click action.
   static Future<void> performTitlebarDoubleClickAction() => _platform.performTitlebarDoubleClickAction();
+
+  /// Starts reporting the chrome (full screen, the standard window buttons' block) of the window that hosts the
+  /// Flutter view [viewId] on [onWindowChromeChanged] and answers its current chrome. Listen first, so no change
+  /// between the answer and the subscription is lost.
+  static Future<WindowChrome> watchWindowChrome(int viewId) => _platform.watchWindowChrome(viewId);
+
+  /// Stops reporting the chrome of [viewId].
+  static Future<void> unwatchWindowChrome(int viewId) => _platform.unwatchWindowChrome(viewId);
+
+  /// Emits a watched view's chrome whenever it changes.
+  static Stream<WindowChromeChange> get onWindowChromeChanged => _platform.onWindowChromeChanged;
 }

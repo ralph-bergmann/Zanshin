@@ -5,10 +5,11 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 
-/// macOS implementation of [ZanshinShellPlatform] over two [MethodChannel]s:
+/// macOS implementation of [ZanshinShellPlatform] over three [MethodChannel]s:
 /// `zanshin_shell` (theme + window commands; also carries the Swift side's
-/// `onThemeChanged` calls back to Dart) and `zanshin_shell/folder_drop`
-/// (folder drags).
+/// `onThemeChanged` calls back to Dart), `zanshin_shell/folder_drop` (folder
+/// drags) and `zanshin_shell/window_chrome` (each watched view's full screen
+/// and traffic-light block).
 class ZanshinShellMacOS extends ZanshinShellPlatform {
   static void registerWith() {
     ZanshinShellPlatform.instance = ZanshinShellMacOS();
@@ -16,6 +17,7 @@ class ZanshinShellMacOS extends ZanshinShellPlatform {
 
   static const _channel = MethodChannel('zanshin_shell');
   static const _folderDropChannel = MethodChannel('zanshin_shell/folder_drop');
+  static const _windowChromeChannel = MethodChannel('zanshin_shell/window_chrome');
 
   /// The host→Dart handler is installed on the first listener, not in the
   /// constructor: the engine runs the generated registrant before `main`,
@@ -114,4 +116,49 @@ class ZanshinShellMacOS extends ZanshinShellPlatform {
   @override
   Future<void> disableFolderDrops(int viewId) =>
       _folderDropChannel.invokeMethod<void>('detach', <String, Object?>{'viewId': viewId});
+
+  /// Like the theme stream, the host→Dart handler is installed on the first listener.
+  late final _windowChromeChanges = StreamController<WindowChromeChange>.broadcast(
+    onListen: () => _windowChromeChannel.setMethodCallHandler(_handleWindowChromeCall),
+  );
+
+  /// Decodes a native `changed` call onto [onWindowChromeChanged]. Anything malformed becomes a `bad-args` error
+  /// reply, which the native side ignores.
+  Future<Object?> _handleWindowChromeCall(MethodCall call) async {
+    final WindowChromeChange change = switch ((call.method, call.arguments)) {
+      ('changed', final Map<Object?, Object?> map) when map['viewId'] is int => (
+        viewId: map['viewId']! as int,
+        chrome: _windowChromeFrom(map),
+      ),
+      _ => throw PlatformException(code: 'bad-args', message: 'Malformed window chrome call: ${call.method}'),
+    };
+    _windowChromeChanges.add(change);
+    return null;
+  }
+
+  /// Decodes a report `{fullScreen, trafficLights?: {x, y, width, height}}`; an absent block is null.
+  static WindowChrome _windowChromeFrom(Object? arguments) => switch (arguments) {
+    final Map<Object?, Object?> map when map['fullScreen'] is bool => WindowChrome(
+      fullScreen: map['fullScreen']! as bool,
+      trafficLights: switch (map['trafficLights']) {
+        null => null,
+        {'x': final double x, 'y': final double y, 'width': final double width, 'height': final double height} =>
+          Rect.fromLTWH(x, y, width, height),
+        _ => throw PlatformException(code: 'bad-args', message: 'Malformed traffic-light block'),
+      },
+    ),
+    _ => throw PlatformException(code: 'bad-args', message: 'Malformed window chrome report'),
+  };
+
+  @override
+  Future<WindowChrome> watchWindowChrome(int viewId) async => _windowChromeFrom(
+    await _windowChromeChannel.invokeMethod<Object?>('watch', <String, Object?>{'viewId': viewId}),
+  );
+
+  @override
+  Future<void> unwatchWindowChrome(int viewId) =>
+      _windowChromeChannel.invokeMethod<void>('unwatch', <String, Object?>{'viewId': viewId});
+
+  @override
+  Stream<WindowChromeChange> get onWindowChromeChanged => _windowChromeChanges.stream;
 }

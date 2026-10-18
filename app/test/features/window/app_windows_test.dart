@@ -55,6 +55,37 @@ void main() {
     return (registry, windows, exits);
   }
 
+  testWidgets("a window created without constraints gets the project window's minimum, 880 × 560", (tester) async {
+    final received = <BoxConstraints>[];
+    final windows = AppWindows(
+      createController:
+          ({
+            required key,
+            required title,
+            required size,
+            required constraints,
+            required delegate,
+            required chrome,
+          }) {
+            received.add(constraints);
+            return fakeController(
+              key: key,
+              title: title,
+              size: size,
+              constraints: constraints,
+              delegate: delegate,
+              chrome: chrome,
+            );
+          },
+      exitProcess: () async {},
+    )..attach(WindowRegistry());
+    final WindowEntry entry = await windows.create(key: 'main', title: 'Zanshin', builder: _nothing);
+    addTearDown(entry.controller.destroy);
+
+    expect(defaultWindowConstraints, const BoxConstraints(minWidth: 880, minHeight: 560));
+    expect(received, <BoxConstraints>[defaultWindowConstraints]);
+  });
+
   testWidgets('openOrActivate registers a new window', (tester) async {
     final (WindowRegistry registry, AppWindows windows, _) = newWindows();
 

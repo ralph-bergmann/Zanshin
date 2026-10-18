@@ -5,6 +5,7 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import 'folder_drag_event.dart';
 import 'shell_theme.dart';
+import 'window_chrome.dart';
 
 /// The interface that platform implementations of zanshin_shell must extend.
 abstract class ZanshinShellPlatform extends PlatformInterface {
@@ -45,8 +46,8 @@ abstract class ZanshinShellPlatform extends PlatformInterface {
   /// (reduce motion, reduce transparency, increase contrast) or the scroll bar style changes.
   Stream<ShellTheme> get onThemeChanged => throw UnimplementedError();
 
-  /// Forces the window (blur background + traffic lights) to the given
-  /// appearance, or back to following the system.
+  /// Forces the window (its background, the traffic lights and their rings) to
+  /// the given appearance, or back to following the system.
   Future<void> setWindowAppearance(WindowAppearance appearance) => throw UnimplementedError();
 
   /// Starts a native window drag. Must be called from within an active
@@ -68,4 +69,16 @@ abstract class ZanshinShellPlatform extends PlatformInterface {
   /// Stops accepting folder drags on the Flutter view [viewId]; a no-op when
   /// they are not enabled.
   Future<void> disableFolderDrops(int viewId) => throw UnimplementedError();
+
+  /// Starts reporting the chrome of the window that hosts the Flutter view
+  /// [viewId] on [onWindowChromeChanged] and answers its current chrome;
+  /// idempotent. Fails with a `PlatformException` coded `unknown-view` when no
+  /// attached Flutter view has that id.
+  Future<WindowChrome> watchWindowChrome(int viewId) => throw UnimplementedError();
+
+  /// Stops reporting the chrome of [viewId]; a no-op when it is not watched.
+  Future<void> unwatchWindowChrome(int viewId) => throw UnimplementedError();
+
+  /// Emits a watched view's chrome whenever it changes.
+  Stream<WindowChromeChange> get onWindowChromeChanged => throw UnimplementedError();
 }

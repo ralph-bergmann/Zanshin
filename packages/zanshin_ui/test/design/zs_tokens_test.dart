@@ -325,6 +325,31 @@ void main() {
       expect(fullScreen.chromeTop, 68);
       expect(fullScreen.chromeLeft, 76);
     });
+
+    test('a measured traffic-light block places the chrome', () {
+      final measured = ZsMetrics.resolve(const ZsAppearance(trafficLights: Rect.fromLTWH(19, 19, 60, 14)));
+      expect(measured.chromeFirstX, 91);
+      expect(measured.chromeBarY, 4);
+      expect(measured.chromeTop, 60);
+      expect(measured.tlSize, ZsMetrics.standard.tlSize);
+      expect(measured.tlPitch, ZsMetrics.standard.tlPitch);
+      // Another block, centre y 27: the bar's centre line and the first island follow it.
+      final shifted = ZsMetrics.resolve(const ZsAppearance(trafficLights: Rect.fromLTWH(20, 20, 60, 14)));
+      expect(shifted.chromeFirstX, 92);
+      expect(shifted.chromeBarY, 5);
+      expect(shifted.chromeBarY + shifted.chromeH / 2, 27);
+      expect(shifted.chromeTop, 61);
+    });
+
+    test('full screen wins over a block; no report keeps the reference geometry', () {
+      final fullScreen = ZsMetrics.resolve(
+        const ZsAppearance(fullScreen: true, trafficLights: Rect.fromLTWH(20, 20, 60, 14)),
+      );
+      expect(fullScreen.chromeFirstX, 12);
+      expect(fullScreen.chromeBarY, 12);
+      expect(fullScreen.chromeTop, 68);
+      expect(ZsMetrics.resolve(const ZsAppearance()), ZsMetrics.standard);
+    });
   });
 
   test('the token layer records the DS sync it mirrors', () {

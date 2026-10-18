@@ -159,6 +159,7 @@ class ZsAppearance {
     this.reduceTransparency = false,
     this.inactive = false,
     this.fullScreen = false,
+    this.trafficLights,
   });
 
   /// The nearest installed appearance, or the default one (night, Multicolor, no delta) outside any window root.
@@ -166,7 +167,8 @@ class ZsAppearance {
 
   /// What a window shows for [theme], the Settings choice [accentSource] and the shell's report [shell]: the family
   /// from [ZsAccentFamily.resolve] (decision 16.2) and the shell's three accessibility flags (all off until the shell
-  /// answered). The window's key status and full screen stay false; 11.12 and 11.4 drive them.
+  /// answered). Full screen and the traffic-light block come from the window's chrome report, which the window root
+  /// copies in (Story 11.4); the key status stays false until 11.12 drives it.
   ///
   /// Claude's proposal (Story 11.11): one derivation for the app's view model and the catalogue.
   factory ZsAppearance.fromShell({
@@ -203,9 +205,14 @@ class ZsAppearance {
 
   /// Whether the window is in full screen (DS tokens/spacing.css:52).
   ///
-  /// Claude's proposal (Story 11.1): part of the appearance, so the metrics resolve it like the other deltas; 11.4
-  /// drives it.
+  /// Claude's proposal (Story 11.1): part of the appearance, so the metrics resolve it like the other deltas; the
+  /// window's chrome report drives it (Story 11.4).
   final bool fullScreen;
+
+  /// The system's traffic-light block as the shell measured it, in the window's logical pixels with the origin top
+  /// left (DS tokens/spacing.css:25-30); null before the window's chrome report, off macOS and in full screen, and
+  /// then the metrics take the reference geometry.
+  final Rect? trafficLights;
 
   /// The nearest installed appearance, or null outside any window root.
   static ZsAppearance? maybeOf(BuildContext context) =>
@@ -220,6 +227,7 @@ class ZsAppearance {
     bool? reduceTransparency,
     bool? inactive,
     bool? fullScreen,
+    Rect? trafficLights,
   }) => ZsAppearance(
     theme: theme ?? this.theme,
     family: family ?? this.family,
@@ -228,6 +236,7 @@ class ZsAppearance {
     reduceTransparency: reduceTransparency ?? this.reduceTransparency,
     inactive: inactive ?? this.inactive,
     fullScreen: fullScreen ?? this.fullScreen,
+    trafficLights: trafficLights ?? this.trafficLights,
   );
 
   @override
@@ -240,16 +249,26 @@ class ZsAppearance {
           other.reduceMotion == reduceMotion &&
           other.reduceTransparency == reduceTransparency &&
           other.inactive == inactive &&
-          other.fullScreen == fullScreen;
+          other.fullScreen == fullScreen &&
+          other.trafficLights == trafficLights;
 
   @override
-  int get hashCode =>
-      Object.hash(theme, family, increasedContrast, reduceMotion, reduceTransparency, inactive, fullScreen);
+  int get hashCode => Object.hash(
+    theme,
+    family,
+    increasedContrast,
+    reduceMotion,
+    reduceTransparency,
+    inactive,
+    fullScreen,
+    trafficLights,
+  );
 
   @override
   String toString() =>
       'ZsAppearance(${theme.name}, ${family.name}, increasedContrast: $increasedContrast, reduceMotion: '
-      '$reduceMotion, reduceTransparency: $reduceTransparency, inactive: $inactive, fullScreen: $fullScreen)';
+      '$reduceMotion, reduceTransparency: $reduceTransparency, inactive: $inactive, fullScreen: $fullScreen, '
+      'trafficLights: $trafficLights)';
 }
 
 /// Installs the effective [ZsAppearance] for a subtree; `ZsRoot` places it at every window root.

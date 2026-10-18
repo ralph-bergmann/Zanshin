@@ -19,8 +19,9 @@ import 'top_bar.dart';
 /// the graph fills the window and every control floats over it on glass islands, in named slots the other stories
 /// fill. It owns no graph semantics.
 ///
-/// **Layers**, bottom to top: [canvas] (`--canvas-base` until 11.4), [graph] inside the calm-scrolling listener,
-/// [barRow] over the bar's row (`0` to `--chrome-top`; 11.4's drag region), the chrome (`--z-chrome`: the top bar
+/// **Layers**, bottom to top: [canvas] (a plain `--canvas-base` fill for a host that passes none; the project window
+/// passes `ZsCanvas`), [graph] inside the calm-scrolling listener, [barRow] over the bar's row (`0` to
+/// `--chrome-top`; the window's drag region, Story 11.4), the chrome (`--z-chrome`: the top bar
 /// Place · View · Action, the inspector, the minimap, the rail with its pinned panel, edge and flyout, the stale
 /// notice, the @ pill and the toast) and the rail's preview (`--z-preview`). Sheets, menus and tooltips mount
 /// through the window's `Overlay` above. One `BackdropGroup` holds every island; pointer events pass through
@@ -81,13 +82,13 @@ class FloatingShell extends StatefulWidget {
   /// The rail's items; none hides the rail.
   final List<ShellRailItem> railItems;
 
-  /// The window canvas (11.4); `--canvas-base` while null.
+  /// The window canvas; a plain `--canvas-base` fill while null (the project window passes `ZsCanvas`, Story 11.4).
   final Widget? canvas;
 
   /// The graph view (Epic 10).
   final Widget? graph;
 
-  /// The bar's row, under the islands (11.4's drag region).
+  /// The bar's row, under the islands: the window's drag region (Story 11.4).
   final Widget? barRow;
 
   /// PLACE: the project capsule island (11.5).

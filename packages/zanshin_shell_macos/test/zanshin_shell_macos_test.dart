@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin_shell_macos/zanshin_shell_macos.dart';
@@ -233,6 +235,102 @@ void main() {
         ),
         isNull,
       );
+    });
+  });
+
+  group('window chrome', () {
+    const chromeChannel = MethodChannel('zanshin_shell/window_chrome');
+    const codec = StandardMethodCodec();
+    final chromeLog = <MethodCall>[];
+    Object? watchAnswer;
+
+    TestDefaultBinaryMessenger messenger() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+
+    /// Delivers a native window chrome call to Dart and decodes the reply.
+    Future<Object?> nativeCall(String method, Object? arguments) => messenger()
+        .handlePlatformMessage(chromeChannel.name, codec.encodeMethodCall(MethodCall(method, arguments)), null)
+        .then((reply) => codec.decodeEnvelope(reply!));
+
+    setUp(() {
+      chromeLog.clear();
+      watchAnswer = <String, Object?>{'fullScreen': false};
+      messenger().setMockMethodCallHandler(chromeChannel, (call) async {
+        chromeLog.add(call);
+        return call.method == 'watch' ? watchAnswer : null;
+      });
+    });
+
+    tearDown(() {
+      messenger().setMockMethodCallHandler(chromeChannel, null);
+    });
+
+    test('watchWindowChrome and unwatchWindowChrome send the view id', () async {
+      await shell.watchWindowChrome(7);
+      await shell.unwatchWindowChrome(7);
+      expect(chromeLog.map((call) => call.method), ['watch', 'unwatch']);
+      expect(chromeLog.map((call) => call.arguments), [
+        {'viewId': 7},
+        {'viewId': 7},
+      ]);
+    });
+
+    test('a watch answer decodes with and without the traffic-light block', () async {
+      watchAnswer = <String, Object?>{
+        'fullScreen': false,
+        'trafficLights': <String, Object?>{'x': 19.0, 'y': 19.0, 'width': 60.0, 'height': 14.0},
+      };
+      expect(
+        await shell.watchWindowChrome(1),
+        const WindowChrome(trafficLights: Rect.fromLTWH(19, 19, 60, 14)),
+      );
+      watchAnswer = <String, Object?>{'fullScreen': true};
+      expect(await shell.watchWindowChrome(1), const WindowChrome(fullScreen: true));
+    });
+
+    test('a malformed watch answer fails with bad-args', () async {
+      final Matcher badArgs = throwsA(isA<PlatformException>().having((error) => error.code, 'code', 'bad-args'));
+      watchAnswer = null;
+      await expectLater(shell.watchWindowChrome(1), badArgs);
+      watchAnswer = <String, Object?>{
+        'fullScreen': false,
+        'trafficLights': <String, Object?>{'x': 19.0, 'y': 19.0},
+      };
+      await expectLater(shell.watchWindowChrome(1), badArgs);
+    });
+
+    test('pushed changes reach the stream with their view id', () async {
+      final changes = <WindowChromeChange>[];
+      final StreamSubscription<WindowChromeChange> subscription = shell.onWindowChromeChanged.listen(changes.add);
+      addTearDown(subscription.cancel);
+
+      expect(
+        await nativeCall('changed', <String, Object?>{
+          'viewId': 3,
+          'fullScreen': false,
+          'trafficLights': <String, Object?>{'x': 20.0, 'y': 20.0, 'width': 60.0, 'height': 14.0},
+        }),
+        isNull,
+      );
+      expect(await nativeCall('changed', <String, Object?>{'viewId': 4, 'fullScreen': true}), isNull);
+      await pumpEventQueue();
+
+      expect(changes, [
+        (viewId: 3, chrome: const WindowChrome(trafficLights: Rect.fromLTWH(20, 20, 60, 14))),
+        (viewId: 4, chrome: const WindowChrome(fullScreen: true)),
+      ]);
+    });
+
+    test('malformed pushes answer with a bad-args error', () async {
+      final StreamSubscription<WindowChromeChange> subscription = shell.onWindowChromeChanged.listen((_) {});
+      addTearDown(subscription.cancel);
+      final Matcher badArgs = throwsA(isA<PlatformException>().having((error) => error.code, 'code', 'bad-args'));
+      await expectLater(nativeCall('changed', <String, Object?>{'fullScreen': false}), badArgs);
+      await expectLater(nativeCall('changed', <String, Object?>{'viewId': 1, 'fullScreen': 'no'}), badArgs);
+      await expectLater(
+        nativeCall('changed', <String, Object?>{'viewId': 1, 'fullScreen': false, 'trafficLights': 'top left'}),
+        badArgs,
+      );
+      await expectLater(nativeCall('resized', <String, Object?>{'viewId': 1, 'fullScreen': false}), badArgs);
     });
   });
 }

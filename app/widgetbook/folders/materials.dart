@@ -52,6 +52,13 @@ final materialsFolder = WidgetbookFolder(
         ),
       ],
     ),
+    // Story 11.4: the project window's canvas, the two static shaders, full bleed (no islands over it).
+    WidgetbookComponent(
+      name: 'Canvas',
+      useCases: <WidgetbookUseCase>[
+        WidgetbookUseCase(name: 'Window canvas', builder: (context) => const ZsCanvas()),
+      ],
+    ),
   ],
 );
 

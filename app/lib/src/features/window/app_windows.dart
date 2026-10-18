@@ -17,8 +17,9 @@ import 'remembered_window_controller.dart';
 /// remembered under the window's key wins.
 const defaultWindowSize = Size(1200, 800);
 
-/// Smallest content size of an app window.
-const defaultWindowConstraints = BoxConstraints(minWidth: 900, minHeight: 600);
+/// Smallest content size of the project window (decision 16.37; DS readme.md:193), the default of every create
+/// path; 11.12's dialog windows pass their own.
+const defaultWindowConstraints = BoxConstraints(minWidth: 880, minHeight: 560);
 
 /// Creates the native window behind [AppWindows.create].
 ///

@@ -15,6 +15,13 @@ import FlutterMacOS
 /// The ordering is load-bearing. With `.fullSizeContentView` the frame equals
 /// the content size; applying a saved frame while the titlebar still occupies
 /// its own strip would shave the titlebar height off the window on every launch.
+///
+/// The window is opaque on the `CanvasBase` colour set (`--canvas-base`), so the
+/// system rounds and clips it with its own corner radius and a frame the Flutter
+/// view has not drawn yet shows the theme's base; the colour set's appearance
+/// variants follow `setWindowAppearance` (paper = aqua, night = darkAqua). The
+/// Flutter view stays clear and paints the canvas everywhere, so no view lies
+/// below it (Story 11.4, Claude's proposal).
 final class MainWindowChrome {
     private weak var window: NSWindow?
 
@@ -23,15 +30,10 @@ final class MainWindowChrome {
     /// overlay can be re-attached whenever AppKit rebuilds the titlebar.
     private var trafficLightOverlay: TrafficLightOverlayView?
 
-    /// The translucent background behind the Flutter view. Kept so a titlebar
-    /// rebuild can re-stack the same view instead of piling up new ones.
-    private var vibrancyView: NSVisualEffectView?
-
     init(window: NSWindow) {
         self.window = window
 
         setupWindowAppearance()
-        installVibrancyView()
         setupWindowButtons()
     }
 
@@ -52,10 +54,14 @@ final class MainWindowChrome {
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
-        window.backgroundColor = .clear
-        window.isOpaque = false
+        window.backgroundColor = NSColor(named: "CanvasBase") ?? .windowBackgroundColor
+        window.isOpaque = true
         window.hasShadow = true
-        window.minSize = NSSize(width: 900, height: 600)
+        // The project window's minimum (decision 16.37), as `defaultWindowConstraints` in Dart.
+        window.minSize = NSSize(width: 880, height: 560)
+
+        // See-through, so the window's base shows until the first Flutter frame.
+        (window.contentViewController as? FlutterViewController)?.backgroundColor = .clear
 
         // The WindowFrameStore below is the single owner of the window
         // geometry. AppKit's own state restoration would restore its stale frame
@@ -70,43 +76,6 @@ final class MainWindowChrome {
         window.addTitlebarAccessoryViewController(accessoryController)
 
         window.toolbar = toolbar
-    }
-
-    /// Creates - or re-stacks - the translucent background the app paints on.
-    ///
-    /// Before the windowing API this view was the window's own content view: a
-    /// `WrapperViewController` owned the `NSVisualEffectView` and carried the
-    /// Flutter view as its subview. The engine owns the `contentViewController`
-    /// of a window it created itself, so the effect view becomes a *sibling*
-    /// instead - inserted into the frame view directly below the content view.
-    /// The Flutter view therefore still draws on top and unclipped, and shows
-    /// the blur wherever it paints transparent, which is what the clear window
-    /// background above is for.
-    ///
-    /// It has to be an `EventTransparentEffectView`, not a plain
-    /// `NSVisualEffectView`: a view stacked below the content view is where
-    /// AppKit forwards the content view's unhandled mouse events to, ahead of
-    /// the content view controller - see that class for the full story.
-    private func installVibrancyView() {
-        guard let window = self.window,
-            let contentView = window.contentView,
-            let host = contentView.superview
-        else { return }
-
-        let effectView = vibrancyView ?? EventTransparentEffectView()
-        effectView.autoresizingMask = [.width, .height]
-        effectView.blendingMode = .behindWindow
-        effectView.state = .active
-        effectView.wantsLayer = true
-        effectView.layer?.cornerRadius = 20.0
-        if effectView.superview !== host {
-            host.addSubview(effectView, positioned: .below, relativeTo: contentView)
-        }
-        effectView.frame = host.bounds
-        vibrancyView = effectView
-
-        // The Flutter view has to be see-through for any of this to show.
-        (window.contentViewController as? FlutterViewController)?.backgroundColor = .clear
     }
 
     /// Installs the neutral overlay on top of the window control buttons
@@ -208,7 +177,6 @@ final class MainWindowChrome {
     /// Re-attaches the overlay when the window becomes key, because a preceding
     /// titlebar rebuild may have orphaned it
     @objc private func handleWindowDidBecomeKey(_ notification: Notification) {
-        installVibrancyView()
         installTrafficLightOverlay()
     }
 
@@ -221,7 +189,6 @@ final class MainWindowChrome {
     /// Re-attaches and shows the overlay after leaving fullscreen, where AppKit has
     /// rebuilt the titlebar
     @objc private func handleWindowDidExitFullScreen(_ notification: Notification) {
-        installVibrancyView()
         installTrafficLightOverlay()
         trafficLightOverlay?.setSuppressed(false)
     }
@@ -233,8 +200,9 @@ final class MainWindowChrome {
 }
 
 /// Click-through overlay that paints the resting state of the three standard window
-/// buttons (close, minimize, zoom): a plain gray ring with a fully transparent
-/// interior, so whatever the window paints underneath shows through it.
+/// buttons (close, minimize, zoom): a 1 pt ring in the theme's `--tl-ring` with a
+/// fully transparent interior, so whatever the window paints underneath shows
+/// through it - a deliberate deviation from the system (decision 16.5).
 ///
 /// The view is a *sibling* of the buttons, stacked above them inside the titlebar.
 /// It never returns itself from `hitTest(_:)`, so the real buttons keep every bit of
@@ -254,9 +222,12 @@ final class MainWindowChrome {
 /// An earlier revision painted an opaque, theme colored disc behind each ring to
 /// hide the native color. That could never line up: the Flutter UI paints its own
 /// theme derived titlebar background, so a disc matching the *system* light/dark
-/// palette clashed with it. A transparent interior sidesteps the problem entirely,
-/// which is also why this class carries no theme handling at all any more - a gray
-/// stroke reads correctly on any background.
+/// palette clashed with it. A transparent interior sidesteps the problem entirely.
+///
+/// The ring colour is the `TrafficLightRing` colour set (night and paper). A
+/// `CGColor` does not follow appearance changes, so the overlay resolves the named
+/// colour in its effective appearance - which follows the app theme through
+/// `setWindowAppearance` - on attach and on every appearance change.
 final class TrafficLightOverlayView: NSView {
     /// Stroke width of a single ring in points.
     ///
@@ -306,10 +277,9 @@ final class TrafficLightOverlayView: NSView {
         autoresizingMask = []
 
         // Ring only: the interior stays transparent so the window's own background
-        // shows through. Gray works on top of any of them.
+        // shows through. The stroke colour is set on attach (`syncRingColor()`).
         ringLayer.lineWidth = Self.ringLineWidth
         ringLayer.fillColor = nil
-        ringLayer.strokeColor = NSColor.gray.cgColor
 
         // Layer hosting view: the layer belongs to us, so managing its sublayers is
         // legal - unlike doing the same to the system buttons.
@@ -455,6 +425,25 @@ final class TrafficLightOverlayView: NSView {
             // AppKit does not reliably call `viewDidChangeBackingProperties()` on
             // the initial attach, so sync the scale here as well.
             syncContentsScale()
+
+            syncRingColor()
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+
+        syncRingColor()
+    }
+
+    /// Resolves the `TrafficLightRing` colour set in the overlay's effective
+    /// appearance and strokes the rings with it, without an implicit animation.
+    private func syncRingColor() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            ringLayer.strokeColor = NSColor(named: "TrafficLightRing")?.cgColor
+            CATransaction.commit()
         }
     }
 
@@ -637,34 +626,5 @@ class DragInterceptorView: NSView {
 
     override var mouseDownCanMoveWindow: Bool {
         return false
-    }
-}
-
-/// The vibrancy background behind the Flutter view, invisible to hit-testing.
-///
-/// AppKit's default mouse-event forwarding - `NSResponder`'s `mouseDown(with:)`
-/// and its siblings - does not hand an event the content view left unhandled
-/// straight to the content view's next responder. It first hit-tests for a
-/// view stacked *beneath* the content view and, when it finds one, forwards
-/// the event to that view instead. Flutter's content view (the engine's
-/// `FlutterViewWrapper`) leaves every mouse event unhandled on purpose: its
-/// `FlutterViewController`, the next responder, is what turns them into
-/// pointer events. A plain `NSVisualEffectView` below the content view was
-/// therefore where every click ended up; it passed the event up its own chain
-/// (theme frame, window) and the Flutter side never saw a single pointer
-/// event - no button, no checkbox, nothing reacted.
-///
-/// Returning `nil` from `hitTest(_:)` takes this view out of that lookup, so
-/// the forwarding falls back to the next responder and the click reaches the
-/// `FlutterViewController` again. Hit-testing is all the blur needs to opt
-/// out of: it never handles events itself.
-///
-/// Verified with an in-process `sendEvent` probe (macOS 26, 2026-09-12): with
-/// the plain view the responder hops were wrapper -> effect view -> theme
-/// frame -> window; with this view they are wrapper -> view controller ->
-/// engine -> Dart.
-final class EventTransparentEffectView: NSVisualEffectView {
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        return nil
     }
 }

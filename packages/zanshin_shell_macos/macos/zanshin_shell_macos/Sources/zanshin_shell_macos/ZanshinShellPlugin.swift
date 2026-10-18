@@ -9,26 +9,31 @@ import FlutterMacOS
 /// colours, the accessibility display options and the scroll bar style) to
 /// Dart and executes window commands (drag, appearance override, titlebar
 /// double-click action) on the window that hosts the Flutter view. It also
-/// owns the `FolderDropHost` behind the "zanshin_shell/folder_drop" channel.
+/// owns the `FolderDropHost` behind the "zanshin_shell/folder_drop" channel
+/// and the `WindowChromeHost` behind "zanshin_shell/window_chrome".
 public class ZanshinShellPlugin: NSObject, FlutterPlugin {
     private let channel: FlutterMethodChannel
     private weak var view: NSView?
     /// The folder drop channel's host; lives as long as the plugin.
     private let folderDrops: FolderDropHost
+    /// The window chrome channel's host; lives as long as the plugin.
+    private let windowChrome: WindowChromeHost
     private var appearanceObservation: NSKeyValueObservation?
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(
             name: "zanshin_shell", binaryMessenger: registrar.messenger)
         let instance = ZanshinShellPlugin(
-            channel: channel, view: registrar.view, folderDrops: FolderDropHost(messenger: registrar.messenger))
+            channel: channel, view: registrar.view, folderDrops: FolderDropHost(messenger: registrar.messenger),
+            windowChrome: WindowChromeHost(messenger: registrar.messenger))
         registrar.addMethodCallDelegate(instance, channel: channel)
     }
 
-    init(channel: FlutterMethodChannel, view: NSView?, folderDrops: FolderDropHost) {
+    init(channel: FlutterMethodChannel, view: NSView?, folderDrops: FolderDropHost, windowChrome: WindowChromeHost) {
         self.channel = channel
         self.view = view
         self.folderDrops = folderDrops
+        self.windowChrome = windowChrome
         super.init()
 
         // Covers dark/light switches AND accent changes: macOS republishes the

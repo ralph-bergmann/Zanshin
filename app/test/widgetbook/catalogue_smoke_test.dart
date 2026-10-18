@@ -41,6 +41,7 @@ void main() {
         'shell/floating-shell/slots',
         'controls/resize-edge/state-matrix',
         'materials/island/fade',
+        'materials/canvas/window-canvas',
         'windows/floating-shell/floating-shell',
       ]),
     );

@@ -13,8 +13,14 @@ final class RecordingPlatform extends ZanshinShellPlatform with MockPlatformInte
 
   final calls = <String>[];
   final themeController = StreamController<ShellTheme>.broadcast();
+  final chromeController = StreamController<WindowChromeChange>.broadcast();
 
-  Future<void> close() => themeController.close();
+  Future<void> close() async {
+    await themeController.close();
+    await chromeController.close();
+  }
+
+  static const chrome = WindowChrome(trafficLights: Rect.fromLTWH(19, 19, 60, 14));
 
   static const theme = ShellTheme(
     brightness: Brightness.dark,
@@ -72,6 +78,20 @@ final class RecordingPlatform extends ZanshinShellPlatform with MockPlatformInte
   Future<void> disableFolderDrops(int viewId) async {
     calls.add('disableFolderDrops:$viewId');
   }
+
+  @override
+  Future<WindowChrome> watchWindowChrome(int viewId) async {
+    calls.add('watchWindowChrome:$viewId');
+    return chrome;
+  }
+
+  @override
+  Future<void> unwatchWindowChrome(int viewId) async {
+    calls.add('unwatchWindowChrome:$viewId');
+  }
+
+  @override
+  Stream<WindowChromeChange> get onWindowChromeChanged => chromeController.stream;
 }
 
 void main() {
@@ -101,6 +121,15 @@ void main() {
     final Future<ShellTheme> future = ZanshinShell.onThemeChanged.first;
     platform.themeController.add(RecordingPlatform.theme);
     expect(await future, RecordingPlatform.theme);
+  });
+
+  test('the window chrome calls and changes pass through to the platform', () async {
+    final Future<WindowChromeChange> change = ZanshinShell.onWindowChromeChanged.first;
+    expect(await ZanshinShell.watchWindowChrome(3), RecordingPlatform.chrome);
+    await ZanshinShell.unwatchWindowChrome(3);
+    platform.chromeController.add((viewId: 3, chrome: const WindowChrome(fullScreen: true)));
+    expect(await change, (viewId: 3, chrome: const WindowChrome(fullScreen: true)));
+    expect(platform.calls, ['watchWindowChrome:3', 'unwatchWindowChrome:3']);
   });
 
   test('the accessibility, accent and scroll bar state reaches the app unchanged', () async {

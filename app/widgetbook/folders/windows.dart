@@ -94,12 +94,12 @@ class _OpenWindowFill extends StatelessWidget {
 }
 
 /// Opens Story 11.3's floating shell with a demo island in every slot in a real 1440 × 900 window, resizable down to
-/// the project window's 880 × 560 minimum (decision 16.37), so a reviewer drags it through the collapse widths.
+/// the project window's 880 × 560 minimum (decision 16.37, `defaultWindowConstraints`), so a reviewer drags it through
+/// the collapse widths.
 class _OpenFloatingShell extends StatelessWidget {
   const _OpenFloatingShell();
 
   static const _size = Size(1440, 900);
-  static const _constraints = BoxConstraints(minWidth: 880, minHeight: 560);
 
   @override
   Widget build(BuildContext context) => ZsButton(
@@ -113,7 +113,6 @@ class _OpenFloatingShell extends StatelessWidget {
           key: 'widgetbook-floating-shell',
           title: 'Floating shell',
           size: _size,
-          constraints: _constraints,
           builder: (context) => ZsShellScope(
             shellTheme: shell?.shellTheme,
             child: Builder(

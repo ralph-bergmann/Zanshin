@@ -49,6 +49,42 @@ void main() {
         ZsAccentFamily.multicolor,
       );
     });
+
+    test('leaves full screen and the traffic-light block to the window chrome report', () {
+      final appearance = ZsAppearance.fromShell(
+        theme: ZsTheme.night,
+        accentSource: AccentSource.zanshin,
+        shell: _shell,
+      );
+      expect(appearance.fullScreen, isFalse);
+      expect(appearance.trafficLights, isNull);
+    });
+  });
+
+  group('ZsAppearance.trafficLights', () {
+    const block = Rect.fromLTWH(19, 19, 60, 14);
+
+    test('copyWith sets it and keeps it', () {
+      const appearance = ZsAppearance(trafficLights: block);
+      expect(const ZsAppearance().copyWith(trafficLights: block), appearance);
+      expect(appearance.copyWith(theme: ZsTheme.paper).trafficLights, block);
+      expect(appearance.copyWith(fullScreen: true), const ZsAppearance(fullScreen: true, trafficLights: block));
+    });
+
+    test('takes part in equality, hashCode and toString', () {
+      const appearance = ZsAppearance(trafficLights: block);
+      expect(appearance, const ZsAppearance(trafficLights: Rect.fromLTWH(19, 19, 60, 14)));
+      expect(appearance.hashCode, const ZsAppearance(trafficLights: Rect.fromLTWH(19, 19, 60, 14)).hashCode);
+      for (final other in const <ZsAppearance>[
+        ZsAppearance(),
+        ZsAppearance(trafficLights: Rect.fromLTWH(20, 20, 60, 14)),
+      ]) {
+        expect(other, isNot(appearance));
+        expect(other.hashCode, isNot(appearance.hashCode));
+        expect(other.toString(), isNot(appearance.toString()));
+      }
+      expect(appearance.toString(), contains('trafficLights: $block'));
+    });
   });
 
   group('ZsShellScope', () {

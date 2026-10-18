@@ -101,6 +101,32 @@ void main() {
     expect(() => platform.setFolderDragHandler(null), throwsUnimplementedError);
     expect(() => platform.enableFolderDrops(1), throwsUnimplementedError);
     expect(() => platform.disableFolderDrops(1), throwsUnimplementedError);
+    expect(() => platform.watchWindowChrome(1), throwsUnimplementedError);
+    expect(() => platform.unwatchWindowChrome(1), throwsUnimplementedError);
+    expect(() => platform.onWindowChromeChanged, throwsUnimplementedError);
+  });
+
+  test('WindowChrome defaults to a window out of full screen without a block', () {
+    const chrome = WindowChrome();
+    expect(chrome.fullScreen, isFalse);
+    expect(chrome.trafficLights, isNull);
+  });
+
+  test('every WindowChrome field takes part in equality, hashCode and toString', () {
+    const block = Rect.fromLTWH(19, 19, 60, 14);
+    const base = WindowChrome(trafficLights: block);
+    expect(base, const WindowChrome(trafficLights: Rect.fromLTWH(19, 19, 60, 14)));
+    expect(base.hashCode, const WindowChrome(trafficLights: Rect.fromLTWH(19, 19, 60, 14)).hashCode);
+    expect(base.toString(), 'WindowChrome(fullScreen: false, trafficLights: $block)');
+    for (final variant in const <WindowChrome>[
+      WindowChrome(),
+      WindowChrome(fullScreen: true, trafficLights: block),
+      WindowChrome(trafficLights: Rect.fromLTWH(20, 20, 60, 14)),
+    ]) {
+      expect(variant, isNot(equals(base)), reason: '$variant');
+      expect(variant.hashCode, isNot(equals(base.hashCode)), reason: '$variant');
+      expect(variant.toString(), isNot(equals(base.toString())));
+    }
   });
 
   test('instance setter verifies the token', () {

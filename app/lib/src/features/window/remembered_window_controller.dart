@@ -32,8 +32,8 @@ class RememberedWindowController extends WindowControllerMacOS {
   /// a saved frame the runner centres it, like the first launch used to.
   ///
   /// With [chrome] the runner also applies the app's custom window chrome —
-  /// transparent full-size-content titlebar, vibrancy background, traffic-light
-  /// overlay. It happens in this same round-trip and *before* the frame,
+  /// transparent full-size-content titlebar, opaque canvas-base background,
+  /// traffic-light overlay. It happens in this same round-trip and *before* the frame,
   /// because `.fullSizeContentView` redefines what a frame means: applying one
   /// under the old style mask would shave the titlebar height off the window on
   /// every launch.

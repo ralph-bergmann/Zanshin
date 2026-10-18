@@ -11,7 +11,9 @@ import 'package:zanshin/src/features/app/zanshin_app_view_model.dart';
 import 'package:zanshin/src/features/home/home_page.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/floating_shell_view_model.dart';
+import 'package:zanshin/src/features/shell/top_bar.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
+import 'package:zanshin_shell/zanshin_shell.dart' show WindowDragArea;
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
@@ -82,14 +84,20 @@ void main() {
   });
 
   /// Pumps the app over persisted [settingsJson] in a 1440 × 900 window, answers the shell with [theme] (or leaves it
-  /// pending when null) and returns a context below the app root (the home page's floating shell). File IO runs
-  /// outside the fake-async zone; the shell is made inside it, so its answers arrive on the fake clock's microtasks.
-  Future<BuildContext> pumpApp(WidgetTester tester, String settingsJson, ShellTheme? theme) async {
+  /// pending when null) and the window's chrome watch with [chrome], and returns a context below the app root (the
+  /// home page's floating shell). File IO runs outside the fake-async zone; the shell is made inside it, so its
+  /// answers arrive on the fake clock's microtasks.
+  Future<BuildContext> pumpApp(
+    WidgetTester tester,
+    String settingsJson,
+    ShellTheme? theme, {
+    WindowChrome chrome = const WindowChrome(),
+  }) async {
     tester.view
       ..physicalSize = const Size(1440, 900)
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    shell = RecordingShell();
+    shell = RecordingShell()..chrome = chrome;
     ZanshinShellPlatform.instance = shell;
     addTearDown(shell.close);
     final SettingsStore? store = await tester.runAsync(() async {
@@ -195,6 +203,72 @@ void main() {
     final BuildContext after = tester.element(find.byType(FloatingShell));
     expect(MediaQuery.disableAnimationsOf(after), isFalse);
     expect(ZsMotion.of(after), ZsMotion.full);
+  });
+
+  /// The first island's rect, the bar's top-left island (PLACE's empty island).
+  Rect firstIsland(WidgetTester tester) => tester.getRect(find.byType(ShellEmptyIsland).first);
+
+  for (final (WindowChrome chrome, double firstX, double barY, double top)
+      in const <(WindowChrome, double, double, double)>[
+        (WindowChrome(trafficLights: Rect.fromLTWH(19, 19, 60, 14)), 91, 4, 60),
+        (WindowChrome(trafficLights: Rect.fromLTWH(20, 20, 60, 14)), 92, 5, 61),
+      ]) {
+    testWidgets(
+      'the block ${chrome.trafficLights} reaches the window root: first island $firstX, bar $barY, top $top',
+      (
+        tester,
+      ) async {
+        final BuildContext probe = await pumpApp(tester, '{}', _shell(), chrome: chrome);
+        final Rect block = chrome.trafficLights!;
+
+        expect(shell.calls, contains('watchWindowChrome:${tester.view.viewId}'));
+        expect(ZsAppearance.of(probe).trafficLights, block);
+        final metrics = ZsMetrics.of(probe);
+        expect(<double>[metrics.chromeFirstX, metrics.chromeBarY, metrics.chromeTop], <double>[firstX, barY, top]);
+        final Rect island = firstIsland(tester);
+        expect(island.topLeft, Offset(firstX, barY));
+        expect(island.left, block.right + 12, reason: 'the first island starts at block end + 12');
+        expect(island.center.dy, moreOrLessEquals(block.center.dy, epsilon: 1), reason: 'the bar centres on the block');
+        expect(tester.getRect(find.byType(WindowDragArea)), Rect.fromLTWH(0, 0, 1440, top));
+        expect(top, island.bottom + 12, reason: 'the content starts at bar bottom + 12');
+      },
+    );
+  }
+
+  testWidgets('full screen reaches the window root and moves the chrome; leaving it brings the block back', (
+    tester,
+  ) async {
+    const block = WindowChrome(trafficLights: Rect.fromLTWH(19, 19, 60, 14));
+    await pumpApp(tester, '{}', _shell(), chrome: const WindowChrome(fullScreen: true));
+    BuildContext probe() => tester.element(find.byType(FloatingShell));
+
+    expect(ZsAppearance.of(probe()).fullScreen, isTrue);
+    expect(firstIsland(tester).topLeft, const Offset(12, 12));
+    expect(tester.getRect(find.byType(WindowDragArea)), const Rect.fromLTWH(0, 0, 1440, 68));
+
+    final int viewId = tester.view.viewId;
+    shell.chromeChanges.add((viewId: viewId, chrome: block));
+    await tester.pumpAndSettle();
+    expect(ZsAppearance.of(probe()).fullScreen, isFalse);
+    expect(firstIsland(tester).topLeft, const Offset(91, 4));
+    expect(tester.getRect(find.byType(WindowDragArea)), const Rect.fromLTWH(0, 0, 1440, 60));
+
+    shell.chromeChanges.add((viewId: viewId, chrome: const WindowChrome(fullScreen: true)));
+    await tester.pumpAndSettle();
+    expect(ZsAppearance.of(probe()).fullScreen, isTrue);
+    expect(firstIsland(tester).topLeft, const Offset(12, 12));
+  });
+
+  testWidgets('a chrome report for another view changes nothing in this window', (tester) async {
+    await pumpApp(tester, '{}', _shell());
+    BuildContext probe() => tester.element(find.byType(FloatingShell));
+    expect(ZsAppearance.of(probe()).fullScreen, isFalse);
+
+    shell.chromeChanges.add((viewId: tester.view.viewId + 1, chrome: const WindowChrome(fullScreen: true)));
+    await tester.pumpAndSettle();
+
+    expect(ZsAppearance.of(probe()).fullScreen, isFalse);
+    expect(firstIsland(tester).topLeft, const Offset(91, 4));
   });
 
   for (final (String label, String settingsJson, ShellTheme theme, Color accent)

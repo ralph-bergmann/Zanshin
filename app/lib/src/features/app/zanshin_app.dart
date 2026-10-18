@@ -10,6 +10,7 @@ import 'package:yaru/yaru.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../home/home_page.dart';
+import '../window/window_chrome_builder.dart';
 import 'zanshin_app_view_model.dart';
 
 part 'zanshin_app.factory.dart';
@@ -87,16 +88,23 @@ class ZanshinApp extends StatelessWidget {
 
       // The token theme for both modes. The window root follows the theme
       // the MaterialApp resolved, so the first frame before the shell
-      // answered follows the system's brightness too.
+      // answered follows the system's brightness too, and takes full screen
+      // and the traffic-light block from the window's chrome report.
       final ZsAppearance appearance = vm.appearance;
       return _ZanshinMaterialApp(
         themeMode: vm.effectiveMode,
         lightTheme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.paper)),
         darkTheme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.night)),
-        builder: (context, child) => ZsRoot(
-          appearance: appearance.copyWith(theme: ZsTheme.of(Theme.of(context).brightness)),
-          shellTheme: vm.shellTheme,
-          child: child ?? const SizedBox.shrink(),
+        builder: (context, child) => WindowChromeBuilder(
+          builder: (context, chrome) => ZsRoot(
+            appearance: appearance.copyWith(
+              theme: ZsTheme.of(Theme.of(context).brightness),
+              fullScreen: chrome?.fullScreen,
+              trafficLights: chrome?.trafficLights,
+            ),
+            shellTheme: vm.shellTheme,
+            child: child ?? const SizedBox.shrink(),
+          ),
         ),
         home: _homePageFactory.create(),
       );

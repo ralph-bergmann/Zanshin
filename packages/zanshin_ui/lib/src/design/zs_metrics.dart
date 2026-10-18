@@ -36,8 +36,9 @@ enum ZsIconSize {
 /// :40-48) and the focus, disabled and scroll-bar values (tokens/states.css:17-26, :59). Lengths are logical
 /// pixels; names follow the CSS (`--space-0-5` → [space05]).
 ///
-/// [standard] is the window-mode set; [ZsMetrics.of] applies increased contrast (`--focus-w` 3,
-/// DS tokens/contrast.css:21) and full screen (DS tokens/spacing.css:52) from the nearest [ZsAppearance].
+/// [standard] is the window-mode set with the reference traffic-light geometry; [ZsMetrics.of] applies increased
+/// contrast (`--focus-w` 3, DS tokens/contrast.css:21), full screen (DS tokens/spacing.css:52) and the measured
+/// traffic-light block (DS tokens/spacing.css:25-30) from the nearest [ZsAppearance].
 @immutable
 class ZsMetrics {
   /// Creates a metric set; the app uses [standard] and [ZsMetrics.resolve].
@@ -123,12 +124,18 @@ class ZsMetrics {
     required this.zDrag,
   });
 
-  /// The metrics [appearance] shows: full screen moves the chrome, increased contrast widens the focus ring.
+  /// The metrics [appearance] shows: full screen moves the chrome, a measured traffic-light block places it,
+  /// increased contrast widens the focus ring.
   factory ZsMetrics.resolve(ZsAppearance appearance) {
     ZsMetrics metrics = standard;
+    final Rect? block = appearance.trafficLights;
     if (appearance.fullScreen) {
       // DS tokens/spacing.css:52; the chrome values derived from the block follow.
       metrics = metrics.copyWith(tlBlockW: 0, tlX: 0, tlMidY: 34);
+    } else if (block != null) {
+      // DS tokens/spacing.css:25-30: the bar derives from the system's block, the reference only stands in for it.
+      // `tlSize` and `tlPitch` keep the reference: only mocks draw the buttons.
+      metrics = metrics.copyWith(tlX: block.left, tlBlockW: block.width, tlMidY: block.center.dy);
     }
     if (appearance.increasedContrast) {
       // DS tokens/contrast.css:21.

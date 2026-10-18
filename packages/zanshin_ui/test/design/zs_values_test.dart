@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -101,5 +102,50 @@ void main() {
 
   test('the shader covers its rect', () {
     expect(ZsColors.night.flSheen.createShader(const Rect.fromLTWH(0, 0, 100, 120)), isA<Shader>());
+  });
+
+  for (final (ZsTheme theme, ZsRadialGradient lift) in <(ZsTheme, ZsRadialGradient)>[
+    (ZsTheme.night, ZsColors.night.canvas.radial),
+    (ZsTheme.paper, ZsColors.paper.canvas.radial),
+  ]) {
+    test('the ${theme.name} canvas lift over 1000 × 800 is the CSS ellipse 115 % 85 % at 10 % −12 %', () {
+      final ({Offset center, double radius, List<Color> colors, List<double> stops, Float64List matrix}) ellipse = lift
+          .resolve(const Rect.fromLTWH(0, 0, 1000, 800));
+      expect(ellipse.center, const Offset(100, -96));
+      expect(ellipse.radius, closeTo(1150, 1e-9));
+      expect(ellipse.colors, <Color>[lift.stops.first.color, lift.stops.last.color]);
+      expect(ellipse.stops, pairwiseCompare<double, double>(<double>[0, .62], (e, a) => (e - a).abs() < 1e-9, ''));
+      // y scaled by 680 / 1150 about the centre: translate(c)·scale(1, k)·translate(−c), column-major.
+      const double k = 680 / 1150;
+      expect(
+        ellipse.matrix,
+        _matrix(<double>[1, 0, 0, 0, 0, k, 0, 0, 0, 0, 1, 0, 0, -96 * (1 - k), 0, 1]),
+      );
+    });
+  }
+
+  test('a radial gradient sits on its box: the centre moves with it, the stops follow the CSS rules on the ray', () {
+    const red = Color(0xFFFF0000);
+    const green = Color(0xFF00FF00);
+    const blue = Color(0xFF0000FF);
+    const gradient = ZsRadialGradient(
+      width: 50,
+      height: 100,
+      centerX: 50,
+      centerY: 50,
+      stops: <ZsGradientStop>[
+        ZsGradientStop(red),
+        ZsGradientStop(green),
+        ZsGradientStop(blue, px: 50),
+        ZsGradientStop(red),
+      ],
+    );
+    final ({Offset center, double radius, List<Color> colors, List<double> stops, Float64List matrix}) ellipse =
+        gradient.resolve(const Rect.fromLTWH(10, 20, 200, 100));
+    expect(ellipse.center, const Offset(110, 70));
+    expect(ellipse.radius, 100);
+    expect(ellipse.stops, pairwiseCompare<double, double>(<double>[0, .25, .5, 1], (e, a) => (e - a).abs() < 1e-9, ''));
+    expect(ellipse.matrix, _matrix(<double>[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]));
+    expect(gradient.createShader(const Rect.fromLTWH(10, 20, 200, 100)), isA<Shader>());
   });
 }

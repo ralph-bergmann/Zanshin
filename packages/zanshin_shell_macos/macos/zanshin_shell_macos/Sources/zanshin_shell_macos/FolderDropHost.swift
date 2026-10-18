@@ -39,7 +39,7 @@ final class FolderDropHost {
         let id = FlutterViewIdentifier(viewId)
         switch call.method {
         case "attach":
-            guard let controller = flutterViewController(id) else {
+            guard let controller = flutterViewController(id, messenger: messenger) else {
                 result(FlutterError(code: "unknown-view", message: "no Flutter view with id \(viewId)", details: nil))
                 return
             }
@@ -64,17 +64,5 @@ final class FolderDropHost {
         dropView.autoresizingMask = [.width, .height]
         controller.view.addSubview(dropView)
         dropViews[id] = WeakDropView(view: dropView)
-    }
-
-    /// The attached view controller of this plugin's engine with the given id.
-    private func flutterViewController(_ id: FlutterViewIdentifier) -> FlutterViewController? {
-        let ownMessenger = messenger as AnyObject
-        return NSApp.windows.lazy
-            .compactMap { $0.contentViewController as? FlutterViewController }
-            .first { controller in
-                // Reading `viewIdentifier` of a detached controller asserts.
-                controller.attached() && controller.viewIdentifier == id
-                    && (controller.engine.binaryMessenger as AnyObject) === ownMessenger
-            }
     }
 }

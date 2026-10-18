@@ -2,7 +2,7 @@
 
 import 'dart:math' as math;
 import 'dart:ui' as ui show Gradient;
-import 'dart:ui' show Color, ColorFilter, ImageFilter, Offset, Rect, Shader, lerpDouble;
+import 'dart:ui' show Color, ColorFilter, ImageFilter, Offset, Rect, Shader, TileMode, lerpDouble;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart' show BoxShadow;
@@ -192,54 +192,23 @@ class ZsLinearGradient {
   /// The paint inputs of this gradient over [rect], the box it fills (CSS Images 3 §3.1).
   ///
   /// The gradient line runs through the box's centre at [angle] (0 points up, 90 right) and is |w·sin θ| + |h·cos θ|
-  /// long. A stop in percent sits at that share of the line, one in px that far along it; the first stop without a
-  /// position sits at 0 %, the last at 100 %, a position behind an earlier one moves up to it, and every other run
-  /// of unpositioned stops is spread evenly between its neighbours. The result runs from the first stop (`from`) to
+  /// long; the stops sit on it by the CSS rules ([_stopPositions]). The result runs from the first stop (`from`) to
   /// the last (`to`), with the stops normalised to that span — what `ui.Gradient.linear` takes.
   ({Offset from, Offset to, List<Color> colors, List<double> stops}) resolve(Rect rect) {
     final double radians = angle * math.pi / 180;
     final direction = Offset(math.sin(radians), -math.cos(radians));
     final double length = (rect.width * math.sin(radians)).abs() + (rect.height * math.cos(radians)).abs();
     final Offset start = rect.center - direction * (length / 2);
-    final positions =
-        <double?>[
-            for (final ZsGradientStop stop in stops)
-              stop.px ?? (stop.percent == null ? null : stop.percent! / 100 * length),
-          ]
-          ..first ??= 0
-          ..last ??= length;
-    double floor = double.negativeInfinity;
-    for (var i = 0; i < positions.length; i++) {
-      final double? at = positions[i];
-      if (at != null) {
-        floor = math.max(floor, at);
-        positions[i] = floor;
-      }
-    }
-    for (var i = 1; i < positions.length - 1; i++) {
-      if (positions[i] != null) {
-        continue;
-      }
-      var next = i;
-      while (positions[next] == null) {
-        next++;
-      }
-      final double before = positions[i - 1]!;
-      final double after = positions[next]!;
-      for (var k = i; k < next; k++) {
-        positions[k] = before + (after - before) * (k - i + 1) / (next - i + 1);
-      }
-      i = next;
-    }
-    final double first = positions.first!;
-    final double span = positions.last! - first;
+    final List<double> positions = _stopPositions(stops, length);
+    final double first = positions.first;
+    final double span = positions.last - first;
     return (
       from: start + direction * first,
-      to: start + direction * positions.last!,
+      to: start + direction * positions.last,
       colors: <Color>[for (final ZsGradientStop stop in stops) stop.color],
       stops: <double>[
-        for (final double? at in positions)
-          if (span == 0) 0 else (at! - first) / span,
+        for (final double at in positions)
+          if (span == 0) 0 else (at - first) / span,
       ],
     );
   }
@@ -298,6 +267,41 @@ class ZsRadialGradient {
 
   /// The stops, in order.
   final List<ZsGradientStop> stops;
+
+  /// The paint inputs of this gradient over [rect], the box it fills, which must have a width (CSS Images 3 §3.2).
+  ///
+  /// The ellipse's centre is [rect]'s top left moved by [centerX] % of its width and [centerY] % of its height; its
+  /// radii are [width] % of the width (`radius`, the ray the stops sit on by the CSS rules of [_stopPositions],
+  /// divided by it) and [height] % of the height. `ui.Gradient.radial` draws a circle, so `matrix` (column-major)
+  /// scales it vertically by their ratio about the centre: translate(centre)·scale(1, ry / rx)·translate(−centre).
+  ({Offset center, double radius, List<Color> colors, List<double> stops, Float64List matrix}) resolve(Rect rect) {
+    assert(rect.width > 0, 'A radial gradient needs a box with a width.');
+    final center = Offset(rect.left + rect.width * centerX / 100, rect.top + rect.height * centerY / 100);
+    final double rx = rect.width * width / 100;
+    final double k = rect.height * height / 100 / rx;
+    return (
+      center: center,
+      radius: rx,
+      colors: <Color>[for (final ZsGradientStop stop in stops) stop.color],
+      stops: <double>[for (final double at in _stopPositions(stops, rx)) at / rx],
+      matrix: Float64List.fromList(<double>[1, 0, 0, 0, 0, k, 0, 0, 0, 0, 1, 0, 0, center.dy * (1 - k), 0, 1]),
+    );
+  }
+
+  /// A shader that paints this gradient over [rect] (see [resolve]); past the last stop it keeps its colour, as CSS
+  /// does.
+  Shader createShader(Rect rect) {
+    final ({Offset center, double radius, List<Color> colors, List<double> stops, Float64List matrix}) ellipse =
+        resolve(rect);
+    return ui.Gradient.radial(
+      ellipse.center,
+      ellipse.radius,
+      ellipse.colors,
+      ellipse.stops,
+      TileMode.clamp,
+      ellipse.matrix,
+    );
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -391,6 +395,44 @@ class ZsGlassFilter {
 
   @override
   String toString() => 'ZsGlassFilter(blur: $blur, saturate: $saturate)';
+}
+
+/// Where [stops] sit along a gradient line or ray [length] logical pixels long (CSS Images 3 §3.5.1): a stop in
+/// percent at that share of [length], one in px that far along; the first stop without a position at 0, the last at
+/// [length], a position behind an earlier one moves up to it, and every other run of unpositioned stops is spread
+/// evenly between its neighbours.
+List<double> _stopPositions(List<ZsGradientStop> stops, double length) {
+  final positions =
+      <double?>[
+          for (final ZsGradientStop stop in stops)
+            stop.px ?? (stop.percent == null ? null : stop.percent! / 100 * length),
+        ]
+        ..first ??= 0
+        ..last ??= length;
+  double floor = double.negativeInfinity;
+  for (var i = 0; i < positions.length; i++) {
+    final double? at = positions[i];
+    if (at != null) {
+      floor = math.max(floor, at);
+      positions[i] = floor;
+    }
+  }
+  for (var i = 1; i < positions.length - 1; i++) {
+    if (positions[i] != null) {
+      continue;
+    }
+    var next = i;
+    while (positions[next] == null) {
+      next++;
+    }
+    final double before = positions[i - 1]!;
+    final double after = positions[next]!;
+    for (var k = i; k < next; k++) {
+      positions[k] = before + (after - before) * (k - i + 1) / (next - i + 1);
+    }
+    i = next;
+  }
+  return <double>[for (final double? at in positions) at!];
 }
 
 double? _lerpNullable(double? a, double? b, double t) {

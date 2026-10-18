@@ -151,6 +151,7 @@ class _FloatingShellDemoState extends State<FloatingShellDemo> {
           child: FloatingShell(
             controller: _controller,
             railItems: _items,
+            canvas: const ZsCanvas(),
             graph: const _StandInGraph(),
             projectCapsule: const _DemoIsland(icon: ZI.folder, text: 'zanshin', width: 176),
             view: const _DemoText('View · search and view controls (10.21, 10.7)'),
