@@ -39,6 +39,8 @@ deferred:
     location: >-
       app/lib/src/features/projects/projects_window.dart (_header)
     severity: low
+    resolved: >-
+      2026-10-19 — fixed (spec-11-12-closing-projects-scaffold-window-plan, commit 630f3f5): the Projects content uses ZsWindowScaffold's sidebar form, so its header follows the measured traffic-light line; a widget test pins y 27 for a block centred at 27.
   - summary: >-
       A dialog window's first frame may show the Multicolor accent: every window root makes its own view model, which asks the shell for the theme asynchronously.
     evidence: |-
@@ -53,6 +55,8 @@ deferred:
     location: >-
       app/lib/src/features/bootstrap/boot_window_host.dart (openProjects); app/lib/src/features/window/app_windows.dart (createRememberedWindow)
     severity: medium
+    resolved: >-
+      2026-10-19 — fixed (spec-11-12-closing-projects-scaffold-window-plan, commit 076c75e): planNativeWindow maps an AppWindowRequest to a ProjectWindowPlan / DialogWindowPlan that tests pin per window kind, and ZanshinWindowHost.openProjects runs in a test over the fake factory; the controllers' engine-bound create(plan) is a new closing-run deferral.
 ---
 
 <intent-contract>
