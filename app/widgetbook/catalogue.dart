@@ -129,7 +129,7 @@ List<WidgetbookAddon> catalogueAddons() => <WidgetbookAddon>[
   AppearanceAddon(),
   TextScaleAddon(),
   InspectorAddon(),
-  GridAddon(),
+  // GridAddon(),
   ZoomAddon(),
   AlignmentAddon(),
   // WHY: the semantics debugger is how a reviewer reads a control's VoiceOver tree in the catalogue; the addon is
