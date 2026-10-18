@@ -31,35 +31,23 @@ class RememberedDialogWindowController extends DialogWindowControllerMacOS {
     required super.delegate,
   }) : super(owner: WidgetsBinding.instance.windowingOwner as WindowingOwnerMacOS);
 
-  /// Creates the native window (still hidden) under [key], titled [title], of [size] (null: sized to its content)
-  /// within [constraints], [resizable] or not, and restores its frame in [frame] mode at [level].
-  static Future<RememberedDialogWindowController> create({
-    required String key,
-    required String title,
-    required Size? size,
-    required BoxConstraints constraints,
-    required bool resizable,
-    required WindowFrameMode frame,
-    required WindowLevel level,
+  /// Creates the native window (still hidden) as [plan] says — under its key, titled, of its size (null: sized to its
+  /// content) within its constraints, resizable or not — and restores its frame with the plan's runner arguments.
+  static Future<RememberedDialogWindowController> create(
+    DialogWindowPlan plan, {
     required DialogWindowControllerDelegate delegate,
   }) async {
     final controller = RememberedDialogWindowController._(
-      key: key,
-      size: size,
-      constraints: constraints,
-      resizable: resizable,
-      title: title,
+      key: plan.key,
+      size: plan.size,
+      constraints: plan.constraints,
+      resizable: plan.resizable,
+      title: plan.title,
       delegate: delegate,
     );
     await windowFramesChannel.invokeMethod<void>(
       'restore',
-      restoreArguments(
-        window: controller.windowHandle.address,
-        key: key,
-        chrome: WindowChromeKind.secondary,
-        frame: frame,
-        level: level,
-      ),
+      plan.runnerArguments(window: controller.windowHandle.address),
     );
     return controller;
   }

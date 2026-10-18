@@ -15,7 +15,8 @@ import 'package:logging/logging.dart';
 import 'remembered_dialog_window_controller.dart';
 import 'remembered_window_controller.dart';
 
-export 'remembered_window_controller.dart' show WindowFrameMode, WindowLevel;
+export 'remembered_window_controller.dart'
+    show DialogWindowPlan, NativeWindowPlan, ProjectWindowPlan, WindowFrameMode, WindowLevel;
 
 final _log = Logger('zanshin.window');
 
@@ -132,20 +133,22 @@ class AppWindowRequest {
 /// method channel, neither of which a widget test can serve.
 typedef AppWindowFactory = Future<BaseWindowController> Function(AppWindowRequest request);
 
-/// The real [AppWindowFactory]: a [RememberedDialogWindowController] for a dialog window, else a
-/// [RememberedWindowController].
-Future<BaseWindowController> createRememberedWindow(AppWindowRequest request) {
+/// What the native window for [request] is made of: for a project window a [ProjectWindowPlan] of [request]'s size
+/// ([defaultWindowSize] without one) within its constraints; for a dialog window a [DialogWindowPlan] from its
+/// [DialogWindowSpec] — size, constraints, resizable, frame and level.
+///
+/// Pure, so a test pins every request kind's plan; [createRememberedWindow] only carries it out.
+NativeWindowPlan planNativeWindow(AppWindowRequest request) {
   final DialogWindowSpec? dialog = request.dialog;
   if (dialog == null) {
-    return RememberedWindowController.create(
+    return ProjectWindowPlan(
       key: request.key,
+      title: request.title,
       size: request.size ?? defaultWindowSize,
       constraints: request.constraints,
-      title: request.title,
-      delegate: request.delegate,
     );
   }
-  return RememberedDialogWindowController.create(
+  return DialogWindowPlan(
     key: request.key,
     title: request.title,
     size: dialog.size,
@@ -153,9 +156,18 @@ Future<BaseWindowController> createRememberedWindow(AppWindowRequest request) {
     resizable: dialog.resizable,
     frame: dialog.frame,
     level: dialog.level,
-    delegate: request.delegate,
   );
 }
+
+/// The real [AppWindowFactory]: carries out [planNativeWindow]'s plan — a [RememberedWindowController] for a project
+/// window, a [RememberedDialogWindowController] for a dialog window.
+///
+/// The plan is the tested part; what needs the engine is the controller's constructor call with the plan's values and
+/// the channel call with its runner arguments.
+Future<BaseWindowController> createRememberedWindow(AppWindowRequest request) => switch (planNativeWindow(request)) {
+  final ProjectWindowPlan plan => RememberedWindowController.create(plan, delegate: request.delegate),
+  final DialogWindowPlan plan => RememberedDialogWindowController.create(plan, delegate: request.delegate),
+};
 
 /// Ends the process once no window keeps it alive.
 typedef AppExit = Future<void> Function();

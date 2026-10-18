@@ -60,6 +60,78 @@ Map<String, Object> restoreArguments({
 /// The channel the remembered controllers restore their frames over; the runner also calls `reopen` on it.
 const windowFramesChannel = MethodChannel('zanshin/window_frames');
 
+/// How a native window is made (`planNativeWindow`, Story 11.12): the window's [key] (also its frame key), [title],
+/// content [constraints] and whether it is [resizable], and what the runner's `restore` gets — the [chrome] kind, the
+/// [frame] mode and the [level].
+///
+/// The plan is what a test pins; the remembered controllers only carry it out (`createRememberedWindow`).
+sealed class NativeWindowPlan {
+  const NativeWindowPlan({
+    required this.key,
+    required this.title,
+    required this.constraints,
+    required this.resizable,
+    required this.chrome,
+    required this.frame,
+    required this.level,
+  });
+
+  /// The window's key, also its frame key.
+  final String key;
+
+  /// The window's title.
+  final String title;
+
+  /// The window's content constraints, its minimum included.
+  final BoxConstraints constraints;
+
+  /// Whether the user can resize the window (and zoom it).
+  final bool resizable;
+
+  /// The chrome the runner gives the window.
+  final WindowChromeKind chrome;
+
+  /// What the runner remembers of the window's frame.
+  final WindowFrameMode frame;
+
+  /// The window's level.
+  final WindowLevel level;
+
+  /// The `restore` arguments for the NSWindow handle [window]: [restoreArguments] of this plan.
+  Map<String, Object> runnerArguments({required int window}) =>
+      restoreArguments(window: window, key: key, chrome: chrome, frame: frame, level: level);
+}
+
+/// A project window's plan, carried out by [RememberedWindowController]: resizable, of [size], with the main chrome,
+/// the full frame and the normal level.
+final class ProjectWindowPlan extends NativeWindowPlan {
+  /// The project window [key] titled [title], of [size] within [constraints].
+  const ProjectWindowPlan({required super.key, required super.title, required this.size, required super.constraints})
+    : super(resizable: true, chrome: WindowChromeKind.main, frame: WindowFrameMode.full, level: WindowLevel.normal);
+
+  /// The first-launch content size; afterwards the remembered frame wins.
+  final Size size;
+}
+
+/// A dialog window's plan, carried out by `RememberedDialogWindowController`: of [size] (null: sized to its content),
+/// [resizable] or not, with the secondary chrome.
+final class DialogWindowPlan extends NativeWindowPlan {
+  /// The dialog window [key] titled [title], of [size] within [constraints], [resizable] or not, in [frame] mode at
+  /// [level].
+  const DialogWindowPlan({
+    required super.key,
+    required super.title,
+    required this.size,
+    required super.constraints,
+    required super.resizable,
+    required super.frame,
+    required super.level,
+  }) : super(chrome: WindowChromeKind.secondary);
+
+  /// The first-launch content size, or null for a window sized to its content.
+  final Size? size;
+}
+
 /// A regular window that remembers its frame — size and position, together
 /// with the display it was on — under [key], and comes back there the next
 /// time a window with the same key is created.
@@ -75,40 +147,33 @@ class RememberedWindowController extends WindowControllerMacOS {
     required this.key,
     required super.size,
     required super.delegate,
+    required super.resizable,
     super.constraints,
     super.title,
-  }) : super(owner: WidgetsBinding.instance.windowingOwner as WindowingOwnerMacOS, resizable: true);
+  }) : super(owner: WidgetsBinding.instance.windowingOwner as WindowingOwnerMacOS);
 
-  /// Creates the native window (still hidden) and restores its frame; without
-  /// a saved frame the runner centres it, like the first launch used to.
+  /// Creates the native window (still hidden) as [plan] says and restores its frame with the plan's runner
+  /// arguments; without a saved frame the runner centres it, like the first launch used to.
   ///
   /// The runner also applies the project window's chrome ([WindowChromeKind.main]) — transparent full-size-content
   /// titlebar, opaque canvas-base background, traffic-light overlay. It happens in this same round-trip and *before*
   /// the frame, because `.fullSizeContentView` redefines what a frame means: applying one under the old style mask
   /// would shave the titlebar height off the window on every launch.
-  static Future<RememberedWindowController> create({
-    required String key,
-    required Size size,
-    BoxConstraints? constraints,
-    String? title,
-    WindowControllerDelegate? delegate,
+  static Future<RememberedWindowController> create(
+    ProjectWindowPlan plan, {
+    required WindowControllerDelegate delegate,
   }) async {
     final controller = RememberedWindowController._(
-      key: key,
-      size: size,
-      constraints: constraints,
-      title: title,
-      delegate: delegate ?? WindowControllerDelegate(),
+      key: plan.key,
+      size: plan.size,
+      constraints: plan.constraints,
+      resizable: plan.resizable,
+      title: plan.title,
+      delegate: delegate,
     );
     await windowFramesChannel.invokeMethod<void>(
       'restore',
-      restoreArguments(
-        window: controller.windowHandle.address,
-        key: key,
-        chrome: WindowChromeKind.main,
-        frame: WindowFrameMode.full,
-        level: WindowLevel.normal,
-      ),
+      plan.runnerArguments(window: controller.windowHandle.address),
     );
     return controller;
   }

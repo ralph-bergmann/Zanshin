@@ -27,10 +27,12 @@ final _log = Logger('zanshin.bootstrap');
 
 /// The real [BootWindowHost]: the only place that creates windows.
 ///
-/// Not unit-tested — everything it touches (`runWidget`, the macOS window
-/// controllers, the window channels) needs a live engine. The sequencing it
-/// serves is tested against a fake host instead; this class is covered by the
-/// runtime smoke check.
+/// Its requests and both presentation paths — the first window through
+/// `runWidget`, every later one through the registry — are tested over a fake
+/// window factory. The splash and the native controllers need a live engine:
+/// the check for them is a running app — the DEBUG `zanshin.window` restore
+/// lines and the CGWindowList probe. The sequencing the host serves is tested
+/// against a fake host.
 class ZanshinWindowHost implements BootWindowHost {
   ZanshinWindowHost({required this.windows, required this.icons});
 

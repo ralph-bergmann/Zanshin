@@ -115,6 +115,106 @@ void main() {
     expect(projectsWindowSpec.keepsAppAlive, isTrue);
   });
 
+  testWidgets("planNativeWindow names each request's controller, its size, constraints, resizability and restore", (
+    tester,
+  ) async {
+    final (_, AppWindows windows, FakeWindowFactory factory, _) = newWindows();
+    // Not the defaults, so a plan that ignored the request's size or constraints would fail.
+    await windows.openOrActivate(
+      key: mainWindowKey,
+      title: 'Zanshin',
+      builder: _nothing,
+      size: const Size(1000, 700),
+      constraints: const BoxConstraints(minWidth: 900, minHeight: 600),
+    );
+    await windows.openOrActivate(
+      key: projectsWindowKey,
+      title: projectsWindowTitle,
+      builder: _nothing,
+      dialog: projectsWindowSpec,
+    );
+    await windows.openOrActivate(key: settingsWindowKey, title: 'General', builder: _nothing, dialog: _settings);
+    await windows.openOrActivate(
+      key: revsetConfigsWindowKey,
+      title: 'jj log Configurations',
+      builder: _nothing,
+      dialog: _configurations,
+    );
+    final List<NativeWindowPlan> plans = factory.requests.map(planNativeWindow).toList();
+
+    expect(
+      AppWindows().createController,
+      same(createRememberedWindow),
+      reason: 'the real factory carries the plan out',
+    );
+    expect(plans, hasLength(4));
+    final [NativeWindowPlan project, NativeWindowPlan projects, NativeWindowPlan settings, NativeWindowPlan configs] =
+        plans;
+    expect(
+      project,
+      isA<ProjectWindowPlan>()
+          .having((plan) => plan.title, 'title', 'Zanshin')
+          .having((plan) => plan.size, 'size', const Size(1000, 700))
+          .having((plan) => plan.constraints, 'constraints', const BoxConstraints(minWidth: 900, minHeight: 600))
+          .having((plan) => plan.resizable, 'resizable', isTrue),
+    );
+    expect(project.runnerArguments(window: 1), <String, Object>{
+      'window': 1,
+      'key': 'main',
+      'chrome': 'main',
+      'frame': 'full',
+      'level': 'normal',
+    });
+
+    expect(
+      projects,
+      isA<DialogWindowPlan>()
+          .having((plan) => plan.title, 'title', 'Projects')
+          .having((plan) => plan.size, 'size', const Size(900, 640))
+          .having((plan) => plan.constraints, 'constraints', const BoxConstraints(minWidth: 680, minHeight: 440))
+          .having((plan) => plan.resizable, 'resizable', isTrue),
+    );
+    expect(projects.runnerArguments(window: 2), <String, Object>{
+      'window': 2,
+      'key': 'projects',
+      'chrome': 'secondary',
+      'frame': 'full',
+      'level': 'normal',
+    });
+
+    expect(
+      settings,
+      isA<DialogWindowPlan>()
+          .having((plan) => plan.size, 'size', isNull)
+          .having((plan) => plan.constraints, 'constraints', const BoxConstraints(maxWidth: 620, maxHeight: 740))
+          .having((plan) => plan.resizable, 'resizable', isFalse),
+      reason: 'content-sized',
+    );
+    expect(settings.runnerArguments(window: 3), <String, Object>{
+      'window': 3,
+      'key': 'settings',
+      'chrome': 'secondary',
+      'frame': 'position',
+      'level': 'normal',
+    });
+
+    expect(
+      configs,
+      isA<DialogWindowPlan>()
+          .having((plan) => plan.size, 'size', const Size(880, 580))
+          .having((plan) => plan.constraints, 'constraints', const BoxConstraints(minWidth: 820, minHeight: 460))
+          .having((plan) => plan.resizable, 'resizable', isTrue),
+      reason: 'floating while active',
+    );
+    expect(configs.runnerArguments(window: 4), <String, Object>{
+      'window': 4,
+      'key': 'revset-configs',
+      'chrome': 'secondary',
+      'frame': 'full',
+      'level': 'floating',
+    });
+  });
+
   testWidgets('a dialog window takes its size and constraints from its spec only', (tester) async {
     final (_, AppWindows windows, _, _) = newWindows();
 
