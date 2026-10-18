@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin_ui/src/controls/zs_menu.dart';
 import 'package:zanshin_ui/src/controls/zs_select.dart';
 import 'package:zanshin_ui/src/design/zs_motion.dart';
+import 'package:zanshin_ui/src/icons/zanshin_icon.dart';
 
 import '../helpers/controls.dart';
 import '../helpers/icon_registry.dart';
@@ -57,9 +58,19 @@ Future<void> _settle(WidgetTester tester) async {
   await tester.pump(_m.durMenu + const Duration(milliseconds: 1));
 }
 
+/// The trigger's up-down chevron.
+Finder _chevron() => find.descendant(of: find.byType(ZsSelect<String>), matching: find.byType(ZanshinIcon));
+
 void main() {
   setUpIconRegistry();
   useMacFocus();
+
+  testWidgets('the chevron keeps to the trigger\'s right edge, however short the value', (tester) async {
+    await tester.pumpWidget(_select(value: 'r2', onChanged: (_) {}));
+    final Rect trigger = tester.getRect(find.byType(ZsSelect<String>));
+    // `padding:0 5px 0 10px` inside the 1 px edge (DS components/forms/forms.css:112).
+    expect(tester.getRect(_chevron()).right, trigger.right - 6);
+  });
 
   testWidgets('a click opens the list over the trigger, the chosen row centred on it, its text at the trigger text', (
     tester,

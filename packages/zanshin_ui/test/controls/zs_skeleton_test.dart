@@ -31,6 +31,14 @@ void main() {
     );
   });
 
+  test('each sweep crosses the whole bar: the band starts and ends off it, so the loop does not jump', () {
+    const size = Size(120, 10);
+    expect(zsSkeletonBand(size, 0, 1).right, lessThanOrEqualTo(0));
+    expect(zsSkeletonBand(size, 1, 1).left, greaterThanOrEqualTo(size.width));
+    expect(zsSkeletonBand(size, .5, 1).center.dx, size.width / 2);
+    expect(zsSkeletonBand(size, .7, 0).right, lessThanOrEqualTo(0), reason: 'reduce motion: no sweep');
+  });
+
   testWidgets('the card stands on --card-solid with a --border-strong edge, 240 × 62', (tester) async {
     await tester.pumpWidget(_skeleton(kind: ZsSkeletonKind.card));
     await tester.pump(delay + const Duration(milliseconds: 1));

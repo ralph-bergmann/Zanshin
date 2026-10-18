@@ -280,7 +280,14 @@ class _ZsScrollAreaState extends State<ZsScrollArea> {
                 },
                 child: Stack(
                   children: <Widget>[
-                    Positioned.fill(child: widget.child),
+                    // WHY: on macOS the default scroll behaviour wraps every scrollable in a `RawScrollbar` of its
+                    // own, a second bar beside this one while scrolling; the area draws the only bar.
+                    Positioned.fill(
+                      child: ScrollConfiguration(
+                        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                        child: widget.child,
+                      ),
+                    ),
                     Positioned(
                       top: ZsScrollArea._inset,
                       bottom: ZsScrollArea._inset,

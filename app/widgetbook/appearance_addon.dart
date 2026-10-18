@@ -26,22 +26,17 @@ class AppearanceAddon extends WidgetbookAddon<CatalogueAppearance> {
 
   @override
   List<Field> get fields => <Field>[
-    ObjectDropdownField<ZsTheme>(
-      name: 'theme',
-      values: ZsTheme.values,
-      initialValue: ZsTheme.night,
-      labelBuilder: (theme) => theme.name,
-    ),
-    ObjectDropdownField<ZsAccentFamily>(
+    _NamedDropdown<ZsTheme>(name: 'theme', label: 'Theme', values: ZsTheme.values, initialValue: ZsTheme.night),
+    _NamedDropdown<ZsAccentFamily>(
       name: 'accent',
+      label: 'Accent',
       values: ZsAccentFamily.values,
       initialValue: ZsAccentFamily.multicolor,
-      labelBuilder: (family) => family.name,
     ),
-    BooleanField(name: 'contrast', initialValue: false),
-    BooleanField(name: 'reduceMotion', initialValue: false),
-    BooleanField(name: 'reduceTransparency', initialValue: false),
-    BooleanField(name: 'inactive', initialValue: false),
+    _NamedSwitch(name: 'contrast', label: 'Increase contrast'),
+    _NamedSwitch(name: 'reduceMotion', label: 'Reduce motion'),
+    _NamedSwitch(name: 'reduceTransparency', label: 'Reduce transparency'),
+    _NamedSwitch(name: 'inactive', label: 'Inactive window'),
   ];
 
   @override
@@ -70,5 +65,40 @@ class AppearanceAddon extends WidgetbookAddon<CatalogueAppearance> {
         ),
       ),
     ),
+  );
+}
+
+/// A switch field with its name beside it. Widgetbook titles an addon, never its fields, so the addon's bare switches
+/// did not say what they change (Ralph, 2026-10-18).
+class _NamedSwitch extends BooleanField {
+  _NamedSwitch({required super.name, required this.label}) : super(initialValue: false);
+
+  /// The name shown beside the switch.
+  final String label;
+
+  @override
+  Widget toWidget(BuildContext context, String group, bool? value) => Row(
+    spacing: 12,
+    children: <Widget>[
+      super.toWidget(context, group, value),
+      Flexible(child: Text(label)),
+    ],
+  );
+}
+
+/// A dropdown field of enum values, labelled by their names, with its name above it (see [_NamedSwitch]).
+class _NamedDropdown<T extends Enum> extends ObjectDropdownField<T> {
+  _NamedDropdown({required super.name, required this.label, required super.values, required super.initialValue})
+    : super(labelBuilder: (value) => value.name);
+
+  /// The name shown above the dropdown.
+  final String label;
+
+  @override
+  Widget toWidget(BuildContext context, String group, T? value) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    spacing: 6,
+    children: <Widget>[Text(label), super.toWidget(context, group, value)],
   );
 }

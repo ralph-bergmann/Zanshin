@@ -171,6 +171,20 @@ class _ZsSkeletonState extends State<ZsSkeleton> with SingleTickerProviderStateM
   }
 }
 
+/// The sweep's band at [t] of one sweep over a bar of [size]: twice the bar's width (`background-size:200%`), its
+/// centre running from one bar width left of the bar to one bar width right of it, so the band enters and leaves
+/// the bar whole; under reduce motion ([motion] 0) it stays off the bar.
+///
+/// The DS's `background-position:150%` → `-50%` (components/controls/controls.css:62, :67) runs the centre only from
+/// −50 % to 150 % of the bar, so half the band still lies on the bar at both ends and every loop jumps from the right
+/// edge to the left one (Ralph, 2026-10-18, in the catalogue).
+@visibleForTesting
+Rect zsSkeletonBand(Size size, double t, double motion) {
+  final double band = size.width * 2;
+  final double centre = size.width * (-1 + 3 * t * motion);
+  return Rect.fromLTWH(centre - band / 2, 0, band, size.height);
+}
+
 class _SkeletonPainter extends CustomPainter {
   _SkeletonPainter({
     required this.sweep,
@@ -198,13 +212,9 @@ class _SkeletonPainter extends CustomPainter {
       ..clipRRect(rrect)
       ..drawRRect(rrect, Paint()..color = base.withValues(alpha: base.a * opacity));
     if (motion > 0) {
-      // `background-size:200%` moving from `background-position:150%` to `-50%`: the band, twice the bar's width,
-      // has its centre at −50 % of the bar at the start and at 150 % at the end, so it crosses the bar left to right.
-      final double band = size.width * 2;
-      final double left = size.width * (-.5 + 2 * t * motion) - band / 2;
       final Shader shader = LinearGradient(
         colors: <Color>[high.withValues(alpha: 0), high, high.withValues(alpha: 0)],
-      ).createShader(Rect.fromLTWH(left, 0, band, size.height));
+      ).createShader(zsSkeletonBand(size, t, motion));
       canvas.drawRect(box, Paint()..shader = shader);
     }
     canvas.restore();

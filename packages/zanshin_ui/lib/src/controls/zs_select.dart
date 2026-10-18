@@ -421,8 +421,10 @@ class _ZsSelectState<T> extends State<ZsSelect<T>> {
             child: Padding(
               // `padding:0 5px 0 10px` inside the 1 px edge (DS components/forms/forms.css:112).
               padding: const EdgeInsets.fromLTRB(11, 0, 6, 0),
+              // `justify-content:space-between`: the chevron keeps to the right edge (forms.css:112).
               child: Row(
                 mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 spacing: 8,
                 children: <Widget>[
                   Flexible(

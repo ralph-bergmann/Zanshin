@@ -286,6 +286,15 @@ void main() {
     });
   });
 
+  testWidgets(
+    'the only bar is its own: the platform\'s scrollbar is off for the content',
+    (tester) async {
+      await tester.pumpWidget(_area(_controller()));
+      expect(find.byType(RawScrollbar), findsNothing);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
   testWidgets('VoiceOver: a region named by its label', (tester) async {
     final SemanticsHandle handle = tester.ensureSemantics();
     await tester.pumpWidget(_area(_controller()));
