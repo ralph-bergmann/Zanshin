@@ -57,7 +57,7 @@ void main() {
     addTearDown(() => dir.deleteSync(recursive: true));
     final SettingsStore store = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/settings.json'))))!;
 
-    await tester.pumpWidget(shellHost(HomePage(zanshinFfiVersion: () => 'test', viewModelFactory: _factory(store))));
+    await tester.pumpWidget(shellHost(HomePage(viewModelFactory: _factory(store))));
 
     expect(find.byType(FloatingShell), findsOneWidget);
     final Color canvas = ZsColors.night.canvasBase;

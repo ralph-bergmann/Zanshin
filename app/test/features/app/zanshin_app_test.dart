@@ -17,7 +17,7 @@ import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/recording_shell.dart';
 
-/// The home page the DI graph would build, over [_store], with a fake FFI version.
+/// The home page the DI graph would build, over [_store].
 class _HomePageFactory implements HomePageFactory {
   _HomePageFactory(this._store);
 
@@ -26,7 +26,6 @@ class _HomePageFactory implements HomePageFactory {
   @override
   HomePage create({Key? key}) => HomePage(
     key: key,
-    zanshinFfiVersion: () => 'test',
     viewModelFactory: _viewModels(() => FloatingShellViewModel(_store)),
   );
 }

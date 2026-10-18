@@ -3,7 +3,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
 import 'package:inject_flutter/inject_flutter.dart';
-import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 
 import '../shell/floating_shell.dart';
@@ -19,12 +18,9 @@ part 'home_page.factory.dart';
 class HomePage extends StatelessWidget {
   @assistedInject
   const HomePage({
-    required this.zanshinFfiVersion,
     required this.viewModelFactory,
     @assisted super.key,
   });
-
-  final ZanshinFfiVersion zanshinFfiVersion;
 
   /// Binds the shell's view model to this page.
   final ViewModelFactory<FloatingShellViewModel> viewModelFactory;

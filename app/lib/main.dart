@@ -116,7 +116,6 @@ Future<Widget> _startApp(SettingsStore settings, IconRegistry icons) async {
 }
 
 @Component([
-  ZanshinFfiModule,
   ZanshinDiagnosticsModule,
   WorkerModule,
   WorkerLifecycleModule,
