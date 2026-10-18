@@ -145,8 +145,12 @@ List<WidgetbookAddon> catalogueAddons() => <WidgetbookAddon>[
 ];
 
 /// What the app's windows show — the token theme for both modes, the shell's mode, the accent family following
-/// macOS — around each use case ([child], which the addons wrap).
-Widget catalogueAppBuilder(BuildContext context, Widget child) {
+/// macOS — around [child]: a use case (wrapped by the addons) or a catalogue window's content.
+///
+/// A catalogue window passes its [chrome] report (Story 11.4), from which this builder's `ZsRoot` takes full screen
+/// and the traffic-light block, as the app's window root does; the previews pass none and keep the DS reference
+/// geometry.
+Widget catalogueAppBuilder(BuildContext context, Widget child, {WindowChrome? chrome}) {
   final ShellTheme? shell = ZsShellScope.maybeOf(context);
   final ZsAppearance appearance = _appearance(shell);
   return MaterialApp(
@@ -159,7 +163,11 @@ Widget catalogueAppBuilder(BuildContext context, Widget child) {
       Brightness.light => ThemeMode.light,
     },
     builder: (context, home) => ZsRoot(
-      appearance: appearance.copyWith(theme: ZsTheme.of(Theme.of(context).brightness)),
+      appearance: appearance.copyWith(
+        theme: ZsTheme.of(Theme.of(context).brightness),
+        fullScreen: chrome?.fullScreen,
+        trafficLights: chrome?.trafficLights,
+      ),
       shellTheme: shell,
       child: home ?? const SizedBox.shrink(),
     ),

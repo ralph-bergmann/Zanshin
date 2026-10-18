@@ -9,11 +9,12 @@ import '../../widgetbook/catalogue.dart';
 import '../../widgetbook/folders/windows.dart';
 import 'icon_registry.dart';
 
-/// The catalogue window's content at [route], as `widgetbook/main.dart` builds it (no window is opened).
-Widget catalogueAt(String route, {GlobalKey<ZanshinCatalogueState>? key}) => IconRegistryScope(
+/// The catalogue window's content at [route], as `widgetbook/main.dart` builds it (no window is opened), over
+/// [windows] (by default ones that never exit the process).
+Widget catalogueAt(String route, {GlobalKey<ZanshinCatalogueState>? key, AppWindows? windows}) => IconRegistryScope(
   registry: testIconRegistry,
   child: CatalogueWindows(
-    windows: AppWindows(exitProcess: () async {}),
+    windows: windows ?? AppWindows(exitProcess: () async {}),
     child: ZanshinCatalogue(key: key, initialRoute: route),
   ),
 );

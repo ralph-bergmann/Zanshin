@@ -5,6 +5,8 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:widgetbook/widgetbook.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
+import 'package:zanshin/src/features/window/window_chrome_builder.dart';
+import 'package:zanshin_shell/zanshin_shell.dart' show ShellTheme;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../catalogue.dart' show catalogueAppBuilder;
@@ -29,10 +31,32 @@ class CatalogueWindows extends InheritedWidget {
   bool updateShouldNotify(CatalogueWindows oldWidget) => !identical(windows, oldWidget.windows);
 }
 
+/// The root of every window the catalogue opens: [catalogueAppBuilder] over [child] with the window's chrome report
+/// (Story 11.4), so its root takes the measured traffic-light block and full screen as the app's window root does.
+///
+/// One [WindowChromeBuilder] per window; the new window is no descendant of the catalogue's, so it takes the
+/// [shellTheme] it was opened with.
+class CatalogueWindowRoot extends StatelessWidget {
+  /// The root of a catalogue window showing [child].
+  const CatalogueWindowRoot({required this.shellTheme, required this.child, super.key});
+
+  /// The shell theme as the catalogue had it when the window opened.
+  final ShellTheme? shellTheme;
+
+  /// The window's content.
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ZsShellScope(
+    shellTheme: shellTheme,
+    child: WindowChromeBuilder(builder: (context, chrome) => catalogueAppBuilder(context, child, chrome: chrome)),
+  );
+}
+
 /// The "Windows" folder: use cases that open a real window of their own, as the app's dialog windows will.
 ///
 /// Stories 11.12 (window chrome kinds, dialog windows), 11.6 (Settings), 11.7 (Projects) and 10.22 (Push) add their
-/// windows here.
+/// windows here. Each window's builder returns a [CatalogueWindowRoot] over its content.
 final windowsFolder = WidgetbookFolder(
   name: 'Windows',
   children: <WidgetbookNode>[
@@ -78,14 +102,9 @@ class _OpenWindowFill extends StatelessWidget {
           title: 'Window fill',
           size: _size,
           constraints: _constraints,
-          builder: (context) => ZsShellScope(
+          builder: (context) => CatalogueWindowRoot(
             shellTheme: shell?.shellTheme,
-            child: Builder(
-              builder: (context) => catalogueAppBuilder(
-                context,
-                const ZsWindowFill(child: Center(child: Text('A window on ZsWindowFill'))),
-              ),
-            ),
+            child: const ZsWindowFill(child: Center(child: Text('A window on ZsWindowFill'))),
           ),
         ),
       );
@@ -95,7 +114,8 @@ class _OpenWindowFill extends StatelessWidget {
 
 /// Opens Story 11.3's floating shell with a demo island in every slot in a real 1440 × 900 window, resizable down to
 /// the project window's 880 × 560 minimum (decision 16.37, `defaultWindowConstraints`), so a reviewer drags it through
-/// the collapse widths.
+/// the collapse widths. Its [CatalogueWindowRoot] lays the shell out on the window's chrome report: the measured
+/// traffic-light block, and full screen.
 class _OpenFloatingShell extends StatelessWidget {
   const _OpenFloatingShell();
 
@@ -113,11 +133,9 @@ class _OpenFloatingShell extends StatelessWidget {
           key: 'widgetbook-floating-shell',
           title: 'Floating shell',
           size: _size,
-          builder: (context) => ZsShellScope(
+          builder: (context) => CatalogueWindowRoot(
             shellTheme: shell?.shellTheme,
-            child: Builder(
-              builder: (context) => catalogueAppBuilder(context, const FloatingShellDemo(state: ShellDemoState.slots)),
-            ),
+            child: const FloatingShellDemo(state: ShellDemoState.slots),
           ),
         ),
       );

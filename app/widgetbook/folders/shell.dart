@@ -72,13 +72,14 @@ enum ShellDemoState {
 /// The floating shell in [state] over demo slots, for the Shell folder and the Windows folder's real window.
 class FloatingShellDemo extends StatefulWidget {
   /// A demo in [state].
-  const FloatingShellDemo({required this.state, this.fullScreen = false, super.key});
+  const FloatingShellDemo({required this.state, this.fullScreen, super.key});
 
   /// What the demo shows.
   final ShellDemoState state;
 
-  /// Whether the shell lays out as in full screen.
-  final bool fullScreen;
+  /// Whether the shell lays out as in full screen: the Shell folder's knob sets it; null keeps what the window root
+  /// resolved — the Windows folder's real window, whose root follows the window's chrome report.
+  final bool? fullScreen;
 
   @override
   State<FloatingShellDemo> createState() => _FloatingShellDemoState();
