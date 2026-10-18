@@ -67,6 +67,8 @@ deferred:
     location: >-
       packages/zanshin_ui/lib/src/controls/zs_menu.dart; app/lib/src/features/projects/project_capsule.dart
     severity: low
+    resolved: >-
+      2026-10-18 — fixed (spec-11-5-closing-project-menu-voiceover-name, commit 4455307): ZsMenuAnchor takes a semanticLabel apart from the head (the container reads semanticLabel ?? subject), and the capsule passes "Project".
   - summary: >-
       The open project's reading (show of @ plus the topology call, each with the pre-verb snapshot) starts on every op-heads event, so a burst of external jj commands has Zanshin snapshotting between them; whether that can race the CLI into a divergent @ is not measured.
     evidence: |-
