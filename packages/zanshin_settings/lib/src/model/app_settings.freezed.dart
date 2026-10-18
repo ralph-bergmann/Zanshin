@@ -17,7 +17,9 @@ T _$identity<T>(T value) => value;
 mixin _$AppSettings {
 
 /// Look-and-feel settings.
- AppearanceSettings get appearance;
+ AppearanceSettings get appearance;/// The project window's remembered island widths.
+ LayoutSettings get layout;/// Settings › General.
+ GeneralSettings get general;
 /// Create a copy of AppSettings
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -31,20 +33,20 @@ $AppSettingsCopyWith<AppSettings> get copyWith => _$AppSettingsCopyWithImpl<AppS
 @override
 bool operator ==(Object other) {
   final _this = this as AppSettings;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppSettings&&(identical(other.appearance, _this.appearance) || other.appearance == _this.appearance));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppSettings&&(identical(other.appearance, _this.appearance) || other.appearance == _this.appearance)&&(identical(other.layout, _this.layout) || other.layout == _this.layout)&&(identical(other.general, _this.general) || other.general == _this.general));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as AppSettings;
-  return Object.hash(runtimeType,_this.appearance);
+  return Object.hash(runtimeType,_this.appearance,_this.layout,_this.general);
 }
 
 @override
 String toString() {
   final _this = this as AppSettings;
-  return 'AppSettings(appearance: ${_this.appearance})';
+  return 'AppSettings(appearance: ${_this.appearance}, layout: ${_this.layout}, general: ${_this.general})';
 }
 
 
@@ -55,11 +57,11 @@ abstract mixin class $AppSettingsCopyWith<$Res>  {
   factory $AppSettingsCopyWith(AppSettings value, $Res Function(AppSettings) _then) = _$AppSettingsCopyWithImpl;
 @useResult
 $Res call({
- AppearanceSettings appearance
+ AppearanceSettings appearance, LayoutSettings layout, GeneralSettings general
 });
 
 
-$AppearanceSettingsCopyWith<$Res> get appearance;
+$AppearanceSettingsCopyWith<$Res> get appearance;$LayoutSettingsCopyWith<$Res> get layout;$GeneralSettingsCopyWith<$Res> get general;
 
 }
 /// @nodoc
@@ -72,10 +74,12 @@ class _$AppSettingsCopyWithImpl<$Res>
 
 /// Create a copy of AppSettings
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? appearance = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? appearance = null,Object? layout = null,Object? general = null,}) {
   return _then(AppSettings(
 appearance: null == appearance ? _self.appearance : appearance // ignore: cast_nullable_to_non_nullable
-as AppearanceSettings,
+as AppearanceSettings,layout: null == layout ? _self.layout : layout // ignore: cast_nullable_to_non_nullable
+as LayoutSettings,general: null == general ? _self.general : general // ignore: cast_nullable_to_non_nullable
+as GeneralSettings,
   ));
 }
 /// Create a copy of AppSettings
@@ -86,6 +90,24 @@ $AppearanceSettingsCopyWith<$Res> get appearance {
   
   return $AppearanceSettingsCopyWith<$Res>(_self.appearance, (value) {
     return _then(_self.copyWith(appearance: value));
+  });
+}/// Create a copy of AppSettings
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$LayoutSettingsCopyWith<$Res> get layout {
+  
+  return $LayoutSettingsCopyWith<$Res>(_self.layout, (value) {
+    return _then(_self.copyWith(layout: value));
+  });
+}/// Create a copy of AppSettings
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$GeneralSettingsCopyWith<$Res> get general {
+  
+  return $GeneralSettingsCopyWith<$Res>(_self.general, (value) {
+    return _then(_self.copyWith(general: value));
   });
 }
 }
@@ -169,10 +191,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( AppearanceSettings appearance)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( AppearanceSettings appearance,  LayoutSettings layout,  GeneralSettings general)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _AppSettings() when $default != null:
-return $default(_that.appearance);case _:
+return $default(_that.appearance,_that.layout,_that.general);case _:
   return orElse();
 
 }
@@ -190,10 +212,10 @@ return $default(_that.appearance);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( AppearanceSettings appearance)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( AppearanceSettings appearance,  LayoutSettings layout,  GeneralSettings general)  $default,) {final _that = this;
 switch (_that) {
 case _AppSettings():
-return $default(_that.appearance);case _:
+return $default(_that.appearance,_that.layout,_that.general);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -210,10 +232,10 @@ return $default(_that.appearance);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( AppearanceSettings appearance)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( AppearanceSettings appearance,  LayoutSettings layout,  GeneralSettings general)?  $default,) {final _that = this;
 switch (_that) {
 case _AppSettings() when $default != null:
-return $default(_that.appearance);case _:
+return $default(_that.appearance,_that.layout,_that.general);case _:
   return null;
 
 }
@@ -225,11 +247,15 @@ return $default(_that.appearance);case _:
 @JsonSerializable()
 
 class _AppSettings implements AppSettings {
-  const _AppSettings({this.appearance = const AppearanceSettings()});
+  const _AppSettings({this.appearance = const AppearanceSettings(), this.layout = const LayoutSettings(), this.general = const GeneralSettings()});
   factory _AppSettings.fromJson(Map<String, dynamic> json) => _$AppSettingsFromJson(json);
 
 /// Look-and-feel settings.
 @override@JsonKey() final  AppearanceSettings appearance;
+/// The project window's remembered island widths.
+@override@JsonKey() final  LayoutSettings layout;
+/// Settings › General.
+@override@JsonKey() final  GeneralSettings general;
 
 /// Create a copy of AppSettings
 /// with the given fields replaced by the non-null parameter values.
@@ -244,18 +270,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppSettings&&(identical(other.appearance, appearance) || other.appearance == appearance));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppSettings&&(identical(other.appearance, appearance) || other.appearance == appearance)&&(identical(other.layout, layout) || other.layout == layout)&&(identical(other.general, general) || other.general == general));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,appearance);
+    return Object.hash(runtimeType,appearance,layout,general);
 }
 
 @override
 String toString() {
-    return 'AppSettings(appearance: $appearance)';
+    return 'AppSettings(appearance: $appearance, layout: $layout, general: $general)';
 }
 
 
@@ -266,11 +292,11 @@ abstract mixin class _$AppSettingsCopyWith<$Res> implements $AppSettingsCopyWith
   factory _$AppSettingsCopyWith(_AppSettings value, $Res Function(_AppSettings) _then) = __$AppSettingsCopyWithImpl;
 @override @useResult
 $Res call({
- AppearanceSettings appearance
+ AppearanceSettings appearance, LayoutSettings layout, GeneralSettings general
 });
 
 
-@override $AppearanceSettingsCopyWith<$Res> get appearance;
+@override $AppearanceSettingsCopyWith<$Res> get appearance;@override $LayoutSettingsCopyWith<$Res> get layout;@override $GeneralSettingsCopyWith<$Res> get general;
 
 }
 /// @nodoc
@@ -283,10 +309,12 @@ class __$AppSettingsCopyWithImpl<$Res>
 
 /// Create a copy of AppSettings
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? appearance = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? appearance = null,Object? layout = null,Object? general = null,}) {
   return _then(_AppSettings(
 appearance: null == appearance ? _self.appearance : appearance // ignore: cast_nullable_to_non_nullable
-as AppearanceSettings,
+as AppearanceSettings,layout: null == layout ? _self.layout : layout // ignore: cast_nullable_to_non_nullable
+as LayoutSettings,general: null == general ? _self.general : general // ignore: cast_nullable_to_non_nullable
+as GeneralSettings,
   ));
 }
 
@@ -298,6 +326,24 @@ $AppearanceSettingsCopyWith<$Res> get appearance {
   
   return $AppearanceSettingsCopyWith<$Res>(_self.appearance, (value) {
     return _then(_self.copyWith(appearance: value));
+  });
+}/// Create a copy of AppSettings
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$LayoutSettingsCopyWith<$Res> get layout {
+  
+  return $LayoutSettingsCopyWith<$Res>(_self.layout, (value) {
+    return _then(_self.copyWith(layout: value));
+  });
+}/// Create a copy of AppSettings
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$GeneralSettingsCopyWith<$Res> get general {
+  
+  return $GeneralSettingsCopyWith<$Res>(_self.general, (value) {
+    return _then(_self.copyWith(general: value));
   });
 }
 }

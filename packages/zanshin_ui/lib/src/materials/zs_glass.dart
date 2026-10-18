@@ -35,8 +35,11 @@ enum ZsGlassBlur {
 /// tokens/transparency.css:9-10; tokens/contrast.css:21-22). Its backdrop joins the nearest [BackdropGroup].
 ///
 /// Glass never nests (DS components/surfaces/Island.prompt.md:13); a `ZsGlass` below another fails an assertion in
-/// debug builds, as nested grouped backdrops would overlap. Never fade glass through an `Opacity` or a
-/// `FadeTransition` above it: the engine then drops the blur for the whole fade (deferred-work, Story 11.2).
+/// debug builds, as nested grouped backdrops would overlap. The check walks the element tree, where an
+/// `OverlayPortal`'s overlay child counts as a child of the portal: glass must therefore never mount through an
+/// `OverlayPortal` placed inside other glass. Story 11.3 settles it that way — none of the overlay host's surfaces
+/// does (its preview is the menu material, its flyout a sibling of the rail). Never fade glass through an `Opacity`
+/// or a `FadeTransition` above it: the engine then drops the blur for the whole fade; fade it through `ZsFade`.
 ///
 /// Besides the islands ([ZsIsland]), two surfaces are plain glass (Claude's proposal for their build):
 /// - the toast (10.23): `ZsGlass(fill: ZsGlassFill.strong, blur: ZsGlassBlur.regular, radius: radiusPill)` (DS

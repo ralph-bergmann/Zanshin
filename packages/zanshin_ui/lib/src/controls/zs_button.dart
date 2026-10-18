@@ -310,7 +310,9 @@ enum ZsIconButtonSize {
 /// `--border-strong` edge (DS tokens/contrast.css:25).
 ///
 /// [label] is its name and its tooltip (right of the rail button, below otherwise); a [badge] sits on the top-right
-/// corner and joins the name ("Fetch, 3"). A Tab stop (the rail's ring inside); Space / ↩.
+/// corner and joins the name ("Fetch, 3"). A Tab stop (the rail's ring inside); Space / ↩. Without [tooltip] it shows
+/// no tooltip — the rail's hover preview takes its place (DS ui_kits/desktop/chrome.jsx:152) — and [label] stays
+/// its name.
 class ZsIconButton extends StatelessWidget implements ZsControl {
   /// An icon button showing [icon], named [label].
   const ZsIconButton({
@@ -324,6 +326,7 @@ class ZsIconButton extends StatelessWidget implements ZsControl {
     this.focusNode,
     this.statesController,
     this.identifier,
+    this.tooltip = true,
     super.key,
   });
 
@@ -356,6 +359,9 @@ class ZsIconButton extends StatelessWidget implements ZsControl {
 
   @override
   final String? identifier;
+
+  /// Whether [label] shows as a tooltip; false for the rail, whose preview replaces it.
+  final bool tooltip;
 
   bool get _hasBadge => badge != null && badge != false && badge != 0;
 
@@ -432,6 +438,9 @@ class ZsIconButton extends StatelessWidget implements ZsControl {
         );
       },
     );
+    if (!tooltip) {
+      return button;
+    }
     return ZsTooltip(
       message: label,
       placement: size == ZsIconButtonSize.lg ? ZsTooltipPlacement.right : ZsTooltipPlacement.below,

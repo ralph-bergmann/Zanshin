@@ -8,6 +8,7 @@ import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../catalogue.dart' show catalogueAppBuilder;
+import 'shell.dart' show FloatingShellDemo, ShellDemoState;
 
 /// Hands the catalogue's [AppWindows] to the use cases that open real windows.
 class CatalogueWindows extends InheritedWidget {
@@ -44,6 +45,15 @@ final windowsFolder = WidgetbookFolder(
         ),
       ],
     ),
+    WidgetbookComponent(
+      name: 'Floating shell',
+      useCases: <WidgetbookUseCase>[
+        WidgetbookUseCase(
+          name: 'Floating shell',
+          builder: (context) => const Center(child: _OpenFloatingShell()),
+        ),
+      ],
+    ),
   ],
 );
 
@@ -75,6 +85,39 @@ class _OpenWindowFill extends StatelessWidget {
                 context,
                 const ZsWindowFill(child: Center(child: Text('A window on ZsWindowFill'))),
               ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// Opens Story 11.3's floating shell with a demo island in every slot in a real 1440 × 900 window, resizable down to
+/// the project window's 880 × 560 minimum (decision 16.37), so a reviewer drags it through the collapse widths.
+class _OpenFloatingShell extends StatelessWidget {
+  const _OpenFloatingShell();
+
+  static const _size = Size(1440, 900);
+  static const _constraints = BoxConstraints(minWidth: 880, minHeight: 560);
+
+  @override
+  Widget build(BuildContext context) => ZsButton(
+    label: 'Open the floating shell',
+    variant: ZsButtonVariant.primary,
+    identifier: 'open-floating-shell',
+    onPressed: () {
+      final ZsShellScope? shell = context.getInheritedWidgetOfExactType<ZsShellScope>();
+      unawaited(
+        CatalogueWindows.of(context).openOrActivate(
+          key: 'widgetbook-floating-shell',
+          title: 'Floating shell',
+          size: _size,
+          constraints: _constraints,
+          builder: (context) => ZsShellScope(
+            shellTheme: shell?.shellTheme,
+            child: Builder(
+              builder: (context) => catalogueAppBuilder(context, const FloatingShellDemo(state: ShellDemoState.slots)),
             ),
           ),
         ),

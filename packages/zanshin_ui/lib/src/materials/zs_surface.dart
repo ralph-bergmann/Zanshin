@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 
 import '../design/zs_colors.dart';
 import '../design/zs_values.dart';
+import 'zs_fade.dart';
 
 /// The one paint path every material shares: the CSS box of `.zs-glass` and its siblings (DS components/base.css:2,
 /// :7), painted in one render box from 11.1's tokens. `ZsGlass`, `ZsMenuMaterial`, `ZsSheet` and `ZsWindowFill`
@@ -30,6 +31,14 @@ import '../design/zs_values.dart';
 /// shadows and the box; it joins the nearest `BackdropGroup` (11.3 mounts one per window) and blurs ungrouped
 /// without one. A null filter (reduce transparency, increased contrast) leaves no filter and no clip in the tree,
 /// and the content keeps its state across the switch.
+///
+/// **Fading** (Story 11.3): a surface fades only through an enclosing [ZsFade], never through an `Opacity` or a
+/// `FadeTransition` above it — the engine then paints the filter into an empty layer and the blur is gone for the
+/// whole fade. At the fade a = [ZsFade.of] < 1 the box sits under an `Opacity` of a inside the filter, the filter's
+/// colour matrix takes the alpha a·(1 − Lα) / (1 − a·Lα) (Lα the [fill]'s alpha), so the blurred backdrop and the
+/// faded box add up to CSS `opacity` a over the whole surface (the scrim's formula, `ZsSheet`), and the drop shadows
+/// paint at a times their alpha. At a = 0 the filter and its clip leave the tree and the content keeps its state.
+/// Without a filter (reduce transparency, increased contrast) the box fades through the same `Opacity`.
 ///
 /// Every surface shows the arrow cursor (`SystemMouseCursors.basic`), takes the pointer inside its shape (the
 /// rounded corners let it through) and is a semantics container. Its content's text and icons default to `--text`,
@@ -95,6 +104,7 @@ class _ZsSurfaceState extends State<ZsSurface> {
   @override
   Widget build(BuildContext context) {
     final Color text = ZsColors.of(context).text;
+    final double fade = ZsFade.of(context);
     Widget surface = _SurfaceBox(
       key: _box,
       fill: widget.fill,
@@ -113,11 +123,20 @@ class _ZsSurfaceState extends State<ZsSurface> {
         ),
       ),
     );
+    if (fade < 1) {
+      surface = Opacity(opacity: fade, child: surface);
+    }
     final ZsGlassFilter? filter = widget.filter;
-    if (filter != null) {
+    if (filter != null && fade > 0) {
+      // CSS opacity a over the whole surface: the backdrop's share of what the faded box lets through.
+      final double fill = widget.fill.a;
+      final double alpha = fade >= 1 ? 1 : fade * (1 - fill) / (1 - fade * fill);
       surface = ClipRRect(
         clipper: _SurfaceClip(widget.radius),
-        child: BackdropFilter.grouped(filter: filter.toImageFilter(), child: surface),
+        child: BackdropFilter.grouped(
+          filter: filter.toImageFilter(alpha: alpha),
+          child: surface,
+        ),
       );
     }
     return Semantics(
@@ -125,7 +144,13 @@ class _ZsSurfaceState extends State<ZsSurface> {
       child: MouseRegion(
         cursor: SystemMouseCursors.basic,
         hitTestBehavior: HitTestBehavior.deferToChild,
-        child: _SurfaceShadow(shadow: widget.shadow, radius: widget.radius, arrow: widget.arrow, child: surface),
+        child: _SurfaceShadow(
+          shadow: widget.shadow,
+          radius: widget.radius,
+          arrow: widget.arrow,
+          fade: fade,
+          child: surface,
+        ),
       ),
     );
   }
@@ -181,29 +206,37 @@ class _SurfaceClip extends CustomClipper<RRect> {
   bool shouldReclip(_SurfaceClip oldClipper) => oldClipper.radius != radius;
 }
 
-/// Paints its child, then the outer shadow parts clipped to outside the surface's shape.
+/// Paints its child, then the outer shadow parts clipped to outside the surface's shape, at [fade] times their alpha.
 class _SurfaceShadow extends SingleChildRenderObjectWidget {
-  const _SurfaceShadow({required this.shadow, required this.radius, required this.arrow, required super.child});
+  const _SurfaceShadow({
+    required this.shadow,
+    required this.radius,
+    required this.arrow,
+    required this.fade,
+    required super.child,
+  });
 
   final ZsShadowStack shadow;
   final double radius;
   final bool arrow;
+  final double fade;
 
   @override
   _RenderSurfaceShadow createRenderObject(BuildContext context) =>
-      _RenderSurfaceShadow(shadow: shadow, radius: radius, arrow: arrow);
+      _RenderSurfaceShadow(shadow: shadow, radius: radius, arrow: arrow, fade: fade);
 
   @override
   void updateRenderObject(BuildContext context, _RenderSurfaceShadow renderObject) {
     renderObject
       ..shadow = shadow
       ..radius = radius
-      ..arrow = arrow;
+      ..arrow = arrow
+      ..fade = fade;
   }
 }
 
 class _RenderSurfaceShadow extends RenderProxyBox {
-  _RenderSurfaceShadow({required this._shadow, required this._radius, required this._arrow});
+  _RenderSurfaceShadow({required this._shadow, required this._radius, required this._arrow, required this._fade});
 
   ZsShadowStack get shadow => _shadow;
   ZsShadowStack _shadow;
@@ -232,11 +265,20 @@ class _RenderSurfaceShadow extends RenderProxyBox {
     }
   }
 
+  double get fade => _fade;
+  double _fade;
+  set fade(double value) {
+    if (value != _fade) {
+      _fade = value;
+      markNeedsPaint();
+    }
+  }
+
   @override
   void paint(PaintingContext context, Offset offset) {
     super.paint(context, offset);
     final List<BoxShadow> drops = _shadow.boxShadows;
-    if (drops.isEmpty) {
+    if (drops.isEmpty || _fade <= 0) {
       return;
     }
     final RRect outer = _outer(size, _radius);
@@ -264,7 +306,11 @@ class _RenderSurfaceShadow extends RenderProxyBox {
       ..translate(offset.dx, offset.dy)
       ..clipPath(outside);
     for (final drop in drops) {
-      canvas.drawRRect(outer.shift(drop.offset).inflate(drop.spreadRadius), drop.toPaint());
+      final Paint paint = drop.toPaint();
+      if (_fade < 1) {
+        paint.color = paint.color.withValues(alpha: paint.color.a * _fade);
+      }
+      canvas.drawRRect(outer.shift(drop.offset).inflate(drop.spreadRadius), paint);
     }
     canvas.restore();
   }

@@ -19,6 +19,8 @@ void main() {
     const settings = AppSettings(appearance: AppearanceSettings(themeMode: ThemeMode.dark));
     expect(settings.toJson(), {
       'appearance': {'themeMode': 'dark', 'accentSource': 'followMacOS'},
+      'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
+      'general': {'hideControls': true},
     });
   });
 
@@ -35,8 +37,47 @@ void main() {
     const settings = AppSettings(appearance: AppearanceSettings(accentSource: AccentSource.zanshin));
     expect(settings.toJson(), {
       'appearance': {'themeMode': 'system', 'accentSource': 'zanshin'},
+      'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
+      'general': {'hideControls': true},
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
+  });
+
+  test('the layout widths default to 460 and 300, Hide controls to on', () {
+    const settings = AppSettings();
+    expect(settings.layout.inspectorWidth, 460);
+    expect(settings.layout.panelWidth, 300);
+    expect(settings.general.hideControls, isTrue);
+  });
+
+  test('a file without layout and general, or with them partial, takes the defaults for what is missing', () {
+    expect(AppSettings.fromJson({'appearance': <String, Object?>{}}).layout, const LayoutSettings());
+    expect(AppSettings.fromJson({'appearance': <String, Object?>{}}).general, const GeneralSettings());
+    final partial = AppSettings.fromJson({
+      'layout': {'panelWidth': 360},
+      'general': <String, Object?>{},
+    });
+    expect(partial.layout, const LayoutSettings(panelWidth: 360));
+    expect(partial.general.hideControls, isTrue);
+  });
+
+  test('changed widths and Hide controls off survive a JSON round trip', () {
+    const settings = AppSettings(
+      layout: LayoutSettings(inspectorWidth: 512, panelWidth: 255.5),
+      general: GeneralSettings(hideControls: false),
+    );
+    expect(settings.toJson()['layout'], {'inspectorWidth': 512.0, 'panelWidth': 255.5});
+    expect(settings.toJson()['general'], {'hideControls': false});
+    expect(AppSettings.fromJson(settings.toJson()), settings);
+  });
+
+  test('an out-of-range width is kept as stored; the shell clamps it where it uses it', () {
+    expect(LayoutSettings.fromJson({'panelWidth': 900}).panelWidth, 900);
+  });
+
+  test('a wrongly typed width or flag throws CheckedFromJsonException', () {
+    expect(() => LayoutSettings.fromJson({'panelWidth': 'wide'}), throwsA(isA<CheckedFromJsonException>()));
+    expect(() => GeneralSettings.fromJson({'hideControls': 'yes'}), throwsA(isA<CheckedFromJsonException>()));
   });
 
   test('a missing sub-model takes its default', () {

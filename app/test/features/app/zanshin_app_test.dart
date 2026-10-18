@@ -9,29 +9,39 @@ import 'package:material_ui/material_ui.dart';
 import 'package:zanshin/src/features/app/zanshin_app.dart';
 import 'package:zanshin/src/features/app/zanshin_app_view_model.dart';
 import 'package:zanshin/src/features/home/home_page.dart';
+import 'package:zanshin/src/features/shell/floating_shell.dart';
+import 'package:zanshin/src/features/shell/floating_shell_view_model.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../../helpers/recording_shell.dart';
 
-/// The home page is unused while the Yaru test page is the app's home.
-class _UnusedHomePageFactory implements HomePageFactory {
-  @override
-  HomePage create({Key? key}) => throw UnimplementedError('the Yaru test page is the home');
-}
-
-class _ViewModelProvider implements Provider<ZanshinAppViewModel> {
-  _ViewModelProvider(this._store);
+/// The home page the DI graph would build, over [_store], with a fake FFI version.
+class _HomePageFactory implements HomePageFactory {
+  _HomePageFactory(this._store);
 
   final SettingsStore _store;
 
   @override
-  ZanshinAppViewModel get() => ZanshinAppViewModel(_store);
+  HomePage create({Key? key}) => HomePage(
+    key: key,
+    zanshinFfiVersion: () => 'test',
+    viewModelFactory: _viewModels(() => FloatingShellViewModel(_store)),
+  );
 }
 
-/// The view-model factory the DI graph would hand over, over [store].
-ViewModelFactory<ZanshinAppViewModel> _viewModels(SettingsStore store) =>
+class _Provider<T> implements Provider<T> {
+  _Provider(this._create);
+
+  final T Function() _create;
+
+  @override
+  T get() => _create();
+}
+
+/// The view-model factory the DI graph would hand over, creating each view model with [create].
+ViewModelFactory<T> _viewModels<T extends ChangeNotifier>(T Function() create) =>
     ({
       required builder,
       child,
@@ -39,9 +49,9 @@ ViewModelFactory<ZanshinAppViewModel> _viewModels(SettingsStore store) =>
       init,
       key,
       loading,
-    }) => ViewModelBuilder<ZanshinAppViewModel>(
+    }) => ViewModelBuilder<T>(
       key: key,
-      viewModelProvider: _ViewModelProvider(store),
+      viewModelProvider: _Provider<T>(create),
       init: init,
       loading: loading,
       error: error,
@@ -72,10 +82,14 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  /// Pumps the app over persisted [settingsJson], answers the shell with [theme] (or leaves it pending when null) and
-  /// returns a context below the app root (the home page's scaffold). File IO runs outside the fake-async zone; the shell is made inside it, so
-  /// its answers arrive on the fake clock's microtasks.
+  /// Pumps the app over persisted [settingsJson] in a 1440 × 900 window, answers the shell with [theme] (or leaves it
+  /// pending when null) and returns a context below the app root (the home page's floating shell). File IO runs
+  /// outside the fake-async zone; the shell is made inside it, so its answers arrive on the fake clock's microtasks.
   Future<BuildContext> pumpApp(WidgetTester tester, String settingsJson, ShellTheme? theme) async {
+    tester.view
+      ..physicalSize = const Size(1440, 900)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     shell = RecordingShell();
     ZanshinShellPlatform.instance = shell;
     addTearDown(shell.close);
@@ -84,7 +98,10 @@ void main() {
       return SettingsStore.load(file);
     });
     await tester.pumpWidget(
-      ZanshinApp(homePageFactory: _UnusedHomePageFactory(), viewModelFactory: _viewModels(store!)),
+      ZanshinApp(
+        homePageFactory: _HomePageFactory(store!),
+        viewModelFactory: _viewModels(() => ZanshinAppViewModel(store)),
+      ),
     );
     if (theme == null) {
       // The shell has not answered yet: the first frame.
@@ -93,8 +110,20 @@ void main() {
       shell.theme.complete(theme);
       await tester.pumpAndSettle();
     }
-    return tester.element(find.byType(Scaffold));
+    return tester.element(find.byType(FloatingShell));
   }
+
+  testWidgets('the home is HomePage over the floating shell, titled Zanshin; the Yaru test page is gone', (
+    tester,
+  ) async {
+    await pumpApp(tester, '{}', _shell());
+
+    expect(find.byType(HomePage), findsOneWidget);
+    expect(find.descendant(of: find.byType(HomePage), matching: find.byType(FloatingShell)), findsOneWidget);
+    expect(tester.widget<MaterialApp>(find.byType(MaterialApp)).title, 'Zanshin');
+    expect(find.byType(Scaffold), findsNothing);
+    expect(find.byType(AppBar), findsNothing);
+  });
 
   for (final (String mode, ZsTheme expected) in const <(String, ZsTheme)>[
     ('light', ZsTheme.paper),
@@ -164,7 +193,7 @@ void main() {
     shell.changes.add(_shell());
     await tester.pumpAndSettle();
 
-    final BuildContext after = tester.element(find.byType(Scaffold));
+    final BuildContext after = tester.element(find.byType(FloatingShell));
     expect(MediaQuery.disableAnimationsOf(after), isFalse);
     expect(ZsMotion.of(after), ZsMotion.full);
   });

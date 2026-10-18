@@ -13,6 +13,16 @@ final materialsFolder = WidgetbookFolder(
       name: 'Island',
       useCases: <WidgetbookUseCase>[
         WidgetbookUseCase(name: 'Shapes', builder: (context) => _overCanvas(const _Islands())),
+        // Story 11.3: glass faded through ZsFade keeps its blur (an Opacity above it would drop it).
+        WidgetbookUseCase(
+          name: 'Fade',
+          builder: (context) => _overCanvas(
+            ZsFade(
+              opacity: context.knobs.double.slider(label: 'opacity', initialValue: .5, max: 1, divisions: 20),
+              child: const _Islands(),
+            ),
+          ),
+        ),
       ],
     ),
     WidgetbookComponent(

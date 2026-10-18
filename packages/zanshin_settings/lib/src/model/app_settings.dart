@@ -3,6 +3,8 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 import 'appearance_settings.dart';
+import 'general_settings.dart';
+import 'layout_settings.dart';
 
 part 'app_settings.freezed.dart';
 part 'app_settings.g.dart';
@@ -20,6 +22,12 @@ abstract class AppSettings with _$AppSettings {
   const factory AppSettings({
     /// Look-and-feel settings.
     @Default(AppearanceSettings()) AppearanceSettings appearance,
+
+    /// The project window's remembered island widths.
+    @Default(LayoutSettings()) LayoutSettings layout,
+
+    /// Settings › General.
+    @Default(GeneralSettings()) GeneralSettings general,
   }) = _AppSettings;
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.

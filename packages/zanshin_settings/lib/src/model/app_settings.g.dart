@@ -16,9 +16,25 @@ _AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) =>
               ? const AppearanceSettings()
               : AppearanceSettings.fromJson(v as Map<String, dynamic>),
         ),
+        layout: $checkedConvert(
+          'layout',
+          (v) => v == null
+              ? const LayoutSettings()
+              : LayoutSettings.fromJson(v as Map<String, dynamic>),
+        ),
+        general: $checkedConvert(
+          'general',
+          (v) => v == null
+              ? const GeneralSettings()
+              : GeneralSettings.fromJson(v as Map<String, dynamic>),
+        ),
       );
       return val;
     });
 
 Map<String, dynamic> _$AppSettingsToJson(_AppSettings instance) =>
-    <String, dynamic>{'appearance': instance.appearance.toJson()};
+    <String, dynamic>{
+      'appearance': instance.appearance.toJson(),
+      'layout': instance.layout.toJson(),
+      'general': instance.general.toJson(),
+    };

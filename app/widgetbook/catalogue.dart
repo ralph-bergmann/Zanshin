@@ -14,14 +14,17 @@ import 'appearance_addon.dart';
 import 'folders/controls.dart';
 import 'folders/icons.dart';
 import 'folders/materials.dart';
+import 'folders/shell.dart';
 import 'folders/windows.dart';
 
 final _log = Logger('zanshin.catalogue');
 
-/// The catalogue's tree: Controls, Materials, Windows and Icons (no Graph folder yet; Story 11.11 deferred item 3).
+/// The catalogue's tree: Controls, Materials, Shell (Story 11.3), Windows and Icons (no Graph folder yet; Story 11.11
+/// deferred item 3).
 final catalogueDirectories = <WidgetbookNode>[
   controlsFolder,
   materialsFolder,
+  shellFolder,
   windowsFolder,
   iconsFolder,
 ];

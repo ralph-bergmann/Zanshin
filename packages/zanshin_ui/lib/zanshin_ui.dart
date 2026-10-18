@@ -26,6 +26,7 @@ export 'src/controls/zs_popover.dart' show ZsOptionLink, ZsOptionRow, ZsPopover,
 export 'src/controls/zs_presence.dart' show ZsPresence;
 export 'src/controls/zs_progress_bar.dart' show ZsProgressBar;
 export 'src/controls/zs_radio.dart' show ZsRadio, ZsRadioGroup, ZsRadioOption;
+export 'src/controls/zs_resize_edge.dart' show ZsResizeEdge, ZsResizeSide;
 export 'src/controls/zs_scroll_area.dart' show ZsScrollArea;
 export 'src/controls/zs_segmented.dart' show ZsSegment, ZsSegmented, ZsSegmentedSize, ZsSegmentedVariant;
 export 'src/controls/zs_select.dart'
@@ -47,6 +48,7 @@ export 'src/design/zs_root.dart' show ZsRoot, ZsShellScope;
 export 'src/design/zs_type.dart' show ZsType;
 export 'src/icons/icon_registry.dart' show IconRegistry, IconRegistryScope;
 export 'src/icons/zanshin_icon.dart' show ZI, ZanshinIcon;
+export 'src/materials/zs_fade.dart' show ZsFade;
 export 'src/materials/zs_glass.dart' show ZsGlass, ZsGlassBlur, ZsGlassFill, ZsIsland, ZsIslandSeparator, ZsIslandShape;
 export 'src/materials/zs_menu_material.dart' show ZsMenuMaterial;
 export 'src/materials/zs_sheet.dart' show ZsSheet;

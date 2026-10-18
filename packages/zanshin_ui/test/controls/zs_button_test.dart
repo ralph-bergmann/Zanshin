@@ -9,6 +9,7 @@ import 'package:zanshin_ui/src/controls/zs_spinner.dart';
 import 'package:zanshin_ui/src/controls/zs_tooltip.dart';
 import 'package:zanshin_ui/src/design/zs_appearance.dart';
 import 'package:zanshin_ui/src/design/zs_colors.dart';
+import 'package:zanshin_ui/src/design/zs_motion.dart';
 import 'package:zanshin_ui/src/icons/zanshin_icon.dart';
 import 'package:zanshin_ui/src/materials/zs_surface.dart';
 
@@ -243,6 +244,34 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(ZsBadge), findsOneWidget);
       expect(tester.getSemantics(find.bySemanticsIdentifier('fetch')), isSemantics(label: 'Fetch', isButton: true));
+      handle.dispose();
+    });
+
+    testWidgets('without its tooltip (the rail) it shows none on hover, and the label stays its name', (tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        zsHost(
+          ZsIconButton(
+            icon: ZI.branch,
+            label: 'Bookmarks',
+            size: ZsIconButtonSize.lg,
+            tooltip: false,
+            onPressed: () {},
+            identifier: 'rail-bookmarks',
+          ),
+          icons: true,
+          overlay: true,
+        ),
+      );
+      expect(find.byType(ZsTooltip), findsNothing);
+      await hover(tester, find.byType(ZsIconButton));
+      await tester.pump(ZsMotion.full.delayTooltip);
+      await tester.pump(ZsMotion.full.durHover);
+      expect(find.text('Bookmarks'), findsNothing);
+      expect(
+        tester.getSemantics(find.bySemanticsIdentifier('rail-bookmarks')),
+        isSemantics(label: 'Bookmarks', isButton: true),
+      );
       handle.dispose();
     });
   });

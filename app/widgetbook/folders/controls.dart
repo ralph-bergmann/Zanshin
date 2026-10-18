@@ -18,6 +18,7 @@ final controlsFolder = WidgetbookFolder(
     _family('Radio', _radioMatrix, _radioInteractive),
     _family('Segmented', _segmentedMatrix, _segmentedInteractive),
     _family('Slider', _sliderMatrix, _sliderInteractive),
+    _family('Resize edge', _resizeEdgeMatrix, _resizeEdgeInteractive),
     _family('TextField', _textFieldMatrix, _textFieldInteractive),
     _family('SearchField', _searchFieldMatrix, _searchFieldInteractive),
     _family('Select', _selectMatrix, _selectInteractive),
@@ -239,7 +240,7 @@ Widget _live(Widget child) => Center(
 
 /// A control with state of its own: [build] gets the value and a setter.
 class _Stateful<T> extends StatefulWidget {
-  const _Stateful({required this.initial, required this.build});
+  const _Stateful({required this.initial, required this.build, super.key});
 
   final T initial;
   final Widget Function(T value, ValueChanged<T> set) build;
@@ -626,6 +627,126 @@ Widget _sliderInteractive(BuildContext context) {
         unit: 'px',
         label: 'Card width',
         identifier: 'slider',
+      ),
+    ),
+  );
+}
+
+// ---- Resize edge ----
+
+/// An island [width] wide with a [ZsResizeEdge] on its [side], as the shell places it: 3 over the island, 7 in the
+/// gap, the 16 px corners left out (DS components/surfaces/ResizeEdge.prompt.md:9).
+class _EdgeSample extends StatelessWidget {
+  const _EdgeSample({required this.side, required this.edge, this.width = 120, this.height = 140});
+
+  final ZsResizeSide side;
+  final double width;
+  final double height;
+  final Widget edge;
+
+  @override
+  Widget build(BuildContext context) {
+    final metrics = ZsMetrics.of(context);
+    final double gap = metrics.resizeHitOut;
+    final double corner = metrics.radiusPanel;
+    final right = side == ZsResizeSide.right;
+    return SizedBox(
+      width: width + gap,
+      height: height,
+      child: Stack(
+        children: <Widget>[
+          Positioned(
+            left: right ? 0 : gap,
+            top: 0,
+            bottom: 0,
+            width: width,
+            child: const ZsIsland(shape: ZsIslandShape.panel, child: SizedBox.expand()),
+          ),
+          Positioned(
+            left: right ? width - (metrics.resizeHit - gap) : 0,
+            top: corner,
+            bottom: corner,
+            width: metrics.resizeHit,
+            child: edge,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Widget _resizeEdgeMatrix(BuildContext context) => StateMatrix(<MatrixRow>[
+  for (final (ZsResizeSide side, String spec, String label, double value, double min, double max)
+      in <(ZsResizeSide, String, String, double, double, double)>[
+        (ZsResizeSide.right, 'right · a pinned panel', 'Panel width', 300, 240, 440),
+        (ZsResizeSide.left, 'left · the inspector', 'Inspector width', 460, 380, 720),
+      ])
+    MatrixRow(
+      'ResizeEdge',
+      spec,
+      _interaction,
+      (cell) => _EdgeSample(
+        side: side,
+        edge: ZsResizeEdge(
+          side: side,
+          value: value,
+          min: min,
+          max: max,
+          defaultValue: value,
+          label: label,
+          onChanged: (_) {},
+          statesController: cell.states,
+        ),
+      ),
+    ),
+  MatrixRow(
+    'ResizeEdge',
+    'inert · an item drag',
+    const <MatrixState>[MatrixState.rest],
+    (cell) => _EdgeSample(
+      side: ZsResizeSide.right,
+      edge: ZsResizeEdge(
+        side: ZsResizeSide.right,
+        value: 300,
+        min: 240,
+        max: 440,
+        defaultValue: 300,
+        label: 'Panel width',
+        inert: true,
+        onChanged: (_) {},
+      ),
+    ),
+  ),
+]);
+
+Widget _resizeEdgeInteractive(BuildContext context) {
+  final bool left = context.knobs.boolean(label: 'left side (the inspector)');
+  final ZsResizeSide side = left ? ZsResizeSide.left : ZsResizeSide.right;
+  return _live(
+    _Stateful<double>(
+      key: ValueKey<ZsResizeSide>(side),
+      initial: left ? 460 : 300,
+      build: (value, set) => Column(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 12,
+        children: <Widget>[
+          _EdgeSample(
+            side: side,
+            width: value,
+            height: 260,
+            edge: ZsResizeEdge(
+              side: side,
+              value: value,
+              min: left ? 380 : 240,
+              max: left ? 720 : 440,
+              defaultValue: left ? 460 : 300,
+              label: left ? 'Inspector width' : 'Panel width',
+              identifier: 'resize-edge',
+              onChanged: set,
+            ),
+          ),
+          Text('${value.round()} points', style: ZsType.meta),
+        ],
       ),
     ),
   );
