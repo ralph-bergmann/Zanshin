@@ -32,6 +32,8 @@ deferred:
     location: >-
       app/widgetbook/catalogue.dart
     severity: low
+    resolved: >-
+      2026-10-18 — fixed (spec-11-4-closing-catalogue-window-chrome, commit 84a47af): CatalogueWindowRoot wraps the catalogue windows' root in WindowChromeBuilder, catalogueAppBuilder copies full screen and the block into its ZsRoot, and FloatingShellDemo no longer forces fullScreen false.
 ---
 
 <intent-contract>
