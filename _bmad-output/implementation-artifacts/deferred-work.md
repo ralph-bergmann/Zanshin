@@ -1361,6 +1361,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **Two DI bindings in `MainComponent`, `GetDiagnostics` and `IconRegistry`, are registered but consumed by nothing, so every build_runner run in `app/` prints two unused-binding warnings.** Low.
   - The regenerated `app/lib/main.inject.dart` builds `getDiagnostics$Provider` and `iconRegistry$Provider` and hands them to nothing (modules at `app/lib/main.dart:118-124`); the warnings were also in Story 11.3's build_runner output. Pre-existing.
   - **Follow-up:** the first story that consumes diagnostics or the registry through DI wires it; otherwise drop the unconsumed modules from the component, so a new unused-binding warning stands out.
+  - **2026-10-18, closing run of Story 11.6:** `GetDiagnostics` now has a DI consumer, the Projects environment's `jjLibVersion()` (commit 23ddab3); left: `IconRegistry`.
 
 ## Surfaced in Story 11.4 (bmad-build-auto, 2026-10-18)
 
@@ -1416,7 +1417,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in Story 11.6 (bmad-build-auto, 2026-10-18)
 
-- **The Projects sidebar's version line shows only the app's version: nothing exposes jj-lib's.** Low.
+- ~~**The Projects sidebar's version line shows only the app's version: nothing exposes jj-lib's.**~~ — RESOLVED 2026-10-18 (spec-11-6-closing-jj-lib-version-in-brand, commit 23ddab3): `zanshin_jj::JJ_LIB_VERSION` (an inline test guards it against `Cargo.lock`) crosses the FFI as `Diagnostics.jj_lib_version`, and the brand shows "jj-lib 0.46.0" on a line of its own. Low.
   - Story 11.6 item 2 proposes "the app's version with jj-lib's" (Claude's proposal, epics.md:12411). The only FFI version is zanshin-ffi's own (`zanshin_ffi_version`, `crates/zanshin-ffi/src/lib.rs:69-72`, "0.1.0 (<sha>)"); `Diagnostics` carries appVersion/gitSha/logPath; the jj-lib pin lives only in the root `Cargo.toml` (`=0.46.0`).
   - **Follow-up:** a bridge story exposes the jj-lib version (a build-time constant through the FFI or `Diagnostics`), and the brand block appends it (`app/lib/src/features/projects/projects_window.dart`, `_Brand`).
 - **The creation report and a failed open show in the Projects content's notice; once 11.12 closes Projects on a successful open, a report that came with it needs another place.** Low.

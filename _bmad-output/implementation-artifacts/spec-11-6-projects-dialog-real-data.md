@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/lib/src/features/projects/projects_window.dart (sidebar brand block)
     severity: low
+    resolved: >-
+      2026-10-18 — fixed (spec-11-6-closing-jj-lib-version-in-brand, commit 23ddab3): zanshin_jj::JJ_LIB_VERSION (guarded against Cargo.lock) crosses the FFI as Diagnostics.jj_lib_version, and the brand shows "jj-lib 0.46.0" on a line of its own.
   - summary: >-
       The creation report and a failed open show in the Projects content's notice; once 11.12 closes Projects on a successful open, a report that came with it needs another place.
     evidence: |-
