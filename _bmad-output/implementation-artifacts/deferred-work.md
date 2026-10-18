@@ -1440,3 +1440,9 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **The native folder picker and Reveal in Finder are unverified: only their Dart channel half is tested, and nobody has seen the NSOpenPanel sheet or the Finder selection.** Medium. (Surfaced in the review.)
   - `packages/zanshin_shell_macos/test/zanshin_shell_macos_test.dart` pins the method names and argument maps against a mocked channel; `ZanshinShellPlugin.swift` (`chooseDirectory`, `revealInFinder`) and `DirectoryPanel.swift` have no test harness (`app/macos/RunnerTests` is a stub); the run's visual check could not drive the panel (Marionette taps reach the catalogue's view only).
   - **Follow-up:** a manual check in the catalogue's Windows › Projects window: Add directory opens the panel as a sheet on that window with an "Add" button and adds the chosen folder; Clone's Choose… shows "Choose"; ••• › Reveal in Finder selects the folder in Finder (Ralph, or 11.12's run on its CGWindowList probe seat).
+
+## Surfaced in the closing run of Story 11.6 (bmad-build-auto, 2026-10-18)
+
+- **The jj-lib pin-bump steps do not name `zanshin_jj::JJ_LIB_VERSION`, the third place a bump must change.** Low.
+  - `_bmad-output/project-context.md:190-192` (§ zanshin-jj "Pin bump (jj-lib)", step 1) names only `jj-lib` and `jj-cli`, and the root `Cargo.toml:40` `jj-lib` comment does not mention it; the guard `jj_lib_version_is_the_locked_jj_lib` (`crates/zanshin-jj/src/version.rs`) fails at step 3 with both values, so a bump meets it as a test failure.
+  - **Follow-up:** add the constant to step 1 of project-context.md's pin-bump steps (and to the `jj-lib` comment in the root `Cargo.toml`).
