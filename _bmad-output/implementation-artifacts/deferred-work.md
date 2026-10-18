@@ -1350,3 +1350,12 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **`HomePage` injects `ZanshinFfiVersion` and never reads it.** Low. (Surfaced in the review; pre-existing.)
   - `app/lib/src/features/home/home_page.dart:22-27`; before this story `HomePage` returned `const AppShell()` and did not read it either.
   - **Follow-up:** drop it with the next change to the home (11.10).
+
+## Surfaced in the closing run of Story 11.3 (bmad-build-auto, 2026-10-18)
+
+- **`ZanshinFfiModule`'s version wrapper never frees the Rust-allocated C string it reads, against `zanshin_ffi_version`'s caller-frees contract.** Low.
+  - `packages/zanshin_core/lib/src/ffi/zanshin_version.dart:15` returns `bindings.zanshin_ffi_version().cast<Utf8>().toDartString`, a tear-off over a pointer never passed to `zanshin_string_free` (contract: `bindings.dart:792`, `crates/zanshin-ffi/src/lib.rs:65-72`, `docs/ffi-abi.md:28`). Pre-existing; since the closing run no production code calls it, only `app/test/native_asset_smoke_test.dart:12` and `packages/zanshin_core/test/ffi/zanshin_version_test.dart:26`.
+  - **Follow-up:** copy the string and free the pointer in the wrapper, or retire `ZanshinFfiModule` in favour of `GetDiagnostics` (`diagnostics.dart:15-29` already carries `appVersion` and `gitSha` and frees its buffer); the raw-path test in `zanshin_version_test.dart:36-47` stays the extern fn's coverage witness either way.
+- **Two DI bindings in `MainComponent`, `GetDiagnostics` and `IconRegistry`, are registered but consumed by nothing, so every build_runner run in `app/` prints two unused-binding warnings.** Low.
+  - The regenerated `app/lib/main.inject.dart` builds `getDiagnostics$Provider` and `iconRegistry$Provider` and hands them to nothing (modules at `app/lib/main.dart:118-124`); the warnings were also in Story 11.3's build_runner output. Pre-existing.
+  - **Follow-up:** the first story that consumes diagnostics or the registry through DI wires it; otherwise drop the unconsumed modules from the component, so a new unused-binding warning stands out.
