@@ -165,9 +165,9 @@ class ZsMenuController {
 /// **Placement** (Claude's proposal, Story 11.11; 11.3 places menus against islands): at the position [ZsMenuController.open]
 /// was given, else 4 below the anchor's left edge, flipped above without room, clamped 8 px inside the window.
 ///
-/// VoiceOver: the menu is a container named by [subject]; each row a button named by its label, its dot's meaning
-/// and its command (the Project menu's bookmark; checked for a check item, in a mutually exclusive group for a radio
-/// item), the highlighted one selected and focused.
+/// VoiceOver: the menu is a container named by [semanticLabel], else by [subject]; each row a button named by its
+/// label, its dot's meaning and its command (the Project menu's bookmark; checked for a check item, in a mutually
+/// exclusive group for a radio item), the highlighted one selected and focused.
 class ZsMenuAnchor extends StatefulWidget implements ZsControl {
   /// A menu of [entries] over the widget [builder] builds.
   const ZsMenuAnchor({
@@ -175,6 +175,7 @@ class ZsMenuAnchor extends StatefulWidget implements ZsControl {
     required this.builder,
     this.controller,
     this.subject,
+    this.semanticLabel,
     this.headLeading,
     this.blink = true,
     this.width,
@@ -200,8 +201,11 @@ class ZsMenuAnchor extends StatefulWidget implements ZsControl {
   /// The controller; the anchor keeps its own when null.
   final ZsMenuController? controller;
 
-  /// What the menu acts on, shown in its head and read as its name.
+  /// What the menu acts on, shown in its head and read as its name unless [semanticLabel] gives one.
   final String? subject;
+
+  /// The menu's VoiceOver name, read instead of [subject]; it draws nothing.
+  final String? semanticLabel;
 
   /// A widget before the subject in the head (Epic 10's change id and @ badge).
   final Widget? headLeading;
@@ -322,6 +326,7 @@ class _ZsMenuAnchorState extends State<ZsMenuAnchor> {
             child: ZsMenuPanel(
               entries: widget.entries,
               subject: widget.subject,
+              semanticLabel: widget.semanticLabel,
               headLeading: widget.headLeading,
               blink: widget.blink,
               minWidth: widget.width ?? ZsMenuPanel.defaultMinWidth,
@@ -426,6 +431,7 @@ class ZsMenuPanel extends StatefulWidget {
     required this.onActivated,
     required this.onDismiss,
     this.subject,
+    this.semanticLabel,
     this.headLeading,
     this.blink = true,
     this.closing = false,
@@ -452,8 +458,11 @@ class ZsMenuPanel extends StatefulWidget {
   /// Esc (and ← in a submenu): the owner closes the panel.
   final VoidCallback onDismiss;
 
-  /// The head's subject.
+  /// The head's subject, read as the panel's name unless [semanticLabel] gives one.
   final String? subject;
+
+  /// The panel's VoiceOver name, read instead of [subject]; it draws nothing.
+  final String? semanticLabel;
 
   /// A widget before the subject in the head.
   final Widget? headLeading;
@@ -837,7 +846,7 @@ class ZsMenuPanelState extends State<ZsMenuPanel> {
     return Semantics(
       container: true,
       explicitChildNodes: true,
-      label: subject,
+      label: widget.semanticLabel ?? subject,
       child: ZsSurfaceTransition(
         motion: ZsSurfaceMotion.menu,
         closing: widget.closing,

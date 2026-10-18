@@ -367,6 +367,26 @@ void main() {
     },
   );
 
+  testWidgets('VoiceOver reads the open menu as "Project"; it shows no head, RECENT stays its first row', (
+    tester,
+  ) async {
+    useShellWindow(tester);
+    final SemanticsHandle handle = tester.ensureSemantics();
+    await tester.pumpWidget(_Rig().host());
+    await _openByClick(tester);
+
+    expect(find.ancestor(of: _menu(), matching: find.bySemanticsLabel('Project')), findsOneWidget);
+    expect(find.descendant(of: _menu(), matching: find.text('Project')), findsNothing);
+    final double recent = tester.getTopLeft(find.descendant(of: _menu(), matching: find.text('RECENT'))).dy;
+    final above = <String>[
+      for (final Element text in find.descendant(of: _menu(), matching: find.byType(RichText)).evaluate())
+        if ((text.renderObject! as RenderBox).localToGlobal(Offset.zero).dy < recent)
+          (text.widget as RichText).text.toPlainText(),
+    ];
+    expect(above, isEmpty, reason: 'no text sits above RECENT');
+    handle.dispose();
+  });
+
   testWidgets('with actions the three rows are enabled and run them', (tester) async {
     useShellWindow(tester);
     final rig = _Rig();

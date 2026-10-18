@@ -25,6 +25,7 @@ import 'project_status_style.dart';
 /// (the open project checked and semibold, its status dot after the name, the bookmark or "—" in the mono column cut
 /// at 130 px) · All Projects… ⇧⌘O · Project Settings… · Settings… ⌘, (ProjectMenu.jsx:9-23). A row whose callback is
 /// null is disabled (until 11.6 and 11.7 pass theirs). While open it holds the shell's calm scrolling (ledger I1).
+/// VoiceOver names the open menu "Project" (ProjectMenu.jsx:30); it has no head.
 ///
 /// Identifiers: `project-capsule`, `project-menu`, `project-menu-recent-<i>`, `project-menu-all`,
 /// `project-menu-project-settings`, `project-menu-settings`.
@@ -168,6 +169,8 @@ class _ProjectCapsuleState extends State<ProjectCapsule> {
       controller: widget.menuController,
       width: ProjectCapsule.menuWidth,
       cmdMaxWidth: ProjectCapsule.bookmarkMaxWidth,
+      // `<Menu aria-label="Project" …>` (DS components/menus/ProjectMenu.jsx:30): a name, no head.
+      semanticLabel: 'Project',
       onOpen: _opened,
       onClose: _closed,
       identifier: 'project-menu',

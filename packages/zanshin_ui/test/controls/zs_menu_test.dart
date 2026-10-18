@@ -37,6 +37,8 @@ List<ZsMenuEntry> _entries({VoidCallback? onCommit, List<ZsMenuEntry>? submenu})
   ZsMenuItem(label: 'Commit', danger: true, onSelected: onCommit),
 ];
 
+const _subject = 'feat(onboarding): swipe gestures';
+
 /// A button that opens the menu, with a focusable neighbour before it.
 Widget _host({
   required FocusNode button,
@@ -44,6 +46,7 @@ Widget _host({
   ZsMenuController? controller,
   Alignment alignment = Alignment.center,
   Widget? extra,
+  String? semanticLabel,
 }) => zsHost(
   // An opaque window background, as the app's window fill is: an outside click needs something to hit.
   ColoredBox(
@@ -56,7 +59,8 @@ Widget _host({
             child: ZsMenuAnchor(
               controller: controller,
               entries: entries ?? _entries(),
-              subject: 'feat(onboarding): swipe gestures',
+              subject: _subject,
+              semanticLabel: semanticLabel,
               identifier: 'menu',
               builder: (context, controller) =>
                   ZsButton(label: 'Actions', focusNode: button, onPressed: controller.open),
@@ -112,7 +116,7 @@ Offset _inTriangle(WidgetTester tester, Offset last, double a, double b, double 
 const _dirty = Color(0xFFFACC15);
 const _longBookmark = 'feature/a-bookmark-name-long-enough-to-pass-the-limit';
 
-Widget _projectHost({required FocusNode button}) => zsHost(
+Widget _projectHost({required FocusNode button, String? semanticLabel}) => zsHost(
   ColoredBox(
     color: const Color(0x00000000),
     child: SizedBox.expand(
@@ -120,6 +124,7 @@ Widget _projectHost({required FocusNode button}) => zsHost(
         child: ZsMenuAnchor(
           width: 300,
           cmdMaxWidth: 130,
+          semanticLabel: semanticLabel,
           entries: const <ZsMenuEntry>[
             ZsMenuHeader('Recent'),
             ZsMenuItem(
@@ -458,12 +463,51 @@ void main() {
     handle = tester.ensureSemantics();
     await tester.pumpWidget(_host(button: button));
     await _openByKey(tester, button);
-    expect(find.bySemanticsLabel('feat(onboarding): swipe gestures'), findsWidgets);
+    expect(find.bySemanticsLabel(_subject), findsWidgets);
     expect(find.bySemanticsLabel('New change, jj new'), findsOneWidget, reason: 'a row with a command reads it last');
     expect(
       tester.getSemantics(find.bySemanticsLabel('Compare')),
       isSemantics(isButton: true, hasCheckedState: true, isChecked: true),
     );
+    handle.dispose();
+  });
+
+  testWidgets('VoiceOver: semanticLabel names a menu without a subject, which shows no head', (tester) async {
+    handle = tester.ensureSemantics();
+    await tester.pumpWidget(_projectHost(button: button, semanticLabel: 'Project'));
+    await _openByKey(tester, button);
+    expect(tester.getSemantics(find.byType(ZsMenuPanel)), isSemantics(label: 'Project'));
+    expect(find.descendant(of: find.byType(ZsMenuPanel), matching: find.text('Project')), findsNothing);
+    handle.dispose();
+  });
+
+  testWidgets('VoiceOver: semanticLabel names a menu instead of its subject; the head still shows the subject', (
+    tester,
+  ) async {
+    handle = tester.ensureSemantics();
+    await tester.pumpWidget(_host(button: button, semanticLabel: 'Change menu'));
+    await _openByKey(tester, button);
+    expect(tester.getSemantics(find.byType(ZsMenuPanel)), isSemantics(label: 'Change menu'));
+    expect(find.descendant(of: find.byType(ZsMenuPanel), matching: find.text(_subject)), findsOneWidget);
+    handle.dispose();
+  });
+
+  testWidgets('VoiceOver: without semanticLabel the subject names the menu and fills its head', (tester) async {
+    handle = tester.ensureSemantics();
+    await tester.pumpWidget(_host(button: button));
+    await _openByKey(tester, button);
+    expect(tester.getSemantics(find.byType(ZsMenuPanel)), isSemantics(label: _subject));
+    expect(find.descendant(of: find.byType(ZsMenuPanel), matching: find.text(_subject)), findsOneWidget);
+    handle.dispose();
+  });
+
+  testWidgets("VoiceOver: a submenu does not take its menu's semanticLabel", (tester) async {
+    handle = tester.ensureSemantics();
+    await tester.pumpWidget(_host(button: button, semanticLabel: 'Change menu'));
+    await _openSubmenuByPointer(tester);
+    final Finder submenu = find.ancestor(of: find.text('Change id'), matching: find.byType(ZsMenuPanel)).first;
+    expect(tester.getSemantics(submenu).label, isEmpty);
+    expect(find.bySemanticsLabel('Change menu'), findsOneWidget, reason: 'only the top-level menu is named');
     handle.dispose();
   });
 
