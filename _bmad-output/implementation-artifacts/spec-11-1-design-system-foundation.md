@@ -21,6 +21,8 @@ deferred:
     evidence: 'ZsAppearance.inactive and fullScreen default to false; 11.12 drives key status per window, 11.4 owns full screen (epics.md Story 11.1 item 7, DS tokens/spacing.css:52).'
     location: 'app/lib/src/shared/design/zs_appearance.dart'
     severity: low
+    resolved: >-
+      2026-10-19 — fixed (spec-11-12-window-foundation-dialog-windows, commit 0dbd2fb): ActiveWindowTracker drives ZsAppearance.inactive in every window root; full screen came with 11.4 (commit fdd9817).
   - summary: 'The Swift side of the extended ShellTheme has no automated test, and cargo make test never compiles it.'
     evidence: 'packages/zanshin_shell_macos/macos/zanshin_shell_macos/Package.swift has no test target; Makefile.toml has no xcodebuild/flutter build task in test; only the Dart decoding is tested.'
     location: 'packages/zanshin_shell_macos/macos/zanshin_shell_macos/Sources/zanshin_shell_macos/ZanshinShellPlugin.swift'

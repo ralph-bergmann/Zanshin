@@ -25,6 +25,8 @@ deferred:
     location: >-
       app/lib/src/features/projects/project_session.dart; app/lib/main.dart
     severity: medium
+    resolved: >-
+      2026-10-19 — fixed (spec-11-12-window-foundation-dialog-windows, commit 0dbd2fb): AppWindowCoordinator shows Projects as the only window at launch with nothing to reopen and after closeProject, closes it on onOpened, and closing it with no project window quits.
   - summary: >-
       The close-project action has no trigger yet, and switching, closing and quitting run no unsaved-Configurations check: ⌘W is 11.13's, the red button's close intercept 11.12's, the "Discard changes?" check 10.22's.
     evidence: |-
