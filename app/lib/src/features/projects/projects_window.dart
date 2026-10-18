@@ -26,18 +26,21 @@ final _log = Logger('zanshin.projects');
 /// The Projects window's content (epics.md Story 11.6 with its design update 2026-10-16; DS
 /// components/window/Window.prompt.md:14-23, window.css:26-43; ui_kits/desktop/dialogs.jsx:13-58, kit.css:192-202).
 /// It assumes no window: it fills what it is given (a catalogue panel, a catalogue window, the app's `projects` dialog
-/// window of Story 11.12), paints [ZsWindowFill], and draws its own 52 pt header row and the sidebar's empty 52 pt top,
-/// where a window's traffic lights sit; both drag the window.
+/// window of Story 11.12) and lays itself out on [ZsWindowScaffold]'s sidebar form, titled "Projects": the scaffold
+/// paints the window fill, the 52 pt header row on the traffic-light block's centre line with its hairline, the
+/// sidebar's `--fl-border` hairline on its right and its empty 52 pt top, where a window's traffic lights sit; the
+/// header's empty space and that top drag the window. Tab runs through the main column — the header's controls, then
+/// the body — before the sidebar.
 ///
-/// **Sidebar** (200, a `--fl-border` hairline on its right): the brand — the 32 px Nami chip, "Zanshin", the version
-/// line "‹version› · Build ‹build›" (the splash's) and below it "jj-lib ‹version›" (Claude's proposal) —, the
-/// navigation — Projects (current, `--fl-on`) and Settings…, which runs [onSettings] and is disabled without it — and
-/// the identity footer: `user.name` and `user.email` with an avatar, or the jj CLI's phrase for what is missing with
-/// "Set identity…" when [onIdentitySettings] is given (Claude's proposal). A failed read hides the footer.
+/// **Sidebar** (200): the brand — the 32 px Nami chip, "Zanshin", the version line "‹version› · Build ‹build›" (the
+/// splash's) and below it "jj-lib ‹version›" (Claude's proposal) —, the navigation — Projects (current, `--fl-on`) and
+/// Settings…, which runs [onSettings] and is disabled without it — and the identity footer: `user.name` and
+/// `user.email` with an avatar, or the jj CLI's phrase for what is missing with "Set identity…" when
+/// [onIdentitySettings] is given (Claude's proposal). A failed read hides the footer.
 ///
-/// **Header** (52, a hairline below): "Projects" at sidebar + 12 (600 13/1.2, `--text-dim` in an inactive window),
-/// then the search (230; focused on open; Esc clears it and never closes; ↓ moves into the tree), Add directory (the
-/// gold primary), Clone… and New group (ghost, icon-only). Below 800 wide the search is 120 and Clone… icon-only
+/// **Header** (the scaffold's): "Projects" at sidebar + 12 (600 13/1.2, `--text-dim` in an inactive window), then the
+/// controls — the search (230; focused on open; Esc clears it and never closes; ↓ moves into the tree), Add directory
+/// (the gold primary), Clone… and New group (ghost, icon-only). Below 800 wide the search is 120 and Clone… icon-only
 /// (Claude's proposal from the floating export's `geo.w < 800`, design/windows.jsx:149).
 ///
 /// **Adding** (CLI parity, FR-JJ-17): Add directory, a Finder drop and the tree's Open detect first. A jj workspace is
@@ -593,114 +596,101 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     explicitChildNodes: true,
     child: KeyedSubtree(
       key: const ValueKey<String>('projects-window'),
-      child: ZsWindowFill(
-        child: FolderDropTarget(
-          // While an offer sheet is up the drop waits: the sheet answers first (Claude's proposal).
-          onDragUpdate: (_) {
-            if (_offer != null) {
-              return false;
-            }
-            if (!_outerDrop) {
-              setState(() => _outerDrop = true);
-            }
-            return true;
-          },
-          onDragExit: () => setState(() => _outerDrop = false),
-          onDrop: (details) {
-            setState(() => _outerDrop = false);
-            unawaited(_addFolders(details.paths, (group: null, index: null)));
-          },
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final bool narrow = constraints.maxWidth < ProjectsWindow.narrowWidth;
-              final _Offer? offer = _offer;
-              return Stack(
-                children: <Widget>[
-                  Positioned.fill(
-                    child: FocusTraversalGroup(
-                      policy: OrderedTraversalPolicy(),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: <Widget>[
-                          FocusTraversalOrder(
-                            order: const NumericFocusOrder(2),
-                            child: FocusTraversalGroup(child: _sidebar(context)),
-                          ),
-                          Expanded(
-                            child: FocusTraversalOrder(
-                              order: const NumericFocusOrder(1),
-                              child: FocusTraversalGroup(child: _main(context, narrow: narrow)),
-                            ),
-                          ),
-                        ],
+      child: FolderDropTarget(
+        // While an offer sheet is up the drop waits: the sheet answers first (Claude's proposal).
+        onDragUpdate: (_) {
+          if (_offer != null) {
+            return false;
+          }
+          if (!_outerDrop) {
+            setState(() => _outerDrop = true);
+          }
+          return true;
+        },
+        onDragExit: () => setState(() => _outerDrop = false),
+        onDrop: (details) {
+          setState(() => _outerDrop = false);
+          unawaited(_addFolders(details.paths, (group: null, index: null)));
+        },
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final bool narrow = constraints.maxWidth < ProjectsWindow.narrowWidth;
+            final _Offer? offer = _offer;
+            return Stack(
+              children: <Widget>[
+                Positioned.fill(
+                  // Every group carries an order: the policy puts unordered members after the ordered ones.
+                  child: FocusTraversalGroup(
+                    policy: OrderedTraversalPolicy(),
+                    child: ZsWindowScaffold(
+                      title: 'Projects',
+                      header: <Widget>[
+                        FocusTraversalOrder(
+                          order: const NumericFocusOrder(1),
+                          child: FocusTraversalGroup(child: _header(narrow: narrow)),
+                        ),
+                      ],
+                      body: FocusTraversalOrder(
+                        order: const NumericFocusOrder(2),
+                        child: FocusTraversalGroup(child: _main(context)),
+                      ),
+                      sidebar: FocusTraversalOrder(
+                        order: const NumericFocusOrder(3),
+                        child: FocusTraversalGroup(child: _sidebar()),
                       ),
                     ),
                   ),
-                  if (offer != null) Positioned.fill(child: _sheet(context, offer)),
-                ],
-              );
-            },
-          ),
+                ),
+                if (offer != null) Positioned.fill(child: _sheet(context, offer)),
+              ],
+            );
+          },
         ),
       ),
     ),
   );
 
-  Widget _sidebar(BuildContext context) {
-    final ZsColors colors = ZsColors.of(context);
-    final metrics = ZsMetrics.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(right: BorderSide(color: colors.flBorder)),
-      ),
-      child: SizedBox(
-        width: ProjectsWindow.sidebarWidth,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            WindowDragArea(
-              child: SizedBox(
-                height: metrics.windowHdH,
-                child: const ColoredBox(color: Color(0x00000000)),
+  /// The sidebar's column; [ZsWindowScaffold] draws its hairline and its empty top.
+  Widget _sidebar() => SizedBox(
+    width: ProjectsWindow.sidebarWidth,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _Brand(version: _version, jjLibVersion: _jjLibVersion),
+        Padding(
+          // `.zk-side-nav{padding:0 10px;gap:1px}` (DS ui_kits/desktop/kit.css:194).
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 1,
+            children: <Widget>[
+              const _NavRow(icon: ZI.folderOpen, label: 'Projects', current: true),
+              ZsTooltip(
+                message: ProjectsWindow.settingsTooltip,
+                child: _NavRow(
+                  icon: ZI.settings,
+                  label: 'Settings…',
+                  onPressed: widget.onSettings,
+                  identifier: 'projects-settings',
+                ),
               ),
-            ),
-            _Brand(version: _version, jjLibVersion: _jjLibVersion),
-            Padding(
-              // `.zk-side-nav{padding:0 10px;gap:1px}` (DS ui_kits/desktop/kit.css:194).
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                spacing: 1,
-                children: <Widget>[
-                  const _NavRow(icon: ZI.folderOpen, label: 'Projects', current: true),
-                  ZsTooltip(
-                    message: ProjectsWindow.settingsTooltip,
-                    child: _NavRow(
-                      icon: ZI.settings,
-                      label: 'Settings…',
-                      onPressed: widget.onSettings,
-                      identifier: 'projects-settings',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Spacer(),
-            if (_identity case final JjIdentity identity)
-              _IdentityFooter(identity: identity, onSettings: widget.onIdentitySettings),
-          ],
+            ],
+          ),
         ),
-      ),
-    );
-  }
+        const Spacer(),
+        if (_identity case final JjIdentity identity)
+          _IdentityFooter(identity: identity, onSettings: widget.onIdentitySettings),
+      ],
+    ),
+  );
 
-  Widget _main(BuildContext context, {required bool narrow}) {
+  /// The body under the header: the notice, the clone form, the tree and the drop hint.
+  Widget _main(BuildContext context) {
     final ZsColors colors = ZsColors.of(context);
     final _Notice? notice = _notice;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _header(context, narrow: narrow),
         if (notice != null) _NoticeBlock(notice: notice, onDismiss: () => setState(() => _notice = null)),
         if (_cloneOpen) _cloneForm(context),
         Expanded(
@@ -747,104 +737,62 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     );
   }
 
-  Widget _header(BuildContext context, {required bool narrow}) {
-    final ZsColors colors = ZsColors.of(context);
-    final metrics = ZsMetrics.of(context);
-    final bool inactive = ZsAppearance.of(context).inactive;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: colors.flBorder)),
-      ),
-      child: SizedBox(
-        height: metrics.windowHdH,
-        child: Padding(
-          // `.zs-win.has-side .zs-win-hd{padding-left:var(--chrome-inset)}`, right `--chrome-inset` (window.css:28, :43).
-          padding: EdgeInsets.symmetric(horizontal: metrics.chromeInset),
-          child: Row(
-            spacing: 12,
-            children: <Widget>[
-              Expanded(
-                child: WindowDragArea(
-                  child: ColoredBox(
-                    color: const Color(0x00000000),
-                    child: SizedBox.expand(
-                      child: Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: Semantics(
-                          header: true,
-                          child: Text(
-                            'Projects',
-                            maxLines: 1,
-                            softWrap: false,
-                            overflow: TextOverflow.ellipsis,
-                            // `.zs-win-title{font:600 var(--fs-base)/1.2 var(--font-sans)}` (window.css:30-31).
-                            style: ZsType.cardSubject.copyWith(
-                              fontWeight: FontWeight.w600,
-                              fontVariations: const <FontVariation>[FontVariation.weight(600)],
-                              height: 1.2,
-                              color: inactive ? colors.textDim : colors.text,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: narrow ? ProjectsWindow.searchNarrowWidth : ProjectsWindow.searchWidth,
-                child: Focus(
-                  canRequestFocus: false,
-                  skipTraversal: true,
-                  includeSemantics: false,
-                  onKeyEvent: (node, event) {
-                    if (event is! KeyUpEvent && event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                      _tree.currentState?.focusTabStop();
-                      return KeyEventResult.handled;
-                    }
-                    return KeyEventResult.ignored;
-                  },
-                  child: ZsSearchField(
-                    controller: _search,
-                    focusNode: _searchFocus,
-                    placeholder: 'Search projects, paths…',
-                    identifier: 'projects-search',
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-              ),
-              ZsButton(
-                label: 'Add directory',
-                variant: ZsButtonVariant.primary,
-                size: ZsButtonSize.md,
-                icon: ZI.plus,
-                identifier: 'projects-add-directory',
-                onPressed: () => unawaited(_chooseDirectory()),
-              ),
-              ZsButton(
-                label: 'Clone…',
-                size: ZsButtonSize.md,
-                icon: ZI.cloud,
-                iconOnly: narrow,
-                identifier: 'projects-clone',
-                // While a clone runs its form stays as it is.
-                onPressed: _cloneBusy ? null : () => _cloneOpen ? _closeCloneForm() : openCloneForm(),
-              ),
-              ZsButton(
-                label: 'New group',
-                variant: ZsButtonVariant.ghost,
-                size: ZsButtonSize.md,
-                icon: ZI.folderPlus,
-                iconOnly: true,
-                identifier: 'projects-new-group',
-                onPressed: _startNewGroup,
-              ),
-            ],
+  /// The header's controls, 12 apart; [ZsWindowScaffold] puts them after the title and centres them on the
+  /// traffic-light block's line.
+  Widget _header({required bool narrow}) => Row(
+    mainAxisSize: MainAxisSize.min,
+    spacing: 12,
+    children: <Widget>[
+      SizedBox(
+        width: narrow ? ProjectsWindow.searchNarrowWidth : ProjectsWindow.searchWidth,
+        child: Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          includeSemantics: false,
+          onKeyEvent: (node, event) {
+            if (event is! KeyUpEvent && event.logicalKey == LogicalKeyboardKey.arrowDown) {
+              _tree.currentState?.focusTabStop();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: ZsSearchField(
+            controller: _search,
+            focusNode: _searchFocus,
+            placeholder: 'Search projects, paths…',
+            identifier: 'projects-search',
+            onChanged: (_) => setState(() {}),
           ),
         ),
       ),
-    );
-  }
+      ZsButton(
+        label: 'Add directory',
+        variant: ZsButtonVariant.primary,
+        size: ZsButtonSize.md,
+        icon: ZI.plus,
+        identifier: 'projects-add-directory',
+        onPressed: () => unawaited(_chooseDirectory()),
+      ),
+      ZsButton(
+        label: 'Clone…',
+        size: ZsButtonSize.md,
+        icon: ZI.cloud,
+        iconOnly: narrow,
+        identifier: 'projects-clone',
+        // While a clone runs its form stays as it is.
+        onPressed: _cloneBusy ? null : () => _cloneOpen ? _closeCloneForm() : openCloneForm(),
+      ),
+      ZsButton(
+        label: 'New group',
+        variant: ZsButtonVariant.ghost,
+        size: ZsButtonSize.md,
+        icon: ZI.folderPlus,
+        iconOnly: true,
+        identifier: 'projects-new-group',
+        onPressed: _startNewGroup,
+      ),
+    ],
+  );
 
   Widget _cloneForm(BuildContext context) {
     final ZsColors colors = ZsColors.of(context);

@@ -200,8 +200,10 @@ void main() {
 
       expect(tester.getRect(rig.id('projects-window')), const Rect.fromLTWH(0, 0, 900, 640));
       expect(tester.getTopLeft(find.text('Projects').last).dx, 212, reason: 'the title at sidebar + 12');
+      expect(tester.getCenter(find.text('Projects').last).dy, moreOrLessEquals(26), reason: 'on the block line');
       expect(tester.getSize(rig.id('projects-search')).width, 230);
       expect(tester.getRect(rig.id('projects-search')).center.dy, 26, reason: 'centred in the 52 pt header row');
+      expect(tester.getCenter(rig.id('projects-add-directory')).dy, moreOrLessEquals(26));
       expect(find.text('Add directory'), findsOneWidget);
       expect(find.text('Clone…'), findsOneWidget);
       expect(find.text('New group'), findsNothing, reason: 'New group is icon-only');
@@ -238,6 +240,32 @@ void main() {
       final Text gone = tester.widget<Text>(find.text('gone'));
       expect(gone.style?.decoration, TextDecoration.lineThrough);
       expect(gone.style?.color, ZsColors.night.textFaint);
+    });
+
+    testWidgets("at a measured traffic-light block (centre y 27) the header centres on the block's line", (
+      tester,
+    ) async {
+      final rig = _Rig(tester);
+      await rig.pump(appearance: const ZsAppearance(trafficLights: Rect.fromLTWH(20, 20, 60, 14)));
+      final ZsColors colors = ZsColors.of(tester.element(find.text('Projects').last));
+      final Finder header = find.byWidgetPredicate(
+        (widget) =>
+            widget is DecoratedBox &&
+            widget.decoration is BoxDecoration &&
+            (widget.decoration as BoxDecoration).border == Border(bottom: BorderSide(color: colors.flBorder)),
+      );
+
+      expect(tester.getTopLeft(find.text('Projects').last).dx, 212, reason: 'the title still at sidebar + 12');
+      expect(tester.getRect(header.first), const Rect.fromLTWH(200, 0, 700, 52), reason: 'the header still 52');
+      for (final (String label, Finder item) in <(String, Finder)>[
+        ('the title', find.text('Projects').last),
+        ('the search', rig.id('projects-search')),
+        ('Add directory', rig.id('projects-add-directory')),
+        ('Clone…', rig.id('projects-clone')),
+        ('New group', rig.id('projects-new-group')),
+      ]) {
+        expect(tester.getCenter(item).dy, moreOrLessEquals(27), reason: '$label on the block line');
+      }
     });
 
     testWidgets('at 680 × 440 the search is 120 and Clone… is icon-only', (tester) async {
@@ -367,6 +395,31 @@ void main() {
       await rig.key(LogicalKeyboardKey.tab);
       await tester.sendKeyUpEvent(LogicalKeyboardKey.shift);
       expect(rig.focused, 'projects row project:${rig.home}/code/work/mobile/myapp');
+    });
+
+    testWidgets('Tab runs through the header, then the tree, then the sidebar', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+      final Finder newGroupButton = find.byWidgetPredicate(
+        (widget) => widget is ZsButton && widget.label == 'New group',
+      );
+      Focus.of(tester.element(find.descendant(of: newGroupButton, matching: find.byType(CustomPaint)).first))
+          .requestFocus();
+      await tester.pump();
+
+      await rig.key(LogicalKeyboardKey.tab);
+      expect(rig.focused, 'projects row group:g1', reason: 'from the header into the body');
+      // A group row has no •••: the next Tab leaves the tree.
+      await rig.key(LogicalKeyboardKey.tab);
+      final BuildContext? focused = FocusManager.instance.primaryFocus?.context;
+      expect(
+        find.ancestor(
+          of: find.byElementPredicate((element) => identical(element, focused)),
+          matching: rig.id('projects-settings'),
+        ),
+        findsOneWidget,
+        reason: 'from the body into the sidebar: Settings…',
+      );
     });
 
     testWidgets('typeahead continues across a space in a name', (tester) async {
