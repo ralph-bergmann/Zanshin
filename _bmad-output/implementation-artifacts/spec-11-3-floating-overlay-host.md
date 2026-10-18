@@ -19,6 +19,8 @@ deferred:
     evidence: 'epics.md Story 11.3 item 1 and Story 11.4 own the drag region and the canvas; without the stand-ins the new home could not be moved (the Yaru page''s WindowDragArea AppBar, zanshin_app.dart:155, goes) and the vibrancy view would show through (MainWindowChrome.swift:90-110).'
     location: 'app/lib/src/features/home/home_page.dart'
     severity: low
+    resolved: >-
+      2026-10-18 — fixed (spec-11-4-window-chrome-floating-layout, commit fdd9817): HomePage passes ZsCanvas as the canvas, and its WindowDragArea bar row is the window's real drag region, no longer a stand-in.
   - summary: 'The in-app theme switch disappears with the Yaru test page until Story 11.7 adds Theme to Settings; the app then follows the stored mode, System by default.'
     evidence: 'zanshin_app.dart:161-183 (the SegmentedButton is the only UI caller of ZanshinAppViewModel.setThemeMode); epics.md Story 11.3 item 1 replaces the page; 11.7 owns General › Theme.'
     location: 'app/lib/src/features/app/zanshin_app.dart'

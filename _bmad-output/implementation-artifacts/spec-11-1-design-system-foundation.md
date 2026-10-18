@@ -15,6 +15,8 @@ deferred:
     evidence: 'Without NSAccentColorName, controlAccentColor at Multicolor is Blue #007AFF (RC research :190), so the "equals Zanshin''s app accent #4757a1" rule never matches; app/macos/Runner/Assets.xcassets holds only Contents.json; epics.md Story 11.1 item 1 assigns --accent-native to 11.4.'
     location: 'app/lib/src/shared/design/zs_appearance.dart (accent detection)'
     severity: medium
+    resolved: >-
+      2026-10-18 — fixed (spec-11-4-window-chrome-floating-layout, commit fdd9817): the runner ships the AccentColor colour set (#4757a1, dark #5162ad) and sets ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME, so the built Info.plist names NSAccentColorName = AccentColor.
   - summary: 'The inactive-window and full-screen deltas are resolved by the token layer but nothing drives them yet.'
     evidence: 'ZsAppearance.inactive and fullScreen default to false; 11.12 drives key status per window, 11.4 owns full screen (epics.md Story 11.1 item 7, DS tokens/spacing.css:52).'
     location: 'app/lib/src/shared/design/zs_appearance.dart'
