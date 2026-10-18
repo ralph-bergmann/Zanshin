@@ -38,6 +38,9 @@ final class ZsMenuItem extends ZsMenuEntry {
     this.checked,
     this.radio = false,
     this.mono = false,
+    this.strong = false,
+    this.dot,
+    this.dotLabel,
     this.submenu,
     this.onSelected,
     this.identifier,
@@ -72,6 +75,18 @@ final class ZsMenuItem extends ZsMenuEntry {
 
   /// Whether the label is set in JetBrains Mono (bookmarks, remotes).
   final bool mono;
+
+  /// Whether the label is semibold: the open project in the Project menu (DS components/menus/menus.css:60).
+  final bool strong;
+
+  /// A 6 px status dot 8 px after the label (DS components/menus/menus.css:58, :61), or null for none. On the
+  /// highlight's solid accent it carries a 1 px `--accent-ink` ring outside it, which the DS's ink list leaves out
+  /// (decision 16.42 h).
+  final Color? dot;
+
+  /// What the [dot] means; VoiceOver reads it after the label, before the command ("MyApp, uncommitted changes,
+  /// feature/new-ui").
+  final String? dotLabel;
 
   /// Nested entries; the row shows › and opens them beside the menu.
   final List<ZsMenuEntry>? submenu;
@@ -122,7 +137,9 @@ class ZsMenuController {
 /// `RawMenuAnchor`, the menu material and the menu's entrance and exit (`ZsSurfaceTransition`, `--dur-menu` in,
 /// `--dur-exit` out).
 ///
-/// **Panel.** 250–320 wide, padding 5, rows 1 apart; an optional head names the [subject] (padding 4 8 7, a 1 px
+/// **Panel.** 250–320 wide, or exactly [width] (the Project menu's 300, DS components/menus/menus.css:57), padding 5,
+/// rows 1 apart; a command longer than [cmdMaxWidth] ends in an ellipsis (the Project menu's 130, menus.css:62); an
+/// optional head names the [subject] (padding 4 8 7, a 1 px
 /// `--border` below); rows 28 high on a 16 | label | auto grid with gap 10, padding 0 8, radius `--radius-md`,
 /// `--fs-control`. The highlight is solid `--accent` with `--accent-ink` — icon, command, shortcut, check and chevron
 /// turn ink — and moves between rows without a fade; danger rows are `--rem` with a `--danger-hover` tint as their
@@ -148,8 +165,9 @@ class ZsMenuController {
 /// **Placement** (Claude's proposal, Story 11.11; 11.3 places menus against islands): at the position [ZsMenuController.open]
 /// was given, else 4 below the anchor's left edge, flipped above without room, clamped 8 px inside the window.
 ///
-/// VoiceOver: the menu is a container named by [subject]; each row a button with its label (checked for a check
-/// item, in a mutually exclusive group for a radio item), the highlighted one selected and focused.
+/// VoiceOver: the menu is a container named by [subject]; each row a button named by its label, its dot's meaning
+/// and its command (the Project menu's bookmark; checked for a check item, in a mutually exclusive group for a radio
+/// item), the highlighted one selected and focused.
 class ZsMenuAnchor extends StatefulWidget implements ZsControl {
   /// A menu of [entries] over the widget [builder] builds.
   const ZsMenuAnchor({
@@ -159,6 +177,8 @@ class ZsMenuAnchor extends StatefulWidget implements ZsControl {
     this.subject,
     this.headLeading,
     this.blink = true,
+    this.width,
+    this.cmdMaxWidth,
     this.onOpen,
     this.onClose,
     this.identifier,
@@ -167,6 +187,12 @@ class ZsMenuAnchor extends StatefulWidget implements ZsControl {
 
   /// The rows.
   final List<ZsMenuEntry> entries;
+
+  /// The menu's fixed width (border box), or null for 250–320 by its content (DS components/menus/menus.css:6).
+  final double? width;
+
+  /// The widest a row's command may be before it ends in an ellipsis, or null for no limit.
+  final double? cmdMaxWidth;
 
   /// Builds the anchor (typically a button that calls `controller.open`).
   final Widget Function(BuildContext context, ZsMenuController controller) builder;
@@ -298,6 +324,9 @@ class _ZsMenuAnchorState extends State<ZsMenuAnchor> {
               subject: widget.subject,
               headLeading: widget.headLeading,
               blink: widget.blink,
+              minWidth: widget.width ?? ZsMenuPanel.defaultMinWidth,
+              maxWidth: widget.width ?? ZsMenuPanel.defaultMaxWidth,
+              cmdMaxWidth: widget.cmdMaxWidth,
               closing: _closing,
               onClosed: () {
                 final VoidCallback? hide = _hide;
@@ -404,8 +433,9 @@ class ZsMenuPanel extends StatefulWidget {
     this.takeFocus = true,
     this.highlight,
     this.submenu = false,
-    this.minWidth = 250,
-    this.maxWidth = 320,
+    this.minWidth = defaultMinWidth,
+    this.maxWidth = defaultMaxWidth,
+    this.cmdMaxWidth,
     this.scrollController,
     this.rowKeys,
     this.origin,
@@ -446,11 +476,20 @@ class ZsMenuPanel extends StatefulWidget {
   /// Whether this panel is a submenu: ← closes it.
   final bool submenu;
 
+  /// `min-width:250px` (DS components/menus/menus.css:6).
+  static const double defaultMinWidth = 250;
+
+  /// `max-width:320px` (DS components/menus/menus.css:6).
+  static const double defaultMaxWidth = 320;
+
   /// `min-width` (DS components/menus/menus.css:6; the select's list is wider).
   final double minWidth;
 
   /// `max-width` (DS components/menus/menus.css:6; the select's list allows 360).
   final double maxWidth;
+
+  /// The widest a row's command may be before it ends in an ellipsis, or null for no limit.
+  final double? cmdMaxWidth;
 
   /// Scrolls a panel taller than the window (the select brings its chosen row to the trigger).
   final ScrollController? scrollController;
@@ -828,6 +867,7 @@ class ZsMenuPanelState extends State<ZsMenuPanel> {
     final Widget row = _Row(
       key: key,
       item: item,
+      cmdMaxWidth: widget.cmdMaxWidth,
       highlighted: index == _hi && _blinkAt != index && item.actionable,
       blinking: index == _blinkAt,
       submenuOpen: index == _sub,
@@ -851,6 +891,7 @@ class ZsMenuPanelState extends State<ZsMenuPanel> {
               key: _subKeys[index],
               entries: submenu,
               blink: widget.blink,
+              cmdMaxWidth: widget.cmdMaxWidth,
               submenu: true,
               takeFocus: _subByKey,
               highlight: _subByKey ? ZsMenuPanel.step(submenu, -1, 1) : null,
@@ -941,6 +982,7 @@ class _Separator extends StatelessWidget {
 class _Row extends StatelessWidget {
   const _Row({
     required this.item,
+    required this.cmdMaxWidth,
     required this.highlighted,
     required this.blinking,
     required this.submenuOpen,
@@ -950,6 +992,7 @@ class _Row extends StatelessWidget {
   });
 
   final ZsMenuItem item;
+  final double? cmdMaxWidth;
   final bool highlighted;
   final bool blinking;
   final bool submenuOpen;
@@ -980,9 +1023,30 @@ class _Row extends StatelessWidget {
         : (glyph != null ? ZanshinIcon(glyph, size: ZsIconSize.md, color: icon) : const SizedBox.shrink());
     final String? cmd = item.cmd;
     final String? shortcut = item.shortcut;
-    final TextStyle labelStyle = item.mono
+    TextStyle labelStyle = item.mono
         ? zsMono(ZsType.fsMd, height: ZsType.lhSnug).copyWith(color: text)
         : zsSans(ZsType.fsControl, height: ZsType.lhSnug).copyWith(color: text);
+    if (item.strong) {
+      labelStyle = zsWeighted(labelStyle, ZsType.fwSemibold);
+    }
+    final Widget labelText = Text(item.label, style: labelStyle, maxLines: 1, overflow: TextOverflow.ellipsis);
+    final Color? dot = item.dot;
+    final double? cmdMax = cmdMaxWidth;
+    Widget? cmdText = cmd == null
+        ? null
+        : Text(
+            cmd,
+            style: zsMono(ZsType.fsSm).copyWith(color: side),
+            maxLines: 1,
+            softWrap: false,
+            overflow: cmdMax == null ? TextOverflow.clip : TextOverflow.ellipsis,
+          );
+    if (cmdText != null && cmdMax != null) {
+      cmdText = ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: cmdMax),
+        child: cmdText,
+      );
+    }
     Widget row = DecoratedBox(
       decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(metrics.radiusMd)),
       child: SizedBox(
@@ -994,14 +1058,23 @@ class _Row extends StatelessWidget {
             children: <Widget>[
               SizedBox(width: 16, child: Center(child: lead)),
               Expanded(
-                child: Text(item.label, style: labelStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                child: dot == null
+                    ? labelText
+                    // `.zs-pm-l{display:flex;align-items:center;gap:8px;min-width:0}` (DS menus.css:58).
+                    : Row(
+                        spacing: 8,
+                        children: <Widget>[
+                          Flexible(child: labelText),
+                          _MenuDot(color: dot, ring: highlighted && !danger ? colors.accentInk : null),
+                        ],
+                      ),
               ),
-              if (cmd != null || shortcut != null || item.submenu != null)
+              if (cmdText != null || shortcut != null || item.submenu != null)
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   spacing: 8,
                   children: <Widget>[
-                    if (cmd != null) Text(cmd, style: zsMono(ZsType.fsSm).copyWith(color: side), softWrap: false),
+                    ?cmdText,
                     if (shortcut != null)
                       Text(
                         shortcut,
@@ -1029,7 +1102,7 @@ class _Row extends StatelessWidget {
       identifier: item.identifier,
       button: true,
       enabled: item.enabled,
-      label: item.label,
+      label: <String>[item.label, ?item.dotLabel, ?item.cmd].join(', '),
       checked: checked,
       inMutuallyExclusiveGroup: checked != null && item.radio ? true : null,
       selected: highlighted,
@@ -1043,5 +1116,86 @@ class _Row extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// A row's 6 px status dot (`.zs-pm-dot{width:6px;height:6px;border-radius:50%}`, DS components/menus/menus.css:61),
+/// with a 1 px [ring] outside it while the row is highlighted (decision 16.42 h).
+class _MenuDot extends LeafRenderObjectWidget {
+  const _MenuDot({required this.color, required this.ring});
+
+  final Color color;
+  final Color? ring;
+
+  @override
+  _RenderMenuDot createRenderObject(BuildContext context) => _RenderMenuDot(color: color, ring: ring);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderMenuDot renderObject) {
+    renderObject
+      ..color = color
+      ..ring = ring;
+  }
+}
+
+class _RenderMenuDot extends RenderBox {
+  _RenderMenuDot({required this._color, required this._ring});
+
+  static const double _side = 6;
+  static const double _ringWidth = 1;
+
+  Color get color => _color;
+  Color _color;
+  set color(Color value) {
+    if (value != _color) {
+      _color = value;
+      markNeedsPaint();
+    }
+  }
+
+  Color? get ring => _ring;
+  Color? _ring;
+  set ring(Color? value) {
+    if (value != _ring) {
+      _ring = value;
+      markNeedsPaint();
+    }
+  }
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) => constraints.constrain(const Size.square(_side));
+
+  @override
+  void performLayout() {
+    size = computeDryLayout(constraints);
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) => _side;
+
+  @override
+  double computeMaxIntrinsicWidth(double height) => _side;
+
+  @override
+  double computeMinIntrinsicHeight(double width) => _side;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => _side;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final Offset centre = offset + size.center(Offset.zero);
+    final Color? ringColor = _ring;
+    if (ringColor != null) {
+      context.canvas.drawCircle(
+        centre,
+        _side / 2 + _ringWidth / 2,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = _ringWidth
+          ..color = ringColor,
+      );
+    }
+    context.canvas.drawCircle(centre, _side / 2, Paint()..color = _color);
   }
 }

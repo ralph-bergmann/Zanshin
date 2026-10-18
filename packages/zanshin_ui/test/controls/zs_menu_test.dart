@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,8 @@ import 'package:zanshin_ui/src/controls/zs_confirm_dialog.dart';
 import 'package:zanshin_ui/src/controls/zs_menu.dart';
 import 'package:zanshin_ui/src/design/zs_colors.dart';
 import 'package:zanshin_ui/src/design/zs_motion.dart';
+import 'package:zanshin_ui/src/design/zs_type.dart';
+import 'package:zanshin_ui/src/materials/zs_menu_material.dart';
 
 import '../helpers/controls.dart';
 import '../helpers/icon_registry.dart';
@@ -104,6 +107,41 @@ Offset _inTriangle(WidgetTester tester, Offset last, double a, double b, double 
   return last * a + Offset(nearX, sub.top) * b + Offset(nearX, sub.bottom) * c;
 }
 
+/// The Project menu's shape (DS components/menus/ProjectMenu.jsx:9-23): fixed width, a command limit, an open project
+/// in semibold with a status dot, a row without a dot.
+const _dirty = Color(0xFFFACC15);
+const _longBookmark = 'feature/a-bookmark-name-long-enough-to-pass-the-limit';
+
+Widget _projectHost({required FocusNode button}) => zsHost(
+  ColoredBox(
+    color: const Color(0x00000000),
+    child: SizedBox.expand(
+      child: Align(
+        child: ZsMenuAnchor(
+          width: 300,
+          cmdMaxWidth: 130,
+          entries: const <ZsMenuEntry>[
+            ZsMenuHeader('Recent'),
+            ZsMenuItem(
+              label: 'MyApp',
+              checked: true,
+              radio: true,
+              strong: true,
+              dot: _dirty,
+              dotLabel: 'uncommitted changes',
+              cmd: _longBookmark,
+            ),
+            ZsMenuItem(label: 'api-server', checked: false, radio: true, cmd: '—'),
+          ],
+          builder: (context, controller) => ZsButton(label: 'Project', focusNode: button, onPressed: controller.open),
+        ),
+      ),
+    ),
+  ),
+  overlay: true,
+  icons: true,
+);
+
 void main() {
   setUpIconRegistry();
   useMacFocus();
@@ -120,7 +158,7 @@ void main() {
     expect(find.text('New change'), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
-    expect(_highlighted(tester, 'New change'), isTrue);
+    expect(_highlighted(tester, 'New change, jj new'), isTrue);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
@@ -130,13 +168,13 @@ void main() {
     expect(_highlighted(tester, 'Commit'), isTrue);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
-    expect(_highlighted(tester, 'New change'), isTrue, reason: 'wrapping');
+    expect(_highlighted(tester, 'New change, jj new'), isTrue, reason: 'wrapping');
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pump();
     expect(_highlighted(tester, 'Commit'), isTrue);
     await tester.sendKeyEvent(LogicalKeyboardKey.home);
     await tester.pump();
-    expect(_highlighted(tester, 'New change'), isTrue);
+    expect(_highlighted(tester, 'New change, jj new'), isTrue);
     handle.dispose();
   });
 
@@ -421,12 +459,84 @@ void main() {
     await tester.pumpWidget(_host(button: button));
     await _openByKey(tester, button);
     expect(find.bySemanticsLabel('feat(onboarding): swipe gestures'), findsWidgets);
+    expect(find.bySemanticsLabel('New change, jj new'), findsOneWidget, reason: 'a row with a command reads it last');
     expect(
       tester.getSemantics(find.bySemanticsLabel('Compare')),
       isSemantics(isButton: true, hasCheckedState: true, isChecked: true),
     );
     handle.dispose();
   });
+
+  testWidgets('without a width the menu is 250–320 wide; with one it is exactly that wide', (tester) async {
+    await tester.pumpWidget(_host(button: button));
+    await _openByKey(tester, button);
+    final double free = tester.getSize(find.byType(ZsMenuMaterial)).width;
+    expect(free, inInclusiveRange(250, 320));
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump(_m.durExit + const Duration(milliseconds: 1));
+    await tester.pump();
+
+    await tester.pumpWidget(_projectHost(button: button));
+    await _openByKey(tester, button);
+    expect(tester.getSize(find.byType(ZsMenuMaterial)).width, 300);
+  });
+
+  testWidgets('a command longer than cmdMaxWidth ends in an ellipsis at 130; a short one is whole', (tester) async {
+    await tester.pumpWidget(_projectHost(button: button));
+    await _openByKey(tester, button);
+    expect(tester.getSize(find.text(_longBookmark)).width, lessThanOrEqualTo(130));
+    expect(tester.renderObject<RenderParagraph>(find.text(_longBookmark)).didExceedMaxLines, isTrue);
+    expect(tester.renderObject<RenderParagraph>(find.text('—')).didExceedMaxLines, isFalse);
+  });
+
+  testWidgets('a strong row is semibold, the others regular', (tester) async {
+    await tester.pumpWidget(_projectHost(button: button));
+    await _openByKey(tester, button);
+    expect(tester.widget<Text>(find.text('MyApp')).style?.fontWeight, ZsType.fwSemibold);
+    expect(tester.widget<Text>(find.text('api-server')).style?.fontWeight, FontWeight.w400);
+  });
+
+  testWidgets('the dot paints 6 px 8 after the label; its --accent-ink ring shows only while the row is highlighted', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_projectHost(button: button));
+    await _openByKey(tester, button);
+    final Finder panel = find.byType(ZsMenuPanel);
+    expect(panel, paints..something(circleOf(radius: 3, color: _dirty)));
+    expect(panel, isNot(paints..something(circleOf(radius: 3.5, color: ZsColors.night.accentInk))));
+    final Rect label = tester.getRect(find.text('MyApp'));
+    final Finder dot = find.descendant(
+      of: find.byType(ZsMenuPanel),
+      matching: find.byWidgetPredicate((widget) => '${widget.runtimeType}' == '_MenuDot'),
+    );
+    expect(tester.getSize(dot), const Size.square(6));
+    expect(tester.getTopLeft(dot).dx - label.right, closeTo(8, .01));
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(panel, paints..something(circleOf(radius: 3.5, color: ZsColors.night.accentInk)));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(panel, isNot(paints..something(circleOf(radius: 3.5, color: ZsColors.night.accentInk))));
+  });
+
+  testWidgets(
+    "VoiceOver reads the label, the dot's meaning and the command; the rows are radio items, the open one checked",
+    (tester) async {
+      handle = tester.ensureSemantics();
+      await tester.pumpWidget(_projectHost(button: button));
+      await _openByKey(tester, button);
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('MyApp, uncommitted changes, $_longBookmark')),
+        isSemantics(isButton: true, hasCheckedState: true, isChecked: true, isInMutuallyExclusiveGroup: true),
+      );
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('api-server, —')),
+        isSemantics(isButton: true, hasCheckedState: true, isChecked: false, isInMutuallyExclusiveGroup: true),
+      );
+      handle.dispose();
+    },
+  );
 }
 
 /// Records the focus at the moment it is first built.

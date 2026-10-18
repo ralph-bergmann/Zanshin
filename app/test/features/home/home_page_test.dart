@@ -1,12 +1,22 @@
 // SPDX-License-Identifier: MIT
 
+// The windowing API is experimental and only reachable through implementation
+// imports; see https://github.com/flutter/flutter/issues/30701.
+// ignore_for_file: invalid_use_of_internal_member
+
 import 'dart:io';
+
+import 'package:flutter/src/foundation/_features.dart';
+import 'package:flutter/src/widgets/_window.dart';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inject_annotation/inject_annotation.dart' show Provider;
 import 'package:inject_flutter/inject_flutter.dart';
 import 'package:zanshin/src/features/home/home_page.dart';
+import 'package:zanshin/src/features/projects/project_capsule.dart';
+import 'package:zanshin/src/features/projects/project_registry.dart';
+import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/floating_shell_view_model.dart';
 import 'package:zanshin/src/features/shell/pinned_panel.dart';
@@ -17,6 +27,7 @@ import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart' show ZanshinShellPlatform;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../helpers/fake_projects.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/recording_shell.dart';
 import '../../helpers/shell_host.dart';
@@ -54,14 +65,37 @@ void main() {
   setUp(() => ZanshinShellPlatform.instance = shell = RecordingShell());
   tearDown(() => shell.close());
 
-  /// Pumps the home page over a fresh settings store in a 1440 × 900 window showing [appearance].
-  Future<void> pumpHome(WidgetTester tester, {ZsAppearance appearance = const ZsAppearance()}) async {
+  /// Pumps the home page over a fresh settings store and a project session on fake repositories in a 1440 × 900
+  /// window showing [appearance], wrapped by [wrap]; returns the session.
+  Future<ProjectSession> pumpHome(
+    WidgetTester tester, {
+    ZsAppearance appearance = const ZsAppearance(),
+    Widget Function(Widget home)? wrap,
+  }) async {
     useShellWindow(tester);
     final Directory dir = (await tester.runAsync(() => Directory.systemTemp.createTemp('home_page_test')))!;
     addTearDown(() => dir.deleteSync(recursive: true));
     final SettingsStore store = (await tester.runAsync(() => SettingsStore.load(File('${dir.path}/settings.json'))))!;
-    await tester.pumpWidget(shellHost(HomePage(viewModelFactory: _factory(store)), appearance: appearance));
+    final session = ProjectSession(registry: ProjectRegistry(store), repos: FakeProjectRepos());
+    addTearDown(session.dispose);
+    final Widget home = shellHost(
+      HomePage(viewModelFactory: _factory(store), projects: session),
+      appearance: appearance,
+    );
+    await tester.pumpWidget(wrap?.call(home) ?? home);
+    return session;
   }
+
+  /// Lets an open the page started in the fake zone finish its settings writes (real file IO) until [done].
+  Future<void> settle(WidgetTester tester, bool Function() done) async {
+    for (var i = 0; i < 100 && !done(); i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
+      await tester.pump();
+    }
+    expect(done(), isTrue);
+  }
+
+  Finder capsuleName(String name) => find.descendant(of: find.byType(ProjectCapsule), matching: find.text(name));
 
   testWidgets(
     'the home is the floating shell: the window canvas, a drag row over the bar, four empty islands, no rail',
@@ -114,6 +148,76 @@ void main() {
 
     await tester.dragFrom(const Offset(600, 400), const Offset(80, 20));
     expect(shell.calls, hasLength(2), reason: 'below the row a pan reaches the canvas, not the window');
+  });
+
+  testWidgets('with a project open PLACE is its capsule at 91, 4, the others stay empty; closing it empties PLACE', (
+    tester,
+  ) async {
+    final ProjectSession session = await pumpHome(tester);
+    expect(find.byType(ProjectCapsule), findsNothing);
+
+    await tester.runAsync(() => session.open('/r/zanshin'));
+    await tester.pump();
+
+    expect(find.byType(ProjectCapsule), findsOneWidget);
+    expect(tester.getTopLeft(find.byType(ProjectCapsule)), const Offset(91, 4));
+    expect(find.descendant(of: find.byType(ProjectCapsule), matching: find.text('zanshin')), findsOneWidget);
+    expect(find.byType(ShellEmptyIsland), findsNWidgets(3));
+    expect(session.current?.status, ProjectStatus.clean);
+
+    await tester.runAsync(session.closeProject);
+    await tester.pump();
+    expect(find.byType(ProjectCapsule), findsNothing);
+    expect(find.byType(ShellEmptyIsland), findsNWidgets(4));
+  });
+
+  testWidgets("a Recent row of the capsule's menu switches the project; the capsule shows the new one", (tester) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    final ProjectSession session = await pumpHome(tester);
+    await tester.runAsync(() => session.open('/r/zanshin'));
+    await tester.runAsync(() => session.open('/r/jj'));
+    await tester.pump();
+    expect(capsuleName('jj'), findsOneWidget);
+
+    await tester.tap(find.bySemanticsIdentifier('project-capsule'));
+    await tester.pump();
+    await tester.pump(ZsMotion.full.durMenu);
+    await tester.tap(find.bySemanticsIdentifier('project-menu-recent-1'));
+    await tester.pump(ZsMotion.full.durBlink * 2);
+    await settle(tester, () => session.current?.path == '/r/zanshin');
+    await tester.pump(ZsMotion.full.durExit);
+    await tester.pump();
+
+    expect(capsuleName('zanshin'), findsOneWidget);
+    expect(capsuleName('jj'), findsNothing);
+    handle.dispose();
+  });
+
+  testWidgets("the window takes the open project's name and returns to Zanshin when it closes", (tester) async {
+    final bool windowingWasEnabled = isWindowingEnabled;
+    isWindowingEnabled = true;
+    addTearDown(() => isWindowingEnabled = windowingWasEnabled);
+    final window = WindowController(
+      size: const Size(1440, 900),
+      title: 'Zanshin',
+      delegate: WindowControllerDelegate(),
+    );
+    addTearDown(window.destroy);
+    final ProjectSession session = await pumpHome(
+      tester,
+      wrap: (home) => WindowScope(controller: window, child: home),
+    );
+    expect(window.title, 'Zanshin');
+
+    await tester.runAsync(() => session.open('/r/zanshin'));
+    await tester.pump();
+    await tester.pump();
+    expect(window.title, 'zanshin');
+
+    await tester.runAsync(session.closeProject);
+    await tester.pump();
+    await tester.pump();
+    expect(window.title, 'Zanshin');
   });
 
   testWidgets('in full screen the drag row ends at 68 and the first island sits at 12, 12', (tester) async {

@@ -5,6 +5,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import 'appearance_settings.dart';
 import 'general_settings.dart';
 import 'layout_settings.dart';
+import 'projects_settings.dart';
 
 part 'app_settings.freezed.dart';
 part 'app_settings.g.dart';
@@ -28,6 +29,9 @@ abstract class AppSettings with _$AppSettings {
 
     /// Settings › General.
     @Default(GeneralSettings()) GeneralSettings general,
+
+    /// The project registry (Story 11.5).
+    @Default(ProjectsSettings()) ProjectsSettings projects,
   }) = _AppSettings;
 
   /// Decodes from JSON; throws [CheckedFromJsonException] on a malformed document.

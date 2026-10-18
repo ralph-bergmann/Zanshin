@@ -21,6 +21,7 @@ void main() {
       'appearance': {'themeMode': 'dark', 'accentSource': 'followMacOS'},
       'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
       'general': {'hideControls': true},
+      'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
     });
   });
 
@@ -39,6 +40,7 @@ void main() {
       'appearance': {'themeMode': 'system', 'accentSource': 'zanshin'},
       'layout': {'inspectorWidth': 460.0, 'panelWidth': 300.0},
       'general': {'hideControls': true},
+      'projects': {'projects': <Object?>[], 'groups': <Object?>[], 'openProject': null},
     });
     expect(AppSettings.fromJson(settings.toJson()), settings);
   });

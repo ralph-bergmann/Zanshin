@@ -1,22 +1,30 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inject_annotation/inject_annotation.dart' show Provider;
 import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:zanshin/main.dart' show MainComponent;
 import 'package:zanshin/src/features/app/zanshin_app.dart';
 import 'package:zanshin/src/features/app/zanshin_app_view_model.dart';
+import 'package:zanshin/src/features/bootstrap/icon_module.dart';
 import 'package:zanshin/src/features/home/home_page.dart';
+import 'package:zanshin/src/features/projects/project_registry.dart';
+import 'package:zanshin/src/features/projects/project_session.dart';
+import 'package:zanshin/src/features/projects/projects_module.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/floating_shell_view_model.dart';
 import 'package:zanshin/src/features/shell/top_bar.dart';
+import 'package:zanshin_core/zanshin_core.dart' show ZanshinWorker;
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart' show WindowDragArea;
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import '../../helpers/fake_projects.dart';
 import '../../helpers/recording_shell.dart';
 
 /// The home page the DI graph would build, over [_store].
@@ -25,10 +33,14 @@ class _HomePageFactory implements HomePageFactory {
 
   final SettingsStore _store;
 
+  /// The app's one session, as the DI graph's singleton.
+  late final _projects = ProjectSession(registry: ProjectRegistry(_store), repos: FakeProjectRepos());
+
   @override
   HomePage create({Key? key}) => HomePage(
     key: key,
     viewModelFactory: _viewModels(() => FloatingShellViewModel(_store)),
+    projects: _projects,
   );
 }
 
@@ -119,6 +131,33 @@ void main() {
     }
     return tester.element(find.byType(FloatingShell));
   }
+
+  testWidgets("the DI graph hands HomePage the one session the boot reopens (main.dart's component)", (tester) async {
+    tester.view
+      ..physicalSize = const Size(1440, 900)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    shell = RecordingShell();
+    ZanshinShellPlatform.instance = shell;
+    addTearDown(shell.close);
+    final (SettingsStore store, IconRegistry icons) = (await tester.runAsync(
+      () async => (await SettingsStore.load(file), await IconRegistry.load()),
+    ))!;
+    final MainComponent component = MainComponent.create(
+      settingsModule: SettingsModule(store: store),
+      iconModule: IconModule(registry: icons),
+      // Never completed: the graph is built without starting a worker, and nothing here opens a project.
+      projectsModule: ProjectsModule(worker: Completer<ZanshinWorker>().future),
+    );
+
+    await tester.pumpWidget(component.zanshinAppFactory.create());
+    shell.theme.complete(_shell());
+    await tester.pumpAndSettle();
+
+    final ProjectSession session = component.projectSession;
+    expect(tester.widget<HomePage>(find.byType(HomePage)).projects, same(session));
+    expect(component.projectSession, same(session), reason: 'a singleton');
+  });
 
   testWidgets('the home is HomePage over the floating shell, titled Zanshin; the Yaru test page is gone', (
     tester,

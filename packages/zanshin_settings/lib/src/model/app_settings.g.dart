@@ -28,6 +28,12 @@ _AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) =>
               ? const GeneralSettings()
               : GeneralSettings.fromJson(v as Map<String, dynamic>),
         ),
+        projects: $checkedConvert(
+          'projects',
+          (v) => v == null
+              ? const ProjectsSettings()
+              : ProjectsSettings.fromJson(v as Map<String, dynamic>),
+        ),
       );
       return val;
     });
@@ -37,4 +43,5 @@ Map<String, dynamic> _$AppSettingsToJson(_AppSettings instance) =>
       'appearance': instance.appearance.toJson(),
       'layout': instance.layout.toJson(),
       'general': instance.general.toJson(),
+      'projects': instance.projects.toJson(),
     };

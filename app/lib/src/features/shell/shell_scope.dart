@@ -41,6 +41,11 @@ class ShellScope extends InheritedWidget {
     return scope!.controller;
   }
 
+  /// The controller of the nearest shell, or null outside one (a slot's widget shown on its own, as in the
+  /// catalogue). Like [of], it does not register a dependency.
+  static ShellController? maybeOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<ShellScope>()?.controller;
+
   @override
   bool updateShouldNotify(ShellScope oldWidget) => layout != oldWidget.layout || controller != oldWidget.controller;
 }

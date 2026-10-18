@@ -60,7 +60,8 @@ class RememberedWindowController extends WindowControllerMacOS {
     return controller;
   }
 
-  /// Identifies the remembered frame, e.g. `main` or `project:<path>`.
+  /// Identifies the remembered frame, e.g. `main`; the project window keeps the one key `main` whichever project it
+  /// shows (decision 16.42 j).
   final String key;
 
   static const _channel = MethodChannel('zanshin/window_frames');

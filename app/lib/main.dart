@@ -23,6 +23,8 @@ import 'src/features/app/zanshin_app.dart';
 import 'src/features/bootstrap/boot_window_host.dart';
 import 'src/features/bootstrap/icon_module.dart';
 import 'src/features/bootstrap/zanshin_bootstrap.dart';
+import 'src/features/projects/project_session.dart';
+import 'src/features/projects/projects_module.dart';
 import 'src/features/window/app_windows.dart';
 
 final _log = Logger('zanshin.bootstrap');
@@ -105,13 +107,19 @@ Future<void> _adoptShellEnvironment() async {
 /// before the graph so the DI chain stays synchronous — no @asynchronous
 /// provider), then the worker, whose provision listener wires the
 /// AppLifecycleListener for graceful shutdown on macOS, then the app widget.
+/// The projects module gets the worker once it has started; the last open
+/// project then reopens without holding up the boot (Story 11.5): the window
+/// shows its empty place until the repository has opened.
 Future<Widget> _startApp(SettingsStore settings, IconRegistry icons) async {
+  final worker = Completer<ZanshinWorker>();
   // ignore: specify_nonobvious_local_variable_types
   final mainComponent = MainComponent.create(
     settingsModule: SettingsModule(store: settings),
     iconModule: IconModule(registry: icons),
+    projectsModule: ProjectsModule(worker: worker.future),
   );
-  await mainComponent.worker;
+  worker.complete(await mainComponent.worker);
+  unawaited(mainComponent.projectSession.reopenLast());
   return mainComponent.zanshinAppFactory.create();
 }
 
@@ -121,6 +129,7 @@ Future<Widget> _startApp(SettingsStore settings, IconRegistry icons) async {
   WorkerLifecycleModule,
   SettingsModule,
   IconModule,
+  ProjectsModule,
 ])
 abstract class MainComponent {
   // ignore: specify_nonobvious_property_types
@@ -135,4 +144,7 @@ abstract class MainComponent {
 
   @inject
   Future<ZanshinWorker> get worker; // ignore: unreachable_from_main
+
+  @inject
+  ProjectSession get projectSession; // ignore: unreachable_from_main
 }

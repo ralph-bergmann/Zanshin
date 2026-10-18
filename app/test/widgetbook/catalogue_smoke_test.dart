@@ -23,30 +23,35 @@ void main() {
       useCase.path,
   ];
 
-  test('the folders are Controls, Materials, Shell, Windows and Icons, and every use case has its own path', () {
-    expect(
-      catalogueDirectories.map((node) => node.name),
-      <String>['Controls', 'Materials', 'Shell', 'Windows', 'Icons'],
-    );
-    expect(paths.toSet(), hasLength(paths.length));
-    expect(paths, contains('controls/switch/state-matrix'));
-    expect(
-      paths,
-      containsAll(<String>[
-        'shell/floating-shell/layout',
-        'shell/floating-shell/preview-open',
-        'shell/floating-shell/pinned-panel',
-        'shell/floating-shell/flyout',
-        'shell/floating-shell/calm',
-        'shell/floating-shell/slots',
-        'controls/resize-edge/state-matrix',
-        'materials/island/fade',
-        'materials/canvas/window-canvas',
-        'windows/floating-shell/floating-shell',
-      ]),
-    );
-    expect(catalogueUseCasePaths, paths.toSet());
-  });
+  test(
+    'the folders are Controls, Materials, Shell, Projects, Windows and Icons, and every use case has its own path',
+    () {
+      expect(
+        catalogueDirectories.map((node) => node.name),
+        <String>['Controls', 'Materials', 'Shell', 'Projects', 'Windows', 'Icons'],
+      );
+      expect(paths.toSet(), hasLength(paths.length));
+      expect(paths, contains('controls/switch/state-matrix'));
+      expect(
+        paths,
+        containsAll(<String>[
+          'shell/floating-shell/layout',
+          'shell/floating-shell/preview-open',
+          'shell/floating-shell/pinned-panel',
+          'shell/floating-shell/flyout',
+          'shell/floating-shell/calm',
+          'shell/floating-shell/slots',
+          'projects/project-capsule/states',
+          'projects/project-capsule/menu-open',
+          'controls/resize-edge/state-matrix',
+          'materials/island/fade',
+          'materials/canvas/window-canvas',
+          'windows/floating-shell/floating-shell',
+        ]),
+      );
+      expect(catalogueUseCasePaths, paths.toSet());
+    },
+  );
 
   for (final path in paths) {
     for (final ZsTheme theme in ZsTheme.values) {

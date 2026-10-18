@@ -4,8 +4,9 @@ import Cocoa
 import FlutterMacOS
 
 /// Remembers the frame of every Dart-created window that asks for it, keyed by
-/// a stable name (`main`, `project:<path>`, ...), and puts a window back where
-/// it was when the same key comes around again. It is also where a window asks
+/// a stable name (`main` for the one project window, whichever project it
+/// shows — decision 16.42 j), and puts a window back where it was when the
+/// same key comes around again. It is also where a window asks
 /// for the app's custom chrome, because that has to be in place before the
 /// frame is applied.
 ///

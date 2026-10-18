@@ -48,6 +48,7 @@ export 'src/design/zs_root.dart' show ZsRoot, ZsShellScope;
 export 'src/design/zs_type.dart' show ZsType;
 export 'src/icons/icon_registry.dart' show IconRegistry, IconRegistryScope;
 export 'src/icons/zanshin_icon.dart' show ZI, ZanshinIcon;
+export 'src/icons/zs_nami_mark.dart' show ZsNamiMark;
 export 'src/materials/zs_canvas.dart' show ZsCanvas;
 export 'src/materials/zs_fade.dart' show ZsFade;
 export 'src/materials/zs_glass.dart' show ZsGlass, ZsGlassBlur, ZsGlassFill, ZsIsland, ZsIslandSeparator, ZsIslandShape;

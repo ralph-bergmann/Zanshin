@@ -617,4 +617,12 @@ void main() {
     expect(rig.controller.flyoutOpen, isTrue);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('ShellScope.maybeOf finds the controller in a slot and nothing outside a shell', (tester) async {
+    final _Rig rig = await _pump(tester, _Rig());
+    expect(ShellScope.maybeOf(tester.element(find.byKey(_place))), same(rig.controller));
+
+    await tester.pumpWidget(const SizedBox(key: _place));
+    expect(ShellScope.maybeOf(tester.element(find.byKey(_place))), isNull);
+  });
 }

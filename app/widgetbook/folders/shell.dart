@@ -8,10 +8,13 @@ import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/shell_controller.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
+import 'projects.dart';
+
 /// The "Shell" folder: Story 11.3's floating overlay host, the shell scaled into the use case with a width knob
 /// (880–1440; the project window's minimum is 880, decision 16.37) and a full-screen knob. Each use case opens the
 /// shell in one state — the hover-only preview and the calm phase included, which Marionette cannot hover or scroll
-/// into — over a stand-in scrollable graph; the slots hold demo islands until their stories land.
+/// into — over a stand-in scrollable graph; PLACE holds the project capsule (Story 11.5), the other slots demo
+/// islands until their stories land.
 final shellFolder = WidgetbookFolder(
   name: 'Shell',
   children: <WidgetbookNode>[
@@ -154,7 +157,7 @@ class _FloatingShellDemoState extends State<FloatingShellDemo> {
             railItems: _items,
             canvas: const ZsCanvas(),
             graph: const _StandInGraph(),
-            projectCapsule: const _DemoIsland(icon: ZI.folder, text: 'zanshin', width: 176),
+            projectCapsule: demoCapsule(),
             view: const _DemoText('View · search and view controls (10.21, 10.7)'),
             syncGroup: const _DemoIsland(icon: ZI.fetch, text: 'Sync', width: 120),
             newChange: const _DemoIsland(icon: ZI.plus, text: 'New change', width: 118),

@@ -16,7 +16,8 @@ const _light = AppSettings(appearance: AppearanceSettings(themeMode: ThemeMode.l
 const _darkJson =
     '{\n  "appearance": {\n    "themeMode": "dark",\n    "accentSource": "followMacOS"\n  },\n'
     '  "layout": {\n    "inspectorWidth": 460.0,\n    "panelWidth": 300.0\n  },\n'
-    '  "general": {\n    "hideControls": true\n  }\n}\n';
+    '  "general": {\n    "hideControls": true\n  },\n'
+    '  "projects": {\n    "projects": [],\n    "groups": [],\n    "openProject": null\n  }\n}\n';
 
 /// Answers `getApplicationSupportPath` with a fixed directory.
 final class FakePathProvider extends PathProviderPlatform with MockPlatformInterfaceMixin {
