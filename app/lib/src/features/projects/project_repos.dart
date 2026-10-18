@@ -4,20 +4,47 @@ import 'package:flutter/foundation.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
-/// How the project session reaches repositories (Story 11.5; Claude's proposal): detect a path, open a jj workspace.
-/// The app's adapter is `WorkerProjectRepos` over the worker; the tests pass a fake.
+/// How the project session reaches repositories (Stories 11.5 and 11.6; Claude's proposal): detect a path, open a jj
+/// workspace, and create one — convert a Git repository, initialise a folder, clone a remote. The app's adapter is
+/// `WorkerProjectRepos` over the worker; the tests pass a fake.
 abstract interface class ProjectRepos {
   /// Classifies [path] (`ZanshinWorker.detect`, FR-JJ-17); a folder without a repository is a result, not an error.
   Future<RepoDetectResult> detect(String path);
 
   /// Opens the jj workspace at [path] (`ZanshinWorker.openRepo`).
   Future<ProjectRepo> open(String path);
+
+  /// Converts the Git repository at [path] to a colocated jj workspace (`ZanshinWorker.convert`, the CLI's
+  /// `jj git init --colocate <path>`). Throws [ZanshinFfiException], carrying the conversion's warnings, when it fails.
+  Future<ProjectCreation> convert(String path);
+
+  /// Creates a Git-backed jj repository in the existing folder [path] (`ZanshinWorker.initRepo` with the Git backend,
+  /// the CLI's `jj git init --no-colocate <path>`). Throws [ZanshinFfiException] when it fails.
+  Future<ProjectCreation> init(String path);
+
+  /// Clones [url] into the existing folder [destination] (`ZanshinWorker.cloneRepo`, the CLI's
+  /// `jj git clone --no-colocate <url> <destination>` with the remote `origin`). Throws [ZanshinFfiException],
+  /// carrying the clone's warnings, when it fails.
+  Future<ProjectCreation> clone({required String url, required String destination});
+}
+
+/// A repository a creation made, open, with what the creating call warned about (9.33).
+@immutable
+class ProjectCreation {
+  /// The created and open [repo] with the creation's [warnings].
+  const ProjectCreation({required this.repo, this.warnings = const <ZanshinWarning>[]});
+
+  /// The new repository, open.
+  final ProjectRepo repo;
+
+  /// The creation's warnings in the CLI's print order, their messages verbatim; empty when there were none.
+  final List<ZanshinWarning> warnings;
 }
 
 /// One open repository as the project session sees it.
 abstract interface class ProjectRepo {
-  /// The open handle, the one 10.5's graph reads through.
-  OpenedRepoHandle get handle;
+  /// The open handle, the one 10.5's graph reads through: opened, or fresh from a creation.
+  RepoHandle get handle;
 
   /// Fires when a jj operation lands in this repository (its op heads changed), by anyone.
   Stream<void> get changes;

@@ -39,4 +39,13 @@ abstract final class ZanshinShell {
 
   /// Emits a watched view's chrome whenever it changes.
   static Stream<WindowChromeChange> get onWindowChromeChanged => _platform.onWindowChromeChanged;
+
+  /// Asks for one folder with the system's open panel (folders only, one, new folders allowed), as a sheet on the
+  /// window of the Flutter view [viewId]; it starts in [initialDirectory] and names its default button [prompt] when
+  /// given. Answers the folder's absolute path, or null when the panel was cancelled.
+  static Future<String?> chooseDirectory({required int viewId, String? initialDirectory, String? prompt}) =>
+      _platform.chooseDirectory(viewId: viewId, initialDirectory: initialDirectory, prompt: prompt);
+
+  /// Shows [path] selected in a Finder window.
+  static Future<void> revealInFinder(String path) => _platform.revealInFinder(path);
 }

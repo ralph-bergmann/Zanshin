@@ -115,6 +115,39 @@ void main() {
     },
   );
 
+  group('the folder picker', () {
+    test('sends the view, the start folder and the prompt, and answers the chosen path', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+        log.add(call);
+        return '/Users/me/code/api';
+      });
+
+      final String? chosen = await shell.chooseDirectory(viewId: 3, initialDirectory: '/Users/me/code', prompt: 'Add');
+
+      expect(chosen, '/Users/me/code/api');
+      expect(log.single.method, 'chooseDirectory');
+      expect(log.single.arguments, <String, Object?>{
+        'viewId': 3,
+        'initialDirectory': '/Users/me/code',
+        'prompt': 'Add',
+      });
+    });
+
+    test('leaves out what is not given and answers null for a cancelled panel', () async {
+      final String? chosen = await shell.chooseDirectory(viewId: 1);
+
+      expect(chosen, isNull);
+      expect(log.single.arguments, <String, Object?>{'viewId': 1});
+    });
+  });
+
+  test('revealInFinder sends the path', () async {
+    await shell.revealInFinder('/Users/me/code/api');
+
+    expect(log.single.method, 'revealInFinder');
+    expect(log.single.arguments, <String, Object?>{'path': '/Users/me/code/api'});
+  });
+
   test('onThemeChanged emits when the native side pushes a theme', () async {
     final Future<ShellTheme> future = shell.onThemeChanged.first;
     final TestDefaultBinaryMessenger messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;

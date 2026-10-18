@@ -104,6 +104,8 @@ void main() {
     expect(() => platform.watchWindowChrome(1), throwsUnimplementedError);
     expect(() => platform.unwatchWindowChrome(1), throwsUnimplementedError);
     expect(() => platform.onWindowChromeChanged, throwsUnimplementedError);
+    expect(() => platform.chooseDirectory(viewId: 1), throwsUnimplementedError);
+    expect(() => platform.revealInFinder('/tmp'), throwsUnimplementedError);
   });
 
   test('WindowChrome defaults to a window out of full screen without a block', () {

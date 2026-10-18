@@ -164,4 +164,99 @@ void main() {
     await registry.add('/r/a');
     expect(registry.entry('/r/a'), isNotNull);
   });
+
+  group('Story 11.6', () {
+    test('add places a new project at an index among its siblings and renumbers them', () async {
+      final ProjectRegistry registry = await load();
+      await registry.add('/r/a');
+      await registry.add('/r/b');
+      final String group = await registry.addGroup('G');
+      await registry.add('/r/c', index: 1);
+      expect(orders(registry.value, null), <String>['a:0', 'c:1', 'b:2', 'G:3']);
+      await registry.add('/r/d', group: group, index: 5);
+      await registry.add('/r/e', group: group, index: 0);
+      expect(orders(registry.value, group), <String>['e:0', 'd:1']);
+      await registry.add('/r/c', group: group, index: 0);
+      expect(registry.entry('/r/c')!.group, isNull, reason: 'a registered path stays where it is');
+    });
+
+    test('remove takes only the entry out, renumbers its siblings and clears the open project', () async {
+      final ProjectRegistry registry = await load();
+      for (final name in <String>['a', 'b', 'c']) {
+        await registry.add('${dir.path}/$name');
+      }
+      await Directory('${dir.path}/b').create();
+      await registry.setOpen('${dir.path}/b');
+
+      await registry.remove('${dir.path}/b');
+
+      expect(orders(registry.value, null), <String>['a:0', 'c:1']);
+      expect(registry.value.openProject, isNull);
+      expect(Directory('${dir.path}/b').existsSync(), isTrue, reason: 'the folder on disk stays');
+      await registry.setOpen('${dir.path}/a');
+      await registry.remove('${dir.path}/c');
+      expect(registry.value.openProject, '${dir.path}/a', reason: 'another project stays open');
+      await registry.remove('/r/unknown');
+      expect(orders(registry.value, null), <String>['a:0']);
+    });
+
+    test('moveGroup moves a group with what it holds; into itself or a group inside it changes nothing', () async {
+      final ProjectRegistry registry = await load();
+      final String work = await registry.addGroup('Work');
+      final String mobile = await registry.addGroup('Mobile', parent: work);
+      final String deep = await registry.addGroup('Deep', parent: mobile);
+      await registry.add('/r/app', group: mobile);
+      await registry.add('/r/top');
+      expect(orders(registry.value, null), <String>['Work:0', 'top:1']);
+
+      await registry.moveGroup(mobile, index: 0);
+      expect(orders(registry.value, null), <String>['Mobile:0', 'Work:1', 'top:2']);
+      expect(orders(registry.value, work), isEmpty);
+      expect(registry.entry('/r/app')!.group, mobile, reason: 'its projects move with it');
+
+      final ProjectsSettings before = registry.value;
+      await registry.moveGroup(mobile, index: 0, parent: mobile);
+      await registry.moveGroup(mobile, index: 0, parent: deep);
+      await registry.moveGroup('g99', index: 0);
+      expect(registry.value, before);
+
+      await registry.moveGroup(work, index: 9, parent: mobile);
+      expect(orders(registry.value, mobile), <String>['Deep:0', 'app:1', 'Work:2']);
+      expect(registry.isWithin(work, mobile), isTrue);
+      expect(registry.isWithin(mobile, work), isFalse);
+      expect(registry.isWithin(null, work), isFalse);
+    });
+
+    test('registered finds an entry by another spelling of its path: a trailing slash, a symlink', () async {
+      final ProjectRegistry registry = await load();
+      final Directory real = await Directory('${dir.path}/real').create();
+      final String canonical = real.resolveSymbolicLinksSync();
+      await Link('${dir.path}/alias').create(canonical);
+      await registry.add(canonical);
+
+      expect(registry.registered('$canonical/')?.path, canonical);
+      expect(registry.registered('${dir.path}/alias')?.path, canonical);
+      expect(registry.registered('${dir.path}/./real/../real')?.path, canonical);
+      expect(registry.registered('${dir.path}/other'), isNull);
+    });
+  });
+
+  group('canonicalPath', () {
+    test('an existing path resolves its symlinks and loses a trailing slash', () async {
+      final Directory real = await Directory('${dir.path}/real').create();
+      await Link('${dir.path}/alias').create(real.path);
+      final String resolved = real.resolveSymbolicLinksSync();
+      expect(canonicalPath('${dir.path}/alias/'), resolved);
+      expect(canonicalPath('${real.path}/'), resolved);
+    });
+
+    test('a missing path is normalised by its spelling', () {
+      expect(canonicalPath('/r/a/'), '/r/a');
+      expect(canonicalPath('/r//a/./b/../c'), '/r/a/c');
+      expect(canonicalPath('/../r'), '/r');
+      expect(canonicalPath('/'), '/');
+      expect(canonicalPath('r/../../s'), '../s');
+      expect(canonicalPath(''), '.');
+    });
+  });
 }

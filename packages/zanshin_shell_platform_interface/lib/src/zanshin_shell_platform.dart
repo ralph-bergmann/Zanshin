@@ -81,4 +81,14 @@ abstract class ZanshinShellPlatform extends PlatformInterface {
 
   /// Emits a watched view's chrome whenever it changes.
   Stream<WindowChromeChange> get onWindowChromeChanged => throw UnimplementedError();
+
+  /// Asks for one folder with the system's open panel — folders only, one, new folders allowed — as a sheet on the
+  /// window that hosts the Flutter view [viewId], or as a modal panel when no attached view has that id. It starts in
+  /// [initialDirectory] when given and names its default button [prompt] when given. Answers the chosen folder's
+  /// absolute path, or null when the panel was cancelled.
+  Future<String?> chooseDirectory({required int viewId, String? initialDirectory, String? prompt}) =>
+      throw UnimplementedError();
+
+  /// Shows [path] selected in a Finder window.
+  Future<void> revealInFinder(String path) => throw UnimplementedError();
 }

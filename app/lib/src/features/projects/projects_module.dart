@@ -6,10 +6,12 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 
 import 'project_registry.dart';
 import 'project_session.dart';
+import 'projects_environment.dart';
 import 'worker_project_repos.dart';
 
-/// DI module providing the app's one [ProjectSession] (Story 11.5): the registry over the settings store, the
-/// repositories over the boot's worker.
+/// DI module providing the app's one [ProjectRegistry] and [ProjectSession] (Story 11.5) and the Projects window's
+/// [ProjectsEnvironment] (Story 11.6): the registry over the settings store, the repositories and the identity over
+/// the boot's worker.
 ///
 /// The worker arrives as a constructor argument, like `SettingsModule(store:)`: inject_generator binds an
 /// `@asynchronous` provider only as its resolved value, and a provider taking that value turns asynchronous itself —
@@ -23,9 +25,19 @@ class ProjectsModule {
   /// The boot's worker, once it has started.
   final Future<ZanshinWorker> worker;
 
-  /// Provides the app-wide [ProjectSession].
+  /// Provides the app-wide [ProjectRegistry].
   @provides
   @singleton
-  ProjectSession projectSession(SettingsStore settings) =>
-      ProjectSession(registry: ProjectRegistry(settings), repos: WorkerProjectRepos(worker));
+  ProjectRegistry projectRegistry(SettingsStore settings) => ProjectRegistry(settings);
+
+  /// Provides the app-wide [ProjectSession] over the registry.
+  @provides
+  @singleton
+  ProjectSession projectSession(ProjectRegistry registry) =>
+      ProjectSession(registry: registry, repos: WorkerProjectRepos(worker));
+
+  /// Provides the Projects window's [ProjectsEnvironment].
+  @provides
+  @singleton
+  ProjectsEnvironment projectsEnvironment() => DesktopProjectsEnvironment(worker);
 }

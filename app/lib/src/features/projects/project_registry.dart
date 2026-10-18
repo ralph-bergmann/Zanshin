@@ -6,12 +6,40 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
-/// The project registry over the settings store (Story 11.5 item 1): reads and edits `AppSettings.projects`.
+/// [path] as the project session registers it (Story 11.6, Claude's proposal): with its symlinks resolved and `.`,
+/// `..` and a trailing `/` gone when it exists; otherwise normalised by its spelling alone — no empty, `.` or `..`
+/// segment and no trailing `/` (a relative path stays relative).
+String canonicalPath(String path) {
+  if (path.isNotEmpty && FileSystemEntity.typeSync(path) != FileSystemEntityType.notFound) {
+    try {
+      return Directory(path).resolveSymbolicLinksSync();
+    } on FileSystemException {
+      // Gone between the check and the resolution, or unreadable: its spelling is all there is.
+    }
+  }
+  final bool absolute = path.startsWith('/');
+  final segments = <String>[];
+  for (final String segment in path.split('/')) {
+    if (segment.isEmpty || segment == '.') {
+      continue;
+    }
+    if (segment == '..' && segments.isNotEmpty && segments.last != '..') {
+      segments.removeLast();
+    } else if (segment != '..' || !absolute) {
+      segments.add(segment);
+    }
+  }
+  final String joined = segments.join('/');
+  return absolute ? '/$joined' : (joined.isEmpty ? '.' : joined);
+}
+
+/// The project registry over the settings store (Story 11.5 item 1; Story 11.6): reads and edits
+/// `AppSettings.projects`.
 ///
 /// Every edit is one `SettingsStore.update`, so listeners hear it at once and an edit that changes nothing writes
 /// nothing. A failed write is logged by the store and swallowed here: the registry keeps the new value for the session
 /// (as the shell's layout writes do, Story 11.3). Siblings — the groups and projects of one parent — share one order,
-/// renumbered 0..n whenever one joins or leaves them.
+/// renumbered 0..n whenever one joins or leaves them; on a tie groups come first.
 class ProjectRegistry implements ValueListenable<ProjectsSettings> {
   /// The registry stored in [_store].
   ProjectRegistry(this._store);
@@ -44,15 +72,52 @@ class ProjectRegistry implements ValueListenable<ProjectsSettings> {
     return null;
   }
 
-  /// Registers [path] last among the siblings in [group] (the top level when null) — one above the highest order
-  /// there — named [name] or else after the last segment of the path (Claude's proposal). A path already registered
-  /// stays as it is.
-  Future<void> add(String path, {String? name, String? group}) {
+  /// The project registered at [path] or at another spelling of it — a trailing `/`, a symlink — compared by
+  /// [canonicalPath], or null.
+  ProjectEntry? registered(String path) {
+    final ProjectEntry? exact = entry(path);
+    if (exact != null) {
+      return exact;
+    }
+    final String canonical = canonicalPath(path);
+    for (final ProjectEntry project in value.projects) {
+      if (project.path == canonical || canonicalPath(project.path) == canonical) {
+        return project;
+      }
+    }
+    return null;
+  }
+
+  /// The group [id], or null.
+  ProjectGroup? group(String id) {
+    for (final ProjectGroup group in value.groups) {
+      if (group.id == id) {
+        return group;
+      }
+    }
+    return null;
+  }
+
+  /// Whether the group [group] is [ancestor] or lies inside it; the top level (null) lies inside none.
+  bool isWithin(String? group, String ancestor) {
+    final visited = <String>{};
+    for (var current = group; current != null && visited.add(current); current = this.group(current)?.parent) {
+      if (current == ancestor) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Registers [path] in [group] (the top level when null) named [name] or else after the last segment of the path
+  /// (Claude's proposal): at [index] among its new siblings, clamped to their range, with the siblings renumbered
+  /// 0..n — or, without an index, last, one above the highest order there. A path already registered stays as it is.
+  Future<void> add(String path, {String? name, String? group, int? index}) {
     if (entry(path) != null) {
       return Future<void>.value();
     }
-    return _update(
-      (registry) => registry.copyWith(
+    return _update((registry) {
+      final ProjectsSettings added = registry.copyWith(
         projects: <ProjectEntry>[
           ...registry.projects,
           ProjectEntry(
@@ -62,8 +127,32 @@ class ProjectRegistry implements ValueListenable<ProjectsSettings> {
             order: _nextOrder(registry, group),
           ),
         ],
-      ),
-    );
+      );
+      return index == null ? added : _place(added, _Member.project(path), from: group, into: group, index: index);
+    });
+  }
+
+  /// Takes the project at [path] out of the registry — the folder on disk stays as it is — and renumbers its siblings
+  /// 0..n; it is no longer the open project if it was.
+  Future<void> remove(String path) {
+    final ProjectEntry? removing = entry(path);
+    if (removing == null) {
+      return Future<void>.value();
+    }
+    return _update((registry) {
+      final List<_Member> siblings = _siblings(registry, removing.group)..remove(_Member.project(path));
+      final orders = <_Member, int>{for (final (int i, _Member member) in siblings.indexed) member: i};
+      return registry.copyWith(
+        projects: <ProjectEntry>[
+          for (final ProjectEntry project in registry.projects)
+            if (project.path != path) project.copyWith(order: orders[_Member.project(project.path)] ?? project.order),
+        ],
+        groups: <ProjectGroup>[
+          for (final ProjectGroup g in registry.groups) g.copyWith(order: orders[_Member.group(g.id)] ?? g.order),
+        ],
+        openProject: registry.openProject == path ? null : registry.openProject,
+      );
+    });
   }
 
   /// Adds a group named [name] last among the siblings in [parent] (the top level when null) — one above the highest
@@ -97,31 +186,21 @@ class ProjectRegistry implements ValueListenable<ProjectsSettings> {
     if (moving == null) {
       return Future<void>.value();
     }
-    final moved = _Member.project(path);
-    return _update((registry) {
-      final orders = <_Member, int>{};
-      final List<_Member> old = _siblings(registry, moving.group)..remove(moved);
-      for (var i = 0; i < old.length; i++) {
-        orders[old[i]] = i;
-      }
-      final List<_Member> target = _siblings(registry, group)..remove(moved);
-      target.insert(index.clamp(0, target.length), moved);
-      for (var i = 0; i < target.length; i++) {
-        orders[target[i]] = i;
-      }
-      return registry.copyWith(
-        projects: <ProjectEntry>[
-          for (final ProjectEntry project in registry.projects)
-            if (project.path == path)
-              project.copyWith(group: group, order: orders[moved]!)
-            else
-              project.copyWith(order: orders[_Member.project(project.path)] ?? project.order),
-        ],
-        groups: <ProjectGroup>[
-          for (final ProjectGroup g in registry.groups) g.copyWith(order: orders[_Member.group(g.id)] ?? g.order),
-        ],
-      );
-    });
+    return _update(
+      (registry) => _place(registry, _Member.project(path), from: moving.group, into: group, index: index),
+    );
+  }
+
+  /// Moves the group [id] with everything inside it into [parent] (the top level when null) at [index] among its new
+  /// siblings, as [move] does; a move into the group itself or into a group inside it changes nothing.
+  Future<void> moveGroup(String id, {required int index, String? parent}) {
+    final ProjectGroup? moving = group(id);
+    if (moving == null || isWithin(parent, id)) {
+      return Future<void>.value();
+    }
+    return _update(
+      (registry) => _place(registry, _Member.group(id), from: moving.parent, into: parent, index: index),
+    );
   }
 
   /// Records that the project at [path] was opened [at] (stored in UTC).
@@ -163,6 +242,43 @@ class ProjectRegistry implements ValueListenable<ProjectsSettings> {
       .update((settings) => settings.copyWith(projects: change(settings.projects)))
       // The store logs a failed write; the registry keeps the new value for this session.
       .onError<FileSystemException>((_, _) {});
+
+  /// [registry] with [member] — a member of [from] — moved into [into] at [index] among its new siblings, clamped to
+  /// their range; the old and the new siblings are renumbered 0..n.
+  static ProjectsSettings _place(
+    ProjectsSettings registry,
+    _Member member, {
+    required String? from,
+    required String? into,
+    required int index,
+  }) {
+    final orders = <_Member, int>{};
+    final List<_Member> old = _siblings(registry, from)..remove(member);
+    for (final (int i, _Member sibling) in old.indexed) {
+      orders[sibling] = i;
+    }
+    final List<_Member> target = _siblings(registry, into)..remove(member);
+    target.insert(index.clamp(0, target.length), member);
+    for (final (int i, _Member sibling) in target.indexed) {
+      orders[sibling] = i;
+    }
+    return registry.copyWith(
+      projects: <ProjectEntry>[
+        for (final ProjectEntry project in registry.projects)
+          if (project.path == member.path)
+            project.copyWith(group: into, order: orders[member]!)
+          else
+            project.copyWith(order: orders[_Member.project(project.path)] ?? project.order),
+      ],
+      groups: <ProjectGroup>[
+        for (final ProjectGroup g in registry.groups)
+          if (g.id == member.group)
+            g.copyWith(parent: into, order: orders[member]!)
+          else
+            g.copyWith(order: orders[_Member.group(g.id)] ?? g.order),
+      ],
+    );
+  }
 
   /// The members of [parent] (the top level when null) in their order: groups before projects on a tie.
   static List<_Member> _siblings(ProjectsSettings registry, String? parent) {

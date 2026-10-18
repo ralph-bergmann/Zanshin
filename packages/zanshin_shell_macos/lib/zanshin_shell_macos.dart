@@ -6,8 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 
 /// macOS implementation of [ZanshinShellPlatform] over three [MethodChannel]s:
-/// `zanshin_shell` (theme + window commands; also carries the Swift side's
-/// `onThemeChanged` calls back to Dart), `zanshin_shell/folder_drop` (folder
+/// `zanshin_shell` (theme + window commands, the folder picker and Reveal in
+/// Finder; also carries the Swift side's `onThemeChanged` calls back to Dart),
+/// `zanshin_shell/folder_drop` (folder
 /// drags) and `zanshin_shell/window_chrome` (each watched view's full screen
 /// and traffic-light block).
 class ZanshinShellMacOS extends ZanshinShellPlatform {
@@ -161,4 +162,16 @@ class ZanshinShellMacOS extends ZanshinShellPlatform {
 
   @override
   Stream<WindowChromeChange> get onWindowChromeChanged => _windowChromeChanges.stream;
+
+  @override
+  Future<String?> chooseDirectory({required int viewId, String? initialDirectory, String? prompt}) =>
+      _channel.invokeMethod<String>('chooseDirectory', <String, Object?>{
+        'viewId': viewId,
+        'initialDirectory': ?initialDirectory,
+        'prompt': ?prompt,
+      });
+
+  @override
+  Future<void> revealInFinder(String path) =>
+      _channel.invokeMethod<void>('revealInFinder', <String, Object?>{'path': path});
 }

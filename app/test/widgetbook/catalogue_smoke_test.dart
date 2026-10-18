@@ -47,6 +47,16 @@ void main() {
           'materials/island/fade',
           'materials/canvas/window-canvas',
           'windows/floating-shell/floating-shell',
+          'projects/projects-window/tree',
+          'projects/projects-window/search',
+          'projects/projects-window/no-results',
+          'projects/projects-window/empty',
+          'projects/projects-window/narrow',
+          'projects/projects-window/convert-offer',
+          'projects/projects-window/clone-form',
+          'projects/projects-window/drop-hint',
+          'projects/projects-window/no-identity',
+          'windows/projects-window/projects-window',
         ]),
       );
       expect(catalogueUseCasePaths, paths.toSet());

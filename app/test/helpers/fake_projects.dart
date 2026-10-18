@@ -7,7 +7,8 @@ import 'package:zanshin_core/zanshin_core.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 
 /// [ProjectRepos] for the project tests: scripted detect results and failures, a log of every call in order
-/// (`detect <path>`, `open <path>`, `read <path>`, `close <path>`), and per repository its readings and a
+/// (`detect <path>`, `open <path>`, `convert <path>`, `init <path>`, `clone <url> <destination>`, `read <path>`,
+/// `close <path>`), per creation its warnings or failure, and per repository its readings and a
 /// [FakeProjectRepo.changes] the test drives.
 class FakeProjectRepos implements ProjectRepos {
   /// What detect answers per path; a path not listed is a jj workspace.
@@ -24,6 +25,15 @@ class FakeProjectRepos implements ProjectRepos {
 
   /// Paths whose readings throw.
   final readFailures = <String, ZanshinFfiException>{};
+
+  /// The warnings a successful creation at a path (a clone: at its destination) reports.
+  final creationWarnings = <String, List<ZanshinWarning>>{};
+
+  /// Paths (a clone: destinations) whose creation throws.
+  final creationFailures = <String, ZanshinFfiException>{};
+
+  /// While set, a clone waits for it before it answers (a test sees the busy form).
+  Completer<void>? cloneGate;
 
   /// Runs during each reading, before it answers (a test emits a change from inside one).
   void Function(FakeProjectRepo repo)? onRead;
@@ -58,6 +68,35 @@ class FakeProjectRepos implements ProjectRepos {
     opened.add(repo);
     return repo;
   }
+
+  @override
+  Future<ProjectCreation> convert(String path) async {
+    log.add('convert $path');
+    return _created(path);
+  }
+
+  @override
+  Future<ProjectCreation> init(String path) async {
+    log.add('init $path');
+    return _created(path);
+  }
+
+  @override
+  Future<ProjectCreation> clone({required String url, required String destination}) async {
+    log.add('clone $url $destination');
+    await cloneGate?.future;
+    return _created(destination);
+  }
+
+  ProjectCreation _created(String path) {
+    final ZanshinFfiException? failure = creationFailures[path];
+    if (failure != null) {
+      throw failure;
+    }
+    final repo = FakeProjectRepo._(this, path);
+    opened.add(repo);
+    return ProjectCreation(repo: repo, warnings: creationWarnings[path] ?? const <ZanshinWarning>[]);
+  }
 }
 
 /// One repository a [FakeProjectRepos] opened.
@@ -83,7 +122,7 @@ class FakeProjectRepo implements ProjectRepo {
   void emitChange() => _changes.add(null);
 
   @override
-  OpenedRepoHandle get handle => throw UnsupportedError('a fake repository has no worker handle');
+  RepoHandle get handle => throw UnsupportedError('a fake repository has no worker handle');
 
   @override
   Stream<void> get changes => _changes.stream;

@@ -56,8 +56,8 @@ class HomePage extends StatelessWidget {
     ),
   );
 
-  /// PLACE: the capsule of the open project, else the empty island. All Projects…, Project Settings… and Settings…
-  /// stay disabled until 11.6 and 11.7 pass their actions.
+  /// PLACE: the capsule of the open project, else the empty island. All Projects… stays disabled until 11.12 opens the
+  /// Projects window (11.6 built its content), Project Settings… and Settings… until 11.7 passes their actions.
   Widget _place() {
     final ProjectEntry? project = projects.current;
     if (project == null) {

@@ -10,6 +10,9 @@ import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interfac
 ///
 /// The window chrome: `watchWindowChrome` answers [chrome] (or [chromeAnswer]'s future while one is set, which the
 /// test completes or fails), and [chromeChanges] carries what the test pushes.
+///
+/// Folder drops: [folderDragHandler] is the handler `FolderDropTarget`'s dispatcher installed, which a test calls with
+/// `FolderDragEvent`s; [dropViews] holds the views drops are enabled on.
 final class RecordingShell extends ZanshinShellPlatform with MockPlatformInterfaceMixin {
   RecordingShell() : super.forTesting();
 
@@ -67,4 +70,28 @@ final class RecordingShell extends ZanshinShellPlatform with MockPlatformInterfa
 
   @override
   Stream<WindowChromeChange> get onWindowChromeChanged => chromeChanges.stream;
+
+  /// The handler folder drags go to, while a `FolderDropTarget` is mounted.
+  FolderDragHandler? folderDragHandler;
+
+  /// The views folder drops are enabled on.
+  final dropViews = <int>{};
+
+  @override
+  void setFolderDragHandler(FolderDragHandler? handler) {
+    calls.add('setFolderDragHandler:${handler == null ? 'null' : 'set'}');
+    folderDragHandler = handler;
+  }
+
+  @override
+  Future<void> enableFolderDrops(int viewId) async {
+    calls.add('enableFolderDrops:$viewId');
+    dropViews.add(viewId);
+  }
+
+  @override
+  Future<void> disableFolderDrops(int viewId) async {
+    calls.add('disableFolderDrops:$viewId');
+    dropViews.remove(viewId);
+  }
 }

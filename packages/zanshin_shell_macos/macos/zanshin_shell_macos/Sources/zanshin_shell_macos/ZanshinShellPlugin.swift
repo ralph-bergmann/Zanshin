@@ -8,11 +8,15 @@ import FlutterMacOS
 /// Pushes system theme changes (dark/light, the accent, the text-selection
 /// colours, the accessibility display options and the scroll bar style) to
 /// Dart and executes window commands (drag, appearance override, titlebar
-/// double-click action) on the window that hosts the Flutter view. It also
-/// owns the `FolderDropHost` behind the "zanshin_shell/folder_drop" channel
-/// and the `WindowChromeHost` behind "zanshin_shell/window_chrome".
+/// double-click action) on the window that hosts the Flutter view, runs the
+/// folder picker (`DirectoryPanel`) on the window of a given view, and reveals
+/// paths in Finder. It also owns the `FolderDropHost` behind the
+/// "zanshin_shell/folder_drop" channel and the `WindowChromeHost` behind
+/// "zanshin_shell/window_chrome".
 public class ZanshinShellPlugin: NSObject, FlutterPlugin {
     private let channel: FlutterMethodChannel
+    /// The engine's messenger, which names the Flutter views of this engine.
+    private let messenger: FlutterBinaryMessenger
     private weak var view: NSView?
     /// The folder drop channel's host; lives as long as the plugin.
     private let folderDrops: FolderDropHost
@@ -24,13 +28,18 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
         let channel = FlutterMethodChannel(
             name: "zanshin_shell", binaryMessenger: registrar.messenger)
         let instance = ZanshinShellPlugin(
-            channel: channel, view: registrar.view, folderDrops: FolderDropHost(messenger: registrar.messenger),
+            channel: channel, messenger: registrar.messenger, view: registrar.view,
+            folderDrops: FolderDropHost(messenger: registrar.messenger),
             windowChrome: WindowChromeHost(messenger: registrar.messenger))
         registrar.addMethodCallDelegate(instance, channel: channel)
     }
 
-    init(channel: FlutterMethodChannel, view: NSView?, folderDrops: FolderDropHost, windowChrome: WindowChromeHost) {
+    init(
+        channel: FlutterMethodChannel, messenger: FlutterBinaryMessenger, view: NSView?, folderDrops: FolderDropHost,
+        windowChrome: WindowChromeHost
+    ) {
         self.channel = channel
+        self.messenger = messenger
         self.view = view
         self.folderDrops = folderDrops
         self.windowChrome = windowChrome
@@ -211,8 +220,34 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
         case "performTitlebarDoubleClickAction":
             performTitlebarDoubleClickAction()
             result(nil)
+        case "chooseDirectory":
+            chooseDirectory(call.arguments as? [String: Any], result: result)
+        case "revealInFinder":
+            guard let path = (call.arguments as? [String: Any])?["path"] as? String else {
+                result(FlutterError(code: "bad-args", message: "revealInFinder needs a path", details: nil))
+                return
+            }
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+            result(nil)
         default:
             result(FlutterMethodNotImplemented)
+        }
+    }
+
+    /// Runs the folder picker as a sheet on the window of the view named by
+    /// `viewId`, or as a modal panel when no attached view has that id, and
+    /// answers the chosen path or nil.
+    private func chooseDirectory(_ arguments: [String: Any]?, result: @escaping FlutterResult) {
+        guard let viewId = arguments?["viewId"] as? Int else {
+            result(FlutterError(code: "bad-args", message: "chooseDirectory needs a viewId", details: nil))
+            return
+        }
+        let window = flutterViewController(FlutterViewIdentifier(viewId), messenger: messenger)?.view.window
+        DirectoryPanel.choose(
+            on: window, initialDirectory: arguments?["initialDirectory"] as? String,
+            prompt: arguments?["prompt"] as? String
+        ) { path in
+            result(path)
         }
     }
 

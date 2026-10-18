@@ -92,6 +92,17 @@ final class RecordingPlatform extends ZanshinShellPlatform with MockPlatformInte
 
   @override
   Stream<WindowChromeChange> get onWindowChromeChanged => chromeController.stream;
+
+  @override
+  Future<String?> chooseDirectory({required int viewId, String? initialDirectory, String? prompt}) async {
+    calls.add('chooseDirectory:$viewId:$initialDirectory:$prompt');
+    return '/Users/me/code/api';
+  }
+
+  @override
+  Future<void> revealInFinder(String path) async {
+    calls.add('revealInFinder:$path');
+  }
 }
 
 void main() {
@@ -130,6 +141,20 @@ void main() {
     platform.chromeController.add((viewId: 3, chrome: const WindowChrome(fullScreen: true)));
     expect(await change, (viewId: 3, chrome: const WindowChrome(fullScreen: true)));
     expect(platform.calls, ['watchWindowChrome:3', 'unwatchWindowChrome:3']);
+  });
+
+  test('the folder picker and Reveal in Finder pass through to the platform', () async {
+    expect(
+      await ZanshinShell.chooseDirectory(viewId: 2, initialDirectory: '/Users/me', prompt: 'Add'),
+      '/Users/me/code/api',
+    );
+    expect(await ZanshinShell.chooseDirectory(viewId: 4), '/Users/me/code/api');
+    await ZanshinShell.revealInFinder('/Users/me/code/api');
+    expect(platform.calls, [
+      'chooseDirectory:2:/Users/me:Add',
+      'chooseDirectory:4:null:null',
+      'revealInFinder:/Users/me/code/api',
+    ]);
   });
 
   test('the accessibility, accent and scroll bar state reaches the app unchanged', () async {

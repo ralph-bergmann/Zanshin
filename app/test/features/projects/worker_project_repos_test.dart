@@ -154,6 +154,64 @@ void main() {
       expect(changesA, 0);
     });
 
+    /// Makes [path] a Git repository with one commit on `main` (packages/zanshin_core/test/worker/creation_test.dart's
+    /// recipe).
+    Future<void> gitWithCommit(String path) async {
+      Future<void> git(List<String> args) async {
+        final ProcessResult result = await Process.run('git', <String>['-C', path, ...args]);
+        if (result.exitCode != 0) {
+          fail('git ${args.join(' ')} failed: ${result.stderr}');
+        }
+      }
+
+      await git(<String>['init', '-b', 'main']);
+      await git(<String>['config', 'user.email', 'test@test.invalid']);
+      await git(<String>['config', 'user.name', 'Test']);
+      File('$path/README.md').writeAsStringSync('hello');
+      await git(<String>['add', '.']);
+      await git(<String>['commit', '-m', 'init', '--no-gpg-sign']);
+    }
+
+    test(
+      'convert makes a Git repository a colocated workspace: a created handle, its warnings, .jj beside .git',
+      () async {
+        final path = '${temp.resolveSymbolicLinksSync()}/git';
+        await Directory(path).create();
+        await gitWithCommit(path);
+
+        final ProjectCreation creation = await repos.convert(path);
+        addTearDown(creation.repo.close);
+
+        expect(creation.repo.handle, isA<CreatedRepoHandle>());
+        expect(creation.warnings, (creation.repo.handle as CreatedRepoHandle).warnings);
+        expect(Directory('$path/.jj').existsSync(), isTrue);
+        expect(Directory('$path/.git').existsSync(), isTrue);
+        expect((await creation.repo.read()).status, ProjectStatus.clean);
+        expect((await repos.detect(path)).kind, RepoKind.jj);
+      },
+    );
+
+    test('init creates a Git-backed workspace whose Git store stays inside .jj', () async {
+      final path = '${temp.resolveSymbolicLinksSync()}/plain';
+      await Directory(path).create();
+
+      final ProjectCreation creation = await repos.init(path);
+      addTearDown(creation.repo.close);
+
+      expect(creation.warnings, isEmpty);
+      expect(Directory('$path/.jj').existsSync(), isTrue);
+      expect(Directory('$path/.git').existsSync(), isFalse);
+      expect(File('$path/.jj/repo/store/type').readAsStringSync(), 'git');
+      expect(await creation.repo.read(), const ProjectReading(status: ProjectStatus.clean));
+    });
+
+    test('a clone into a target that does not exist is refused with jj.jj_lib_error', () async {
+      await expectLater(
+        repos.clone(url: 'file:///nowhere', destination: '${temp.path}/missing'),
+        throwsA(isA<ZanshinFfiException>().having((error) => error.code, 'code', 'jj.jj_lib_error')),
+      );
+    });
+
     test('a working-copy heartbeat is no change: only op-heads events count', () async {
       final (String path, _) = await initRepo('heartbeat');
       final ProjectRepo repo = await repos.open(path);

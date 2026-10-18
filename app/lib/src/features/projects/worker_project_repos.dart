@@ -16,9 +16,10 @@ void _logWarnings(String call, List<ZanshinWarning> warnings) {
   }
 }
 
-/// [ProjectRepos] over the worker isolate (Story 11.5): detect and open pass through, a repository's changes are the
-/// worker's op-heads events for its handle, and a reading is one `show` of @ and one topology call. The calls' warnings
-/// are logged by code.
+/// [ProjectRepos] over the worker isolate (Stories 11.5 and 11.6): detect, open, convert, init (the Git backend) and
+/// clone pass through; a repository's changes are the worker's op-heads events for its handle, and a reading is one
+/// `show` of @ and one topology call. The calls' warnings are logged by code; a creation's also reach the caller, on
+/// [ProjectCreation] or on the [ZanshinFfiException] a failed one throws.
 class WorkerProjectRepos implements ProjectRepos {
   /// Repositories through [_worker], the boot's worker.
   WorkerProjectRepos(this._worker);
@@ -39,6 +40,34 @@ class WorkerProjectRepos implements ProjectRepos {
     _logWarnings('open', handle.warnings);
     return _WorkerProjectRepo(worker, handle);
   }
+
+  /// `RepoBackend::Git` (the worker's `backend: 1`): the CLI's `jj git init`, never the native backend.
+  static const _gitBackend = 1;
+
+  @override
+  Future<ProjectCreation> convert(String path) => _create('convert', (worker) => worker.convert(path));
+
+  @override
+  Future<ProjectCreation> init(String path) => _create('init', (worker) => worker.initRepo(path, backend: _gitBackend));
+
+  @override
+  Future<ProjectCreation> clone({required String url, required String destination}) =>
+      _create('clone', (worker) => worker.cloneRepo(url: url, targetPath: destination));
+
+  /// Runs one creation [call]: its handle becomes a [ProjectRepo] like an opened one; a failure is rethrown with its
+  /// warnings, which are logged by code either way.
+  Future<ProjectCreation> _create(String call, Future<CreatedRepoHandle> Function(ZanshinWorker worker) create) async {
+    final ZanshinWorker worker = await _worker;
+    final CreatedRepoHandle handle;
+    try {
+      handle = await create(worker);
+    } on ZanshinFfiException catch (error) {
+      _logWarnings(call, error.warnings);
+      rethrow;
+    }
+    _logWarnings(call, handle.warnings);
+    return ProjectCreation(repo: _WorkerProjectRepo(worker, handle), warnings: handle.warnings);
+  }
 }
 
 class _WorkerProjectRepo implements ProjectRepo {
@@ -50,7 +79,7 @@ class _WorkerProjectRepo implements ProjectRepo {
   final ZanshinWorker _worker;
 
   @override
-  final OpenedRepoHandle handle;
+  final RepoHandle handle;
 
   @override
   Stream<void> get changes =>

@@ -27,8 +27,10 @@ export 'src/ffi/config.dart'
         MissingRepoConfig,
         WorkingCopyAuthor;
 export 'src/ffi/diagnostics.dart' show GetDiagnostics, ZanshinDiagnosticsModule;
+export 'src/ffi/file_ops.dart' show FileNotAutoTracked, FileTooLarge, SnapshotStats, UntrackedPath, UntrackedReason;
 export 'src/ffi/graph.dart' show GraphTopologyView, TopologyRef, TopologyRefKind;
 export 'src/ffi/log_forwarder.dart' show forwardLogRecord, initLogForwarding;
+export 'src/ffi/precondition.dart' show Precondition;
 export 'src/ffi/repo_detect.dart' show RepoDetectResult, RepoKind;
 export 'src/ffi/status.dart' show WorkingCopyStatus;
 export 'src/ffi/warning.dart' show WarnedList, ZanshinWarning, ZanshinWarningCode;
@@ -36,7 +38,7 @@ export 'src/ffi/workspace.dart' show WorkspaceRootResult;
 export 'src/ffi/zanshin_version.dart' show ZanshinFfiModule, ZanshinFfiVersion;
 export 'src/worker/events.dart'
     show OpHeadsChangedEvent, ProgressEvent, RepoEvent, WatchErrorEvent, WorkingCopyHeartbeatEvent;
-export 'src/worker/handle.dart' show OpenedRepoHandle, RepoHandle;
+export 'src/worker/handle.dart' show CreatedRepoHandle, OpenedRepoHandle, RepoHandle;
 export 'src/worker/isolate.dart' show ZanshinWorker;
 export 'src/worker/responses.dart' show ZanshinFfiException;
 export 'src/worker/worker_module.dart' show WorkerModule;

@@ -25,6 +25,7 @@ import 'src/features/bootstrap/icon_module.dart';
 import 'src/features/bootstrap/zanshin_bootstrap.dart';
 import 'src/features/projects/project_session.dart';
 import 'src/features/projects/projects_module.dart';
+import 'src/features/projects/projects_window.dart';
 import 'src/features/window/app_windows.dart';
 
 final _log = Logger('zanshin.bootstrap');
@@ -147,4 +148,9 @@ abstract class MainComponent {
 
   @inject
   ProjectSession get projectSession; // ignore: unreachable_from_main
+
+  // WHY: the Projects window's content (Story 11.6) is hosted by 11.12's dialog window, which does not exist yet;
+  // until then nothing in main reads this getter, and only the DI test builds the content through it.
+  @inject
+  ProjectsWindowFactory get projectsWindowFactory; // ignore: unreachable_from_main
 }

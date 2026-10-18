@@ -10,6 +10,7 @@ import 'package:zanshin_shell/zanshin_shell.dart' show ShellTheme;
 import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../catalogue.dart' show catalogueAppBuilder;
+import '../demo_projects_fakes.dart';
 import 'shell.dart' show FloatingShellDemo, ShellDemoState;
 
 /// Hands the catalogue's [AppWindows] to the use cases that open real windows.
@@ -55,7 +56,7 @@ class CatalogueWindowRoot extends StatelessWidget {
 
 /// The "Windows" folder: use cases that open a real window of their own, as the app's dialog windows will.
 ///
-/// Stories 11.12 (window chrome kinds, dialog windows), 11.6 (Settings), 11.7 (Projects) and 10.22 (Push) add their
+/// Stories 11.12 (window chrome kinds, dialog windows), 11.6 (Projects), 11.7 (Settings) and 10.22 (Push) add their
 /// windows here. Each window's builder returns a [CatalogueWindowRoot] over its content.
 final windowsFolder = WidgetbookFolder(
   name: 'Windows',
@@ -75,6 +76,15 @@ final windowsFolder = WidgetbookFolder(
         WidgetbookUseCase(
           name: 'Floating shell',
           builder: (context) => const Center(child: _OpenFloatingShell()),
+        ),
+      ],
+    ),
+    WidgetbookComponent(
+      name: 'Projects window',
+      useCases: <WidgetbookUseCase>[
+        WidgetbookUseCase(
+          name: 'Projects window',
+          builder: (context) => const Center(child: _OpenProjectsWindow()),
         ),
       ],
     ),
@@ -137,6 +147,36 @@ class _OpenFloatingShell extends StatelessWidget {
             shellTheme: shell?.shellTheme,
             child: const FloatingShellDemo(state: ShellDemoState.slots),
           ),
+        ),
+      );
+    },
+  );
+}
+
+/// Opens Story 11.6's Projects window content over the demo registry in a real window of 900 × 640, resizable down to
+/// the Projects window's 680 × 440 minimum (Window.prompt.md:23), so a reviewer drags it through the narrow header, a
+/// Finder folder onto it and presses Add directory for the real folder picker. The dialog window itself (style mask,
+/// title, launch, exit rule) is 11.12's.
+class _OpenProjectsWindow extends StatelessWidget {
+  const _OpenProjectsWindow();
+
+  static const _size = Size(900, 640);
+  static const _constraints = BoxConstraints(minWidth: 680, minHeight: 440);
+
+  @override
+  Widget build(BuildContext context) => ZsButton(
+    label: 'Open the Projects window',
+    variant: ZsButtonVariant.primary,
+    identifier: 'open-projects-window',
+    onPressed: () {
+      final ZsShellScope? shell = context.getInheritedWidgetOfExactType<ZsShellScope>();
+      unawaited(
+        CatalogueWindows.of(context).openOrActivate(
+          key: 'widgetbook-projects-window',
+          title: 'Projects',
+          size: _size,
+          constraints: _constraints,
+          builder: (context) => CatalogueWindowRoot(shellTheme: shell?.shellTheme, child: const DemoProjectsWindow()),
         ),
       );
     },
