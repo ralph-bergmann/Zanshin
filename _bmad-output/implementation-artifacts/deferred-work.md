@@ -1304,3 +1304,20 @@ _Ralph asked whether the design, theme and UI code that 11.1 and 11.2 put in `ap
 - **The rule "`marionette_mcp` must match `marionette_flutter` exactly" cannot be kept as written: the app allows `^0.7.0` and the documented install command takes the newest `marionette_mcp`.** Low. (Surfaced in the review.)
   - `marionette_mcp-0.7.0/lib/src/vm_service/vm_service_context.dart:110-125` refuses any other binding version; `app/pubspec.yaml:22` allows `^0.7.0` (the lockfile holds 0.7.0 until a `pub upgrade`), and `project-context.md:557-558` installs with a bare `dart pub global activate marionette_mcp`, so either side can move to 0.7.x alone and agents can no longer connect.
   - **Follow-up:** Ralph's call: pin `marionette_flutter` exactly, or document `dart pub global activate marionette_mcp <the lockfile's version>` and bump both together.
+
+## Surfaced 2026-10-18 while comparing the Widgetbook catalogue with the DS cards (console session, Ralph)
+
+_Ralph found four defects in the catalogue (Select chevron, a second scroll bar, the Skeleton loop, unlabelled Appearance fields; fixed in `088c577`). Claude then compared 17 of the 25 control families with the DS cards, rendered full size with headless Chrome, through Marionette (night, multicolor); the two control deviations and the catalogue gaps it found are fixed in `9c033ef` and `407df81`. Since then Claude checks every UI change that way (house rule "Tests", amendment 2026-10-18, `8b6b68d`). What follows is what the session left open._
+
+- **Not yet compared with the DS: Link, Badge on its own, Kbd, Spinner, ProgressBar, Presence, and every family in paper, in an inactive window and under increased contrast.** Low.
+  - The 2026-10-18 comparison covered the other 17 families in night with the multicolor accent only.
+  - **Follow-up:** compare them the same way (Marionette `zanshinCatalogue.open` with `theme` / `inactive` / `contrast`, against the DS cards).
+- **The field list's danger row is highlighted in the blue-grey `--fl-on`, while the DS menu's danger row highlights in red (`dangerHover`).** Low (unverified).
+  - Seen in the catalogue's "Field list" state matrix; whether the field-attached list follows the menu's danger rule was not checked against the DS.
+  - **Follow-up:** check the DS rule for a field-attached list's danger row; align `ZsFieldList` if it follows the menu.
+- **The DS Skeleton sweep jumps at every loop, and Zanshin deliberately deviates.** None; a record.
+  - DS components/controls/controls.css:62, :67 moves the band only from `background-position:150%` to `-50%`, so half of it stays on the bar at both ends; `zsSkeletonBand` (`packages/zanshin_ui/lib/src/controls/zs_skeleton.dart`) lets it enter and leave whole (`088c577`).
+  - **Follow-up:** mention it with the next Claude Design round.
+- **Golden tests: Ralph asked whether goldens could compare against the DS and serve as extra tests.** Open; no decision.
+  - Claude's proposal: goldens of the catalogue's state matrices (night and paper, real fonts loaded) as regression tests, plus a generated side-by-side sheet (DS card through headless Chrome next to the golden) for review, not as a gate; a pixel-exact comparison with the browser cannot work. It needs a story, because the house rule "Tests" ("no golden tests") and 11.11's non-goal say otherwise.
+  - **Follow-up:** Ralph decides whether to write the story (or a spike with one component first).
