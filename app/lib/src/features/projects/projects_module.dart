@@ -11,7 +11,7 @@ import 'worker_project_repos.dart';
 
 /// DI module providing the app's one [ProjectRegistry] and [ProjectSession] (Story 11.5) and the Projects window's
 /// [ProjectsEnvironment] (Story 11.6): the registry over the settings store, the repositories and the identity over
-/// the boot's worker.
+/// the boot's worker, jj-lib's version over the diagnostics.
 ///
 /// The worker arrives as a constructor argument, like `SettingsModule(store:)`: inject_generator binds an
 /// `@asynchronous` provider only as its resolved value, and a provider taking that value turns asynchronous itself —
@@ -36,8 +36,9 @@ class ProjectsModule {
   ProjectSession projectSession(ProjectRegistry registry) =>
       ProjectSession(registry: registry, repos: WorkerProjectRepos(worker));
 
-  /// Provides the Projects window's [ProjectsEnvironment].
+  /// Provides the Projects window's [ProjectsEnvironment] over [diagnostics].
   @provides
   @singleton
-  ProjectsEnvironment projectsEnvironment() => DesktopProjectsEnvironment(worker);
+  ProjectsEnvironment projectsEnvironment(GetDiagnostics diagnostics) =>
+      DesktopProjectsEnvironment(worker, diagnostics: diagnostics);
 }

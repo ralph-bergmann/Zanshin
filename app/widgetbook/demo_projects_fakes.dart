@@ -147,7 +147,7 @@ class _DemoRepo implements ProjectRepo {
   Future<void> close() async {}
 }
 
-/// [ProjectsEnvironment] for the catalogue: a fixed version and [identity], the real folder picker and Reveal in
+/// [ProjectsEnvironment] for the catalogue: fixed versions and [identity], the real folder picker and Reveal in
 /// Finder (`ZanshinShell`), and [home].
 class DemoProjectsEnvironment implements ProjectsEnvironment {
   /// The demo environment under [home] with [identity].
@@ -161,6 +161,9 @@ class DemoProjectsEnvironment implements ProjectsEnvironment {
 
   @override
   Future<String?> appVersion() async => '2026.9.1 · Build 1';
+
+  @override
+  Future<String?> jjLibVersion() async => '0.46.0';
 
   @override
   Future<JjIdentity> identity({String? workspaceRoot}) async => _identity;

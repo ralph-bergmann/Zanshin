@@ -32,7 +32,7 @@ the seven `void`-returning ones — `zanshin_string_free`, `zanshin_buffer_free`
 
 The converse does **not** hold: returning an envelope does not make a function
 fallible. `zanshin_diagnostics` returns a `ZanshinBuf *` token and is infallible
-by contract (two compile-time constants plus one path resolution with a temp
+by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
@@ -510,7 +510,7 @@ or no `# Errors` block.
 | `zanshin_config_gc_delete` | `(const uint8_t *data, uintptr_t len)` | `ConfigGcDeleteRequest` | `ConfigGcResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.config_path_not_found` | 9.28 |
 | `zanshin_environment_adopt` | `(const uint8_t *data, uintptr_t len)` | `EnvironmentAdoptRequest` | — (no-payload success, no warnings) | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input` | 9.36 |
 | `zanshin_ffi_version` | `(void)` → `char *` | — | — | — | 3.2 |
-| `zanshin_diagnostics` | `(void)` | — | `Diagnostics` | — (infallible; see *Token contract*) | 3.8 |
+| `zanshin_diagnostics` | `(void)` | — | `Diagnostics` | — (infallible; see *Token contract*) | 3.8 (+11.6) |
 | `zanshin_log` | `(int32_t level, const char *target, const char *message)` → `void` | — | — | — | 3.3 |
 | `zanshin_logging_init` | `(void)` → `void` | — | — | — | 3.3 |
 | `zanshin_events_register` | `(void (*callback)(ZanshinBuf *event))` → `void` | — | — | — | 3.6 |

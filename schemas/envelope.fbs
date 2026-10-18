@@ -587,11 +587,13 @@ table RepoHandle {
 }
 
 /// Diagnostics payload returned by zanshin_diagnostics().
-/// All three fields are compile-time or infallibly-resolved values.
+/// All four fields are compile-time or infallibly-resolved values.
 table Diagnostics {
   app_version: string;
   git_sha: string;
   log_path: string;
+  /// The version of jj-lib Zanshin is built on (`zanshin_jj::JJ_LIB_VERSION`).
+  jj_lib_version: string;
 }
 
 /// How a working-copy file changed between @- and @.

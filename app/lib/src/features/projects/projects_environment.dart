@@ -11,11 +11,15 @@ import 'package:zanshin_shell/zanshin_shell.dart';
 final _log = Logger('zanshin.projects');
 
 /// What the Projects window reads from and asks of its surroundings besides the registry and the session (Story 11.6;
-/// Claude's proposal): the app's version, the effective jj identity, the folder picker, Reveal in Finder and the home
-/// folder. The app's adapter is [DesktopProjectsEnvironment]; tests and the catalogue pass fakes.
+/// Claude's proposal): the app's version, jj-lib's version, the effective jj identity, the folder picker, Reveal in
+/// Finder and the home folder. The app's adapter is [DesktopProjectsEnvironment]; tests and the catalogue pass fakes.
 abstract interface class ProjectsEnvironment {
   /// The sidebar's version line, "‹version› · Build ‹build›" as the splash shows it, or null when it cannot be read.
   Future<String?> appVersion();
+
+  /// The sidebar's second version line's version: the version of jj-lib Zanshin is built on, e.g. "0.46.0", or null
+  /// when it cannot be read.
+  Future<String?> jjLibVersion();
 
   /// The effective `user.name` and `user.email` (`jj config get`, 9.28) for the workspace at [workspaceRoot], or the
   /// user-level ones without it. Throws [ZanshinFfiException] when the read fails.
@@ -65,13 +69,15 @@ class JjIdentity {
   String toString() => 'JjIdentity($name, $email)';
 }
 
-/// The app's [ProjectsEnvironment]: the bundle's version through `package_info_plus` in the splash's format, the
-/// identity through the boot's worker (`configGet`), and the folder picker and Reveal in Finder through `ZanshinShell`.
+/// The app's [ProjectsEnvironment]: the bundle's version through `package_info_plus` in the splash's format, jj-lib's
+/// version through the diagnostics (`zanshin_diagnostics`), the identity through the boot's worker (`configGet`), and
+/// the folder picker and Reveal in Finder through `ZanshinShell`.
 class DesktopProjectsEnvironment implements ProjectsEnvironment {
-  /// The environment over [_worker], the boot's worker.
-  DesktopProjectsEnvironment(this._worker);
+  /// The environment over [_worker], the boot's worker, and [_diagnostics], the DI-provided diagnostics read.
+  DesktopProjectsEnvironment(this._worker, {required this._diagnostics});
 
   final Future<ZanshinWorker> _worker;
+  final GetDiagnostics _diagnostics;
 
   @override
   Future<String?> appVersion() async {
@@ -80,6 +86,18 @@ class DesktopProjectsEnvironment implements ProjectsEnvironment {
       return '${info.version} · Build ${info.buildNumber}';
     } on Exception catch (error, stack) {
       _log.warning('the app version could not be read', error, stack);
+      return null;
+    }
+  }
+
+  @override
+  Future<String?> jjLibVersion() async {
+    try {
+      return _diagnostics().jjLibVersion;
+    } on ZanshinFfiException catch (error, stack) {
+      _log
+        ..warning('reading the jj-lib version failed: ${error.code}')
+        ..fine('jj-lib version failure', error, stack);
       return null;
     }
   }

@@ -669,21 +669,23 @@ pub fn ok_absorb_result(r: &zanshin_jj::AbsorbResult, report: &CallReport) -> Ve
 
 /// Build a success `Envelope` with a `Diagnostics` payload and return the finished buffer.
 ///
-/// Sets `ok = true`, `data_type = Payload::Diagnostics`, and populates the three
+/// Sets `ok = true`, `data_type = Payload::Diagnostics`, and populates the four
 /// diagnostic fields. All fields are compile-time constants or infallibly resolved
 /// values; this builder has no fallible path.
 #[must_use]
-pub fn ok_diagnostics(app_version: &str, git_sha: &str, log_path: &str) -> Vec<u8> {
+pub fn ok_diagnostics(app_version: &str, git_sha: &str, log_path: &str, jj_lib_version: &str) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let app_version_off = b.create_string(app_version);
     let git_sha_off = b.create_string(git_sha);
     let log_path_off = b.create_string(log_path);
+    let jj_lib_version_off = b.create_string(jj_lib_version);
     let diag = fbs::Diagnostics::create(
         &mut b,
         &fbs::DiagnosticsArgs {
             app_version: Some(app_version_off),
             git_sha: Some(git_sha_off),
             log_path: Some(log_path_off),
+            jj_lib_version: Some(jj_lib_version_off),
         },
     );
     let envelope = fbs::Envelope::create(
@@ -921,7 +923,7 @@ mod tests {
 
     #[test]
     fn ok_diagnostics_produces_diagnostics_envelope() {
-        let buf = ok_diagnostics("1.2.3", "abc123", "/tmp/Logs/Zanshin");
+        let buf = ok_diagnostics("1.2.3", "abc123", "/tmp/Logs/Zanshin", "0.46.0");
         let env = verified_envelope(&buf);
         assert!(env.ok());
         assert!(env.error().is_none());
@@ -930,6 +932,7 @@ mod tests {
         assert_eq!(diag.app_version(), Some("1.2.3"));
         assert_eq!(diag.git_sha(), Some("abc123"));
         assert_eq!(diag.log_path(), Some("/tmp/Logs/Zanshin"));
+        assert_eq!(diag.jj_lib_version(), Some("0.46.0"));
     }
 
     #[test]

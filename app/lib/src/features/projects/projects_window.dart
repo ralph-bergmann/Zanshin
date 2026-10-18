@@ -29,11 +29,11 @@ final _log = Logger('zanshin.projects');
 /// paints [ZsWindowFill], and draws its own 52 pt header row and the sidebar's empty 52 pt top, where a window's traffic
 /// lights sit; both drag the window.
 ///
-/// **Sidebar** (200, a `--fl-border` hairline on its right): the brand — the 32 px Nami chip, "Zanshin" and the version
-/// line "‹version› · Build ‹build›" (the splash's; jj-lib's version is not exposed, deferred) —, the navigation —
-/// Projects (current, `--fl-on`) and Settings…, which runs [onSettings] and is disabled without it — and the identity
-/// footer: `user.name` and `user.email` with an avatar, or the jj CLI's phrase for what is missing with "Set identity…"
-/// when [onIdentitySettings] is given (Claude's proposal). A failed read hides the footer.
+/// **Sidebar** (200, a `--fl-border` hairline on its right): the brand — the 32 px Nami chip, "Zanshin", the version
+/// line "‹version› · Build ‹build›" (the splash's) and below it "jj-lib ‹version›" (Claude's proposal) —, the
+/// navigation — Projects (current, `--fl-on`) and Settings…, which runs [onSettings] and is disabled without it — and
+/// the identity footer: `user.name` and `user.email` with an avatar, or the jj CLI's phrase for what is missing with
+/// "Set identity…" when [onIdentitySettings] is given (Claude's proposal). A failed read hides the footer.
 ///
 /// **Header** (52, a hairline below): "Projects" at sidebar + 12 (600 13/1.2, `--text-dim` in an inactive window),
 /// then the search (230; focused on open; Esc clears it and never closes; ↓ moves into the tree), Add directory (the
@@ -154,6 +154,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
   var _rowDrop = false;
 
   String? _version;
+  String? _jjLibVersion;
   JjIdentity? _identity;
   String? _identityRoot;
   var _identityRead = 0;
@@ -164,7 +165,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
     final String? open = widget.session.current?.path;
     _selected = open == null ? null : 'project:$open';
     widget.session.addListener(_sessionChanged);
-    unawaited(_readVersion());
+    unawaited(_readVersions());
     unawaited(_readIdentity(open));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -220,10 +221,16 @@ class ProjectsWindowState extends State<ProjectsWindow> {
 
   // ---- reads ----
 
-  Future<void> _readVersion() async {
-    final String? version = await widget.environment.appVersion();
+  Future<void> _readVersions() async {
+    final (String? version, String? jjLibVersion) = await (
+      widget.environment.appVersion(),
+      widget.environment.jjLibVersion(),
+    ).wait;
     if (mounted) {
-      setState(() => _version = version);
+      setState(() {
+        _version = version;
+        _jjLibVersion = jjLibVersion;
+      });
     }
   }
 
@@ -640,7 +647,7 @@ class ProjectsWindowState extends State<ProjectsWindow> {
                 child: const ColoredBox(color: Color(0x00000000)),
               ),
             ),
-            _Brand(version: _version),
+            _Brand(version: _version, jjLibVersion: _jjLibVersion),
             Padding(
               // `.zk-side-nav{padding:0 10px;gap:1px}` (DS ui_kits/desktop/kit.css:194).
               padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -951,16 +958,27 @@ class ProjectsWindowState extends State<ProjectsWindow> {
 }
 
 /// The sidebar's brand block (DS ui_kits/desktop/kit.css:192-194): padding 6 14 12, gap 9 — the 32 px Nami chip,
-/// "Zanshin" (`--fs-lg` 600, tracked .02em) and the version line (mono `--fs-xs` `--text-dim`, 1 below).
+/// "Zanshin" (`--fs-lg` 600, tracked .02em) and the version lines (mono `--fs-xs` `--text-dim`, one line each, 1
+/// apart): the app's [version], then "jj-lib ‹version›" for [jjLibVersion] — a line of its own, as both would not fit
+/// one 131 px line (Claude's proposal). A null version leaves its line out.
 class _Brand extends StatelessWidget {
-  const _Brand({required this.version});
+  const _Brand({required this.version, required this.jjLibVersion});
 
   final String? version;
+  final String? jjLibVersion;
 
   @override
   Widget build(BuildContext context) {
     final ZsColors colors = ZsColors.of(context);
     final String? version = this.version;
+    final String? jjLibVersion = this.jjLibVersion;
+    Text line(String text) => Text(
+      text,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.ellipsis,
+      style: ZsType.id.copyWith(fontSize: ZsType.fsXs, color: colors.textDim),
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
       child: Row(
@@ -976,14 +994,8 @@ class _Brand extends StatelessWidget {
                   'Zanshin',
                   style: ZsType.panelTitle.copyWith(letterSpacing: .02 * ZsType.fsLg, color: colors.text),
                 ),
-                if (version != null)
-                  Text(
-                    version,
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.ellipsis,
-                    style: ZsType.id.copyWith(fontSize: ZsType.fsXs, color: colors.textDim),
-                  ),
+                if (version != null) line(version),
+                if (jjLibVersion != null) line('jj-lib $jjLibVersion'),
               ],
             ),
           ),

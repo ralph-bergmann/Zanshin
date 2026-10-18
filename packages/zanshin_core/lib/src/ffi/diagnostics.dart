@@ -17,6 +17,7 @@ final class Diagnostics {
     required this.appVersion,
     required this.gitSha,
     required this.logPath,
+    required this.jjLibVersion,
   });
 
   /// Version from `[workspace.package]` — e.g. `"0.1.0"`.
@@ -27,6 +28,9 @@ final class Diagnostics {
 
   /// Absolute directory path the tracing file sink writes to.
   final String logPath;
+
+  /// The version of jj-lib Zanshin is built on (`zanshin_jj::JJ_LIB_VERSION`) — e.g. `"0.46.0"`.
+  final String jjLibVersion;
 }
 
 /// Typedef for the DI-provided factory that calls the Rust diagnostics FFI.
@@ -78,5 +82,6 @@ Diagnostics decodeDiagnosticsEnvelope(Uint8List bytes) {
     appVersion: payload.appVersion ?? '',
     gitSha: payload.gitSha ?? '',
     logPath: payload.logPath ?? '',
+    jjLibVersion: payload.jjLibVersion ?? '',
   );
 }

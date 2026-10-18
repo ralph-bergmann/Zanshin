@@ -26,7 +26,7 @@ export 'src/ffi/config.dart'
         ConfigValueSource,
         MissingRepoConfig,
         WorkingCopyAuthor;
-export 'src/ffi/diagnostics.dart' show GetDiagnostics, ZanshinDiagnosticsModule;
+export 'src/ffi/diagnostics.dart' show Diagnostics, GetDiagnostics, ZanshinDiagnosticsModule;
 export 'src/ffi/file_ops.dart' show FileNotAutoTracked, FileTooLarge, SnapshotStats, UntrackedPath, UntrackedReason;
 export 'src/ffi/graph.dart' show GraphTopologyView, TopologyRef, TopologyRefKind;
 export 'src/ffi/log_forwarder.dart' show forwardLogRecord, initLogForwarding;

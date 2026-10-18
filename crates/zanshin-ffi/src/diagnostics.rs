@@ -13,12 +13,13 @@ use crate::tracing_init;
 /// Return a `FlatBuffers` `Envelope` carrying build-stamp and log-location
 /// diagnostics.
 ///
-/// Returns a `FlatBuffers` `Envelope` with three diagnostic fields:
+/// Returns a `FlatBuffers` `Envelope` with four diagnostic fields:
 /// `app_version` (`CARGO_PKG_VERSION`), `git_sha` (`ZANSHIN_GIT_SHA` from
-/// `build.rs`, `unknown` in a no-git build), and `log_path` (the absolute
-/// log directory from `tracing_init::log_dir()`).
+/// `build.rs`, `unknown` in a no-git build), `log_path` (the absolute
+/// log directory from `tracing_init::log_dir()`), and `jj_lib_version` (the
+/// version of jj-lib Zanshin is built on, `zanshin_jj::JJ_LIB_VERSION`).
 ///
-/// The function is infallible (two compile-time constants + one path resolution
+/// The function is infallible (three compile-time constants + one path resolution
 /// with a temp fallback). The `envelope::catch` wrapper still provides the
 /// `internal.panic` backstop.
 ///
@@ -32,6 +33,7 @@ pub extern "C" fn zanshin_diagnostics() -> *mut ZanshinBuf {
             env!("CARGO_PKG_VERSION"),
             env!("ZANSHIN_GIT_SHA"),
             &log_path.to_string_lossy(),
+            zanshin_jj::JJ_LIB_VERSION,
         ))
     });
     vec_into_token(buf)
@@ -49,7 +51,7 @@ mod tests {
     }
 
     #[test]
-    fn diagnostics_envelope_has_version_sha_and_log_path() {
+    fn diagnostics_envelope_has_version_sha_log_path_and_jj_lib_version() {
         let token = zanshin_diagnostics();
         assert!(!token.is_null(), "token must be non-null");
 
@@ -82,6 +84,11 @@ mod tests {
             diag.log_path(),
             Some(tracing_init::log_dir().to_string_lossy().as_ref()),
             "log_path must match tracing_init::log_dir()"
+        );
+        assert_eq!(
+            diag.jj_lib_version(),
+            Some(zanshin_jj::JJ_LIB_VERSION),
+            "jj_lib_version must match zanshin_jj::JJ_LIB_VERSION"
         );
 
         // SAFETY: token was produced by vec_into_token; freed exactly once here.

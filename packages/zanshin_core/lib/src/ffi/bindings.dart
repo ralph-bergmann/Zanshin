@@ -643,12 +643,13 @@ external ffi.Pointer<ZanshinBuf> zanshin_describe(
 /// Return a `FlatBuffers` `Envelope` carrying build-stamp and log-location
 /// diagnostics.
 ///
-/// Returns a `FlatBuffers` `Envelope` with three diagnostic fields:
+/// Returns a `FlatBuffers` `Envelope` with four diagnostic fields:
 /// `app_version` (`CARGO_PKG_VERSION`), `git_sha` (`ZANSHIN_GIT_SHA` from
-/// `build.rs`, `unknown` in a no-git build), and `log_path` (the absolute
-/// log directory from `tracing_init::log_dir()`).
+/// `build.rs`, `unknown` in a no-git build), `log_path` (the absolute
+/// log directory from `tracing_init::log_dir()`), and `jj_lib_version` (the
+/// version of jj-lib Zanshin is built on, `zanshin_jj::JJ_LIB_VERSION`).
 ///
-/// The function is infallible (two compile-time constants + one path resolution
+/// The function is infallible (three compile-time constants + one path resolution
 /// with a temp fallback). The `envelope::catch` wrapper still provides the
 /// `internal.panic` backstop.
 ///
@@ -2320,6 +2321,8 @@ const int ConfigListRequest_VT_WORKSPACE_ROOT = 6;
 const int ConfigSetRequest_VT_VALUE = 12;
 
 const int ConfigSetResult_VT_WORKING_COPY_AUTHOR = 6;
+
+const int Diagnostics_VT_JJ_LIB_VERSION = 10;
 
 const int ENUM_MAX_BOOKMARK_KIND = 1;
 

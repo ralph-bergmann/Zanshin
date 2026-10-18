@@ -4346,7 +4346,7 @@ class RepoHandleObjectBuilder extends fb.ObjectBuilder {
 }
 
 ///  Diagnostics payload returned by zanshin_diagnostics().
-///  All three fields are compile-time or infallibly-resolved values.
+///  All four fields are compile-time or infallibly-resolved values.
 class Diagnostics {
   Diagnostics._(this._bc, this._bcOffset);
   factory Diagnostics(List<int> bytes) {
@@ -4363,9 +4363,12 @@ class Diagnostics {
   String? get gitSha => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
   String? get logPath => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
 
+  ///  The version of jj-lib Zanshin is built on (`zanshin_jj::JJ_LIB_VERSION`).
+  String? get jjLibVersion => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+
   @override
   String toString() {
-    return 'Diagnostics{appVersion: ${appVersion}, gitSha: ${gitSha}, logPath: ${logPath}}';
+    return 'Diagnostics{appVersion: ${appVersion}, gitSha: ${gitSha}, logPath: ${logPath}, jjLibVersion: ${jjLibVersion}}';
   }
 }
 
@@ -4382,7 +4385,7 @@ class DiagnosticsBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(4);
   }
 
   int addAppVersionOffset(int? offset) {
@@ -4400,6 +4403,11 @@ class DiagnosticsBuilder {
     return fbBuilder.offset;
   }
 
+  int addJjLibVersionOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -4409,14 +4417,17 @@ class DiagnosticsObjectBuilder extends fb.ObjectBuilder {
   final String? _appVersion;
   final String? _gitSha;
   final String? _logPath;
+  final String? _jjLibVersion;
 
   DiagnosticsObjectBuilder({
     String? appVersion,
     String? gitSha,
     String? logPath,
+    String? jjLibVersion,
   }) : _appVersion = appVersion,
        _gitSha = gitSha,
-       _logPath = logPath;
+       _logPath = logPath,
+       _jjLibVersion = jjLibVersion;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -4424,10 +4435,12 @@ class DiagnosticsObjectBuilder extends fb.ObjectBuilder {
     final int? appVersionOffset = _appVersion == null ? null : fbBuilder.writeString(_appVersion!);
     final int? gitShaOffset = _gitSha == null ? null : fbBuilder.writeString(_gitSha!);
     final int? logPathOffset = _logPath == null ? null : fbBuilder.writeString(_logPath!);
-    fbBuilder.startTable(3);
+    final int? jjLibVersionOffset = _jjLibVersion == null ? null : fbBuilder.writeString(_jjLibVersion!);
+    fbBuilder.startTable(4);
     fbBuilder.addOffset(0, appVersionOffset);
     fbBuilder.addOffset(1, gitShaOffset);
     fbBuilder.addOffset(2, logPathOffset);
+    fbBuilder.addOffset(3, jjLibVersionOffset);
     return fbBuilder.endTable();
   }
 

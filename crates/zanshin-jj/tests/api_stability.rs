@@ -480,6 +480,9 @@ fn api_surface_resolves() {
         "present(@) | ancestors(immutable_heads().., 2) | trunk()",
         "the CLI's revsets.log default (v0.42.0 cli/src/config/revsets.toml)"
     );
+    // version (Story 11.6 closing run): jj-lib's version; its value is guarded against
+    // `Cargo.lock` inline in `src/version.rs`.
+    let _: &'static str = zanshin_jj::JJ_LIB_VERSION;
 
     // config (Story 4.9): the four effective log defaults + the config error.
     _ = zanshin_jj::ConfigError::Load { reason: String::new() };

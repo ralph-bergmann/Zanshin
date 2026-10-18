@@ -7541,7 +7541,7 @@ pub mod zanshin {
         #[derive(Copy, Clone, PartialEq)]
 
         /// Diagnostics payload returned by zanshin_diagnostics().
-        /// All three fields are compile-time or infallibly-resolved values.
+        /// All four fields are compile-time or infallibly-resolved values.
         pub struct Diagnostics<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -7560,6 +7560,7 @@ pub mod zanshin {
             pub const VT_APP_VERSION: ::flatbuffers::VOffsetT = 4;
             pub const VT_GIT_SHA: ::flatbuffers::VOffsetT = 6;
             pub const VT_LOG_PATH: ::flatbuffers::VOffsetT = 8;
+            pub const VT_JJ_LIB_VERSION: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -7571,6 +7572,9 @@ pub mod zanshin {
                 args: &'args DiagnosticsArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<Diagnostics<'bldr>> {
                 let mut builder = DiagnosticsBuilder::new(_fbb);
+                if let Some(x) = args.jj_lib_version {
+                    builder.add_jj_lib_version(x);
+                }
                 if let Some(x) = args.log_path {
                     builder.add_log_path(x);
                 }
@@ -7613,6 +7617,17 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(Diagnostics::VT_LOG_PATH, None)
                 }
             }
+            /// The version of jj-lib Zanshin is built on (`zanshin_jj::JJ_LIB_VERSION`).
+            #[inline]
+            pub fn jj_lib_version(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Diagnostics::VT_JJ_LIB_VERSION, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Diagnostics<'_> {
@@ -7625,6 +7640,11 @@ pub mod zanshin {
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("app_version", Self::VT_APP_VERSION, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("git_sha", Self::VT_GIT_SHA, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("log_path", Self::VT_LOG_PATH, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "jj_lib_version",
+                        Self::VT_JJ_LIB_VERSION,
+                        false,
+                    )?
                     .finish();
                 Ok(())
             }
@@ -7633,6 +7653,7 @@ pub mod zanshin {
             pub app_version: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub git_sha: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub log_path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub jj_lib_version: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for DiagnosticsArgs<'a> {
             #[inline]
@@ -7641,6 +7662,7 @@ pub mod zanshin {
                     app_version: None,
                     git_sha: None,
                     log_path: None,
+                    jj_lib_version: None,
                 }
             }
         }
@@ -7666,6 +7688,11 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diagnostics::VT_LOG_PATH, log_path);
             }
             #[inline]
+            pub fn add_jj_lib_version(&mut self, jj_lib_version: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Diagnostics::VT_JJ_LIB_VERSION, jj_lib_version);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiagnosticsBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 DiagnosticsBuilder {
@@ -7686,6 +7713,7 @@ pub mod zanshin {
                 ds.field("app_version", &self.app_version());
                 ds.field("git_sha", &self.git_sha());
                 ds.field("log_path", &self.log_path());
+                ds.field("jj_lib_version", &self.jj_lib_version());
                 ds.finish()
             }
         }

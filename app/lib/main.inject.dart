@@ -88,6 +88,7 @@ class MainComponent$Component implements _i1.MainComponent {
     );
     final iconRegistry$Provider = _IconRegistry$Provider(iconModule);
     final projectsEnvironment$Provider = _ProjectsEnvironment$Provider(
+      getDiagnostics$Provider,
       projectsModule,
     );
     _projectsWindowFactory$Provider = _ProjectsWindowFactory$Provider(
@@ -247,13 +248,16 @@ class _ProjectSession$Provider implements _i13.Provider<_i8.ProjectSession> {
 
 class _ProjectsEnvironment$Provider
     implements _i13.Provider<_i19.ProjectsEnvironment> {
-  _ProjectsEnvironment$Provider(this._module);
+  _ProjectsEnvironment$Provider(this._getDiagnostics$Provider, this._module);
+
+  final _GetDiagnostics$Provider _getDiagnostics$Provider;
 
   final _i7.ProjectsModule _module;
 
   late final _i19.ProjectsEnvironment _singleton = _create();
 
-  _i19.ProjectsEnvironment _create() => _module.projectsEnvironment();
+  _i19.ProjectsEnvironment _create() =>
+      _module.projectsEnvironment(_getDiagnostics$Provider.get());
 
   @override
   _i19.ProjectsEnvironment get() => _singleton;

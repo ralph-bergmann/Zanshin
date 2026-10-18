@@ -1007,6 +1007,36 @@ void main() {
   });
 
   group('sidebar', () {
+    testWidgets("the brand shows Zanshin, the app's version line and jj-lib's, top to bottom", (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump();
+
+      final Rect zanshin = tester.getRect(find.text('Zanshin'));
+      final Rect app = tester.getRect(find.text('2026.9.1 · Build 1'));
+      final Rect jjLib = tester.getRect(find.text('jj-lib 0.46.0'));
+      expect(app.top - zanshin.bottom, moreOrLessEquals(1));
+      expect(jjLib.top - app.bottom, moreOrLessEquals(1));
+      expect(jjLib.left, app.left);
+    });
+
+    testWidgets('a version that cannot be read leaves its line out', (tester) async {
+      final rig = _Rig(tester);
+      rig.env.jjLib = null;
+      await rig.pump();
+      expect(find.text('2026.9.1 · Build 1'), findsOneWidget);
+      expect(find.textContaining('jj-lib'), findsNothing);
+
+      final rig2 = _Rig(tester);
+      rig2.env.version = null;
+      await rig2.pump();
+      expect(find.text('2026.9.1 · Build 1'), findsNothing);
+      expect(
+        tester.getRect(find.text('jj-lib 0.46.0')).top - tester.getRect(find.text('Zanshin')).bottom,
+        moreOrLessEquals(1),
+        reason: 'directly under "Zanshin"',
+      );
+    });
+
     testWidgets('without callbacks Settings… is disabled and no link shows; with them both run', (tester) async {
       final rig = _Rig(tester);
       rig.env.identityAnswer = JjIdentity(name: '', email: '');

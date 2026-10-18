@@ -3,11 +3,14 @@
 import 'package:zanshin/src/features/projects/projects_environment.dart';
 import 'package:zanshin_core/zanshin_core.dart';
 
-/// [ProjectsEnvironment] for the Projects window tests: a scripted version and identity (or an identity read that
+/// [ProjectsEnvironment] for the Projects window tests: scripted versions and identity (or an identity read that
 /// throws), the folder picker's answers in order, and logs of every picker call and every Reveal in Finder.
 class FakeProjectsEnvironment implements ProjectsEnvironment {
   /// What [appVersion] answers.
   String? version = '2026.9.1 · Build 1';
+
+  /// What [jjLibVersion] answers.
+  String? jjLib = '0.46.0';
 
   /// What [identity] answers.
   var identityAnswer = JjIdentity(name: 'Ralph Stein', email: 'ralph@example.com');
@@ -32,6 +35,9 @@ class FakeProjectsEnvironment implements ProjectsEnvironment {
 
   @override
   Future<String?> appVersion() async => version;
+
+  @override
+  Future<String?> jjLibVersion() async => jjLib;
 
   @override
   Future<JjIdentity> identity({String? workspaceRoot}) async {

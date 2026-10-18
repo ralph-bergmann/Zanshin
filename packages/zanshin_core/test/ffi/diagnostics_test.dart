@@ -38,6 +38,10 @@ void main() {
       expect(diag.logPath.startsWith('/'), isTrue, reason: 'logPath must be an absolute path');
     });
 
+    test('jjLibVersion is a dotted x.y.z version', () {
+      expect(diag.jjLibVersion, matches(RegExp(r'^\d+\.\d+\.\d+$')));
+    });
+
     test('logPath matches ZANSHIN_LOG_DIR when set', () {
       final String? logDir = Platform.environment['ZANSHIN_LOG_DIR'];
       if (logDir != null) {
@@ -62,6 +66,26 @@ void main() {
         throwsA(
           isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown'),
         ),
+      );
+    });
+
+    test('reads each field from its own slot', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Diagnostics,
+        data: fbs.DiagnosticsObjectBuilder(
+          appVersion: '0.1.0',
+          gitSha: 'abc1234abcde',
+          logPath: '/logs',
+          jjLibVersion: '9.8.7',
+        ),
+      ).toBytes();
+
+      final Diagnostics diag = decodeDiagnosticsEnvelope(bytes);
+
+      expect(
+        (diag.appVersion, diag.gitSha, diag.logPath, diag.jjLibVersion),
+        ('0.1.0', 'abc1234abcde', '/logs', '9.8.7'),
       );
     });
   });
