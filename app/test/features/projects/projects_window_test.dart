@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 import 'package:zanshin/main.dart' show MainComponent;
+import 'package:zanshin/src/app/worker_lifecycle_module.dart';
 import 'package:zanshin/src/features/bootstrap/icon_module.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_repos.dart';
@@ -114,25 +115,30 @@ class _Rig {
       repos.readings[path] = ProjectReading(status: stored?.status ?? ProjectStatus.clean, bookmark: stored?.bookmark);
       await tester.runAsync(() => session.open(path));
     }
-    await tester.pumpWidget(
-      shellHost(
-        ProjectsWindow(
-          key: UniqueKey(),
-          session: session,
-          registry: registry,
-          environment: env,
-          onOpened: callbacks
-              ? (outcome) {
-                  opened.add(outcome);
-                  whenOpened?.call(outcome);
-                }
-              : null,
-          onSettings: callbacks ? () => settings++ : null,
-          onIdentitySettings: callbacks ? () => identitySettings++ : null,
-        ),
-        appearance: appearance,
-      ),
+    _content = ProjectsWindow(
+      key: UniqueKey(),
+      session: session,
+      registry: registry,
+      environment: env,
+      onOpened: callbacks
+          ? (outcome) {
+              opened.add(outcome);
+              whenOpened?.call(outcome);
+            }
+          : null,
+      onSettings: callbacks ? () => settings++ : null,
+      onIdentitySettings: callbacks ? () => identitySettings++ : null,
     );
+    await tester.pumpWidget(shellHost(_content, appearance: appearance));
+    await tester.pump();
+    await tester.pump();
+  }
+
+  late Widget _content;
+
+  /// Shows the same content under [appearance], as the window's key status changing does.
+  Future<void> showIn(ZsAppearance appearance) async {
+    await tester.pumpWidget(shellHost(_content, appearance: appearance));
     await tester.pump();
     await tester.pump();
   }
@@ -1080,6 +1086,25 @@ void main() {
       expect(rig.env.identityReads, <String?>[null, '${rig.home}/code/top']);
     });
 
+    testWidgets('the identity is read again when the window becomes key, and only then', (tester) async {
+      final rig = _Rig(tester);
+      await rig.pump(openUnderHome: 'code/top', appearance: const ZsAppearance(inactive: true));
+      final top = '${rig.home}/code/top';
+      expect(rig.env.identityReads, <String?>[top]);
+
+      rig.env.identityAnswer = JjIdentity(name: 'Ralph', email: 'ralph@elsewhere.example');
+      await rig.showIn(const ZsAppearance());
+      expect(rig.env.identityReads, <String?>[top, top], reason: 'inactive → active: the window became key');
+      expect(find.text('ralph@elsewhere.example'), findsOneWidget);
+
+      await rig.showIn(const ZsAppearance(inactive: true));
+      await rig.showIn(const ZsAppearance(theme: ZsTheme.paper));
+      expect(rig.env.identityReads, <String?>[top, top, top]);
+
+      await rig.showIn(const ZsAppearance(theme: ZsTheme.paper, increasedContrast: true));
+      expect(rig.env.identityReads, hasLength(3), reason: 'another appearance change, still key');
+    });
+
     test('JjIdentity: an empty value is null; the phrases are the CLI\'s', () {
       expect(JjIdentity(name: '', email: '').missingPhrase, 'Name and email not configured.');
       expect(JjIdentity(email: 'a@b').missingPhrase, 'Name not configured.');
@@ -1108,6 +1133,7 @@ void main() {
       iconModule: IconModule(registry: testIconRegistry),
       // Never completed: the graph is built without starting a worker.
       projectsModule: ProjectsModule(worker: Completer<ZanshinWorker>().future),
+      workerLifecycleModule: WorkerLifecycleModule(mayQuit: () async => true),
     );
 
     final ProjectsWindow window = component.projectsWindowFactory.create();

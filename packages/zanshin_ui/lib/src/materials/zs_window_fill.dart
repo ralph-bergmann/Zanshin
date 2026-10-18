@@ -11,7 +11,7 @@ import 'zs_surface.dart';
 ///
 /// No border, radius, shadow, scrim, entrance or vibrancy: the system draws the window's corners, its shadow and its
 /// appearing. Reduce transparency changes nothing; increased contrast takes the solid values the fill already has.
-/// The header's hairline is 11.12's.
+/// The header and its hairline are `ZsWindowScaffold`'s (Story 11.12).
 class ZsWindowFill extends StatelessWidget {
   /// Fills the window behind [child].
   const ZsWindowFill({required this.child, super.key});

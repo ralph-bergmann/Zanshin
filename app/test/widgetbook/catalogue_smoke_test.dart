@@ -57,6 +57,10 @@ void main() {
           'projects/projects-window/drop-hint',
           'projects/projects-window/no-identity',
           'windows/projects-window/projects-window',
+          'windows/window-fill/window-fill',
+          'windows/window-scaffold/resizable',
+          'windows/window-scaffold/content-sized',
+          'windows/window-scaffold/floating',
         ]),
       );
       expect(catalogueUseCasePaths, paths.toSet());

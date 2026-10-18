@@ -9,6 +9,57 @@ import 'package:flutter/src/widgets/_window.dart';
 import 'package:flutter/src/widgets/_window_macos.dart';
 import 'package:flutter/widgets.dart';
 
+/// The chrome the runner gives a window (Story 11.12 item 2).
+enum WindowChromeKind {
+  /// The project window's (Story 11.4): miniaturizable and resizable, the 880 × 560 minimum, the canvas base.
+  main,
+
+  /// A dialog window's: the engine's style mask plus full-size content, no minimum, the window fill's base.
+  secondary,
+}
+
+/// What the runner remembers of a window's frame (Story 11.12 item 3).
+enum WindowFrameMode {
+  /// Size and position.
+  full,
+
+  /// The position only, for a window sized to its content: its top edge stays where it was, also when the content
+  /// height changes (Settings).
+  position,
+}
+
+/// The window's level (Story 11.12 item 6; decisions 16.19, 16.38, 16.42 b).
+enum WindowLevel {
+  /// The normal level.
+  normal,
+
+  /// `.floating` while Zanshin is active, `.normal` once it resigns (jj log Configurations).
+  floatingWhileActive,
+}
+
+/// The `restore` arguments both remembered controllers send on `zanshin/window_frames`: the NSWindow handle
+/// [window], the frame [key], the [chrome] kind, the [frame] mode and the [level], each a name the runner parses
+/// strictly (`main|secondary`, `full|position`, `normal|floating`).
+Map<String, Object> restoreArguments({
+  required int window,
+  required String key,
+  required WindowChromeKind chrome,
+  required WindowFrameMode frame,
+  required WindowLevel level,
+}) => <String, Object>{
+  'window': window,
+  'key': key,
+  'chrome': chrome.name,
+  'frame': frame.name,
+  'level': switch (level) {
+    WindowLevel.normal => 'normal',
+    WindowLevel.floatingWhileActive => 'floating',
+  },
+};
+
+/// The channel the remembered controllers restore their frames over; the runner also calls `reopen` on it.
+const windowFramesChannel = MethodChannel('zanshin/window_frames');
+
 /// A regular window that remembers its frame — size and position, together
 /// with the display it was on — under [key], and comes back there the next
 /// time a window with the same key is created.
@@ -31,16 +82,13 @@ class RememberedWindowController extends WindowControllerMacOS {
   /// Creates the native window (still hidden) and restores its frame; without
   /// a saved frame the runner centres it, like the first launch used to.
   ///
-  /// With [chrome] the runner also applies the app's custom window chrome —
-  /// transparent full-size-content titlebar, opaque canvas-base background,
-  /// traffic-light overlay. It happens in this same round-trip and *before* the frame,
-  /// because `.fullSizeContentView` redefines what a frame means: applying one
-  /// under the old style mask would shave the titlebar height off the window on
-  /// every launch.
+  /// The runner also applies the project window's chrome ([WindowChromeKind.main]) — transparent full-size-content
+  /// titlebar, opaque canvas-base background, traffic-light overlay. It happens in this same round-trip and *before*
+  /// the frame, because `.fullSizeContentView` redefines what a frame means: applying one under the old style mask
+  /// would shave the titlebar height off the window on every launch.
   static Future<RememberedWindowController> create({
     required String key,
     required Size size,
-    required bool chrome,
     BoxConstraints? constraints,
     String? title,
     WindowControllerDelegate? delegate,
@@ -52,17 +100,20 @@ class RememberedWindowController extends WindowControllerMacOS {
       title: title,
       delegate: delegate ?? WindowControllerDelegate(),
     );
-    await _channel.invokeMethod<void>('restore', <String, Object>{
-      'window': controller.windowHandle.address,
-      'key': key,
-      'chrome': chrome,
-    });
+    await windowFramesChannel.invokeMethod<void>(
+      'restore',
+      restoreArguments(
+        window: controller.windowHandle.address,
+        key: key,
+        chrome: WindowChromeKind.main,
+        frame: WindowFrameMode.full,
+        level: WindowLevel.normal,
+      ),
+    );
     return controller;
   }
 
   /// Identifies the remembered frame, e.g. `main`; the project window keeps the one key `main` whichever project it
   /// shows (decision 16.42 j).
   final String key;
-
-  static const _channel = MethodChannel('zanshin/window_frames');
 }

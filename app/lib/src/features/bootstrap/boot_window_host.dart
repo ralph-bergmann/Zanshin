@@ -18,9 +18,7 @@ import '../window/splash_window_controller.dart';
 import 'splash_card.dart';
 import 'zanshin_bootstrap.dart';
 
-/// Key the main window's frame is remembered under, in the
-/// `<bundle id>.window_frames` defaults suite.
-const mainWindowKey = 'main';
+export '../window/app_windows.dart' show mainWindowKey;
 
 /// Title of the main window.
 const mainWindowTitle = 'Zanshin';
@@ -36,7 +34,7 @@ final _log = Logger('zanshin.bootstrap');
 class ZanshinWindowHost implements BootWindowHost {
   ZanshinWindowHost({required this.windows, required this.icons});
 
-  /// Keyed registry of the app's windows; also the exit-when-empty rule.
+  /// Keyed registry of the app's windows; also the exit rule.
   final AppWindows windows;
 
   /// The boot-loaded icons, provided above every window (Claude's proposal,
@@ -73,6 +71,16 @@ class ZanshinWindowHost implements BootWindowHost {
   @override
   Future<void> openMain(Widget content) async =>
       _present(await windows.create(key: mainWindowKey, title: mainWindowTitle, builder: (_) => content));
+
+  @override
+  Future<void> openProjects(Widget content) async => _present(
+    await windows.create(
+      key: projectsWindowKey,
+      title: projectsWindowTitle,
+      builder: (_) => content,
+      dialog: projectsWindowSpec,
+    ),
+  );
 
   @override
   Future<void> dismissSplash(Duration fade) async {
@@ -114,7 +122,7 @@ class ZanshinWindowHost implements BootWindowHost {
   /// window once it has presented a frame, and only that warm-up frame is
   /// timer-driven — every later frame waits for the display link of a view
   /// that does not exist yet. Whichever window comes first (the splash on a
-  /// slow boot, the main window on a fast one) is therefore the one
+  /// slow boot, the first app window on a fast one) is therefore the one
   /// `runWidget` gets; the rest go through the registry.
   void _present(WindowEntry entry) {
     if (_presented) {

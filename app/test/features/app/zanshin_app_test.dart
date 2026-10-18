@@ -7,7 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:inject_annotation/inject_annotation.dart' show Provider;
 import 'package:inject_flutter/inject_flutter.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:zanshin/main.dart' show MainComponent;
+import 'package:zanshin/main.dart' show MainComponent, appWindowCoordinator;
+import 'package:zanshin/src/app/worker_lifecycle_module.dart';
 import 'package:zanshin/src/features/app/zanshin_app.dart';
 import 'package:zanshin/src/features/app/zanshin_app_view_model.dart';
 import 'package:zanshin/src/features/bootstrap/icon_module.dart';
@@ -15,9 +16,13 @@ import 'package:zanshin/src/features/home/home_page.dart';
 import 'package:zanshin/src/features/projects/project_registry.dart';
 import 'package:zanshin/src/features/projects/project_session.dart';
 import 'package:zanshin/src/features/projects/projects_module.dart';
+import 'package:zanshin/src/features/projects/projects_window.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/floating_shell_view_model.dart';
 import 'package:zanshin/src/features/shell/top_bar.dart';
+import 'package:zanshin/src/features/window/active_window_tracker.dart';
+import 'package:zanshin/src/features/window/app_windows.dart';
+import 'package:zanshin/src/features/window/zanshin_window_root.dart';
 import 'package:zanshin_core/zanshin_core.dart' show ZanshinWorker;
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart' show WindowDragArea;
@@ -41,6 +46,23 @@ class _HomePageFactory implements HomePageFactory {
     key: key,
     viewModelFactory: _viewModels(() => FloatingShellViewModel(_store)),
     projects: _projects,
+  );
+}
+
+/// The window roots the DI graph would build, over [_store] and [_tracker].
+class _RootFactory implements ZanshinWindowRootFactory {
+  _RootFactory(this._store, this._tracker);
+
+  final SettingsStore _store;
+  final ActiveWindowTracker _tracker;
+
+  @override
+  ZanshinWindowRoot create({required String windowKey, required Widget child, Key? key}) => ZanshinWindowRoot(
+    key: key,
+    viewModelFactory: _viewModels(() => ZanshinAppViewModel(_store)),
+    tracker: _tracker,
+    windowKey: windowKey,
+    child: child,
   );
 }
 
@@ -116,11 +138,10 @@ void main() {
       await file.writeAsString(settingsJson);
       return SettingsStore.load(file);
     });
+    final tracker = ActiveWindowTracker();
+    addTearDown(tracker.dispose);
     await tester.pumpWidget(
-      ZanshinApp(
-        homePageFactory: _HomePageFactory(store!),
-        viewModelFactory: _viewModels(() => ZanshinAppViewModel(store)),
-      ),
+      ZanshinApp(homePageFactory: _HomePageFactory(store!), rootFactory: _RootFactory(store, tracker)),
     );
     if (theme == null) {
       // The shell has not answered yet: the first frame.
@@ -132,6 +153,20 @@ void main() {
     return tester.element(find.byType(FloatingShell));
   }
 
+  /// main.dart's component over a fresh settings store, its worker never started.
+  Future<MainComponent> mainComponent(WidgetTester tester) async {
+    final (SettingsStore store, IconRegistry icons) = (await tester.runAsync(
+      () async => (await SettingsStore.load(file), await IconRegistry.load()),
+    ))!;
+    return MainComponent.create(
+      settingsModule: SettingsModule(store: store),
+      iconModule: IconModule(registry: icons),
+      // Never completed: the graph is built without starting a worker, and nothing here opens a project.
+      projectsModule: ProjectsModule(worker: Completer<ZanshinWorker>().future),
+      workerLifecycleModule: WorkerLifecycleModule(mayQuit: () async => true),
+    );
+  }
+
   testWidgets("the DI graph hands HomePage the one session the boot reopens (main.dart's component)", (tester) async {
     tester.view
       ..physicalSize = const Size(1440, 900)
@@ -140,23 +175,36 @@ void main() {
     shell = RecordingShell();
     ZanshinShellPlatform.instance = shell;
     addTearDown(shell.close);
-    final (SettingsStore store, IconRegistry icons) = (await tester.runAsync(
-      () async => (await SettingsStore.load(file), await IconRegistry.load()),
-    ))!;
-    final MainComponent component = MainComponent.create(
-      settingsModule: SettingsModule(store: store),
-      iconModule: IconModule(registry: icons),
-      // Never completed: the graph is built without starting a worker, and nothing here opens a project.
-      projectsModule: ProjectsModule(worker: Completer<ZanshinWorker>().future),
-    );
+    final MainComponent component = await mainComponent(tester);
 
-    await tester.pumpWidget(component.zanshinAppFactory.create());
+    // The project window's content as main.dart's coordinator builds it.
+    await tester.pumpWidget(appWindowCoordinator(component, AppWindows(exitProcess: () async {})).buildProject());
     shell.theme.complete(_shell());
     await tester.pumpAndSettle();
 
     final ProjectSession session = component.projectSession;
     expect(tester.widget<HomePage>(find.byType(HomePage)).projects, same(session));
     expect(component.projectSession, same(session), reason: 'a singleton');
+    expect(find.byKey(const ValueKey<String>('window:main')), findsOneWidget, reason: "the project window's root key");
+    expect(
+      find.descendant(of: find.byKey(const ValueKey<String>('window:main')), matching: find.byType(HomePage)),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets("main.dart's coordinator builds Projects under the window:projects root, onOpened handed through", (
+    tester,
+  ) async {
+    final MainComponent component = await mainComponent(tester);
+    void onOpened(ProjectOpened outcome) {}
+
+    final Widget root = appWindowCoordinator(component, AppWindows(exitProcess: () async {})).buildProjects(onOpened);
+
+    expect(root, isA<ZanshinWindowRoot>().having((root) => root.windowKey, 'windowKey', projectsWindowKey));
+    final Widget content = (root as ZanshinWindowRoot).child;
+    expect(content, isA<ProjectsWindow>());
+    expect((content as ProjectsWindow).onOpened, same(onOpened));
+    expect(content.session, same(component.projectSession));
   });
 
   testWidgets('the home is HomePage over the floating shell, titled Zanshin; the Yaru test page is gone', (

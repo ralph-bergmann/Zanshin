@@ -2,6 +2,7 @@
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
 
@@ -10,14 +11,27 @@ import '../../widgetbook/folders/windows.dart';
 import 'icon_registry.dart';
 
 /// The catalogue window's content at [route], as `widgetbook/main.dart` builds it (no window is opened), over
-/// [windows] (by default ones that never exit the process).
-Widget catalogueAt(String route, {GlobalKey<ZanshinCatalogueState>? key, AppWindows? windows}) => IconRegistryScope(
+/// [windows] (by default ones that never exit the process) and [tracker] (by default a fresh one, disposed with the
+/// test).
+Widget catalogueAt(
+  String route, {
+  GlobalKey<ZanshinCatalogueState>? key,
+  AppWindows? windows,
+  ActiveWindowTracker? tracker,
+}) => IconRegistryScope(
   registry: testIconRegistry,
   child: CatalogueWindows(
     windows: windows ?? AppWindows(exitProcess: () async {}),
+    tracker: tracker ?? _tracker(),
     child: ZanshinCatalogue(key: key, initialRoute: route),
   ),
 );
+
+ActiveWindowTracker _tracker() {
+  final tracker = ActiveWindowTracker();
+  addTearDown(tracker.dispose);
+  return tracker;
+}
 
 /// The catalogue window's size.
 void useCatalogueWindow(WidgetTester tester) {

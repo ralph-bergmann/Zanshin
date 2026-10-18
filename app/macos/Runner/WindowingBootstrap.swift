@@ -7,8 +7,8 @@ import FlutterMacOS
 ///
 /// Every window is created from Dart: the engine allows multi-view only while
 /// it has no view yet, so the runner attaches none. There is no nib window and
-/// no `MainFlutterWindow` any more; Dart's own registry ends the process with
-/// its last window.
+/// no `MainFlutterWindow` any more; Dart's own registry ends the process once
+/// no window that keeps the app alive is left (Story 11.12).
 final class WindowingBootstrap {
     private let engine = FlutterEngine(name: "zanshin", project: nil)
     private var splashWindowHost: SplashWindowHost?
@@ -36,6 +36,12 @@ final class WindowingBootstrap {
         splashWindowHost = SplashWindowHost(messenger: engine.binaryMessenger)
         windowFrameStore = WindowFrameStore(messenger: engine.binaryMessenger)
         engine.run(withEntrypoint: nil)
+    }
+
+    /// The Dock was clicked while no window is visible: Dart decides what comes
+    /// back (the minimised project window, else Projects).
+    func reopen() {
+        windowFrameStore?.reopen()
     }
 
     /// Brings the app to the front even when it was not launched through
@@ -135,6 +141,9 @@ final class SplashWindowHost {
         window.isMovable = false
         window.level = NSApp.isActive ? .floating : .normal
         window.isExcludedFromWindowsMenu = true
+        // Like every window (Story 11.12): AppKit's state restoration must not
+        // put a stale frame back over this one.
+        window.isRestorable = false
         splashWindow = window
         (window.contentViewController as? FlutterViewController)?.backgroundColor = .clear
         window.setContentSize(contentSize)

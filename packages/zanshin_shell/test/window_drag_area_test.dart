@@ -57,6 +57,8 @@ void main() {
     );
     expect(area.preferredSize, const Size.fromHeight(44));
     const plain = WindowDragArea(child: SizedBox());
+    // The package keeps its own 56 (no Material import); it must stay Material's toolbar height.
+    expect(plain.preferredSize, const Size.fromHeight(56));
     expect(plain.preferredSize, const Size.fromHeight(kToolbarHeight));
   });
 }

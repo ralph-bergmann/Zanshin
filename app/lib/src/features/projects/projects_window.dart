@@ -25,9 +25,9 @@ final _log = Logger('zanshin.projects');
 
 /// The Projects window's content (epics.md Story 11.6 with its design update 2026-10-16; DS
 /// components/window/Window.prompt.md:14-23, window.css:26-43; ui_kits/desktop/dialogs.jsx:13-58, kit.css:192-202).
-/// It assumes no window: it fills what it is given (a catalogue panel, a catalogue window, 11.12's dialog window),
-/// paints [ZsWindowFill], and draws its own 52 pt header row and the sidebar's empty 52 pt top, where a window's traffic
-/// lights sit; both drag the window.
+/// It assumes no window: it fills what it is given (a catalogue panel, a catalogue window, the app's `projects` dialog
+/// window of Story 11.12), paints [ZsWindowFill], and draws its own 52 pt header row and the sidebar's empty 52 pt top,
+/// where a window's traffic lights sit; both drag the window.
 ///
 /// **Sidebar** (200, a `--fl-border` hairline on its right): the brand — the 32 px Nami chip, "Zanshin", the version
 /// line "‹version› · Build ‹build›" (the splash's) and below it "jj-lib ‹version›" (Claude's proposal) —, the
@@ -53,11 +53,12 @@ final _log = Logger('zanshin.projects');
 /// `jj git clone --no-colocate` command). **New group** names a group inline, inside the selected group or at the top
 /// level.
 ///
-/// Every successful open reaches [onOpened] (11.12 closes the window there). Identifiers: `projects-window` (also the
-/// root's key), `projects-search`, `projects-add-directory`, `projects-clone`, `projects-new-group`,
-/// `projects-settings`, `projects-identity-settings`, `projects-notice`, `projects-offer`, `projects-clone-url`,
-/// `projects-clone-destination`, `projects-clone-choose`, `projects-clone-submit`, `projects-clone-cancel`,
-/// `projects-drop-hint`, and the tree's.
+/// Every successful open reaches [onOpened] (11.12's window coordinator closes the `projects` dialog window there, or
+/// keeps it with a creation's warnings). The identity is read again whenever the window becomes key. Identifiers:
+/// `projects-window` (also the root's key), `projects-search`, `projects-add-directory`, `projects-clone`,
+/// `projects-new-group`, `projects-settings`, `projects-identity-settings`, `projects-notice`, `projects-offer`,
+/// `projects-clone-url`, `projects-clone-destination`, `projects-clone-choose`, `projects-clone-submit`,
+/// `projects-clone-cancel`, `projects-drop-hint`, and the tree's.
 class ProjectsWindow extends StatefulWidget {
   /// The content over [session], [registry] and [environment].
   @assistedInject
@@ -159,6 +160,9 @@ class ProjectsWindowState extends State<ProjectsWindow> {
   String? _identityRoot;
   var _identityRead = 0;
 
+  /// Whether the window was inactive at the last dependency change; null before the first.
+  bool? _inactive;
+
   @override
   void initState() {
     super.initState();
@@ -172,6 +176,19 @@ class ProjectsWindowState extends State<ProjectsWindow> {
         _searchFocus.requestFocus();
       }
     });
+  }
+
+  /// The window became key again (its appearance turned active): the identity is read once more, so an edit made
+  /// meanwhile — in another window or by the CLI — shows (Story 11.12; there is no config-change event).
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bool inactive = ZsAppearance.of(context).inactive;
+    final bool? wasInactive = _inactive;
+    _inactive = inactive;
+    if (wasInactive == true && !inactive) {
+      unawaited(_readIdentity(widget.session.current?.path));
+    }
   }
 
   @override

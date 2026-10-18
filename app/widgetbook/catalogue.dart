@@ -150,9 +150,19 @@ List<WidgetbookAddon> catalogueAddons() => <WidgetbookAddon>[
 /// macOS — around [child]: a use case (wrapped by the addons) or a catalogue window's content.
 ///
 /// A catalogue window passes its [chrome] report (Story 11.4), from which this builder's `ZsRoot` takes full screen
-/// and the traffic-light block, as the app's window root does; the previews pass none and keep the DS reference
-/// geometry.
-Widget catalogueAppBuilder(BuildContext context, Widget child, {WindowChrome? chrome}) {
+/// and the traffic-light block, as the app's window root does, and whether it is [inactive] (Story 11.12); the
+/// previews pass neither, keep the DS reference geometry and follow the Appearance addon only.
+///
+/// A window sized to its content passes [sizeToContent]: a navigator's overlay takes the largest size its constraints
+/// allow, so the child then sits in an `Overlay.wrap(alwaysSizeToContent: true)` instead of a navigator, and the
+/// window takes the child's size (Claude's proposal, Story 11.12).
+Widget catalogueAppBuilder(
+  BuildContext context,
+  Widget child, {
+  WindowChrome? chrome,
+  bool inactive = false,
+  bool sizeToContent = false,
+}) {
   final ShellTheme? shell = ZsShellScope.maybeOf(context);
   final ZsAppearance appearance = _appearance(shell);
   return MaterialApp(
@@ -169,11 +179,12 @@ Widget catalogueAppBuilder(BuildContext context, Widget child, {WindowChrome? ch
         theme: ZsTheme.of(Theme.of(context).brightness),
         fullScreen: chrome?.fullScreen,
         trafficLights: chrome?.trafficLights,
+        inactive: inactive,
       ),
       shellTheme: shell,
-      child: home ?? const SizedBox.shrink(),
+      child: sizeToContent ? Overlay.wrap(alwaysSizeToContent: true, child: child) : home ?? const SizedBox.shrink(),
     ),
-    home: child,
+    home: sizeToContent ? null : child,
   );
 }
 

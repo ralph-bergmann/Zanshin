@@ -57,3 +57,4 @@ export 'src/materials/zs_sheet.dart' show ZsSheet;
 export 'src/materials/zs_surface.dart' show ZsSurface;
 export 'src/materials/zs_surface_transition.dart' show ZsSurfaceMotion, ZsSurfaceTransition;
 export 'src/materials/zs_window_fill.dart' show ZsWindowFill;
+export 'src/materials/zs_window_scaffold.dart' show ZsWindowHeaderAlign, ZsWindowScaffold;

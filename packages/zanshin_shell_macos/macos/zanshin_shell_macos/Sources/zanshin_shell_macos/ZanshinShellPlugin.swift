@@ -7,10 +7,12 @@ import FlutterMacOS
 ///
 /// Pushes system theme changes (dark/light, the accent, the text-selection
 /// colours, the accessibility display options and the scroll bar style) to
-/// Dart and executes window commands (drag, appearance override, titlebar
-/// double-click action) on the window that hosts the Flutter view, runs the
-/// folder picker (`DirectoryPanel`) on the window of a given view, and reveals
-/// paths in Finder. It also owns the `FolderDropHost` behind the
+/// Dart and executes window commands for every app window (Story 11.12 item 4):
+/// the appearance override applies to all of them, also to each one that
+/// becomes key later, and the drag and the titlebar double-click action act on
+/// the window of the event that triggered them. It runs the folder picker
+/// (`DirectoryPanel`) on the window of a given view, and reveals paths in
+/// Finder. It also owns the `FolderDropHost` behind the
 /// "zanshin_shell/folder_drop" channel and the `WindowChromeHost` behind
 /// "zanshin_shell/window_chrome".
 public class ZanshinShellPlugin: NSObject, FlutterPlugin {
@@ -23,6 +25,8 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
     /// The window chrome channel's host; lives as long as the plugin.
     private let windowChrome: WindowChromeHost
     private var appearanceObservation: NSKeyValueObservation?
+    /// The last `setWindowAppearance` choice; nil until Dart sent one.
+    private var windowAppearance: NSAppearance??
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(
@@ -89,6 +93,15 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
             name: NSApplication.didBecomeActiveNotification,
             object: nil
         )
+        // A window created after the last `setWindowAppearance` (a dialog
+        // window) takes the choice when it becomes key, which the engine makes
+        // it on its first frame.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleWindowDidBecomeKey),
+            name: NSWindow.didBecomeKeyNotification,
+            object: nil
+        )
     }
 
     deinit {
@@ -110,6 +123,14 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
     /// notification is posted.
     @objc private func handleSystemChanged(_ notification: Notification) {
         emitThemeChanged()
+    }
+
+    @objc private func handleWindowDidBecomeKey(_ notification: Notification) {
+        guard let choice = windowAppearance, let window = notification.object as? NSWindow, Self.isAppWindow(window)
+        else { return }
+        if window.appearance != choice {
+            window.appearance = choice
+        }
     }
 
     private func emitThemeChanged() {
@@ -212,8 +233,9 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
             result(nil)
         case "startWindowDrag":
             // Reuses the mouse event of the Flutter gesture that triggered the
-            // call; without an active event this is a deliberate no-op.
-            if let window = self.window, let event = NSApp.currentEvent {
+            // call, on the window it happened in; without an active event this
+            // is a deliberate no-op.
+            if let event = NSApp.currentEvent, let window = event.window ?? self.window {
                 window.performDrag(with: event)
             }
             result(nil)
@@ -253,34 +275,47 @@ public class ZanshinShellPlugin: NSObject, FlutterPlugin {
 
     /// Per-window override on purpose: overriding NSApp.appearance would also
     /// flip the platformBrightness Flutter reports, hiding the real system
-    /// value that the theme channel is supposed to deliver.
+    /// value that the theme channel is supposed to deliver. The choice is kept
+    /// and applied to every app window, so a theme switch from any window
+    /// restyles all of them (the splash, borderless, is no app window).
     private func setWindowAppearance(_ name: String?) {
-        guard let window = self.window else { return }
+        let choice: NSAppearance?
         switch name {
         case "light":
-            window.appearance = NSAppearance(named: .aqua)
+            choice = NSAppearance(named: .aqua)
         case "dark":
-            window.appearance = NSAppearance(named: .darkAqua)
+            choice = NSAppearance(named: .darkAqua)
         default:
-            window.appearance = nil
+            choice = nil
+        }
+        windowAppearance = .some(choice)
+        for window in NSApp.windows where Self.isAppWindow(window) {
+            window.appearance = choice
         }
     }
 
     /// Mirrors the native titlebar double-click behavior, which the user
-    /// configures in System Settings ("double-click a window's title bar to").
+    /// configures in System Settings ("double-click a window's title bar to"),
+    /// on the window of the double-click.
     private func performTitlebarDoubleClickAction() {
-        guard let window = self.window else { return }
+        guard let window = NSApp.currentEvent?.window ?? self.window else { return }
         let action = UserDefaults.standard.string(
             forKey: "AppleActionOnDoubleClick")
+        // A dialog window that cannot miniaturize or zoom does nothing, as a
+        // native title bar does (performing it anyway would beep).
         switch action {
         case "Minimize":
-            window.performMiniaturize(nil)
+            if window.isMiniaturizable {
+                window.performMiniaturize(nil)
+            }
         case "None":
             break
         default:
             // "Maximize", "Fill" (unsupported pre-Sequoia semantics) and the
             // unset default all map to zoom.
-            window.performZoom(nil)
+            if window.isZoomable {
+                window.performZoom(nil)
+            }
         }
     }
 }

@@ -50,8 +50,8 @@ class ZanshinAppViewModel extends ChangeNotifier {
   /// root follows the `MaterialApp`'s resolved brightness either way), the accent family from the Settings choice
   /// and the shell's report (decision 16.2; [ZsAccentFamily.resolve]), and the shell's accessibility flags.
   ///
-  /// Full screen and the traffic-light block are per window: the window root copies them in from its chrome report
-  /// (Story 11.4). The key status is not driven yet (11.12) and stays false.
+  /// Full screen, the traffic-light block and the key status are per window: the window root (`ZanshinWindowRoot`)
+  /// copies them in from its chrome report (Story 11.4) and from the active-window tracker (Story 11.12).
   ZsAppearance get appearance => ZsAppearance.fromShell(
     theme: effectiveMode == ThemeMode.light ? ZsTheme.paper : ZsTheme.night,
     accentSource: _settings.value.appearance.accentSource,
@@ -73,9 +73,9 @@ class ZanshinAppViewModel extends ChangeNotifier {
     _mirrorWindowAppearance(selectedMode);
   }
 
-  /// Persists [mode] and mirrors it onto the native window chrome (the
-  /// window's background, the traffic lights and their rings), which Flutter
-  /// theming cannot reach.
+  /// Persists [mode] and mirrors it onto the native window chrome of every app
+  /// window (the windows' background, the traffic lights and their rings),
+  /// which Flutter theming cannot reach; every window's root follows the store.
   ///
   /// Listeners are notified through the store; the returned future completes
   /// when the settings file has been written.

@@ -22,6 +22,7 @@ import 'package:zanshin/src/features/shell/floating_shell_view_model.dart';
 import 'package:zanshin/src/features/shell/pinned_panel.dart';
 import 'package:zanshin/src/features/shell/rail.dart';
 import 'package:zanshin/src/features/shell/top_bar.dart';
+import 'package:zanshin/src/features/window/app_window_actions.dart';
 import 'package:zanshin_settings/zanshin_settings.dart';
 import 'package:zanshin_shell/zanshin_shell.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart' show ZanshinShellPlatform;
@@ -31,6 +32,14 @@ import '../../helpers/fake_projects.dart';
 import '../../helpers/icon_registry.dart';
 import '../../helpers/recording_shell.dart';
 import '../../helpers/shell_host.dart';
+
+/// Counts the windows the page asks for.
+class _Actions implements AppWindowActions {
+  var projects = 0;
+
+  @override
+  Future<void> openProjects() async => projects++;
+}
 
 class _ViewModels implements Provider<FloatingShellViewModel> {
   _ViewModels(this._store);
@@ -192,6 +201,40 @@ void main() {
     expect(capsuleName('jj'), findsNothing);
     handle.dispose();
   });
+
+  for (final scoped in <bool>[true, false]) {
+    testWidgets(
+      scoped
+          ? "under the coordinator's actions scope All Projects… is enabled and opens Projects"
+          : 'without the actions scope All Projects… stays disabled',
+      (tester) async {
+        final SemanticsHandle handle = tester.ensureSemantics();
+        final actions = _Actions();
+        final ProjectSession session = await pumpHome(
+          tester,
+          wrap: scoped ? (home) => AppWindowActionsScope(actions: actions, child: home) : null,
+        );
+        await tester.runAsync(() => session.open('/r/zanshin'));
+        await tester.pump();
+
+        await tester.tap(find.bySemanticsIdentifier('project-capsule'));
+        await tester.pump();
+        await tester.pump(ZsMotion.full.durMenu);
+        expect(
+          tester.getSemantics(find.bySemanticsIdentifier('project-menu-all')),
+          isSemantics(isButton: true, hasEnabledState: true, isEnabled: scoped),
+        );
+
+        await tester.tap(find.bySemanticsIdentifier('project-menu-all'), warnIfMissed: false);
+        await tester.pump(ZsMotion.full.durBlink * 2);
+        await tester.pump(ZsMotion.full.durExit);
+        await tester.pump();
+
+        expect(actions.projects, scoped ? 1 : 0);
+        handle.dispose();
+      },
+    );
+  }
 
   testWidgets("the window takes the open project's name and returns to Zanshin when it closes", (tester) async {
     final bool windowingWasEnabled = isWindowingEnabled;

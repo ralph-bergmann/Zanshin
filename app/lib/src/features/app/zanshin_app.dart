@@ -1,30 +1,26 @@
 // SPDX-License-Identifier: MIT
 
-import 'dart:io';
-
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:inject_annotation/inject_annotation.dart';
-import 'package:inject_flutter/inject_flutter.dart';
-import 'package:material_ui/material_ui.dart';
-import 'package:yaru/yaru.dart';
-import 'package:zanshin_ui/zanshin_ui.dart';
 
 import '../home/home_page.dart';
-import '../window/window_chrome_builder.dart';
-import 'zanshin_app_view_model.dart';
+import '../window/app_windows.dart' show mainWindowKey;
+import '../window/zanshin_window_root.dart';
 
 part 'zanshin_app.factory.dart';
 
+/// The project window's content (Story 11.12): [HomePage] under the window root every app window uses,
+/// [ZanshinWindowRoot], keyed `window:main`.
 class ZanshinApp extends StatelessWidget {
   @assistedInject
   const ZanshinApp({
     required this._homePageFactory,
-    required this._viewModelFactory,
+    required this._rootFactory,
     @assisted super.key,
   });
 
   final HomePageFactory _homePageFactory;
-  final ViewModelFactory<ZanshinAppViewModel> _viewModelFactory;
+  final ZanshinWindowRootFactory _rootFactory;
 
   // static ThemeData _buildTheme(ZanshinColors zc, Brightness brightness) {
   //   final base = brightness == Brightness.dark ? ThemeData.dark() : ThemeData.light();
@@ -72,71 +68,5 @@ class ZanshinApp extends StatelessWidget {
   // );
 
   @override
-  Widget build(BuildContext context) => _viewModelFactory(
-    init: (vm) => vm.init(),
-    builder: (context, vm, _) {
-      if (!kIsWeb && Platform.isLinux) {
-        return YaruTheme(
-          builder: (context, yaru, child) => _ZanshinMaterialApp(
-            themeMode: vm.selectedMode,
-            lightTheme: yaru.theme,
-            darkTheme: yaru.darkTheme,
-            home: _homePageFactory.create(),
-          ),
-        );
-      }
-
-      // The token theme for both modes. The window root follows the theme
-      // the MaterialApp resolved, so the first frame before the shell
-      // answered follows the system's brightness too, and takes full screen
-      // and the traffic-light block from the window's chrome report.
-      final ZsAppearance appearance = vm.appearance;
-      return _ZanshinMaterialApp(
-        themeMode: vm.effectiveMode,
-        lightTheme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.paper)),
-        darkTheme: ZsAppTheme.build(appearance.copyWith(theme: ZsTheme.night)),
-        builder: (context, child) => WindowChromeBuilder(
-          builder: (context, chrome) => ZsRoot(
-            appearance: appearance.copyWith(
-              theme: ZsTheme.of(Theme.of(context).brightness),
-              fullScreen: chrome?.fullScreen,
-              trafficLights: chrome?.trafficLights,
-            ),
-            shellTheme: vm.shellTheme,
-            child: child ?? const SizedBox.shrink(),
-          ),
-        ),
-        home: _homePageFactory.create(),
-      );
-    },
-  );
-}
-
-/// The project window's `MaterialApp` over [home] (Story 11.3: the floating shell's `HomePage`).
-class _ZanshinMaterialApp extends StatelessWidget {
-  const _ZanshinMaterialApp({
-    required this.lightTheme,
-    required this.darkTheme,
-    required this.themeMode,
-    required this.home,
-    this.builder,
-  });
-
-  final ThemeData? lightTheme;
-  final ThemeData? darkTheme;
-  final ThemeMode themeMode;
-  final Widget home;
-
-  /// Wraps the navigator; the window's root scope on macOS.
-  final TransitionBuilder? builder;
-
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'Zanshin',
-    theme: lightTheme ?? yaruLight,
-    themeMode: themeMode,
-    darkTheme: darkTheme ?? yaruDark,
-    builder: builder,
-    home: home,
-  );
+  Widget build(BuildContext context) => _rootFactory.create(windowKey: mainWindowKey, child: _homePageFactory.create());
 }

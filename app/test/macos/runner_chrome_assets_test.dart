@@ -56,6 +56,8 @@ void main() {
     ('AccentColor', css['--accent-native']! as Color, css['--accent-native-dark']! as Color),
     ('CanvasBase', ZsColors.paper.canvasBase, ZsColors.night.canvasBase),
     ('TrafficLightRing', ZsColors.paper.tlRing, ZsColors.night.tlRing),
+    // The dialog windows' base under the window fill (Story 11.12): `--fl-bg-solid`.
+    ('WindowFillBase', ZsColors.paper.flBgSolid, ZsColors.night.flBgSolid),
   ]) {
     test('the $name colour set holds the token in any (paper) and dark (night)', () {
       final ({Color any, Color dark}) colours = _colourSet(name);
@@ -69,7 +71,7 @@ void main() {
     final names = <String>{
       for (final RegExpMatch match in RegExp(r'NSColor\(named: "([^"]+)"\)').allMatches(swift)) match.group(1)!,
     };
-    expect(names, containsAll(<String>['CanvasBase', 'TrafficLightRing']));
+    expect(names, containsAll(<String>['CanvasBase', 'TrafficLightRing', 'WindowFillBase']));
     for (final name in names) {
       expect(File('$_assets/$name.colorset/Contents.json').existsSync(), isTrue, reason: name);
     }

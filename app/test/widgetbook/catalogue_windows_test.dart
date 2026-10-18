@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:ui' show ViewFocusDirection, ViewFocusEvent, ViewFocusState;
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanshin/src/features/shell/floating_shell.dart';
 import 'package:zanshin/src/features/shell/rail.dart';
 import 'package:zanshin/src/features/shell/top_bar.dart';
+import 'package:zanshin/src/features/window/active_window_tracker.dart';
 import 'package:zanshin/src/features/window/app_windows.dart';
 import 'package:zanshin_shell_platform_interface/zanshin_shell_platform_interface.dart';
 import 'package:zanshin_ui/zanshin_ui.dart';
@@ -21,22 +23,29 @@ import '../helpers/recording_shell.dart';
 /// A measured block one point off the DS reference (19, 19, 60, 14).
 const _block = WindowChrome(trafficLights: Rect.fromLTWH(20, 20, 60, 14));
 
-/// Records the builder of every window the catalogue opens instead of opening one.
+/// Records the builder and the dialog spec of every window the catalogue opens instead of opening one.
 class _RecordingWindows extends AppWindows {
   _RecordingWindows() : super(exitProcess: () async {});
 
   /// The builders handed to [openOrActivate], by window key.
   final opened = <String, WidgetBuilder>{};
 
+  /// The dialog specs handed to [openOrActivate], by window key; absent for a project window.
+  final dialogs = <String, DialogWindowSpec>{};
+
   @override
   Future<void> openOrActivate({
     required String key,
     required String title,
     required WidgetBuilder builder,
-    Size size = defaultWindowSize,
-    BoxConstraints constraints = defaultWindowConstraints,
+    Size? size,
+    BoxConstraints? constraints,
+    DialogWindowSpec? dialog,
   }) async {
     opened[key] = builder;
+    if (dialog != null) {
+      dialogs[key] = dialog;
+    }
   }
 }
 
@@ -49,23 +58,27 @@ void main() {
   /// The chrome watches recorded so far.
   Iterable<String> watches() => shell.calls.where((call) => call.startsWith('watchWindowChrome'));
 
-  /// Shows the catalogue at the Windows use case [path], presses its [button] and pumps the builder it hands to
-  /// `openOrActivate` as the new window's content, in a 1440 × 900 window.
-  Future<void> openWindow(WidgetTester tester, String path, String button) async {
+  /// Shows the catalogue at the Windows use case [path] over [tracker], presses its [button] and pumps the builder
+  /// it hands to `openOrActivate` as the new window's content, in a 1440 × 900 window ([wrap] around it); answers
+  /// what was recorded.
+  Future<_RecordingWindows> openWindow(
+    WidgetTester tester,
+    String path,
+    String button, {
+    ActiveWindowTracker? tracker,
+    Widget Function(Widget window)? wrap,
+  }) async {
     useCatalogueWindow(tester);
     final windows = _RecordingWindows();
-    await tester.pumpWidget(catalogueAt('/?path=$path', windows: windows));
+    await tester.pumpWidget(catalogueAt('/?path=$path', windows: windows, tracker: tracker));
     await tester.pump();
     await tester.tap(find.bySemanticsIdentifier(button));
     await tester.pump();
     expect(watches(), isEmpty, reason: 'nothing watches the chrome before the window root builds');
     final WidgetBuilder builder = windows.opened.values.single;
-    await tester.pumpWidget(
-      IconRegistryScope(
-        registry: testIconRegistry,
-        child: Builder(builder: builder),
-      ),
-    );
+    final Widget window = Builder(builder: builder);
+    await tester.pumpWidget(IconRegistryScope(registry: testIconRegistry, child: wrap?.call(window) ?? window));
+    return windows;
   }
 
   /// Opens Windows › Floating shell's window.
@@ -165,6 +178,105 @@ void main() {
       findsOneWidget,
     );
     expect(watches(), <String>['watchWindowChrome:${tester.view.viewId}']);
+  });
+
+  testWidgets('Windows › Window fill opens a resizable dialog window, keyed for Marionette', (tester) async {
+    final _RecordingWindows fill = await openWindow(tester, 'windows/window-fill/window-fill', 'open-window-fill');
+
+    expect(fill.dialogs['widgetbook-window-fill']?.constraints, const BoxConstraints(minWidth: 320, minHeight: 200));
+    expect(find.byKey(const ValueKey<String>('window:widgetbook-window-fill')), findsOneWidget);
+  });
+
+  testWidgets("Windows › Projects window opens a dialog window with the app's Projects spec", (tester) async {
+    final _RecordingWindows projects = await openWindow(
+      tester,
+      'windows/projects-window/projects-window',
+      'open-projects-window',
+    );
+
+    expect(projects.dialogs['widgetbook-projects-window'], same(projectsWindowSpec));
+  });
+
+  for (final (String useCase, String key, bool sized, bool resizable, WindowFrameMode frame, WindowLevel level)
+      in const <(String, String, bool, bool, WindowFrameMode, WindowLevel)>[
+        ('resizable', 'window-scaffold-resizable', true, true, WindowFrameMode.full, WindowLevel.normal),
+        ('content-sized', 'window-scaffold-content-sized', false, false, WindowFrameMode.position, WindowLevel.normal),
+        ('floating', 'window-scaffold-floating', true, true, WindowFrameMode.full, WindowLevel.floatingWhileActive),
+      ]) {
+    testWidgets('Windows › Window scaffold › $useCase opens its dialog window on the scaffold', (tester) async {
+      final _RecordingWindows windows = await openWindow(tester, 'windows/window-scaffold/$useCase', 'open-$key');
+      await tester.pumpAndSettle();
+
+      final DialogWindowSpec spec = windows.dialogs['widgetbook-$key']!;
+      expect(spec.size != null, sized);
+      expect(spec.resizable, resizable);
+      expect(spec.frame, frame);
+      expect(spec.level, level);
+      expect(spec.keepsAppAlive, isFalse);
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey<String>('window:widgetbook-$key')),
+          matching: find.byType(ZsWindowScaffold),
+        ),
+        findsOneWidget,
+      );
+    });
+  }
+
+  testWidgets('the content-sized window takes its content height and follows it when rows are added', (tester) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    await openWindow(
+      tester,
+      'windows/window-scaffold/content-sized',
+      'open-window-scaffold-content-sized',
+      // The engine's constraints for a window without a size: 620 wide, up to 740 high.
+      wrap: (window) => Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 620, maxHeight: 740), child: window),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final Finder root = find.byType(CatalogueWindowRoot);
+    final double before = tester.getSize(root).height;
+    expect(tester.getSize(root).width, 620);
+    expect(before, lessThan(740));
+    expect(tester.getSize(root), tester.getSize(find.byType(ZsWindowScaffold)));
+
+    await tester.tap(find.bySemanticsIdentifier('scaffold-more-rows'));
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(root).height, greaterThan(before));
+    expect(tester.getSize(root), tester.getSize(find.byType(ZsWindowScaffold)));
+    handle.dispose();
+  });
+
+  testWidgets("an opened window's root shows the inactive look while another view is key", (tester) async {
+    final tracker = ActiveWindowTracker();
+    addTearDown(tracker.dispose);
+    await openWindow(tester, 'windows/window-scaffold/resizable', 'open-window-scaffold-resizable', tracker: tracker);
+    await tester.pumpAndSettle();
+    bool inactive() => ZsAppearance.of(tester.element(find.byType(ZsWindowScaffold))).inactive;
+    expect(inactive(), isFalse, reason: 'before any focus event');
+
+    tracker.didChangeViewFocus(
+      ViewFocusEvent(
+        viewId: tester.view.viewId + 1,
+        state: ViewFocusState.focused,
+        direction: ViewFocusDirection.undefined,
+      ),
+    );
+    await tester.pump();
+    expect(inactive(), isTrue);
+
+    tracker.didChangeViewFocus(
+      ViewFocusEvent(
+        viewId: tester.view.viewId,
+        state: ViewFocusState.focused,
+        direction: ViewFocusDirection.undefined,
+      ),
+    );
+    await tester.pump();
+    expect(inactive(), isFalse);
   });
 
   for (final (String path, String? button) in const <(String, String?)>[

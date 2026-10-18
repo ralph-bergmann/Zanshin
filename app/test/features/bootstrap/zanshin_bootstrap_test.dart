@@ -38,7 +38,7 @@ class FakeBootWindowHost implements BootWindowHost {
 
   final calls = <String>[];
 
-  /// What [openMain] was handed.
+  /// What [openMain] or [openProjects] was handed.
   Widget? content;
 
   /// What [dismissSplash] was handed.
@@ -65,6 +65,12 @@ class FakeBootWindowHost implements BootWindowHost {
     if (failOnOpenMain) {
       throw StateError('the engine refused the window');
     }
+  }
+
+  @override
+  Future<void> openProjects(Widget content) async {
+    this.content = content;
+    calls.add('projects');
   }
 
   @override
@@ -180,7 +186,7 @@ void main() {
         openSettings: () => settings.future,
         adoptShellEnvironment: () async {},
         loadIcons: () async => testIconRegistry,
-        startApp: (_, _) => app.future,
+        startApp: (_, _) async => BootFirstWindow(content: await app.future),
       ).run(),
     );
     return host;
@@ -208,6 +214,84 @@ void main() {
 
     expect(host.calls, <String>['main']);
     expect(host.content, isA<AppMarker>());
+  });
+
+  /// Starts a sequence whose app step answers [first] at once, on an otherwise empty tree.
+  Future<FakeBootWindowHost> startWith(WidgetTester tester, BootFirstWindow first) async {
+    final SettingsStore store = await storeWith(tester, ThemeMode.system);
+    await tester.pumpWidget(const SizedBox.shrink());
+    final host = FakeBootWindowHost();
+    unawaited(
+      ZanshinBootSequence(
+        host: host,
+        openSettings: () async => store,
+        adoptShellEnvironment: () async {},
+        loadIcons: () async => testIconRegistry,
+        startApp: (_, _) async => first,
+      ).run(),
+    );
+    return host;
+  }
+
+  testWidgets('with nothing to reopen the first window is Projects, and onShown runs once it is up', (tester) async {
+    late FakeBootWindowHost host;
+    host = await startWith(
+      tester,
+      BootFirstWindow(
+        content: const AppMarker(),
+        kind: BootWindowKind.projects,
+        onShown: () async => host.calls.add('shown'),
+      ),
+    );
+    await flush(tester);
+
+    expect(host.calls, <String>['projects', 'shown']);
+    expect(host.content, isA<AppMarker>());
+  });
+
+  testWidgets("the project window's onShown runs after the splash is gone", (tester) async {
+    final SettingsStore store = await storeWith(tester, ThemeMode.system);
+    final settings = Completer<SettingsStore>()..complete(store);
+    final app = Completer<Widget>();
+    await tester.pumpWidget(const SizedBox.shrink());
+    final host = FakeBootWindowHost();
+    unawaited(
+      ZanshinBootSequence(
+        host: host,
+        openSettings: () => settings.future,
+        adoptShellEnvironment: () async {},
+        loadIcons: () async => testIconRegistry,
+        startApp: (_, _) async =>
+            BootFirstWindow(content: await app.future, onShown: () async => host.calls.add('shown')),
+      ).run(),
+    );
+
+    await tester.pump(splashIndicatorDelay + splashIndicatorMinShow + _tick);
+    app.complete(const AppMarker());
+    await flush(tester);
+
+    expect(host.calls, <String>['splash', 'main', 'dismiss', 'shown']);
+  });
+
+  testWidgets('a failing onShown is logged at SEVERE and leaves the window', (tester) async {
+    final records = <LogRecord>[];
+    final StreamSubscription<LogRecord> logs = Logger.root.onRecord.listen(records.add);
+    addTearDown(logs.cancel);
+    final FakeBootWindowHost host = await startWith(
+      tester,
+      BootFirstWindow(content: const AppMarker(), onShown: () async => throw StateError('no window to switch to')),
+    );
+    await flush(tester);
+
+    expect(host.calls, <String>['main']);
+    expect(
+      records,
+      contains(
+        isA<LogRecord>()
+            .having((r) => r.level, 'level', Level.SEVERE)
+            .having((r) => r.error, 'error', isA<StateError>()),
+      ),
+    );
   });
 
   testWidgets('the splash appears after the indicator delay and the main window waits out its minimum show', (
@@ -363,7 +447,7 @@ void main() {
         openSettings: () async => store,
         adoptShellEnvironment: () async {},
         loadIcons: () async => testIconRegistry,
-        startApp: (_, _) => app.future,
+        startApp: (_, _) async => BootFirstWindow(content: await app.future),
       ).run().then((_) => finished = true),
     );
 
@@ -398,7 +482,7 @@ void main() {
       openSettings: () => settings.future,
       adoptShellEnvironment: () async {},
       loadIcons: () async => testIconRegistry,
-      startApp: (_, _) => app.future,
+      startApp: (_, _) async => BootFirstWindow(content: await app.future),
     );
     final seen = <String>[];
     sequence.status.addListener(() => seen.add(sequence.status.value));
@@ -438,10 +522,10 @@ void main() {
         steps.add('icons');
         return icons.future;
       },
-      startApp: (_, registry) {
+      startApp: (_, registry) async {
         steps.add('app');
         expect(registry, same(testIconRegistry));
-        return app.future;
+        return BootFirstWindow(content: await app.future);
       },
     );
     final seen = <String>[];
@@ -483,7 +567,7 @@ void main() {
         loadIcons: () async => testIconRegistry,
         startApp: (_, _) async {
           appStarted = true;
-          return const AppMarker();
+          return const BootFirstWindow(content: AppMarker());
         },
       ).run(),
     );
@@ -513,7 +597,7 @@ void main() {
         loadIcons: () async => throw StateError('an icon would not decode'),
         startApp: (_, _) async {
           appStarted = true;
-          return const AppMarker();
+          return const BootFirstWindow(content: AppMarker());
         },
       ).run(),
     );

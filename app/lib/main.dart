@@ -26,7 +26,9 @@ import 'src/features/bootstrap/zanshin_bootstrap.dart';
 import 'src/features/projects/project_session.dart';
 import 'src/features/projects/projects_module.dart';
 import 'src/features/projects/projects_window.dart';
+import 'src/features/window/app_window_coordinator.dart';
 import 'src/features/window/app_windows.dart';
+import 'src/features/window/zanshin_window_root.dart';
 
 final _log = Logger('zanshin.bootstrap');
 
@@ -71,16 +73,18 @@ Future<void> main() async {
       }
 
       // Every window is created from Dart, so nothing is on screen until the
-      // sequence opens one: the splash if the boot is slow, else the main
-      // window straight away. The icons reach every window through the host
-      // and the DI graph through `startApp`.
+      // sequence opens one: the splash if the boot is slow, else the first
+      // app window straight away. The icons reach every window through the
+      // host and the DI graph through `startApp`. One AppWindows serves the
+      // host, the coordinator and the quit's close guards.
       final icons = ValueNotifier<IconRegistry?>(null);
+      final windows = AppWindows();
       await ZanshinBootSequence(
-        host: ZanshinWindowHost(windows: AppWindows(), icons: icons),
+        host: ZanshinWindowHost(windows: windows, icons: icons),
         openSettings: SettingsStore.open,
         adoptShellEnvironment: _adoptShellEnvironment,
         loadIcons: () async => icons.value = await IconRegistry.load(),
-        startApp: _startApp,
+        startApp: (settings, registry) => _startApp(settings, registry, windows),
       ).run();
     },
     (error, stackTrace) {
@@ -107,22 +111,37 @@ Future<void> _adoptShellEnvironment() async {
 /// Second boot step: the DI graph over the loaded settings and icons (resolved
 /// before the graph so the DI chain stays synchronous — no @asynchronous
 /// provider), then the worker, whose provision listener wires the
-/// AppLifecycleListener for graceful shutdown on macOS, then the app widget.
-/// The projects module gets the worker once it has started; the last open
-/// project then reopens without holding up the boot (Story 11.5): the window
-/// shows its empty place until the repository has opened.
-Future<Widget> _startApp(SettingsStore settings, IconRegistry icons) async {
+/// AppLifecycleListener for graceful shutdown on macOS (asking [windows]' close
+/// guards first), then the first window. The projects module gets the worker
+/// once it has started; the window coordinator (Story 11.12) then decides the
+/// first window, reopens the last open project without holding up the boot
+/// (Story 11.5) and keeps the windows in step with the open project.
+Future<BootFirstWindow> _startApp(SettingsStore settings, IconRegistry icons, AppWindows windows) async {
   final worker = Completer<ZanshinWorker>();
   // ignore: specify_nonobvious_local_variable_types
   final mainComponent = MainComponent.create(
     settingsModule: SettingsModule(store: settings),
     iconModule: IconModule(registry: icons),
     projectsModule: ProjectsModule(worker: worker.future),
+    workerLifecycleModule: WorkerLifecycleModule(mayQuit: windows.mayClose),
   );
   worker.complete(await mainComponent.worker);
-  unawaited(mainComponent.projectSession.reopenLast());
-  return mainComponent.zanshinAppFactory.create();
+  return appWindowCoordinator(mainComponent, windows).start();
 }
+
+/// The window coordinator over [component]'s session and window contents and the app's [windows]: the project window
+/// shows `ZanshinApp` (its `window:main` root over `HomePage`), Projects the Projects content under the
+/// `window:projects` root, its `onOpened` handed through.
+@visibleForTesting
+AppWindowCoordinator appWindowCoordinator(MainComponent component, AppWindows windows) => AppWindowCoordinator(
+  windows: windows,
+  session: component.projectSession,
+  buildProject: component.zanshinAppFactory.create,
+  buildProjects: (onOpened) => component.zanshinWindowRootFactory.create(
+    windowKey: projectsWindowKey,
+    child: component.projectsWindowFactory.create(onOpened: onOpened),
+  ),
+);
 
 @Component([
   ZanshinDiagnosticsModule,
@@ -141,16 +160,20 @@ abstract class MainComponent {
   // unreachable_from_main check can't see the generated overrides — they are
   // load-bearing for codegen. Suppress the false positive.
   @inject
-  ZanshinAppFactory get zanshinAppFactory; // ignore: unreachable_from_main
+  ZanshinAppFactory get zanshinAppFactory;
 
   @inject
   Future<ZanshinWorker> get worker; // ignore: unreachable_from_main
 
   @inject
-  ProjectSession get projectSession; // ignore: unreachable_from_main
+  ProjectSession get projectSession;
 
-  // WHY: the Projects window's content (Story 11.6) is hosted by 11.12's dialog window, which does not exist yet;
-  // until then nothing in main reads this getter, and only the DI test builds the content through it.
+  /// The Projects window's content (Story 11.6), which the window coordinator hosts in the `projects` dialog window
+  /// (Story 11.12).
   @inject
-  ProjectsWindowFactory get projectsWindowFactory; // ignore: unreachable_from_main
+  ProjectsWindowFactory get projectsWindowFactory;
+
+  /// The root of every window but the project window, whose content ([zanshinAppFactory]) brings its own.
+  @inject
+  ZanshinWindowRootFactory get zanshinWindowRootFactory;
 }

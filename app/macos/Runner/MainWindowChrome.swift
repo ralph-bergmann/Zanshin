@@ -16,22 +16,36 @@ import FlutterMacOS
 /// the content size; applying a saved frame while the titlebar still occupies
 /// its own strip would shave the titlebar height off the window on every launch.
 ///
-/// The window is opaque on the `CanvasBase` colour set (`--canvas-base`), so the
-/// system rounds and clips it with its own corner radius and a frame the Flutter
-/// view has not drawn yet shows the theme's base; the colour set's appearance
-/// variants follow `setWindowAppearance` (paper = aqua, night = darkAqua). The
-/// Flutter view stays clear and paints the canvas everywhere, so no view lies
-/// below it (Story 11.4, Claude's proposal).
+/// The window is opaque on a colour set, so the system rounds and clips it with
+/// its own corner radius and a frame the Flutter view has not drawn yet shows
+/// the theme's base; the colour set's appearance variants follow
+/// `setWindowAppearance` (paper = aqua, night = darkAqua). The Flutter view
+/// stays clear and paints everything, so no view lies below it (Story 11.4,
+/// Claude's proposal).
+///
+/// Two kinds (Story 11.12 item 2):
+/// - `main`, the project window: miniaturizable and resizable, the 880 × 560
+///   minimum, on `CanvasBase` (`--canvas-base`).
+/// - `secondary`, a dialog window (Settings, Projects, Configurations): the
+///   engine's style mask (Titled | Closable, Resizable where it asked for it, never
+///   Miniaturizable) plus `.fullSizeContentView`, no forced minimum, on
+///   `WindowFillBase` (`--fl-bg-solid`, the window fill's base). No vibrancy: the
+///   window is opaque and Flutter paints the fill.
+/// Both get the transparent titlebar, the hidden title, the empty toolbar that
+/// puts the traffic lights where the project window has them, the drag
+/// interceptor and the `--tl-ring` rings, greyed buttons included.
 final class MainWindowChrome {
     private weak var window: NSWindow?
+    private let kind: WindowChromeKind
 
     /// Click-through overlay that paints the neutral resting state of the window
     /// control buttons (close, minimize, zoom). Kept as a strong reference so the
     /// overlay can be re-attached whenever AppKit rebuilds the titlebar.
     private var trafficLightOverlay: TrafficLightOverlayView?
 
-    init(window: NSWindow) {
+    init(window: NSWindow, kind: WindowChromeKind) {
         self.window = window
+        self.kind = kind
 
         setupWindowAppearance()
         setupWindowButtons()
@@ -51,23 +65,25 @@ final class MainWindowChrome {
     private func setupWindowAppearance() {
         guard let window = self.window else { return }
 
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        switch kind {
+        case .main:
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+            window.backgroundColor = NSColor(named: "CanvasBase") ?? .windowBackgroundColor
+            // The project window's minimum (decision 16.37), as `defaultWindowConstraints` in Dart.
+            window.minSize = NSSize(width: 880, height: 560)
+        case .secondary:
+            // The engine's dialog mask stays (no minimise; zoom only where resizable); the dialog passes its own
+            // minimum through its constraints.
+            window.styleMask.insert(.fullSizeContentView)
+            window.backgroundColor = NSColor(named: "WindowFillBase") ?? .windowBackgroundColor
+        }
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
-        window.backgroundColor = NSColor(named: "CanvasBase") ?? .windowBackgroundColor
         window.isOpaque = true
         window.hasShadow = true
-        // The project window's minimum (decision 16.37), as `defaultWindowConstraints` in Dart.
-        window.minSize = NSSize(width: 880, height: 560)
 
         // See-through, so the window's base shows until the first Flutter frame.
         (window.contentViewController as? FlutterViewController)?.backgroundColor = .clear
-
-        // The WindowFrameStore below is the single owner of the window
-        // geometry. AppKit's own state restoration would restore its stale frame
-        // asynchronously ~300ms after launch, silently overriding both the saved
-        // frame and the first-launch default.
-        window.isRestorable = false
 
         // Add toolbar with custom invisible item to prevent window dragging
         let toolbar = NSToolbar(identifier: "Toolbar")

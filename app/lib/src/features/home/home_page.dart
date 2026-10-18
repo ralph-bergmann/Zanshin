@@ -16,6 +16,7 @@ import '../projects/project_window_title.dart';
 import '../shell/floating_shell.dart';
 import '../shell/floating_shell_view_model.dart';
 import '../shell/top_bar.dart';
+import '../window/app_window_actions.dart';
 
 part 'home_page.factory.dart';
 
@@ -51,18 +52,25 @@ class HomePage extends StatelessWidget {
         canvas: const ZsCanvas(),
         // An opaque target, so a press in the bar's row moves the window and never reaches the graph below.
         barRow: const WindowDragArea(child: ColoredBox(color: Color(0x00000000))),
-        projectCapsule: ListenableBuilder(listenable: projects, builder: (context, _) => _place()),
+        projectCapsule: ListenableBuilder(listenable: projects, builder: (context, _) => _place(context)),
       ),
     ),
   );
 
-  /// PLACE: the capsule of the open project, else the empty island. All Projects… stays disabled until 11.12 opens the
-  /// Projects window (11.6 built its content), Project Settings… and Settings… until 11.7 passes their actions.
-  Widget _place() {
+  /// PLACE: the capsule of the open project, else the empty island. All Projects… opens or brings forward the Projects
+  /// window through the window's [AppWindowActionsScope] (Story 11.12) and stays disabled without one (a catalogue
+  /// preview); Project Settings… and Settings… stay disabled until 11.7 passes their actions.
+  Widget _place(BuildContext context) {
     final ProjectEntry? project = projects.current;
     if (project == null) {
       return const ShellEmptyIsland();
     }
-    return ProjectCapsule(project: project, recent: projects.recent, onOpen: (path) => unawaited(projects.open(path)));
+    final AppWindowActions? windows = AppWindowActionsScope.maybeOf(context);
+    return ProjectCapsule(
+      project: project,
+      recent: projects.recent,
+      onOpen: (path) => unawaited(projects.open(path)),
+      onAllProjects: windows == null ? null : () => unawaited(windows.openProjects()),
+    );
   }
 }

@@ -27,6 +27,32 @@ const splashFadeOut = Duration(milliseconds: 200);
 
 final _log = Logger('zanshin.bootstrap');
 
+/// The kind of window the boot opens first (Story 11.12 item 7).
+enum BootWindowKind {
+  /// The project window (`BootWindowHost.openMain`), also for the failure page.
+  project,
+
+  /// The Projects window (`BootWindowHost.openProjects`): nothing to reopen.
+  projects,
+}
+
+/// What `ZanshinBootSequence.startApp` hands the boot: the first window's [content] in a window of [kind], and
+/// [onShown], which the sequence runs once that window is up and a splash, if there was one, is gone.
+@immutable
+class BootFirstWindow {
+  /// The first window showing [content].
+  const BootFirstWindow({required this.content, this.kind = BootWindowKind.project, this.onShown});
+
+  /// The window's content, built before `runWidget` with its DI root in place.
+  final Widget content;
+
+  /// Which window shows [content].
+  final BootWindowKind kind;
+
+  /// Runs after the window was presented; null for nothing.
+  final Future<void> Function()? onShown;
+}
+
 /// The windows [ZanshinBootSequence] drives.
 ///
 /// Deliberately free of any windowing type: the real implementation is the
@@ -44,6 +70,9 @@ abstract interface class BootWindowHost {
   /// Opens the app's main window showing [content].
   Future<void> openMain(Widget content);
 
+  /// Opens the Projects window showing [content], the first window when no project can open (Story 11.12 item 7).
+  Future<void> openProjects(Widget content);
+
   /// Fades the splash out over [fade] and destroys it. Called only after
   /// [openSplash], and only once.
   Future<void> dismissSplash(Duration fade);
@@ -54,11 +83,16 @@ abstract interface class BootWindowHost {
 /// The boot (`openSettings` alongside `adoptShellEnvironment` and `loadIcons` → `startApp`)
 /// starts before any window exists and races [splashIndicatorDelay]:
 ///
-/// * the boot wins — the main window is the first and only window, no splash
-///   object is ever created;
-/// * the timer wins — the splash window comes up and the main window follows
-///   at `max(boot end, delay + `[splashIndicatorMinShow]`)`, after which the
-///   splash fades out.
+/// * the boot wins — the first app window is the first and only window, no
+///   splash object is ever created;
+/// * the timer wins — the splash window comes up and the first app window
+///   follows at `max(boot end, delay + `[splashIndicatorMinShow]`)`, after which
+///   the splash fades out.
+///
+/// The first app window is what `startApp` decided ([BootFirstWindow]): the
+/// project window, or the Projects window when nothing can reopen; a failed
+/// boot shows the failure page in the project window. Once it is up (and the
+/// splash gone) its `onShown` runs.
 ///
 /// Waiting out the minimum with the *window* is what the single-window splash
 /// used to do with opacity: back then the finished app was already mounted
@@ -93,8 +127,8 @@ class ZanshinBootSequence {
   final Future<IconRegistry> Function() loadIcons;
 
   /// Second boot step: builds the DI graph over the loaded settings and icons,
-  /// starts the worker and returns the app widget.
-  final Future<Widget> Function(SettingsStore settings, IconRegistry icons) startApp;
+  /// starts the worker and returns the first window.
+  final Future<BootFirstWindow> Function(SettingsStore settings, IconRegistry icons) startApp;
 
   final _done = Completer<void>();
 
@@ -116,9 +150,9 @@ class ZanshinBootSequence {
   /// follows the platform brightness either way.
   ThemeMode _persistedMode = ThemeMode.system;
 
-  /// The finished app, or the failure page. Set before [_bootFinished], which
-  /// gates every read.
-  late Widget _content;
+  /// The first window of the finished app, or the failure page. Set before
+  /// [_bootFinished], which gates every read.
+  late BootFirstWindow _first;
 
   var _splashShown = false;
   var _minShowElapsed = false;
@@ -137,8 +171,8 @@ class ZanshinBootSequence {
     _status.value = message;
   }
 
-  /// Starts the boot; completes once the main window is up and a splash, if
-  /// there was one, is gone.
+  /// Starts the boot; completes once the first app window is up and a splash,
+  /// if there was one, is gone (the window's `onShown` may still run).
   Future<void> run() {
     _delayTimer = Timer(splashIndicatorDelay, _showSplash);
     unawaited(_boot());
@@ -146,16 +180,18 @@ class ZanshinBootSequence {
   }
 
   Future<void> _boot() async {
-    Widget content;
+    BootFirstWindow first;
     try {
-      content = await _load();
+      first = await _load();
     } catch (error, stackTrace) {
       // Process-level boundary: a failed boot may surface as an Error (FFI,
       // isolate spawn), so this deliberately catches everything.
       _log.severe('App boot failed', error, stackTrace);
-      content = BootFailure(error: error, mode: _persistedMode);
+      first = BootFirstWindow(
+        content: BootFailure(error: error, mode: _persistedMode),
+      );
     }
-    _content = content;
+    _first = first;
     _bootFinished = true;
     _openMainWhenDue();
   }
@@ -167,7 +203,7 @@ class ZanshinBootSequence {
   ///
   /// The status lines are English (decision 16.9); the wording is Claude's
   /// proposal (Story 11.1).
-  Future<Widget> _load() async {
+  Future<BootFirstWindow> _load() async {
     log('Loading settings…');
     var shellPending = true;
     // `ignore` only keeps an early failure from counting as unhandled while
@@ -212,8 +248,8 @@ class ZanshinBootSequence {
     _openMainWhenDue();
   }
 
-  /// Opens the main window once the boot is done *and* a shown splash has had
-  /// its minimum. Called from both ends of that race; the later one wins.
+  /// Opens the first app window once the boot is done *and* a shown splash has
+  /// had its minimum. Called from both ends of that race; the later one wins.
   void _openMainWhenDue() {
     if (!_bootFinished || _mainOpened || (_splashShown && !_minShowElapsed)) {
       return;
@@ -226,11 +262,21 @@ class ZanshinBootSequence {
   Future<void> _openMain() async {
     try {
       await _splashOpening;
-      await host.openMain(_content);
+      final BootFirstWindow first = _first;
+      switch (first.kind) {
+        case BootWindowKind.project:
+          await host.openMain(first.content);
+        case BootWindowKind.projects:
+          await host.openProjects(first.content);
+      }
       if (_splashShown) {
         // The cross-fade is opacity, so it keeps its duration under Reduce
         // motion too (decision 16.4).
         await host.dismissSplash(splashFadeOut);
+      }
+      final Future<void> Function()? onShown = first.onShown;
+      if (onShown != null) {
+        unawaited(_runOnShown(onShown));
       }
     } catch (error, stackTrace) {
       // Same blanket catch as _boot, and for a harder reason: `main` awaits
@@ -241,6 +287,16 @@ class ZanshinBootSequence {
       if (!_done.isCompleted) {
         _done.complete();
       }
+    }
+  }
+
+  /// Runs the first window's [onShown] apart from [run], which completes once the window is up; its failure is
+  /// logged, the window stays.
+  Future<void> _runOnShown(Future<void> Function() onShown) async {
+    try {
+      await onShown();
+    } catch (error, stackTrace) {
+      _log.severe('Following up the first window failed', error, stackTrace);
     }
   }
 }

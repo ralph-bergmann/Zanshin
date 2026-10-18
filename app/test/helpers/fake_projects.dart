@@ -35,6 +35,9 @@ class FakeProjectRepos implements ProjectRepos {
   /// While set, a clone waits for it before it answers (a test sees the busy form).
   Completer<void>? cloneGate;
 
+  /// While set, an open waits for it before it answers (a test acts while a reopen is pending).
+  Completer<void>? openGate;
+
   /// Runs during each reading, before it answers (a test emits a change from inside one).
   void Function(FakeProjectRepo repo)? onRead;
 
@@ -60,6 +63,7 @@ class FakeProjectRepos implements ProjectRepos {
   @override
   Future<ProjectRepo> open(String path) async {
     log.add('open $path');
+    await openGate?.future;
     final ZanshinFfiException? failure = openFailures[path];
     if (failure != null) {
       throw failure;
