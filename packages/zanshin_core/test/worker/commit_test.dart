@@ -63,9 +63,12 @@ void main() {
     });
 
     test('commit_paths_cross_the_buffer_and_the_rest_stays_in_the_new_at', () async {
-      await repo.commit(message: const ['first'], paths: const ['a.txt']);
+      final MutationResult result = await repo.commit(message: const ['first'], paths: const ['a.txt']);
 
+      // The new @ shows only b.txt, so a.txt sits unchanged in its parent, the committed @.
       expect((await repo.status()).files.map((f) => f.path), ['b.txt']);
+      expect(result.workingCopyChangeId, isNot(at));
+      expect((await repo.getChange(at)).description, 'first\n');
     });
 
     test('unmatched_paths_carry_their_warning', () async {

@@ -13,6 +13,7 @@ use std::{env, fs};
 
 use jj_lib::commit::Commit;
 use jj_lib::object_id::ObjectId as _;
+use jj_lib::op_store::RefTarget;
 use jj_lib::ref_name::{RefName, WorkspaceName};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::workspace::Workspace;
@@ -441,6 +442,92 @@ fn an_invalid_path_is_refused_before_the_transaction() {
     let mut fx = base();
     let err = assert_refused_without_an_operation(&mut fx, &options(&["/x"], &["first"]));
     assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
+}
+
+/// `""` is the root prefix: it selects every change, like no paths at all, and does not warn.
+#[test]
+fn the_root_path_selects_everything() {
+    let mut fx = base();
+    let old = wc(&fx.root);
+
+    let result = fx.repo.commit(&options(&[""], &["first"])).expect("commit");
+
+    let (committed, _) = assert_committed(&fx, &result, &old);
+    assert_eq!(committed.tree().tree_ids(), old.tree().tree_ids());
+    assert!(fx.repo.take_warnings().is_empty());
+}
+
+/// `advance_bookmarks` merges the target (`cli_util.rs:2880-2898` @ v0.46.0): a conflicted
+/// advanceable bookmark stays conflicted, with the committed `@` in place of `@`'s parent.
+#[test]
+fn a_conflicted_advanceable_bookmark_stays_conflicted() {
+    let fx = base_with("[experimental-advance-branches]\nenabled-branches = [\"*\"]\n");
+    let b = commit(&fx.root, &fx.b);
+    let a_id = b.parent_ids()[0].clone();
+    {
+        let (_workspace, repo) = load(&fx.root);
+        let root_id = repo.store().root_commit_id().clone();
+        let mut tx = repo.start_transaction();
+        tx.repo_mut().set_local_bookmark_target(
+            RefName::new("b-mark"),
+            RefTarget::from_removes_adds([Some(a_id.clone())], [Some(b.id().clone()), Some(root_id)]),
+        );
+        pollster::block_on(tx.commit("test: conflicted b-mark")).expect("commit");
+    }
+    let mut fx = Fx {
+        repo: Repo::open(&fx.root).expect("open"),
+        ..fx
+    };
+
+    fx.repo.commit(&options(&[], &["first"])).expect("commit");
+
+    let committed = commit(&fx.root, &fx.c);
+    let (_workspace, repo) = load(&fx.root);
+    let target = repo.view().get_local_bookmark(RefName::new("b-mark")).clone();
+    assert!(!target.is_resolved(), "still conflicted: {target:?}");
+    let adds: Vec<_> = target.adds().flatten().cloned().collect();
+    assert!(adds.contains(committed.id()), "the committed @ replaced B: {target:?}");
+    assert!(!adds.contains(b.id()), "B is gone from the target: {target:?}");
+}
+
+/// A merge `@`: the selection starts from the MERGED parent tree, and the advanceable
+/// bookmarks of BOTH parents move to the committed `@`.
+#[test]
+fn a_merge_at_advances_the_bookmarks_of_every_parent() {
+    let mut fx = base_with("[experimental-advance-branches]\nenabled-branches = [\"*\"]\n");
+    let (b, c) = (fx.b.clone(), fx.c.clone());
+    fx.repo
+        .bookmark_create(&strings(&["b-mark"]), Some(&b))
+        .expect("bookmark");
+    fx.repo
+        .bookmark_create(&strings(&["c-mark"]), Some(&c))
+        .expect("bookmark");
+    // A sibling of C on B, then a merge of the two as `@`.
+    let sibling = fx
+        .repo
+        .new_change(std::slice::from_ref(&b))
+        .expect("new")
+        .new_change_ids[0]
+        .clone();
+    fs::write(fx.root.join("s.txt"), "s\n").expect("write");
+    fx.repo.describe(sibling.clone(), "S\n").expect("describe");
+    let merge = fx
+        .repo
+        .new_change(&[c.clone(), sibling.clone()])
+        .expect("merge")
+        .new_change_ids[0]
+        .clone();
+    fs::write(fx.root.join("m.txt"), "m\n").expect("write");
+    let _ = fx.repo.take_warnings();
+
+    fx.repo.commit(&options(&["m.txt"], &["merge"])).expect("commit");
+
+    let committed = commit(&fx.root, &merge);
+    assert_eq!(files(&committed), ["a.txt", "b.txt", "c.txt", "m.txt", "s.txt"]);
+    assert_eq!(bookmark(&fx.root, "c-mark"), Some(merge.clone()));
+    assert!(fx.repo.take_warnings().is_empty());
+    // `b-mark` sits on B, which is not a parent of `@`: it does not move.
+    assert_eq!(bookmark(&fx.root, "b-mark"), Some(b));
 }
 
 #[test]

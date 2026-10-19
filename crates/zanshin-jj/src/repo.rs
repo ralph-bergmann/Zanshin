@@ -2103,7 +2103,8 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — a path is not a valid repo path, or an
     ///   `experimental-advance-branches` pattern does not parse.
     /// - [`crate::MutateError::Config`] — an `experimental-advance-branches` list is not a list
-    ///   of strings, or the config could not be read.
+    ///   of strings, the config could not be read, or the `immutable_heads()` alias does not
+    ///   resolve (the finish rebases only mutable descendants, as the CLI's `tx.finish`).
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.

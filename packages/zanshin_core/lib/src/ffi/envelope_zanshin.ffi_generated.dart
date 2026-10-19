@@ -1709,7 +1709,7 @@ class SplitRequestObjectBuilder extends fb.ObjectBuilder {
 ///
 ///    paths              repo-relative PREFIXES of the changes the committed `@` keeps;
 ///                       empty/absent = every change (the CLI's "describe + new")
-///    message            the CLI's repeatable `-m`, required: empty/absent = `-m ""`
+///    message            the CLI's repeatable `-m`, optional on the wire: empty/absent = `-m ""`
 class CommitRequest {
   CommitRequest._(this._bc, this._bcOffset);
   factory CommitRequest(List<int> bytes) {

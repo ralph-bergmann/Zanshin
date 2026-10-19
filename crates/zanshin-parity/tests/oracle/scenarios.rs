@@ -306,6 +306,37 @@ const ADVANCE_ALL_BUT_B_MARK: &[Step] = &[
     ]),
 ];
 
+/// A merge `@` of C (`c-mark`) and its sibling S (`s-mark`) on B, with every bookmark
+/// advanceable (Story 9.49).
+const ADVANCE_MERGE: &[Step] = &[
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "experimental-advance-branches.enabled-branches",
+        "[\"*\"]",
+    ]),
+    Step::Jj(&["bookmark", "create", "c-mark", "-r", "@"]),
+    Step::Jj(&["new", "-m", "S", "b-mark"]),
+    Step::Jj(&["bookmark", "create", "s-mark", "-r", "@"]),
+    Step::Jj(&["new", "c-mark", "s-mark"]),
+];
+
+/// `@` = C with a described child D that `immutable_heads()` makes immutable — so `@` is
+/// immutable too, and `commit` (no rewritability guard) rewrites it while the finish leaves
+/// the immutable D in place (Story 9.49).
+const IMMUTABLE_WC_WITH_CHILD: &[Step] = &[
+    Step::Jj(&["new", "-m", "D"]),
+    Step::Jj(&["edit", "@-"]),
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "revset-aliases.\"immutable_heads()\"",
+        "description(substring:\"D\")",
+    ]),
+];
+
 /// The scenario table (Story 9.47's initial set).
 #[allow(clippy::too_many_lines)] // WHY: one flat table reads better than 24 helper fns
 pub fn scenarios() -> Vec<Scenario> {
@@ -1158,6 +1189,56 @@ pub fn scenarios() -> Vec<Scenario> {
                 "commit_trailers",
                 |repo, _, _| commit_outcome(repo, &[], &["T"]),
                 |_| args(&["commit", "-m", "T"]),
+            )
+        },
+        Scenario {
+            setup: ADVANCE_MERGE,
+            files: &[("m.txt", "m\n")],
+            ..simple(
+                "commit_advance_merge_parents",
+                |repo, _, _| commit_outcome(repo, &["m.txt"], &["merge"]),
+                |_| args(&["commit", "-m", "merge", "m.txt"]),
+            )
+        },
+        Scenario {
+            setup: IMMUTABLE_WC_WITH_CHILD,
+            ..simple(
+                "commit_immutable_wc_with_child",
+                |repo, _, _| commit_outcome(repo, &[], &["first"]),
+                |_| args(&["commit", "-m", "first"]),
+            )
+        },
+        simple(
+            "commit_path_outside_repo",
+            |repo, _, _| commit_outcome(repo, &["/x"], &["first"]),
+            |_| args(&["commit", "-m", "first", "/x"]),
+        ),
+        Scenario {
+            setup: &[Step::Jj(&[
+                "config",
+                "set",
+                "--repo",
+                "experimental-advance-branches.enabled-branches",
+                "[\"glob:[\"]",
+            ])],
+            ..simple(
+                "commit_advance_bad_pattern",
+                |repo, _, _| commit_outcome(repo, &[], &["first"]),
+                |_| args(&["commit", "-m", "first"]),
+            )
+        },
+        Scenario {
+            setup: &[Step::Jj(&[
+                "config",
+                "set",
+                "--repo",
+                "experimental-advance-branches.enabled-branches",
+                "\"*\"",
+            ])],
+            ..simple(
+                "commit_advance_not_a_list",
+                |repo, _, _| commit_outcome(repo, &[], &["first"]),
+                |_| args(&["commit", "-m", "first"]),
             )
         },
     ]

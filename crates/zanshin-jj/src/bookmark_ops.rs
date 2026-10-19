@@ -117,7 +117,7 @@ fn describe_pattern_parse_error(e: &RevsetParseError) -> String {
     reason
 }
 
-/// Parses each pattern and UNIONS them — the CLI's `revset_util.rs:317-337`
+/// Parses each pattern and UNIONS them — the CLI's `revset_util.rs:364-384` @ v0.46.0
 /// `parse_union_name_patterns`, minus its `ui` diagnostics printing.
 ///
 /// A bare word is a GLOB, not an exact name (`jj_lib::revset`'s `expect_string_expression`
@@ -125,8 +125,8 @@ fn describe_pattern_parse_error(e: &RevsetParseError) -> String {
 /// metacharacters IS exact, which is what [`StringExpression::exact_strings`] then reports.
 pub(crate) fn union_expression(patterns: &[String]) -> Result<StringExpression, MutateError> {
     // The CLI prints this sink's DIAGNOSTICS through `print_parse_diagnostics`
-    // (`revset_util.rs:317-337`), a `ui.warning_*` site. Dropped here because jj-lib 0.44
-    // emits no diagnostic for string patterns, so the sink always stays empty (the "Not
+    // (`revset_util.rs:364-384` @ v0.46.0), a `ui.warning_*` site. Dropped here because jj-lib
+    // 0.46 still emits no diagnostic for string patterns, so the sink always stays empty (the "Not
     // ported / out of scope" entry of `docs/rust-error-codes.md` § Warning Codes).
     let mut diagnostics = RevsetDiagnostics::new();
     let mut expressions = Vec::with_capacity(patterns.len());

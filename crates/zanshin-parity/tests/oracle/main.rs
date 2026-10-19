@@ -107,6 +107,11 @@ parity!(
     commit_two_workspaces_on_wc,
     commit_without_working_copy,
     commit_trailers,
+    commit_advance_merge_parents,
+    commit_immutable_wc_with_child,
+    commit_path_outside_repo,
+    commit_advance_bad_pattern,
+    commit_advance_not_a_list,
 );
 
 /// Every scenario id the table and the init list define.
@@ -121,7 +126,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 72);
+    assert_eq!(SCENARIO_IDS.len(), 77);
 }
 
 #[test]

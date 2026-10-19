@@ -3268,7 +3268,7 @@ pub mod zanshin {
         ///
         ///   paths              repo-relative PREFIXES of the changes the committed `@` keeps;
         ///                      empty/absent = every change (the CLI's "describe + new")
-        ///   message            the CLI's repeatable `-m`, required: empty/absent = `-m ""`
+        ///   message            the CLI's repeatable `-m`, optional on the wire: empty/absent = `-m ""`
         pub struct CommitRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

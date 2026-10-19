@@ -504,8 +504,9 @@ impl SelectedTree {
     /// - [`MutateError::Backend`] — no such tree in the store, or a backend read failure.
     // WHY `allow(dead_code)`: Story 9.3 wired `from_paths` (restore), Story 9.15
     // `into_commit_selection` (squash/split, paths arm only) and Story 9.49 reuses `from_paths`
-    // (commit, paths arm only), but NOT this arm — the tree arm of squash/split/commit/diffedit (its
-    // contract, `left` and its staleness refusal) is Story 9.50's to decide. It is the only item of this impl still unused, so the attribute sits
+    // (commit, paths arm only), but NOT this arm — the tree arm of squash/split/commit/diffedit
+    // (its contract, `left` and its staleness refusal) is Story 9.50's to decide. It is the
+    // only item of this impl still unused, so the attribute sits
     // here rather than on the struct/impl: a blanket allow that no longer shields anything
     // would let a genuinely dead item pass unnoticed. `expect(dead_code)` would be wrong — the
     // lint does not fire in the test build, where the module's own `#[cfg(test)]` tests call
