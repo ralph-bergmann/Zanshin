@@ -698,7 +698,9 @@ fn new_change_moves_git_head_to_the_new_at_parent() {
     let (root, mut repo) = colocated(&tmp);
     let main = repo.get_change(&repo_main_change(&root)).expect("main");
 
-    let result = repo.new_change(std::slice::from_ref(&main.id)).expect("new_change");
+    let result = repo
+        .new_change(std::slice::from_ref(&main.id), &[], &[])
+        .expect("new_change");
 
     assert!(result.finish.is_none(), "a clean finish reports nothing");
     let (_at, parent) = at(&root);
@@ -707,7 +709,7 @@ fn new_change_moves_git_head_to_the_new_at_parent() {
 
     // A second new_change on top of `@` moves HEAD along.
     let at_change = result.working_copy_change_id;
-    repo.new_change(&[at_change]).expect("new_change on @");
+    repo.new_change(&[at_change], &[], &[]).expect("new_change on @");
     let (_at, parent) = at(&root);
     assert_eq!(git(&["rev-parse", "HEAD"], &root), parent, "Git HEAD follows @-");
 }
@@ -946,7 +948,7 @@ fn a_held_head_lock_makes_the_head_reset_a_reported_warning() {
     let head_lock = root.join(".git").join("HEAD.lock");
     fs::write(&head_lock, "").expect("hold HEAD.lock");
 
-    let result = repo.new_change(&[at_change]);
+    let result = repo.new_change(&[at_change], &[], &[]);
 
     fs::remove_file(&head_lock).expect("release HEAD.lock");
     let result = result.expect("the verb succeeds");

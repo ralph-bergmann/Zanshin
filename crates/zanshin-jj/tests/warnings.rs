@@ -151,7 +151,7 @@ fn restore_absorb_and_interdiff_warn_about_unmatched_paths() {
     write(&fx.root, "f.txt", "one\n");
     let mut repo = Repo::open(&fx.root).expect("open");
     let parent = at(&repo);
-    repo.new_change(std::slice::from_ref(&parent)).expect("new @");
+    repo.new_change(std::slice::from_ref(&parent), &[], &[]).expect("new @");
     write(&fx.root, "f.txt", "two\n");
     let nope = ["nope".to_owned()];
 
@@ -191,7 +191,7 @@ fn restoring_a_file_at_deleted_is_not_an_unmatched_path() {
     write(&fx.root, "f.txt", "one\n");
     let mut repo = Repo::open(&fx.root).expect("open");
     let parent = at(&repo);
-    repo.new_change(std::slice::from_ref(&parent)).expect("new @");
+    repo.new_change(std::slice::from_ref(&parent), &[], &[]).expect("new @");
     fs::remove_file(fx.root.join("f.txt")).expect("delete f.txt in @");
 
     repo.restore(None, None, None, &["f.txt".to_owned()], false)

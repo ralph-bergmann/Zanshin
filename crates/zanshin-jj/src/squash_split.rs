@@ -53,7 +53,7 @@ use crate::mutate::{
     resolve_or_wc, warn_unmatched, MutateError, MutationResult,
 };
 use crate::op_support::{
-    cleanup_description_lines, combined_editor_text, compute_commit_location, join_message_paragraphs,
+    cleanup_description_lines, combined_editor_text, compute_commit_location, join_message_paragraphs, resolve_ordered,
     start_repo_transaction, try_combine_messages, SelectedTree,
 };
 use crate::snapshot::VerbContext;
@@ -509,22 +509,6 @@ pub(crate) fn prepare_split(
         );
     }
     Ok(PreparedSplit { target, location })
-}
-
-/// `resolve_revsets_ordered` over change ids: each resolved, in argument order, duplicates
-/// dropped. `None` stays `None` (the flag was not given).
-fn resolve_ordered(tx: &Transaction, ids: Option<&[ChangeId]>) -> Result<Option<Vec<JjCommitId>>, MutateError> {
-    let Some(ids) = ids else {
-        return Ok(None);
-    };
-    let mut resolved: Vec<JjCommitId> = Vec::with_capacity(ids.len());
-    for id in ids {
-        let commit_id = resolve_commit(tx.repo(), id)?.id().clone();
-        if !resolved.contains(&commit_id) {
-            resolved.push(commit_id);
-        }
-    }
-    Ok(Some(resolved))
 }
 
 /// `jj split` (Story 9.15) — see [`crate::Repo::split`].

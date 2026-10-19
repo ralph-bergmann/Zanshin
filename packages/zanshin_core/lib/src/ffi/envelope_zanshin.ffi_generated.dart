@@ -16,7 +16,8 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  `zanshin_bookmark_delete` would silently glob-delete names the caller meant literally.
 ///
 ///  The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
-///  `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
+///  `zanshin_new_change`'s `parents` (plus its `insert_after` / `insert_before`, which only
+///  `NewChange` reads — Story 9.48) and as `zanshin_abandon`'s `change_ids`, so it carries the
 ///  two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
 ///  named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 ///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
@@ -1054,6 +1055,10 @@ class FfiErrorObjectBuilder extends fb.ObjectBuilder {
 ///  A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
 ///  `parents` and `zanshin_abandon`'s `change_ids`. `kind` therefore distinguishes the two
 ///  wrappers: `NewChange` or `Abandon`.
+///
+///  `insert_after` / `insert_before` (Story 9.48) are read ONLY by `zanshin_new_change`: the
+///  CLI's `jj new -A` / `-B` targets. ABSENT or empty means the flag was not given;
+///  `zanshin_abandon` ignores both.
 class ChangeIdList {
   ChangeIdList._(this._bc, this._bcOffset);
   factory ChangeIdList(List<int> bytes) {
@@ -1068,10 +1073,13 @@ class ChangeIdList {
 
   RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
   List<String>? get changeIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get insertAfter => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get insertBefore =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
 
   @override
   String toString() {
-    return 'ChangeIdList{kind: ${kind}, changeIds: ${changeIds}}';
+    return 'ChangeIdList{kind: ${kind}, changeIds: ${changeIds}, insertAfter: ${insertAfter}, insertBefore: ${insertBefore}}';
   }
 }
 
@@ -1088,7 +1096,7 @@ class ChangeIdListBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(4);
   }
 
   int addKind(RequestKind? kind) {
@@ -1101,6 +1109,16 @@ class ChangeIdListBuilder {
     return fbBuilder.offset;
   }
 
+  int addInsertAfterOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addInsertBeforeOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -1109,12 +1127,18 @@ class ChangeIdListBuilder {
 class ChangeIdListObjectBuilder extends fb.ObjectBuilder {
   final RequestKind? _kind;
   final List<String>? _changeIds;
+  final List<String>? _insertAfter;
+  final List<String>? _insertBefore;
 
   ChangeIdListObjectBuilder({
     RequestKind? kind,
     List<String>? changeIds,
+    List<String>? insertAfter,
+    List<String>? insertBefore,
   }) : _kind = kind,
-       _changeIds = changeIds;
+       _changeIds = changeIds,
+       _insertAfter = insertAfter,
+       _insertBefore = insertBefore;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -1122,9 +1146,17 @@ class ChangeIdListObjectBuilder extends fb.ObjectBuilder {
     final int? changeIdsOffset = _changeIds == null
         ? null
         : fbBuilder.writeList(_changeIds!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(2);
+    final int? insertAfterOffset = _insertAfter == null
+        ? null
+        : fbBuilder.writeList(_insertAfter!.map(fbBuilder.writeString).toList());
+    final int? insertBeforeOffset = _insertBefore == null
+        ? null
+        : fbBuilder.writeList(_insertBefore!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(4);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, changeIdsOffset);
+    fbBuilder.addOffset(2, insertAfterOffset);
+    fbBuilder.addOffset(3, insertBeforeOffset);
     return fbBuilder.endTable();
   }
 

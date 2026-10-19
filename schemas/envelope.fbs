@@ -57,7 +57,8 @@ table FfiError {
 /// `zanshin_bookmark_delete` would silently glob-delete names the caller meant literally.
 ///
 /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
-/// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
+/// `zanshin_new_change`'s `parents` (plus its `insert_after` / `insert_before`, which only
+/// `NewChange` reads — Story 9.48) and as `zanshin_abandon`'s `change_ids`, so it carries the
 /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
 /// named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
@@ -112,9 +113,15 @@ enum RequestKind : ubyte {
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
 /// `parents` and `zanshin_abandon`'s `change_ids`. `kind` therefore distinguishes the two
 /// wrappers: `NewChange` or `Abandon`.
+///
+/// `insert_after` / `insert_before` (Story 9.48) are read ONLY by `zanshin_new_change`: the
+/// CLI's `jj new -A` / `-B` targets. ABSENT or empty means the flag was not given;
+/// `zanshin_abandon` ignores both.
 table ChangeIdList {
   kind: RequestKind;
   change_ids: [string];
+  insert_after: [string];
+  insert_before: [string];
 }
 
 /// Arguments of `zanshin_restore` (Story 9.3, FR-JJ-10a).

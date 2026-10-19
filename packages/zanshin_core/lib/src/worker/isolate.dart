@@ -886,19 +886,38 @@ class ZanshinWorker {
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
-  /// Create a new, empty change on top of [parents] in the repo identified by
-  /// [handleId], and switch the working copy to it (Story 6.5).
+  /// Create a new, empty change in the repo identified by [handleId] — on top
+  /// of [parents], or inserted after [insertAfter] / before [insertBefore]
+  /// (`jj new -A` / `-B`, Story 9.48; empty = the flag not given) — and switch
+  /// the working copy to it (Story 6.5).
   ///
   /// Sends a [NewChangeCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
   ///
-  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.change_not_found`). Completes with a [StateError]
-  /// after [close]. The close-guard [StateError] is delivered synchronously by
+  /// Throws [ArgumentError] if a [parents] / [insertAfter] / [insertBefore]
+  /// entry contains an interior NUL (U+0000). Throws [ZanshinFfiException] on FFI errors (e.g.
+  /// `ffi.invalid_handle`, `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.immutable`, `jj.config_error`). Completes with a [StateError] after
+  /// [close]. The close-guard [StateError] is delivered synchronously by
   /// [RepoHandle.newChange].
-  Future<repo_ffi_mutate.MutationResult> newChange(int handleId, List<String> parents) async {
+  Future<repo_ffi_mutate.MutationResult> newChange(
+    int handleId,
+    List<String> parents, {
+    List<String> insertAfter = const [],
+    List<String> insertBefore = const [],
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(parents, 'parents');
+    rejectInteriorNuls(insertAfter, 'insertAfter');
+    rejectInteriorNuls(insertBefore, 'insertBefore');
     final Uint8List bytes = await send(
-      NewChangeCommand(commandId: _correlator.allocateId(), handleId: handleId, parents: parents),
+      NewChangeCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        parents: parents,
+        insertAfter: insertAfter,
+        insertBefore: insertBefore,
+      ),
     );
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
@@ -2331,14 +2350,24 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
-        case NewChangeCommand(:final int handleId, :final List<String> parents):
+        case NewChangeCommand(
+          :final int handleId,
+          :final List<String> parents,
+          :final List<String> insertAfter,
+          :final List<String> insertBefore,
+        ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: NewChangeCommand for unknown handleId $handleId');
             final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
-            final Uint8List bytes = repo_ffi_mutate.zanshinNewChange(raw, parents);
+            final Uint8List bytes = repo_ffi_mutate.zanshinNewChange(
+              raw,
+              parents,
+              insertAfter: insertAfter,
+              insertBefore: insertBefore,
+            );
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

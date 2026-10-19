@@ -100,7 +100,7 @@ fn base() -> Fx {
         (&[("c.txt", "c\n"), ("c2.txt", "c2\n")][..], "C\n"),
     ] {
         if let Some(parent) = ids.last() {
-            repo.new_change(std::slice::from_ref(parent)).expect("new");
+            repo.new_change(std::slice::from_ref(parent), &[], &[]).expect("new");
         }
         for (path, text) in files {
             fs::write(root.join(path), text).expect("write");

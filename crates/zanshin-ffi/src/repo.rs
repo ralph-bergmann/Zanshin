@@ -171,7 +171,9 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
 // the two error shapes are shared — they live in `envelope.rs`, since `file.rs`'s readers
 // need exactly the same two.
 
-/// Parse a `ChangeIdList` request buffer into an owned `Vec<ChangeId>`.
+/// Parse a `ChangeIdList` request buffer's `change_ids` into an owned `Vec<ChangeId>` —
+/// `zanshin_abandon`'s reader; `insert_after` / `insert_before` are ignored (only
+/// `zanshin_new_change` reads them, through [`read_new_change_args`]).
 ///
 /// `expected` is the caller's own [`fbs::RequestKind`]: this ONE table is read by TWO wrappers,
 /// as `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so the tag is
@@ -194,6 +196,38 @@ fn read_change_id_list(data: *const u8, len: usize, expected: fbs::RequestKind) 
         .flatten()
         .map(|s| ChangeId(s.to_owned()))
         .collect())
+}
+
+/// Owned Rust form of a `NewChange`-tagged `ChangeIdList` (Story 9.48): the positional
+/// `parents` (`change_ids`), `insert_after` and `insert_before`. An absent list is empty — the
+/// flag was not given.
+struct NewChangeArgs {
+    parents: Vec<ChangeId>,
+    insert_after: Vec<ChangeId>,
+    insert_before: Vec<ChangeId>,
+}
+
+/// Parse a `NewChange`-tagged `ChangeIdList` request buffer into its three owned lists.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
+///   is not `NewChange`.
+fn read_new_change_args(data: *const u8, len: usize) -> Result<NewChangeArgs, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let list = flatbuffers::root_with_opts::<fbs::ChangeIdList>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(list.kind(), fbs::RequestKind::NewChange)?;
+    let ids = |v: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&str>>>| -> Vec<ChangeId> {
+        v.into_iter().flatten().map(|s| ChangeId(s.to_owned())).collect()
+    };
+    Ok(NewChangeArgs {
+        parents: ids(list.change_ids()),
+        insert_after: ids(list.insert_after()),
+        insert_before: ids(list.insert_before()),
+    })
 }
 
 /// Owned Rust form of a `RestoreRequest` buffer (Story 9.3).
@@ -827,32 +861,49 @@ pub unsafe extern "C" fn zanshin_describe(
     vec_into_token(buf)
 }
 
-/// Create a new, empty change on top of `parents` in the repo referenced by `handle`
-/// and switch the working copy to it — a merge commit when `parents` has more than
-/// one entry. With exactly one parent, the bookmarks `experimental-advance-branches` selects
-/// move from that parent's parents to the parent, as the CLI's `jj new` does.
+/// Create a new, empty change in the repo referenced by `handle` and switch the working copy
+/// to it — the CLI's `jj new <parents>`, `jj new -A <insert_after>` and
+/// `jj new -B <insert_before>` (Story 9.48).
 ///
-/// `parents` crosses as a `ChangeIdList` `FlatBuffers` request buffer (ADR-0001
-/// composite-input pattern), not `args_json` and not a raw C-string array.
+/// The request is a `ChangeIdList` `FlatBuffers` buffer (ADR-0001 composite-input pattern),
+/// tagged `NewChange`: `change_ids` are the positional `parents`, `insert_after` /
+/// `insert_before` the `-A` / `-B` targets. An absent or empty list means the flag was not
+/// given. Each list resolves in order with duplicates dropped (`[c, c]` is one parent).
 ///
-/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+/// - `parents` only: the new change sits on them (a merge commit for two or more); nothing is
+///   rebased. With exactly one parent, the bookmarks `experimental-advance-branches` selects move
+///   from that parent's parents to the parent, as the CLI's `jj new` does.
+/// - `insert_after` / `insert_before`: the new change goes between the `-A` targets and their
+///   children (`-A`), the `-B` targets' parents and the targets (`-B`), or the two lists
+///   (both); those children are rebased onto it, keeping their other parents. No bookmark
+///   advances.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success:
+/// `new_change_ids` = `[the new change]`, which is also the new `@`.
 ///
 /// # Errors
+/// Every `jj.*` refusal below writes nothing.
+///
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
 ///   is not `NewChange`. The two wrappers that read this ONE table carry different kinds, so an
 ///   `Abandon`-tagged buffer is refused here rather than treated as `parents`.
-/// - `jj.invalid_input` — the parsed `parents` list is empty, or (one parent) an
-///   `experimental-advance-branches` pattern does not parse (Story 9.49 closing run); nothing is
-///   written.
-/// - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
+/// - `jj.invalid_input` — `parents` combined with `insert_after` / `insert_before`; all three
+///   lists empty; (`-A`/`-B`) the location would create a loop (`Refusing to create a loop:
+///   commit <12 hex> would be both an ancestor and a descendant of the new commit`) — Story
+///   9.48; or (one parent) an
+///   `experimental-advance-branches` pattern does not parse (Story 9.49 closing run).
+/// - `jj.change_not_found` — an id in any list is malformed, absent, only-hidden, or divergent.
+/// - `jj.immutable` — (`-A`/`-B`) a commit to rebase is inside the repo's effective immutable
+///   set; the first offender's hex commit id in `context` (Story 9.48).
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
 ///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
 ///   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
 ///   `context`): operations it committed before the fault stay, as in the CLI (colocated:
 ///   `import git head`), and the partial `precondition` says which. Or (one parent) an
-///   `experimental-advance-branches` key is not a list of strings (Story 9.49 closing run);
+///   `experimental-advance-branches` key is not a list of strings (Story 9.49 closing run), or
+///   (`-A`/`-B`) the `revset-aliases."immutable_heads()"` alias does not resolve (Story 9.48);
 ///   nothing is written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
@@ -872,10 +923,12 @@ pub unsafe extern "C" fn zanshin_describe(
 pub unsafe extern "C" fn zanshin_new_change(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_new_change", handle);
     let buf = catch(|| {
-        let parents = read_change_id_list(data, len, fbs::RequestKind::NewChange)?;
+        let args = read_new_change_args(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let result = session.repo.new_change(&parents);
+        let result = session
+            .repo
+            .new_change(&args.parents, &args.insert_after, &args.insert_before);
         precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)

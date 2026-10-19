@@ -153,7 +153,7 @@ fn add_default_creates_a_sibling_workspace_on_ats_parents() {
     fs::write(fx.root.join("p.txt"), "p").expect("write");
     let _ = repo.snapshot().expect("snapshot");
     let p = wc_of(&fx.root, "default");
-    repo.new_change(&[change_id(&p)]).expect("new");
+    repo.new_change(&[change_id(&p)], &[], &[]).expect("new");
 
     let result = add(&mut repo, "../ws2").expect("add");
 
@@ -201,7 +201,7 @@ fn add_with_name_revisions_and_message() {
     repo.bookmark_create(&["a".to_owned()], Some(&change_id(&a)))
         .expect("bookmark a");
     let root_change = ChangeId("z".repeat(32));
-    repo.new_change(&[root_change]).expect("new off root");
+    repo.new_change(&[root_change], &[], &[]).expect("new off root");
     fs::write(fx.root.join("b.txt"), "b").expect("write");
     let _ = repo.snapshot().expect("snapshot");
     let b = wc_of(&fx.root, "default");

@@ -381,7 +381,9 @@ request table's field order is an in-place WIP edit that MUST regenerate BOTH
 committed codegen sides in the same commit.
 
 Two tables are shared by two symbols each: `ChangeIdList` (`zanshin_new_change`'s
-`parents` and `zanshin_abandon`'s `change_ids`) and `SquashRequest`
+`parents` and `zanshin_abandon`'s `change_ids`; its `insert_after` / `insert_before`
+lists — `jj new -A` / `-B`, Story 9.48 — are read only by `zanshin_new_change`,
+`zanshin_abandon` ignores them) and `SquashRequest`
 (`zanshin_squash` and `zanshin_squash_plan`, Story 9.15 — the plan previews the
 squash its caller is about to run, with the same arguments). Every other table has
 exactly one caller, and no table is orphaned. 33 tables + 2 shared reuses = the 35
@@ -407,7 +409,8 @@ read and before the handle is borrowed.
 The tag is per-**wrapper**, not per-table. For 32 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **two** kinds, `NewChange`
 and `Abandon`, because a per-table tag would have left the sharpest collision
-unrefused — a buffer meant as `parents` abandoning those commits instead.
+unrefused — a buffer meant as `parents` abandoning those commits instead. Only
+`NewChange` reads the table's `insert_after` / `insert_before` (Story 9.48).
 `SquashRequest` is the one deliberate exception: both of its wrappers accept the
 single kind `Squash`, because a mis-routed buffer can only run or preview the SAME
 squash — never a different verb.
@@ -497,7 +500,7 @@ or no `# Errors` block.
 | `zanshin_workspace_add` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceAddRequest` | `WorkspaceAddResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.workspace_exists`, `jj.destination_not_empty`, `jj.git_worktree_failed`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.jj_lib_error` | 9.23 |
 | `zanshin_workspace_update_stale` | `(uint64_t handle)` | — | `StaleRecovery` (+ `precondition` = the trailing snapshot) | `ffi.invalid_handle`, `jj.concurrent_working_copy`, `jj.config_error`, `jj.jj_lib_error` | 9.23 |
 | `zanshin_describe` | `(uint64_t handle, const char *change_id, const char *description)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.invalid_input`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |
-| `zanshin_new_change` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |
+| `zanshin_new_change` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5, 9.48 |
 | `zanshin_edit` | `(uint64_t handle, const char *change_id)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |
 | `zanshin_abandon` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |
 | `zanshin_restore` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `RestoreRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.3 |

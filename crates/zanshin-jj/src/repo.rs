@@ -969,29 +969,61 @@ impl Repo {
         self.with_verb(|repo, ctx| crate::mutate::describe(repo.workspace_mut(), ctx, &change_id, description))
     }
 
-    /// Creates a new, empty change on top of `parents` (FR-JJ-10a) — a merge commit
-    /// when `parents.len() > 1` — and switches the working copy to it.
+    /// Creates a new, empty change and switches the working copy to it (FR-JJ-10a) — the CLI's
+    /// `jj new <parents>`, `jj new -A <insert_after>` and `jj new -B <insert_before>` (Story 9.48).
     ///
-    /// With exactly one parent, the bookmarks `experimental-advance-branches` selects (enabled ∩
-    /// ¬disabled; the default `enabled-branches = []` selects none) move from that parent's
-    /// parents to the parent, as the CLI's `jj new` does (Story 9.49 closing run). Two or more
-    /// parents never read that config.
+    /// The three lists are the CLI's positional revisions, `--insert-after` and
+    /// `--insert-before`; an EMPTY list means the flag was not given. Positional `parents` cannot
+    /// be combined with either insert list, and at least one list must be non-empty (there is no
+    /// `@` default — the caller passes `@` explicitly). Each list resolves in argument order with
+    /// duplicates dropped, so `[c, c]` is ONE parent.
+    ///
+    /// - `parents`: the new change sits on them — a merge commit for two or more — and nothing
+    ///   is rebased.
+    /// - `insert_after` (`-A`): the new change sits on the targets and their children are
+    ///   rebased onto it.
+    /// - `insert_before` (`-B`): the new change sits on the targets' parents and the targets
+    ///   are rebased onto it.
+    /// - both: the new change sits on `insert_after` and `insert_before` is rebased onto it.
+    ///
+    /// A rebased child keeps every parent that is not one of the new change's parents, those
+    /// are replaced by the new change, and the new change is appended once. Descendants follow.
+    ///
+    /// Only without `-A`/`-B` and with exactly one parent, the bookmarks
+    /// `experimental-advance-branches` selects (enabled ∩ ¬disabled; the default
+    /// `enabled-branches = []` selects none) move from that parent's parents to the parent, as the
+    /// CLI's `jj new` does (Story 9.49 closing run). Any other shape never reads that config.
     ///
     /// # Errors
     ///
-    /// - [`crate::MutateError::InvalidInput`] — `parents` is empty, or (one parent) an
-    ///   `experimental-advance-branches` pattern does not parse; nothing is written.
-    /// - [`crate::MutateError::ChangeNotFound`] — a parent id is malformed, absent,
-    ///   only-hidden, or divergent.
-    /// - [`crate::MutateError::Config`] — (one parent) an `experimental-advance-branches` key is
-    ///   not a list of strings; nothing is written.
+    /// Every refusal happens before the first write; nothing is written.
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `parents` combined with an insert list; all three
+    ///   lists empty; (`-A`/`-B`) the location would create a loop (`Refusing to create a loop:
+    ///   commit <12 hex> would be both an ancestor and a descendant of the new commit`); or (one
+    ///   positional parent) an
+    ///   `experimental-advance-branches` pattern does not parse.
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or
+    ///   divergent.
+    /// - [`crate::MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is inside the repo's
+    ///   effective immutable set; the first offender's hex.
+    /// - [`crate::MutateError::Config`] — (`-A`/`-B`) the `revset-aliases."immutable_heads()"`
+    ///   alias does not resolve against the repo; or (one positional parent) an
+    ///   `experimental-advance-branches` key is not a list of strings.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26),
     ///   including an effective jj config that changed and no longer reads (see
     ///   [`Repo::open`]); refused before the verb itself runs.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
-    pub fn new_change(&mut self, parents: &[crate::ChangeId]) -> Result<crate::MutationResult, crate::MutateError> {
-        self.with_verb(|repo, ctx| crate::mutate::new_change(repo.workspace_mut(), ctx, parents))
+    pub fn new_change(
+        &mut self,
+        parents: &[crate::ChangeId],
+        insert_after: &[crate::ChangeId],
+        insert_before: &[crate::ChangeId],
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| {
+            crate::mutate::new_change(repo.workspace_mut(), ctx, parents, insert_after, insert_before)
+        })
     }
 
     /// Switches the working copy to `change_id` without creating a new commit

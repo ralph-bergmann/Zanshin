@@ -92,7 +92,7 @@ fn base() -> Fx {
     let mut ids: Vec<ChangeId> = Vec::new();
     for (path, description) in [("a.txt", "A\n"), ("b.txt", "B\n"), ("c.txt", "C\n")] {
         if let Some(parent) = ids.last() {
-            repo.new_change(std::slice::from_ref(parent)).expect("new");
+            repo.new_change(std::slice::from_ref(parent), &[], &[]).expect("new");
         }
         fs::write(root.join(path), "x\n").expect("write");
         let at = repo.status().expect("status").working_copy_change_id;

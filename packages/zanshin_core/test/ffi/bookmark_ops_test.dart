@@ -17,7 +17,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/bookmark_ops.dart';
 import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
-import 'package:zanshin_core/src/ffi/mutate.dart' show decodeMutationResultEnvelope;
+import 'package:zanshin_core/src/ffi/mutate.dart' show decodeMutationResultEnvelope, zanshinNewChange;
 import 'package:zanshin_core/src/worker/responses.dart';
 
 /// An error envelope carrying [code].
@@ -117,6 +117,22 @@ void main() {
       expect(asTargets.kind, fbs.RequestKind.Abandon);
       expect(asParents.changeIds, asTargets.changeIds, reason: 'only the tag differs');
     });
+
+    test('a NewChange ChangeIdList carries the -A / -B lists after change_ids', () {
+      // Story 9.48: only zanshin_new_change reads insert_after / insert_before.
+      final req = fbs.ChangeIdList(
+        fbs.ChangeIdListObjectBuilder(
+          kind: fbs.RequestKind.NewChange,
+          changeIds: const [],
+          insertAfter: ['after1', 'after2'],
+          insertBefore: ['before1'],
+        ).toBytes(),
+      );
+
+      expect(req.changeIds, isEmpty);
+      expect(req.insertAfter, ['after1', 'after2']);
+      expect(req.insertBefore, ['before1']);
+    });
   });
 
   group('adapter guards', () {
@@ -137,6 +153,21 @@ void main() {
       expect(
         () => zanshinBookmarkCreate(0, ['feature'], revision: 'qpv${nul}untsm'),
         throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'revision')),
+      );
+    });
+
+    test('zanshinNewChange rejects an interior NUL in any list', () {
+      expect(
+        () => zanshinNewChange(0, ['qpv${nul}untsm']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'parents')),
+      );
+      expect(
+        () => zanshinNewChange(0, const [], insertAfter: ['qpv${nul}untsm']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'insertAfter')),
+      );
+      expect(
+        () => zanshinNewChange(0, const [], insertBefore: ['qpv${nul}untsm']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'insertBefore')),
       );
     });
 

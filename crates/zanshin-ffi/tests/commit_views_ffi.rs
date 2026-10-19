@@ -1218,7 +1218,14 @@ fn workspace_root_request_bytes(name: &str) -> Vec<u8> {
 /// enum verifies as its underlying `u8`), so it reaches the same rung and prints `<UNKNOWN 200>`.
 fn tagged_request_bytes(kind: fbs::RequestKind) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
-    let req = fbs::ChangeIdList::create(&mut b, &fbs::ChangeIdListArgs { kind, change_ids: None });
+    let req = fbs::ChangeIdList::create(
+        &mut b,
+        &fbs::ChangeIdListArgs {
+            kind,
+            change_ids: None,
+            ..Default::default()
+        },
+    );
     b.finish(req, None);
     b.finished_data().to_vec()
 }

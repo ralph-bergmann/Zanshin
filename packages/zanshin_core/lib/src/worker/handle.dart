@@ -350,18 +350,42 @@ final class RepoHandle {
     return _worker.describe(_handleId, changeId: changeId, description: description);
   }
 
-  /// Create a new, empty change on top of [parents], and switch the working
-  /// copy to it — a merge commit when [parents] has more than one entry
-  /// (Story 6.5).
+  /// Create a new, empty change and switch the working copy to it — the CLI's
+  /// `jj new <parents>` (Story 6.5), `jj new -A <insertAfter>` and
+  /// `jj new -B <insertBefore>` (Story 9.48).
   ///
-  /// Throws [StateError] synchronously if the handle is already [_closed].
-  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.change_not_found`).
-  Future<MutationResult> newChange(List<String> parents) {
+  /// An empty list is the flag not given; [parents] cannot be combined with
+  /// either insert list, and at least one list must be non-empty (`@` is passed
+  /// explicitly). Each list resolves in order with duplicates dropped, so
+  /// `[c, c]` is one parent.
+  ///
+  /// - [parents]: the new change sits on them — a merge commit for two or more.
+  ///   With exactly one, the `experimental-advance-branches` bookmarks advance.
+  /// - [insertAfter]: the new change sits on the targets; their children are
+  ///   rebased onto it.
+  /// - [insertBefore]: the new change sits on the targets' parents; the targets
+  ///   are rebased onto it.
+  /// - both: the new change sits on [insertAfter]; [insertBefore] is rebased
+  ///   onto it, keeping its other parents.
+  ///
+  /// `MutationResult.newChangeIds` holds the new change, which is also
+  /// `workingCopyChangeId`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if a [parents] / [insertAfter] / [insertBefore]
+  /// entry contains an interior NUL (U+0000); throws [ZanshinFfiException] on FFI errors
+  /// (`ffi.invalid_handle`, `jj.invalid_input` — incl. the CLI's loop refusal,
+  /// `jj.change_not_found`, `jj.immutable`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> newChange(
+    List<String> parents, {
+    List<String> insertAfter = const [],
+    List<String> insertBefore = const [],
+  }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
-    return _worker.newChange(_handleId, parents);
+    return _worker.newChange(_handleId, parents, insertAfter: insertAfter, insertBefore: insertBefore);
   }
 
   /// Switch the working copy to [changeId] without creating a new commit

@@ -34,14 +34,17 @@ use jj_lib::object_id::ObjectId as _;
 use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{MutableRepo, ReadonlyRepo, Repo as _};
 use jj_lib::revset::{ResolvedRevsetExpression, RevsetExpression, UserRevsetExpression};
-use jj_lib::rewrite::{merge_commit_trees, RebaseOptions, RewriteRefsOptions};
+use jj_lib::rewrite::{merge_commit_trees, rebase_commit, RebaseOptions, RewriteRefsOptions};
 use jj_lib::transaction::Transaction;
 use jj_lib::working_copy::LockedWorkingCopy;
 use jj_lib::workspace::{LockedWorkspace, Workspace};
 
 use crate::commit::{advance_bookmarks, advance_bookmarks_matcher, advanceable_bookmarks};
 use crate::git::{map_export_err, project_failures};
-use crate::op_support::{check_rewritable, resolve_immutable, start_repo_transaction, ResolveError, SelectedTree};
+use crate::op_support::{
+    check_rewritable, compute_commit_location, resolve_immutable, resolve_ordered, start_repo_transaction,
+    ResolveError, SelectedTree,
+};
 use crate::revset::resolve_expression;
 use crate::snapshot::{lock_git_import_export, FinishFacts, GitImportExportLock, VerbContext};
 use crate::warning::{self, WarningKind, Warnings};
@@ -152,8 +155,9 @@ pub enum MutateError {
     /// silent fall-back to the builtin immutable set: a config the user cannot see the
     /// effect of must not silently widen — or narrow — what a rewrite may touch.
     ///
-    /// Only the three REWRITING verbs (`describe`/`edit`/`abandon`) can raise it;
-    /// `new_change`, `undo` and `git_fetch` never read the config.
+    /// The REWRITING verbs (`describe`/`edit`/`abandon`, …) raise it for the immutable set.
+    /// `new_change` raises it for a malformed `experimental-advance-branches` key (one
+    /// positional parent) and, with `-A`/`-B`, for an unresolvable `immutable_heads()` alias.
     #[error("config error: {reason}")]
     Config {
         /// Human-readable reason, naming the offending file or alias.
@@ -801,50 +805,138 @@ pub(crate) fn describe(
     mutation_result(&finish, Vec::new(), Vec::new())
 }
 
-/// Creates a new, empty change on top of `parents` (FR-JJ-10a) — a merge commit when
-/// `parents.len() > 1`, via jj-lib's `merge_commit_trees` — and switches the working
-/// copy to it.
+/// Where [`new_change`] puts the new commit — what [`plan_new`] decides before anything is
+/// written.
+#[derive(Debug)]
+pub(crate) struct NewLocation {
+    /// The new commit's parents: the resolved, deduplicated positional `parents`, or
+    /// `compute_commit_location`'s parents for `-A`/`-B`.
+    pub(crate) parents: Vec<jj_lib::backend::CommitId>,
+    /// The commits rebased onto the new commit (`-A`'s children, `-B`'s targets); empty for
+    /// a plain `new`.
+    pub(crate) children: Vec<jj_lib::backend::CommitId>,
+}
+
+/// The read-only part of `jj new` (Story 9.48): the argument shape, the ordered dedup
+/// resolution and — for `-A`/`-B` — the insert location with its refusals, in `cmd_new`'s
+/// order (`cli/src/commands/new.rs:168-186` @ v0.46.0). Writes nothing; [`new_change`] runs it
+/// first, and Story 9.31's `new` drop row is meant to call the same fn.
 ///
-/// With exactly ONE parent, the bookmarks `experimental-advance-branches` selects move from
-/// that parent's parents to the parent, as `cmd_new` does (`cli/src/commands/new.rs:194-204`,
-/// `:279-281` @ v0.46.0; Story 9.49 closing run): the advance config is read after the parents
-/// resolve and before anything is written, the bookmarks are taken from the head the verb
-/// loads, and they move after the `edit`. Two or more parents never read the config. The
-/// default config (`enabled-branches = []`) moves nothing.
+/// The three lists are the CLI's positional `REVSETS`, `--insert-after` and `--insert-before`.
+/// An EMPTY list means "flag not given" — clap cannot pass a flag with no values, and a change
+/// id always resolves to exactly one commit. Each list resolves in argument order with
+/// duplicates dropped (`resolve_revsets_ordered`'s `IndexSet`), `parents` first, then
+/// `insert_after`, then `insert_before`.
+///
+/// - Positional `parents` only: they are the new commit's parents, nothing is rebased and the
+///   immutable set is NOT resolved — a plain `new` on an immutable parent is allowed, as in the
+///   CLI.
+/// - `-A`/`-B`: the immutable set (`immutable`, resolved against `tx.base_repo()`) and
+///   [`crate::op_support::compute_commit_location`] with the CLI's noun `"new commit"` give the
+///   parents and the children to rebase: `-A` alone takes the targets' children, `-B` alone
+///   the targets' parents, both together take both lists verbatim.
 ///
 /// # Errors
 ///
-/// - [`MutateError::InvalidInput`] — `parents` is empty, or (one parent) an
+/// - [`MutateError::InvalidInput`] — `parents` together with `insert_after`/`insert_before`
+///   (clap's `conflicts_with = "revisions"`); all three lists empty (Zanshin has no `@`
+///   default, the caller passes it); or the location would create a loop (`Refusing to create
+///   a loop: commit <12 hex> would be both an ancestor and a descendant of the new commit`).
+///   `compute_commit_location`'s `No revisions found to use as parent` cannot happen here:
+///   `-A` keeps its non-empty targets as parents, and `-B` finds none only for the root, which
+///   the rewritability check refuses first as [`MutateError::Immutable`].
+/// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or divergent.
+/// - [`MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is immutable; the first
+///   offender's hex.
+/// - [`MutateError::Config`] — (`-A`/`-B`) the `revset-aliases."immutable_heads()"` alias does
+///   not resolve against the repo.
+/// - [`MutateError::Backend`] — an underlying jj-lib failure.
+pub(crate) fn plan_new(
+    tx: &Transaction,
+    immutable: &Arc<UserRevsetExpression>,
+    parents: &[ChangeId],
+    insert_after: &[ChangeId],
+    insert_before: &[ChangeId],
+) -> Result<NewLocation, MutateError> {
+    let insert = !insert_after.is_empty() || !insert_before.is_empty();
+    if !parents.is_empty() && insert {
+        return Err(MutateError::InvalidInput {
+            reason: "parent revisions cannot be combined with --insert-after or --insert-before".to_owned(),
+        });
+    }
+    if parents.is_empty() && !insert {
+        return Err(MutateError::InvalidInput {
+            reason: "new_change requires at least one parent, --insert-after or --insert-before revision".to_owned(),
+        });
+    }
+    let destination = resolve_ordered(tx, given(parents))?;
+    let after = resolve_ordered(tx, given(insert_after))?;
+    let before = resolve_ordered(tx, given(insert_before))?;
+    if let Some(parents) = destination {
+        return Ok(NewLocation {
+            parents,
+            children: Vec::new(),
+        });
+    }
+    let base: &ReadonlyRepo = tx.base_repo();
+    let resolved = resolve_immutable(base, immutable)?;
+    let (parents, children) =
+        compute_commit_location(base, &resolved, None, after.as_deref(), before.as_deref(), "new commit")?;
+    Ok(NewLocation { parents, children })
+}
+
+/// An empty list is a flag that was not given (`None` for [`resolve_ordered`]).
+fn given(ids: &[ChangeId]) -> Option<&[ChangeId]> {
+    (!ids.is_empty()).then_some(ids)
+}
+
+/// Creates a new, empty change and switches the working copy to it (FR-JJ-10a) — `jj new`
+/// (`cli/src/commands/new.rs:160-291` @ v0.46.0), `-A`/`-B` included (Story 9.48).
+///
+/// [`plan_new`] decides the parents and the children to rebase, with every refusal before the
+/// first write. The new commit sits on the merged tree of its parents (a merge commit for two
+/// or more). Each child is then rebased by the CLI's rule: every old parent that is one of the
+/// new commit's parents is replaced by the new commit, the new commit is appended, and the list
+/// is deduplicated in order (`new.rs:235-252`) — so `-A A -B D` on `A-B-C-D` puts D on `[C, N]`.
+/// `rebase_descendants`, the `edit` of the new commit and — last — the bookmark advance follow.
+///
+/// Only without `-A`/`-B` and with exactly ONE parent after dedup (I1: `[c, c]` is one parent),
+/// the bookmarks `experimental-advance-branches` selects move from that parent's parents to the
+/// parent, as `cmd_new` does (`new.rs:194-204`, `:279-281`; Story 9.49 closing run): the advance
+/// config is read after the plan and before anything is written, the bookmarks are taken from
+/// the head the verb loads, and they move after the `edit`. Any other shape never reads the
+/// config. The default config (`enabled-branches = []`) moves nothing.
+///
+/// # Errors
+///
+/// - [`MutateError::InvalidInput`] — see [`plan_new`]; or (advance case) an
 ///   `experimental-advance-branches` pattern does not parse.
-/// - [`MutateError::ChangeNotFound`] — a parent id is malformed, absent, only-hidden, or
-///   divergent.
-/// - [`MutateError::Config`] — (one parent) an `experimental-advance-branches` key is not a
-///   list of strings.
+/// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or divergent.
+/// - [`MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is immutable.
+/// - [`MutateError::Config`] — (`-A`/`-B`) the `immutable_heads()` alias does not resolve; or
+///   (advance case) an `experimental-advance-branches` key is not a list of strings.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn new_change(
     workspace: &mut Workspace,
     ctx: &mut VerbContext,
     parents: &[ChangeId],
+    insert_after: &[ChangeId],
+    insert_before: &[ChangeId],
 ) -> Result<MutationResult, MutateError> {
-    if parents.is_empty() {
-        return Err(MutateError::InvalidInput {
-            reason: "new_change requires at least one parent".to_owned(),
-        });
-    }
-
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    let mut parent_commits = Vec::with_capacity(parents.len());
-    for change_id in parents {
-        parent_commits.push(resolve_commit(tx.repo(), change_id)?);
+    let location = plan_new(&tx, &ctx.immutable, parents, insert_after, insert_before)?;
+    let mut parent_commits = Vec::with_capacity(location.parents.len());
+    for id in &location.parents {
+        parent_commits.push(tx.repo().store().get_commit(id).map_err(be)?);
     }
-    // `new.rs:194-204`: one parent ⇒ the bookmarks on ITS parents advance to it. The config is
-    // read here, after the parents resolved and before the first write.
+    // `new.rs:194-204`: no `-A`/`-B` and one parent ⇒ the bookmarks on ITS parents advance to
+    // it. The config is read here, after the plan and before the first write.
     let advance = match parent_commits.as_slice() {
-        [parent] => {
+        [parent] if insert_after.is_empty() && insert_before.is_empty() => {
             let (enabled, disabled) = crate::config::advance_branches(&ctx.config).map_err(cfg)?;
             let matcher = advance_bookmarks_matcher(&enabled, &disabled)?;
             let bookmarks = advanceable_bookmarks(readonly.view(), matcher.as_ref(), parent.parent_ids());
@@ -852,11 +944,29 @@ pub(crate) fn new_change(
         }
         _ => None,
     };
-    let parent_ids: Vec<_> = parent_commits.iter().map(|c| c.id().clone()).collect();
     let merged_tree = pollster::block_on(merge_commit_trees(tx.repo(), &parent_commits)).map_err(be)?;
-    let new_commit = pollster::block_on(tx.repo_mut().new_commit(parent_ids, merged_tree).write()).map_err(be)?;
-    // Matches the CLI's `jj new`: a plain new_commit records no rewrite, so this is
-    // usually a no-op — kept for parity with the CLI's own descendant-rebase step.
+    let new_commit =
+        pollster::block_on(tx.repo_mut().new_commit(location.parents.clone(), merged_tree).write()).map_err(be)?;
+    // `new.rs:235-252`: replace each old parent that is a new parent by the new commit, then
+    // append it — ordered and deduplicated, like the CLI's `IndexSet`.
+    for child_id in &location.children {
+        let child = tx.repo().store().get_commit(child_id).map_err(be)?;
+        let mut new_parent_ids: Vec<jj_lib::backend::CommitId> = Vec::with_capacity(child.parent_ids().len() + 1);
+        for old_parent_id in child.parent_ids() {
+            let id = if location.parents.contains(old_parent_id) {
+                new_commit.id()
+            } else {
+                old_parent_id
+            };
+            if !new_parent_ids.contains(id) {
+                new_parent_ids.push(id.clone());
+            }
+        }
+        if !new_parent_ids.contains(new_commit.id()) {
+            new_parent_ids.push(new_commit.id().clone());
+        }
+        pollster::block_on(rebase_commit(tx.repo_mut(), child, new_parent_ids)).map_err(be)?;
+    }
     pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
     pollster::block_on(tx.repo_mut().edit(workspace_name.clone(), &new_commit)).map_err(be)?;
     // `new.rs:279-281`: the advance runs after the `edit`, before the finish.

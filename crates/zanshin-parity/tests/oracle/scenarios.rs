@@ -410,7 +410,7 @@ pub fn scenarios() -> Vec<Scenario> {
         simple(
             "new_on_wc",
             |repo, _, s| {
-                let result = repo.new_change(&[s.change("@")]);
+                let result = repo.new_change(&[s.change("@")], &[], &[]);
                 zanshin_outcome(repo, &result)
             },
             |_| args(&["new"]),
@@ -420,7 +420,7 @@ pub fn scenarios() -> Vec<Scenario> {
             ..simple(
                 "new_merge",
                 |repo, _, s| {
-                    let result = repo.new_change(&[s.change("C"), s.change("D")]);
+                    let result = repo.new_change(&[s.change("C"), s.change("D")], &[], &[]);
                     zanshin_outcome(repo, &result)
                 },
                 |s| vec!["new".to_owned(), s.change_arg("C"), s.change_arg("D")],
@@ -432,7 +432,7 @@ pub fn scenarios() -> Vec<Scenario> {
             ..simple(
                 "new_conflicting_merge",
                 |repo, _, s| {
-                    let result = repo.new_change(&[s.change("C"), s.change("D")]);
+                    let result = repo.new_change(&[s.change("C"), s.change("D")], &[], &[]);
                     zanshin_outcome(repo, &result)
                 },
                 |s| vec!["new".to_owned(), s.change_arg("C"), s.change_arg("D")],
@@ -1297,7 +1297,7 @@ pub fn scenarios() -> Vec<Scenario> {
             ..simple(
                 "new_advance_bookmarks",
                 |repo, _, s| {
-                    let result = repo.new_change(&[s.change("@")]);
+                    let result = repo.new_change(&[s.change("@")], &[], &[]);
                     zanshin_outcome(repo, &result)
                 },
                 |_| args(&["new"]),
@@ -1308,7 +1308,7 @@ pub fn scenarios() -> Vec<Scenario> {
             ..simple(
                 "new_advance_bookmarks_disabled",
                 |repo, _, s| {
-                    let result = repo.new_change(&[s.change("@")]);
+                    let result = repo.new_change(&[s.change("@")], &[], &[]);
                     zanshin_outcome(repo, &result)
                 },
                 |_| args(&["new"]),
@@ -1319,7 +1319,7 @@ pub fn scenarios() -> Vec<Scenario> {
             ..simple(
                 "new_advance_interior",
                 |repo, _, s| {
-                    let result = repo.new_change(&[s.change("B")]);
+                    let result = repo.new_change(&[s.change("B")], &[], &[]);
                     zanshin_outcome(repo, &result)
                 },
                 |s| vec!["new".to_owned(), s.change_arg("B")],
@@ -1330,7 +1330,7 @@ pub fn scenarios() -> Vec<Scenario> {
             ..simple(
                 "new_merge_advance_none",
                 |repo, _, s| {
-                    let result = repo.new_change(&[s.change("C"), s.change("D")]);
+                    let result = repo.new_change(&[s.change("C"), s.change("D")], &[], &[]);
                     zanshin_outcome(repo, &result)
                 },
                 |s| vec!["new".to_owned(), s.change_arg("C"), s.change_arg("D")],
@@ -1341,7 +1341,7 @@ pub fn scenarios() -> Vec<Scenario> {
             ..simple(
                 "new_advance_bad_pattern",
                 |repo, _, s| {
-                    let result = repo.new_change(&[s.change("@")]);
+                    let result = repo.new_change(&[s.change("@")], &[], &[]);
                     zanshin_outcome(repo, &result)
                 },
                 |_| args(&["new"]),
@@ -1352,10 +1352,117 @@ pub fn scenarios() -> Vec<Scenario> {
             ..simple(
                 "new_merge_ignores_bad_pattern",
                 |repo, _, s| {
-                    let result = repo.new_change(&[s.change("C"), s.change("D")]);
+                    let result = repo.new_change(&[s.change("C"), s.change("D")], &[], &[]);
                     zanshin_outcome(repo, &result)
                 },
                 |s| vec!["new".to_owned(), s.change_arg("C"), s.change_arg("D")],
+            )
+        },
+        // ── Story 9.48: `new -A` / `-B`, parents deduplicated ────────────────────────
+        Scenario {
+            // S on B, as `@`: B has the two children C and S.
+            setup: &[Step::Jj(&["new", "-m", "S", "b-mark"])],
+            ..simple(
+                "new_insert_after_two_children",
+                |repo, _, s| {
+                    let result = repo.new_change(&[], &[s.change("B")], &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["new".to_owned(), "-A".to_owned(), s.change_arg("B")],
+            )
+        },
+        simple(
+            "new_insert_before",
+            |repo, _, s| {
+                let result = repo.new_change(&[], &[], &[s.change("C")]);
+                zanshin_outcome(repo, &result)
+            },
+            |s| vec!["new".to_owned(), "-B".to_owned(), s.change_arg("C")],
+        ),
+        Scenario {
+            // `@` an empty, undescribed child of C — the GUI's common `-B @`.
+            setup: &[Step::Jj(&["new"])],
+            ..simple(
+                "new_insert_before_empty_wc",
+                |repo, _, s| {
+                    let result = repo.new_change(&[], &[], &[s.change("@")]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["new", "-B", "@"]),
+            )
+        },
+        Scenario {
+            setup: &[Step::Jj(&["new", "-m", "D"])],
+            ..simple(
+                "new_insert_after_and_before",
+                |repo, _, s| {
+                    let result = repo.new_change(&[], &[s.change("A")], &[s.change("D")]);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| {
+                    vec![
+                        "new".to_owned(),
+                        "-A".to_owned(),
+                        s.change_arg("A"),
+                        "-B".to_owned(),
+                        s.change_arg("D"),
+                    ]
+                },
+            )
+        },
+        Scenario {
+            setup: &[Step::Jj(&[
+                "config",
+                "set",
+                "--repo",
+                "revset-aliases.'immutable_heads()'",
+                "b-mark",
+            ])],
+            ..simple(
+                "new_insert_after_immutable_child",
+                |repo, _, s| {
+                    let result = repo.new_change(&[], &[s.change("A")], &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["new".to_owned(), "-A".to_owned(), s.change_arg("A")],
+            )
+        },
+        Scenario {
+            setup: ADVANCE_ALL_A_MARK,
+            ..simple(
+                "new_insert_after_no_advance",
+                |repo, _, s| {
+                    let result = repo.new_change(&[], &[s.change("B")], &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["new".to_owned(), "-A".to_owned(), s.change_arg("B")],
+            )
+        },
+        simple(
+            "new_insert_loop",
+            |repo, _, s| {
+                let result = repo.new_change(&[], &[s.change("C")], &[s.change("A")]);
+                zanshin_outcome(repo, &result)
+            },
+            |s| {
+                vec![
+                    "new".to_owned(),
+                    "-A".to_owned(),
+                    s.change_arg("C"),
+                    "-B".to_owned(),
+                    s.change_arg("A"),
+                ]
+            },
+        ),
+        Scenario {
+            setup: ADVANCE_ALL,
+            ..simple(
+                "new_duplicate_parents",
+                |repo, _, s| {
+                    let result = repo.new_change(&[s.change("C"), s.change("C")], &[], &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["new".to_owned(), s.change_arg("C"), s.change_arg("C")],
             )
         },
         // ── Story 9.49 closing run: `.`/`..` in path prefixes ────────────────────────

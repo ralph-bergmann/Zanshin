@@ -981,7 +981,7 @@ fn working_copy_verbs_after_track_snapshot_the_tracked_path_into_at_first() {
         strings(&["a.txt", "b.txt"]),
         "describe's own pre-verb snapshot moved the second tracked path in"
     );
-    repo.new_change(&[ChangeId(described.working_copy_change_id.0)])
+    repo.new_change(&[ChangeId(described.working_copy_change_id.0)], &[], &[])
         .expect("new_change after track");
     assert!(at_paths(&fx.root).contains(&"a.txt".to_owned()));
 }

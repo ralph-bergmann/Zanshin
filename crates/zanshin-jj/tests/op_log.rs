@@ -379,7 +379,9 @@ fn undo_reverts_a_new_change_and_moves_wc_back() {
     let layout = oracle_layout(&fx.path);
     let mut repo = Repo::open(&fx.path).unwrap();
 
-    let new_result = repo.new_change(&[ChangeId(layout.wc_change_id.clone())]).unwrap();
+    let new_result = repo
+        .new_change(&[ChangeId(layout.wc_change_id.clone())], &[], &[])
+        .unwrap();
     let new_change_id = new_result.new_change_ids[0].clone();
     assert_eq!(new_result.working_copy_change_id, new_change_id);
     assert!(repo.get_change(&new_change_id).is_ok());

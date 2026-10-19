@@ -81,7 +81,7 @@ fn head_facts(root: &Path) -> ((String, String), (String, String)) {
 /// what the call warned about the identity (Story 9.32).
 fn new_change_on_wc(repo: &mut Repo) -> Vec<String> {
     let wc: Vec<ChangeId> = resolve_revset(repo, "@").expect("@ resolves");
-    repo.new_change(&wc).expect("new_change");
+    repo.new_change(&wc, &[], &[]).expect("new_change");
     identity_warnings(repo)
 }
 
@@ -222,7 +222,7 @@ fn every_mutating_verb_refreshes_first(tmp: &Path, user_file: &Path) {
     let names = ["x".to_owned()];
     let results: Vec<(&str, Result<(), MutateError>)> = vec![
         ("describe", repo.describe(id(), "d").map(drop)),
-        ("new_change", repo.new_change(&[id()]).map(drop)),
+        ("new_change", repo.new_change(&[id()], &[], &[]).map(drop)),
         ("edit", repo.edit(id()).map(drop)),
         ("abandon", repo.abandon(&[id()]).map(drop)),
         ("undo", repo.undo(false).map(drop)),
@@ -453,7 +453,9 @@ fn scopes_and_faults(tmp: &Path, other: &FixtureHandle, mut other_repo: Repo) {
 
     let wc = resolve_revset(&other_repo, "@").expect("@ resolves");
     set_jj_config(&config_file(tmp, "broken.toml", "not = = toml\n"));
-    let err = other_repo.new_change(&wc).expect_err("a broken stack must refuse");
+    let err = other_repo
+        .new_change(&wc, &[], &[])
+        .expect_err("a broken stack must refuse");
     assert!(
         matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason })
             if reason.contains("broken.toml")),

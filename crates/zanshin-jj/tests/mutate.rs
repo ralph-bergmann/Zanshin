@@ -184,7 +184,9 @@ fn new_change_single_parent_creates_empty_child_and_switches_wc() {
     let checkout_before = fs::read(&checkout_path).unwrap();
     let mut repo = Repo::open(&fx.path).unwrap();
 
-    let result = repo.new_change(&[ChangeId(layout.commit3_change_id.clone())]).unwrap();
+    let result = repo
+        .new_change(&[ChangeId(layout.commit3_change_id.clone())], &[], &[])
+        .unwrap();
 
     assert_eq!(result.new_change_ids.len(), 1);
     assert_eq!(result.working_copy_change_id, result.new_change_ids[0]);
@@ -218,10 +220,14 @@ fn new_change_multiple_parents_creates_merge_commit() {
     let mut repo = Repo::open(&fx.path).unwrap();
 
     let result = repo
-        .new_change(&[
-            ChangeId(layout.wc_change_id.clone()),
-            ChangeId(layout.commit3_change_id.clone()),
-        ])
+        .new_change(
+            &[
+                ChangeId(layout.wc_change_id.clone()),
+                ChangeId(layout.commit3_change_id.clone()),
+            ],
+            &[],
+            &[],
+        )
         .unwrap();
 
     assert_eq!(result.new_change_ids.len(), 1);
@@ -237,7 +243,7 @@ fn new_change_empty_parents_returns_invalid_input() {
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let mut repo = Repo::open(&fx.path).unwrap();
 
-    let result = repo.new_change(&[]);
+    let result = repo.new_change(&[], &[], &[]);
 
     assert!(matches!(result, Err(MutateError::InvalidInput { .. })));
 }
@@ -419,7 +425,7 @@ fn every_mutation_returns_change_not_found_for_a_bogus_id() {
             Err(MutateError::ChangeNotFound { .. })
         ));
         assert!(matches!(
-            repo.new_change(std::slice::from_ref(&bogus)),
+            repo.new_change(std::slice::from_ref(&bogus), &[], &[]),
             Err(MutateError::ChangeNotFound { .. })
         ));
         assert!(matches!(
@@ -473,7 +479,7 @@ fn every_mutation_returns_change_not_found_for_a_divergent_change_id() {
         Err(MutateError::ChangeNotFound { .. })
     ));
     assert!(matches!(
-        repo.new_change(std::slice::from_ref(&divergent)),
+        repo.new_change(std::slice::from_ref(&divergent), &[], &[]),
         Err(MutateError::ChangeNotFound { .. })
     ));
     assert!(matches!(

@@ -21,8 +21,9 @@ import 'warning.dart';
 
 // ── Request-buffer helpers ───────────────────────────────────────────────────
 
-/// Build a `ChangeIdList` `FlatBuffers` request buffer for [ids] and hand it to
-/// [fn] through [withRequestBytes].
+/// Build a `ChangeIdList` `FlatBuffers` request buffer for [ids] — plus, for
+/// `zanshin_new_change` only, [insertAfter] / [insertBefore] (Story 9.48) — and
+/// hand it to [fn] through [withRequestBytes].
 ///
 /// [kind] tags the buffer for ONE wrapper: this single table is read by both
 /// `zanshin_new_change` (as `parents`) and `zanshin_abandon` (as `change_ids`),
@@ -31,8 +32,18 @@ import 'warning.dart';
 T _withChangeIdListBytes<T>(
   fbs.RequestKind kind,
   List<String> ids,
-  T Function(ffi.Pointer<ffi.Uint8>, int) fn,
-) => withRequestBytes(fbs.ChangeIdListObjectBuilder(kind: kind, changeIds: ids).toBytes(), fn);
+  T Function(ffi.Pointer<ffi.Uint8>, int) fn, {
+  List<String>? insertAfter,
+  List<String>? insertBefore,
+}) => withRequestBytes(
+  fbs.ChangeIdListObjectBuilder(
+    kind: kind,
+    changeIds: ids,
+    insertAfter: insertAfter,
+    insertBefore: insertBefore,
+  ).toBytes(),
+  fn,
+);
 
 // ── FFI adapters ──────────────────────────────────────────────────────────────
 
@@ -54,13 +65,27 @@ Uint8List zanshinDescribe(int rawHandle, String changeId, String description) {
   }
 }
 
-/// Call `zanshin_new_change` with the raw `u64` handle and [parents] (crossed as
-/// a `ChangeIdList` request buffer), and return the FlatBuffers `Envelope` bytes.
-Uint8List zanshinNewChange(int rawHandle, List<String> parents) => _withChangeIdListBytes(
-  fbs.RequestKind.NewChange,
-  parents,
-  (ptr, len) => readToken(zanshin_new_change(rawHandle, ptr, len)),
-);
+/// Call `zanshin_new_change` with the raw `u64` handle, [parents] and the
+/// `jj new -A` / `-B` targets [insertAfter] / [insertBefore] (Story 9.48; empty =
+/// the flag not given), crossed as one `ChangeIdList` request buffer, and return
+/// the FlatBuffers `Envelope` bytes.
+Uint8List zanshinNewChange(
+  int rawHandle,
+  List<String> parents, {
+  List<String> insertAfter = const [],
+  List<String> insertBefore = const [],
+}) {
+  rejectInteriorNuls(parents, 'parents');
+  rejectInteriorNuls(insertAfter, 'insertAfter');
+  rejectInteriorNuls(insertBefore, 'insertBefore');
+  return _withChangeIdListBytes(
+    fbs.RequestKind.NewChange,
+    parents,
+    (ptr, len) => readToken(zanshin_new_change(rawHandle, ptr, len)),
+    insertAfter: insertAfter,
+    insertBefore: insertBefore,
+  );
+}
 
 /// Call `zanshin_edit` with the raw `u64` handle and [changeId], and return the
 /// FlatBuffers `Envelope` bytes.

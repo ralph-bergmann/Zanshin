@@ -113,7 +113,7 @@ fn concurrent_describe_and_new_change_from_two_repo_handles() {
             let mut repo = Repo::open(&path).unwrap();
             barrier.wait();
             for _ in 0..ITERATIONS {
-                repo.new_change(&[ChangeId(change_id.clone())])
+                repo.new_change(&[ChangeId(change_id.clone())], &[], &[])
                     .expect("new_change must not observe a spurious concurrency error");
             }
         })

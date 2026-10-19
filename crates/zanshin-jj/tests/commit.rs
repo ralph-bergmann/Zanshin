@@ -157,9 +157,9 @@ fn base_with(repo_config: &str) -> Fx {
         at
     };
     let a = step(&mut repo, "a.txt", "A\n");
-    repo.new_change(std::slice::from_ref(&a)).expect("new");
+    repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new");
     let b = step(&mut repo, "b.txt", "B\n");
-    repo.new_change(std::slice::from_ref(&b)).expect("new");
+    repo.new_change(std::slice::from_ref(&b), &[], &[]).expect("new");
     let c = step(&mut repo, "c.txt", "C\n");
     assert!(
         config_path.is_symlink(),
@@ -287,7 +287,7 @@ fn commit_joins_several_message_paragraphs_like_the_cli() {
 #[test]
 fn commit_of_an_empty_undescribed_at_keeps_it() {
     let mut fx = base();
-    fx.repo.new_change(std::slice::from_ref(&fx.c)).expect("new");
+    fx.repo.new_change(std::slice::from_ref(&fx.c), &[], &[]).expect("new");
     let empty = change_id(&wc(&fx.root));
 
     let result = fx.repo.commit(&options(&[], &[""])).expect("commit");
@@ -384,7 +384,7 @@ fn a_child_of_at_is_rebased_onto_the_committed_commit() {
     let mut fx = base();
     let child = fx
         .repo
-        .new_change(std::slice::from_ref(&fx.c))
+        .new_change(std::slice::from_ref(&fx.c), &[], &[])
         .expect("new")
         .new_change_ids[0]
         .clone();
@@ -516,7 +516,7 @@ fn a_merge_at_advances_the_bookmarks_of_every_parent() {
     // A sibling of C on B, then a merge of the two as `@`.
     let sibling = fx
         .repo
-        .new_change(std::slice::from_ref(&b))
+        .new_change(std::slice::from_ref(&b), &[], &[])
         .expect("new")
         .new_change_ids[0]
         .clone();
@@ -524,7 +524,7 @@ fn a_merge_at_advances_the_bookmarks_of_every_parent() {
     fx.repo.describe(sibling.clone(), "S\n").expect("describe");
     let merge = fx
         .repo
-        .new_change(&[c.clone(), sibling.clone()])
+        .new_change(&[c.clone(), sibling.clone()], &[], &[])
         .expect("merge")
         .new_change_ids[0]
         .clone();
@@ -614,7 +614,7 @@ fn sibling_on_a(fx: &mut Fx) -> ChangeId {
     let a = a_of(fx);
     let d = fx
         .repo
-        .new_change(std::slice::from_ref(&a))
+        .new_change(std::slice::from_ref(&a), &[], &[])
         .expect("new")
         .new_change_ids[0]
         .clone();
@@ -624,7 +624,7 @@ fn sibling_on_a(fx: &mut Fx) -> ChangeId {
 
 fn assert_new_refused_without_an_operation(fx: &mut Fx, parents: &[ChangeId]) -> MutateError {
     let before = head_op(&fx.root);
-    let err = fx.repo.new_change(parents).expect_err("refused");
+    let err = fx.repo.new_change(parents, &[], &[]).expect_err("refused");
     assert_eq!(head_op(&fx.root), before, "a refusal writes no operation");
     err
 }
@@ -635,7 +635,7 @@ fn new_on_one_parent_advances_the_bookmarks_of_its_parents() {
     let (b, c) = (fx.b.clone(), fx.c.clone());
     mark(&mut fx, "b-mark", &b);
 
-    let result = fx.repo.new_change(std::slice::from_ref(&c)).expect("new");
+    let result = fx.repo.new_change(std::slice::from_ref(&c), &[], &[]).expect("new");
 
     assert_eq!(bookmark(&fx.root, "b-mark"), Some(c.clone()));
     let at = wc(&fx.root);
@@ -650,7 +650,7 @@ fn new_leaves_a_disabled_bookmark() {
         base_with("[experimental-advance-branches]\nenabled-branches = [\"*\"]\ndisabled-branches = [\"b-mark\"]\n");
     let (b, c) = (fx.b.clone(), fx.c.clone());
     mark(&mut fx, "b-mark", &b);
-    fx.repo.new_change(std::slice::from_ref(&c)).expect("new");
+    fx.repo.new_change(std::slice::from_ref(&c), &[], &[]).expect("new");
     assert_eq!(bookmark(&fx.root, "b-mark"), Some(b));
 }
 
@@ -659,7 +659,7 @@ fn new_under_the_default_config_moves_nothing() {
     let mut fx = base();
     let (b, c) = (fx.b.clone(), fx.c.clone());
     mark(&mut fx, "b-mark", &b);
-    fx.repo.new_change(std::slice::from_ref(&c)).expect("new");
+    fx.repo.new_change(std::slice::from_ref(&c), &[], &[]).expect("new");
     assert_eq!(bookmark(&fx.root, "b-mark"), Some(b));
 }
 
@@ -671,7 +671,7 @@ fn new_on_an_interior_parent_advances_only_the_grandparent_bookmarks() {
     mark(&mut fx, "a-mark", &a);
     mark(&mut fx, "b-mark", &b);
 
-    fx.repo.new_change(std::slice::from_ref(&b)).expect("new");
+    fx.repo.new_change(std::slice::from_ref(&b), &[], &[]).expect("new");
 
     assert_eq!(bookmark(&fx.root, "a-mark"), Some(b.clone()));
     assert_eq!(bookmark(&fx.root, "b-mark"), Some(b));
@@ -687,7 +687,7 @@ fn a_merge_new_advances_no_bookmark() {
 
     let merge = fx
         .repo
-        .new_change(&[c.clone(), d.clone()])
+        .new_change(&[c.clone(), d.clone()], &[], &[])
         .expect("merge")
         .new_change_ids[0]
         .clone();
@@ -726,7 +726,7 @@ fn a_merge_new_never_reads_the_advance_config() {
 
     let merge = fx
         .repo
-        .new_change(&[c.clone(), d.clone()])
+        .new_change(&[c.clone(), d.clone()], &[], &[])
         .expect("merge")
         .new_change_ids[0]
         .clone();

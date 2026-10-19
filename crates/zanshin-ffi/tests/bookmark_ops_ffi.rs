@@ -599,6 +599,7 @@ fn untagged_request_bytes() -> Vec<u8> {
         &fbs::ChangeIdListArgs {
             kind: fbs::RequestKind::Unspecified,
             change_ids: None,
+            ..Default::default()
         },
     );
     b.finish(req, None);

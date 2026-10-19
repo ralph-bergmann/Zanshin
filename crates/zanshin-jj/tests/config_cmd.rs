@@ -246,7 +246,7 @@ fn identity_writes_reload_the_handle_and_report_the_working_copy_author() {
     assert!(!report.was_snapshot_taken, "a clean @: nothing to snapshot");
 
     let wc = resolve_revset(&repo, "@").unwrap();
-    repo.new_change(&wc).expect("new change");
+    repo.new_change(&wc, &[], &[]).expect("new change");
     assert_eq!(head(&root).1, "Reloaded", "the handle re-derived its settings");
 
     // A dirty @: the identity check writes the snapshot operation; another key does not.

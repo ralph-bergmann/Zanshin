@@ -905,7 +905,14 @@ fn both_request_wrappers_refuse_a_buffer_built_for_the_other_verb() {
 /// `Unspecified` yields an UNTAGGED buffer, byte-identical to one built before the tag existed.
 fn tagged_request_bytes(kind: fbs::RequestKind) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
-    let req = fbs::ChangeIdList::create(&mut b, &fbs::ChangeIdListArgs { kind, change_ids: None });
+    let req = fbs::ChangeIdList::create(
+        &mut b,
+        &fbs::ChangeIdListArgs {
+            kind,
+            change_ids: None,
+            ..Default::default()
+        },
+    );
     b.finish(req, None);
     b.finished_data().to_vec()
 }

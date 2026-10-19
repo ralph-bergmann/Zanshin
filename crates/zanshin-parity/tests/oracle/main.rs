@@ -124,6 +124,14 @@ parity!(
     split_path_escapes_repo,
     absorb_path_escapes_repo,
     commit_path_dot_components,
+    new_insert_after_two_children,
+    new_insert_before,
+    new_insert_before_empty_wc,
+    new_insert_after_and_before,
+    new_insert_after_immutable_child,
+    new_insert_after_no_advance,
+    new_insert_loop,
+    new_duplicate_parents,
 );
 
 /// Every scenario id the table and the init list define.
@@ -138,7 +146,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 89);
+    assert_eq!(SCENARIO_IDS.len(), 97);
 }
 
 #[test]

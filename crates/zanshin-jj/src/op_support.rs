@@ -598,6 +598,33 @@ pub(crate) fn resolve_commit(repo: &dyn jj_lib::repo::Repo, id: &crate::ChangeId
         .map_err(|e| ResolveError::Backend(e.to_string()))
 }
 
+/// The CLI's `resolve_revsets_ordered` (`cli_util.rs:1845-1858` @ v0.46.0) over change ids:
+/// each id resolved in argument order, duplicates dropped — the CLI's `IndexSet`. `None` stays
+/// `None` (the flag was not given). Shared by `split -o/-A/-B` and `new [-A/-B]`, so the two
+/// verbs cannot dedup differently.
+///
+/// # Errors
+///
+/// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or divergent
+///   (the first such id, in argument order).
+/// - [`MutateError::Backend`] — a store read failed.
+pub(crate) fn resolve_ordered(
+    tx: &Transaction,
+    ids: Option<&[crate::ChangeId]>,
+) -> Result<Option<Vec<CommitId>>, MutateError> {
+    let Some(ids) = ids else {
+        return Ok(None);
+    };
+    let mut resolved: Vec<CommitId> = Vec::with_capacity(ids.len());
+    for id in ids {
+        let commit_id = crate::mutate::resolve_commit(tx.repo(), id)?.id().clone();
+        if !resolved.contains(&commit_id) {
+            resolved.push(commit_id);
+        }
+    }
+    Ok(Some(resolved))
+}
+
 /// Why a COMMIT-id prefix could not be resolved.
 ///
 /// Three stages where [`ResolveError`] has one: the change-id resolver deliberately collapses

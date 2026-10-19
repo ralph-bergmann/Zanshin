@@ -638,7 +638,7 @@ fn with_parent_file() -> (Fx, Repo, ChangeId) {
     write(&fx.root, "f.txt", "one\ntwo\nthree\n");
     let at = repo.status().expect("status").working_copy_change_id;
     let parent = at.clone();
-    repo.new_change(&[at]).expect("new @ on top");
+    repo.new_change(&[at], &[], &[]).expect("new @ on top");
     (fx, repo, parent)
 }
 

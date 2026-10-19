@@ -145,9 +145,9 @@ fn base_with(repo_config: &str) -> Fx {
         at
     };
     let a = step(&mut repo, &[("a.txt", "a\n")], "A\n");
-    repo.new_change(std::slice::from_ref(&a)).expect("new");
+    repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new");
     let b = step(&mut repo, &[("b.txt", "b\n")], "B\n");
-    repo.new_change(std::slice::from_ref(&b)).expect("new");
+    repo.new_change(std::slice::from_ref(&b), &[], &[]).expect("new");
     let c = step(&mut repo, &[("c.txt", "c\n"), ("c2.txt", "c2\n")], "C\n");
     let _ = repo.take_warnings();
     Fx {
@@ -310,7 +310,7 @@ fn squash_revision_moves_into_its_parent() {
 fn squash_of_a_merge_or_the_root_commit_refuses() {
     let mut fx = base();
     let (a, b) = (fx.a.clone(), fx.b.clone());
-    let merge = fx.repo.new_change(&[a, b]).expect("merge").new_change_ids[0].clone();
+    let merge = fx.repo.new_change(&[a, b], &[], &[]).expect("merge").new_change_ids[0].clone();
     for revision in [merge, ChangeId("z".repeat(32))] {
         let options = SquashOptions {
             revision: Some(revision),
@@ -616,7 +616,7 @@ fn split_without_a_message_cleans_the_description_like_a_saved_buffer() {
 fn split_of_an_empty_commit_warns_only_that_everything_is_selected() {
     let mut fx = base();
     let c = fx.c.clone();
-    fx.repo.new_change(&[c]).expect("new");
+    fx.repo.new_change(&[c], &[], &[]).expect("new");
     let _ = fx.repo.take_warnings();
 
     fx.repo.split(&split_c(&["c.txt"], None)).expect("split");
@@ -644,7 +644,7 @@ fn split_rebases_descendants_onto_the_remaining_part() {
     for legacy in ["", "[split]\nlegacy-bookmark-behavior = false\n"] {
         let mut fx = base_with(legacy);
         let c = fx.c.clone();
-        let d = fx.repo.new_change(&[c]).expect("new").new_change_ids[0].clone();
+        let d = fx.repo.new_change(&[c], &[], &[]).expect("new").new_change_ids[0].clone();
         let options = SplitOptions {
             revision: Some(fx.c.clone()),
             ..split_c(&["c.txt"], None)
@@ -665,7 +665,7 @@ fn split_parallel_puts_both_parts_on_the_parents_and_merges_the_children() {
     for legacy in ["", "[split]\nlegacy-bookmark-behavior = false\n"] {
         let mut fx = base_with(legacy);
         let c = fx.c.clone();
-        let d = fx.repo.new_change(&[c]).expect("new").new_change_ids[0].clone();
+        let d = fx.repo.new_change(&[c], &[], &[]).expect("new").new_change_ids[0].clone();
         let options = SplitOptions {
             revision: Some(fx.c.clone()),
             parallel: true,
@@ -730,7 +730,7 @@ fn split_insert_before_extracts_the_selection_into_a_new_change_there() {
 fn split_insert_before_rebases_the_targets_descendants_first() {
     let mut fx = base();
     let c = fx.c.clone();
-    let d = fx.repo.new_change(&[c]).expect("new").new_change_ids[0].clone();
+    let d = fx.repo.new_change(&[c], &[], &[]).expect("new").new_change_ids[0].clone();
     let options = SplitOptions {
         revision: Some(fx.c.clone()),
         insert_before: Some(vec![fx.b.clone()]),

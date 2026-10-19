@@ -73,6 +73,7 @@ fn change_id_list_bytes(ids: &[&str]) -> Vec<u8> {
         &fbs::ChangeIdListArgs {
             kind: fbs::RequestKind::NewChange,
             change_ids: Some(vec),
+            ..Default::default()
         },
     );
     b.finish(list, None);

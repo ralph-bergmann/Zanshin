@@ -77,6 +77,77 @@ void main() {
       await handle.close();
     });
 
+    /// `A → B = @`, both described (so neither is discardable): `(A, B)`.
+    Future<(String, String)> describedPair(RepoHandle handle) async {
+      final String a = (await handle.status()).workingCopyChangeId;
+      await handle.describe(changeId: a, description: 'A');
+      final String b = (await handle.newChange([a])).newChangeIds.single;
+      await handle.describe(changeId: b, description: 'B');
+      return (a, b);
+    }
+
+    test('newChange_insertAfter_puts_the_new_change_between_target_and_child', () async {
+      // Story 9.48: `jj new -A A` on A → B.
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final (String a, String b) = await describedPair(handle);
+
+      final MutationResult result = await handle.newChange(const [], insertAfter: [a]);
+
+      final String n = result.newChangeIds.single;
+      expect(result.workingCopyChangeId, n, reason: 'the new change is @');
+      expect((await handle.getChange(n)).parents, [a]);
+      expect((await handle.getChange(b)).parents, [n], reason: "A's child is rebased onto it");
+
+      await handle.close();
+    });
+
+    test('newChange_insertBefore_puts_the_new_change_under_the_target', () async {
+      // Story 9.48: `jj new -B B` on A → B.
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final (String a, String b) = await describedPair(handle);
+
+      final MutationResult result = await handle.newChange(const [], insertBefore: [b]);
+
+      final String n = result.newChangeIds.single;
+      expect(result.workingCopyChangeId, n, reason: 'the new change is @');
+      expect((await handle.getChange(n)).parents, [a]);
+      expect((await handle.getChange(b)).parents, [n]);
+
+      await handle.close();
+    });
+
+    test('newChange_parents_with_insertAfter_surfaces_jj_invalid_input', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final (String a, String b) = await describedPair(handle);
+
+      await expectLater(
+        handle.newChange([b], insertAfter: [a]),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+
+      await handle.close();
+    });
+
+    test('newChange_rejects_an_interior_nul_in_any_list', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final nul = String.fromCharCode(0);
+
+      expect(
+        () => handle.newChange(['qpv${nul}untsm']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'parents')),
+      );
+      expect(
+        () => handle.newChange(const [], insertAfter: ['qpv${nul}untsm']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'insertAfter')),
+      );
+      expect(
+        () => handle.newChange(const [], insertBefore: ['qpv${nul}untsm']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'insertBefore')),
+      );
+
+      await handle.close();
+    });
+
     test('edit_switches_working_copy_to_the_requested_change', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       final WorkingCopyStatus status = await handle.status();

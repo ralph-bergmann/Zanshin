@@ -336,17 +336,21 @@ final class DescribeCommand extends WorkerCommand implements HandleScopedCommand
   final String description;
 }
 
-/// Create a new, empty change on top of [parents] in the repo identified by
-/// [handleId], and switch the working copy to it (Story 6.5).
+/// Create a new, empty change in the repo identified by [handleId] — on top of
+/// [parents], or inserted after [insertAfter] / before [insertBefore] (`jj new
+/// -A` / `-B`, Story 9.48) — and switch the working copy to it (Story 6.5).
 ///
 /// The worker looks up the raw handle in its Model-A table (read — never
-/// remove), calls `zanshinNewChange(raw, parents)`, and replies with a
-/// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+/// remove), calls `zanshinNewChange(raw, parents, insertAfter:, insertBefore:)`,
+/// and replies with a `BufferResult` carrying the FlatBuffers
+/// `Envelope<MutationResult>` bytes.
 final class NewChangeCommand extends WorkerCommand implements HandleScopedCommand {
   const NewChangeCommand({
     required super.commandId,
     required this.handleId,
     required this.parents,
+    this.insertAfter = const [],
+    this.insertBefore = const [],
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
@@ -355,6 +359,12 @@ final class NewChangeCommand extends WorkerCommand implements HandleScopedComman
 
   /// jj reverse-hex change identifiers of the new change's parents.
   final List<String> parents;
+
+  /// `-A` targets (jj reverse-hex change ids); empty = the flag not given.
+  final List<String> insertAfter;
+
+  /// `-B` targets (jj reverse-hex change ids); empty = the flag not given.
+  final List<String> insertBefore;
 }
 
 /// Switch the working copy to [changeId] without creating a new commit, in the
