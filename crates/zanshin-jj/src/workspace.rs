@@ -13,7 +13,8 @@
 //!
 //! - **No terminal UX**: no templates, `-T`, `templates.workspace_list`, `root.relative()`
 //!   rendering or CWD-relative shortening. The GUI formats; the backend returns ABSOLUTE paths.
-//! - **No mutation**: `workspace add`/`forget`/`rename`/`update-stale` are Stories 9.13/9.23, so
+//! - **No mutation**: `workspace add` and `update-stale` live in [`crate::workspace_add`] and
+//!   [`crate::stale`] (Story 9.23), `forget`/`rename` are Story 9.13's, so
 //!   `WorkspaceStore::{add,forget,rename}` is never called from here.
 //!
 //! Since jj 0.46 (`d7e6ca981`, "don't overly canonicalize, print unreachable paths") both verbs

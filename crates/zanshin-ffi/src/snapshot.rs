@@ -11,7 +11,7 @@
 
 use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
-use zanshin_jj::{FinishFacts, Precondition};
+use zanshin_jj::{CheckoutStats, FinishFacts, Precondition, StaleRecovery, StaleRecoveryOutcome};
 
 use crate::envelope::{catch, finish_envelope, map_precondition_err, session_from_handle, CallReport};
 use crate::fbs;
@@ -36,8 +36,54 @@ pub(crate) fn build_finish_facts<'a>(
     )
 }
 
-/// Build the `Precondition` table into `b` and return its offset. `git_refs` and `finish` are
-/// written iff present — null for absence.
+/// Build the `CheckoutStats` table into `b` and return its offset — shared by `StaleRecovery`
+/// and `WorkspaceAddResult` (Story 9.23).
+pub(crate) fn build_checkout_stats<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    c: &CheckoutStats,
+) -> flatbuffers::WIPOffset<fbs::CheckoutStats<'a>> {
+    fbs::CheckoutStats::create(
+        b,
+        &fbs::CheckoutStatsArgs {
+            added: c.added,
+            updated: c.updated,
+            removed: c.removed,
+            skipped: c.skipped,
+        },
+    )
+}
+
+/// Build the `StaleRecovery` table into `b` and return its offset — the ONE construction site of
+/// `zanshin_workspace_update_stale`'s payload and `Precondition.stale_recovery` (Story 9.23).
+/// `commit_id`, `checkout` and `git_head_reset_op_id` are written iff present.
+pub(crate) fn build_stale_recovery<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    r: &StaleRecovery,
+) -> flatbuffers::WIPOffset<fbs::StaleRecovery<'a>> {
+    let commit_id = r.commit_id.as_ref().map(|c| b.create_string(&c.0));
+    let checkout = r.checkout.as_ref().map(|c| build_checkout_stats(b, c));
+    let git_head_reset_op_id = r.git_head_reset_op_id.as_ref().map(|o| b.create_string(&o.0));
+    let snapshot_stats = build_snapshot_stats(b, &r.snapshot_stats);
+    let op_id = b.create_string(&r.op_id.0);
+    fbs::StaleRecovery::create(
+        b,
+        &fbs::StaleRecoveryArgs {
+            outcome: match r.outcome {
+                StaleRecoveryOutcome::NotStale => fbs::StaleRecoveryOutcome::NotStale,
+                StaleRecoveryOutcome::Updated => fbs::StaleRecoveryOutcome::Updated,
+                StaleRecoveryOutcome::Recovered => fbs::StaleRecoveryOutcome::Recovered,
+            },
+            commit_id,
+            checkout,
+            git_head_reset_op_id,
+            snapshot_stats: Some(snapshot_stats),
+            op_id: Some(op_id),
+        },
+    )
+}
+
+/// Build the `Precondition` table into `b` and return its offset. `git_refs`, `finish` and
+/// `stale_recovery` are written iff present — null for absence.
 pub(crate) fn build_precondition<'a>(
     b: &mut FlatBufferBuilder<'a>,
     p: &Precondition,
@@ -45,6 +91,7 @@ pub(crate) fn build_precondition<'a>(
     let stats = build_snapshot_stats(b, &p.snapshot_stats);
     let git_refs = p.git_refs.as_ref().map(|r| build_git_import_result(b, r));
     let finish = p.finish.as_ref().map(|f| build_finish_facts(b, f));
+    let stale_recovery = p.stale_recovery.as_ref().map(|r| build_stale_recovery(b, r));
     fbs::Precondition::create(
         b,
         &fbs::PreconditionArgs {
@@ -57,6 +104,7 @@ pub(crate) fn build_precondition<'a>(
             git_refs,
             git_refs_rebased: p.git_refs_rebased,
             finish,
+            stale_recovery,
         },
     )
 }
@@ -194,6 +242,19 @@ mod tests {
                 export_failed_bookmarks: vec![export_failure("foo/bar", "r1")],
                 export_failed_tags: vec![export_failure("t1", "r2")],
             }),
+            stale_recovery: Some(zanshin_jj::StaleRecovery {
+                outcome: zanshin_jj::StaleRecoveryOutcome::Updated,
+                commit_id: Some(zanshin_jj::CommitId("c0ffee".to_owned())),
+                checkout: Some(zanshin_jj::CheckoutStats {
+                    added: 2,
+                    updated: 4,
+                    removed: 6,
+                    skipped: 8,
+                }),
+                git_head_reset_op_id: Some(OperationId("reset".to_owned())),
+                snapshot_stats: SnapshotStats::default(),
+                op_id: OperationId("head".to_owned()),
+            }),
         }
     }
 
@@ -261,6 +322,23 @@ mod tests {
         let failed_tags: Vec<_> = finish.export_failed_tags().expect("tags").iter().collect();
         assert_eq!(failed_tags.len(), 1);
         assert_export_failure(&failed_tags[0], "t1", "r2");
+
+        let recovery = p.stale_recovery().expect("stale_recovery present");
+        assert_eq!(recovery.outcome(), fbs::StaleRecoveryOutcome::Updated);
+        assert_eq!(recovery.commit_id(), Some("c0ffee"));
+        let checkout = recovery.checkout().expect("checkout present");
+        assert_eq!(
+            (
+                checkout.added(),
+                checkout.updated(),
+                checkout.removed(),
+                checkout.skipped()
+            ),
+            (2, 4, 6, 8)
+        );
+        assert_eq!(recovery.git_head_reset_op_id(), Some("reset"));
+        assert!(recovery.snapshot_stats().is_some());
+        assert_eq!(recovery.op_id(), Some("head"));
     }
 
     fn envelope(bytes: &[u8]) -> fbs::Envelope<'_> {

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! Integration tests for Story 9.7's two workspace wrappers (`zanshin_workspace_list`,
-//! `zanshin_workspace_root`).
+//! `zanshin_workspace_root`) and Story 9.23's two (`zanshin_workspace_add`,
+//! `zanshin_workspace_update_stale`).
 //!
 //! Every buffer is read through the `FlatBuffers` generated typed accessors and the Verifier —
 //! a wrong-shape payload is a compile error, not a runtime assert. Every token is freed via
@@ -21,9 +22,12 @@ use test_helpers::{add_workspace, extract_fixture};
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
-use zanshin_ffi::workspace::{zanshin_workspace_list, zanshin_workspace_root};
+use zanshin_ffi::workspace::{
+    zanshin_workspace_add, zanshin_workspace_list, zanshin_workspace_root, zanshin_workspace_update_stale,
+};
 use zanshin_ffi::{
-    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND,
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_DESTINATION_NOT_EMPTY, JJ_INVALID_INPUT,
+    JJ_JJ_LIB_ERROR, JJ_WORKSPACE_EXISTS, JJ_WORKSPACE_IN_CURRENT_DIRECTORY, JJ_WORKSPACE_NOT_FOUND,
     JJ_WORKSPACE_NO_RECORDED_PATH, JJ_WORKSPACE_PATH_INACCESSIBLE,
 };
 
@@ -610,4 +614,288 @@ fn tagged_request_bytes(kind: fbs::RequestKind) -> Vec<u8> {
     let req = fbs::ChangeIdList::create(&mut b, &fbs::ChangeIdListArgs { kind, change_ids: None });
     b.finish(req, None);
     b.finished_data().to_vec()
+}
+
+// ── Story 9.23: workspace add / update-stale ──────────────────────────────────
+
+/// The fields of a `WorkspaceAddRequest`, `None`/empty meaning absent.
+#[derive(Default)]
+struct AddReq<'a> {
+    kind: Option<fbs::RequestKind>,
+    destination: Option<&'a str>,
+    name: Option<&'a str>,
+    revisions: &'a [&'a str],
+    message_paragraphs: &'a [&'a str],
+    colocate: bool,
+    no_colocate: bool,
+    sparse: Option<fbs::SparseInheritance>,
+}
+
+fn add_request_bytes(r: &AddReq<'_>) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let destination = r.destination.map(|s| b.create_string(s));
+    let name = r.name.map(|s| b.create_string(s));
+    let revisions: Vec<_> = r.revisions.iter().map(|s| b.create_string(s)).collect();
+    let revisions = b.create_vector(&revisions);
+    let paragraphs: Vec<_> = r.message_paragraphs.iter().map(|s| b.create_string(s)).collect();
+    let paragraphs = b.create_vector(&paragraphs);
+    let req = fbs::WorkspaceAddRequest::create(
+        &mut b,
+        &fbs::WorkspaceAddRequestArgs {
+            kind: r.kind.unwrap_or(fbs::RequestKind::WorkspaceAdd),
+            destination,
+            name,
+            revisions: Some(revisions),
+            message_paragraphs: Some(paragraphs),
+            colocate: r.colocate,
+            no_colocate: r.no_colocate,
+            sparse_patterns: r.sparse.unwrap_or(fbs::SparseInheritance::Copy),
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+fn call_add(handle: u64, r: &AddReq<'_>) -> Vec<u8> {
+    let bytes = add_request_bytes(r);
+    // SAFETY: bytes is alive for the call; a stale handle is the caller's contract.
+    unsafe { read_and_free(zanshin_workspace_add(handle, bytes.as_ptr(), bytes.len())) }
+}
+
+fn error_code(bytes: &[u8]) -> Option<String> {
+    parse_envelope(bytes)
+        .error()
+        .and_then(|e| e.code())
+        .map(ToOwned::to_owned)
+}
+
+/// The tiny fixture opened, and an empty temp dir to add workspaces into (absolute paths).
+fn open_fixture_and_target() -> (u64, std::path::PathBuf, tempfile::TempDir) {
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let root = fixture.path.clone();
+    let handle = open_handle(&root);
+    std::mem::forget(fixture);
+    (handle, root, tempfile::TempDir::new().expect("target tempdir"))
+}
+
+#[test]
+fn workspace_add_round_trips_its_result() {
+    pin_env();
+    let (handle, _root, target) = open_fixture_and_target();
+    let dest = target.path().join("ws2");
+    let dest_str = dest.to_str().expect("utf-8").to_owned();
+
+    let bytes = call_add(
+        handle,
+        &AddReq {
+            destination: Some(&dest_str),
+            name: Some("second"),
+            message_paragraphs: &["T"],
+            sparse: Some(fbs::SparseInheritance::Full),
+            ..AddReq::default()
+        },
+    );
+
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    assert_eq!(env.data_type(), fbs::Payload::WorkspaceAddResult);
+    let result = env.data_as_workspace_add_result().expect("payload");
+    assert_eq!(result.workspace_name(), Some("second"));
+    assert_eq!(
+        result.workspace_root().map(std::path::PathBuf::from),
+        Some(fs::canonicalize(&dest).expect("created"))
+    );
+    assert!(!result.git_worktree_created());
+    let mutation = result.mutation().expect("mutation");
+    assert_eq!(mutation.new_change_ids().map(|v| v.len()), Some(1));
+    assert!(result.checkout().is_some());
+    assert!(
+        env.precondition().is_some(),
+        "the CURRENT workspace's pre-verb snapshot ran"
+    );
+    assert!(dest.join(".jj").join("repo").is_file());
+
+    // The same name again refuses, naming it.
+    let again = target.path().join("ws3");
+    let again = again.to_str().expect("utf-8");
+    let bytes = call_add(
+        handle,
+        &AddReq {
+            destination: Some(again),
+            name: Some("second"),
+            ..AddReq::default()
+        },
+    );
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_WORKSPACE_EXISTS));
+    assert_eq!(parse_envelope(&bytes).error().and_then(|e| e.context()), Some("second"));
+    close_handle(handle);
+}
+
+#[test]
+fn workspace_add_refuses_what_the_cli_refuses() {
+    pin_env();
+    let (handle, _root, target) = open_fixture_and_target();
+    let busy = target.path().join("busy");
+    fs::create_dir(&busy).expect("dir");
+    fs::write(busy.join("f"), "x").expect("file");
+    let busy = busy.to_str().expect("utf-8");
+
+    let both = call_add(
+        handle,
+        &AddReq {
+            destination: Some(busy),
+            colocate: true,
+            no_colocate: true,
+            ..AddReq::default()
+        },
+    );
+    assert_eq!(error_code(&both).as_deref(), Some(JJ_INVALID_INPUT));
+    let missing = call_add(handle, &AddReq::default());
+    assert_eq!(error_code(&missing).as_deref(), Some(JJ_INVALID_INPUT));
+    let mismatched = call_add(
+        handle,
+        &AddReq {
+            kind: Some(fbs::RequestKind::WorkspaceRoot),
+            destination: Some(busy),
+            ..AddReq::default()
+        },
+    );
+    assert_eq!(error_code(&mismatched).as_deref(), Some(FFI_INVALID_ARGUMENT));
+    let bad_sparse = call_add(
+        handle,
+        &AddReq {
+            destination: Some(busy),
+            sparse: Some(fbs::SparseInheritance(9)),
+            ..AddReq::default()
+        },
+    );
+    assert_eq!(error_code(&bad_sparse).as_deref(), Some(FFI_INVALID_ARGUMENT));
+    let not_empty = call_add(
+        handle,
+        &AddReq {
+            destination: Some(busy),
+            ..AddReq::default()
+        },
+    );
+    assert_eq!(error_code(&not_empty).as_deref(), Some(JJ_DESTINATION_NOT_EMPTY));
+    assert!(
+        parse_envelope(&not_empty).precondition().is_some(),
+        "the snapshot ran first"
+    );
+
+    // SAFETY: a null request pointer is the case under test.
+    let null = unsafe { read_and_free(zanshin_workspace_add(handle, std::ptr::null(), 0)) };
+    assert_eq!(error_code(&null).as_deref(), Some(FFI_NULL_POINTER));
+    let request = add_request_bytes(&AddReq {
+        destination: Some(busy),
+        ..AddReq::default()
+    });
+    // SAFETY: handle 0 is the case under test; request is alive for the call.
+    let zero = unsafe { read_and_free(zanshin_workspace_add(0, request.as_ptr(), request.len())) };
+    assert_eq!(error_code(&zero).as_deref(), Some(FFI_INVALID_HANDLE));
+    close_handle(handle);
+}
+
+#[test]
+fn workspace_add_without_separator_warns_on_the_envelope() {
+    pin_env();
+    let (handle, root, _target) = open_fixture_and_target();
+
+    let bytes = call_add(
+        handle,
+        &AddReq {
+            destination: Some("inside"),
+            ..AddReq::default()
+        },
+    );
+
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let codes: Vec<_> = env
+        .warnings()
+        .expect("warnings")
+        .iter()
+        .filter_map(|w| w.code())
+        .collect();
+    assert!(codes.contains(&JJ_WORKSPACE_IN_CURRENT_DIRECTORY), "{codes:?}");
+    assert!(root.join("inside").join(".jj").is_dir());
+    close_handle(handle);
+}
+
+#[test]
+fn workspace_update_stale_round_trips_a_recovery() {
+    pin_env();
+    let (handle, root, _target) = open_fixture_and_target();
+
+    // SAFETY: handle is live.
+    let fresh = unsafe { read_and_free(zanshin_workspace_update_stale(handle)) };
+    let env = parse_envelope(&fresh);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let recovery = env.data_as_stale_recovery().expect("payload");
+    assert_eq!(recovery.outcome(), fbs::StaleRecoveryOutcome::NotStale);
+    assert_eq!(recovery.commit_id(), None);
+    assert!(recovery.checkout().is_none());
+    assert!(env.precondition().is_some(), "the trailing snapshot's report");
+
+    let at = zanshin_jj::Repo::open(&root)
+        .expect("open")
+        .list_workspaces()
+        .expect("list")
+        .into_iter()
+        .find(|w| w.name == "default")
+        .expect("default")
+        .wc_commit_id
+        .0;
+    let rewritten = test_helpers::rewrite_commit_files(&root, &at, &[("elsewhere.txt", "x")]);
+    // SAFETY: handle is live.
+    let stale = unsafe { read_and_free(zanshin_workspace_update_stale(handle)) };
+    let env = parse_envelope(&stale);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let recovery = env.data_as_stale_recovery().expect("payload");
+    assert_eq!(recovery.outcome(), fbs::StaleRecoveryOutcome::Updated);
+    assert_eq!(recovery.commit_id(), Some(rewritten.as_str()));
+    assert!(recovery.checkout().is_some_and(|c| c.added() == 1));
+    assert!(recovery.op_id().is_some());
+    assert!(root.join("elsewhere.txt").is_file());
+
+    // SAFETY: handle 0 is the case under test.
+    let zero = unsafe { read_and_free(zanshin_workspace_update_stale(0)) };
+    assert_eq!(error_code(&zero).as_deref(), Some(FFI_INVALID_HANDLE));
+    close_handle(handle);
+}
+
+/// An explicitly EMPTY `name` is a value and refused (`jj.invalid_input`, nothing created); an
+/// ABSENT one applies the CLI's default, the destination's final component (Story 9.23).
+#[test]
+fn workspace_add_refuses_an_empty_name_and_defaults_an_absent_one() {
+    pin_env();
+    let (handle, _root, target) = open_fixture_and_target();
+    let dest = target.path().join("by-default");
+    let dest = dest.to_str().expect("utf-8").to_owned();
+
+    let empty = call_add(
+        handle,
+        &AddReq {
+            destination: Some(&dest),
+            name: Some(""),
+            ..AddReq::default()
+        },
+    );
+    assert_eq!(error_code(&empty).as_deref(), Some(JJ_INVALID_INPUT));
+    assert!(!target.path().join("by-default").exists(), "nothing created");
+
+    let absent = call_add(
+        handle,
+        &AddReq {
+            destination: Some(&dest),
+            ..AddReq::default()
+        },
+    );
+    let env = parse_envelope(&absent);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    assert_eq!(
+        env.data_as_workspace_add_result().and_then(|r| r.workspace_name()),
+        Some("by-default")
+    );
+    close_handle(handle);
 }

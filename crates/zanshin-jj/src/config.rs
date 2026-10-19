@@ -157,7 +157,9 @@ use crate::Repo;
 /// `file show` materializes a conflicted file with); `snapshot.max-new-file-size` and
 /// `snapshot.auto-track` are verbatim from `cli/src/config/misc.toml:60-61` (Story 9.22 — the
 /// snapshot options `file track`/`file untrack` build; jj-lib's own `config/misc.toml` has
-/// neither, so without them the keys would be missing, not defaulted).
+/// neither, so without them the keys would be missing, not defaulted); `git.colocate` is
+/// verbatim from `cli/src/config/misc.toml:27-28` (Story 9.23 — `workspace add`'s default Git
+/// worktree decision; jj-lib has no default for it either).
 ///
 /// # WHY: a config layer, not a Rust table
 ///
@@ -184,6 +186,9 @@ conflict-marker-style = "diff"
 max-new-file-size = "1MiB"
 auto-track = "all()"
 auto-update-stale = false
+
+[git]
+colocate = true
 
 [revset-aliases]
 # trunk() can be overridden as '<bookmark>@<remote>'.
@@ -1314,7 +1319,7 @@ fn remote_auto_track_bookmarks(
 }
 
 /// Reads the effective `snapshot.auto-update-stale` (Story 9.26) — the CLI's
-/// `settings().get_bool("snapshot.auto-update-stale")` (`cli/src/cli_util.rs:499` @ v0.44.0),
+/// `settings().get_bool("snapshot.auto-update-stale")` (`cli/src/cli_util.rs:500` @ v0.46.0),
 /// whose default `false` is [`BUILTIN_CONFIG_TOML`]'s (the CLI's `config/misc.toml`).
 ///
 /// # Errors
@@ -1323,6 +1328,19 @@ fn remote_auto_track_bookmarks(
 ///   every layer (impossible while the builtin layer is present).
 pub(crate) fn snapshot_auto_update_stale(config: &StackedConfig) -> Result<bool, ConfigError> {
     config.get("snapshot.auto-update-stale").map_err(|e| value_error(&e))
+}
+
+/// Reads the effective `git.colocate` (Story 9.23) — the CLI's `settings().get_bool("git.colocate")`
+/// in `jj workspace add` (`cli/src/commands/workspace/add.rs:150-151` @ v0.46.0), read only when
+/// the current workspace is colocated and neither `--colocate` nor `--no-colocate` was given.
+/// Its default `true` is [`BUILTIN_CONFIG_TOML`]'s (the CLI's `config/misc.toml:27-28`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a boolean (the key is named), or is missing from
+///   every layer (impossible while the builtin layer is present).
+pub(crate) fn git_colocate(config: &StackedConfig) -> Result<bool, ConfigError> {
+    config.get("git.colocate").map_err(|e| value_error(&e))
 }
 
 /// Reads the effective `snapshot.max-new-file-size` out of a loaded stack (Story 9.22).

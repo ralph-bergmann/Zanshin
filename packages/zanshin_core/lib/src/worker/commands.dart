@@ -2,6 +2,7 @@
 
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 import '../ffi/config.dart' show ConfigScope, ConfigTarget;
+import '../ffi/workspace.dart' show SparseInheritance;
 import '../graph_layout/layout_request.dart' show LaneOrder, LayoutMode;
 
 /// Typed command hierarchy for the Zanshin worker isolate (AR-AD-4).
@@ -884,6 +885,62 @@ final class WorkspaceRootCommand extends WorkerCommand implements HandleScopedCo
   /// present name — even the current workspace's own — goes through the workspace
   /// store and can refuse.
   final String? name;
+}
+
+/// Add a workspace to the repo identified by [handleId] (Story 9.23) — the
+/// CLI's `jj workspace add`, every argument passed through.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinWorkspaceAdd(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<WorkspaceAddResult>` bytes.
+final class WorkspaceAddCommand extends WorkerCommand implements HandleScopedCommand {
+  const WorkspaceAddCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.destination,
+    required this.name,
+    required this.revisions,
+    required this.messageParagraphs,
+    required this.colocate,
+    required this.sparse,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The CLI's `DESTINATION`, against the current workspace root.
+  final String destination;
+
+  /// The CLI's `--name`; `null` = the destination's final component.
+  final String? name;
+
+  /// The CLI's repeatable `-r` revsets; empty = the current `@`'s parents.
+  final List<String> revisions;
+
+  /// The CLI's repeatable `-m`.
+  final List<String> messageParagraphs;
+
+  /// `--colocate` (`true`) / `--no-colocate` (`false`); `null` = the CLI's default.
+  final bool? colocate;
+
+  /// The CLI's `--sparse-patterns`.
+  final SparseInheritance sparse;
+}
+
+/// Bring the stale working copy of the repo identified by [handleId] up to date
+/// (Story 9.23) — the CLI's `jj workspace update-stale`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinWorkspaceUpdateStale(raw)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<StaleRecovery>` bytes. No argument field:
+/// the CLI verb takes none.
+final class WorkspaceUpdateStaleCommand extends WorkerCommand implements HandleScopedCommand {
+  const WorkspaceUpdateStaleCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
 }
 
 /// Read the object half of each commit in [commitIds] at the pinned operation

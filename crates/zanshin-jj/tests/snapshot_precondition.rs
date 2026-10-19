@@ -23,8 +23,8 @@ use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{
-    Backend, ChangeId, PreconditionError, Repo, RevisionRef, StaleCause, StatusError, UntrackedPath, UntrackedReason,
-    WarningKind,
+    Backend, ChangeId, PreconditionError, Repo, RevisionRef, StaleCause, StaleRecoveryOutcome, StatusError,
+    UntrackedPath, UntrackedReason, WarningKind,
 };
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
@@ -352,7 +352,7 @@ fn a_wrong_typed_knob_is_a_config_fault_naming_the_key() {
 }
 
 /// `snapshot.auto-update-stale` is read ONLY on a stale working copy, like the CLI
-/// (`cli_util.rs:499` @ v0.44.0): a wrong type is harmless on a fresh one and a config fault on
+/// (`cli_util.rs:500` @ v0.46.0): a wrong type is harmless on a fresh one and a config fault on
 /// a stale one.
 #[test]
 fn a_wrong_typed_auto_update_stale_only_matters_on_a_stale_working_copy() {
@@ -434,18 +434,76 @@ fn a_rewritten_but_unchecked_out_at_is_stale() {
     assert_eq!(raw_ops(&fx.root).len(), before, "no operation");
 }
 
-/// `snapshot.auto-update-stale = true` is read (on the stale path) and type-checked, but its
-/// recovery is Story 9.23's: until then the stale working copy refuses exactly as with `false`.
+/// Story 9.23 (I1): `snapshot.auto-update-stale = true` recovers a stale working copy inside the
+/// precondition, under its lock (`cli_util.rs:497-512` @ v0.46.0), and the verb runs on the
+/// recovered state: the rewritten `@`'s files are on disk and the report says what the recovery
+/// did — with no operation of its own, since the working copy was clean.
 #[test]
-fn auto_update_stale_still_refuses_until_the_recovery_lands() {
+fn auto_update_stale_recovers_a_stale_working_copy() {
     let fx = git_fx("snapshot.auto-update-stale = true\n");
     let mut repo = Repo::open(&fx.root).expect("open");
     let at = at_commit(&fx.root).id().hex();
-    let _ = test_helpers::rewrite_commit_files(&fx.root, &at, &[("elsewhere.txt", "x")]);
+    let rewritten = test_helpers::rewrite_commit_files(&fx.root, &at, &[("elsewhere.txt", "x")]);
+    let before = raw_ops(&fx.root).len();
 
-    let err = repo.snapshot().expect_err("stale");
+    let report = repo.snapshot().expect("the precondition recovers");
 
-    assert_stale(&err, StaleCause::Stale);
+    let recovery = report.stale_recovery.expect("the recovery is reported");
+    assert_eq!(recovery.outcome, StaleRecoveryOutcome::Updated);
+    assert_eq!(recovery.commit_id.map(|c| c.0), Some(rewritten));
+    assert_eq!(recovery.checkout.map(|c| c.added), Some(1));
+    assert_eq!(recovery.git_head_reset_op_id, None, "not colocated");
+    assert_eq!(fs::read_to_string(fx.root.join("elsewhere.txt")).expect("on disk"), "x");
+    assert_eq!(raw_ops(&fx.root).len(), before, "a clean recovery writes no operation");
+    assert!(!report.was_snapshot_taken);
+    repo.status().expect("fresh again");
+}
+
+/// The auto arm on the SIBLING cause: the working copy at an unpublished operation is checked
+/// out onto the published head's `@`.
+#[test]
+fn auto_update_stale_recovers_a_working_copy_at_a_sibling_operation() {
+    let fx = git_fx("snapshot.auto-update-stale = true\n");
+    let mut repo = Repo::open(&fx.root).expect("open");
+    let _ = unpublished_op_with_the_working_copy_at_it(&fx.root);
+    let _ = test_helpers::add_commit_off_root(&fx.root, "published sibling");
+
+    let report = repo.snapshot().expect("the precondition recovers");
+
+    let recovery = report.stale_recovery.expect("the recovery is reported");
+    assert_eq!(recovery.outcome, StaleRecoveryOutcome::Updated);
+    assert_eq!(recovery.commit_id.map(|c| c.0), Some(at_commit(&fx.root).id().hex()));
+    repo.status().expect("fresh again");
+}
+
+/// The auto arm on the NOT-FOUND cause: jj-lib's `recovery commit` holds the files on disk, and
+/// the trailing snapshot records the dirty one.
+#[test]
+fn auto_update_stale_recovers_a_working_copy_at_a_missing_operation() {
+    let fx = git_fx("snapshot.auto-update-stale = true\n");
+    let mut repo = Repo::open(&fx.root).expect("open");
+    {
+        let (mut workspace, _repo) = load(&fx.root);
+        let locked = pollster::block_on(workspace.start_working_copy_mutation()).expect("lock");
+        pollster::block_on(locked.finish(JjOperationId::new(vec![0xab; 64]))).expect("finish");
+    }
+    write(&fx.root, "kept.txt", "kept");
+
+    let report = repo.snapshot().expect("the precondition recovers");
+
+    let recovery = report.stale_recovery.expect("the recovery is reported");
+    assert_eq!(recovery.outcome, StaleRecoveryOutcome::Recovered);
+    assert_eq!(recovery.checkout, None);
+    assert_eq!(
+        &descriptions(&fx.root)[..2],
+        ["snapshot working copy", "recovery commit"]
+    );
+    let at = at_commit(&fx.root);
+    assert!(at
+        .description()
+        .starts_with("RECOVERY COMMIT FROM `jj workspace update-stale`"));
+    assert!(at_paths(&fx.root).contains(&"kept.txt".to_owned()));
+    assert!(report.was_snapshot_taken);
 }
 
 /// Story 9.34: the snapshot knobs are read at the top of the snapshot step, BEFORE the
@@ -536,6 +594,38 @@ fn a_working_copy_at_a_missing_operation_is_refused() {
     let err = repo.snapshot().expect_err("not found");
 
     assert_stale(&err, StaleCause::OperationNotFound);
+}
+
+/// Story 9.23: the pre-verb snapshot loads the head the CLI's way (`resolve_operation`,
+/// `cli_util.rs:800-829` @ v0.46.0), so the `reconcile divergent operations` it writes for two
+/// operation heads names THIS workspace — jj-lib's own `load_at_head` would name none.
+#[test]
+fn the_precondition_reconciles_divergent_heads_as_this_workspace() {
+    let fx = git_fx("");
+    let mut repo = Repo::open(&fx.root).expect("open");
+    {
+        let (_workspace, base) = load(&fx.root);
+        for name in ["left", "right"] {
+            let mut tx = base.start_transaction();
+            let tree = base.store().root_commit().tree();
+            let commit = pollster::block_on(
+                tx.repo_mut()
+                    .new_commit(vec![base.store().root_commit_id().clone()], tree)
+                    .set_description(name)
+                    .write(),
+            )
+            .expect("sibling commit");
+            drop(commit);
+            pollster::block_on(tx.commit(format!("test: {name}"))).expect("commit");
+        }
+    }
+
+    repo.snapshot().expect("snapshot");
+
+    let (_workspace, head) = load(&fx.root);
+    let meta = head.operation().metadata();
+    assert_eq!(meta.description, "reconcile divergent operations");
+    assert_eq!(meta.workspace_name.as_ref().map(|name| name.as_str()), Some("default"));
 }
 
 // ── On-disk edits reach every verb that reads `@` ────────────────────────────────

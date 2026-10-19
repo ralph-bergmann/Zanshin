@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! `zanshin_workspace_list` / `zanshin_workspace_root` — the two workspace READ verbs
-//! (Story 9.7).
+//! (Story 9.7) — and `zanshin_workspace_add` / `zanshin_workspace_update_stale`, the two
+//! workspace MUTATIONS of Story 9.23.
 //!
 //! Each calls the matching `zanshin_jj::Repo` method and serialises the result into a
 //! `FlatBuffers` `Envelope`. The handle is borrowed (not consumed), and neither verb itself
@@ -21,15 +22,17 @@
 
 use flatbuffers::{FlatBufferBuilder, VerifierOptions};
 use tracing::debug;
-use zanshin_jj::{WorkspaceEntry, WorkspaceError};
+use zanshin_jj::{SparseInheritance, StaleRecovery, WorkspaceAddResult, WorkspaceEntry, WorkspaceError};
 
 use crate::envelope::{
-    catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, precondition_envelope,
-    reject_null_request, session_from_handle, CallReport, FfiErrorObj, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND,
-    JJ_WORKSPACE_NO_RECORDED_PATH,
+    build_mutation_result, catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err,
+    missing_field, precondition_envelope, reject_null_request, session_from_handle, CallReport, FfiErrorObj,
+    JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND, JJ_WORKSPACE_NO_RECORDED_PATH,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
+use crate::repo::map_mutate_err;
+use crate::snapshot::{build_checkout_stats, build_stale_recovery};
 
 /// Maps a [`WorkspaceError`] onto its AR-P-4 code; user data always rides in `context`.
 ///
@@ -81,6 +84,74 @@ fn read_workspace_root_request(data: *const u8, len: usize) -> Result<WorkspaceR
     })
 }
 
+/// Owned Rust form of a `WorkspaceAddRequest` buffer (Story 9.23). `name` is `Option<String>`:
+/// ABSENT is the CLI's default (the destination's final component), an explicitly EMPTY name is
+/// a value. `colocate` folds the CLI's two flags into one tri-state.
+struct WorkspaceAddRequestOwned {
+    destination: String,
+    name: Option<String>,
+    revisions: Vec<String>,
+    message_paragraphs: Vec<String>,
+    colocate: Option<bool>,
+    sparse: SparseInheritance,
+}
+
+/// Parse a `WorkspaceAddRequest` buffer into an owned [`WorkspaceAddRequestOwned`].
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceAddRequest` buffer, its
+///   `kind` is not `WorkspaceAdd`, or its `sparse_patterns` byte is outside the enum.
+/// - `jj.invalid_input` — `destination` is absent, or both `colocate` and `no_colocate` are set
+///   (clap's `conflicts_with`).
+fn read_workspace_add_request(data: *const u8, len: usize) -> Result<WorkspaceAddRequestOwned, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::WorkspaceAddRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::WorkspaceAdd)?;
+    let destination = req
+        .destination()
+        .ok_or_else(|| missing_field("destination"))?
+        .to_owned();
+    let colocate = match (req.colocate(), req.no_colocate()) {
+        (true, true) => {
+            return Err(FfiErrorObj {
+                report: None,
+                code: JJ_INVALID_INPUT.to_owned(),
+                context: Some("colocate and no_colocate cannot be used together".to_owned()),
+            })
+        }
+        (true, false) => Some(true),
+        (false, true) => Some(false),
+        (false, false) => None,
+    };
+    let sparse = match req.sparse_patterns() {
+        fbs::SparseInheritance::Copy => SparseInheritance::Copy,
+        fbs::SparseInheritance::Full => SparseInheritance::Full,
+        fbs::SparseInheritance::Empty => SparseInheritance::Empty,
+        other => {
+            return Err(FfiErrorObj {
+                report: None,
+                code: crate::envelope::FFI_INVALID_ARGUMENT.to_owned(),
+                context: Some(format!("unknown sparse_patterns {other:?}")),
+            })
+        }
+    };
+    let strings = |v: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&str>>>| -> Vec<String> {
+        v.map(|v| v.iter().map(ToOwned::to_owned).collect()).unwrap_or_default()
+    };
+    Ok(WorkspaceAddRequestOwned {
+        destination,
+        name: req.name().map(ToOwned::to_owned),
+        revisions: strings(req.revisions()),
+        message_paragraphs: strings(req.message_paragraphs()),
+        colocate,
+        sparse,
+    })
+}
+
 // ── Payload builders ─────────────────────────────────────────────────────────
 
 /// Serialise `&[WorkspaceEntry]` into a finished `Envelope<WorkspaceList>` buffer.
@@ -123,6 +194,39 @@ fn workspace_root_to_envelope(root: &std::path::Path, report: &CallReport) -> Ve
     let root_off = b.create_string(&root.to_string_lossy());
     let table = fbs::WorkspaceRoot::create(&mut b, &fbs::WorkspaceRootArgs { root: Some(root_off) });
     finish_envelope(b, fbs::Payload::WorkspaceRoot, Some(table.as_union_value()), report)
+}
+
+/// Serialise a [`WorkspaceAddResult`] into a finished `Envelope<WorkspaceAddResult>` buffer
+/// (Story 9.23).
+fn workspace_add_to_envelope(r: &WorkspaceAddResult, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(512);
+    let mutation = build_mutation_result(&mut b, &r.mutation);
+    let name = b.create_string(&r.workspace_name);
+    let root = b.create_string(&r.workspace_root.to_string_lossy());
+    let checkout = build_checkout_stats(&mut b, &r.checkout);
+    let table = fbs::WorkspaceAddResult::create(
+        &mut b,
+        &fbs::WorkspaceAddResultArgs {
+            mutation: Some(mutation),
+            workspace_name: Some(name),
+            workspace_root: Some(root),
+            git_worktree_created: r.git_worktree_created,
+            checkout: Some(checkout),
+        },
+    );
+    finish_envelope(
+        b,
+        fbs::Payload::WorkspaceAddResult,
+        Some(table.as_union_value()),
+        report,
+    )
+}
+
+/// Serialise a [`StaleRecovery`] into a finished `Envelope<StaleRecovery>` buffer (Story 9.23).
+fn stale_recovery_to_envelope(r: &StaleRecovery, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(512);
+    let table = build_stale_recovery(&mut b, r);
+    finish_envelope(b, fbs::Payload::StaleRecovery, Some(table.as_union_value()), report)
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
@@ -229,6 +333,104 @@ pub unsafe extern "C" fn zanshin_workspace_root(handle: u64, data: *const u8, le
     vec_into_token(buf)
 }
 
+/// Add a workspace to the repo identified by `handle` — the CLI's `jj workspace add` (Story 9.23).
+///
+/// The arguments cross as a `WorkspaceAddRequest` `FlatBuffers` request buffer (ADR-0001
+/// composite-input pattern), every CLI argument passed through: `destination` (required, against
+/// the current workspace root), `name` (absent → the destination's final component), the
+/// repeatable `revisions` revsets and `message_paragraphs`, the two colocation flags and
+/// `sparse_patterns`. Runs the pre-verb snapshot of the CURRENT workspace first. Operations in
+/// the CLI's order: `add workspace '<name>'`, then `create initial working-copy commit in
+/// workspace <name>`, whose finish checks the new `@` out into the destination.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceAddResult` payload on success; a
+/// destination without a path separator warns `jj.workspace_in_current_directory`.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceAddRequest` buffer, its
+///   `kind` is not `WorkspaceAdd`, or `sparse_patterns` is outside the enum.
+/// - `jj.invalid_input` — `destination` is absent, both colocation flags are set, the name is
+///   empty, the destination has no final component, or `revisions` resolve to no commit ("Empty
+///   revision set" — the workspace and its `add workspace` operation exist by then).
+/// - `jj.workspace_exists` — a workspace of that name exists; the name in `context`.
+/// - `jj.destination_not_empty` — the destination is a file or a non-empty directory.
+/// - `jj.git_worktree_failed` — the Git worktree could not be created; jj-lib's text in
+///   `context`. The created directory stays, as in the CLI.
+/// - `jj.revset_parse_error` / `jj.revset_resolution_error` — a `revisions` entry.
+/// - `jj.config_error` — the pre-verb snapshot found the config unreadable or a knob it reads
+///   wrongly typed, or `git.colocate` / `git.executable-path` is wrongly typed; key in `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the current working copy stale.
+/// - `jj.no_working_copy` — the new workspace has no `@` to lock for its sparse patterns.
+/// - `jj.concurrent_working_copy` — the new working copy's recorded tree is not its `@`'s.
+/// - `jj.jj_lib_error` — the directory could not be created, or any other jj-lib failure.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.WorkspaceAddRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_workspace_add(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_workspace_add", handle);
+    let buf = catch(|| {
+        let req = read_workspace_add_request(data, len)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.workspace_add(
+            &req.destination,
+            req.name.as_deref(),
+            &req.revisions,
+            &req.message_paragraphs,
+            req.colocate,
+            req.sparse,
+        );
+        precondition_envelope(&mut session.repo, result, map_mutate_err, workspace_add_to_envelope)
+    });
+    vec_into_token(buf)
+}
+
+/// Bring the stale working copy of the repo identified by `handle` up to date — the CLI's
+/// `jj workspace update-stale` (Story 9.23).
+///
+/// Handle-only: the CLI verb takes no argument. Runs NO pre-verb snapshot — it is the recovery:
+/// the working copy is snapshotted at its own operation, a stale one is checked out onto the
+/// head's `@` (after a `reset git head` operation in a colocated workspace, without an operation
+/// of its own), a lost operation gets jj-lib's `recovery commit`, and the full snapshot runs
+/// last. The envelope's `precondition` is that LAST snapshot's report.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `StaleRecovery` payload on success; the merged
+/// snapshot stats warn `jj.snapshot_files_refused` / `jj.snapshot_paths_not_utf8`.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.concurrent_working_copy` — the working copy's recorded tree is not the stale `@`'s.
+/// - `jj.config_error` — the config does not read, or a value a snapshot reads is wrong-typed.
+/// - `jj.jj_lib_error` — the workspace has no `@`, or any underlying jj-lib failure.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_workspace_update_stale(handle: u64) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_workspace_update_stale", handle);
+    let buf = catch(|| {
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.workspace_update_stale();
+        precondition_envelope(&mut session.repo, result, map_mutate_err, stale_recovery_to_envelope)
+    });
+    vec_into_token(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -297,6 +499,95 @@ mod tests {
         let warnings = env.warnings().expect("warnings");
         assert_eq!(warnings.len(), 1);
         assert_eq!(warnings.get(0).code(), Some("jj.workspace_path_inaccessible"));
+    }
+
+    fn add_request(colocate: bool, no_colocate: bool, sparse: fbs::SparseInheritance) -> Vec<u8> {
+        let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
+        let destination = b.create_string("../ws2");
+        let req = fbs::WorkspaceAddRequest::create(
+            &mut b,
+            &fbs::WorkspaceAddRequestArgs {
+                kind: fbs::RequestKind::WorkspaceAdd,
+                destination: Some(destination),
+                colocate,
+                no_colocate,
+                sparse_patterns: sparse,
+                ..fbs::WorkspaceAddRequestArgs::default()
+            },
+        );
+        b.finish(req, None);
+        b.finished_data().to_vec()
+    }
+
+    /// The reader folds the CLI's two colocation flags into one tri-state and maps every
+    /// `--sparse-patterns` value (Story 9.23).
+    #[test]
+    fn the_add_request_reader_maps_the_flags_and_the_sparse_mode() {
+        let read = |colocate, no_colocate, sparse| {
+            let bytes = add_request(colocate, no_colocate, sparse);
+            super::read_workspace_add_request(bytes.as_ptr(), bytes.len()).expect("valid request")
+        };
+        let req = read(true, false, fbs::SparseInheritance::Empty);
+        assert_eq!(req.colocate, Some(true));
+        assert_eq!(req.sparse, zanshin_jj::SparseInheritance::Empty);
+        assert_eq!(req.destination, "../ws2");
+        assert_eq!(req.name, None);
+        let req = read(false, true, fbs::SparseInheritance::Full);
+        assert_eq!(req.colocate, Some(false));
+        assert_eq!(req.sparse, zanshin_jj::SparseInheritance::Full);
+        let req = read(false, false, fbs::SparseInheritance::Copy);
+        assert_eq!(req.colocate, None);
+        assert_eq!(req.sparse, zanshin_jj::SparseInheritance::Copy);
+    }
+
+    /// Every recovery outcome crosses the wire as its own enum value (Story 9.23).
+    #[test]
+    fn every_stale_recovery_outcome_round_trips() {
+        use zanshin_jj::{OperationId, SnapshotStats, StaleRecovery, StaleRecoveryOutcome as O};
+        for (outcome, wire) in [
+            (O::NotStale, fbs::StaleRecoveryOutcome::NotStale),
+            (O::Updated, fbs::StaleRecoveryOutcome::Updated),
+            (O::Recovered, fbs::StaleRecoveryOutcome::Recovered),
+        ] {
+            let recovery = StaleRecovery {
+                outcome,
+                commit_id: None,
+                checkout: None,
+                git_head_reset_op_id: None,
+                snapshot_stats: SnapshotStats::default(),
+                op_id: OperationId("head".to_owned()),
+            };
+            let buf = super::stale_recovery_to_envelope(&recovery, &CallReport::default());
+            let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
+            let payload = env.data_as_stale_recovery().expect("payload");
+            assert_eq!(payload.outcome(), wire);
+            assert_eq!(payload.commit_id(), None);
+            assert_eq!(payload.op_id(), Some("head"));
+        }
+    }
+
+    /// Story 9.23's three new refusals, each under its own code — the arms
+    /// `zanshin_workspace_add` reaches only on a refused add.
+    #[test]
+    fn the_workspace_add_refusals_map_to_their_own_codes() {
+        use zanshin_jj::MutateError;
+        let exists = crate::repo::map_mutate_err(MutateError::WorkspaceExists { name: "ws".to_owned() });
+        assert_eq!(
+            (exists.code.as_str(), exists.context.as_deref()),
+            ("jj.workspace_exists", Some("ws"))
+        );
+        let busy = crate::repo::map_mutate_err(MutateError::DestinationNotEmpty);
+        assert_eq!((busy.code.as_str(), busy.context), ("jj.destination_not_empty", None));
+        let worktree = crate::repo::map_mutate_err(MutateError::GitWorktree("git".to_owned()));
+        assert_eq!(
+            (worktree.code.as_str(), worktree.context.as_deref()),
+            ("jj.git_worktree_failed", Some("git"))
+        );
+        let concurrent = crate::envelope::map_precondition_err(zanshin_jj::PreconditionError::ConcurrentWorkingCopy);
+        assert_eq!(
+            (concurrent.code.as_str(), concurrent.context),
+            ("jj.concurrent_working_copy", None)
+        );
     }
 
     #[test]

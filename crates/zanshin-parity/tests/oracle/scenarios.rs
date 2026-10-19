@@ -8,14 +8,20 @@
 
 use std::path::Path;
 
+use jj_lib::backend::CommitId;
+use jj_lib::repo::Repo as _;
+use jj_lib::workspace::Workspace;
 use zanshin_jj::ConfigScope;
 use zanshin_jj::ConfigTarget;
+use zanshin_jj::SparseInheritance;
 
 use crate::compare::config_outcome;
 use crate::compare::zanshin_outcome;
 use crate::compare::Outcome;
 use crate::driver::jj;
 use crate::driver::Step;
+use crate::state::disk_files;
+use crate::state::first_line;
 use crate::state::State;
 
 /// The shared history, built by the pinned CLI in both repos: root → A (a.txt) → B (b.txt,
@@ -82,6 +88,139 @@ fn config_read_back(root: &Path) -> String {
     let text = std::fs::read_to_string(path.trim_end()).unwrap_or_else(|err| format!("<{err}>"));
     format!("cli get={:?} file={text:?}", value.trim_end())
 }
+
+/// Loads the workspace at `dir` and its repo at the head operation.
+fn load_workspace(dir: &Path) -> (Workspace, std::sync::Arc<jj_lib::repo::ReadonlyRepo>) {
+    let workspace = Workspace::load(
+        &test_helpers::test_settings(),
+        dir,
+        &jj_lib::default_backend_factories::default_backend_factories(),
+        &jj_lib::default_backend_factories::default_working_copy_factories(),
+    )
+    .expect("load the workspace");
+    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("load the head");
+    (workspace, repo)
+}
+
+/// The commit `hex` by its description's first line (`root` for the root commit).
+fn commit_label(repo: &jj_lib::repo::ReadonlyRepo, id: &CommitId) -> String {
+    if id == repo.store().root_commit_id() {
+        return "root".to_owned();
+    }
+    repo.store().get_commit(id).map_or_else(
+        |_| "<not in store>".to_owned(),
+        |commit| first_line(commit.description()),
+    )
+}
+
+/// The operation `workspace`'s working copy is recorded at, by its description, and whether it
+/// is the head (Story 9.23: `update-stale` records the working copy at the head WITHOUT an
+/// operation of its own).
+fn wc_op_label(workspace: &Workspace, repo: &jj_lib::repo::ReadonlyRepo) -> String {
+    let wc_op = workspace.working_copy().operation_id();
+    let description = pollster::block_on(repo.loader().load_operation(wc_op))
+        .map_or_else(|_| "<missing>".to_owned(), |op| op.metadata().description.clone());
+    // Ids differ between the two repos; the description's words around them do not.
+    let description: Vec<&str> = description
+        .split(' ')
+        .map(|word| {
+            if word.len() >= 12 && word.chars().all(|c| c.is_ascii_hexdigit()) {
+                "<id>"
+            } else {
+                word
+            }
+        })
+        .collect();
+    format!("{:?} at_head={}", description.join(" "), wc_op == repo.op_id())
+}
+
+/// The second workspace `workspace add ../ws2` created beside the repo (Story 9.23): its name,
+/// `@` and `@`'s parents, the `.jj/repo` pointer, `.jj/.gitignore`, the `.git` gitlink and the
+/// Git HEAD of its worktree, its sparse patterns, the operation its working copy is recorded at,
+/// and its files on disk — the state the default workspace's aspects do not cover.
+fn ws2_read_back(root: &Path) -> String {
+    let ws2 = root.join("..").join("ws2");
+    if !ws2.join(".jj").exists() {
+        return format!("no workspace (dir exists={})", ws2.exists());
+    }
+    let (workspace, repo) = load_workspace(&ws2);
+    let name = workspace.workspace_name().to_owned();
+    let at = repo.view().get_wc_commit_id(&name).map_or_else(
+        || "<none>".to_owned(),
+        |id| {
+            let commit = repo.store().get_commit(id).expect("ws2's @");
+            let parents: Vec<String> = commit.parent_ids().iter().map(|p| commit_label(&repo, p)).collect();
+            format!("{:?} parents={parents:?}", commit.description())
+        },
+    );
+    let repo_file = std::fs::read_to_string(ws2.join(".jj").join("repo")).unwrap_or_else(|err| format!("<{err}>"));
+    let gitignore = std::fs::read_to_string(ws2.join(".jj").join(".gitignore")).ok();
+    let gitlink = match std::fs::metadata(ws2.join(".git")) {
+        Ok(meta) if meta.is_file() => "file",
+        Ok(_) => "dir",
+        Err(_) => "none",
+    };
+    let git_head = std::process::Command::new("git")
+        .args(["rev-parse", "-q", "--verify", "HEAD"])
+        .current_dir(&ws2)
+        .output()
+        .ok()
+        .filter(|out| out.status.success())
+        .and_then(|out| CommitId::try_from_hex(String::from_utf8_lossy(&out.stdout).trim()))
+        .map_or_else(|| "<unborn or none>".to_owned(), |id| commit_label(&repo, &id));
+    let sparse: Vec<String> = workspace
+        .working_copy()
+        .sparse_patterns()
+        .expect("sparse patterns")
+        .iter()
+        .map(|p| p.as_internal_file_string().to_owned())
+        .collect();
+    format!(
+        "name={} @={at} .jj/repo={repo_file:?} .gitignore={gitignore:?} .git={gitlink} git_head={git_head} \
+         sparse={sparse:?} wc_op={} files={}",
+        name.as_str(),
+        wc_op_label(&workspace, &repo),
+        disk_files(&ws2)
+    )
+}
+
+/// The operation the default workspace's working copy is recorded at (Story 9.23).
+fn wc_op_read_back(root: &Path) -> String {
+    let (workspace, repo) = load_workspace(root);
+    wc_op_label(&workspace, &repo)
+}
+
+/// `../ws2` restores its `@` (which lacks `c.txt`) INTO the default workspace's `@`: `default@`'s
+/// TREE changes without a checkout there, so the default working copy is stale (a
+/// description-only rewrite would leave it `Fresh`).
+const STALE_FROM_WS2: &[Step] = &[
+    Step::Jj(&["workspace", "add", "../ws2"]),
+    Step::JjAt("../ws2", &["restore", "--into", "default@"]),
+];
+
+/// `workspace add` with every argument passed through — the Zanshin side of the CLI argv
+/// `workspace add <destination> [--name] [-r]… [-m]… [--colocate|--no-colocate]
+/// [--sparse-patterns]`.
+fn add_outcome(
+    repo: &mut zanshin_jj::Repo,
+    name: Option<&str>,
+    revisions: &[String],
+    message_paragraphs: &[String],
+    colocate: Option<bool>,
+    sparse: SparseInheritance,
+) -> Outcome {
+    let result = repo.workspace_add("../ws2", name, revisions, message_paragraphs, colocate, sparse);
+    zanshin_outcome(repo, &result)
+}
+
+/// `jj workspace update-stale` through Zanshin.
+fn update_stale(repo: &mut zanshin_jj::Repo, _: &Path, _: &State) -> Outcome {
+    let result = repo.workspace_update_stale();
+    zanshin_outcome(repo, &result)
+}
+
+/// A non-colocated repo, where `workspace add` creates no Git worktree by default.
+const NO_COLOCATE: &[&str] = &["git", "init", "--no-colocate"];
 
 /// The scenario table (Story 9.47's initial set).
 #[allow(clippy::too_many_lines)] // WHY: one flat table reads better than 24 helper fns
@@ -353,6 +492,116 @@ pub fn scenarios() -> Vec<Scenario> {
                     zanshin_outcome(repo, &result)
                 },
                 |_| args(&["undo"]),
+            )
+        },
+        // ── Story 9.23: workspace add ────────────────────────────────────────
+        Scenario {
+            init: NO_COLOCATE,
+            extra: Some(ws2_read_back),
+            ..simple(
+                "workspace_add_default",
+                |repo, _, _| add_outcome(repo, None, &[], &[], None, SparseInheritance::Copy),
+                |_| args(&["workspace", "add", "../ws2"]),
+            )
+        },
+        Scenario {
+            init: NO_COLOCATE,
+            extra: Some(ws2_read_back),
+            ..simple(
+                "workspace_add_name_revisions_message",
+                |repo, _, s| {
+                    let revisions = [s.change_arg("A"), format!("b-mark|{}", s.change_arg("A"))];
+                    let paragraphs = ["T".to_owned(), "U".to_owned()];
+                    add_outcome(repo, Some("x"), &revisions, &paragraphs, None, SparseInheritance::Copy)
+                },
+                |s| {
+                    let mut argv = args(&["workspace", "add", "../ws2", "--name", "x", "-r"]);
+                    argv.extend([
+                        s.change_arg("A"),
+                        "-r".to_owned(),
+                        format!("b-mark|{}", s.change_arg("A")),
+                    ]);
+                    argv.extend(args(&["-m", "T", "-m", "U"]));
+                    argv
+                },
+            )
+        },
+        Scenario {
+            init: NO_COLOCATE,
+            extra: Some(ws2_read_back),
+            ..simple(
+                "workspace_add_sparse_empty",
+                |repo, _, _| add_outcome(repo, None, &[], &[], None, SparseInheritance::Empty),
+                |_| args(&["workspace", "add", "../ws2", "--sparse-patterns", "empty"]),
+            )
+        },
+        Scenario {
+            extra: Some(ws2_read_back),
+            ..simple(
+                "workspace_add_colocated",
+                |repo, _, _| add_outcome(repo, None, &[], &[], None, SparseInheritance::Copy),
+                |_| args(&["workspace", "add", "../ws2"]),
+            )
+        },
+        Scenario {
+            extra: Some(ws2_read_back),
+            ..simple(
+                "workspace_add_no_colocate",
+                |repo, _, _| add_outcome(repo, None, &[], &[], Some(false), SparseInheritance::Copy),
+                |_| args(&["workspace", "add", "../ws2", "--no-colocate"]),
+            )
+        },
+        // ── Story 9.23: workspace update-stale and the auto arm ──────────────
+        Scenario {
+            init: NO_COLOCATE,
+            setup: STALE_FROM_WS2,
+            extra: Some(wc_op_read_back),
+            ..simple("update_stale_clean", update_stale, |_| {
+                args(&["workspace", "update-stale"])
+            })
+        },
+        Scenario {
+            init: NO_COLOCATE,
+            extra: Some(wc_op_read_back),
+            ..simple("update_stale_not_stale", update_stale, |_| {
+                args(&["workspace", "update-stale"])
+            })
+        },
+        Scenario {
+            init: NO_COLOCATE,
+            setup: STALE_FROM_WS2,
+            files: &[("d.txt", "dirty\n")],
+            extra: Some(wc_op_read_back),
+            ..simple("update_stale_dirty", update_stale, |_| {
+                args(&["workspace", "update-stale"])
+            })
+        },
+        Scenario {
+            // `default@`'s first parent moves to root, so Git HEAD must be reset first.
+            setup: &[
+                Step::Jj(&["workspace", "add", "../ws2"]),
+                Step::JjAt("../ws2", &["rebase", "-r", "default@", "-o", "root()"]),
+            ],
+            extra: Some(wc_op_read_back),
+            ..simple("update_stale_colocated", update_stale, |_| {
+                args(&["workspace", "update-stale"])
+            })
+        },
+        Scenario {
+            init: NO_COLOCATE,
+            setup: &[
+                Step::Jj(&["config", "set", "--repo", "snapshot.auto-update-stale", "true"]),
+                Step::Jj(&["workspace", "add", "../ws2"]),
+                Step::JjAt("../ws2", &["restore", "--into", "default@"]),
+            ],
+            extra: Some(wc_op_read_back),
+            ..simple(
+                "auto_update_stale_snapshot",
+                |repo, _, _| {
+                    let result = repo.snapshot();
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["util", "snapshot"]),
             )
         },
     ]

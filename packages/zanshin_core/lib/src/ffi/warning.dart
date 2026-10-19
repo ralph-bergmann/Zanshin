@@ -148,6 +148,10 @@ abstract final class ZanshinWarningCode {
   /// the recorded path is returned anyway.
   static const workspacePathInaccessible = 'jj.workspace_path_inaccessible';
 
+  /// `workspaceAdd` was given a destination without a path separator, so the
+  /// workspace was created inside the current one (Story 9.23).
+  static const workspaceInCurrentDirectory = 'jj.workspace_in_current_directory';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -187,6 +191,7 @@ abstract final class ZanshinWarningCode {
     undoWorkspaceRemoval,
     colocatedInGitWorktree,
     workspacePathInaccessible,
+    workspaceInCurrentDirectory,
     loginShellUnresolved,
   ];
 }

@@ -48,6 +48,7 @@ pub(crate) mod remotes;
 mod repo;
 pub(crate) mod revset;
 pub(crate) mod snapshot;
+pub(crate) mod stale;
 pub(crate) mod status;
 pub(crate) mod topology;
 pub(crate) mod version;
@@ -55,6 +56,7 @@ pub(crate) mod view;
 pub(crate) mod warning;
 pub(crate) mod wc_ops;
 pub(crate) mod workspace;
+pub(crate) mod workspace_add;
 
 pub use bookmarks::{Bookmark, BookmarkError, BookmarkKind};
 pub use change::{Change, ChangeError, CommitId, ConflictState, Signature, Timestamp, Timestamps};
@@ -80,6 +82,7 @@ pub use remotes::{ProgressEvent, ProgressFn, Remote, RemoteError};
 pub use repo::{Backend, CreationOutcome, Repo, RepoError};
 pub use revset::{resolve_revset, RevsetError, DEFAULT_LOG_REVSET};
 pub use snapshot::{FinishFacts, Precondition, PreconditionError, StaleCause};
+pub use stale::{CheckoutStats, StaleRecovery, StaleRecoveryOutcome};
 pub use status::{ChangeId, ChangeKind, FileChange, Status, StatusError};
 pub use topology::{GraphTopology, TopologyEdge, TopologyMeta, TopologyNode};
 pub use version::JJ_LIB_VERSION;
@@ -87,6 +90,7 @@ pub use view::{Tag, TagKind, ViewError, WorkingCopy};
 pub use warning::{Warned, Warning, WarningKind};
 pub use wc_ops::{SnapshotStats, TrackResult, UntrackResult, UntrackedPath, UntrackedReason};
 pub use workspace::{WorkspaceEntry, WorkspaceError};
+pub use workspace_add::{SparseInheritance, WorkspaceAddResult};
 
 /// Fixtures shared by the inline `#[cfg(test)]` modules.
 #[cfg(test)]

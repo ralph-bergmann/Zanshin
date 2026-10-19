@@ -43,7 +43,12 @@ import 'package:zanshin_core/src/ffi/remotes.dart' show decodeRemotesEnvelope;
 import 'package:zanshin_core/src/ffi/repo_detect.dart' show decodeRepoDetectEnvelope;
 import 'package:zanshin_core/src/ffi/status.dart' show decodeStatusEnvelope;
 import 'package:zanshin_core/src/ffi/warning.dart';
-import 'package:zanshin_core/src/ffi/workspace.dart' show decodeWorkspaceListEnvelope, decodeWorkspaceRootEnvelope;
+import 'package:zanshin_core/src/ffi/workspace.dart'
+    show
+        decodeStaleRecoveryEnvelope,
+        decodeWorkspaceAddEnvelope,
+        decodeWorkspaceListEnvelope,
+        decodeWorkspaceRootEnvelope;
 import 'package:zanshin_core/src/worker/responses.dart' show ZanshinFfiException;
 
 /// The two warnings every "carries them" case puts on the wire, in this order.
@@ -263,6 +268,22 @@ final List<_Case> _cases = [
     read: (b) => decodeWorkspaceRootEnvelope(b).warnings,
   ),
   (
+    name: 'workspaceAdd',
+    type: fbs.PayloadTypeId.WorkspaceAddResult,
+    data: () => fbs.WorkspaceAddResultObjectBuilder(
+      workspaceName: 'ws2',
+      workspaceRoot: '/ws2',
+      checkout: fbs.CheckoutStatsObjectBuilder(),
+    ),
+    read: (b) => decodeWorkspaceAddEnvelope(b).warnings,
+  ),
+  (
+    name: 'workspaceUpdateStale',
+    type: fbs.PayloadTypeId.StaleRecovery,
+    data: () => fbs.StaleRecoveryObjectBuilder(opId: 'head'),
+    read: (b) => decodeStaleRecoveryEnvelope(b).warnings,
+  ),
+  (
     name: 'fileTrack',
     type: fbs.PayloadTypeId.TrackResult,
     data: fbs.TrackResultObjectBuilder.new,
@@ -385,9 +406,10 @@ void main() {
         'jj.undo_workspace_removal',
         'jj.colocated_in_git_worktree',
         'jj.workspace_path_inaccessible',
+        'jj.workspace_in_current_directory',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(32), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(33), reason: 'no code is registered twice');
     });
   });
 

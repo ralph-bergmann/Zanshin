@@ -632,9 +632,10 @@ pub fn add_workspace(workspace_root: &Path, name: &str) -> (FixtureHandle, Strin
     // RELATIVE to the LOADER's repo path and every read joins the record back onto the reading
     // loader's — which is canonical for `Repo::open` (and the CLI, whose cwd is canonical).
     // Loading through the RAW argument (on macOS a `/var/folders/…` temp path that is a symlink
-    // to `/private/var/folders/…`) records one `..` too few and nothing ever resolves. This is the
-    // stand-in for Story 9.23's production `workspace add`, which will hold a `Repo` whose
-    // workspace is canonical end to end and get the same alignment for free.
+    // to `/private/var/folders/…`) records one `..` too few and nothing ever resolves. The
+    // production verb, `Repo::workspace_add` (Story 9.23), holds a `Repo` whose workspace is
+    // canonical end to end and gets the same alignment for free; this helper stays for tests that
+    // need a second workspace without running a verb.
     let workspace_root = std::fs::canonicalize(workspace_root).unwrap();
     let (workspace, repo) = load(&workspace_root);
     let temp = TempDir::new().unwrap();

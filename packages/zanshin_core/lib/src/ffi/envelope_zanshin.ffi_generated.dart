@@ -18,7 +18,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 ///  `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 ///  two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-///  named as parents. For the other 28 tables the variant name plus `Request` IS the table name.
+///  named as parents. For the other 29 tables the variant name plus `Request` IS the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 ///  producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -57,7 +57,8 @@ enum RequestKind {
   ConfigGcDelete(27),
   EnvironmentAdopt(28),
   CommitContents(29),
-  GraphTopology(30);
+  GraphTopology(30),
+  WorkspaceAdd(31);
 
   final int value;
   const RequestKind(this.value);
@@ -126,6 +127,8 @@ enum RequestKind {
         return RequestKind.CommitContents;
       case 30:
         return RequestKind.GraphTopology;
+      case 31:
+        return RequestKind.WorkspaceAdd;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -134,7 +137,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 30;
+  static const int maxValue = 31;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -191,6 +194,49 @@ class _RevisionRefTypeIdReader extends fb.Reader<RevisionRefTypeId> {
   @override
   RevisionRefTypeId read(fb.BufferContext bc, int offset) =>
       RevisionRefTypeId.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  How `zanshin_workspace_add` sets the new workspace's sparse patterns — the CLI's
+///  `--sparse-patterns` (Story 9.23). `Copy` (the wire default, as the CLI's) copies the current
+///  workspace's patterns, `Full` includes every file, `Empty` none. Member order IS the wire
+///  value — APPEND only.
+enum SparseInheritance {
+  Copy(0),
+  Full(1),
+  Empty(2);
+
+  final int value;
+  const SparseInheritance(this.value);
+
+  factory SparseInheritance.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return SparseInheritance.Copy;
+      case 1:
+        return SparseInheritance.Full;
+      case 2:
+        return SparseInheritance.Empty;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static SparseInheritance? _createOrNull(int? value) => value == null ? null : SparseInheritance.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<SparseInheritance> reader = _SparseInheritanceReader();
+}
+
+class _SparseInheritanceReader extends fb.Reader<SparseInheritance> {
+  const _SparseInheritanceReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  SparseInheritance read(fb.BufferContext bc, int offset) =>
+      SparseInheritance.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
 ///  The CLI's `--user` / `--repo` / `--workspace`. `Unspecified = 0` is the absent-field default
@@ -657,6 +703,48 @@ class _UntrackedReasonTypeIdReader extends fb.Reader<UntrackedReasonTypeId> {
       UntrackedReasonTypeId.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
+///  Which arm of the stale-working-copy recovery ran (Story 9.23). Member order IS the wire
+///  value — APPEND only.
+enum StaleRecoveryOutcome {
+  NotStale(0),
+  Updated(1),
+  Recovered(2);
+
+  final int value;
+  const StaleRecoveryOutcome(this.value);
+
+  factory StaleRecoveryOutcome.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return StaleRecoveryOutcome.NotStale;
+      case 1:
+        return StaleRecoveryOutcome.Updated;
+      case 2:
+        return StaleRecoveryOutcome.Recovered;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static StaleRecoveryOutcome? _createOrNull(int? value) =>
+      value == null ? null : StaleRecoveryOutcome.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<StaleRecoveryOutcome> reader = _StaleRecoveryOutcomeReader();
+}
+
+class _StaleRecoveryOutcomeReader extends fb.Reader<StaleRecoveryOutcome> {
+  const _StaleRecoveryOutcomeReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  StaleRecoveryOutcome read(fb.BufferContext bc, int offset) =>
+      StaleRecoveryOutcome.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
 ///  Which layer a listed value comes from — jj-lib's `ConfigSource` (Zanshin has no
 ///  command-line layer). Member order IS the wire value — APPEND only.
 enum ConfigValueSource {
@@ -747,7 +835,9 @@ enum PayloadTypeId {
   ConfigFileText(33),
   ConfigGcList(34),
   ConfigGcResult(35),
-  CommitContents(36);
+  CommitContents(36),
+  WorkspaceAddResult(37),
+  StaleRecovery(38);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -828,6 +918,10 @@ enum PayloadTypeId {
         return PayloadTypeId.ConfigGcResult;
       case 36:
         return PayloadTypeId.CommitContents;
+      case 37:
+        return PayloadTypeId.WorkspaceAddResult;
+      case 38:
+        return PayloadTypeId.StaleRecovery;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -836,7 +930,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 36;
+  static const int maxValue = 38;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -2540,6 +2634,167 @@ class WorkspaceRootRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.startTable(2);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, nameOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_workspace_add` (Story 9.23) — the CLI's `jj workspace add`, every
+///  argument passed through (FR-JJ-17).
+///
+///  `destination` is REQUIRED (absent → `jj.invalid_input`), resolved against the current
+///  workspace root; an absolute path stays absolute. `name` ABSENT is the CLI's default — the
+///  destination's final component; an explicitly present EMPTY name is a value and refused.
+///  `revisions` are the CLI's repeatable `-r` REVSETS (their union, in argument order); empty →
+///  the parents of the current `@`. `message_paragraphs` are the CLI's repeatable `-m`.
+///  `colocate` / `no_colocate` are the CLI's two mutually exclusive flags (both set →
+///  `jj.invalid_input`); neither → a Git worktree exactly when the current workspace is colocated
+///  and `git.colocate` is true.
+class WorkspaceAddRequest {
+  WorkspaceAddRequest._(this._bc, this._bcOffset);
+  factory WorkspaceAddRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<WorkspaceAddRequest> reader = _WorkspaceAddRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get destination => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get revisions => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  List<String>? get messageParagraphs =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 12);
+  bool get colocate => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+  bool get noColocate => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
+  SparseInheritance get sparsePatterns =>
+      SparseInheritance.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 18, 0));
+
+  @override
+  String toString() {
+    return 'WorkspaceAddRequest{kind: ${kind}, destination: ${destination}, name: ${name}, revisions: ${revisions}, messageParagraphs: ${messageParagraphs}, colocate: ${colocate}, noColocate: ${noColocate}, sparsePatterns: ${sparsePatterns}}';
+  }
+}
+
+class _WorkspaceAddRequestReader extends fb.TableReader<WorkspaceAddRequest> {
+  const _WorkspaceAddRequestReader();
+
+  @override
+  WorkspaceAddRequest createObject(fb.BufferContext bc, int offset) => WorkspaceAddRequest._(bc, offset);
+}
+
+class WorkspaceAddRequestBuilder {
+  WorkspaceAddRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(8);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addDestinationOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addMessageParagraphsOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addColocate(bool? colocate) {
+    fbBuilder.addBool(5, colocate);
+    return fbBuilder.offset;
+  }
+
+  int addNoColocate(bool? noColocate) {
+    fbBuilder.addBool(6, noColocate);
+    return fbBuilder.offset;
+  }
+
+  int addSparsePatterns(SparseInheritance? sparsePatterns) {
+    fbBuilder.addUint8(7, sparsePatterns?.value);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class WorkspaceAddRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _destination;
+  final String? _name;
+  final List<String>? _revisions;
+  final List<String>? _messageParagraphs;
+  final bool? _colocate;
+  final bool? _noColocate;
+  final SparseInheritance? _sparsePatterns;
+
+  WorkspaceAddRequestObjectBuilder({
+    RequestKind? kind,
+    String? destination,
+    String? name,
+    List<String>? revisions,
+    List<String>? messageParagraphs,
+    bool? colocate,
+    bool? noColocate,
+    SparseInheritance? sparsePatterns,
+  }) : _kind = kind,
+       _destination = destination,
+       _name = name,
+       _revisions = revisions,
+       _messageParagraphs = messageParagraphs,
+       _colocate = colocate,
+       _noColocate = noColocate,
+       _sparsePatterns = sparsePatterns;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? destinationOffset = _destination == null ? null : fbBuilder.writeString(_destination!);
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? revisionsOffset = _revisions == null
+        ? null
+        : fbBuilder.writeList(_revisions!.map(fbBuilder.writeString).toList());
+    final int? messageParagraphsOffset = _messageParagraphs == null
+        ? null
+        : fbBuilder.writeList(_messageParagraphs!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(8);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, destinationOffset);
+    fbBuilder.addOffset(2, nameOffset);
+    fbBuilder.addOffset(3, revisionsOffset);
+    fbBuilder.addOffset(4, messageParagraphsOffset);
+    fbBuilder.addBool(5, _colocate);
+    fbBuilder.addBool(6, _noColocate);
+    fbBuilder.addUint8(7, _sparsePatterns?.value);
     return fbBuilder.endTable();
   }
 
@@ -9479,6 +9734,362 @@ class UntrackResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  What a working-copy checkout did to the files on disk (Story 9.23) — jj-lib's
+///  `CheckoutStats`, the counts behind the CLI's "Added N files, modified N files, removed N
+///  files". `skipped` is the data behind the call's `jj.checkout_files_skipped` warning.
+class CheckoutStats {
+  CheckoutStats._(this._bc, this._bcOffset);
+  factory CheckoutStats(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<CheckoutStats> reader = _CheckoutStatsReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get added => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  int get updated => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  int get removed => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  int get skipped => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 10, 0);
+
+  @override
+  String toString() {
+    return 'CheckoutStats{added: ${added}, updated: ${updated}, removed: ${removed}, skipped: ${skipped}}';
+  }
+}
+
+class _CheckoutStatsReader extends fb.TableReader<CheckoutStats> {
+  const _CheckoutStatsReader();
+
+  @override
+  CheckoutStats createObject(fb.BufferContext bc, int offset) => CheckoutStats._(bc, offset);
+}
+
+class CheckoutStatsBuilder {
+  CheckoutStatsBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addAdded(int? added) {
+    fbBuilder.addUint32(0, added);
+    return fbBuilder.offset;
+  }
+
+  int addUpdated(int? updated) {
+    fbBuilder.addUint32(1, updated);
+    return fbBuilder.offset;
+  }
+
+  int addRemoved(int? removed) {
+    fbBuilder.addUint32(2, removed);
+    return fbBuilder.offset;
+  }
+
+  int addSkipped(int? skipped) {
+    fbBuilder.addUint32(3, skipped);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class CheckoutStatsObjectBuilder extends fb.ObjectBuilder {
+  final int? _added;
+  final int? _updated;
+  final int? _removed;
+  final int? _skipped;
+
+  CheckoutStatsObjectBuilder({
+    int? added,
+    int? updated,
+    int? removed,
+    int? skipped,
+  }) : _added = added,
+       _updated = updated,
+       _removed = removed,
+       _skipped = skipped;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    fbBuilder.startTable(4);
+    fbBuilder.addUint32(0, _added);
+    fbBuilder.addUint32(1, _updated);
+    fbBuilder.addUint32(2, _removed);
+    fbBuilder.addUint32(3, _skipped);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  What leaving a stale working copy did (Story 9.23) — `zanshin_workspace_update_stale`'s
+///  payload, and `Precondition.stale_recovery` when `snapshot.auto-update-stale = true` recovered
+///  in front of a verb.
+///
+///  `commit_id` (full hex): the fresh `@` (`Updated`) or the recovery commit (`Recovered`);
+///  ABSENT when `NotStale`. `checkout`: PRESENT only for `Updated`. `git_head_reset_op_id`: the
+///  `reset git head` operation a colocated workspace wrote before the checkout; ABSENT otherwise.
+///  `snapshot_stats`: what the recovery's snapshots could not record, merged. `op_id`: the head
+///  operation after the recovery.
+class StaleRecovery {
+  StaleRecovery._(this._bc, this._bcOffset);
+  factory StaleRecovery(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<StaleRecovery> reader = _StaleRecoveryReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  StaleRecoveryOutcome get outcome =>
+      StaleRecoveryOutcome.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get commitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  CheckoutStats? get checkout => CheckoutStats.reader.vTableGetNullable(_bc, _bcOffset, 8);
+  String? get gitHeadResetOpId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  SnapshotStats? get snapshotStats => SnapshotStats.reader.vTableGetNullable(_bc, _bcOffset, 12);
+  String? get opId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 14);
+
+  @override
+  String toString() {
+    return 'StaleRecovery{outcome: ${outcome}, commitId: ${commitId}, checkout: ${checkout}, gitHeadResetOpId: ${gitHeadResetOpId}, snapshotStats: ${snapshotStats}, opId: ${opId}}';
+  }
+}
+
+class _StaleRecoveryReader extends fb.TableReader<StaleRecovery> {
+  const _StaleRecoveryReader();
+
+  @override
+  StaleRecovery createObject(fb.BufferContext bc, int offset) => StaleRecovery._(bc, offset);
+}
+
+class StaleRecoveryBuilder {
+  StaleRecoveryBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(6);
+  }
+
+  int addOutcome(StaleRecoveryOutcome? outcome) {
+    fbBuilder.addUint8(0, outcome?.value);
+    return fbBuilder.offset;
+  }
+
+  int addCommitIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCheckoutOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addGitHeadResetOpIdOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSnapshotStatsOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addOpIdOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class StaleRecoveryObjectBuilder extends fb.ObjectBuilder {
+  final StaleRecoveryOutcome? _outcome;
+  final String? _commitId;
+  final CheckoutStatsObjectBuilder? _checkout;
+  final String? _gitHeadResetOpId;
+  final SnapshotStatsObjectBuilder? _snapshotStats;
+  final String? _opId;
+
+  StaleRecoveryObjectBuilder({
+    StaleRecoveryOutcome? outcome,
+    String? commitId,
+    CheckoutStatsObjectBuilder? checkout,
+    String? gitHeadResetOpId,
+    SnapshotStatsObjectBuilder? snapshotStats,
+    String? opId,
+  }) : _outcome = outcome,
+       _commitId = commitId,
+       _checkout = checkout,
+       _gitHeadResetOpId = gitHeadResetOpId,
+       _snapshotStats = snapshotStats,
+       _opId = opId;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? commitIdOffset = _commitId == null ? null : fbBuilder.writeString(_commitId!);
+    final int? checkoutOffset = _checkout?.getOrCreateOffset(fbBuilder);
+    final int? gitHeadResetOpIdOffset = _gitHeadResetOpId == null ? null : fbBuilder.writeString(_gitHeadResetOpId!);
+    final int? snapshotStatsOffset = _snapshotStats?.getOrCreateOffset(fbBuilder);
+    final int? opIdOffset = _opId == null ? null : fbBuilder.writeString(_opId!);
+    fbBuilder.startTable(6);
+    fbBuilder.addUint8(0, _outcome?.value);
+    fbBuilder.addOffset(1, commitIdOffset);
+    fbBuilder.addOffset(2, checkoutOffset);
+    fbBuilder.addOffset(3, gitHeadResetOpIdOffset);
+    fbBuilder.addOffset(4, snapshotStatsOffset);
+    fbBuilder.addOffset(5, opIdOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Outcome of a successful `zanshin_workspace_add` (Story 9.23). `mutation` is the call's LAST
+///  operation, `create initial working-copy commit in workspace <name>`; its
+///  `working_copy_change_id` is the NEW workspace's `@`. `workspace_root` is absolute and
+///  canonical. `git_worktree_created`: a Git worktree was created for it.
+class WorkspaceAddResult {
+  WorkspaceAddResult._(this._bc, this._bcOffset);
+  factory WorkspaceAddResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<WorkspaceAddResult> reader = _WorkspaceAddResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  MutationResult? get mutation => MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  String? get workspaceName => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get workspaceRoot => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  bool get gitWorktreeCreated => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+  CheckoutStats? get checkout => CheckoutStats.reader.vTableGetNullable(_bc, _bcOffset, 12);
+
+  @override
+  String toString() {
+    return 'WorkspaceAddResult{mutation: ${mutation}, workspaceName: ${workspaceName}, workspaceRoot: ${workspaceRoot}, gitWorktreeCreated: ${gitWorktreeCreated}, checkout: ${checkout}}';
+  }
+}
+
+class _WorkspaceAddResultReader extends fb.TableReader<WorkspaceAddResult> {
+  const _WorkspaceAddResultReader();
+
+  @override
+  WorkspaceAddResult createObject(fb.BufferContext bc, int offset) => WorkspaceAddResult._(bc, offset);
+}
+
+class WorkspaceAddResultBuilder {
+  WorkspaceAddResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addMutationOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWorkspaceNameOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWorkspaceRootOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addGitWorktreeCreated(bool? gitWorktreeCreated) {
+    fbBuilder.addBool(3, gitWorktreeCreated);
+    return fbBuilder.offset;
+  }
+
+  int addCheckoutOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class WorkspaceAddResultObjectBuilder extends fb.ObjectBuilder {
+  final MutationResultObjectBuilder? _mutation;
+  final String? _workspaceName;
+  final String? _workspaceRoot;
+  final bool? _gitWorktreeCreated;
+  final CheckoutStatsObjectBuilder? _checkout;
+
+  WorkspaceAddResultObjectBuilder({
+    MutationResultObjectBuilder? mutation,
+    String? workspaceName,
+    String? workspaceRoot,
+    bool? gitWorktreeCreated,
+    CheckoutStatsObjectBuilder? checkout,
+  }) : _mutation = mutation,
+       _workspaceName = workspaceName,
+       _workspaceRoot = workspaceRoot,
+       _gitWorktreeCreated = gitWorktreeCreated,
+       _checkout = checkout;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? mutationOffset = _mutation?.getOrCreateOffset(fbBuilder);
+    final int? workspaceNameOffset = _workspaceName == null ? null : fbBuilder.writeString(_workspaceName!);
+    final int? workspaceRootOffset = _workspaceRoot == null ? null : fbBuilder.writeString(_workspaceRoot!);
+    final int? checkoutOffset = _checkout?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(5);
+    fbBuilder.addOffset(0, mutationOffset);
+    fbBuilder.addOffset(1, workspaceNameOffset);
+    fbBuilder.addOffset(2, workspaceRootOffset);
+    fbBuilder.addBool(3, _gitWorktreeCreated);
+    fbBuilder.addOffset(4, checkoutOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  What the implicit pre-verb snapshot did (Story 9.26) — the snapshot + colocated Git import
 ///  every CLI command whose helper is `workspace_helper` runs first, as facts. It rides
 ///  `Envelope.precondition`, never the `Payload` union.
@@ -9492,6 +10103,9 @@ class UntrackResultObjectBuilder extends fb.ObjectBuilder {
 ///  inside the precondition, merged; ABSENT when both lists are empty. The three rebased counts
 ///  saturate at 4294967295. The precondition's WARNINGS (an immutable `@`, `.jjconflict` files,
 ///  refused files, …) ride `Envelope.warnings` (Story 9.32).
+///
+///  `stale_recovery` (Story 9.23): PRESENT when `snapshot.auto-update-stale = true` recovered a
+///  stale working copy before the verb ran; the verb then ran on the recovered state.
 ///
 ///  On an error envelope it is PARTIAL: every fact up to the failing step.
 class Precondition {
@@ -9515,10 +10129,11 @@ class Precondition {
   GitImportResult? get gitRefs => GitImportResult.reader.vTableGetNullable(_bc, _bcOffset, 16);
   int get gitRefsRebased => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 18, 0);
   FinishFacts? get finish => FinishFacts.reader.vTableGetNullable(_bc, _bcOffset, 20);
+  StaleRecovery? get staleRecovery => StaleRecovery.reader.vTableGetNullable(_bc, _bcOffset, 22);
 
   @override
   String toString() {
-    return 'Precondition{wasSnapshotTaken: ${wasSnapshotTaken}, snapshotStats: ${snapshotStats}, gitHeadImported: ${gitHeadImported}, gitHeadReset: ${gitHeadReset}, gitHeadRebased: ${gitHeadRebased}, snapshotRebased: ${snapshotRebased}, gitRefs: ${gitRefs}, gitRefsRebased: ${gitRefsRebased}, finish: ${finish}}';
+    return 'Precondition{wasSnapshotTaken: ${wasSnapshotTaken}, snapshotStats: ${snapshotStats}, gitHeadImported: ${gitHeadImported}, gitHeadReset: ${gitHeadReset}, gitHeadRebased: ${gitHeadRebased}, snapshotRebased: ${snapshotRebased}, gitRefs: ${gitRefs}, gitRefsRebased: ${gitRefsRebased}, finish: ${finish}, staleRecovery: ${staleRecovery}}';
   }
 }
 
@@ -9535,7 +10150,7 @@ class PreconditionBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(9);
+    fbBuilder.startTable(10);
   }
 
   int addWasSnapshotTaken(bool? wasSnapshotTaken) {
@@ -9583,6 +10198,11 @@ class PreconditionBuilder {
     return fbBuilder.offset;
   }
 
+  int addStaleRecoveryOffset(int? offset) {
+    fbBuilder.addOffset(9, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -9598,6 +10218,7 @@ class PreconditionObjectBuilder extends fb.ObjectBuilder {
   final GitImportResultObjectBuilder? _gitRefs;
   final int? _gitRefsRebased;
   final FinishFactsObjectBuilder? _finish;
+  final StaleRecoveryObjectBuilder? _staleRecovery;
 
   PreconditionObjectBuilder({
     bool? wasSnapshotTaken,
@@ -9609,6 +10230,7 @@ class PreconditionObjectBuilder extends fb.ObjectBuilder {
     GitImportResultObjectBuilder? gitRefs,
     int? gitRefsRebased,
     FinishFactsObjectBuilder? finish,
+    StaleRecoveryObjectBuilder? staleRecovery,
   }) : _wasSnapshotTaken = wasSnapshotTaken,
        _snapshotStats = snapshotStats,
        _gitHeadImported = gitHeadImported,
@@ -9617,7 +10239,8 @@ class PreconditionObjectBuilder extends fb.ObjectBuilder {
        _snapshotRebased = snapshotRebased,
        _gitRefs = gitRefs,
        _gitRefsRebased = gitRefsRebased,
-       _finish = finish;
+       _finish = finish,
+       _staleRecovery = staleRecovery;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -9625,7 +10248,8 @@ class PreconditionObjectBuilder extends fb.ObjectBuilder {
     final int? snapshotStatsOffset = _snapshotStats?.getOrCreateOffset(fbBuilder);
     final int? gitRefsOffset = _gitRefs?.getOrCreateOffset(fbBuilder);
     final int? finishOffset = _finish?.getOrCreateOffset(fbBuilder);
-    fbBuilder.startTable(9);
+    final int? staleRecoveryOffset = _staleRecovery?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(10);
     fbBuilder.addBool(0, _wasSnapshotTaken);
     fbBuilder.addOffset(1, snapshotStatsOffset);
     fbBuilder.addBool(2, _gitHeadImported);
@@ -9635,6 +10259,7 @@ class PreconditionObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(6, gitRefsOffset);
     fbBuilder.addUint32(7, _gitRefsRebased);
     fbBuilder.addOffset(8, finishOffset);
+    fbBuilder.addOffset(9, staleRecoveryOffset);
     return fbBuilder.endTable();
   }
 
@@ -10968,6 +11593,8 @@ class WarningObjectBuilder extends fb.ObjectBuilder {
 ///  started — on its ok envelope and on its error envelope (after a failure before the re-open it
 ///  describes state the rollback removed; a failed re-open or watcher arming leaves `.jj/` in
 ///  place). `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
+///  `zanshin_workspace_update_stale` runs no pre-verb snapshot — it IS the recovery — and carries
+///  the recovery's TRAILING snapshot report (Story 9.23), on its ok and its error envelope.
 ///
 ///  `warnings` (Story 9.32) are the call's warnings in the jj CLI's print order, on the ok
 ///  envelope AND on an error envelope (then everything warned before the failure). ABSENT when
@@ -11064,6 +11691,10 @@ class Envelope {
         return ConfigGcResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 36:
         return CommitContents.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 37:
+        return WorkspaceAddResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 38:
+        return StaleRecovery.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

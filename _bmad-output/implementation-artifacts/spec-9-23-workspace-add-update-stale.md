@@ -2,9 +2,10 @@
 title: 'Story 9.23: `workspace add`, `workspace update-stale` (+ the `snapshot.auto-update-stale` arm)'
 type: 'feature'
 created: '2026-10-19'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: '94b37ea58a77a53ffdd30284b4ffa0a11c5d4d31'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: [multiple-goals, oversized]
@@ -15,6 +16,20 @@ deferred:
       app/lib has only the shell's empty `staleNotice: Widget?` slot (app/lib/src/features/shell/floating_shell.dart:75) and a widgetbook placeholder (app/widgetbook/folders/shell.dart:167-169); sprint-status 10-5-graph-view-model-repo-wiring is backlog, and epics 9.23 item 6 says 10.5 owns the notice.
     location: >-
       app/lib/src/features/shell/floating_shell.dart (staleNotice slot); Story 10.5
+    severity: low
+  - summary: >-
+      snapshot_locked's error arm still reloads the head with jj-lib's load_at_head, so a reconcile operation written on that path carries no workspace name (pre-existing; the other head loads moved to snapshot::load_head in 9.23).
+    evidence: |-
+      crates/zanshin-jj/src/snapshot.rs snapshot_locked failure path calls repo_loader().load_at_head(); jj-lib's load_at_head merges divergent heads without a workspace name, while the CLI's resolve_operation (cli_util.rs:800-829 @ v0.46.0) names it. Observable only with divergent op heads at that moment.
+    location: >-
+      crates/zanshin-jj/src/snapshot.rs (snapshot_locked error arm)
+    severity: low
+  - summary: >-
+      No verb warns "There are unresolved conflicts at these paths" after checking out a conflicted @, which the CLI's print_updated_working_copy_stats does; the stale recovery inherits the gap.
+    evidence: |-
+      cli_util.rs:2297-2331 @ v0.46.0 writes the warning when new_commit.has_conflict(); zanshin-jj WarningKind has no such kind, and mutate::finish_transaction / stale::recover_at emit only checkout_files_skipped. Pre-existing across all checkout verbs.
+    location: >-
+      crates/zanshin-jj/src/mutate.rs finish_transaction; crates/zanshin-jj/src/stale.rs recover_at
     severity: low
 ---
 
@@ -139,6 +154,40 @@ deferred:
 
 ## Review Triage Log
 
+### 2026-10-19 — Review pass
+- verdicts: 30 findings — high 0, medium 4, low 21, false 5, maybe-false 0
+- findings:
+  - `[low]` `[reject]` update-stale on a workspace with no `@` reports `jj.jj_lib_error`, not `jj.no_working_copy` — real (`stale.rs::wc_commit` → `PreconditionError::Backend`), but it needs a forgotten workspace (forget is 9.13, unbuilt) and the fix adds a `PreconditionError` variant plus mapping.
+  - `[low]` `[patch]` `workspace_add` reloaded the head with jj-lib's `load_at_head`, reconciling without a workspace name — `old_repo` now loads via `snapshot::load_head` (mapped through `MutateError::from`; simplified after the coverage ratchet flagged an unreachable match arm).
+  - `[low]` `[patch]` touched `snapshot.rs` comments mixed v0.44/v0.46 anchors (`:1298-1326`, `:477`, `:2058-2231`) — re-pointed to `:1326-1354`, `:478`, `:2091-2278` @ v0.46.0, checked against the tag.
+  - `[low]` `[patch]` error-code docs: the auto arm adds `jj.concurrent_working_copy` to every pre-verb snapshot, and `RepoHandle.workspaceAdd`'s throw list missed codes — the throw list now names `ffi.invalid_handle`, `jj.no_working_copy`, `jj.concurrent_working_copy`; the per-row part is already stated by the rule paragraph `docs/ffi-abi.md:158-164`, so the dozens of rows were not rewritten.
+  - `[low]` `[patch]` oracle/tests skip the colocated add whose first parent is root (unborn `refs/jj/root` HEAD); lost-op and sibling rows are Rust-tested only — added `tests/workspace_add.rs::a_colocated_workspace_on_root_gets_an_unborn_head` (empty repo and `-r root()`); the AC's oracle scenario list is otherwise complete.
+  - `[medium]` `[patch]` auto arm untested in a colocated workspace (lock re-take hang / skipped Git HEAD reset would pass) — added `auto_update_stale_recovers_a_colocated_working_copy` (completes, `git_head_reset_op_id` set, Git HEAD = new parent).
+  - `[low]` `[reject]` the explicit verb drops the stale snapshot's non-stat facts (e.g. rebased count) — matches the intent ("precondition = its trailing snapshot_impl report"); needs a dirty stale `@` with descendants, and the fix adds report fields.
+  - `[low]` `[patch]` Dart decoders coerced missing required fields to `''` / zero stats — they now throw `ffi.unknown` like the WorkspaceRoot decoder; the Rust `unwrap_or_default` on `checkout` is unreachable for a just-created workspace.
+  - `[low]` `[patch]` Dart auto-arm `staleRecovery` and the absent-vs-empty `name` rule were only synthetic/untested — real-cdylib Dart auto-arm case (`lastPrecondition.staleRecovery.outcome == updated`) and FFI test `workspace_add_refuses_an_empty_name_and_defaults_an_absent_one` added.
+  - `[false]` `[reject]` spec record mismatch (empty change log, sprint-status `done` while spec in review) — the fix edits this build's spec; sprint-status is `done` as of this run's commit.
+  - `[low]` `[reject]` quadratic revset dedup in `resolve_some_revsets` — only absurd inputs (thousands of parents for a new `@`) reach it; not worth a change.
+  - `[low]` `[defer]` no "unresolved conflicts" warning after the stale checkout — pre-existing across every checkout verb (no WarningKind exists); deferred to frontmatter + deferred-work.md.
+  - `[low]` `[reject]` recover_at error paths after the stale snapshot drop its committed facts from the partial report — rare jj-lib failure paths; fix adds branches.
+  - `[low]` `[reject]` `immutable_heads()` parsed in the OLD workspace context for the new workspace's finish — differs only for a custom `immutable_heads()` referencing `@`; fix needs a second CommandEnv.
+  - `[low]` `[reject]` `new_change_ids` omits an extra `@` created when the new commit is immutable — needs an immutable parent set for a brand-new workspace; rare.
+  - `[low]` `[reject]` `to_string_lossy` for a non-UTF-8 new workspace root — same lossy pattern as the existing workspace wrappers; non-UTF-8 roots are unreachable through the `&str` API's typical use.
+  - `[low]` `[defer]` `snapshot_locked`'s error arm still uses `load_at_head` — pre-existing site not touched by the diff; deferred to frontmatter + deferred-work.md.
+  - `[low]` `[patch]` `workspace_add` `load_at_head` (same root cause as row 2) — fixed with row 2.
+  - `[false]` `[reject]` `RequestKind` lacks `WorkspaceUpdateStale` — handle-only verbs carry no RequestKind (`WorkspaceList` has none either; the `.fbs` rule ties each variant to a request table), so nothing reads or misses the tag.
+  - `[low]` `[patch]` `snapshot_working_copy` doc still cited v0.44.0 (same root cause as row 3) — fixed with row 3.
+  - `[low]` `[reject]` `-m` without `templates.commit_trailers` — the intent's Never list excludes trailer rendering.
+  - `[medium]` `[patch]` the precondition's switch to `snapshot::load_head` had no witness — added `snapshot_precondition.rs::the_precondition_reconciles_divergent_heads_as_this_workspace` (fails when `run` reverts to `load_at_head`).
+  - `[medium]` `[patch]` colocated auto arm untested (same root cause as row 6) — fixed with row 6.
+  - `[medium]` `[patch]` update-stale's merged stats and `jj.snapshot_files_refused` warning never observed — added `update_stale_reports_the_files_its_snapshots_refused` (stats name `big.bin`, warning present).
+  - `[low]` `[patch]` Dart `workspaceAdd` colocate tri-state / sparse mapping unverified — real-cdylib cases for `colocate: false` on a colocated repo, `sparse: empty`/`full`, and `colocate: true` reaching Rust (`jj.git_worktree_failed` on a native repo; a real worktree cannot be waited on inside `dart test`, a known limitation).
+  - `[false]` `[reject]` the CLI-style head load reaches every verb's precondition — the intent requires the recovery and `snapshot::run` to share one head load, and the CLI names the workspace on every reconcile; this is parity, recorded in deferred-work.md.
+  - `[low]` `[reject]` update-stale's envelope precondition carries merged stats rather than the trailing snapshot's alone — the merged stats are what the CLI prints for the call; no consumer harm, and splitting them would drop facts.
+  - `[low]` `[patch]` `StaleRecovery.commit_id` doc said "the commit the working copy now holds", untrue for `Recovered` after a rewriting trailing snapshot — doc reworded (the recovery commit as jj-lib created it).
+  - `[false]` `[reject]` some matrix rows are proven by Zanshin tests, not the oracle — the AC names the oracle scenarios, all present and equal; the matrix audit found every row covered by a passing test.
+  - `[false]` `[reject]` `RequestKind` deviation (duplicate of row 19) — same refutation.
+
 ## Design Notes
 
 **Why one recovery for two callers.** The CLI's `update-stale` and its auto arm call the same `recover_stale_working_copy_impl`, the auto arm under the lock `workspace_helper` already holds. Zanshin's `snapshot::run` drops its lock on return, so reading the knob in `Repo::precondition` (today) cannot recover under the lock; the arm moves into `run`.
@@ -152,3 +201,39 @@ deferred:
 **Commands:**
 - `cargo make codegen` then `git status` -- expected: the four generated files changed and committed.
 - `cargo make test` -- expected: every step green (clippy, fmt, doctests, Dart analyze/format/tests, `cargo deny`, parity oracle, coverage ratchet with new files ≥ 80 % and every extern fn hit).
+
+## Auto Run Result
+
+Status: done
+
+**Summary.** Story 9.23 ports, at jj v0.46.0, `jj workspace update-stale` (`recover_stale_working_copy_impl`: stale snapshot at the working copy's own op, CLI-style head load, colocated `reset git head`, checkout without an op of its own, jj-lib `recovery commit` for a lost op, trailing snapshot, merged stats), the `snapshot.auto-update-stale = true` arm inside the pre-verb snapshot under its lock (`Precondition.stale_recovery`), and `jj workspace add` (name / `-r` revsets / `-m` / `--colocate|--no-colocate` / `--sparse-patterns` passed through, `git.colocate` builtin default, Git worktree, `.jj/.gitignore`, sparse copy/full/empty). Surfaced as `Repo::workspace_update_stale` / `Repo::workspace_add`, FFI `zanshin_workspace_update_stale` / `zanshin_workspace_add` (63 exports), Dart `RepoHandle.workspaceUpdateStale` / `workspaceAdd`. Deferred items I1–I3 resolved. The pre-verb head load now reconciles divergent operations as the workspace (CLI `resolve_operation`), for every verb.
+
+**Files changed.**
+- `crates/zanshin-jj/src/stale.rs` (new) — the recovery, `StaleRecovery` / `StaleRecoveryOutcome` / `CheckoutStats`; `update_stale_working_copy` extracted for the concurrent-tree witness.
+- `crates/zanshin-jj/src/workspace_add.rs` (new) — the `workspace add` port, `SparseInheritance`, `WorkspaceAddResult`.
+- `crates/zanshin-jj/src/snapshot.rs` — auto arm in `run`, `load_head` (CLI head load), `PreconditionError::ConcurrentWorkingCopy`, v0.46.0 citations.
+- `crates/zanshin-jj/src/repo.rs` — `workspace_update_stale`, `workspace_add`, shared `start_call`.
+- `crates/zanshin-jj/src/{mutate,config,convert,warning,lib,workspace}.rs` — new MutateError variants + finish checkout stats, `git.colocate` builtin + reader, shared `.jj/.gitignore` writer, `WorkspaceInCurrentDirectory` warning, re-exports, docs.
+- `crates/zanshin-jj/tests/{workspace_add,workspace_update_stale}.rs` (new), `snapshot_precondition.rs`, `api_stability.rs` — witnesses incl. I1.
+- `schemas/envelope.fbs` + 4 generated outputs — request/result tables, `Precondition.stale_recovery`.
+- `crates/zanshin-ffi/src/{workspace,envelope,repo,snapshot}.rs` + tests — the two extern fns, 3 error codes + 1 warning code, builders.
+- `crates/zanshin-parity/tests/oracle/{main,scenarios,state}.rs` — 10 scenarios, no ledger entry.
+- `packages/zanshin_core/**` — models, decoders, commands, isolate API, `RepoHandle` verbs, real-cdylib tests.
+- `app/test/features/projects/worker_project_repos_test.dart` — I3 real stale case.
+- `docs/ffi-abi.md`, `docs/rust-error-codes.md`, `crates/test-helpers/src/lib.rs` — docs; `coverage-baseline.txt` raised.
+- `_bmad-output/implementation-artifacts/{sprint-status.yaml,deferred-work.md}` — 9-23 done, I1–I3 resolved, deferrals mirrored.
+
+**Review findings.** 30 findings (0 high, 4 medium, 21 low, 5 false). Patched: 17 rows in 12 entries (3 medium entries: colocated auto-arm witness, precondition reconcile-name witness, update-stale refused-file stats/warning witness; 9 low entries: `workspace_add` head load, v0.46.0 citations, `workspaceAdd` throw list, unborn-HEAD colocated add test, Dart decoders throw on missing fields, Dart auto-arm + empty-name FFI tests, Dart colocate/sparse tests, `commit_id` doc). Deferred: 2 (snapshot_locked error-arm `load_at_head`; no "unresolved conflicts" warning after checkout — both pre-existing). Rejected: 11 — see the triage log for each reason (no-`@` code needs a forgotten workspace; dropped stale-snapshot facts match the intent; quadratic dedup only for absurd inputs; rare error-path partial reports; old-context `immutable_heads()`; immutable-parent extra `@`; lossy non-UTF-8 root; trailers excluded by the intent; merged stats in the envelope precondition; plus 5 false findings).
+
+**Follow-up review recommendation: true.** First pass, 3 medium entries patched (0 high). The unverified risk: the review-round source changes — `workspace_add` now loads the head through `snapshot::load_head` (a head-load failure now surfaces as `MutateError::Precondition(Backend)`, still `jj.jj_lib_error` on the wire) and the Dart decoders now throw `ffi.unknown` on missing required fields — were verified only by the gate, not re-reviewed.
+
+**Verification.**
+- `cargo make codegen` → exit 0, no further change to the four committed generated files.
+- Matrix test audit: every I/O row has a passing test; "update-stale: concurrent tree" is witnessed by `stale::tests::a_recorded_tree_other_than_the_stale_ats_is_a_concurrent_working_copy` (step extracted; inside the recovery only a concurrent writer can trigger it).
+- `cargo make test` → green (exit 0) on the final tree: clippy, fmt, doctests, Flutter/Dart suites, parity oracle 45/45, coverage ratchet (no regression, every extern fn covered). Earlier runs failed on a format nit, a coverage regression in `workspace_add.rs` from an unreachable match arm (simplified), and three runs on `app/test/features/projects/projects_window_test.dart` timing out in `_Rig.settle` (500 ms real-IO budget) under machine load — that file passes alone and in a solo `flutter test` of `app/`, and touches no code this story changed.
+
+**Residual risks.**
+- `projects_window_test.dart`'s `settle` budget is flaky under load (pre-existing, not this story's).
+- Every verb's pre-verb snapshot now names the workspace on a reconcile op — a parity change wider than the two new verbs.
+- The colocated `workspaceAdd(colocate: true)` worktree is only proven from Rust; Dart cannot wait on the `git` child inside `dart test`.
+- A dirty stale working copy's edits move into a divergent commit and leave the disk (the CLI's behaviour).

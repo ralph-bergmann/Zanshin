@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 30;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 31;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 31] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 32] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -55,6 +55,7 @@ pub mod zanshin {
             RequestKind::EnvironmentAdopt,
             RequestKind::CommitContents,
             RequestKind::GraphTopology,
+            RequestKind::WorkspaceAdd,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -68,7 +69,7 @@ pub mod zanshin {
         /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
         /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
         /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-        /// named as parents. For the other 28 tables the variant name plus `Request` IS the table name.
+        /// named as parents. For the other 29 tables the variant name plus `Request` IS the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
         /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -112,9 +113,10 @@ pub mod zanshin {
             pub const EnvironmentAdopt: Self = Self(28);
             pub const CommitContents: Self = Self(29);
             pub const GraphTopology: Self = Self(30);
+            pub const WorkspaceAdd: Self = Self(31);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 30;
+            pub const ENUM_MAX: u8 = 31;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -147,6 +149,7 @@ pub mod zanshin {
                 Self::EnvironmentAdopt,
                 Self::CommitContents,
                 Self::GraphTopology,
+                Self::WorkspaceAdd,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -182,6 +185,7 @@ pub mod zanshin {
                     Self::EnvironmentAdopt => Some("EnvironmentAdopt"),
                     Self::CommitContents => Some("CommitContents"),
                     Self::GraphTopology => Some("GraphTopology"),
+                    Self::WorkspaceAdd => Some("WorkspaceAdd"),
                     _ => None,
                 }
             }
@@ -336,6 +340,104 @@ pub mod zanshin {
         impl ::flatbuffers::SimpleToVerifyInSlice for RevisionRef {}
         pub struct RevisionRefUnionTableOffset {}
 
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_SPARSE_INHERITANCE: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_SPARSE_INHERITANCE: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_SPARSE_INHERITANCE: [SparseInheritance; 3] = [
+            SparseInheritance::Copy,
+            SparseInheritance::Full,
+            SparseInheritance::Empty,
+        ];
+
+        /// How `zanshin_workspace_add` sets the new workspace's sparse patterns — the CLI's
+        /// `--sparse-patterns` (Story 9.23). `Copy` (the wire default, as the CLI's) copies the current
+        /// workspace's patterns, `Full` includes every file, `Empty` none. Member order IS the wire
+        /// value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct SparseInheritance(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl SparseInheritance {
+            pub const Copy: Self = Self(0);
+            pub const Full: Self = Self(1);
+            pub const Empty: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Copy, Self::Full, Self::Empty];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Copy => Some("Copy"),
+                    Self::Full => Some("Full"),
+                    Self::Empty => Some("Empty"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for SparseInheritance {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for SparseInheritance {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for SparseInheritance {
+            type Output = SparseInheritance;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for SparseInheritance {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for SparseInheritance {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for SparseInheritance {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -1408,6 +1510,102 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
+        pub const ENUM_MIN_STALE_RECOVERY_OUTCOME: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_STALE_RECOVERY_OUTCOME: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_STALE_RECOVERY_OUTCOME: [StaleRecoveryOutcome; 3] = [
+            StaleRecoveryOutcome::NotStale,
+            StaleRecoveryOutcome::Updated,
+            StaleRecoveryOutcome::Recovered,
+        ];
+
+        /// Which arm of the stale-working-copy recovery ran (Story 9.23). Member order IS the wire
+        /// value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct StaleRecoveryOutcome(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl StaleRecoveryOutcome {
+            pub const NotStale: Self = Self(0);
+            pub const Updated: Self = Self(1);
+            pub const Recovered: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::NotStale, Self::Updated, Self::Recovered];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::NotStale => Some("NotStale"),
+                    Self::Updated => Some("Updated"),
+                    Self::Recovered => Some("Recovered"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for StaleRecoveryOutcome {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for StaleRecoveryOutcome {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for StaleRecoveryOutcome {
+            type Output = StaleRecoveryOutcome;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for StaleRecoveryOutcome {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for StaleRecoveryOutcome {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for StaleRecoveryOutcome {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
         pub const ENUM_MIN_CONFIG_VALUE_SOURCE: i8 = 0;
         #[deprecated(
             since = "2.0.0",
@@ -1529,13 +1727,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 36;
+        pub const ENUM_MAX_PAYLOAD: u8 = 38;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 37] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 39] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -1573,6 +1771,8 @@ pub mod zanshin {
             Payload::ConfigGcList,
             Payload::ConfigGcResult,
             Payload::CommitContents,
+            Payload::WorkspaceAddResult,
+            Payload::StaleRecovery,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -1617,9 +1817,11 @@ pub mod zanshin {
             pub const ConfigGcList: Self = Self(34);
             pub const ConfigGcResult: Self = Self(35);
             pub const CommitContents: Self = Self(36);
+            pub const WorkspaceAddResult: Self = Self(37);
+            pub const StaleRecovery: Self = Self(38);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 36;
+            pub const ENUM_MAX: u8 = 38;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -1658,6 +1860,8 @@ pub mod zanshin {
                 Self::ConfigGcList,
                 Self::ConfigGcResult,
                 Self::CommitContents,
+                Self::WorkspaceAddResult,
+                Self::StaleRecovery,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -1699,6 +1903,8 @@ pub mod zanshin {
                     Self::ConfigGcList => Some("ConfigGcList"),
                     Self::ConfigGcResult => Some("ConfigGcResult"),
                     Self::CommitContents => Some("CommitContents"),
+                    Self::WorkspaceAddResult => Some("WorkspaceAddResult"),
+                    Self::StaleRecovery => Some("StaleRecovery"),
                     _ => None,
                 }
             }
@@ -4542,6 +4748,300 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("WorkspaceRootRequest");
                 ds.field("kind", &self.kind());
                 ds.field("name", &self.name());
+                ds.finish()
+            }
+        }
+        pub enum WorkspaceAddRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_workspace_add` (Story 9.23) — the CLI's `jj workspace add`, every
+        /// argument passed through (FR-JJ-17).
+        ///
+        /// `destination` is REQUIRED (absent → `jj.invalid_input`), resolved against the current
+        /// workspace root; an absolute path stays absolute. `name` ABSENT is the CLI's default — the
+        /// destination's final component; an explicitly present EMPTY name is a value and refused.
+        /// `revisions` are the CLI's repeatable `-r` REVSETS (their union, in argument order); empty →
+        /// the parents of the current `@`. `message_paragraphs` are the CLI's repeatable `-m`.
+        /// `colocate` / `no_colocate` are the CLI's two mutually exclusive flags (both set →
+        /// `jj.invalid_input`); neither → a Git worktree exactly when the current workspace is colocated
+        /// and `git.colocate` is true.
+        pub struct WorkspaceAddRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WorkspaceAddRequest<'a> {
+            type Inner = WorkspaceAddRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WorkspaceAddRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_DESTINATION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 8;
+            pub const VT_REVISIONS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_MESSAGE_PARAGRAPHS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_COLOCATE: ::flatbuffers::VOffsetT = 14;
+            pub const VT_NO_COLOCATE: ::flatbuffers::VOffsetT = 16;
+            pub const VT_SPARSE_PATTERNS: ::flatbuffers::VOffsetT = 18;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WorkspaceAddRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WorkspaceAddRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WorkspaceAddRequest<'bldr>> {
+                let mut builder = WorkspaceAddRequestBuilder::new(_fbb);
+                if let Some(x) = args.message_paragraphs {
+                    builder.add_message_paragraphs(x);
+                }
+                if let Some(x) = args.revisions {
+                    builder.add_revisions(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                if let Some(x) = args.destination {
+                    builder.add_destination(x);
+                }
+                builder.add_sparse_patterns(args.sparse_patterns);
+                builder.add_no_colocate(args.no_colocate);
+                builder.add_colocate(args.colocate);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(WorkspaceAddRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn destination(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WorkspaceAddRequest::VT_DESTINATION, None)
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WorkspaceAddRequest::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn revisions(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(WorkspaceAddRequest::VT_REVISIONS, None)
+                }
+            }
+            #[inline]
+            pub fn message_paragraphs(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(WorkspaceAddRequest::VT_MESSAGE_PARAGRAPHS, None)
+                }
+            }
+            #[inline]
+            pub fn colocate(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WorkspaceAddRequest::VT_COLOCATE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn no_colocate(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WorkspaceAddRequest::VT_NO_COLOCATE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn sparse_patterns(&self) -> SparseInheritance {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<SparseInheritance>(
+                            WorkspaceAddRequest::VT_SPARSE_PATTERNS,
+                            Some(SparseInheritance::Copy),
+                        )
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WorkspaceAddRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("destination", Self::VT_DESTINATION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("revisions", Self::VT_REVISIONS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("message_paragraphs", Self::VT_MESSAGE_PARAGRAPHS, false)?
+     .visit_field::<bool>("colocate", Self::VT_COLOCATE, false)?
+     .visit_field::<bool>("no_colocate", Self::VT_NO_COLOCATE, false)?
+     .visit_field::<SparseInheritance>("sparse_patterns", Self::VT_SPARSE_PATTERNS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct WorkspaceAddRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub destination: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub revisions:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub message_paragraphs:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub colocate: bool,
+            pub no_colocate: bool,
+            pub sparse_patterns: SparseInheritance,
+        }
+        impl<'a> Default for WorkspaceAddRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WorkspaceAddRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    destination: None,
+                    name: None,
+                    revisions: None,
+                    message_paragraphs: None,
+                    colocate: false,
+                    no_colocate: false,
+                    sparse_patterns: SparseInheritance::Copy,
+                }
+            }
+        }
+
+        pub struct WorkspaceAddRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WorkspaceAddRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(WorkspaceAddRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_destination(&mut self, destination: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WorkspaceAddRequest::VT_DESTINATION, destination);
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WorkspaceAddRequest::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_revisions(
+                &mut self,
+                revisions: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WorkspaceAddRequest::VT_REVISIONS, revisions);
+            }
+            #[inline]
+            pub fn add_message_paragraphs(
+                &mut self,
+                message_paragraphs: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WorkspaceAddRequest::VT_MESSAGE_PARAGRAPHS,
+                    message_paragraphs,
+                );
+            }
+            #[inline]
+            pub fn add_colocate(&mut self, colocate: bool) {
+                self.fbb_
+                    .push_slot::<bool>(WorkspaceAddRequest::VT_COLOCATE, colocate, false);
+            }
+            #[inline]
+            pub fn add_no_colocate(&mut self, no_colocate: bool) {
+                self.fbb_
+                    .push_slot::<bool>(WorkspaceAddRequest::VT_NO_COLOCATE, no_colocate, false);
+            }
+            #[inline]
+            pub fn add_sparse_patterns(&mut self, sparse_patterns: SparseInheritance) {
+                self.fbb_.push_slot::<SparseInheritance>(
+                    WorkspaceAddRequest::VT_SPARSE_PATTERNS,
+                    sparse_patterns,
+                    SparseInheritance::Copy,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> WorkspaceAddRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WorkspaceAddRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WorkspaceAddRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WorkspaceAddRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WorkspaceAddRequest");
+                ds.field("kind", &self.kind());
+                ds.field("destination", &self.destination());
+                ds.field("name", &self.name());
+                ds.field("revisions", &self.revisions());
+                ds.field("message_paragraphs", &self.message_paragraphs());
+                ds.field("colocate", &self.colocate());
+                ds.field("no_colocate", &self.no_colocate());
+                ds.field("sparse_patterns", &self.sparse_patterns());
                 ds.finish()
             }
         }
@@ -16116,6 +16616,619 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum CheckoutStatsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// What a working-copy checkout did to the files on disk (Story 9.23) — jj-lib's
+        /// `CheckoutStats`, the counts behind the CLI's "Added N files, modified N files, removed N
+        /// files". `skipped` is the data behind the call's `jj.checkout_files_skipped` warning.
+        pub struct CheckoutStats<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for CheckoutStats<'a> {
+            type Inner = CheckoutStats<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> CheckoutStats<'a> {
+            pub const VT_ADDED: ::flatbuffers::VOffsetT = 4;
+            pub const VT_UPDATED: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REMOVED: ::flatbuffers::VOffsetT = 8;
+            pub const VT_SKIPPED: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                CheckoutStats { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args CheckoutStatsArgs,
+            ) -> ::flatbuffers::WIPOffset<CheckoutStats<'bldr>> {
+                let mut builder = CheckoutStatsBuilder::new(_fbb);
+                builder.add_skipped(args.skipped);
+                builder.add_removed(args.removed);
+                builder.add_updated(args.updated);
+                builder.add_added(args.added);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn added(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(CheckoutStats::VT_ADDED, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn updated(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(CheckoutStats::VT_UPDATED, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn removed(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(CheckoutStats::VT_REMOVED, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn skipped(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(CheckoutStats::VT_SKIPPED, Some(0)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for CheckoutStats<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u32>("added", Self::VT_ADDED, false)?
+                    .visit_field::<u32>("updated", Self::VT_UPDATED, false)?
+                    .visit_field::<u32>("removed", Self::VT_REMOVED, false)?
+                    .visit_field::<u32>("skipped", Self::VT_SKIPPED, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct CheckoutStatsArgs {
+            pub added: u32,
+            pub updated: u32,
+            pub removed: u32,
+            pub skipped: u32,
+        }
+        impl<'a> Default for CheckoutStatsArgs {
+            #[inline]
+            fn default() -> Self {
+                CheckoutStatsArgs {
+                    added: 0,
+                    updated: 0,
+                    removed: 0,
+                    skipped: 0,
+                }
+            }
+        }
+
+        pub struct CheckoutStatsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> CheckoutStatsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_added(&mut self, added: u32) {
+                self.fbb_.push_slot::<u32>(CheckoutStats::VT_ADDED, added, 0);
+            }
+            #[inline]
+            pub fn add_updated(&mut self, updated: u32) {
+                self.fbb_.push_slot::<u32>(CheckoutStats::VT_UPDATED, updated, 0);
+            }
+            #[inline]
+            pub fn add_removed(&mut self, removed: u32) {
+                self.fbb_.push_slot::<u32>(CheckoutStats::VT_REMOVED, removed, 0);
+            }
+            #[inline]
+            pub fn add_skipped(&mut self, skipped: u32) {
+                self.fbb_.push_slot::<u32>(CheckoutStats::VT_SKIPPED, skipped, 0);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> CheckoutStatsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                CheckoutStatsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<CheckoutStats<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for CheckoutStats<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("CheckoutStats");
+                ds.field("added", &self.added());
+                ds.field("updated", &self.updated());
+                ds.field("removed", &self.removed());
+                ds.field("skipped", &self.skipped());
+                ds.finish()
+            }
+        }
+        pub enum StaleRecoveryOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// What leaving a stale working copy did (Story 9.23) — `zanshin_workspace_update_stale`'s
+        /// payload, and `Precondition.stale_recovery` when `snapshot.auto-update-stale = true` recovered
+        /// in front of a verb.
+        ///
+        /// `commit_id` (full hex): the fresh `@` (`Updated`) or the recovery commit (`Recovered`);
+        /// ABSENT when `NotStale`. `checkout`: PRESENT only for `Updated`. `git_head_reset_op_id`: the
+        /// `reset git head` operation a colocated workspace wrote before the checkout; ABSENT otherwise.
+        /// `snapshot_stats`: what the recovery's snapshots could not record, merged. `op_id`: the head
+        /// operation after the recovery.
+        pub struct StaleRecovery<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for StaleRecovery<'a> {
+            type Inner = StaleRecovery<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> StaleRecovery<'a> {
+            pub const VT_OUTCOME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_COMMIT_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_CHECKOUT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_GIT_HEAD_RESET_OP_ID: ::flatbuffers::VOffsetT = 10;
+            pub const VT_SNAPSHOT_STATS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_OP_ID: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                StaleRecovery { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args StaleRecoveryArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<StaleRecovery<'bldr>> {
+                let mut builder = StaleRecoveryBuilder::new(_fbb);
+                if let Some(x) = args.op_id {
+                    builder.add_op_id(x);
+                }
+                if let Some(x) = args.snapshot_stats {
+                    builder.add_snapshot_stats(x);
+                }
+                if let Some(x) = args.git_head_reset_op_id {
+                    builder.add_git_head_reset_op_id(x);
+                }
+                if let Some(x) = args.checkout {
+                    builder.add_checkout(x);
+                }
+                if let Some(x) = args.commit_id {
+                    builder.add_commit_id(x);
+                }
+                builder.add_outcome(args.outcome);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn outcome(&self) -> StaleRecoveryOutcome {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<StaleRecoveryOutcome>(StaleRecovery::VT_OUTCOME, Some(StaleRecoveryOutcome::NotStale))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn commit_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(StaleRecovery::VT_COMMIT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn checkout(&self) -> Option<CheckoutStats<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<CheckoutStats>>(StaleRecovery::VT_CHECKOUT, None)
+                }
+            }
+            #[inline]
+            pub fn git_head_reset_op_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(StaleRecovery::VT_GIT_HEAD_RESET_OP_ID, None)
+                }
+            }
+            #[inline]
+            pub fn snapshot_stats(&self) -> Option<SnapshotStats<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<SnapshotStats>>(StaleRecovery::VT_SNAPSHOT_STATS, None)
+                }
+            }
+            #[inline]
+            pub fn op_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(StaleRecovery::VT_OP_ID, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for StaleRecovery<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<StaleRecoveryOutcome>("outcome", Self::VT_OUTCOME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("commit_id", Self::VT_COMMIT_ID, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<CheckoutStats>>("checkout", Self::VT_CHECKOUT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "git_head_reset_op_id",
+                        Self::VT_GIT_HEAD_RESET_OP_ID,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<SnapshotStats>>(
+                        "snapshot_stats",
+                        Self::VT_SNAPSHOT_STATS,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("op_id", Self::VT_OP_ID, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct StaleRecoveryArgs<'a> {
+            pub outcome: StaleRecoveryOutcome,
+            pub commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub checkout: Option<::flatbuffers::WIPOffset<CheckoutStats<'a>>>,
+            pub git_head_reset_op_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub snapshot_stats: Option<::flatbuffers::WIPOffset<SnapshotStats<'a>>>,
+            pub op_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for StaleRecoveryArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                StaleRecoveryArgs {
+                    outcome: StaleRecoveryOutcome::NotStale,
+                    commit_id: None,
+                    checkout: None,
+                    git_head_reset_op_id: None,
+                    snapshot_stats: None,
+                    op_id: None,
+                }
+            }
+        }
+
+        pub struct StaleRecoveryBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> StaleRecoveryBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_outcome(&mut self, outcome: StaleRecoveryOutcome) {
+                self.fbb_.push_slot::<StaleRecoveryOutcome>(
+                    StaleRecovery::VT_OUTCOME,
+                    outcome,
+                    StaleRecoveryOutcome::NotStale,
+                );
+            }
+            #[inline]
+            pub fn add_commit_id(&mut self, commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(StaleRecovery::VT_COMMIT_ID, commit_id);
+            }
+            #[inline]
+            pub fn add_checkout(&mut self, checkout: ::flatbuffers::WIPOffset<CheckoutStats<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<CheckoutStats>>(StaleRecovery::VT_CHECKOUT, checkout);
+            }
+            #[inline]
+            pub fn add_git_head_reset_op_id(&mut self, git_head_reset_op_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    StaleRecovery::VT_GIT_HEAD_RESET_OP_ID,
+                    git_head_reset_op_id,
+                );
+            }
+            #[inline]
+            pub fn add_snapshot_stats(&mut self, snapshot_stats: ::flatbuffers::WIPOffset<SnapshotStats<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<SnapshotStats>>(
+                    StaleRecovery::VT_SNAPSHOT_STATS,
+                    snapshot_stats,
+                );
+            }
+            #[inline]
+            pub fn add_op_id(&mut self, op_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(StaleRecovery::VT_OP_ID, op_id);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> StaleRecoveryBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                StaleRecoveryBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<StaleRecovery<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for StaleRecovery<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("StaleRecovery");
+                ds.field("outcome", &self.outcome());
+                ds.field("commit_id", &self.commit_id());
+                ds.field("checkout", &self.checkout());
+                ds.field("git_head_reset_op_id", &self.git_head_reset_op_id());
+                ds.field("snapshot_stats", &self.snapshot_stats());
+                ds.field("op_id", &self.op_id());
+                ds.finish()
+            }
+        }
+        pub enum WorkspaceAddResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of a successful `zanshin_workspace_add` (Story 9.23). `mutation` is the call's LAST
+        /// operation, `create initial working-copy commit in workspace <name>`; its
+        /// `working_copy_change_id` is the NEW workspace's `@`. `workspace_root` is absolute and
+        /// canonical. `git_worktree_created`: a Git worktree was created for it.
+        pub struct WorkspaceAddResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WorkspaceAddResult<'a> {
+            type Inner = WorkspaceAddResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WorkspaceAddResult<'a> {
+            pub const VT_MUTATION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WORKSPACE_NAME: ::flatbuffers::VOffsetT = 6;
+            pub const VT_WORKSPACE_ROOT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_GIT_WORKTREE_CREATED: ::flatbuffers::VOffsetT = 10;
+            pub const VT_CHECKOUT: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WorkspaceAddResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WorkspaceAddResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WorkspaceAddResult<'bldr>> {
+                let mut builder = WorkspaceAddResultBuilder::new(_fbb);
+                if let Some(x) = args.checkout {
+                    builder.add_checkout(x);
+                }
+                if let Some(x) = args.workspace_root {
+                    builder.add_workspace_root(x);
+                }
+                if let Some(x) = args.workspace_name {
+                    builder.add_workspace_name(x);
+                }
+                if let Some(x) = args.mutation {
+                    builder.add_mutation(x);
+                }
+                builder.add_git_worktree_created(args.git_worktree_created);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn mutation(&self) -> Option<MutationResult<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<MutationResult>>(WorkspaceAddResult::VT_MUTATION, None)
+                }
+            }
+            #[inline]
+            pub fn workspace_name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WorkspaceAddResult::VT_WORKSPACE_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn workspace_root(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WorkspaceAddResult::VT_WORKSPACE_ROOT, None)
+                }
+            }
+            #[inline]
+            pub fn git_worktree_created(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WorkspaceAddResult::VT_GIT_WORKTREE_CREATED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn checkout(&self) -> Option<CheckoutStats<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<CheckoutStats>>(WorkspaceAddResult::VT_CHECKOUT, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WorkspaceAddResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<MutationResult>>(
+                        "mutation",
+                        Self::VT_MUTATION,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "workspace_name",
+                        Self::VT_WORKSPACE_NAME,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "workspace_root",
+                        Self::VT_WORKSPACE_ROOT,
+                        false,
+                    )?
+                    .visit_field::<bool>("git_worktree_created", Self::VT_GIT_WORKTREE_CREATED, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<CheckoutStats>>("checkout", Self::VT_CHECKOUT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WorkspaceAddResultArgs<'a> {
+            pub mutation: Option<::flatbuffers::WIPOffset<MutationResult<'a>>>,
+            pub workspace_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub workspace_root: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub git_worktree_created: bool,
+            pub checkout: Option<::flatbuffers::WIPOffset<CheckoutStats<'a>>>,
+        }
+        impl<'a> Default for WorkspaceAddResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WorkspaceAddResultArgs {
+                    mutation: None,
+                    workspace_name: None,
+                    workspace_root: None,
+                    git_worktree_created: false,
+                    checkout: None,
+                }
+            }
+        }
+
+        pub struct WorkspaceAddResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WorkspaceAddResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_mutation(&mut self, mutation: ::flatbuffers::WIPOffset<MutationResult<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<MutationResult>>(
+                    WorkspaceAddResult::VT_MUTATION,
+                    mutation,
+                );
+            }
+            #[inline]
+            pub fn add_workspace_name(&mut self, workspace_name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WorkspaceAddResult::VT_WORKSPACE_NAME,
+                    workspace_name,
+                );
+            }
+            #[inline]
+            pub fn add_workspace_root(&mut self, workspace_root: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WorkspaceAddResult::VT_WORKSPACE_ROOT,
+                    workspace_root,
+                );
+            }
+            #[inline]
+            pub fn add_git_worktree_created(&mut self, git_worktree_created: bool) {
+                self.fbb_
+                    .push_slot::<bool>(WorkspaceAddResult::VT_GIT_WORKTREE_CREATED, git_worktree_created, false);
+            }
+            #[inline]
+            pub fn add_checkout(&mut self, checkout: ::flatbuffers::WIPOffset<CheckoutStats<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<CheckoutStats>>(
+                    WorkspaceAddResult::VT_CHECKOUT,
+                    checkout,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> WorkspaceAddResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WorkspaceAddResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WorkspaceAddResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WorkspaceAddResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WorkspaceAddResult");
+                ds.field("mutation", &self.mutation());
+                ds.field("workspace_name", &self.workspace_name());
+                ds.field("workspace_root", &self.workspace_root());
+                ds.field("git_worktree_created", &self.git_worktree_created());
+                ds.field("checkout", &self.checkout());
+                ds.finish()
+            }
+        }
         pub enum PreconditionOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -16132,6 +17245,9 @@ pub mod zanshin {
         /// inside the precondition, merged; ABSENT when both lists are empty. The three rebased counts
         /// saturate at 4294967295. The precondition's WARNINGS (an immutable `@`, `.jjconflict` files,
         /// refused files, …) ride `Envelope.warnings` (Story 9.32).
+        ///
+        /// `stale_recovery` (Story 9.23): PRESENT when `snapshot.auto-update-stale = true` recovered a
+        /// stale working copy before the verb ran; the verb then ran on the recovered state.
         ///
         /// On an error envelope it is PARTIAL: every fact up to the failing step.
         pub struct Precondition<'a> {
@@ -16158,6 +17274,7 @@ pub mod zanshin {
             pub const VT_GIT_REFS: ::flatbuffers::VOffsetT = 16;
             pub const VT_GIT_REFS_REBASED: ::flatbuffers::VOffsetT = 18;
             pub const VT_FINISH: ::flatbuffers::VOffsetT = 20;
+            pub const VT_STALE_RECOVERY: ::flatbuffers::VOffsetT = 22;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -16169,6 +17286,9 @@ pub mod zanshin {
                 args: &'args PreconditionArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<Precondition<'bldr>> {
                 let mut builder = PreconditionBuilder::new(_fbb);
+                if let Some(x) = args.stale_recovery {
+                    builder.add_stale_recovery(x);
+                }
                 if let Some(x) = args.finish {
                     builder.add_finish(x);
                 }
@@ -16283,6 +17403,16 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<FinishFacts>>(Precondition::VT_FINISH, None)
                 }
             }
+            #[inline]
+            pub fn stale_recovery(&self) -> Option<StaleRecovery<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<StaleRecovery>>(Precondition::VT_STALE_RECOVERY, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Precondition<'_> {
@@ -16309,6 +17439,11 @@ pub mod zanshin {
                     )?
                     .visit_field::<u32>("git_refs_rebased", Self::VT_GIT_REFS_REBASED, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<FinishFacts>>("finish", Self::VT_FINISH, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<StaleRecovery>>(
+                        "stale_recovery",
+                        Self::VT_STALE_RECOVERY,
+                        false,
+                    )?
                     .finish();
                 Ok(())
             }
@@ -16323,6 +17458,7 @@ pub mod zanshin {
             pub git_refs: Option<::flatbuffers::WIPOffset<GitImportResult<'a>>>,
             pub git_refs_rebased: u32,
             pub finish: Option<::flatbuffers::WIPOffset<FinishFacts<'a>>>,
+            pub stale_recovery: Option<::flatbuffers::WIPOffset<StaleRecovery<'a>>>,
         }
         impl<'a> Default for PreconditionArgs<'a> {
             #[inline]
@@ -16337,6 +17473,7 @@ pub mod zanshin {
                     git_refs: None,
                     git_refs_rebased: 0,
                     finish: None,
+                    stale_recovery: None,
                 }
             }
         }
@@ -16394,6 +17531,13 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<FinishFacts>>(Precondition::VT_FINISH, finish);
             }
             #[inline]
+            pub fn add_stale_recovery(&mut self, stale_recovery: ::flatbuffers::WIPOffset<StaleRecovery<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<StaleRecovery>>(
+                    Precondition::VT_STALE_RECOVERY,
+                    stale_recovery,
+                );
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PreconditionBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 PreconditionBuilder {
@@ -16420,6 +17564,7 @@ pub mod zanshin {
                 ds.field("git_refs", &self.git_refs());
                 ds.field("git_refs_rebased", &self.git_refs_rebased());
                 ds.field("finish", &self.finish());
+                ds.field("stale_recovery", &self.stale_recovery());
                 ds.finish()
             }
         }
@@ -18497,6 +19642,8 @@ pub mod zanshin {
         /// started — on its ok envelope and on its error envelope (after a failure before the re-open it
         /// describes state the rollback removed; a failed re-open or watcher arming leaves `.jj/` in
         /// place). `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
+        /// `zanshin_workspace_update_stale` runs no pre-verb snapshot — it IS the recovery — and carries
+        /// the recovery's TRAILING snapshot report (Story 9.23), on its ok and its error envelope.
         ///
         /// `warnings` (Story 9.32) are the call's warnings in the jj CLI's print order, on the ok
         /// envelope AND on an error envelope (then everything warned before the failure). ABSENT when
@@ -19150,6 +20297,36 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_workspace_add_result(&self) -> Option<WorkspaceAddResult<'a>> {
+                if self.data_type() == Payload::WorkspaceAddResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { WorkspaceAddResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_stale_recovery(&self) -> Option<StaleRecovery<'a>> {
+                if self.data_type() == Payload::StaleRecovery {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { StaleRecovery::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -19199,6 +20376,8 @@ pub mod zanshin {
           Payload::ConfigGcList => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigGcList>>("Payload::ConfigGcList", pos),
           Payload::ConfigGcResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ConfigGcResult>>("Payload::ConfigGcResult", pos),
           Payload::CommitContents => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<CommitContents>>("Payload::CommitContents", pos),
+          Payload::WorkspaceAddResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<WorkspaceAddResult>>("Payload::WorkspaceAddResult", pos),
+          Payload::StaleRecovery => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<StaleRecovery>>("Payload::StaleRecovery", pos),
           _ => Ok(()),
         }
      })?
@@ -19542,6 +20721,20 @@ pub mod zanshin {
                     }
                     Payload::CommitContents => {
                         if let Some(x) = self.data_as_commit_contents() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::WorkspaceAddResult => {
+                        if let Some(x) = self.data_as_workspace_add_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::StaleRecovery => {
+                        if let Some(x) = self.data_as_stale_recovery() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

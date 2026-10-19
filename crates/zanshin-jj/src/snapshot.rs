@@ -4,8 +4,8 @@
 //! in front of almost every command (Story 9.26, reversing project decision D2).
 //!
 //! Every CLI command that goes through `workspace_helper` / `workspace_helper_with_stats`
-//! (`cli/src/cli_util.rs:472-516` @ v0.44.0) first takes the `git_import_export.lock`, loads the
-//! head, and runs `snapshot_impl` (`:1298-1326`): in a colocated workspace `import git head`,
+//! (`cli/src/cli_util.rs:473-517` @ v0.46.0) first takes the `git_import_export.lock`, loads the
+//! head, and runs `snapshot_impl` (`:1326-1354`): in a colocated workspace `import git head`,
 //! then `snapshot working copy`, then `import git refs`; in any other workspace the snapshot
 //! alone. [`crate::Repo`] runs the same sequence as the precondition of every verb whose CLI
 //! counterpart does, so the op log a CLI user sees after a Zanshin session is the one the CLI
@@ -29,7 +29,8 @@
 //!   at the top of [`snapshot_working_copy`] — AFTER `import git head`, before the working-copy
 //!   lock and the stale check (`cli_util.rs:2065-2070`);
 //! - the Git import options at the top of [`import_git_refs`] (`cli_util.rs:1434-1437`);
-//! - `snapshot.auto-update-stale` only on a stale working copy ([`crate::Repo`], `cli_util.rs:499`).
+//! - `snapshot.auto-update-stale` only on a stale working copy, under the lock ([`run`],
+//!   `cli_util.rs:500` @ v0.46.0) — `true` recovers right there ([`crate::stale`], Story 9.23).
 //!
 //! `immutable_heads()` is parsed with the start-up environment but RESOLVED only where a step
 //! needs it (`cli_util.rs:2105-2108`).
@@ -44,9 +45,11 @@ use jj_lib::git;
 use jj_lib::lock::FileLock;
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
+use jj_lib::op_heads_store;
 use jj_lib::op_store::OpStoreError;
+use jj_lib::operation::Operation;
 use jj_lib::ref_name::WorkspaceName;
-use jj_lib::repo::{ReadonlyRepo, Repo as _};
+use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoaderError};
 use jj_lib::revset::{RevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::RebaseOptions;
 use jj_lib::working_copy::{self, LockedWorkingCopy, WorkingCopyFreshness};
@@ -55,6 +58,7 @@ use jj_lib::workspace::Workspace;
 use crate::git::GitExportFailure;
 use crate::mutate::{self, flatten_chain, MutateError};
 use crate::op_support::start_repo_transaction;
+use crate::stale::StaleRecovery;
 use crate::warning::{self, Load, WarningKind, Warnings};
 use crate::wc_ops::{self, SnapshotStats};
 use crate::GitImportResult;
@@ -101,6 +105,10 @@ pub struct Precondition {
     /// The ref exports that ran inside the precondition, merged. `None` when both lists are
     /// empty.
     pub finish: Option<FinishFacts>,
+    /// What the stale-working-copy recovery did, when `snapshot.auto-update-stale = true`
+    /// recovered a stale working copy before the verb ran (Story 9.23) — the facts the CLI
+    /// prints ahead of the verb's own output. `None` whenever no recovery ran.
+    pub stale_recovery: Option<StaleRecovery>,
 }
 
 /// The refs the colocated Git export could not write while the CLI finished a transaction
@@ -130,7 +138,7 @@ impl FinishFacts {
 }
 
 /// Why the working copy is stale — the three refusals of the CLI's `handle_stale_working_copy`
-/// (`cli/src/cli_util.rs:2952-3020` @ v0.44.0).
+/// (`cli/src/cli_util.rs:3011-3079` @ v0.46.0).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StaleCause {
     /// The working copy was not updated since an operation that rewrote `@` ("The working copy
@@ -166,8 +174,11 @@ impl std::fmt::Display for StaleCause {
 /// [`Precondition`] reports was written.
 #[derive(Debug, thiserror::Error)]
 pub enum PreconditionError {
-    /// The working copy is stale — see [`StaleCause`]. Nothing is snapshotted or written; the
-    /// CLI's remedy is `jj workspace update-stale` (or `snapshot.auto-update-stale = true`).
+    /// The working copy is stale — see [`StaleCause`] — and `snapshot.auto-update-stale` is
+    /// `false`. Nothing is snapshotted or written. The remedy is
+    /// [`crate::Repo::workspace_update_stale`], the CLI's `jj workspace update-stale`
+    /// (`cli/src/cli_util.rs:615-766` @ v0.46.0); with `snapshot.auto-update-stale = true` the
+    /// precondition runs that recovery itself instead of refusing (Story 9.23).
     #[error("stale working copy ({cause}): working copy at operation {working_copy_op_id}, repo at {repo_op_id}")]
     StaleWorkingCopy {
         /// Which of the CLI's three refusals applies.
@@ -189,6 +200,12 @@ pub enum PreconditionError {
         /// Human-readable failure, naming the file or the config key.
         reason: String,
     },
+    /// The stale-working-copy recovery found the working copy's recorded tree differing from
+    /// the stale `@`'s — another writer is at work (Story 9.23): the CLI's "Concurrent working
+    /// copy operation. Try again." (`update_stale_working_copy`, `cli/src/cli_util.rs:3081-3107`
+    /// @ v0.46.0). Nothing is checked out; a `reset git head` written before the check stays.
+    #[error("concurrent working copy operation")]
+    ConcurrentWorkingCopy,
     /// An underlying jj-lib failure — jj-lib's message, its source chain included.
     #[error("jj-lib error: {0}")]
     Backend(String),
@@ -198,6 +215,7 @@ impl From<MutateError> for PreconditionError {
     fn from(e: MutateError) -> Self {
         match e {
             MutateError::Config { reason } => Self::Config { reason },
+            MutateError::ConcurrentWorkingCopy => Self::ConcurrentWorkingCopy,
             MutateError::Precondition(inner) => inner,
             MutateError::Backend(reason) => Self::Backend(reason),
             other => Self::Backend(other.to_string()),
@@ -213,7 +231,7 @@ impl From<crate::ConfigError> for PreconditionError {
 }
 
 /// A jj-lib failure with its whole source chain, the way the CLI prints it.
-fn backend(e: &(dyn std::error::Error + 'static)) -> PreconditionError {
+pub(crate) fn backend(e: &(dyn std::error::Error + 'static)) -> PreconditionError {
     PreconditionError::Backend(flatten_chain(e))
 }
 
@@ -256,6 +274,36 @@ pub(crate) fn lock_git_import_export(
         None
     };
     Ok(GitImportExportLock { _lock: lock })
+}
+
+/// Loads the head the way the CLI's `load_from_workspace` does — `resolve_operation`
+/// (`cli/src/cli_util.rs:800-829` @ v0.46.0), then `load_at`: divergent operation heads are
+/// reconciled as `reconcile divergent operations` IN THIS WORKSPACE (the operation names it).
+/// jj-lib's own `RepoLoader::load_at_head` reconciles without a workspace name.
+///
+/// # Errors
+///
+/// - [`PreconditionError::Backend`] — the heads could not be read, merged or loaded.
+pub(crate) fn load_head(workspace: &Workspace) -> Result<Arc<ReadonlyRepo>, PreconditionError> {
+    let loader = workspace.repo_loader();
+    let workspace_name = workspace.workspace_name();
+    let op = pollster::block_on(op_heads_store::resolve_op_heads(
+        loader.op_heads_store().as_ref(),
+        loader.op_store(),
+        async |op_heads| -> Result<Operation, RepoLoaderError> {
+            let (merged, _num_rebased) = loader
+                .merge_operations(
+                    op_heads,
+                    Some(workspace_name),
+                    Some("reconcile divergent operations"),
+                    [],
+                )
+                .await?;
+            Ok(merged.operation().clone())
+        },
+    ))
+    .map_err(|e| backend(&e))?;
+    pollster::block_on(loader.load_at(&op)).map_err(|e| backend(&e))
 }
 
 // ── The start-up environment ─────────────────────────────────────────────────────
@@ -339,8 +387,15 @@ impl VerbContext {
 // ── The precondition ─────────────────────────────────────────────────────────────
 
 /// Takes the lock, loads the head and runs [`snapshot_locked`] — the body of the CLI's
-/// `workspace_helper_with_stats` after its start-up environment `env` is built (`cli_util.rs:477`,
-/// before the lock).
+/// `workspace_helper_with_stats` after its start-up environment `env` is built (`cli_util.rs:478`
+/// @ v0.46.0, before the lock).
+///
+/// On a stale working copy it reads `snapshot.auto-update-stale` — there and only there, under
+/// the held lock (`cli_util.rs:497-512`), so a wrong type is a config fault only on a stale
+/// working copy. `false` refuses; `true` runs the recovery ([`crate::stale::recover`]) under the
+/// same lock, records it in [`Precondition::stale_recovery`] and returns the recovery's merged
+/// stats, so the verb continues on the recovered state. [`Precondition::was_snapshot_taken`] is
+/// then the CLI's `changed`: whether the head moved off the operation loaded here.
 ///
 /// Fills `report` and `sink` as it goes, so a failure leaves the partial facts behind. Returns
 /// jj-lib's raw snapshot stats, which `file track` merges into its own
@@ -349,7 +404,9 @@ impl VerbContext {
 /// # Errors
 ///
 /// Anything [`snapshot_impl`] returns — a wrong-typed snapshot knob included, refused after the
-/// head import — and [`PreconditionError::Backend`] for the lock or the head load.
+/// head import — or [`crate::stale::recover`] returns, [`PreconditionError::Config`] for a
+/// wrong-typed `snapshot.auto-update-stale`, and [`PreconditionError::Backend`] for the lock or
+/// the head load.
 pub(crate) fn run(
     workspace: &mut Workspace,
     config: &StackedConfig,
@@ -359,14 +416,27 @@ pub(crate) fn run(
     sink: &mut Warnings,
 ) -> Result<working_copy::SnapshotStats, PreconditionError> {
     let lock = lock_git_import_export(workspace, colocated)?;
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(|e| backend(&e))?;
+    let repo = load_head(workspace)?;
+    let loaded_op_id = repo.op_id().clone();
     let ctx = StepCtx {
         config,
         env,
         colocated,
         lock: &lock,
     };
-    snapshot_locked(workspace, repo, &ctx, report, sink).map(|(_, stats)| stats)
+    match snapshot_locked(workspace, repo, &ctx, report, sink) {
+        Ok((_, stats)) => Ok(stats),
+        Err(stale @ PreconditionError::StaleWorkingCopy { .. }) => {
+            if !crate::config::snapshot_auto_update_stale(config)? {
+                return Err(stale);
+            }
+            let (recovery, stats) = crate::stale::recover(workspace, &ctx, report, sink)?;
+            report.was_snapshot_taken = recovery.op_id.0 != loaded_op_id.hex();
+            report.stale_recovery = Some(recovery);
+            Ok(stats)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// [`snapshot_impl`] on `repo` under the held `ctx.lock`, with [`Precondition::was_snapshot_taken`]
@@ -528,7 +598,8 @@ fn import_git_head(
     }
 }
 
-/// Port of `snapshot_working_copy` (`cli/src/cli_util.rs:2058-2231` @ v0.44.0).
+/// Port of `snapshot_working_copy` (`cli/src/cli_util.rs:2091-2278` @ v0.46.0) — also the stale
+/// recovery's first step, on a repo loaded at the working copy's own operation (Story 9.23).
 ///
 /// First reads the snapshot knobs off `ctx.config`, exactly where the CLI does (`:2065-2070`,
 /// Story 9.34): `snapshot.auto-track` ([`wc_ops::auto_tracking_matcher`]), then the ignore files
@@ -544,7 +615,7 @@ fn import_git_head(
 /// transaction. The working copy is ALWAYS finished at the resulting operation, which writes
 /// nothing when neither the tree state nor the operation id changed
 /// (`local_working_copy.rs:2922-2948` @ 0.44.0).
-fn snapshot_working_copy(
+pub(crate) fn snapshot_working_copy(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
     ctx: &StepCtx<'_>,
@@ -708,7 +779,7 @@ fn import_git_refs(
     Ok(finish.repo)
 }
 
-/// Port of `handle_stale_working_copy` (`cli/src/cli_util.rs:2952-3020` @ v0.44.0).
+/// Port of `handle_stale_working_copy` (`cli/src/cli_util.rs:3011-3079` @ v0.46.0).
 ///
 /// Returns `None` when the workspace has no `@` in the view (it was deleted), otherwise the repo
 /// to snapshot against — reloaded at the working copy's operation when that one is NEWER
@@ -812,6 +883,10 @@ mod tests {
         assert!(matches!(
             PreconditionError::from(MutateError::Precondition(PreconditionError::Backend("n".to_owned()))),
             PreconditionError::Backend(reason) if reason == "n"
+        ));
+        assert!(matches!(
+            PreconditionError::from(MutateError::ConcurrentWorkingCopy),
+            PreconditionError::ConcurrentWorkingCopy
         ));
         assert!(matches!(
             PreconditionError::from(MutateError::NotAGitRepo),

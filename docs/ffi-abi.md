@@ -36,7 +36,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — nine of the 61
+document means *has no `# Errors` block in `zanshin_ffi.h`* — nine of the 63
 exported symbols, these eight plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -120,8 +120,9 @@ notices are one-shot — the next call finds nothing left to fix.
 ### `precondition` — the pre-verb snapshot, whenever it ran (Story 9.26)
 
 Like every jj CLI command, every handle-scoped symbol except `zanshin_repo_close`,
-`zanshin_log_defaults`, `zanshin_workspace_root` and `zanshin_commit_contents` (the
-continuation of the topology call's `jj log`, Story 4.10) first runs the CLI's
+`zanshin_log_defaults`, `zanshin_workspace_root`, `zanshin_commit_contents` (the
+continuation of the topology call's `jj log`, Story 4.10) and
+`zanshin_workspace_update_stale` (the recovery itself, see below) first runs the CLI's
 `snapshot_impl`: under jj's own `git_import_export.lock` (colocated workspaces
 only) it imports a moved Git HEAD (`import git head`), snapshots the working copy
 into `@` (`snapshot working copy`), and imports the Git refs (`import git refs`) —
@@ -154,6 +155,14 @@ the same report `RepoHandle.lastPrecondition` holds (one without a report leaves
 A failed pre-verb snapshot is `jj.stale_working_copy`, `jj.config_error` or
 `jj.jj_lib_error`; every such symbol's row names all three.
 
+With `snapshot.auto-update-stale = true` (Story 9.23) a stale working copy is not refused:
+the pre-verb snapshot runs the stale-working-copy recovery under its lock, reports it in
+`Precondition.stale_recovery` (the facts the CLI prints ahead of the verb's output) and the
+verb runs on the recovered state; a concurrent writer caught by that recovery is
+`jj.concurrent_working_copy`. `zanshin_workspace_update_stale` runs the same recovery
+explicitly and no pre-verb snapshot: its envelope's `precondition` is the recovery's
+TRAILING snapshot report (the conversion precedent), on the ok and the error envelope.
+
 `zanshin_config_set` (Story 9.28) is handle-less but runs the snapshot for
 `user.name` / `user.email` with a workspace root — the CLI's `check_wc_author`,
 whose failure it skips silently. Its envelope, ok or error, carries
@@ -169,7 +178,7 @@ write ride `MutationResult.finish` (absent when none failed); `@` becoming immut
 a failed HEAD reset, the export failures themselves and an empty identity are
 `Envelope.warnings` (Story 9.32).
 
-`Payload` has **36** members. Two of them — `WatcherEvent` and `Progress` — are
+`Payload` has **38** members. Two of them — `WatcherEvent` and `Progress` — are
 returned by no exported symbol: they arrive asynchronously through the
 `zanshin_events_register` callback (see *Async events* below). Union member order
 is the wire discriminant, so the union is **append-only**.
@@ -204,9 +213,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Thirty of the 61 exported symbols take their arguments as a **FlatBuffers
+Thirty-one of the 63 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Twenty use the handle-scoped three-parameter shape:
+strings. Twenty-one use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -364,7 +373,7 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **29** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **30** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
@@ -373,7 +382,7 @@ committed codegen sides in the same commit.
 
 `ChangeIdList` is the only table shared by two symbols (`zanshin_new_change`'s
 `parents` and `zanshin_abandon`'s `change_ids`). Every other table has exactly
-one caller, and no table is orphaned. 29 tables + 1 shared reuse = the 30
+one caller, and no table is orphaned. 30 tables + 1 shared reuse = the 31
 request-buffer symbols.
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
@@ -393,7 +402,7 @@ request table is therefore `kind: RequestKind`, and every reader refuses a buffe
 whose tag is not its own — row 3 of the ladder above, before any other field is
 read and before the handle is borrowed.
 
-The tag is per-**wrapper**, not per-table. For 28 tables the variant name plus
+The tag is per-**wrapper**, not per-table. For 29 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **two** kinds, `NewChange`
 and `Abandon`, because a per-table tag would have left the sharpest collision
 unrefused — a buffer meant as `parents` abandoning those commits instead.
@@ -438,7 +447,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **61** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **63** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -480,6 +489,8 @@ or no `# Errors` block.
 | `zanshin_remotes` | `(uint64_t handle)` | — | `Remotes` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
 | `zanshin_workspace_list` | `(uint64_t handle)` | — | `WorkspaceList` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.7 |
 | `zanshin_workspace_root` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceRootRequest` | `WorkspaceRoot` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.workspace_not_found`, `jj.workspace_no_recorded_path`, `jj.jj_lib_error` | 9.7 |
+| `zanshin_workspace_add` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceAddRequest` | `WorkspaceAddResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.workspace_exists`, `jj.destination_not_empty`, `jj.git_worktree_failed`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.jj_lib_error` | 9.23 |
+| `zanshin_workspace_update_stale` | `(uint64_t handle)` | — | `StaleRecovery` (+ `precondition` = the trailing snapshot) | `ffi.invalid_handle`, `jj.concurrent_working_copy`, `jj.config_error`, `jj.jj_lib_error` | 9.23 |
 | `zanshin_describe` | `(uint64_t handle, const char *change_id, const char *description)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.invalid_input`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |
 | `zanshin_new_change` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |
 | `zanshin_edit` | `(uint64_t handle, const char *change_id)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |

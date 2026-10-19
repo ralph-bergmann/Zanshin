@@ -26,10 +26,11 @@ use crate::envelope::{
     ok_mutation_result, ok_repo_handle, precondition_envelope, reject_null_request, session_from_handle, CallReport,
     FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_BOOKMARK_EXISTS,
     JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND, JJ_CONCURRENT_WORKING_COPY, JJ_CONFIG_ERROR,
-    JJ_CONVERT_FAILED, JJ_DETECT_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
-    JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY, JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED,
-    JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR,
-    JJ_REVSET_RESOLUTION_ERROR, JJ_UNDO_CROSS_WORKSPACE, WATCHER_IO_ERROR,
+    JJ_CONVERT_FAILED, JJ_DESTINATION_NOT_EMPTY, JJ_DETECT_FAILED, JJ_GIT_WORKTREE_FAILED, JJ_IMMUTABLE,
+    JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY,
+    JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND,
+    JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, JJ_UNDO_CROSS_WORKSPACE, JJ_WORKSPACE_EXISTS,
+    WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -108,107 +109,43 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
 /// taxonomy, and a second mapper would be a second, desyncable spelling of one mapping.
 /// `bookmark_ops.rs`'s two (Story 9.8) reuse it for the same reason, as do `file_ops.rs`'s two
 /// (Story 9.22), whose three new variants map to the new `jj.concurrent_working_copy` and
-/// `jj.path_not_ignored` and to the registered `jj.no_working_copy`.
+/// `jj.path_not_ignored` and to the registered `jj.no_working_copy`. Story 9.23's
+/// `zanshin_workspace_add` adds three: `jj.workspace_exists`, `jj.destination_not_empty` and
+/// `jj.git_worktree_failed`.
 pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
-    match e {
-        MutateError::Precondition(e) => map_precondition_err(e),
-        MutateError::ChangeNotFound { id } => FfiErrorObj {
-            report: None,
-            code: JJ_CHANGE_NOT_FOUND.to_owned(),
-            context: Some(id),
-        },
-        MutateError::InvalidInput { reason } => FfiErrorObj {
-            report: None,
-            code: JJ_INVALID_INPUT.to_owned(),
-            context: Some(reason),
-        },
-        MutateError::Immutable { commit_id } => FfiErrorObj {
-            report: None,
-            code: JJ_IMMUTABLE.to_owned(),
-            context: Some(commit_id),
-        },
-        MutateError::Config { reason } => FfiErrorObj {
-            report: None,
-            code: JJ_CONFIG_ERROR.to_owned(),
-            context: Some(reason),
-        },
-        MutateError::NothingToUndo => FfiErrorObj {
-            report: None,
-            code: JJ_NOTHING_TO_UNDO.to_owned(),
-            context: None,
-        },
-        MutateError::UndoCrossWorkspace { operation, workspace } => FfiErrorObj {
-            report: None,
-            code: JJ_UNDO_CROSS_WORKSPACE.to_owned(),
-            context: Some(format!("{operation}\n{workspace}")),
-        },
-        MutateError::RemoteNotFound { name } => FfiErrorObj {
-            report: None,
-            code: JJ_REMOTE_NOT_FOUND.to_owned(),
-            context: Some(name),
-        },
-        MutateError::NetworkError { reason } => FfiErrorObj {
-            report: None,
-            code: JJ_NETWORK_ERROR.to_owned(),
-            context: Some(reason),
-        },
-        MutateError::RemoteExists { name } => FfiErrorObj {
-            report: None,
-            code: JJ_REMOTE_EXISTS.to_owned(),
-            context: Some(name),
-        },
-        MutateError::RemoteNonstandardConfig { name } => FfiErrorObj {
-            report: None,
-            code: JJ_REMOTE_NONSTANDARD_CONFIG.to_owned(),
-            context: Some(name),
-        },
+    let (code, context) = match e {
+        MutateError::Precondition(e) => return map_precondition_err(e),
+        MutateError::ChangeNotFound { id } => (JJ_CHANGE_NOT_FOUND, Some(id)),
+        MutateError::InvalidInput { reason } => (JJ_INVALID_INPUT, Some(reason)),
+        MutateError::Immutable { commit_id } => (JJ_IMMUTABLE, Some(commit_id)),
+        MutateError::Config { reason } => (JJ_CONFIG_ERROR, Some(reason)),
+        MutateError::NothingToUndo => (JJ_NOTHING_TO_UNDO, None),
+        MutateError::UndoCrossWorkspace { operation, workspace } => {
+            (JJ_UNDO_CROSS_WORKSPACE, Some(format!("{operation}\n{workspace}")))
+        }
+        MutateError::RemoteNotFound { name } => (JJ_REMOTE_NOT_FOUND, Some(name)),
+        MutateError::NetworkError { reason } => (JJ_NETWORK_ERROR, Some(reason)),
+        MutateError::RemoteExists { name } => (JJ_REMOTE_EXISTS, Some(name)),
+        MutateError::RemoteNonstandardConfig { name } => (JJ_REMOTE_NONSTANDARD_CONFIG, Some(name)),
         // No `context`: this variant names no path and no remote — the fault is the whole
         // workspace's backend, which the code already says.
-        MutateError::NotAGitRepo => FfiErrorObj {
-            report: None,
-            code: JJ_NOT_A_GIT_REPO.to_owned(),
-            context: None,
-        },
-        MutateError::RevsetParseError { reason } => FfiErrorObj {
-            report: None,
-            code: JJ_REVSET_PARSE_ERROR.to_owned(),
-            context: Some(reason),
-        },
-        MutateError::RevsetResolutionError { reason } => FfiErrorObj {
-            report: None,
-            code: JJ_REVSET_RESOLUTION_ERROR.to_owned(),
-            context: Some(reason),
-        },
-        MutateError::BookmarkExists { name } => FfiErrorObj {
-            report: None,
-            code: JJ_BOOKMARK_EXISTS.to_owned(),
-            context: Some(name),
-        },
-        MutateError::BookmarkTrackedRemoteExists { name } => FfiErrorObj {
-            report: None,
-            code: JJ_BOOKMARK_TRACKED_REMOTE_EXISTS.to_owned(),
-            context: Some(name),
-        },
-        MutateError::NoWorkingCopy => FfiErrorObj {
-            report: None,
-            code: JJ_NO_WORKING_COPY.to_owned(),
-            context: None,
-        },
-        MutateError::ConcurrentWorkingCopy => FfiErrorObj {
-            report: None,
-            code: JJ_CONCURRENT_WORKING_COPY.to_owned(),
-            context: None,
-        },
-        MutateError::PathsNotIgnored { paths } => FfiErrorObj {
-            report: None,
-            code: JJ_PATH_NOT_IGNORED.to_owned(),
-            context: Some(paths.join("\n")),
-        },
-        MutateError::Backend(reason) => FfiErrorObj {
-            report: None,
-            code: JJ_JJ_LIB_ERROR.to_owned(),
-            context: Some(reason),
-        },
+        MutateError::NotAGitRepo => (JJ_NOT_A_GIT_REPO, None),
+        MutateError::RevsetParseError { reason } => (JJ_REVSET_PARSE_ERROR, Some(reason)),
+        MutateError::RevsetResolutionError { reason } => (JJ_REVSET_RESOLUTION_ERROR, Some(reason)),
+        MutateError::BookmarkExists { name } => (JJ_BOOKMARK_EXISTS, Some(name)),
+        MutateError::BookmarkTrackedRemoteExists { name } => (JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, Some(name)),
+        MutateError::NoWorkingCopy => (JJ_NO_WORKING_COPY, None),
+        MutateError::ConcurrentWorkingCopy => (JJ_CONCURRENT_WORKING_COPY, None),
+        MutateError::PathsNotIgnored { paths } => (JJ_PATH_NOT_IGNORED, Some(paths.join("\n"))),
+        MutateError::WorkspaceExists { name } => (JJ_WORKSPACE_EXISTS, Some(name)),
+        MutateError::DestinationNotEmpty => (JJ_DESTINATION_NOT_EMPTY, None),
+        MutateError::GitWorktree(reason) => (JJ_GIT_WORKTREE_FAILED, Some(reason)),
+        MutateError::Backend(reason) => (JJ_JJ_LIB_ERROR, Some(reason)),
+    };
+    FfiErrorObj {
+        report: None,
+        code: code.to_owned(),
+        context,
     }
 }
 

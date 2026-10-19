@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: MIT
 
 // Worker round-trip tests for Story 9.7's two workspace READ verbs: workspace
-// list / workspace root, on both [ZanshinWorker] and [RepoHandle].
+// list / workspace root, on both [ZanshinWorker] and [RepoHandle] — and for
+// Story 9.23's two workspace MUTATIONS, workspace add / workspace update-stale.
 //
 // These tests boot the REAL Isolate.spawn flow against the REAL compiled cdylib
 // via @ffi.Native native assets. No mocked isolates, no mocked FFI
 // (project-context: "Worker / isolate testing"). Mirrors
 // test/worker/commit_views_test.dart. They are also what credits each
-// zanshin_workspace_list / zanshin_workspace_root extern "C" function in the
-// coverage ratchet's extern-fn guard
-// (mem:project-coverage-extern-fn-needs-zanshin-core-test).
+// zanshin_workspace_list / zanshin_workspace_root / zanshin_workspace_add /
+// zanshin_workspace_update_stale extern "C" function in the coverage ratchet's
+// extern-fn guard (mem:project-coverage-extern-fn-needs-zanshin-core-test).
 //
-// SCOPE NOTE - why only one workspace here. No shipped verb creates a SECOND
-// workspace (`jj workspace add` is Story 9.13), so a repo reachable from Dart
-// alone always has exactly the `default` one. The MULTI-workspace rows of the
-// I/O matrix therefore live in the Rust suites, which can build a sibling
-// workspace directly: crates/zanshin-jj/tests/workspace.rs (behaviour) and
-// crates/zanshin-ffi/tests/workspace_ffi.rs (payload bytes across the FFI).
+// SCOPE NOTE - the Story 9.7 group below uses one workspace: it predates
+// `workspaceAdd` (Story 9.23), and its MULTI-workspace rows live in the Rust
+// suites (crates/zanshin-jj/tests/workspace.rs, crates/zanshin-ffi/tests/
+// workspace_ffi.rs). The Story 9.23 group creates the second workspace through
+// `workspaceAdd` itself.
 // The DEGRADED-path rows are reachable from here, though - deleting
 // `.jj/repo/workspace_store` needs nothing but dart:io - so the null-root decode
 // and the no-recorded-path refusal are witnessed end-to-end below.
@@ -30,6 +30,8 @@
 import 'dart:io';
 
 import 'package:test/test.dart';
+import 'package:zanshin_core/src/ffi/config.dart' show ConfigScope, ConfigScopeTarget;
+import 'package:zanshin_core/src/ffi/status.dart' show WorkingCopyStatus;
 import 'package:zanshin_core/src/ffi/workspace.dart';
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
@@ -200,6 +202,194 @@ void main() {
       );
       await expectLater(
         worker.workspaceRoot(unknown),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
+  });
+
+  group('ZanshinWorker workspace add / update-stale round-trips (real cdylib)', () {
+    late ZanshinWorker worker;
+    late Directory tempDir;
+
+    /// The main workspace at `<tmp>/main`, so `../ws2` lands next to it.
+    late String mainPath;
+
+    setUp(() async {
+      tempDir = Directory.systemTemp.createTempSync('zanshin_workspace_add_test_');
+      mainPath = '${tempDir.path}/main';
+      Directory(mainPath).createSync();
+      worker = await ZanshinWorker.start();
+    });
+
+    tearDown(() async {
+      await worker.close();
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('workspace_add_then_a_stale_working_copy_is_updated', () async {
+      final RepoHandle a = await worker.initRepo(mainPath, backend: 0);
+      File('$mainPath/f.txt').writeAsStringSync('f');
+      final String aChange = (await a.status()).workingCopyChangeId;
+
+      final WorkspaceAddResult added = await a.workspaceAdd(
+        destination: '../ws2',
+        messageParagraphs: const ['T'],
+        sparse: SparseInheritance.full,
+      );
+
+      expect(added.workspaceName, 'ws2');
+      expect(added.gitWorktreeCreated, isFalse);
+      expect(added.warnings.map((w) => w.code), isNot(contains('jj.workspace_in_current_directory')));
+      expect(added.mutation.newChangeIds, hasLength(1));
+      expect(added.mutation.workingCopyChangeId, added.mutation.newChangeIds.single);
+      expect(
+        Directory(added.workspaceRoot).resolveSymbolicLinksSync(),
+        Directory('${tempDir.path}/ws2').resolveSymbolicLinksSync(),
+      );
+
+      // From ws2, restore ws2's `@` (which lacks f.txt) INTO a's `@`: a is stale.
+      final RepoHandle b = await worker.openRepo(added.workspaceRoot);
+      await b.restore(into: aChange);
+      await expectLater(
+        a.status(),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.stale_working_copy')),
+      );
+
+      final StaleRecovery recovery = await a.workspaceUpdateStale();
+
+      expect(recovery.outcome, StaleRecoveryOutcome.updated);
+      expect(recovery.commitId, isNotNull);
+      expect(recovery.checkout?.removed, 1);
+      expect(recovery.gitHeadResetOpId, isNull);
+      expect(recovery.opId, isNotEmpty);
+      expect(a.lastPrecondition, isNotNull, reason: 'the trailing snapshot report is recorded');
+      expect(File('$mainPath/f.txt').existsSync(), isFalse);
+      await a.status();
+
+      await b.close();
+      await a.close();
+    });
+
+    test('workspace_update_stale_on_a_fresh_working_copy_is_not_stale', () async {
+      final RepoHandle a = await worker.initRepo(mainPath, backend: 0);
+
+      final StaleRecovery recovery = await a.workspaceUpdateStale();
+
+      expect(recovery.outcome, StaleRecoveryOutcome.notStale);
+      expect(recovery.commitId, isNull);
+      expect(recovery.checkout, isNull);
+      expect(recovery.snapshotStats.untracked, isEmpty);
+
+      await a.close();
+    });
+
+    test('workspace_add_refusals_surface_their_codes', () async {
+      final RepoHandle a = await worker.initRepo(mainPath, backend: 0);
+
+      await expectLater(
+        a.workspaceAdd(destination: '../ws2', name: 'default'),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.workspace_exists')
+              .having((e) => e.context, 'context', 'default'),
+        ),
+      );
+      await expectLater(
+        a.workspaceAdd(destination: '../ws2', revisions: const ['none()']),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+      final WorkspaceAddResult inside = await a.workspaceAdd(destination: 'inside', colocate: false);
+      expect(inside.warnings.map((w) => w.code), contains('jj.workspace_in_current_directory'));
+
+      await a.close();
+    });
+
+    test('workspace_add_carries_the_colocate_tri_state_through_the_request', () async {
+      // `colocate: true` reaches Rust only if the flag crossed: on a native-backend repo it is
+      // refused before any `git` runs (`null` would add a plain workspace). WHY not a Git-backed
+      // repo with `gitWorktreeCreated == true`: creating the worktree spawns `git`, whose
+      // `Child::wait()` fails inside any `dart test` process — the Dart VM reaps its children
+      // (creation_test.dart's clone note). The worktree itself is witnessed by the Rust suites
+      // (crates/zanshin-jj/tests/workspace_add.rs, crates/zanshin-ffi/tests/workspace_ffi.rs).
+      final RepoHandle native = await worker.initRepo(mainPath, backend: 0);
+      await expectLater(
+        native.workspaceAdd(destination: '../forced', colocate: true),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.git_worktree_failed')),
+      );
+      await native.close();
+
+      // `colocate: false` on a colocated repo: no worktree only if `--no-colocate` crossed.
+      final colocatedPath = '${tempDir.path}/colocated';
+      Directory(colocatedPath).createSync();
+      final ProcessResult init = Process.runSync('git', [
+        'init',
+        '--initial-branch=main',
+      ], workingDirectory: colocatedPath);
+      expect(init.exitCode, 0, reason: '${init.stderr}');
+      final RepoHandle colocated = await worker.convert(colocatedPath);
+      final WorkspaceAddResult refused = await colocated.workspaceAdd(destination: '../plain', colocate: false);
+      expect(refused.gitWorktreeCreated, isFalse);
+      expect(File('${tempDir.path}/plain/.git').existsSync(), isFalse);
+      await colocated.close();
+    });
+
+    test('workspace_add_carries_the_sparse_mode_through_the_request', () async {
+      final RepoHandle a = await worker.initRepo(mainPath, backend: 0);
+      File('$mainPath/f.txt').writeAsStringSync('f');
+      final WorkingCopyStatus status = await a.status();
+      await a.newChange(<String>[status.workingCopyChangeId]); // f.txt now lives in @-
+
+      final WorkspaceAddResult empty = await a.workspaceAdd(destination: '../empty', sparse: SparseInheritance.empty);
+      final WorkspaceAddResult full = await a.workspaceAdd(destination: '../full', sparse: SparseInheritance.full);
+
+      expect(File('${empty.workspaceRoot}/f.txt').existsSync(), isFalse, reason: 'empty sparse patterns');
+      expect(File('${full.workspaceRoot}/f.txt').existsSync(), isTrue, reason: 'full sparse patterns');
+      await a.close();
+    });
+
+    test('auto_update_stale_recovers_in_front_of_a_verb_and_reports_it', () async {
+      // The Makefile's XDG_CONFIG_HOME pin keeps the repo-scope config write out of ~/.config/jj.
+      Platform.environment['XDG_CONFIG_HOME'] ?? fail('XDG_CONFIG_HOME is not pinned — run via cargo make');
+      final RepoHandle a = await worker.initRepo(mainPath, backend: 0);
+      File('$mainPath/f.txt').writeAsStringSync('f');
+      final String aChange = (await a.status()).workingCopyChangeId;
+      await worker.configSet(
+        const ConfigScopeTarget(ConfigScope.repo),
+        'snapshot.auto-update-stale',
+        'true',
+        workspaceRoot: Directory(mainPath).resolveSymbolicLinksSync(),
+      );
+      final WorkspaceAddResult added = await a.workspaceAdd(destination: '../ws2');
+      final RepoHandle b = await worker.openRepo(added.workspaceRoot);
+      await b.restore(into: aChange);
+
+      await a.status();
+
+      expect(a.lastPrecondition?.staleRecovery?.outcome, StaleRecoveryOutcome.updated);
+      expect(File('$mainPath/f.txt').existsSync(), isFalse);
+      await b.close();
+      await a.close();
+    });
+
+    test('closed_handle_refuses_both_workspace_mutations_synchronously', () async {
+      final RepoHandle a = await worker.initRepo(mainPath, backend: 0);
+      await a.close();
+
+      expect(() => a.workspaceAdd(destination: '../ws2'), throwsA(isA<StateError>()));
+      expect(a.workspaceUpdateStale, throwsA(isA<StateError>()));
+    });
+
+    test('unknown_handle_id_surfaces_ffi_invalid_handle_for_both_workspace_mutations', () async {
+      const unknown = 9999;
+
+      await expectLater(
+        worker.workspaceAdd(unknown, destination: '../ws2'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+      await expectLater(
+        worker.workspaceUpdateStale(unknown),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
       );
     });

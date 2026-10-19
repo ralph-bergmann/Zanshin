@@ -34,7 +34,8 @@ export 'src/ffi/precondition.dart' show Precondition;
 export 'src/ffi/repo_detect.dart' show RepoDetectResult, RepoKind;
 export 'src/ffi/status.dart' show WorkingCopyStatus;
 export 'src/ffi/warning.dart' show WarnedList, ZanshinWarning, ZanshinWarningCode;
-export 'src/ffi/workspace.dart' show WorkspaceRootResult;
+export 'src/ffi/workspace.dart'
+    show CheckoutStats, SparseInheritance, StaleRecovery, StaleRecoveryOutcome, WorkspaceAddResult, WorkspaceRootResult;
 export 'src/ffi/zanshin_version.dart' show ZanshinFfiModule, ZanshinFfiVersion;
 export 'src/worker/events.dart'
     show OpHeadsChangedEvent, ProgressEvent, RepoEvent, WatchErrorEvent, WorkingCopyHeartbeatEvent;

@@ -16,7 +16,8 @@ import '../ffi/precondition.dart' show Precondition;
 import '../ffi/remotes.dart' show Remote;
 import '../ffi/status.dart' show WorkingCopyStatus;
 import '../ffi/warning.dart' show WarnedList, ZanshinWarning;
-import '../ffi/workspace.dart' show WorkspaceEntry, WorkspaceRootResult;
+import '../ffi/workspace.dart'
+    show SparseInheritance, StaleRecovery, WorkspaceAddResult, WorkspaceEntry, WorkspaceRootResult;
 import '../graph_layout/graph_grid_view.dart' show GraphGridView;
 import '../graph_layout/layout_request.dart'
     show LaneOrder, LayoutContractException, LayoutMode, defaultLaneOrder, defaultLayoutBudget, defaultLayoutMode;
@@ -953,6 +954,75 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.workspaceRoot(_handleId, name: name);
+  }
+
+  /// Add a workspace of this repo (Story 9.23) — the CLI's `jj workspace add`,
+  /// every argument passed through.
+  ///
+  /// [destination] is resolved against this workspace's root (an absolute path
+  /// stays absolute); a missing directory is created, an existing one must be
+  /// empty. A `null` [name] names the workspace after the destination's final
+  /// component. [revisions] are the CLI's `-r` revsets, evaluated in THIS
+  /// workspace (`@` is this `@`); their union becomes the new `@`'s parents —
+  /// empty: this `@`'s parents. [messageParagraphs] are the CLI's `-m`.
+  /// [colocate] `true`/`false` are `--colocate`/`--no-colocate`; `null` creates a
+  /// Git worktree exactly when this workspace is colocated and `git.colocate` is
+  /// set. [sparse] is `--sparse-patterns`.
+  ///
+  /// Runs this workspace's pre-verb snapshot first, then writes the operations
+  /// `add workspace 'NAME'` and `create initial working-copy commit in workspace
+  /// NAME`, and
+  /// checks the new `@` out into the destination. Open the new workspace with
+  /// `ZanshinWorker.openRepo(result.workspaceRoot)`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ArgumentError] if an argument contains an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`, `jj.invalid_input`,
+  /// `jj.workspace_exists`, `jj.destination_not_empty`, `jj.git_worktree_failed`,
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.no_working_copy`, `jj.concurrent_working_copy`,
+  /// `jj.jj_lib_error`).
+  Future<WorkspaceAddResult> workspaceAdd({
+    required String destination,
+    String? name,
+    List<String> revisions = const [],
+    List<String> messageParagraphs = const [],
+    bool? colocate,
+    SparseInheritance sparse = SparseInheritance.copy,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.workspaceAdd(
+      _handleId,
+      destination: destination,
+      name: name,
+      revisions: revisions,
+      messageParagraphs: messageParagraphs,
+      colocate: colocate,
+      sparse: sparse,
+    );
+  }
+
+  /// Bring this workspace's stale working copy up to date (Story 9.23) — the
+  /// CLI's `jj workspace update-stale`, the remedy a `jj.stale_working_copy`
+  /// refusal names.
+  ///
+  /// A stale working copy is checked out onto the fresh `@` (in a colocated
+  /// workspace after a `reset git head` operation); one whose operation was lost
+  /// gets a recovery commit holding the files on disk; a fresh one reports
+  /// `StaleRecoveryOutcome.notStale`. A dirty working copy is snapshotted first,
+  /// so nothing on disk is lost. [lastPrecondition] then holds the recovery's
+  /// trailing snapshot report.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.concurrent_working_copy`, `jj.config_error`, `jj.jj_lib_error`).
+  Future<StaleRecovery> workspaceUpdateStale() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.workspaceUpdateStale(_handleId);
   }
 
   /// Create local bookmarks pointing at one revision (Story 9.8) — the CLI's

@@ -301,6 +301,25 @@ pub enum MutateError {
         /// Repo-relative paths (jj's internal `/`-separated form) that would be re-added.
         paths: Vec<String>,
     },
+    /// [`crate::Repo::workspace_add`] was given a name a workspace already has (Story 9.23) —
+    /// the CLI's "Workspace named '{name}' already exists" (`cli/src/commands/workspace/add.rs:
+    /// 129-134` @ v0.46.0). Nothing is created.
+    #[error("workspace already exists: {name}")]
+    WorkspaceExists {
+        /// The workspace name that is already taken.
+        name: String,
+    },
+    /// [`crate::Repo::workspace_add`]'s destination is a file or a non-empty directory (Story
+    /// 9.23) — the CLI's "Destination path exists and is not an empty directory" (`add.rs:
+    /// 135-141`). Nothing is created.
+    #[error("destination path exists and is not an empty directory")]
+    DestinationNotEmpty,
+    /// [`crate::Repo::workspace_add`] could not create the new workspace's Git worktree (Story
+    /// 9.23) — jj-lib's `GitCreateWorktreeError`, its whole source chain: a workspace without a
+    /// Git backend, or a failing `git` (git ≥ 2.42 is required). The destination directory the
+    /// verb created before stays, as in the CLI.
+    #[error("git worktree failed: {0}")]
+    GitWorktree(String),
     /// The pre-verb snapshot failed (Story 9.26) — the verb itself never ran. See
     /// [`crate::PreconditionError`]; the partial facts ride [`crate::Repo::take_precondition`].
     #[error(transparent)]
@@ -507,6 +526,9 @@ pub(crate) struct Finish {
     pub(crate) wc_commit: Option<Commit>,
     /// The refs the colocated export could not write.
     pub(crate) facts: FinishFacts,
+    /// What the checkout of `@` did to the files on disk — `None` when the workspace is gone
+    /// from the view and nothing was checked out.
+    pub(crate) checkout: Option<crate::CheckoutStats>,
 }
 
 /// Resets `workspace_name`'s Git HEAD (in the git worktree at `workspace_root`) to `wc_commit`'s
@@ -648,6 +670,7 @@ pub(crate) fn finish_transaction(
 
     let new_repo = pollster::block_on(tx.commit(description.to_owned())).map_err(be)?;
 
+    let mut checkout = None;
     if let Some(new_wc_commit) = &maybe_new_wc_commit {
         let old_tree = maybe_old_wc_commit.as_ref().map(Commit::tree);
         let stats = pollster::block_on(workspace.check_out(new_repo.op_id().clone(), old_tree.as_ref(), new_wc_commit))
@@ -659,12 +682,14 @@ pub(crate) fn finish_transaction(
                 ))
             })?;
         sink.extend(warning::checkout_files_skipped(stats.skipped_files));
+        checkout = Some(crate::CheckoutStats::project(&stats));
     }
     sink.extend(warning::identity_missing(new_repo.settings()));
     Ok(Finish {
         repo: new_repo,
         wc_commit: maybe_new_wc_commit,
         facts,
+        checkout,
     })
 }
 

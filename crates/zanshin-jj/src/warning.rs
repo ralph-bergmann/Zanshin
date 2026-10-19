@@ -109,6 +109,10 @@ pub enum WarningKind {
     /// `workspace root` with a name whose recorded directory does not exist (moved or deleted):
     /// the path is still returned (`cli/src/commands/workspace/root.rs:60-66` @ v0.46.0).
     WorkspacePathInaccessible,
+    /// `workspace add` with a destination that holds no path separator: the workspace was
+    /// created INSIDE the current one, perhaps where only a name was meant
+    /// (`cli/src/commands/workspace/add.rs:184-191` @ v0.46.0; Story 9.23).
+    WorkspaceInCurrentDirectory,
 }
 
 /// One warning a call produced (Story 9.32).

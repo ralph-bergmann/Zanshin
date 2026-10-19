@@ -522,7 +522,7 @@ fn target_labels(target: &RefTarget, labels: &Labels) -> String {
 }
 
 /// Every file under `root` except `.jj/` and `.git/`, with its text: the checked-out working copy.
-fn disk_files(root: &Path) -> String {
+pub fn disk_files(root: &Path) -> String {
     let mut files = Vec::new();
     let mut dirs = vec![root.to_owned()];
     while let Some(dir) = dirs.pop() {
@@ -544,7 +544,7 @@ fn disk_files(root: &Path) -> String {
     list_or_none(&files)
 }
 
-fn first_line(description: &str) -> String {
+pub fn first_line(description: &str) -> String {
     let line = description.lines().next().unwrap_or("").trim_end();
     if line.is_empty() {
         "(empty)".to_owned()

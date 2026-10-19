@@ -61,6 +61,16 @@ parity!(
     undo_cross_workspace,
     init_colocated,
     init_no_colocate,
+    workspace_add_default,
+    workspace_add_name_revisions_message,
+    workspace_add_sparse_empty,
+    workspace_add_colocated,
+    workspace_add_no_colocate,
+    update_stale_clean,
+    update_stale_not_stale,
+    update_stale_dirty,
+    update_stale_colocated,
+    auto_update_stale_snapshot,
 );
 
 /// Every scenario id the table and the init list define.
@@ -75,7 +85,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 26);
+    assert_eq!(SCENARIO_IDS.len(), 36);
 }
 
 #[test]

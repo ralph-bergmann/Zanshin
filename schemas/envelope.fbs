@@ -59,7 +59,7 @@ table FfiError {
 /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-/// named as parents. For the other 28 tables the variant name plus `Request` IS the table name.
+/// named as parents. For the other 29 tables the variant name plus `Request` IS the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -98,7 +98,8 @@ enum RequestKind : ubyte {
   ConfigGcDelete,
   EnvironmentAdopt,
   CommitContents,
-  GraphTopology
+  GraphTopology,
+  WorkspaceAdd
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -344,6 +345,38 @@ table InterdiffRequest {
 table WorkspaceRootRequest {
   kind: RequestKind;
   name: string;
+}
+
+/// How `zanshin_workspace_add` sets the new workspace's sparse patterns — the CLI's
+/// `--sparse-patterns` (Story 9.23). `Copy` (the wire default, as the CLI's) copies the current
+/// workspace's patterns, `Full` includes every file, `Empty` none. Member order IS the wire
+/// value — APPEND only.
+enum SparseInheritance : ubyte {
+  Copy,
+  Full,
+  Empty
+}
+
+/// Arguments of `zanshin_workspace_add` (Story 9.23) — the CLI's `jj workspace add`, every
+/// argument passed through (FR-JJ-17).
+///
+/// `destination` is REQUIRED (absent → `jj.invalid_input`), resolved against the current
+/// workspace root; an absolute path stays absolute. `name` ABSENT is the CLI's default — the
+/// destination's final component; an explicitly present EMPTY name is a value and refused.
+/// `revisions` are the CLI's repeatable `-r` REVSETS (their union, in argument order); empty →
+/// the parents of the current `@`. `message_paragraphs` are the CLI's repeatable `-m`.
+/// `colocate` / `no_colocate` are the CLI's two mutually exclusive flags (both set →
+/// `jj.invalid_input`); neither → a Git worktree exactly when the current workspace is colocated
+/// and `git.colocate` is true.
+table WorkspaceAddRequest {
+  kind: RequestKind;
+  destination: string;
+  name: string;
+  revisions: [string];
+  message_paragraphs: [string];
+  colocate: bool;
+  no_colocate: bool;
+  sparse_patterns: SparseInheritance;
 }
 
 /// Arguments of `zanshin_bookmark_create` (Story 9.8) — the CLI's `jj bookmark create`.
@@ -1277,6 +1310,54 @@ table UntrackResult {
   failed_tags: [GitExportFailure];
 }
 
+/// What a working-copy checkout did to the files on disk (Story 9.23) — jj-lib's
+/// `CheckoutStats`, the counts behind the CLI's "Added N files, modified N files, removed N
+/// files". `skipped` is the data behind the call's `jj.checkout_files_skipped` warning.
+table CheckoutStats {
+  added: uint;
+  updated: uint;
+  removed: uint;
+  skipped: uint;
+}
+
+/// Which arm of the stale-working-copy recovery ran (Story 9.23). Member order IS the wire
+/// value — APPEND only.
+enum StaleRecoveryOutcome : ubyte {
+  NotStale,
+  Updated,
+  Recovered
+}
+
+/// What leaving a stale working copy did (Story 9.23) — `zanshin_workspace_update_stale`'s
+/// payload, and `Precondition.stale_recovery` when `snapshot.auto-update-stale = true` recovered
+/// in front of a verb.
+///
+/// `commit_id` (full hex): the fresh `@` (`Updated`) or the recovery commit (`Recovered`);
+/// ABSENT when `NotStale`. `checkout`: PRESENT only for `Updated`. `git_head_reset_op_id`: the
+/// `reset git head` operation a colocated workspace wrote before the checkout; ABSENT otherwise.
+/// `snapshot_stats`: what the recovery's snapshots could not record, merged. `op_id`: the head
+/// operation after the recovery.
+table StaleRecovery {
+  outcome: StaleRecoveryOutcome;
+  commit_id: string;
+  checkout: CheckoutStats;
+  git_head_reset_op_id: string;
+  snapshot_stats: SnapshotStats;
+  op_id: string;
+}
+
+/// Outcome of a successful `zanshin_workspace_add` (Story 9.23). `mutation` is the call's LAST
+/// operation, `create initial working-copy commit in workspace <name>`; its
+/// `working_copy_change_id` is the NEW workspace's `@`. `workspace_root` is absolute and
+/// canonical. `git_worktree_created`: a Git worktree was created for it.
+table WorkspaceAddResult {
+  mutation: MutationResult;
+  workspace_name: string;
+  workspace_root: string;
+  git_worktree_created: bool;
+  checkout: CheckoutStats;
+}
+
 /// What the implicit pre-verb snapshot did (Story 9.26) — the snapshot + colocated Git import
 /// every CLI command whose helper is `workspace_helper` runs first, as facts. It rides
 /// `Envelope.precondition`, never the `Payload` union.
@@ -1291,6 +1372,9 @@ table UntrackResult {
 /// saturate at 4294967295. The precondition's WARNINGS (an immutable `@`, `.jjconflict` files,
 /// refused files, …) ride `Envelope.warnings` (Story 9.32).
 ///
+/// `stale_recovery` (Story 9.23): PRESENT when `snapshot.auto-update-stale = true` recovered a
+/// stale working copy before the verb ran; the verb then ran on the recovered state.
+///
 /// On an error envelope it is PARTIAL: every fact up to the failing step.
 table Precondition {
   was_snapshot_taken: bool;
@@ -1302,6 +1386,7 @@ table Precondition {
   git_refs: GitImportResult;
   git_refs_rebased: uint;
   finish: FinishFacts;
+  stale_recovery: StaleRecovery;
 }
 
 // ── Config surface payloads (Story 9.28) ─────────────────────────────────────
@@ -1443,6 +1528,8 @@ union Payload {
   ConfigGcList,
   ConfigGcResult,
   CommitContents,
+  WorkspaceAddResult,
+  StaleRecovery,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────
@@ -1480,6 +1567,8 @@ table Warning {
 /// started — on its ok envelope and on its error envelope (after a failure before the re-open it
 /// describes state the rollback removed; a failed re-open or watcher arming leaves `.jj/` in
 /// place). `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
+/// `zanshin_workspace_update_stale` runs no pre-verb snapshot — it IS the recovery — and carries
+/// the recovery's TRAILING snapshot report (Story 9.23), on its ok and its error envelope.
 ///
 /// `warnings` (Story 9.32) are the call's warnings in the jj CLI's print order, on the ok
 /// envelope AND on an error envelope (then everything warned before the failure). ABSENT when

@@ -256,7 +256,7 @@ impl Repo {
     }
 
     /// The implicit snapshot every CLI command whose helper is `workspace_helper` runs first
-    /// (Story 9.26) — `cli/src/cli_util.rs:472-516` @ v0.44.0.
+    /// (Story 9.26) — `cli/src/cli_util.rs:473-517` @ v0.46.0.
     ///
     /// 1. [`Repo::refresh_settings`] — the CLI's start-up secure-config fix-up (Story 9.37), then
     ///    the settings re-derived if the stack changed — so the snapshot runs with the current
@@ -273,7 +273,9 @@ impl Repo {
     ///    import (`cli_util.rs:2065-2070`); the Git import options at the start of the refs step
     ///    (`cli_util.rs:1434-1437`). A fault in either fails after the earlier steps committed,
     ///    and their operations stay, as in the CLI. `snapshot.auto-update-stale` is read only on
-    ///    a stale working copy (`cli_util.rs:499`).
+    ///    a stale working copy, under the lock (`cli_util.rs:500` @ v0.46.0); `true` recovers
+    ///    the working copy right there and the verb continues (Story 9.23, see
+    ///    [`crate::Precondition::stale_recovery`]).
     /// 4. The report is stored for [`Repo::take_precondition`] — a PARTIAL one when a later
     ///    step failed — and the lock is released.
     /// 5. On success, the snapshot's stats warn (`print_snapshot_stats`, which `workspace_helper`
@@ -291,16 +293,7 @@ impl Repo {
     ///
     /// Any [`crate::PreconditionError`].
     fn precondition(&mut self, warn_stats: bool) -> Result<crate::snapshot::VerbContext, crate::PreconditionError> {
-        let mut fix_ups = Vec::new();
-        let refreshed = self.refresh_settings(&mut fix_ups);
-        self.pending_precondition = Some(crate::Precondition::default());
-        self.pending_warnings = crate::warning::Warnings::default();
-        self.pending_warnings.extend(fix_ups);
-        refreshed?;
-        let config = crate::config::load(self)?;
-        let colocated = crate::wc_ops::is_colocated_git_workspace(&self.workspace)
-            .map_err(|e| crate::PreconditionError::Backend(crate::mutate::flatten_chain(&e)))?;
-        let env = crate::snapshot::CommandEnv::load(&self.workspace, &config, &mut self.pending_warnings)?;
+        let (config, colocated, env) = self.start_call()?;
         let mut report = crate::Precondition::default();
         let result = crate::snapshot::run(
             &mut self.workspace,
@@ -311,17 +304,7 @@ impl Repo {
             &mut self.pending_warnings,
         );
         self.pending_precondition = Some(report);
-        let auto_stats = match result {
-            Err(stale @ crate::PreconditionError::StaleWorkingCopy { .. }) => {
-                // The CLI reads `snapshot.auto-update-stale` only here (`cli_util.rs:499` @
-                // v0.44.0). Its `true` arm is Story 9.23's stale recovery; until that lands a
-                // stale working copy refuses either way, but a wrong-typed value is still a
-                // config fault, as in the CLI.
-                let _auto_update_stale = crate::config::snapshot_auto_update_stale(&config)?;
-                return Err(stale);
-            }
-            other => other?,
-        };
+        let auto_stats = result?;
         if warn_stats {
             self.pending_warnings.extend(crate::warning::snapshot_stats(
                 self.workspace.workspace_root(),
@@ -335,6 +318,31 @@ impl Repo {
             auto_stats,
             std::mem::take(&mut self.pending_warnings),
         ))
+    }
+
+    /// The start of every call that snapshots — the pre-verb precondition and
+    /// [`Repo::workspace_update_stale`]: [`Repo::refresh_settings`] (its fix-up warnings the
+    /// call's first, also when it fails), a fresh report and warning collector, the effective
+    /// config, the colocation check and the start-up environment
+    /// ([`crate::snapshot::CommandEnv`], built before any lock is taken).
+    ///
+    /// # Errors
+    ///
+    /// Any [`crate::PreconditionError`] of those steps; the empty report stays behind.
+    fn start_call(
+        &mut self,
+    ) -> Result<(jj_lib::config::StackedConfig, bool, crate::snapshot::CommandEnv), crate::PreconditionError> {
+        let mut fix_ups = Vec::new();
+        let refreshed = self.refresh_settings(&mut fix_ups);
+        self.pending_precondition = Some(crate::Precondition::default());
+        self.pending_warnings = crate::warning::Warnings::default();
+        self.pending_warnings.extend(fix_ups);
+        refreshed?;
+        let config = crate::config::load(self)?;
+        let colocated = crate::wc_ops::is_colocated_git_workspace(&self.workspace)
+            .map_err(|e| crate::PreconditionError::Backend(crate::mutate::flatten_chain(&e)))?;
+        let env = crate::snapshot::CommandEnv::load(&self.workspace, &config, &mut self.pending_warnings)?;
+        Ok((config, colocated, env))
     }
 
     /// Runs the precondition, then `verb` with its context — and keeps the call's warnings for
@@ -1619,6 +1627,118 @@ impl Repo {
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn resolve_workspace_root(&self, name: Option<&str>) -> Result<crate::Warned<PathBuf>, crate::WorkspaceError> {
         crate::workspace::resolve_root(self.workspace(), name)
+    }
+
+    /// Brings a stale working copy up to date (Story 9.23) — the CLI's `jj workspace
+    /// update-stale` (`cli/src/commands/workspace/update_stale.rs` @ v0.46.0, the body
+    /// `recover_stale_working_copy_impl`, `cli/src/cli_util.rs:615-766`).
+    ///
+    /// The pre-verb precondition does NOT run — this is the recovery a stale working copy's
+    /// `jj.stale_working_copy` refusal names. Under the Git import/export lock (colocated): the
+    /// working copy is snapshotted at its OWN operation, the head is loaded (reconciling the
+    /// divergent operations a dirty snapshot creates), and a stale working copy is checked out
+    /// onto the head's `@` — after a `reset git head` operation in a colocated workspace, and
+    /// WITHOUT an operation of its own. A working copy whose operation is gone gets jj-lib's
+    /// `recovery commit` instead. Either way the full pre-verb snapshot runs last. A fresh
+    /// working copy reports [`crate::StaleRecoveryOutcome::NotStale`] and writes nothing unless
+    /// it was dirty.
+    ///
+    /// [`Repo::take_precondition`] hands out that LAST snapshot's report, its `snapshot_stats`
+    /// the merged stats of both snapshots — which are also what the call's
+    /// `jj.snapshot_files_refused` / `jj.snapshot_paths_not_utf8` warnings report
+    /// (`print_snapshot_stats`). [`Repo::take_warnings`] has the call's warnings.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::Precondition`] wrapping
+    ///   [`crate::PreconditionError::ConcurrentWorkingCopy`] — the working copy's recorded tree
+    ///   is not the stale `@`'s ("Concurrent working copy operation. Try again.").
+    /// - [`crate::MutateError::Precondition`] wrapping [`crate::PreconditionError::Config`] — the
+    ///   config does not read, or a value a snapshot reads is wrong-typed.
+    /// - [`crate::MutateError::Precondition`] wrapping [`crate::PreconditionError::Backend`] —
+    ///   the workspace has no `@`, or any underlying jj-lib failure.
+    pub fn workspace_update_stale(&mut self) -> Result<crate::StaleRecovery, crate::MutateError> {
+        let (config, colocated, env) = self.start_call()?;
+        let mut report = crate::Precondition::default();
+        let result = crate::stale::run(
+            &mut self.workspace,
+            &config,
+            &env,
+            colocated,
+            &mut report,
+            &mut self.pending_warnings,
+        );
+        self.pending_precondition = Some(report);
+        let (recovery, stats) = result?;
+        self.pending_warnings
+            .extend(crate::warning::snapshot_stats(self.workspace.workspace_root(), &stats));
+        Ok(recovery)
+    }
+
+    /// Adds a workspace of this repo (Story 9.23) — the CLI's `jj workspace add`
+    /// (`cli/src/commands/workspace/add.rs:110-280` @ v0.46.0), every parameter passed through
+    /// (FR-JJ-17).
+    ///
+    /// - `destination` — the CLI's positional `DESTINATION`, resolved against THIS workspace's
+    ///   root as the working directory; an absolute path stays absolute. A missing directory is
+    ///   created (its parent must exist); an existing one must be empty.
+    /// - `name` — the CLI's `--name`; `None` names the workspace after the destination's final
+    ///   component. An explicitly empty name is a value, and refused.
+    /// - `revisions` — the CLI's repeatable `-r` REVSETS, evaluated in THIS workspace's context
+    ///   (`@` is this workspace's `@`); their union, in argument order and deduplicated, becomes
+    ///   the new `@`'s parents. Empty: the parents of this workspace's `@` (root when it has
+    ///   none).
+    /// - `message_paragraphs` — the CLI's repeatable `-m`, joined like the CLI joins them (each
+    ///   paragraph newline-terminated, a blank line between). `templates.commit_trailers` is not
+    ///   applied (the gap `describe`/`new` share).
+    /// - `colocate` — `Some(true)`/`Some(false)` are the CLI's `--colocate`/`--no-colocate`;
+    ///   `None` creates a Git worktree exactly when this workspace is colocated and `git.colocate`
+    ///   (default `true`) is set — the key is read only in that case.
+    /// - `sparse` — the CLI's `--sparse-patterns` (default [`crate::SparseInheritance::Copy`]).
+    ///
+    /// Runs the pre-verb precondition on THIS workspace first. Operations, in the CLI's order:
+    /// jj-lib's `add workspace '<name>'`, then `create initial working-copy commit in workspace
+    /// <name>`, whose finish checks the new `@` out into the destination (and, colocated, resets
+    /// the new worktree's Git HEAD and index). A destination given without a path separator
+    /// warns `jj.workspace_in_current_directory`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — the name is empty or the destination has no
+    ///   final component (nothing created), or `revisions` resolve to no commit ("Empty revision
+    ///   set" — the workspace and its `add workspace` operation exist by then, as in the CLI).
+    /// - [`crate::MutateError::WorkspaceExists`] — a workspace of that name exists.
+    /// - [`crate::MutateError::DestinationNotEmpty`] — the destination is a file or a non-empty
+    ///   directory.
+    /// - [`crate::MutateError::GitWorktree`] — the Git worktree could not be created (a non-Git
+    ///   backend, or `git` failed); the created directory stays, as in the CLI.
+    /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`]
+    ///   — a `revisions` entry; the workspace exists by then.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed.
+    /// - [`crate::MutateError::Config`] — `git.colocate` or `git.executable-path` is wrong-typed,
+    ///   or the immutable set does not resolve.
+    /// - [`crate::MutateError::NoWorkingCopy`] / [`crate::MutateError::ConcurrentWorkingCopy`] —
+    ///   the new working copy could not be locked for its sparse patterns.
+    /// - [`crate::MutateError::Backend`] — the directory could not be created, or any underlying
+    ///   jj-lib failure.
+    pub fn workspace_add(
+        &mut self,
+        destination: &str,
+        name: Option<&str>,
+        revisions: &[String],
+        message_paragraphs: &[String],
+        colocate: Option<bool>,
+        sparse: crate::SparseInheritance,
+    ) -> Result<crate::WorkspaceAddResult, crate::MutateError> {
+        let args = crate::workspace_add::AddArgs {
+            destination,
+            name,
+            revisions,
+            message_paragraphs,
+            colocate,
+            sparse,
+        };
+        self.with_verb(|repo, ctx| crate::workspace_add::add(repo, ctx, &args))
     }
 
     /// Creates local bookmarks pointing at one revision (Story 9.8) — the CLI's

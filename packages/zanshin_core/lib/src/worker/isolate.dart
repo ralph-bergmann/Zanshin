@@ -1454,6 +1454,75 @@ class ZanshinWorker {
     return repo_ffi_workspace.decodeWorkspaceRootEnvelopeInternal(bytes);
   }
 
+  /// Add a workspace to the repo identified by [handleId] (Story 9.23) — the
+  /// CLI's `jj workspace add`, every argument passed through.
+  ///
+  /// [destination] is resolved against the current workspace root; a `null`
+  /// [name] names the workspace after its final component; [revisions] (the
+  /// CLI's `-r` revsets, empty = the current `@`'s parents), [messageParagraphs]
+  /// (`-m`), [colocate] (`--colocate` / `--no-colocate`, `null` = the CLI's
+  /// default) and [sparse] (`--sparse-patterns`) cross unchanged. The new
+  /// workspace is opened with `openRepo(result.workspaceRoot)`.
+  ///
+  /// Sends a [WorkspaceAddCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<WorkspaceAddResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if an argument contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`jj.invalid_input`,
+  /// `jj.workspace_exists`, `jj.destination_not_empty`,
+  /// `jj.git_worktree_failed`, the revset codes, …). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.workspaceAdd].
+  Future<repo_ffi_workspace.WorkspaceAddResult> workspaceAdd(
+    int handleId, {
+    required String destination,
+    String? name,
+    List<String> revisions = const [],
+    List<String> messageParagraphs = const [],
+    bool? colocate,
+    repo_ffi_workspace.SparseInheritance sparse = repo_ffi_workspace.SparseInheritance.copy,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNul(destination, 'destination');
+    rejectInteriorNul(name, 'name');
+    rejectInteriorNuls(revisions, 'revisions');
+    rejectInteriorNuls(messageParagraphs, 'messageParagraphs');
+    final Uint8List bytes = await send(
+      WorkspaceAddCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        destination: destination,
+        name: name,
+        revisions: revisions,
+        messageParagraphs: messageParagraphs,
+        colocate: colocate,
+        sparse: sparse,
+      ),
+    );
+    return repo_ffi_workspace.decodeWorkspaceAddEnvelopeInternal(bytes);
+  }
+
+  /// Bring the stale working copy of the repo identified by [handleId] up to
+  /// date (Story 9.23) — the CLI's `jj workspace update-stale`.
+  ///
+  /// Runs no pre-verb snapshot — it is the recovery a `jj.stale_working_copy`
+  /// refusal names. The reply's `precondition` (recorded for
+  /// [lastPreconditionOf]) is the recovery's trailing snapshot report.
+  ///
+  /// Sends a [WorkspaceUpdateStaleCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<StaleRecovery>` bytes.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.concurrent_working_copy`, `jj.config_error`, `jj.jj_lib_error`).
+  /// Completes with a [StateError] after [close]; the close-guard [StateError]
+  /// is delivered synchronously by [RepoHandle.workspaceUpdateStale].
+  Future<repo_ffi_workspace.StaleRecovery> workspaceUpdateStale(int handleId) async {
+    final Uint8List bytes = await send(
+      WorkspaceUpdateStaleCommand(commandId: _correlator.allocateId(), handleId: handleId),
+    );
+    return repo_ffi_workspace.decodeStaleRecoveryEnvelopeInternal(bytes);
+  }
+
   /// Return the object half of each commit in [commitIds] — author, committer
   /// timestamp, FULL description, conflict, empty — read at the pinned operation
   /// [operationId], in [commitIds]' order, in the repo identified by [handleId]
@@ -2386,6 +2455,44 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_workspace.zanshinWorkspaceRoot(raw, name: name);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case WorkspaceAddCommand(
+          :final int handleId,
+          :final String destination,
+          :final String? name,
+          :final List<String> revisions,
+          :final List<String> messageParagraphs,
+          :final bool? colocate,
+          :final repo_ffi_workspace.SparseInheritance sparse,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: WorkspaceAddCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_workspace.zanshinWorkspaceAdd(
+              raw,
+              destination: destination,
+              name: name,
+              revisions: revisions,
+              messageParagraphs: messageParagraphs,
+              colocate: colocate,
+              sparse: sparse,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case WorkspaceUpdateStaleCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: WorkspaceUpdateStaleCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_workspace.zanshinWorkspaceUpdateStale(raw);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

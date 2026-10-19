@@ -11,6 +11,7 @@ import 'file_ops.dart' show SnapshotStats, decodeSnapshotStatsInternal;
 import 'git.dart' show GitExportFailure, GitImportResult, decodeExportFailuresInternal, decodeGitImportResultInternal;
 import 'request_bytes.dart';
 import 'warning.dart';
+import 'workspace.dart' show StaleRecovery, decodeStaleRecoveryInternal;
 
 // This file owns the Dart half of Story 9.26's implicit pre-verb snapshot: the
 // `zanshin_snapshot` adapter (the CLI's `jj util snapshot`), the `Precondition` /
@@ -62,6 +63,7 @@ final class Precondition {
     required this.gitRefs,
     required this.gitRefsRebased,
     required this.finish,
+    this.staleRecovery,
     this.warnings = const [],
   });
 
@@ -95,6 +97,12 @@ final class Precondition {
 
   /// The ref exports that failed inside the precondition; `null` when none did.
   final FinishFacts? finish;
+
+  /// What the stale-working-copy recovery did when `snapshot.auto-update-stale
+  /// = true` recovered a stale working copy before the verb ran (Story 9.23) —
+  /// the facts the CLI prints ahead of the verb's own output; `null` whenever no
+  /// recovery ran.
+  final StaleRecovery? staleRecovery;
 
   /// The call's warnings (Story 9.32) when this report is the result of
   /// `RepoHandle.snapshot`, in the CLI's print order; empty when there were
@@ -132,6 +140,7 @@ Precondition? decodePreconditionInternal(fbs.Precondition? p, {List<ZanshinWarni
         },
         gitRefsRebased: p.gitRefsRebased,
         finish: decodeFinishFactsInternal(p.finish),
+        staleRecovery: decodeStaleRecoveryInternal(p.staleRecovery),
         warnings: warnings,
       );
 

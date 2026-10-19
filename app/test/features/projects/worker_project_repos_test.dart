@@ -82,6 +82,25 @@ void main() {
       expect((await repos.detect('$path/gone')).kind, RepoKind.pathNotFound);
     });
 
+    test('a working copy rewritten from a second workspace reads stale until it is updated', () async {
+      // Story 9.23 (I3): a real stale working copy, made the way a user makes one — a second workspace,
+      // created through `workspaceAdd`, restores its own `@` (which lacks f.txt) into this workspace's `@`.
+      final (String path, RepoHandle a) = await initRepo('stale');
+      File('$path/f.txt').writeAsStringSync('f\n');
+      final WorkingCopyStatus status = await a.status();
+      final WorkspaceAddResult added = await a.workspaceAdd(destination: '../stale-ws2');
+      final RepoHandle b = await worker.openRepo(added.workspaceRoot);
+      addTearDown(b.close);
+      await b.restore(into: status.workingCopyChangeId);
+      final ProjectRepo repo = await repos.open(path);
+      addTearDown(repo.close);
+
+      expect((await repo.read()).status, ProjectStatus.stale);
+
+      expect((await a.workspaceUpdateStale()).outcome, StaleRecoveryOutcome.updated);
+      expect((await repo.read()).status, isNot(ProjectStatus.stale));
+    });
+
     test('an empty @ reads clean with no bookmark; a file edit reads dirty', () async {
       final (String path, _) = await initRepo('dirty');
       final ProjectRepo repo = await repos.open(path);

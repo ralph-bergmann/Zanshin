@@ -413,13 +413,14 @@ fn init_git_refs(
 /// with git.
 ///
 /// It does NOT touch the workspace's own `.gitignore` — the file it writes lives inside
-/// `.jj/` and hides that directory from the colocated git repo.
-fn maybe_add_gitignore(workspace_root: &Path, colocated: bool) -> Result<(), RepoError> {
+/// `.jj/` and hides that directory from the colocated git repo. `jj workspace add` writes it
+/// into a colocated NEW workspace too (Story 9.23); each caller maps the failure to its own
+/// error.
+pub(crate) fn maybe_add_gitignore(workspace_root: &Path, colocated: bool) -> std::io::Result<()> {
     if !colocated {
         return Ok(());
     }
     std::fs::write(workspace_root.join(".jj").join(".gitignore"), "/*\n")
-        .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })
 }
 
 /// `do_init`'s `workspace_command.maybe_snapshot(ui)` (`cli/src/cli_util.rs:1331-1342` @
@@ -599,7 +600,8 @@ fn external_arm(
         &mut report.warnings,
     )?;
     let env = snapshot::CommandEnv::load(workspace, &config, &mut report.warnings).map_err(precondition_error)?;
-    maybe_add_gitignore(workspace.workspace_root(), colocated)?;
+    maybe_add_gitignore(workspace.workspace_root(), colocated)
+        .map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
     let repo = maybe_snapshot(workspace, repo, (&config, &env), colocated, report)?;
     maybe_set_trunk_alias(workspace, repo.as_ref())?;
     if !colocated {

@@ -39,7 +39,7 @@ use zanshin_ffi::remotes::zanshin_remotes;
 use zanshin_ffi::repo::{zanshin_absorb, zanshin_describe, zanshin_repo_close, zanshin_repo_detect, zanshin_repo_open};
 use zanshin_ffi::snapshot::zanshin_snapshot;
 use zanshin_ffi::status::zanshin_status;
-use zanshin_ffi::workspace::{zanshin_workspace_list, zanshin_workspace_root};
+use zanshin_ffi::workspace::{zanshin_workspace_add, zanshin_workspace_list, zanshin_workspace_root};
 use zanshin_ffi::{
     FFI_INVALID_HANDLE, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ALIAS_INVALID, JJ_CONFIG_ERROR, JJ_GIT_EXPORT_FAILED,
     JJ_INVALID_INPUT, JJ_STALE_WORKING_COPY, JJ_WORKING_COPY_IMMUTABLE,
@@ -596,6 +596,22 @@ unsafe fn ok_row(name: &str, handle: u64, file: &str, wc: &CString) -> Vec<u8> {
                 let (ptr, len) = buf(&req);
                 read_and_free(zanshin_file_untrack(handle, ptr, len))
             }
+            "workspace_add" => {
+                let req = request(|b| {
+                    let destination = b.create_string("added-workspace");
+                    let req = fbs::WorkspaceAddRequest::create(
+                        b,
+                        &fbs::WorkspaceAddRequestArgs {
+                            kind: fbs::RequestKind::WorkspaceAdd,
+                            destination: Some(destination),
+                            ..fbs::WorkspaceAddRequestArgs::default()
+                        },
+                    );
+                    b.finish(req, None);
+                });
+                let (ptr, len) = buf(&req);
+                read_and_free(zanshin_workspace_add(handle, ptr, len))
+            }
             other => panic!("unknown row {other}"),
         }
     }
@@ -630,6 +646,7 @@ fn every_wrapper_carries_the_report_of_its_pre_verb_snapshot_on_the_ok_arm() {
         "git_export",
         "absorb",
         "file_untrack",
+        "workspace_add",
     ] {
         let file = format!("dirty-{name}.txt");
         fs::write(root.join(&file), "dirty\n").expect("write");

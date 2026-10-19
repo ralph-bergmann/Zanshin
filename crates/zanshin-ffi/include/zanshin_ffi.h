@@ -14,11 +14,15 @@
 
 #define ENUM_MIN_REQUEST_KIND 0
 
-#define ENUM_MAX_REQUEST_KIND 30
+#define ENUM_MAX_REQUEST_KIND 31
 
 #define ENUM_MIN_REVISION_REF 0
 
 #define ENUM_MAX_REVISION_REF 2
+
+#define ENUM_MIN_SPARSE_INHERITANCE 0
+
+#define ENUM_MAX_SPARSE_INHERITANCE 2
 
 #define ENUM_MIN_CONFIG_SCOPE 0
 
@@ -63,6 +67,10 @@
 #define ENUM_MIN_UNTRACKED_REASON 0
 
 #define ENUM_MAX_UNTRACKED_REASON 2
+
+#define ENUM_MIN_STALE_RECOVERY_OUTCOME 0
+
+#define ENUM_MAX_STALE_RECOVERY_OUTCOME 2
 
 #define ENUM_MIN_CONFIG_VALUE_SOURCE 0
 
@@ -120,6 +128,18 @@ typedef struct {
 #define InterdiffRequest_VT_TO_TYPE 10
 
 #define InterdiffRequest_VT_TO 12
+
+#define WorkspaceAddRequest_VT_DESTINATION 6
+
+#define WorkspaceAddRequest_VT_REVISIONS 10
+
+#define WorkspaceAddRequest_VT_MESSAGE_PARAGRAPHS 12
+
+#define WorkspaceAddRequest_VT_COLOCATE 14
+
+#define WorkspaceAddRequest_VT_NO_COLOCATE 16
+
+#define WorkspaceAddRequest_VT_SPARSE_PATTERNS 18
 
 #define BookmarkCreateRequest_VT_NAMES 6
 
@@ -361,6 +381,24 @@ typedef struct {
 
 #define UntrackResult_VT_UNMATCHED_PATHS 8
 
+#define CheckoutStats_VT_ADDED 4
+
+#define CheckoutStats_VT_UPDATED 6
+
+#define CheckoutStats_VT_REMOVED 8
+
+#define StaleRecovery_VT_OUTCOME 4
+
+#define StaleRecovery_VT_CHECKOUT 8
+
+#define StaleRecovery_VT_GIT_HEAD_RESET_OP_ID 10
+
+#define StaleRecovery_VT_OP_ID 14
+
+#define WorkspaceAddResult_VT_WORKSPACE_NAME 6
+
+#define WorkspaceAddResult_VT_GIT_WORKTREE_CREATED 10
+
 #define Precondition_VT_WAS_SNAPSHOT_TAKEN 4
 
 #define Precondition_VT_GIT_HEAD_IMPORTED 8
@@ -374,6 +412,8 @@ typedef struct {
 #define Precondition_VT_GIT_REFS 16
 
 #define Precondition_VT_GIT_REFS_REBASED 18
+
+#define Precondition_VT_STALE_RECOVERY 22
 
 #define ConfigEntry_VT_SOURCE 8
 
@@ -2530,5 +2570,79 @@ ZanshinBuf *zanshin_workspace_list(uint64_t handle);
 ZanshinBuf *zanshin_workspace_root(uint64_t handle,
                                    const uint8_t *data,
                                    uintptr_t len);
+
+/**
+ * Add a workspace to the repo identified by `handle` — the CLI's `jj workspace add` (Story 9.23).
+ *
+ * The arguments cross as a `WorkspaceAddRequest` `FlatBuffers` request buffer (ADR-0001
+ * composite-input pattern), every CLI argument passed through: `destination` (required, against
+ * the current workspace root), `name` (absent → the destination's final component), the
+ * repeatable `revisions` revsets and `message_paragraphs`, the two colocation flags and
+ * `sparse_patterns`. Runs the pre-verb snapshot of the CURRENT workspace first. Operations in
+ * the CLI's order: `add workspace '<name>'`, then `create initial working-copy commit in
+ * workspace <name>`, whose finish checks the new `@` out into the destination.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceAddResult` payload on success; a
+ * destination without a path separator warns `jj.workspace_in_current_directory`.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceAddRequest` buffer, its
+ *   `kind` is not `WorkspaceAdd`, or `sparse_patterns` is outside the enum.
+ * - `jj.invalid_input` — `destination` is absent, both colocation flags are set, the name is
+ *   empty, the destination has no final component, or `revisions` resolve to no commit ("Empty
+ *   revision set" — the workspace and its `add workspace` operation exist by then).
+ * - `jj.workspace_exists` — a workspace of that name exists; the name in `context`.
+ * - `jj.destination_not_empty` — the destination is a file or a non-empty directory.
+ * - `jj.git_worktree_failed` — the Git worktree could not be created; jj-lib's text in
+ *   `context`. The created directory stays, as in the CLI.
+ * - `jj.revset_parse_error` / `jj.revset_resolution_error` — a `revisions` entry.
+ * - `jj.config_error` — the pre-verb snapshot found the config unreadable or a knob it reads
+ *   wrongly typed, or `git.colocate` / `git.executable-path` is wrongly typed; key in `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the current working copy stale.
+ * - `jj.no_working_copy` — the new workspace has no `@` to lock for its sparse patterns.
+ * - `jj.concurrent_working_copy` — the new working copy's recorded tree is not its `@`'s.
+ * - `jj.jj_lib_error` — the directory could not be created, or any other jj-lib failure.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.WorkspaceAddRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+ * duration of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_workspace_add(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * Bring the stale working copy of the repo identified by `handle` up to date — the CLI's
+ * `jj workspace update-stale` (Story 9.23).
+ *
+ * Handle-only: the CLI verb takes no argument. Runs NO pre-verb snapshot — it is the recovery:
+ * the working copy is snapshotted at its own operation, a stale one is checked out onto the
+ * head's `@` (after a `reset git head` operation in a colocated workspace, without an operation
+ * of its own), a lost operation gets jj-lib's `recovery commit`, and the full snapshot runs
+ * last. The envelope's `precondition` is that LAST snapshot's report.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `StaleRecovery` payload on success; the merged
+ * snapshot stats warn `jj.snapshot_files_refused` / `jj.snapshot_paths_not_utf8`.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `jj.concurrent_working_copy` — the working copy's recorded tree is not the stale `@`'s.
+ * - `jj.config_error` — the config does not read, or a value a snapshot reads is wrong-typed.
+ * - `jj.jj_lib_error` — the workspace has no `@`, or any underlying jj-lib failure.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_workspace_update_stale(uint64_t handle);
 
 #endif  /* ZANSHIN_FFI_H */

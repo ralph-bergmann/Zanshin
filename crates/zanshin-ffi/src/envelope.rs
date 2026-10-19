@@ -132,6 +132,16 @@ pub const JJ_WORKSPACE_NOT_FOUND: &str = "jj.workspace_not_found";
 /// that IS recorded but does not exist is no error since jj 0.46: it is returned with the
 /// `jj.workspace_path_inaccessible` warning.)
 pub const JJ_WORKSPACE_NO_RECORDED_PATH: &str = "jj.workspace_no_recorded_path";
+/// AR-P-4: emitted by `workspace.rs::zanshin_workspace_add` when a workspace of the requested
+/// name already exists; the name in `context` (Story 9.23). Nothing is created.
+pub const JJ_WORKSPACE_EXISTS: &str = "jj.workspace_exists";
+/// AR-P-4: emitted by `workspace.rs::zanshin_workspace_add` when the destination is a file or a
+/// non-empty directory (Story 9.23). Nothing is created.
+pub const JJ_DESTINATION_NOT_EMPTY: &str = "jj.destination_not_empty";
+/// AR-P-4: emitted by `workspace.rs::zanshin_workspace_add` when the new workspace's Git worktree
+/// could not be created — a workspace without a Git backend, or a failing `git`; jj-lib's text in
+/// `context` (Story 9.23). The destination directory created before stays, as in the CLI.
+pub const JJ_GIT_WORKTREE_FAILED: &str = "jj.git_worktree_failed";
 /// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when the underlying `git` subprocess
 /// fails (network, authentication, or transport error); detail in `context`.
 pub const JJ_NETWORK_ERROR: &str = "jj.network_error";
@@ -266,6 +276,9 @@ pub const JJ_UNDO_WORKSPACE_REMOVAL: &str = "jj.undo_workspace_removal";
 pub const JJ_COLOCATED_IN_GIT_WORKTREE: &str = "jj.colocated_in_git_worktree";
 /// Warning: `zanshin_workspace_root` returned a recorded path whose directory does not exist.
 pub const JJ_WORKSPACE_PATH_INACCESSIBLE: &str = "jj.workspace_path_inaccessible";
+/// Warning: `zanshin_workspace_add` created the workspace inside the current one (a destination
+/// without a path separator).
+pub const JJ_WORKSPACE_IN_CURRENT_DIRECTORY: &str = "jj.workspace_in_current_directory";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -304,6 +317,7 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::UndoWorkspaceRemoval => JJ_UNDO_WORKSPACE_REMOVAL,
         K::ColocatedInGitWorktree => JJ_COLOCATED_IN_GIT_WORKTREE,
         K::WorkspacePathInaccessible => JJ_WORKSPACE_PATH_INACCESSIBLE,
+        K::WorkspaceInCurrentDirectory => JJ_WORKSPACE_IN_CURRENT_DIRECTORY,
     }
 }
 
@@ -374,7 +388,9 @@ impl FfiErrorObj {
 
 /// Maps a failed pre-verb snapshot onto the AR-P-4 taxonomy (Story 9.26): the one NEW code is
 /// [`JJ_STALE_WORKING_COPY`]; a config fault is [`JJ_CONFIG_ERROR`] naming the key, anything
-/// else [`JJ_JJ_LIB_ERROR`] with jj-lib's own message.
+/// else [`JJ_JJ_LIB_ERROR`] with jj-lib's own message. The stale recovery's concurrent-writer
+/// refusal (Story 9.23) reuses [`JJ_CONCURRENT_WORKING_COPY`], without `context`, as
+/// `map_mutate_err` reports the same condition.
 pub(crate) fn map_precondition_err(e: zanshin_jj::PreconditionError) -> FfiErrorObj {
     use zanshin_jj::PreconditionError as P;
     let (code, context) = match e {
@@ -387,6 +403,13 @@ pub(crate) fn map_precondition_err(e: zanshin_jj::PreconditionError) -> FfiError
             format!("{}\n{working_copy_op_id}\n{repo_op_id}", cause.as_str()),
         ),
         P::Config { reason } => (JJ_CONFIG_ERROR, reason),
+        P::ConcurrentWorkingCopy => {
+            return FfiErrorObj {
+                code: JJ_CONCURRENT_WORKING_COPY.to_owned(),
+                context: None,
+                report: None,
+            }
+        }
         P::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
     };
     FfiErrorObj {
@@ -1087,6 +1110,7 @@ mod tests {
                 K::UndoWorkspaceRemoval => "jj.undo_workspace_removal",
                 K::ColocatedInGitWorktree => "jj.colocated_in_git_worktree",
                 K::WorkspacePathInaccessible => "jj.workspace_path_inaccessible",
+                K::WorkspaceInCurrentDirectory => "jj.workspace_in_current_directory",
             }
         }
         let kinds = [
@@ -1121,6 +1145,7 @@ mod tests {
             K::UndoWorkspaceRemoval,
             K::ColocatedInGitWorktree,
             K::WorkspacePathInaccessible,
+            K::WorkspaceInCurrentDirectory,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");

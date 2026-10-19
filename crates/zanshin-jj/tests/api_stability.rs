@@ -982,6 +982,96 @@ fn file_track_surface_resolves() {
         as fn(&mut zanshin_jj::Repo, &[String]) -> Result<zanshin_jj::UntrackResult, zanshin_jj::MutateError>;
 }
 
+// workspace add / update-stale (Story 9.23)
+type _CheckoutStats = zanshin_jj::CheckoutStats;
+type _StaleRecovery = zanshin_jj::StaleRecovery;
+type _StaleRecoveryOutcome = zanshin_jj::StaleRecoveryOutcome;
+type _SparseInheritance = zanshin_jj::SparseInheritance;
+type _WorkspaceAddResult = zanshin_jj::WorkspaceAddResult;
+
+/// Names every `StaleRecovery` and `CheckoutStats` field by its public path (Story 9.23).
+fn sample_stale_recovery() -> zanshin_jj::StaleRecovery {
+    zanshin_jj::StaleRecovery {
+        outcome: zanshin_jj::StaleRecoveryOutcome::Updated,
+        commit_id: Some(zanshin_jj::CommitId("c".to_owned())),
+        checkout: Some(zanshin_jj::CheckoutStats {
+            added: 1,
+            updated: 2,
+            removed: 3,
+            skipped: 4,
+        }),
+        git_head_reset_op_id: None,
+        snapshot_stats: sample_snapshot_stats(),
+        op_id: zanshin_jj::OperationId("o".to_owned()),
+    }
+}
+
+/// The Story 9.23 surface: the two verbs' signatures (the CLI's argument arity — `workspace
+/// add`'s six parameters, `update-stale`'s none), their result types named field by field, the
+/// three new `MutateError` variants and `PreconditionError::ConcurrentWorkingCopy` constructed
+/// AND `Display`-asserted (an unexercised `thiserror` arm is an uncovered line).
+#[test]
+fn workspace_add_update_stale_surface_resolves() {
+    let recovery = sample_stale_recovery();
+    assert_eq!(recovery.outcome, zanshin_jj::StaleRecoveryOutcome::Updated);
+    _ = [
+        zanshin_jj::StaleRecoveryOutcome::NotStale,
+        zanshin_jj::StaleRecoveryOutcome::Recovered,
+    ];
+    assert_eq!(
+        zanshin_jj::SparseInheritance::default(),
+        zanshin_jj::SparseInheritance::Copy
+    );
+    _ = [
+        zanshin_jj::SparseInheritance::Full,
+        zanshin_jj::SparseInheritance::Empty,
+    ];
+    let result = zanshin_jj::WorkspaceAddResult {
+        mutation: zanshin_jj::MutationResult {
+            new_op_id: zanshin_jj::OperationId("o".to_owned()),
+            new_change_ids: Vec::new(),
+            abandoned_change_ids: Vec::new(),
+            working_copy_change_id: zanshin_jj::ChangeId("w".to_owned()),
+            finish: None,
+        },
+        workspace_name: "ws2".to_owned(),
+        workspace_root: std::path::PathBuf::from("/ws2"),
+        git_worktree_created: false,
+        checkout: zanshin_jj::CheckoutStats::default(),
+    };
+    assert_eq!(result.workspace_name, "ws2");
+
+    assert_eq!(
+        zanshin_jj::MutateError::WorkspaceExists { name: "x".to_owned() }.to_string(),
+        "workspace already exists: x"
+    );
+    assert_eq!(
+        zanshin_jj::MutateError::DestinationNotEmpty.to_string(),
+        "destination path exists and is not an empty directory"
+    );
+    assert_eq!(
+        zanshin_jj::MutateError::GitWorktree("g".to_owned()).to_string(),
+        "git worktree failed: g"
+    );
+    assert_eq!(
+        zanshin_jj::PreconditionError::ConcurrentWorkingCopy.to_string(),
+        "concurrent working copy operation"
+    );
+
+    _ = zanshin_jj::Repo::workspace_update_stale
+        as fn(&mut zanshin_jj::Repo) -> Result<zanshin_jj::StaleRecovery, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::workspace_add
+        as fn(
+            &mut zanshin_jj::Repo,
+            &str,
+            Option<&str>,
+            &[String],
+            &[String],
+            Option<bool>,
+            zanshin_jj::SparseInheritance,
+        ) -> Result<zanshin_jj::WorkspaceAddResult, zanshin_jj::MutateError>;
+}
+
 // snapshot precondition (Story 9.26)
 type _Precondition = zanshin_jj::Precondition;
 type _PreconditionError = zanshin_jj::PreconditionError;
@@ -1000,6 +1090,7 @@ fn sample_precondition() -> zanshin_jj::Precondition {
         git_refs: Some(sample_git_import_result()),
         git_refs_rebased: 0,
         finish: Some(sample_finish_facts()),
+        stale_recovery: Some(sample_stale_recovery()),
     }
 }
 
@@ -1217,6 +1308,7 @@ fn story_9_32_warning_surface_resolves() {
         K::UndoWorkspaceRemoval,
         K::ColocatedInGitWorktree,
         K::WorkspacePathInaccessible,
+        K::WorkspaceInCurrentDirectory,
     ];
     for kind in every {
         match kind {
@@ -1250,10 +1342,11 @@ fn story_9_32_warning_surface_resolves() {
             | K::UndoPushOperation
             | K::UndoWorkspaceRemoval
             | K::ColocatedInGitWorktree
-            | K::WorkspacePathInaccessible => {}
+            | K::WorkspacePathInaccessible
+            | K::WorkspaceInCurrentDirectory => {}
         }
     }
-    assert_eq!(every.len(), 31);
+    assert_eq!(every.len(), 32);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 
