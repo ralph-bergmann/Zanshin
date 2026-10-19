@@ -399,7 +399,7 @@ fn complete_newline(text: &str) -> String {
 
 /// Appends `new_trailers` to `description`'s last paragraph, skipping duplicates.
 ///
-/// Ports `description_util.rs:392-417` `add_trailers_with_template` minus the template
+/// Ports `description_util.rs:449-476` `add_trailers_with_template` @ v0.46.0 minus the template
 /// rendering: jj's template engine is out of scope, so the caller hands over already
 /// materialized [`Trailer`] values.
 ///

@@ -251,6 +251,14 @@ fn split_outcome(repo: &mut zanshin_jj::Repo, options: &SplitOptions) -> Outcome
     zanshin_outcome(repo, &result)
 }
 
+/// `split -m first --parallel c.txt`.
+fn split_parallel() -> SplitOptions {
+    SplitOptions {
+        parallel: true,
+        ..split_first(&["c.txt"])
+    }
+}
+
 /// The split options every split scenario starts from: `-m first` over `paths`.
 fn split_first(paths: &[&str]) -> SplitOptions {
     SplitOptions {
@@ -773,13 +781,92 @@ pub fn scenarios() -> Vec<Scenario> {
                 |repo, _, _| {
                     let plan = repo.squash_plan(&SquashOptions::default()).expect("plan");
                     let _ = repo.take_warnings();
+                    // WHY `expect`: without the plan's text the verb would write the same
+                    // combined description, and the scenario would pass on a `None` plan.
+                    let text = plan.combined_description.expect("the plan names the editor text");
                     let options = SquashOptions {
-                        message: plan.combined_description.map(|text| vec![text]),
+                        message: Some(vec![text]),
                         ..SquashOptions::default()
                     };
                     squash_outcome(repo, &options)
                 },
                 |_| args(&["squash"]),
+            )
+        },
+        Scenario {
+            // Into a DESCENDANT: jj-lib rebases the destination onto the rewritten source first.
+            setup: EDITOR,
+            ..simple(
+                "squash_from_into_descendant",
+                |repo, _, s| {
+                    let options = SquashOptions {
+                        from: vec![s.change("B")],
+                        into: Some(s.change("C")),
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |s| {
+                    vec![
+                        "squash".to_owned(),
+                        "--from".to_owned(),
+                        s.change_arg("B"),
+                        "--into".to_owned(),
+                        s.change_arg("C"),
+                    ]
+                },
+            )
+        },
+        Scenario {
+            // Two sources given oldest first: the CLI combines them in revset order, reversed.
+            setup: EDITOR,
+            ..simple(
+                "squash_from_two_into",
+                |repo, _, s| {
+                    let options = SquashOptions {
+                        from: vec![s.change("B"), s.change("C")],
+                        into: Some(s.change("A")),
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |s| {
+                    vec![
+                        "squash".to_owned(),
+                        "--from".to_owned(),
+                        s.change_arg("B"),
+                        "--from".to_owned(),
+                        s.change_arg("C"),
+                        "--into".to_owned(),
+                        s.change_arg("A"),
+                    ]
+                },
+            )
+        },
+        Scenario {
+            // 10.27's "Move into this change": one path of C into A; C keeps c2.txt.
+            setup: C2,
+            ..simple(
+                "squash_from_into_path",
+                |repo, _, s| {
+                    let options = SquashOptions {
+                        from: vec![s.change("C")],
+                        into: Some(s.change("A")),
+                        paths: vec!["c.txt".to_owned()],
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |s| {
+                    vec![
+                        "squash".to_owned(),
+                        "--from".to_owned(),
+                        s.change_arg("C"),
+                        "--into".to_owned(),
+                        s.change_arg("A"),
+                        "c.txt".to_owned(),
+                    ]
+                },
             )
         },
         // ── Story 9.15: split ────────────────────────────────────────────────
@@ -909,6 +996,31 @@ pub fn scenarios() -> Vec<Scenario> {
                 "split_legacy_bookmarks_off",
                 |repo, _, _| split_outcome(repo, &split_first(&["c.txt"])),
                 |_| args(&["split", "-m", "first", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: &[
+                Step::Write("c2.txt", "c2\n"),
+                Step::Jj(&["util", "snapshot"]),
+                Step::Jj(&["bookmark", "create", "c-mark"]),
+            ],
+            ..simple(
+                "split_parallel_bookmark",
+                |repo, _, _| split_outcome(repo, &split_parallel()),
+                |_| args(&["split", "-m", "first", "--parallel", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: &[
+                Step::Write("c2.txt", "c2\n"),
+                Step::Jj(&["util", "snapshot"]),
+                Step::Jj(&["bookmark", "create", "c-mark"]),
+                Step::Jj(&["config", "set", "--repo", "split.legacy-bookmark-behavior", "false"]),
+            ],
+            ..simple(
+                "split_parallel_bookmark_legacy_off",
+                |repo, _, _| split_outcome(repo, &split_parallel()),
+                |_| args(&["split", "-m", "first", "--parallel", "c.txt"]),
             )
         },
     ]

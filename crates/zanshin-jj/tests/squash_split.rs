@@ -344,6 +344,56 @@ fn squash_from_into_moves_changes_and_rebases_the_rest() {
     assert_eq!(files(&commit(&fx.root, &fx.b)), ["a.txt", "b.txt", "c.txt", "c2.txt"]);
     assert_eq!(result.abandoned_change_ids, std::slice::from_ref(&fx.c));
     assert_eq!(head_op(&fx.root).1, format!("squash commits into {a_hex}"));
+    // The abandoned `@`'s replacement sits on `@`'s own (rewritten) parent, not on the
+    // destination.
+    let at = wc(&fx.root);
+    assert_eq!(parents(&fx.root, &at), vec![fx.b.clone()]);
+    assert_eq!(result.new_change_ids, vec![change_id(&at)]);
+}
+
+/// Squashing into a DESCENDANT: jj-lib rebases the destination onto the rewritten source first,
+/// so the moved changes are not lost.
+#[test]
+fn squash_into_a_descendant_keeps_the_moved_changes() {
+    let mut fx = base();
+    let options = SquashOptions {
+        from: vec![fx.b.clone()],
+        into: Some(fx.c.clone()),
+        ..SquashOptions::default()
+    };
+
+    let result = fx.repo.squash(&options).expect("squash");
+
+    assert!(visible(&fx.root, &fx.b).is_none());
+    let c = commit(&fx.root, &fx.c);
+    assert_eq!(files(&c), ["a.txt", "b.txt", "c.txt", "c2.txt"]);
+    assert_eq!(
+        c.description(),
+        "C
+
+B
+"
+    );
+    assert_eq!(parents(&fx.root, &c), vec![fx.a.clone()]);
+    assert_eq!(result.abandoned_change_ids, vec![fx.b.clone()]);
+    assert!(result.new_change_ids.is_empty(), "@ was the destination, not abandoned");
+}
+
+/// `from` given oldest-first still squashes in the CLI's order (revset order, reversed).
+#[test]
+fn squash_from_in_any_order_combines_oldest_first() {
+    let mut fx = base();
+    let options = SquashOptions {
+        from: vec![fx.b.clone(), fx.c.clone()],
+        into: Some(fx.a.clone()),
+        ..SquashOptions::default()
+    };
+
+    let plan = fx.repo.squash_plan(&options).expect("plan");
+    fx.repo.squash(&options).expect("squash");
+
+    assert_eq!(plan.combined_description.as_deref(), Some("A\n\nB\n\nC\n"));
+    assert_eq!(commit(&fx.root, &fx.a).description(), "A\n\nB\n\nC\n");
 }
 
 #[test]
@@ -543,6 +593,36 @@ fn split_without_a_message_keeps_the_description_on_both() {
 
     assert_eq!(commit(&fx.root, &result.selected_change_id).description(), "C\n");
     assert_eq!(commit(&fx.root, &result.remaining_change_id).description(), "C\n");
+}
+
+/// Without `-m` both parts keep the description as a saved editor buffer holds it: a missing
+/// final newline is added, `JJ:` lines are dropped.
+#[test]
+fn split_without_a_message_cleans_the_description_like_a_saved_buffer() {
+    for description in ["C", "C\nJJ: x\n"] {
+        let mut fx = base();
+        let c = fx.c.clone();
+        fx.repo.describe(c, description).expect("describe");
+
+        let result = fx.repo.split(&split_c(&["c.txt"], None)).expect("split");
+
+        assert_eq!(commit(&fx.root, &result.selected_change_id).description(), "C\n");
+        assert_eq!(commit(&fx.root, &result.remaining_change_id).description(), "C\n");
+    }
+}
+
+/// An EMPTY target is both fully and not at all selected; only the full-selection warning fires.
+#[test]
+fn split_of_an_empty_commit_warns_only_that_everything_is_selected() {
+    let mut fx = base();
+    let c = fx.c.clone();
+    fx.repo.new_change(&[c]).expect("new");
+    let _ = fx.repo.take_warnings();
+
+    fx.repo.split(&split_c(&["c.txt"], None)).expect("split");
+
+    let kinds: Vec<WarningKind> = fx.repo.take_warnings().iter().map(|w| w.kind).collect();
+    assert_eq!(kinds, [WarningKind::SplitAllSelected]);
 }
 
 #[test]

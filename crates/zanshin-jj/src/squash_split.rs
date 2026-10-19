@@ -14,8 +14,8 @@
 //! abandoned sources and destination carry two or more non-empty descriptions (and no
 //! `-m`/`-u`) writes [`crate::op_support::combined_editor_text`]; a split without `-m` keeps
 //! both commits' descriptions (cleaned up the way a saved buffer is). The GUI asks first:
-//! [`squash_plan`] returns the combined text from the SAME preparation [`squash`] runs
-//! ([`prepare_squash`]), so plan and verb cannot disagree.
+//! [`squash_plan`] returns the combined text from the SAME read-only planning [`squash`] runs
+//! first ([`plan_squash`]), so plan and verb cannot disagree, and the plan rewrites nothing.
 //!
 //! Divergences, all deliberate:
 //!
@@ -152,45 +152,51 @@ enum SquashedDescription {
     Combine,
 }
 
-/// What [`prepare_squash`] decided: the operation description and — unless nothing is selected
-/// — the squashed destination, ready to write.
-pub(crate) struct PreparedSquash {
+/// What [`plan_squash`] decided: the operation description, the destination and the
+/// selections — and, unless nothing would move, the description and the abandoned sources.
+pub(crate) struct PlannedSquash {
     /// `squash commits into <destination hex>`, computed BEFORE anything is rewritten
     /// (`squash.rs:256-267`).
     pub(crate) tx_description: String,
+    /// The destination, as resolved.
+    pub(crate) destination: Commit,
+    /// Every source with its selected tree, oldest first.
+    pub(crate) selections: Vec<CommitWithSelection>,
     /// `None` when no source contributes anything — the CLI's "Nothing changed." path.
-    pub(crate) squashed: Option<Squashed>,
+    pub(crate) squashed: Option<SquashDecision>,
 }
 
-/// The squashed destination, its description decided.
-pub(crate) struct Squashed {
-    /// The rewritten destination, its description already set.
-    pub(crate) builder: DetachedCommitBuilder,
-    /// The description the builder carries.
+/// The squashed destination's description, decided before anything is rewritten.
+pub(crate) struct SquashDecision {
+    /// The description the squashed destination gets.
     pub(crate) description: String,
     /// Whether that description is the CLI's editor case ([`combined_editor_text`]).
     pub(crate) combined: bool,
-    /// The sources jj-lib abandons (every fully moved source, unless `keep_emptied`).
+    /// The sources jj-lib will abandon (every fully moved source, unless `keep_emptied`).
     pub(crate) abandoned: Vec<Commit>,
 }
 
-/// Everything `squash` and `squash_plan` share (Story 9.15): the clap conflicts, the
+/// The read-only part `squash` and `squash_plan` share (Story 9.15): the clap conflicts, the
 /// source/destination resolution, the merge refusal, the rewritability guard, the selection,
-/// the unmatched-path warning, jj-lib's `squash_commits` and the description decision — in the
-/// CLI's order (`squash.rs:184-399` @ v0.46.0).
+/// the unmatched-path warning, the abandoned set and the description decision — in the CLI's
+/// order (`squash.rs:184-399` @ v0.46.0).
 ///
-/// Writes into `tx` (the rewritten sources, the abandonments); the caller writes the destination
-/// and commits, or drops the transaction.
+/// It rewrites NOTHING: the abandoned set is computed by `squash_commits`' own rule
+/// (`rewrite.rs:1376-1385` @ jj-lib 0.46.0 — abandon a source when `!keep_emptied` and its
+/// selection is full; skip one that is not abandoned and whose selection is empty), so the
+/// description decision sees exactly the commits `squash_commits` will abandon. Only the
+/// selected trees the path selection builds reach the store — content-addressed objects, never
+/// a commit and never an operation.
 ///
 /// # Errors
 ///
 /// See [`crate::Repo::squash`].
-pub(crate) fn prepare_squash(
-    tx: &mut Transaction,
+pub(crate) fn plan_squash(
+    tx: &Transaction,
     workspace: &Workspace,
     ctx: &mut VerbContext,
     options: &SquashOptions,
-) -> Result<PreparedSquash, MutateError> {
+) -> Result<PlannedSquash, MutateError> {
     if options.revision.is_some() && (!options.from.is_empty() || options.into.is_some()) {
         return Err(MutateError::InvalidInput {
             reason: "--revision cannot be used with --from or --into".to_owned(),
@@ -232,49 +238,47 @@ pub(crate) fn prepare_squash(
     let selected_trees: Vec<&MergedTree> = selections.iter().map(|s| &s.selected_tree).collect();
     warn_unmatched(workspace, &mut ctx.warnings, &options.paths, &selected_trees)?;
 
-    let squashed = pollster::block_on(squash_commits(
-        tx.repo_mut(),
-        &selections,
-        &destination,
-        options.keep_emptied,
-    ))
-    .map_err(be)?;
-    let Some(SquashedCommit {
-        commit_builder,
-        abandoned_commits,
-    }) = squashed
-    else {
-        return Ok(PreparedSquash {
-            tx_description,
-            squashed: None,
-        });
-    };
-    let mut builder = commit_builder.detach();
-    // `squash.rs:357-399`: only the ABANDONED sources' descriptions count — a source that keeps
-    // its commit keeps its description.
-    let abandoned_descriptions: Vec<&str> = abandoned_commits.iter().map(Commit::description).collect();
-    let (description, combined) = match mode {
-        SquashedDescription::Exact(description) => (description, false),
-        SquashedDescription::UseDestination => (destination.description().to_owned(), false),
-        SquashedDescription::Combine => {
-            match try_combine_messages(&abandoned_descriptions, destination.description()) {
-                Some(description) => (description, false),
-                None => (
-                    combined_editor_text(&abandoned_descriptions, Some(destination.description())),
-                    true,
-                ),
-            }
+    // `squash_commits`' own rule (`rewrite.rs:1376-1385`), applied without rewriting anything.
+    let mut contributing = 0_usize;
+    let mut abandoned: Vec<Commit> = Vec::new();
+    for selection in &selections {
+        let abandon = !options.keep_emptied && selection.is_full_selection();
+        if !abandon && selection.is_empty_selection() {
+            continue;
         }
-    };
-    builder.set_description(description.clone());
-    Ok(PreparedSquash {
-        tx_description,
-        squashed: Some(Squashed {
-            builder,
+        contributing += 1;
+        if abandon {
+            abandoned.push(selection.commit.clone());
+        }
+    }
+    let squashed = (contributing > 0).then(|| {
+        // `squash.rs:357-399`: only the ABANDONED sources' descriptions count — a source that
+        // keeps its commit keeps its description.
+        let abandoned_descriptions: Vec<&str> = abandoned.iter().map(Commit::description).collect();
+        let (description, combined) = match mode {
+            SquashedDescription::Exact(description) => (description, false),
+            SquashedDescription::UseDestination => (destination.description().to_owned(), false),
+            SquashedDescription::Combine => {
+                match try_combine_messages(&abandoned_descriptions, destination.description()) {
+                    Some(description) => (description, false),
+                    None => (
+                        combined_editor_text(&abandoned_descriptions, Some(destination.description())),
+                        true,
+                    ),
+                }
+            }
+        };
+        SquashDecision {
             description,
             combined,
-            abandoned: abandoned_commits,
-        }),
+            abandoned,
+        }
+    });
+    Ok(PlannedSquash {
+        tx_description,
+        destination,
+        selections,
+        squashed,
     })
 }
 
@@ -327,7 +331,8 @@ fn commits_in_revset_order(tx: &Transaction, ids: Vec<JjCommitId>) -> Result<Vec
         .collect()
 }
 
-/// `jj squash` (Story 9.15) — see [`crate::Repo::squash`].
+/// `jj squash` (Story 9.15) — see [`crate::Repo::squash`]: [`plan_squash`], then jj-lib's
+/// `squash_commits` and the write of the squashed destination with the decided description.
 ///
 /// # Errors
 ///
@@ -342,26 +347,39 @@ pub(crate) fn squash(
     let old_wc_id = readonly.view().get_wc_commit_id(&workspace_name).cloned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    let PreparedSquash {
+    let PlannedSquash {
         tx_description,
+        destination,
+        selections,
         squashed,
-    } = prepare_squash(&mut tx, workspace, ctx, options)?;
+    } = plan_squash(&tx, workspace, ctx, options)?;
     let mut abandoned_change_ids = Vec::new();
     let mut wc_abandoned = false;
-    if let Some(squashed) = squashed {
-        pollster::block_on(squashed.builder.write(tx.repo_mut())).map_err(be)?;
-        // `squash.rs:415`; also what clears the abandonments before `tx.commit`.
-        pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
-        wc_abandoned = old_wc_id
-            .as_ref()
-            .is_some_and(|id| squashed.abandoned.iter().any(|c| c.id() == id));
-        abandoned_change_ids = squashed
-            .abandoned
-            .iter()
-            .map(|c| ChangeId(c.change_id().reverse_hex()))
-            .collect();
+    if let Some(decision) = squashed {
+        let rewritten = pollster::block_on(squash_commits(
+            tx.repo_mut(),
+            &selections,
+            &destination,
+            options.keep_emptied,
+        ))
+        .map_err(be)?;
+        if let Some(SquashedCommit { commit_builder, .. }) = rewritten {
+            let mut builder = commit_builder.detach();
+            builder.set_description(decision.description);
+            pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
+            // `squash.rs:413`; also what clears the abandonments before `tx.commit`.
+            pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
+            wc_abandoned = old_wc_id
+                .as_ref()
+                .is_some_and(|id| decision.abandoned.iter().any(|c| c.id() == id));
+            abandoned_change_ids = decision
+                .abandoned
+                .iter()
+                .map(|c| ChangeId(c.change_id().reverse_hex()))
+                .collect();
+        }
     }
-    // `WorkspaceCommandTransaction::finish`'s "Nothing changed." guard (`cli_util.rs:2851`).
+    // `WorkspaceCommandTransaction::finish`'s "Nothing changed." guard (`cli_util.rs:2852`).
     if !tx.repo().has_changes() {
         drop(tx);
         return no_op_result(&workspace_name, &readonly);
@@ -375,8 +393,8 @@ pub(crate) fn squash(
 }
 
 /// `squash`'s description decision without the squash (Story 9.15) — see
-/// [`crate::Repo::squash_plan`]. Runs [`prepare_squash`] and DROPS its transaction: no operation
-/// is written (the rewritten sources it wrote to the store are unreferenced objects).
+/// [`crate::Repo::squash_plan`]. Runs only [`plan_squash`], which rewrites nothing, and drops
+/// its transaction: no commit and no operation is written.
 ///
 /// # Errors
 ///
@@ -387,11 +405,11 @@ pub(crate) fn squash_plan(
     options: &SquashOptions,
 ) -> Result<SquashPlan, MutateError> {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
-    let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
-    let prepared = prepare_squash(&mut tx, workspace, ctx, options)?;
+    let tx = start_repo_transaction(&readonly, workspace.workspace_name());
+    let planned = plan_squash(&tx, workspace, ctx, options)?;
     drop(tx);
     Ok(SquashPlan {
-        combined_description: prepared
+        combined_description: planned
             .squashed
             .filter(|squashed| squashed.combined)
             .map(|squashed| squashed.description),

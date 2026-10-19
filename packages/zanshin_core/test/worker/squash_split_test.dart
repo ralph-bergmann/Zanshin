@@ -106,6 +106,30 @@ void main() {
       expect((await repo.getChange(ids[0])).description, 'T\n\nU\n');
     });
 
+    test('keep_emptied_crosses_the_buffer_and_keeps_the_emptied_source', () async {
+      expect((await repo.squashPlan()).combinedDescription, 'B\n\nC\n');
+      expect(
+        (await repo.squashPlan(keepEmptied: true)).combinedDescription,
+        isNull,
+        reason: 'a kept source does not count, so only B describes the result',
+      );
+
+      final MutationResult result = await repo.squash(keepEmptied: true);
+
+      expect(result.abandonedChangeIds, isEmpty);
+      expect(result.newChangeIds, isEmpty);
+      expect(result.workingCopyChangeId, ids[2]);
+      expect((await repo.getChange(ids[2])).description, 'C\n', reason: 'C is kept, emptied');
+      expect((await repo.getChange(ids[1])).description, 'B\n');
+    });
+
+    test('use_destination_message_crosses_the_buffer', () async {
+      final MutationResult result = await repo.squash(useDestinationMessage: true);
+
+      expect(result.abandonedChangeIds, [ids[2]]);
+      expect((await repo.getChange(ids[1])).description, 'B\n');
+    });
+
     test('squash_refusals_surface_their_codes', () async {
       await expectLater(
         repo.squash(revision: ids[2], into: ids[0]),

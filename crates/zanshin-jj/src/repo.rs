@@ -1974,7 +1974,8 @@ impl Repo {
     /// `paths` are repo-relative PREFIXES (an empty list moves everything; `""` is the root), as
     /// for [`Repo::restore`]; an explicit path no selected source tree holds warns
     /// `jj.paths_unmatched`. A source whose changes ALL moved is abandoned unless
-    /// `keep_emptied`; an abandoned `@` gets a new, empty `@` on the destination
+    /// `keep_emptied`; an abandoned `@` gets a new, empty `@` on its own (rewritten) parents —
+    /// the destination only when `@` is squashed into its parent (`-r`/the default)
     /// (`MutationResult::new_change_ids`), and the abandoned sources are reported in
     /// `MutationResult::abandoned_change_ids`.
     ///
@@ -2008,7 +2009,8 @@ impl Repo {
     }
 
     /// The description [`Repo::squash`] would have to ask for (Story 9.15): the squash with the
-    /// same `options`, prepared to the point where the CLI opens its editor, and dropped.
+    /// same `options`, planned up to the point where the CLI opens its editor — nothing is
+    /// rewritten — and dropped.
     ///
     /// `SquashPlan::combined_description` is the text the CLI's editor holds, saved unchanged —
     /// exactly what `squash` writes without `message` — when the abandoned sources and the

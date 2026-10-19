@@ -90,6 +90,11 @@ parity!(
     split_insert_before,
     split_onto,
     split_legacy_bookmarks_off,
+    squash_from_into_descendant,
+    squash_from_two_into,
+    squash_from_into_path,
+    split_parallel_bookmark,
+    split_parallel_bookmark_legacy_off,
 );
 
 /// Every scenario id the table and the init list define.
@@ -104,7 +109,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 55);
+    assert_eq!(SCENARIO_IDS.len(), 60);
 }
 
 #[test]
