@@ -150,7 +150,8 @@ class _Rig {
   ///
   /// The wait is bounded by [_settleBudget] of real time, not by a number of polls: each write
   /// is fsync'd and chained, so under the full gate's parallel load one can take seconds.
-  /// `Stopwatch` reads real time here — fake_async fakes only `package:clock`.
+  /// The dart:core `Stopwatch` reads real time here: fake_async fakes timers, microtasks and
+  /// `package:clock`, not `Stopwatch` (a `clock.stopwatch()` would never advance in this loop).
   Future<void> settle(bool Function() done) async {
     final watch = Stopwatch()..start();
     while (!done() && watch.elapsed < _settleBudget) {
@@ -160,7 +161,9 @@ class _Rig {
     expect(
       done(),
       isTrue,
-      reason: 'settings writes not done within ${_settleBudget.inSeconds} s of real time',
+      reason:
+          'settings writes not done after ${watch.elapsedMilliseconds} ms of real time '
+          '(budget ${_settleBudget.inSeconds} s)',
     );
     await tester.pump();
   }
