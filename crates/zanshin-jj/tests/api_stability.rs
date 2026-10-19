@@ -54,6 +54,7 @@ type _OpLogError = zanshin_jj::OpLogError;
 type _Bookmark = zanshin_jj::Bookmark;
 type _BookmarkKind = zanshin_jj::BookmarkKind;
 type _BookmarkError = zanshin_jj::BookmarkError;
+type _RefDistance = zanshin_jj::RefDistance;
 
 // remotes
 type _Remote = zanshin_jj::Remote;

@@ -777,7 +777,8 @@ class ZanshinWorker {
     return repo_ffi_op_log.decodeOpLogEnvelopeInternal(bytes);
   }
 
-  /// Read local + tracked-remote bookmarks for the repo identified by [handleId].
+  /// Read the bookmarks of the repo identified by [handleId] — the
+  /// `jj bookmark list --all-remotes` rows with their tracking facts (Story 9.29).
   ///
   /// Sends a [BookmarksCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<Bookmarks>` bytes into a `List<Bookmark>`.

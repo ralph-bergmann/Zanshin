@@ -267,7 +267,8 @@ final class RepoHandle {
     return _worker.opLog(_handleId, limit);
   }
 
-  /// Read local + tracked-remote bookmarks for this repository.
+  /// Read the bookmarks of this repository — the `jj bookmark list --all-remotes`
+  /// row set with its tracking facts (Story 9.29).
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,

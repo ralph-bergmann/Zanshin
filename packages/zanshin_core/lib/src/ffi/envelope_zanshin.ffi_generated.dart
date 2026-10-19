@@ -379,7 +379,7 @@ class _ConflictStateReader extends fb.Reader<ConflictState> {
       ConflictState.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
-///  Whether a bookmark is local-only or a tracked remote bookmark.
+///  Whether a bookmark row is the local bookmark or a remote one (tracked or not).
 ///  `remote_name` is populated ONLY when kind == Remote (empty for Local).
 enum BookmarkKind {
   Local(0),
@@ -5894,8 +5894,113 @@ class OpLogObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  One jj bookmark (FR-JJ-8). A bookmark that is both local and remote-tracked
-///  appears as TWO entries: one Local, one Remote.
+///  A commit count between a remote bookmark and its local counterpart — jj-lib's
+///  `Revset::count_estimate` (Story 9.29). `upper` is meaningful ONLY when has_upper == true
+///  (presence pair: flatc 25.12.19 rejects optional scalars for Dart); has_upper == false is
+///  the CLI's "at least `lower` commits". Exact counts carry upper == lower.
+class RefDistance {
+  RefDistance._(this._bc, this._bcOffset);
+  factory RefDistance(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RefDistance> reader = _RefDistanceReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get lower => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  int get upper => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  bool get hasUpper => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+
+  @override
+  String toString() {
+    return 'RefDistance{lower: ${lower}, upper: ${upper}, hasUpper: ${hasUpper}}';
+  }
+}
+
+class _RefDistanceReader extends fb.TableReader<RefDistance> {
+  const _RefDistanceReader();
+
+  @override
+  RefDistance createObject(fb.BufferContext bc, int offset) => RefDistance._(bc, offset);
+}
+
+class RefDistanceBuilder {
+  RefDistanceBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addLower(int? lower) {
+    fbBuilder.addUint64(0, lower);
+    return fbBuilder.offset;
+  }
+
+  int addUpper(int? upper) {
+    fbBuilder.addUint64(1, upper);
+    return fbBuilder.offset;
+  }
+
+  int addHasUpper(bool? hasUpper) {
+    fbBuilder.addBool(2, hasUpper);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RefDistanceObjectBuilder extends fb.ObjectBuilder {
+  final int? _lower;
+  final int? _upper;
+  final bool? _hasUpper;
+
+  RefDistanceObjectBuilder({
+    int? lower,
+    int? upper,
+    bool? hasUpper,
+  }) : _lower = lower,
+       _upper = upper,
+       _hasUpper = hasUpper;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    fbBuilder.startTable(3);
+    fbBuilder.addUint64(0, _lower);
+    fbBuilder.addUint64(1, _upper);
+    fbBuilder.addBool(2, _hasUpper);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One row of `jj bookmark list --all-remotes` (FR-JJ-8, Story 9.29). A bookmark that is
+///  both local and on a remote appears as one Local row plus one Remote row per remote.
+///
+///  Every row: `target` (ABSENT = null when the row's target is absent — the CLI's `(deleted)`
+///  local row or a tracked remote `(not created yet)`; a conflicted target carries its first
+///  added commit's change id), `conflicted` (the target is an unresolved conflict,
+///  `!RefTarget::is_resolved`) and `synced` (local: every TRACKED remote points where the local
+///  does, true with none; remote: tracked and pointing where the local does).
+///
+///  Remote rows only (default/absent on Local rows): `tracked`, and `ahead` / `behind` —
+///  present only on a tracked row whose own target and the local target are both present.
+///  Direction is the REMOTE row's, as the CLI's: `ahead` = commits the remote has that the
+///  local lacks, `behind` = commits the local has that the remote lacks.
 class Bookmark {
   Bookmark._(this._bc, this._bcOffset);
   factory Bookmark(List<int> bytes) {
@@ -5912,10 +6017,15 @@ class Bookmark {
   String? get target => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
   BookmarkKind get kind => BookmarkKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 8, 0));
   String? get remoteName => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  bool get conflicted => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  bool get synced => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+  bool get tracked => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
+  RefDistance? get ahead => RefDistance.reader.vTableGetNullable(_bc, _bcOffset, 18);
+  RefDistance? get behind => RefDistance.reader.vTableGetNullable(_bc, _bcOffset, 20);
 
   @override
   String toString() {
-    return 'Bookmark{name: ${name}, target: ${target}, kind: ${kind}, remoteName: ${remoteName}}';
+    return 'Bookmark{name: ${name}, target: ${target}, kind: ${kind}, remoteName: ${remoteName}, conflicted: ${conflicted}, synced: ${synced}, tracked: ${tracked}, ahead: ${ahead}, behind: ${behind}}';
   }
 }
 
@@ -5932,7 +6042,7 @@ class BookmarkBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(9);
   }
 
   int addNameOffset(int? offset) {
@@ -5955,6 +6065,31 @@ class BookmarkBuilder {
     return fbBuilder.offset;
   }
 
+  int addConflicted(bool? conflicted) {
+    fbBuilder.addBool(4, conflicted);
+    return fbBuilder.offset;
+  }
+
+  int addSynced(bool? synced) {
+    fbBuilder.addBool(5, synced);
+    return fbBuilder.offset;
+  }
+
+  int addTracked(bool? tracked) {
+    fbBuilder.addBool(6, tracked);
+    return fbBuilder.offset;
+  }
+
+  int addAheadOffset(int? offset) {
+    fbBuilder.addOffset(7, offset);
+    return fbBuilder.offset;
+  }
+
+  int addBehindOffset(int? offset) {
+    fbBuilder.addOffset(8, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -5965,16 +6100,31 @@ class BookmarkObjectBuilder extends fb.ObjectBuilder {
   final String? _target;
   final BookmarkKind? _kind;
   final String? _remoteName;
+  final bool? _conflicted;
+  final bool? _synced;
+  final bool? _tracked;
+  final RefDistanceObjectBuilder? _ahead;
+  final RefDistanceObjectBuilder? _behind;
 
   BookmarkObjectBuilder({
     String? name,
     String? target,
     BookmarkKind? kind,
     String? remoteName,
+    bool? conflicted,
+    bool? synced,
+    bool? tracked,
+    RefDistanceObjectBuilder? ahead,
+    RefDistanceObjectBuilder? behind,
   }) : _name = name,
        _target = target,
        _kind = kind,
-       _remoteName = remoteName;
+       _remoteName = remoteName,
+       _conflicted = conflicted,
+       _synced = synced,
+       _tracked = tracked,
+       _ahead = ahead,
+       _behind = behind;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -5982,11 +6132,18 @@ class BookmarkObjectBuilder extends fb.ObjectBuilder {
     final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
     final int? targetOffset = _target == null ? null : fbBuilder.writeString(_target!);
     final int? remoteNameOffset = _remoteName == null ? null : fbBuilder.writeString(_remoteName!);
-    fbBuilder.startTable(4);
+    final int? aheadOffset = _ahead?.getOrCreateOffset(fbBuilder);
+    final int? behindOffset = _behind?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(9);
     fbBuilder.addOffset(0, nameOffset);
     fbBuilder.addOffset(1, targetOffset);
     fbBuilder.addInt8(2, _kind?.value);
     fbBuilder.addOffset(3, remoteNameOffset);
+    fbBuilder.addBool(4, _conflicted);
+    fbBuilder.addBool(5, _synced);
+    fbBuilder.addBool(6, _tracked);
+    fbBuilder.addOffset(7, aheadOffset);
+    fbBuilder.addOffset(8, behindOffset);
     return fbBuilder.endTable();
   }
 
@@ -5999,7 +6156,8 @@ class BookmarkObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  The bookmark list: local + tracked-remote entries, sorted by name then kind.
+///  The bookmark list: the `--all-remotes` row set, sorted by name, then the Local row, then
+///  Remote rows by remote name.
 class Bookmarks {
   Bookmarks._(this._bc, this._bcOffset);
   factory Bookmarks(List<int> bytes) {

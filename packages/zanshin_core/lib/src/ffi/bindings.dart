@@ -211,7 +211,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_bookmark_delete(
   int len,
 );
 
-/// List local + tracked-remote bookmarks of the repo identified by `handle`.
+/// List the bookmarks of the repo identified by `handle` — the `jj bookmark list --all-remotes`
+/// row set with its tracking facts (Story 9.29).
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `Bookmarks` payload on success.
 ///
@@ -223,7 +224,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_bookmark_delete(
 /// `precondition` says which.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 /// the cause and both operation ids in `context`, nothing is written.
-/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+/// - `jj.jj_lib_error` — an unclassified jj-lib error (incl. a failed ahead/behind revset);
+/// detail in `context`.
 ///
 /// # Safety
 /// `handle` must be a value returned by a successful `zanshin_repo_open`,
@@ -2531,9 +2533,19 @@ const int AnnotationLine_VT_ORIGIN_FOUND = 12;
 
 const int BookmarkCreateRequest_VT_NAMES = 6;
 
+const int Bookmark_VT_AHEAD = 18;
+
+const int Bookmark_VT_BEHIND = 20;
+
+const int Bookmark_VT_CONFLICTED = 12;
+
 const int Bookmark_VT_REMOTE_NAME = 10;
 
+const int Bookmark_VT_SYNCED = 14;
+
 const int Bookmark_VT_TARGET = 6;
+
+const int Bookmark_VT_TRACKED = 16;
 
 const int Bookmarks_VT_BOOKMARKS = 4;
 
@@ -2733,8 +2745,6 @@ const int GitImportResult_VT_FAILED_REF_NAMES = 14;
 
 const int GitImportResult_VT_NUM_REWRITTEN = 12;
 
-const int GitRefUpdate_VT_TRACKED = 10;
-
 const int GitRemoteAddRequest_VT_NAME = 6;
 
 const int GitRemoteAddRequest_VT_PUSH_URL = 10;
@@ -2839,6 +2849,12 @@ const int Progress_VT_OPERATION = 6;
 
 const int Progress_VT_PROGRESS = 8;
 
+const int RefDistance_VT_HAS_UPPER = 8;
+
+const int RefDistance_VT_LOWER = 4;
+
+const int RefDistance_VT_UPPER = 6;
+
 const int Remotes_VT_REMOTES = 4;
 
 const int RepoDetect_VT_SUGGESTED_KIND = 8;
@@ -2919,13 +2935,9 @@ const int Status_VT_PARENT_CHANGE_ID = 8;
 
 const int Status_VT_WORKING_COPY_CHANGE_ID = 6;
 
-const int TopologyRef_VT_CONFLICTED = 14;
-
 const int TopologyRef_VT_NODE = 4;
 
 const int TopologyRef_VT_REMOTE = 10;
-
-const int TopologyRef_VT_SYNCED = 12;
 
 const int TopologyWorkingCopy_VT_WORKSPACE = 6;
 

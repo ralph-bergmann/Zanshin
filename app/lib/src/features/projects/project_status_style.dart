@@ -14,6 +14,9 @@ extension ProjectStatusStyle on ProjectStatus {
     ProjectStatus.conflict => colors.projConflict,
     ProjectStatus.missing => colors.projMissing,
     ProjectStatus.stale => colors.projStale,
+    ProjectStatus.ahead => colors.projAhead,
+    ProjectStatus.behind => colors.projBehind,
+    ProjectStatus.diverged => colors.projDiverged,
   };
 
   /// The dot's label.
@@ -23,5 +26,8 @@ extension ProjectStatusStyle on ProjectStatus {
     ProjectStatus.conflict => 'conflict',
     ProjectStatus.missing => 'path missing',
     ProjectStatus.stale => 'working copy is stale',
+    ProjectStatus.ahead => 'ahead of remote',
+    ProjectStatus.behind => 'behind remote',
+    ProjectStatus.diverged => 'diverged',
   };
 }

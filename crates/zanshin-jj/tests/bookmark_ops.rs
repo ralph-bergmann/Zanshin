@@ -228,8 +228,8 @@ fn create_on_the_root_commit_succeeds() {
 }
 
 /// A same-name remote bookmark that is NOT tracked does not block create: the CLI's guard is
-/// `has_tracked_remote_bookmarks`, tracked only. Read through the raw view because
-/// `list_bookmarks` filters untracked remotes out.
+/// `has_tracked_remote_bookmarks`, tracked only. Read through the raw view's local names, the
+/// one oracle that says "a local bookmark exists" without the remote rows.
 #[test]
 fn create_is_not_blocked_by_an_untracked_remote_of_the_same_name() {
     pin_env();
@@ -535,7 +535,8 @@ fn delete_refuses_a_malformed_pattern_and_an_empty_pattern_list() {
 }
 
 /// Deleting the local bookmark leaves a TRACKED `name@origin` in place — jj's
-/// "deleted, propagates on the next push" state, which `list_bookmarks` keeps reporting.
+/// "deleted, propagates on the next push" state, which `list_bookmarks` reports as the CLI's
+/// `(deleted)` local row plus the tracked remote row (Story 9.29).
 /// `View::set_local_bookmark_target` prunes only remote rows that are themselves ABSENT.
 #[test]
 fn delete_leaves_a_tracked_remote_bookmark_in_place() {
@@ -550,11 +551,21 @@ fn delete_leaves_a_tracked_remote_bookmark_in_place() {
 
     assert!(local_bookmark_names(&fx.path).is_empty(), "the local row is gone");
     let listed = repo.list_bookmarks().unwrap();
-    assert_eq!(listed.len(), 1, "the tracked remote row survives: {listed:?}");
     assert_eq!(
-        listed[0].kind,
+        listed.len(),
+        2,
+        "the (deleted) local row + the tracked remote row: {listed:?}"
+    );
+    assert_eq!(listed[0].kind, BookmarkKind::Local);
+    assert_eq!(listed[0].target, None, "the local row is the CLI's `(deleted)` row");
+    assert!(!listed[0].synced);
+    assert_eq!(
+        listed[1].kind,
         BookmarkKind::Remote {
-            remote_name: "origin".to_owned()
+            remote_name: "origin".to_owned(),
+            tracked: true,
+            ahead: None,
+            behind: None,
         }
     );
 

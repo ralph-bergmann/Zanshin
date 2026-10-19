@@ -763,7 +763,7 @@ pub mod zanshin {
         #[allow(non_camel_case_types)]
         pub const ENUM_VALUES_BOOKMARK_KIND: [BookmarkKind; 2] = [BookmarkKind::Local, BookmarkKind::Remote];
 
-        /// Whether a bookmark is local-only or a tracked remote bookmark.
+        /// Whether a bookmark row is the local bookmark or a remote one (tracked or not).
         /// `remote_name` is populated ONLY when kind == Remote (empty for Local).
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
@@ -10268,11 +10268,158 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum RefDistanceOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A commit count between a remote bookmark and its local counterpart — jj-lib's
+        /// `Revset::count_estimate` (Story 9.29). `upper` is meaningful ONLY when has_upper == true
+        /// (presence pair: flatc 25.12.19 rejects optional scalars for Dart); has_upper == false is
+        /// the CLI's "at least `lower` commits". Exact counts carry upper == lower.
+        pub struct RefDistance<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RefDistance<'a> {
+            type Inner = RefDistance<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RefDistance<'a> {
+            pub const VT_LOWER: ::flatbuffers::VOffsetT = 4;
+            pub const VT_UPPER: ::flatbuffers::VOffsetT = 6;
+            pub const VT_HAS_UPPER: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RefDistance { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RefDistanceArgs,
+            ) -> ::flatbuffers::WIPOffset<RefDistance<'bldr>> {
+                let mut builder = RefDistanceBuilder::new(_fbb);
+                builder.add_upper(args.upper);
+                builder.add_lower(args.lower);
+                builder.add_has_upper(args.has_upper);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn lower(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(RefDistance::VT_LOWER, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn upper(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(RefDistance::VT_UPPER, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn has_upper(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(RefDistance::VT_HAS_UPPER, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RefDistance<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u64>("lower", Self::VT_LOWER, false)?
+                    .visit_field::<u64>("upper", Self::VT_UPPER, false)?
+                    .visit_field::<bool>("has_upper", Self::VT_HAS_UPPER, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RefDistanceArgs {
+            pub lower: u64,
+            pub upper: u64,
+            pub has_upper: bool,
+        }
+        impl<'a> Default for RefDistanceArgs {
+            #[inline]
+            fn default() -> Self {
+                RefDistanceArgs {
+                    lower: 0,
+                    upper: 0,
+                    has_upper: false,
+                }
+            }
+        }
+
+        pub struct RefDistanceBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RefDistanceBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_lower(&mut self, lower: u64) {
+                self.fbb_.push_slot::<u64>(RefDistance::VT_LOWER, lower, 0);
+            }
+            #[inline]
+            pub fn add_upper(&mut self, upper: u64) {
+                self.fbb_.push_slot::<u64>(RefDistance::VT_UPPER, upper, 0);
+            }
+            #[inline]
+            pub fn add_has_upper(&mut self, has_upper: bool) {
+                self.fbb_.push_slot::<bool>(RefDistance::VT_HAS_UPPER, has_upper, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RefDistanceBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RefDistanceBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RefDistance<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RefDistance<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RefDistance");
+                ds.field("lower", &self.lower());
+                ds.field("upper", &self.upper());
+                ds.field("has_upper", &self.has_upper());
+                ds.finish()
+            }
+        }
         pub enum BookmarkOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// One jj bookmark (FR-JJ-8). A bookmark that is both local and remote-tracked
-        /// appears as TWO entries: one Local, one Remote.
+        /// One row of `jj bookmark list --all-remotes` (FR-JJ-8, Story 9.29). A bookmark that is
+        /// both local and on a remote appears as one Local row plus one Remote row per remote.
+        ///
+        /// Every row: `target` (ABSENT = null when the row's target is absent — the CLI's `(deleted)`
+        /// local row or a tracked remote `(not created yet)`; a conflicted target carries its first
+        /// added commit's change id), `conflicted` (the target is an unresolved conflict,
+        /// `!RefTarget::is_resolved`) and `synced` (local: every TRACKED remote points where the local
+        /// does, true with none; remote: tracked and pointing where the local does).
+        ///
+        /// Remote rows only (default/absent on Local rows): `tracked`, and `ahead` / `behind` —
+        /// present only on a tracked row whose own target and the local target are both present.
+        /// Direction is the REMOTE row's, as the CLI's: `ahead` = commits the remote has that the
+        /// local lacks, `behind` = commits the local has that the remote lacks.
         pub struct Bookmark<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -10292,6 +10439,11 @@ pub mod zanshin {
             pub const VT_TARGET: ::flatbuffers::VOffsetT = 6;
             pub const VT_KIND: ::flatbuffers::VOffsetT = 8;
             pub const VT_REMOTE_NAME: ::flatbuffers::VOffsetT = 10;
+            pub const VT_CONFLICTED: ::flatbuffers::VOffsetT = 12;
+            pub const VT_SYNCED: ::flatbuffers::VOffsetT = 14;
+            pub const VT_TRACKED: ::flatbuffers::VOffsetT = 16;
+            pub const VT_AHEAD: ::flatbuffers::VOffsetT = 18;
+            pub const VT_BEHIND: ::flatbuffers::VOffsetT = 20;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -10303,6 +10455,12 @@ pub mod zanshin {
                 args: &'args BookmarkArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<Bookmark<'bldr>> {
                 let mut builder = BookmarkBuilder::new(_fbb);
+                if let Some(x) = args.behind {
+                    builder.add_behind(x);
+                }
+                if let Some(x) = args.ahead {
+                    builder.add_ahead(x);
+                }
                 if let Some(x) = args.remote_name {
                     builder.add_remote_name(x);
                 }
@@ -10312,6 +10470,9 @@ pub mod zanshin {
                 if let Some(x) = args.name {
                     builder.add_name(x);
                 }
+                builder.add_tracked(args.tracked);
+                builder.add_synced(args.synced);
+                builder.add_conflicted(args.conflicted);
                 builder.add_kind(args.kind);
                 builder.finish()
             }
@@ -10357,6 +10518,47 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(Bookmark::VT_REMOTE_NAME, None)
                 }
             }
+            #[inline]
+            pub fn conflicted(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(Bookmark::VT_CONFLICTED, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn synced(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(Bookmark::VT_SYNCED, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn tracked(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(Bookmark::VT_TRACKED, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn ahead(&self) -> Option<RefDistance<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<RefDistance>>(Bookmark::VT_AHEAD, None)
+                }
+            }
+            #[inline]
+            pub fn behind(&self) -> Option<RefDistance<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<RefDistance>>(Bookmark::VT_BEHIND, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Bookmark<'_> {
@@ -10370,6 +10572,11 @@ pub mod zanshin {
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("target", Self::VT_TARGET, false)?
                     .visit_field::<BookmarkKind>("kind", Self::VT_KIND, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("remote_name", Self::VT_REMOTE_NAME, false)?
+                    .visit_field::<bool>("conflicted", Self::VT_CONFLICTED, false)?
+                    .visit_field::<bool>("synced", Self::VT_SYNCED, false)?
+                    .visit_field::<bool>("tracked", Self::VT_TRACKED, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<RefDistance>>("ahead", Self::VT_AHEAD, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<RefDistance>>("behind", Self::VT_BEHIND, false)?
                     .finish();
                 Ok(())
             }
@@ -10379,6 +10586,11 @@ pub mod zanshin {
             pub target: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub kind: BookmarkKind,
             pub remote_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub conflicted: bool,
+            pub synced: bool,
+            pub tracked: bool,
+            pub ahead: Option<::flatbuffers::WIPOffset<RefDistance<'a>>>,
+            pub behind: Option<::flatbuffers::WIPOffset<RefDistance<'a>>>,
         }
         impl<'a> Default for BookmarkArgs<'a> {
             #[inline]
@@ -10388,6 +10600,11 @@ pub mod zanshin {
                     target: None,
                     kind: BookmarkKind::Local,
                     remote_name: None,
+                    conflicted: false,
+                    synced: false,
+                    tracked: false,
+                    ahead: None,
+                    behind: None,
                 }
             }
         }
@@ -10418,6 +10635,28 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(Bookmark::VT_REMOTE_NAME, remote_name);
             }
             #[inline]
+            pub fn add_conflicted(&mut self, conflicted: bool) {
+                self.fbb_.push_slot::<bool>(Bookmark::VT_CONFLICTED, conflicted, false);
+            }
+            #[inline]
+            pub fn add_synced(&mut self, synced: bool) {
+                self.fbb_.push_slot::<bool>(Bookmark::VT_SYNCED, synced, false);
+            }
+            #[inline]
+            pub fn add_tracked(&mut self, tracked: bool) {
+                self.fbb_.push_slot::<bool>(Bookmark::VT_TRACKED, tracked, false);
+            }
+            #[inline]
+            pub fn add_ahead(&mut self, ahead: ::flatbuffers::WIPOffset<RefDistance<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<RefDistance>>(Bookmark::VT_AHEAD, ahead);
+            }
+            #[inline]
+            pub fn add_behind(&mut self, behind: ::flatbuffers::WIPOffset<RefDistance<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<RefDistance>>(Bookmark::VT_BEHIND, behind);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> BookmarkBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 BookmarkBuilder {
@@ -10439,13 +10678,19 @@ pub mod zanshin {
                 ds.field("target", &self.target());
                 ds.field("kind", &self.kind());
                 ds.field("remote_name", &self.remote_name());
+                ds.field("conflicted", &self.conflicted());
+                ds.field("synced", &self.synced());
+                ds.field("tracked", &self.tracked());
+                ds.field("ahead", &self.ahead());
+                ds.field("behind", &self.behind());
                 ds.finish()
             }
         }
         pub enum BookmarksOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// The bookmark list: local + tracked-remote entries, sorted by name then kind.
+        /// The bookmark list: the `--all-remotes` row set, sorted by name, then the Local row, then
+        /// Remote rows by remote name.
         pub struct Bookmarks<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }

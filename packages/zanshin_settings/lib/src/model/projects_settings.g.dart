@@ -79,6 +79,9 @@ const _$ProjectStatusEnumMap = {
   ProjectStatus.conflict: 'conflict',
   ProjectStatus.missing: 'missing',
   ProjectStatus.stale: 'stale',
+  ProjectStatus.ahead: 'ahead',
+  ProjectStatus.behind: 'behind',
+  ProjectStatus.diverged: 'diverged',
 };
 
 _ProjectGroup _$ProjectGroupFromJson(Map<String, dynamic> json) =>

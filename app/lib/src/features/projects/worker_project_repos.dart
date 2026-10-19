@@ -89,12 +89,9 @@ class _WorkerProjectRepo implements ProjectRepo {
   Future<ProjectReading> read() async {
     try {
       // One `show` of @ gives its conflict state and its diff against the merged parents (the diff `status()` reports).
-      final ProjectStatus status = await handle.show(revset: '@', limit: 1).then((entries) {
+      final (ConflictState conflict, bool hasFileChanges) = await handle.show(revset: '@', limit: 1).then((entries) {
         _logWarnings('show', entries.warnings);
-        return statusOf(
-          conflict: entries.first.change.conflict,
-          hasFileChanges: entries.first.fileChanges.isNotEmpty,
-        );
+        return (entries.first.change.conflict, entries.first.fileChanges.isNotEmpty);
       });
       final GraphTopologyView heads = await handle.graphTopology(
         revset: _bookmarkHeads,
@@ -102,6 +99,16 @@ class _WorkerProjectRepo implements ProjectRepo {
         withTimestamps: false,
       );
       _logWarnings('graph topology', heads.warnings);
+      final ProjectStatus status = await statusFrom(
+        conflict: conflict,
+        hasFileChanges: hasFileChanges,
+        headRefs: heads.refs,
+        bookmarks: () async {
+          final WarnedList<Bookmark> bookmarks = await handle.bookmarks();
+          _logWarnings('bookmarks', bookmarks.warnings);
+          return bookmarks;
+        },
+      );
       return ProjectReading(status: status, bookmark: bookmarkLabel(heads.refs));
     } on ZanshinFfiException catch (error) {
       if (isStale(error)) {

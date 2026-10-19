@@ -60,7 +60,7 @@ pub(crate) mod wc_ops;
 pub(crate) mod workspace;
 pub(crate) mod workspace_add;
 
-pub use bookmarks::{Bookmark, BookmarkError, BookmarkKind};
+pub use bookmarks::{Bookmark, BookmarkError, BookmarkKind, RefDistance};
 pub use change::{Change, ChangeError, CommitId, ConflictState, Signature, Timestamp, Timestamps};
 pub use commit::CommitOptions;
 pub use commit_content::{CommitContent, CommitContentError};

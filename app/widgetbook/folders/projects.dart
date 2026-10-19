@@ -145,7 +145,8 @@ ProjectCapsule demoCapsule({ProjectEntry? project, ZsMenuController? menuControl
   menuController: menuController,
 );
 
-/// The capsule in each state: clean, dirty, conflict, stale, no status and a name past 220 px.
+/// The capsule in each state: clean, dirty, ahead, behind, diverged, conflict, stale, no status and a name past
+/// 220 px.
 class _CapsuleStates extends StatelessWidget {
   const _CapsuleStates();
 
@@ -155,6 +156,9 @@ class _CapsuleStates extends StatelessWidget {
     final states = <ProjectEntry>[
       open.copyWith(status: ProjectStatus.clean),
       open,
+      open.copyWith(status: ProjectStatus.ahead),
+      open.copyWith(status: ProjectStatus.behind),
+      open.copyWith(status: ProjectStatus.diverged),
       open.copyWith(status: ProjectStatus.conflict),
       open.copyWith(status: ProjectStatus.stale),
       open.copyWith(status: null),

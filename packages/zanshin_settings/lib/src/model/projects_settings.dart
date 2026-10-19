@@ -88,7 +88,7 @@ abstract class ProjectGroup with _$ProjectGroup {
 
 /// A project's state as its status dot shows it (DS components/content/ProjectRow.jsx:5-15; decision 16.28).
 ///
-/// Ahead, behind, diverged and syncing come with 9.29 and 11.8.
+/// Ahead, behind and diverged come from the bookmark tracking state (Story 9.29); syncing is 11.8's.
 enum ProjectStatus {
   /// Nothing to report.
   clean,
@@ -104,4 +104,13 @@ enum ProjectStatus {
 
   /// The working copy is stale (`jj.stale_working_copy`).
   stale,
+
+  /// The bookmark @ sits on has commits its tracked remote lacks ("ahead of remote").
+  ahead,
+
+  /// The tracked remote has commits the bookmark @ sits on lacks ("behind remote").
+  behind,
+
+  /// Both at once: the bookmark and its tracked remote each have commits the other lacks.
+  diverged,
 }

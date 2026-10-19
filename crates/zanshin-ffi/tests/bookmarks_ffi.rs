@@ -9,6 +9,7 @@
 //! - `bookmarks_tiny_returns_empty_list` — ok + Bookmarks payload, empty
 //! - `bookmarks_medium_returns_29_local_entries` — 29 entries, all Local, names sorted
 //! - `bookmarks_invalid_handle_returns_ffi_error` — handle 0 → `ffi.invalid_handle`
+//! - `bookmarks_carry_the_tracking_facts_on_a_real_repo` — Story 9.29's facts over the real path
 //!
 //! No null/utf8 tests: `zanshin_bookmarks` is handle-only (no `CString` arg), so
 //! there is no null-pointer or UTF-8-decoding failure path — a deliberate
@@ -19,7 +20,9 @@ use std::ffi::CString;
 use std::sync::LazyLock;
 
 use flatbuffers::root as fb_root;
-use test_helpers::extract_fixture;
+use test_helpers::{
+    add_commit_off_root, add_commit_with_files, extract_fixture, set_local_bookmark, set_remote_bookmark,
+};
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::{
@@ -205,4 +208,62 @@ fn bookmarks_invalid_handle_returns_ffi_error() {
         err.context().is_none(),
         "the invalid-handle envelope carries no context"
     );
+}
+
+/// Story 9.29: a local bookmark one commit behind its tracked `@origin`, plus an untracked
+/// remote — every tracking fact crosses the real FFI path.
+#[test]
+fn bookmarks_carry_the_tracking_facts_on_a_real_repo() {
+    pin_env();
+
+    let fx = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    let parent = add_commit_off_root(&fx.path, "parent");
+    let child = add_commit_with_files(&fx.path, &[&parent], &[("child.txt", "child")], "child");
+    set_local_bookmark(&fx.path, "f", &[&parent]);
+    set_remote_bookmark(&fx.path, "f", "origin", &child, true);
+    set_remote_bookmark(&fx.path, "u", "origin", &child, false);
+    let path_cstr = cstr(fx.path.to_str().expect("fixture path must be valid UTF-8"));
+
+    let open_token = unsafe { zanshin_repo_open(path_cstr.as_ptr()) };
+    let open_bytes = unsafe { read_and_free(open_token) };
+    let handle = parse_envelope(&open_bytes)
+        .data_as_repo_handle()
+        .expect("data_as_repo_handle must succeed")
+        .handle();
+
+    let bm_bytes = unsafe { read_and_free(zanshin_bookmarks(handle)) };
+    let bm_env = parse_envelope(&bm_bytes);
+    assert!(
+        bm_env.ok(),
+        "zanshin_bookmarks must succeed; error={:?}",
+        bm_env.error()
+    );
+    let bms = bm_env
+        .data_as_bookmarks()
+        .and_then(|p| p.bookmarks())
+        .expect("bookmarks list must be present");
+    assert_eq!(bms.len(), 3, "f, f@origin, u@origin");
+
+    let local = bms.get(0);
+    assert_eq!((local.name(), local.kind()), (Some("f"), fbs::BookmarkKind::Local));
+    assert!(local.target().is_some() && !local.synced() && !local.conflicted());
+
+    let tracked = bms.get(1);
+    assert_eq!(tracked.remote_name(), Some("origin"));
+    assert!(tracked.tracked() && !tracked.synced());
+    let ahead = tracked.ahead().expect("ahead computed");
+    let behind = tracked.behind().expect("behind computed");
+    assert_eq!((ahead.lower(), ahead.upper(), ahead.has_upper()), (1, 1, true));
+    assert_eq!((behind.lower(), behind.upper(), behind.has_upper()), (0, 0, true));
+
+    let untracked = bms.get(2);
+    assert_eq!(
+        (untracked.name(), untracked.kind()),
+        (Some("u"), fbs::BookmarkKind::Remote)
+    );
+    assert!(!untracked.tracked() && !untracked.synced());
+    assert!(untracked.ahead().is_none() && untracked.behind().is_none());
+
+    let close_bytes = unsafe { read_and_free(zanshin_repo_close(handle)) };
+    assert!(parse_envelope(&close_bytes).ok(), "repo close must succeed");
 }

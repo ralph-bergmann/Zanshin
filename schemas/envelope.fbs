@@ -764,20 +764,47 @@ table OpLog {
   operations: [Operation];
 }
 
-/// Whether a bookmark is local-only or a tracked remote bookmark.
+/// Whether a bookmark row is the local bookmark or a remote one (tracked or not).
 /// `remote_name` is populated ONLY when kind == Remote (empty for Local).
 enum BookmarkKind : byte { Local, Remote }
 
-/// One jj bookmark (FR-JJ-8). A bookmark that is both local and remote-tracked
-/// appears as TWO entries: one Local, one Remote.
-table Bookmark {
-  name: string;          // bookmark name (UTF-8)
-  target: string;        // target ChangeId, reverse-hex (stable across rebases)
-  kind: BookmarkKind;
-  remote_name: string;   // populated only when kind == Remote; empty for Local
+/// A commit count between a remote bookmark and its local counterpart — jj-lib's
+/// `Revset::count_estimate` (Story 9.29). `upper` is meaningful ONLY when has_upper == true
+/// (presence pair: flatc 25.12.19 rejects optional scalars for Dart); has_upper == false is
+/// the CLI's "at least `lower` commits". Exact counts carry upper == lower.
+table RefDistance {
+  lower: ulong;
+  upper: ulong;          // 0 / ignored when has_upper == false
+  has_upper: bool;
 }
 
-/// The bookmark list: local + tracked-remote entries, sorted by name then kind.
+/// One row of `jj bookmark list --all-remotes` (FR-JJ-8, Story 9.29). A bookmark that is
+/// both local and on a remote appears as one Local row plus one Remote row per remote.
+///
+/// Every row: `target` (ABSENT = null when the row's target is absent — the CLI's `(deleted)`
+/// local row or a tracked remote `(not created yet)`; a conflicted target carries its first
+/// added commit's change id), `conflicted` (the target is an unresolved conflict,
+/// `!RefTarget::is_resolved`) and `synced` (local: every TRACKED remote points where the local
+/// does, true with none; remote: tracked and pointing where the local does).
+///
+/// Remote rows only (default/absent on Local rows): `tracked`, and `ahead` / `behind` —
+/// present only on a tracked row whose own target and the local target are both present.
+/// Direction is the REMOTE row's, as the CLI's: `ahead` = commits the remote has that the
+/// local lacks, `behind` = commits the local has that the remote lacks.
+table Bookmark {
+  name: string;          // bookmark name (UTF-8)
+  target: string;        // target ChangeId, reverse-hex; ABSENT when the target is absent
+  kind: BookmarkKind;
+  remote_name: string;   // populated only when kind == Remote; empty for Local
+  conflicted: bool;
+  synced: bool;
+  tracked: bool;         // Remote rows only
+  ahead: RefDistance;    // Remote rows only; ABSENT when not computed
+  behind: RefDistance;   // Remote rows only; ABSENT when not computed
+}
+
+/// The bookmark list: the `--all-remotes` row set, sorted by name, then the Local row, then
+/// Remote rows by remote name.
 table Bookmarks {
   bookmarks: [Bookmark];
 }

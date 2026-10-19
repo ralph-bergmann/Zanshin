@@ -237,9 +237,25 @@ typedef struct {
 
 #define OpLog_VT_OPERATIONS 4
 
+#define RefDistance_VT_LOWER 4
+
+#define RefDistance_VT_UPPER 6
+
+#define RefDistance_VT_HAS_UPPER 8
+
 #define Bookmark_VT_TARGET 6
 
 #define Bookmark_VT_REMOTE_NAME 10
+
+#define Bookmark_VT_CONFLICTED 12
+
+#define Bookmark_VT_SYNCED 14
+
+#define Bookmark_VT_TRACKED 16
+
+#define Bookmark_VT_AHEAD 18
+
+#define Bookmark_VT_BEHIND 20
 
 #define Bookmarks_VT_BOOKMARKS 4
 
@@ -256,10 +272,6 @@ typedef struct {
 #define TopologyRef_VT_NODE 4
 
 #define TopologyRef_VT_REMOTE 10
-
-#define TopologyRef_VT_SYNCED 12
-
-#define TopologyRef_VT_CONFLICTED 14
 
 #define TopologyWorkingCopy_VT_WORKSPACE 6
 
@@ -358,8 +370,6 @@ typedef struct {
 #define SearchMatch_VT_HAS_CONFLICT_SIDE 12
 
 #define FileSearch_VT_MATCHES 4
-
-#define GitRefUpdate_VT_TRACKED 10
 
 #define GitImportResult_VT_CHANGED_BOOKMARKS 6
 
@@ -579,7 +589,8 @@ ZanshinBuf *zanshin_bookmark_delete(uint64_t handle,
                                     uintptr_t len);
 
 /**
- * List local + tracked-remote bookmarks of the repo identified by `handle`.
+ * List the bookmarks of the repo identified by `handle` — the `jj bookmark list --all-remotes`
+ * row set with its tracking facts (Story 9.29).
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `Bookmarks` payload on success.
  *
@@ -591,7 +602,8 @@ ZanshinBuf *zanshin_bookmark_delete(uint64_t handle,
  *   `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
- * - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+ * - `jj.jj_lib_error` — an unclassified jj-lib error (incl. a failed ahead/behind revset);
+ *   detail in `context`.
  *
  * # Safety
  * `handle` must be a value returned by a successful `zanshin_repo_open`,

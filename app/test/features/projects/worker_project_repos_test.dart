@@ -16,6 +16,22 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 TopologyRef _ref(String name, {String? remote, TopologyRefKind kind = TopologyRefKind.bookmark}) =>
     TopologyRef(node: 0, kind: kind, name: name, remote: remote, synced: true, conflicted: false);
 
+Bookmark _local(String name) =>
+    Bookmark(name: name, target: 'k', kind: const LocalBookmark(), conflicted: false, synced: true);
+
+Bookmark _remote(String name, {required int ahead, required int behind, String remote = 'origin'}) => Bookmark(
+  name: name,
+  target: 'k',
+  kind: RemoteBookmark(
+    remote,
+    tracked: true,
+    ahead: RefDistance(lower: ahead, upper: ahead),
+    behind: RefDistance(lower: behind, upper: behind),
+  ),
+  conflicted: false,
+  synced: ahead == 0 && behind == 0,
+);
+
 void main() {
   group('helpers', () {
     test('the dot: conflict before dirty before clean', () {
@@ -23,6 +39,146 @@ void main() {
       expect(statusOf(conflict: ConflictState.conflicted, hasFileChanges: false), ProjectStatus.conflict);
       expect(statusOf(conflict: ConflictState.clean, hasFileChanges: true), ProjectStatus.dirty);
       expect(statusOf(conflict: ConflictState.clean, hasFileChanges: false), ProjectStatus.clean);
+    });
+
+    test('the dot: dirty beats the tracking state, which beats clean', () {
+      expect(
+        statusOf(conflict: ConflictState.clean, hasFileChanges: true, tracking: ProjectStatus.diverged),
+        ProjectStatus.dirty,
+      );
+      expect(
+        statusOf(conflict: ConflictState.conflicted, hasFileChanges: false, tracking: ProjectStatus.ahead),
+        ProjectStatus.conflict,
+      );
+      expect(
+        statusOf(conflict: ConflictState.clean, hasFileChanges: false, tracking: ProjectStatus.behind),
+        ProjectStatus.behind,
+      );
+    });
+
+    group('the tracking state (Story 9.29)', () {
+      final heads = <TopologyRef>[_ref('main'), _ref('main', remote: 'origin')];
+
+      test('no remote rows, or only synced ones: none', () {
+        expect(trackingStatusOf(heads, <Bookmark>[_local('main')]), isNull);
+        expect(trackingStatusOf(heads, <Bookmark>[_local('main'), _remote('main', ahead: 0, behind: 0)]), isNull);
+      });
+
+      test("a remote row's behind is the local side ahead; its ahead is the local side behind", () {
+        expect(trackingStatusOf(heads, <Bookmark>[_remote('main', ahead: 0, behind: 2)]), ProjectStatus.ahead);
+        expect(trackingStatusOf(heads, <Bookmark>[_remote('main', ahead: 3, behind: 0)]), ProjectStatus.behind);
+      });
+
+      test('both on one row, or split across two rows: diverged', () {
+        expect(trackingStatusOf(heads, <Bookmark>[_remote('main', ahead: 1, behind: 1)]), ProjectStatus.diverged);
+        expect(
+          trackingStatusOf(heads, <Bookmark>[
+            _remote('main', ahead: 1, behind: 0),
+            _remote('main', remote: 'upstream', ahead: 0, behind: 1),
+          ]),
+          ProjectStatus.diverged,
+        );
+        final twoNames = <TopologyRef>[_ref('main'), _ref('next')];
+        expect(
+          trackingStatusOf(twoNames, <Bookmark>[
+            _remote('main', ahead: 1, behind: 0),
+            _remote('next', ahead: 0, behind: 2),
+          ]),
+          ProjectStatus.diverged,
+        );
+      });
+
+      test('an open upper bound still counts by its lower bound', () {
+        const atLeastTen = RemoteBookmark(
+          'origin',
+          tracked: true,
+          ahead: RefDistance(lower: 10),
+          behind: RefDistance(lower: 0, upper: 0),
+        );
+        expect(
+          trackingStatusOf(heads, const <Bookmark>[
+            Bookmark(name: 'main', target: 'k', kind: atLeastTen, conflicted: false, synced: false),
+          ]),
+          ProjectStatus.behind,
+        );
+      });
+
+      test('the git remote, untracked rows and rows without distances never count', () {
+        expect(trackingStatusOf(heads, <Bookmark>[_remote('main', remote: 'git', ahead: 1, behind: 1)]), isNull);
+        expect(
+          trackingStatusOf(heads, const <Bookmark>[
+            Bookmark(
+              name: 'main',
+              target: 'k',
+              kind: RemoteBookmark('origin', tracked: false),
+              conflicted: false,
+              synced: false,
+            ),
+            Bookmark(
+              name: 'main',
+              target: null,
+              kind: RemoteBookmark('upstream', tracked: true),
+              conflicted: false,
+              synced: false,
+            ),
+          ]),
+          isNull,
+        );
+      });
+
+      test('only local bookmark names on the heads count: remote-only refs and other names are ignored', () {
+        expect(
+          trackingStatusOf(
+            <TopologyRef>[_ref('main', remote: 'origin')],
+            <Bookmark>[_remote('main', ahead: 1, behind: 1)],
+          ),
+          isNull,
+        );
+        expect(trackingStatusOf(heads, <Bookmark>[_remote('other', ahead: 1, behind: 1)]), isNull);
+        expect(
+          trackingStatusOf(
+            <TopologyRef>[_ref('main', kind: TopologyRefKind.tag)],
+            <Bookmark>[
+              _remote('main', ahead: 1, behind: 1),
+            ],
+          ),
+          isNull,
+        );
+      });
+    });
+
+    group('statusFrom: what read() composes', () {
+      final heads = <TopologyRef>[_ref('main')];
+      Future<ProjectStatus> clean(List<Bookmark> rows) => statusFrom(
+        conflict: ConflictState.clean,
+        hasFileChanges: false,
+        headRefs: heads,
+        bookmarks: () async => rows,
+      );
+
+      test('a clean @ takes the tracking state of its bookmarks, else clean', () async {
+        expect(await clean(<Bookmark>[_remote('main', ahead: 1, behind: 1)]), ProjectStatus.diverged);
+        expect(await clean(<Bookmark>[_remote('main', ahead: 0, behind: 1)]), ProjectStatus.ahead);
+        expect(await clean(<Bookmark>[_remote('main', ahead: 1, behind: 0)]), ProjectStatus.behind);
+        expect(await clean(<Bookmark>[_local('main')]), ProjectStatus.clean);
+      });
+
+      test('a conflicted or dirty @ never reads the bookmarks', () async {
+        Future<Iterable<Bookmark>> unread() => fail('bookmarks must not be read');
+        expect(
+          await statusFrom(
+            conflict: ConflictState.conflicted,
+            hasFileChanges: false,
+            headRefs: heads,
+            bookmarks: unread,
+          ),
+          ProjectStatus.conflict,
+        );
+        expect(
+          await statusFrom(conflict: ConflictState.clean, hasFileChanges: true, headRefs: heads, bookmarks: unread),
+          ProjectStatus.dirty,
+        );
+      });
     });
 
     test('the label: the first local bookmark by name; remote bookmarks and tags never count', () {
@@ -209,6 +365,44 @@ void main() {
         expect((await repos.detect(path)).kind, RepoKind.jj);
       },
     );
+
+    // Story 9.29. A TRACKED non-`git` remote needs a fetch, a clone or `remotes.<name>.auto-track-bookmarks`: the first
+    // two cannot run under a Dart test (the VM reaps jj-lib's git child, zanshin_core's mutate_test.dart `gitFetch`
+    // note) and no app test writes jj config (Makefile.toml test-flutter). The diverged facts are asserted through the
+    // real worker in zanshin_core's test/worker/bookmarks_test.dart; here the read runs over remote rows that must NOT
+    // count — the colocated `@git` row and an untracked `main@origin` the local `main` is ahead of.
+    test('the read over an untracked remote and the @git row stays clean', () async {
+      final path = '${temp.resolveSymbolicLinksSync()}/remotes';
+      await Directory(path).create();
+      await gitWithCommit(path);
+      Future<void> git(List<String> args) async {
+        final ProcessResult result = await Process.run('git', <String>['-C', path, ...args]);
+        if (result.exitCode != 0) {
+          fail('git ${args.join(' ')} failed: ${result.stderr}');
+        }
+      }
+
+      await git(<String>['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+      File('$path/second.txt').writeAsStringSync('second');
+      await git(<String>['add', '.']);
+      await git(<String>['commit', '-m', 'second', '--no-gpg-sign']);
+
+      final ProjectCreation creation = await repos.convert(path);
+      addTearDown(creation.repo.close);
+      final List<Bookmark> bookmarks = await creation.repo.handle.bookmarks();
+      expect(
+        <(String, String?, bool)>[
+          for (final b in bookmarks)
+            switch (b.kind) {
+              LocalBookmark() => (b.name, null, b.synced),
+              RemoteBookmark(:final String remoteName, :final bool tracked) => (b.name, remoteName, tracked),
+            },
+        ],
+        <(String, String?, bool)>[('main', null, true), ('main', 'git', true), ('main', 'origin', false)],
+      );
+
+      expect(await creation.repo.read(), const ProjectReading(status: ProjectStatus.clean, bookmark: 'main'));
+    });
 
     test('init creates a Git-backed workspace whose Git store stays inside .jj', () async {
       final path = '${temp.resolveSymbolicLinksSync()}/plain';

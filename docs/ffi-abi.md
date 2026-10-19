@@ -493,7 +493,7 @@ or no `# Errors` block.
 | `zanshin_file_show` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileShowRequest` | `FileContents` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.path_not_found`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.4 |
 | `zanshin_file_annotate` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileAnnotateRequest` | `FileAnnotation` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.invalid_input`, `jj.path_not_found`, `jj.not_a_file`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.4 |
 | `zanshin_file_search` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileSearchRequest` | `FileSearch` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.4 |
-| `zanshin_bookmarks` | `(uint64_t handle)` | — | `Bookmarks` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
+| `zanshin_bookmarks` | `(uint64_t handle)` | — | `Bookmarks` (rows + tracking facts, see § `Bookmarks` payload) | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b, 9.29 |
 | `zanshin_remotes` | `(uint64_t handle)` | — | `Remotes` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
 | `zanshin_workspace_list` | `(uint64_t handle)` | — | `WorkspaceList` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.7 |
 | `zanshin_workspace_root` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceRootRequest` | `WorkspaceRoot` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.workspace_not_found`, `jj.workspace_no_recorded_path`, `jj.jj_lib_error` | 9.7 |
@@ -1325,3 +1325,33 @@ parents and, for a merge, merges their trees.
 - `defaultGraphAnchors` (`['trunk()', 'present(@)']`, `lib/src/ffi/graph.dart`) is the
   editable pre-fill for the topology call's required `anchors`
   (`RepoHandle.graphTopology`, Story 4.12); nothing applies it on its own.
+
+## `Bookmarks` payload and `zanshin_bookmarks` (Story 9.29)
+
+`zanshin_bookmarks` (handle-only, signature unchanged since Story 3.4b) returns the row set
+`jj bookmark list --all-remotes` prints at the pinned v0.46.0 (`cli/src/commit_ref_list.rs::collect_items`
+with every predicate open), sorted by name, then the `Local` row, then `Remote` rows by remote name:
+
+- a `Local` row when the local target is present OR the name has at least one tracked remote ref —
+  with an absent local target it is the CLI's `(deleted)` row and `target` is ABSENT;
+- a `Remote` row for every tracked remote ref, synced or not, present or not — a tracked ref with an
+  absent target is the CLI's `@origin (not created yet)` row, `target` ABSENT;
+- a `Remote` row for every untracked remote ref (`tracked == false`).
+
+`@git` is a remote like any other: no row is filtered and no sort key applied (both are Story 9.19's
+or the UI's). Each `Bookmark` table carries:
+
+| Field | Rows | Meaning |
+|-------|------|---------|
+| `target` | all | Change id (reverse-hex) of the target's first present add; ABSENT (null-for-absence) when the target is absent. |
+| `conflicted` | all | The target is an unresolved conflict (`!RefTarget::is_resolved`). |
+| `synced` | all | `Local`: every TRACKED remote ref points where the local does (true with none). `Remote`: tracked AND pointing where the local does; untracked → false. |
+| `remote_name` | `Remote` | The remote, never fabricated (absent on a `Remote` row is corruption → `ffi.unknown` in Dart). |
+| `tracked` | `Remote` | `RemoteRef::is_tracked`; false on `Local` rows. |
+| `ahead` / `behind` | `Remote` | `RefDistance { lower, upper, has_upper }`, present only on a tracked row whose own target AND the local target are present (the template's `ref.present()` + `tracking_present()`). Direction is the REMOTE row's: `ahead` = commits the remote has that the local lacks (`walk_revs(remote, local)`), `behind` = the reverse. A synced row is `(0, 0)` without evaluating a revset; otherwise `Revset::count_estimate`, carried as-is — `has_upper == false` is the CLI's "at least `lower` commits" (presence pair: flatc 25.12.19 rejects optional scalars for Dart). |
+
+The read is local (last-fetched remote targets, no network) and runs in the same `load_at_head` scope
+as the listing; a failing distance revset is `jj.jj_lib_error`. Dart: `Bookmark.target` is
+`String?`, `conflicted`/`synced` sit on `Bookmark`, `tracked`/`ahead`/`behind` on `RemoteBookmark`,
+and `RefDistance.upper` is null when `has_upper` is false
+(`packages/zanshin_core/lib/src/ffi/bookmarks.dart`).

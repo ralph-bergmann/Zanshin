@@ -355,7 +355,7 @@ void main() {
 
       // Git cannot hold `foo` and `foo/bar` at once: the finish's export fails for one.
       final List<Bookmark> bookmarks = await handle.bookmarks();
-      final String main = bookmarks.singleWhere((b) => b.name == 'main' && b.kind is LocalBookmark).target;
+      final String main = bookmarks.singleWhere((b) => b.name == 'main' && b.kind is LocalBookmark).target!;
       final MutationResult created = await handle.bookmarkCreate(['foo', 'foo/bar'], revision: main);
 
       // The CLI's print order: the pre-verb snapshot still sees the `.jjconflict` entry and

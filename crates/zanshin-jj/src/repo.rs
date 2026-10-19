@@ -457,16 +457,21 @@ impl Repo {
         self.with_verb(|repo, _ctx| crate::op_log::op_log(repo.workspace(), limit))
     }
 
-    /// Lists local + tracked-remote bookmarks, sorted by name then kind (FR-JJ-8).
+    /// Lists the `jj bookmark list --all-remotes` row set — local rows (present, or deleted
+    /// while still tracking a remote), tracked remote rows (synced or not, present or not
+    /// created yet) and untracked remote rows — sorted by name, then the local row, then
+    /// remote rows by remote name (FR-JJ-8, Story 9.29).
     ///
-    /// Re-resolves to the head operation per call (ADR-0002). Read-only; never shells
-    /// to `jj bookmark list` (AR-AP-1). A conflicted target resolves to the first added
-    /// commit's change id (listing scope only).
+    /// Each row carries its target change id (`None` when absent; a conflicted target resolves
+    /// to the first added commit's change id), `conflicted` and `synced`; a remote row also
+    /// carries `tracked` and, when tracked with both targets present, the CLI's ahead/behind
+    /// distances to the local target. Re-resolves to the head operation per call (ADR-0002).
+    /// Read-only; never shells to `jj bookmark list` (AR-AP-1).
     ///
     /// # Errors
     ///
-    /// - [`crate::BookmarkError::Backend`] — `load_at_head` or a store read failed; the
-    ///   jj-lib reason is forwarded as a string.
+    /// - [`crate::BookmarkError::Backend`] — `load_at_head`, a store read or a distance revset
+    ///   failed; the jj-lib reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_bookmarks(&mut self) -> Result<Vec<crate::Bookmark>, crate::BookmarkError> {
         self.with_verb(|repo, _ctx| crate::bookmarks::list_bookmarks(repo.workspace()))

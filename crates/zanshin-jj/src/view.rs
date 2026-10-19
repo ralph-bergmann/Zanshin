@@ -115,7 +115,7 @@ pub(crate) fn list_tags(workspace: &Workspace) -> Result<Vec<Tag>, ViewError> {
         }
     }
 
-    // Remote tags — NOT pre-pruned: skip absent + untracked, mirroring `list_bookmarks`.
+    // Remote tags — NOT pre-pruned: skip absent + untracked (`list_bookmarks` lists both since Story 9.29).
     for (symbol, remote_ref) in view.all_remote_tags() {
         if !remote_ref.is_present() || !remote_ref.is_tracked() {
             continue;

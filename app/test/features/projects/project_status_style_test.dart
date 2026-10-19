@@ -13,6 +13,9 @@ void main() {
       expect(ProjectStatus.conflict.colorIn(colors), colors.projConflict);
       expect(ProjectStatus.missing.colorIn(colors), colors.projMissing);
       expect(ProjectStatus.stale.colorIn(colors), colors.projStale);
+      expect(ProjectStatus.ahead.colorIn(colors), colors.projAhead);
+      expect(ProjectStatus.behind.colorIn(colors), colors.projBehind);
+      expect(ProjectStatus.diverged.colorIn(colors), colors.projDiverged);
     }
     expect(
       <String>[for (final ProjectStatus status in ProjectStatus.values) status.label],
@@ -22,6 +25,9 @@ void main() {
         'conflict',
         'path missing',
         'working copy is stale',
+        'ahead of remote',
+        'behind remote',
+        'diverged',
       ],
     );
   });

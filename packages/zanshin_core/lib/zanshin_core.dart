@@ -7,6 +7,7 @@
 library;
 
 export 'src/environment/login_shell.dart' show LoginShellEnvironmentResult, adoptLoginShellEnvironment;
+export 'src/ffi/bookmarks.dart' show Bookmark, BookmarkKind, LocalBookmark, RefDistance, RemoteBookmark;
 export 'src/ffi/change.dart' show ConflictState;
 export 'src/ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 export 'src/ffi/config.dart'

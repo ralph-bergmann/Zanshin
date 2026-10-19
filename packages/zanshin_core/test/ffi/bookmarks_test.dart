@@ -170,5 +170,93 @@ void main() {
       expect(bms[2].target, equals('ccccdddd'));
       expect(bms[2].kind, isA<LocalBookmark>());
     });
+
+    // ── Story 9.29: tracking facts ────────────────────────────────────────────
+
+    test('decodes conflicted and synced on a Local row', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Bookmarks,
+        data: fbs.BookmarksObjectBuilder(
+          bookmarks: [
+            fbs.BookmarkObjectBuilder(name: 'c', target: 'kkkk', kind: fbs.BookmarkKind.Local, conflicted: true),
+            fbs.BookmarkObjectBuilder(name: 's', target: 'llll', kind: fbs.BookmarkKind.Local, synced: true),
+          ],
+        ),
+      ).toBytes();
+
+      final List<Bookmark> bms = decodeBookmarksEnvelope(bytes);
+
+      expect((bms[0].conflicted, bms[0].synced), (true, false));
+      expect((bms[1].conflicted, bms[1].synced), (false, true));
+    });
+
+    test('an absent target decodes to null, never to an empty string', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Bookmarks,
+        data: fbs.BookmarksObjectBuilder(
+          bookmarks: [fbs.BookmarkObjectBuilder(name: 'deleted', kind: fbs.BookmarkKind.Local)],
+        ),
+      ).toBytes();
+
+      expect(decodeBookmarksEnvelope(bytes).single.target, isNull);
+    });
+
+    test('decodes tracked and both distances on a Remote row; has_upper=false is a null upper', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Bookmarks,
+        data: fbs.BookmarksObjectBuilder(
+          bookmarks: [
+            fbs.BookmarkObjectBuilder(
+              name: 'f',
+              target: 'mmmm',
+              kind: fbs.BookmarkKind.Remote,
+              remoteName: 'origin',
+              tracked: true,
+              ahead: fbs.RefDistanceObjectBuilder(lower: 2, upper: 2, hasUpper: true),
+              behind: fbs.RefDistanceObjectBuilder(lower: 10, upper: 0, hasUpper: false),
+            ),
+          ],
+        ),
+      ).toBytes();
+
+      final Bookmark bm = decodeBookmarksEnvelope(bytes).single;
+      final remote = bm.kind as RemoteBookmark;
+
+      expect(remote.tracked, isTrue);
+      expect((remote.ahead!.lower, remote.ahead!.upper), (2, 2));
+      expect((remote.behind!.lower, remote.behind!.upper), (10, null));
+    });
+
+    test('an untracked Remote row decodes without distances', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Bookmarks,
+        data: fbs.BookmarksObjectBuilder(bookmarks: [_makeRemoteBookmark()]),
+      ).toBytes();
+
+      final remote = decodeBookmarksEnvelope(bytes).single.kind as RemoteBookmark;
+
+      expect(remote.tracked, isFalse);
+      expect(remote.ahead, isNull);
+      expect(remote.behind, isNull);
+    });
+
+    test('a Remote row without remote_name is rejected as ffi.unknown corruption', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Bookmarks,
+        data: fbs.BookmarksObjectBuilder(
+          bookmarks: [fbs.BookmarkObjectBuilder(name: 'x', target: 'nnnn', kind: fbs.BookmarkKind.Remote)],
+        ),
+      ).toBytes();
+
+      expect(
+        () => decodeBookmarksEnvelope(bytes),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')),
+      );
+    });
   });
 }

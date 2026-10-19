@@ -82,12 +82,66 @@ class ProjectReading {
 }
 
 /// The open project's dot from @ (design question (a), decision 16.28): conflict when @'s change is conflicted, else
-/// dirty when @ changes files against its merged parents, else clean.
-ProjectStatus statusOf({required ConflictState conflict, required bool hasFileChanges}) {
+/// dirty when @ changes files against its merged parents, else the [tracking] state ([trackingStatusOf]: diverged,
+/// ahead or behind), else clean.
+ProjectStatus statusOf({required ConflictState conflict, required bool hasFileChanges, ProjectStatus? tracking}) {
   if (conflict == ConflictState.conflicted) {
     return ProjectStatus.conflict;
   }
-  return hasFileChanges ? ProjectStatus.dirty : ProjectStatus.clean;
+  if (hasFileChanges) {
+    return ProjectStatus.dirty;
+  }
+  return tracking ?? ProjectStatus.clean;
+}
+
+/// The open project's dot as `ProjectRepo.read` composes it: [statusOf] over @'s conflict state and file changes
+/// and, only when neither decides the dot, [trackingStatusOf] over [headRefs] and the list [bookmarks] reads — so a
+/// conflicted or dirty @ never pays for the bookmark distances, and a failed bookmark read cannot discard its state.
+Future<ProjectStatus> statusFrom({
+  required ConflictState conflict,
+  required bool hasFileChanges,
+  required Iterable<TopologyRef> headRefs,
+  required Future<Iterable<Bookmark>> Function() bookmarks,
+}) async {
+  final ProjectStatus local = statusOf(conflict: conflict, hasFileChanges: hasFileChanges);
+  if (local != ProjectStatus.clean) {
+    return local;
+  }
+  return statusOf(
+    conflict: conflict,
+    hasFileChanges: hasFileChanges,
+    tracking: trackingStatusOf(headRefs, await bookmarks()),
+  );
+}
+
+/// The remote the CLI leaves out of its tracked-bookmark default (`--tracked` implies `--remote=~git`,
+/// `default_ignored_remote_name`): the colocated Git repository's own refs.
+const _ignoredRemote = 'git';
+
+/// The dot's sync state (Story 9.29) from the refs of `heads(::@ & bookmarks())` and the bookmark list: over the
+/// tracked remote rows of those local bookmarks (remote `git` excluded), [ProjectStatus.ahead] when the local side has
+/// commits a remote lacks (a remote row's `behind`), [ProjectStatus.behind] when a remote has commits the local side
+/// lacks (its `ahead`), [ProjectStatus.diverged] when both hold, null when neither does.
+ProjectStatus? trackingStatusOf(Iterable<TopologyRef> headRefs, Iterable<Bookmark> bookmarks) {
+  final names = <String>{
+    for (final ref in headRefs)
+      if (ref.kind == TopologyRefKind.bookmark && ref.remote == null) ref.name,
+  };
+  var localAhead = false;
+  var localBehind = false;
+  for (final bookmark in bookmarks) {
+    if (bookmark.kind case RemoteBookmark(tracked: true, :final remoteName, :final ahead, :final behind)
+        when remoteName != _ignoredRemote && names.contains(bookmark.name)) {
+      localAhead |= (behind?.lower ?? 0) > 0;
+      localBehind |= (ahead?.lower ?? 0) > 0;
+    }
+  }
+  return switch ((localAhead, localBehind)) {
+    (true, true) => ProjectStatus.diverged,
+    (true, false) => ProjectStatus.ahead,
+    (false, true) => ProjectStatus.behind,
+    (false, false) => null,
+  };
 }
 
 /// The bookmark label from the refs of `heads(::@ & bookmarks())` (design question (b)): the first by name of the
