@@ -24,6 +24,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/snapshot.rs (snapshot_locked error arm)
     severity: low
+    resolved: >-
+      2026-10-19 — fixed (spec-9-23-closing-snapshot-error-arm-head-reload, commit bbeb79a): the error arm only reads the op heads and writes nothing, like the CLI (cli_util.rs:498 @ v0.46.0); the next head load reconciles under the workspace's name.
   - summary: >-
       No verb warns "There are unresolved conflicts at these paths" after checking out a conflicted @, which the CLI's print_updated_working_copy_stats does; the stale recovery inherits the gap.
     evidence: |-
