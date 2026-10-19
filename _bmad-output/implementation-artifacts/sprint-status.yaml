@@ -27,18 +27,86 @@
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-# Nächster Schritt laut Story-Reihenfolge von Epic 11:
+# Nächster Schritt: die offenen Stories der Epics 4, 9, 10 und 11 in Reihenfolge (Stand 2026-10-19)
 #
-#   Keine Epic-11-Story ist frei: alle offenen warten auf Epic 10 (10.9 und 10.23).
-#   Davor in Epic 10: 10.9 nach 10.3 und 10.5, 10.23 nach 10.9.
+#   So ist die Liste zu lesen: Eine Story kann starten, sobald die Stories fertig sind, die hinter
+#   "Braucht" stehen. Diese stehen immer in einer früheren Stufe. Innerhalb einer Stufe ist die
+#   Reihenfolge frei. Gestrichen ist keine Story: Keine offene Story der vier Epics ist überholt.
 #
-#   11.13 (Menüleiste) nach 10.9 und 10.23, vor 11.7, 11.8 und 10.16;
-#   11.7 (Settings-Fenster) nach 11.13;
-#   11.8 (Sync) nach 11.13, 10.23 und 9.20;
-#   11.9 (Undo Timeline) nach 10.9 und 10.23;
-#   11.10 (Mock-UI entfernen) zuletzt, für main4 auch nach 10.1.
+#   Stufe 1 – kann sofort starten:
+#     10.1   Graph-Viewport. Alle anderen Graph-Stories bauen darauf auf.
+#     4.14   Gemeinsame Spalten für Free und Compact.
+#     4.15   Linien-Router B. 10.4 braucht ihn.
+#     9.25   Backend der Graph-Suche. 10.21 braucht es.
 #
-#   11.5 und 11.6 liefen vor 11.13: ⌘W und ⇧⌘O warten auf 11.13.
+#   Stufe 2:
+#     10.2   Hintergrund und Tages-Achse. Braucht 10.1.
+#     10.3   Commit-Karten. Braucht 10.1.
+#     10.4   Kanten. Braucht 10.1 und 4.15.
+#     10.5   View-Model und Anbindung ans Repo. Braucht 10.1.
+#     11.10  Alte Mock-UI entfernen. Braucht nur noch 10.1; alles andere, worauf sie gewartet hat, ist fertig.
+#
+#   Stufe 3:
+#     10.6   Auswahl, Hover und Tastatur. Braucht 10.3 und 10.4.
+#     10.9   Action-Runner. Braucht 10.3 und 10.5.
+#     10.11  Karten-Inhalte seitenweise laden. Braucht 10.3 und 10.5.
+#
+#   Stufe 4:
+#     10.7   Toolbar. Braucht 10.2, 10.3, 10.5 und 10.6.
+#     10.8   Inspector. Braucht 10.5 und 10.6.
+#     10.17  Commit-Stacks in der Ansicht. Braucht 10.3, 10.5 und 10.6.
+#     10.21  Graph-Suche. Braucht 10.5, 10.6, 10.11 und 9.25.
+#     10.23  Toast nach einer Operation. Braucht 10.6 und 10.9.
+#
+#   Stufe 5:
+#     11.13  Menüleiste und Shortcuts. Braucht 10.9 und 10.23. Damit funktionieren auch ⌘W und ⇧⌘O aus 11.5 und 11.6.
+#     11.9   Undo Timeline. Braucht 10.9 und 10.23. Redo und "Show changes" kommen erst mit 9.21, "Restore to here" mit 9.12.
+#     10.12  Echtes Layout aus dem Backend. Braucht 4.14, 4.15 und 10.17.
+#     10.14  Bookmarks in der Rail. Braucht 10.5, 10.6 und 10.7. Alle Zeilen und Zustände erst mit 9.29.
+#     10.15  Karten-Menü. Braucht 10.8 und 10.9. "Insert after" und "Insert before" erst mit 9.48.
+#     10.19  Versteckte History (Lücken). Braucht 10.4, 10.6, 10.21 und 4.15.
+#     10.20  Graph-Animationen. Braucht 10.4, 10.5 und 10.17.
+#     10.22  Fenster für die jj-log-Konfigurationen. Braucht 10.21.
+#     10.24  Diff im Inspector. Braucht 10.8 und aus Epic 5 die Stories 5.1, 5.5, 5.6 und 5.8.
+#     10.25  Composer für commit und split. Braucht 10.8, 10.9, 10.23, 9.15 und 9.49.
+#
+#   Stufe 6:
+#     10.16  Minimap. Braucht 10.4, 10.5, 10.6 und 11.13.
+#     11.7   Settings-Fenster. Braucht 11.13.
+#     11.8   Fetch, Push und Abfrage entfernter Änderungen. Braucht 11.13, 10.23 und 9.20. Die Abfrage erst mit 9.24,
+#            Fetch ohne Auswahl des Remotes erst mit 9.30.
+#            11.7 und 11.8 verweisen aufeinander (das Intervall in den Einstellungen steuert die Abfrage); welche
+#            von beiden zuerst kommt, ist egal.
+#     10.10  Drag-and-Drop. Braucht 10.9 und 10.15. Die echten Aktionen erst mit 9.31, 9.16, 9.9, 9.19 und 9.48.
+#     10.26  Hunks auswählen. Braucht 10.24, 10.25 und 9.50.
+#
+#   Stufe 7:
+#     10.27  Dateien und Hunks ziehen. Braucht 10.10, 10.26, 9.15, 9.31 und 9.50.
+#
+#   Backend aus Epic 9. Jede dieser Stories kann sofort starten, wenn nichts anderes dabeisteht.
+#   Sortiert danach, welche UI-Story sie zuerst braucht:
+#     9.23   Workspace add und update-stale. Hat Vorrang: der einzige Weg aus einer veralteten Working Copy.
+#     9.15   Squash und Split. Muss vor 10.25 fertig sein.
+#     9.49   commit. Muss vor 10.25 fertig sein. Der Teil mit einem Baum aus der GUI braucht 9.50.
+#     9.48   new mit --insert-after und --insert-before. Für 10.15.
+#     9.29   Tracking-Zustand der Bookmarks (ahead/behind). Für 10.14 und 9.19.
+#     9.20   push, clone und init. Muss vor 11.8 fertig sein.
+#     9.24   Abfrage entfernter Änderungen. Für 11.8.
+#     9.30   fetch wie die CLI. Für 11.8. Am besten zusammen mit 9.40, weil beide den Fetch anfassen.
+#     9.31   Drop-Aktionen abfragen. Für 10.10.
+#     9.16   rebase, parallelize und arrange. Für 10.10.
+#     9.9    metaedit, duplicate und fix. Für 10.10.
+#     9.19   bookmark move, advance und rename. Braucht 9.29. Für 10.10.
+#     9.50   Hunk-Auswahl als Baum. Braucht aus Epic 5 die Stories 5.1 und 5.6. Für 10.26.
+#     9.21   Operation-Log, unter anderem Redo. Für 11.9.
+#     9.12   op restore und op revert. Für 11.9.
+#     Noch ohne UI-Story, die sie braucht, also jederzeit: 9.10, 9.11, 9.13, 9.14, 9.17, 9.18, 9.38, 9.40, 9.41,
+#     9.44, 9.45 und 9.46.
+#     9.42   Niedrige Priorität: nur ein Randfall.
+#
+#   Wartet auf eine Entscheidung von Ralph:
+#     9.43   jj converge: ob Zanshin den Befehl überhaupt anbietet.
+#     10.18  KI-Titel für Stacks: eine Idee, noch nicht entschieden. Bräuchte 10.11 und 10.17.
 
 generated: 2026-05-15
 last_updated: 2026-10-19
