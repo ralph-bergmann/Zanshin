@@ -2,7 +2,7 @@
 title: 'Story 9.49: `commit` — `[-m] [paths]` (the GUI-tree arm waits for 9.50)'
 type: 'feature'
 created: '2026-10-19'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'a23d5a4363ce148defda70e10b92307c594d8602'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -30,6 +30,13 @@ deferred:
       new.rs:197-202 calls get_advanceable_bookmarks(parent.parent_ids()) and :280-281 advances to the single parent; crates/zanshin-jj/src/mutate.rs new_change has no advance step; epics.md Story 9.48 only covers "no bookmark advances when -A or -B is given".
     location: >-
       crates/zanshin-jj/src/mutate.rs new_change; Story 9.48
+    severity: low
+  - summary: >-
+      The shared prefix matcher accepts a path that escapes the repo (`../x`) as a literal prefix, so `commit`, `restore`, `squash` and `split` warn and run where the CLI refuses "Path is not in the repo"; the I/O matrix's "Invalid path" example `../x` therefore does not refuse (`/x` does).
+    evidence: |-
+      op_support::parse_prefixes uses RepoPathBuf::from_internal_string, which accepts `..` components (build_matcher's doc deliberately adds no rule beyond jj's); review of Story 9.49 ran `commit(paths: ["../x"])` and it committed. `file track`/`untrack` (Story 9.22) already parse cwd-relative and refuse escaping paths (crates/zanshin-jj/tests/file_track_untrack.rs paths_normalise_like_the_cli_and_escaping_paths_are_refused).
+    location: >-
+      crates/zanshin-jj/src/op_support.rs build_matcher / parse_prefixes
     severity: low
 ---
 
@@ -149,6 +156,36 @@ CLI anchors at `v0.46.0`; jj-lib anchors in vendored `jj-lib-0.46.0/src`; Zanshi
 
 ## Review Triage Log
 
+### 2026-10-19 — Review pass
+- verdicts: 26 findings — high 0, medium 4, low 16, false 6, maybe-false 0
+- findings:
+  - `[false]` `[reject]` (blind) spec `in-review` vs sprint-status `done` — finalisation sets the spec to `done` in this run; the yaml flip is the run's end state.
+  - `[low]` `[reject]` (blind) a bad `experimental-advance-branches` pattern surfaces as `jj.invalid_input` without naming the key — the CLI's own refusal is the user error "Failed to parse name pattern: …", which does not name the key either; the spec routes CLI user errors to `jj.invalid_input`.
+  - `[medium]` `[patch]` (blind) the finish rebased immutable descendants with plain `rebase_descendants` — fixed: `resolve_immutable` + `rebase_descendants_with_options` (the CLI's `rebase_mutable_descendants`); new oracle scenario `commit_immutable_wc_with_child` (fails with the old code: graph, trees, descriptions UNEXPECTED); `Repo::commit`'s `Config` bullet names the alias.
+  - `[low]` `[patch]` (blind) merge `@`, conflicted bookmark and `paths: [""]` unwitnessed — fixed: `a_merge_at_advances_the_bookmarks_of_every_parent`, `a_conflicted_advanceable_bookmark_stays_conflicted`, `the_root_path_selects_everything` (crates/zanshin-jj/tests/commit.rs) and oracle `commit_advance_merge_parents`.
+  - `[low]` `[patch]` (blind) no oracle refusal scenario for an invalid path or a bad advance config — fixed: `commit_path_outside_repo` (`/x`), `commit_advance_bad_pattern`, `commit_advance_not_a_list` (both sides refuse).
+  - `[low]` `[reject]` (blind) the FFI suite witnesses one refusal code — every `map_mutate_err` arm is unit-tested (crates/zanshin-ffi/src/repo.rs:1400 for `NoWorkingCopy`); a no-`@` fixture in the FFI crate would need jj-lib, which that crate must not import.
+  - `[low]` `[patch]` (blind) `jj.jj_lib_error` row lacks a Story 9.49 clause — fixed in docs/rust-error-codes.md.
+  - `[low]` `[reject]` (blind) `NotAGitRepo` in the Rust errors but not the FFI docs — the same convention as `zanshin_squash`/`zanshin_split` (Story 9.15); not this story's to change alone.
+  - `[low]` `[patch]` (blind) `union_expression`'s anchors still cite v0.44 — re-pinned to `revset_util.rs:364-384` @ v0.46.0.
+  - `[low]` `[patch]` (blind) a ~170-character comment line in `from_tree_id`'s WHY — rewrapped.
+  - `[low]` `[reject]` (blind) no `debug_assert!` for a non-empty `workspace_names` — a guard against a jj-lib invariant (the view's wc ids update only at the rebase) nobody meets in use.
+  - `[low]` `[defer]` (blind) the matrix's "Invalid path" example `../x` is never exercised — verified: the shared `build_matcher` accepts `../x` as a literal prefix (pre-existing, also restore/squash/split), so it commits with the unmatched warning while the CLI refuses; `/x` refuses on both sides. Deferred (spec `deferred:` item 4, mirrored).
+  - `[low]` `[patch]` (blind) `CommitRequest.message` doc said "required" though absent is accepted — now "optional on the wire" (schemas/envelope.fbs + regenerated code).
+  - `[low]` `[patch]` (blind) the Dart paths round trip checked only the new `@` — now also the committed `@`'s description and the new `@` id.
+  - `[medium]` `[patch]` (edge) immutable descendants rebased — same root as the blind rebase row; fixed there.
+  - `[low]` `[reject]` (edge) a finish that mints another `@` would be missing from `new_change_ids` — needs `immutable_heads()` to cover a brand-new empty head; the same for every `@`-moving verb, never met in use.
+  - `[low]` `[reject]` (edge) a malformed `ui.editor` does not refuse `commit` as the CLI's `text_editor()` does — a broken config every CLI command would trip on; the fix is a new config read and refusal branch.
+  - `[low]` `[patch]` (verification-gap) conflicted bookmark / merge `@` advance untested — same group as the blind untested row; fixed there.
+  - `[false]` `[reject]` (verification-gap, other) spec vs sprint-status status — same as the first row.
+  - `[medium]` `[defer]` (intent) the GUI-tree arm is not built — the story's own "Depends on: 9.50 for the tree arm only"; already `deferred:` item 1 (a23d5a4), not added twice.
+  - `[false]` `[reject]` (intent) paths are prefixes, not filesets — the fileset DSL is terminal input language (ADR-0003); every path verb takes prefixes.
+  - `[medium]` `[defer]` (intent) trailers not applied — the open `commit_trailers` gap the story names; already `deferred:` item 2 and ledgered.
+  - `[false]` `[reject]` (intent) no "no `-m`" state — the story drops the editor arm ("the GUI always passes `-m`").
+  - `[false]` `[reject]` (intent) nothing tests the 9.40 gate — `commit` always writes a rewrite and a new commit; the gate cannot fire.
+  - `[false]` `[reject]` (intent) status surfaces disagree — same as the first row.
+  - `[low]` `[reject]` (intent) `jj.no_working_copy` not driven at FFI/Dart — same as the FFI refusal row.
+
 ## Design Notes
 
 - **`message` is required.** The story drops the editor arm ("the GUI always passes `-m`"), so the API has no "no `-m`" state: `CommitOptions.message` is a plain `Vec<String>` (empty ≡ `-m ""`, `join_message_paragraphs(&[]) == ""`). Unlike 9.15, there is no "editor saved unchanged" fallback to define. A composer that wants to keep `@`'s description passes it back as one paragraph.
@@ -165,3 +202,29 @@ CLI anchors at `v0.46.0`; jj-lib anchors in vendored `jj-lib-0.46.0/src`; Zanshi
 - `cargo make codegen` -- expected: regenerated files committed, no further diff.
 - `cargo test -p zanshin-jj --test commit` and `cargo test -p zanshin-parity --test oracle` -- expected: all pass.
 - `cargo make test` (unpiped, synchronous, long timeout) -- expected: exit 0, coverage ratchet and extern-fn guard green.
+
+## Auto Run Result
+
+Status: done
+
+**Summary.** `jj commit -m <paragraphs> [paths]` is ported step for step from `cmd_commit` at v0.46.0 and wired end to end (`.fbs` `CommitRequest` → `Repo::commit(&CommitOptions)` → `zanshin_commit` → `CommitCommand` → `RepoHandle.commit`). Checks run in the CLI's order before the transaction (no `@` → `jj.no_working_copy`, then paths, then `experimental-advance-branches`); the selection starts from `@`'s parent tree (no paths = everything); `@` is rewritten in place with the `-m` text, a new `@` holds the old `@`'s tree in every workspace on it, matching bookmarks on `@`'s parents advance to the committed `@`, and the finish rebases only mutable descendants. New warning `jj.commit_paths_unmatched` with the CLI text; `[experimental-advance-branches]` defaults added to the builtin config.
+
+**Commits.** a23d5a4 (spec + deferrals mirrored), 121cb7c (feature), 8f20114 (review patches), plus the finalisation commit of this spec, deferred-work.md and sprint-status.yaml.
+
+**Files changed.**
+- `crates/zanshin-jj/src/commit.rs` (new) — the verb, `CommitOptions`, advance-bookmarks helpers.
+- `crates/zanshin-jj/src/{config,warning,repo,lib,bookmark_ops,op_support}.rs` — builtin advance defaults + reader, `CommitPathsUnmatched`, the `Repo::commit` facade, re-export, `union_expression` shared, `from_tree_id` WHY.
+- `schemas/envelope.fbs` + four generated files — `RequestKind.Commit`, `CommitRequest`.
+- `crates/zanshin-ffi/src/{commit,envelope,lib}.rs` — `zanshin_commit` (67 exports), the warning code.
+- `packages/zanshin_core` — `ffi/commit.dart`, worker command/method/arm, `RepoHandle.commit`, `ZanshinWarningCode.commitPathsUnmatched`.
+- Tests: `crates/zanshin-jj/tests/commit.rs` (18), `crates/zanshin-ffi/tests/commit_ffi.rs` (5), `packages/zanshin_core/test/{ffi,worker}/commit_test.dart`, `api_stability.rs`, 17 parity scenarios (`commit_trailers` ledgered).
+- Docs/ledgers: `docs/ffi-abi.md`, `docs/rust-error-codes.md`, `coverage-baseline.txt` (both `commit.rs` at 100), `sprint-status.yaml` (9-49 done), `deferred-work.md`.
+
+**Review.** 26 findings (medium 4, low 16, false 6). Patched: the finish rebased immutable descendants (medium; `rebase_descendants_with_options` with the resolved immutable set, proven by `commit_immutable_wc_with_child`, which fails with the old code), plus seven low entries (merge `@` / conflicted bookmark / root-path witnesses, three oracle refusal scenarios, the `jj.jj_lib_error` clause, v0.46 anchors, a long comment line, the `CommitRequest.message` wire doc, the Dart paths assertion). Deferred: the shared prefix matcher accepting `../x` (low, new `deferred:` item 4, mirrored); the GUI-tree arm and trailers re-confirmed (items 1-2). Rejected with reasons in the triage log: the error code/context of a bad advance pattern (matches the CLI's user error), the single FFI refusal code (mapping unit-tested), `NotAGitRepo` docs (sibling convention), a `debug_assert`, a minted-`@` corner, a malformed `ui.editor`, and six false findings (status bookkeeping ×3, filesets, optional `-m`, the 9.40 gate).
+
+**Follow-up review recommendation:** false — one medium entry patched, no high (patched counts: high 0, medium 1, low 7 entries).
+
+**Verification.** `cargo test -p zanshin-jj --test commit` (18 pass), `cargo test -p zanshin-parity --test oracle` (86 pass; only `commit_trailers` diverges, through its ledger entry), `cargo make codegen` (committed, no further diff), clippy `-D warnings` on the touched crates clean, `cargo make test` exit 0 after the review patches (792 s; coverage ratchet and extern-fn guard green, baseline unchanged). Matrix audit: every row has a passing test except the literal `../x` example of the "Invalid path" row, which the shared matcher does not refuse — the row is covered with `/x` (refused on both sides) and the `../x` gap is deferred item 4.
+
+**Residual risks.** The GUI-tree arm waits for 9.50; trailers and custom templates are not rendered; `jj new` does not advance bookmarks; path prefixes do not refuse `..` (all deferred). The `jj.no_working_copy` refusal is witnessed at zanshin-jj and in the oracle, not over FFI/Dart.
+
