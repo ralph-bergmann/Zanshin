@@ -69,6 +69,9 @@ deferred: []
 
 ## Spec Change Log
 
+- 2026-10-19 (implementation): two premises did not hold against the real worker. (1) Diverged cannot be a `describe` of `main`'s change: jj's default `trunk()` resolves to `main@origin`, so A is immutable and the rewrite is refused with `jj.immutable` (as by the CLI). Diverged now moves the local `main` to a sibling of A (`git commit-tree` with A's tree on A0). (2) Git HEAD is symbolic on `main` after `convert`, so moving `refs/heads/main` also moves HEAD; the import puts @ on the new target with the old files still on disk, which reads `dirty` for behind. All three moves therefore share one helper: `update-ref refs/heads/main <rev>`, then `newChange` on the local `main`'s target (checks out its tree, @ empty). Still only shipped verbs and git ref plumbing; the matrix's expected readings are unchanged.
+- 2026-10-19 (implementation): the seed target was wrong. flutter_tools' `Config._configPath` (base/config.dart) reads `$XDG_CONFIG_HOME/<name>` when the variable is set — no `flutter/` segment — and `~/.config/flutter/<name>` only when it is unset; a copy at `target/test-xdg-config/flutter` left `enable-windowing` off and failed the windowing tests ("Windowing APIs are not enabled"). The script now copies flutter's two config files, `settings` and `tool_state`, from `${XDG_CONFIG_HOME:-$HOME/.config/flutter}` to the pinned dir's root (each replaced fresh, skipped when absent or when the source already is the pinned dir); `jj/` is untouched. The Makefile WHY comment names the real lookup.
+
 ## Review Triage Log
 
 ## Design Notes
