@@ -645,14 +645,17 @@ fn new_on_one_parent_advances_the_bookmarks_of_its_parents() {
 }
 
 #[test]
-fn new_leaves_a_disabled_bookmark_and_the_default_config_moves_nothing() {
+fn new_leaves_a_disabled_bookmark() {
     let mut fx =
         base_with("[experimental-advance-branches]\nenabled-branches = [\"*\"]\ndisabled-branches = [\"b-mark\"]\n");
     let (b, c) = (fx.b.clone(), fx.c.clone());
     mark(&mut fx, "b-mark", &b);
     fx.repo.new_change(std::slice::from_ref(&c)).expect("new");
     assert_eq!(bookmark(&fx.root, "b-mark"), Some(b));
+}
 
+#[test]
+fn new_under_the_default_config_moves_nothing() {
     let mut fx = base();
     let (b, c) = (fx.b.clone(), fx.c.clone());
     mark(&mut fx, "b-mark", &b);

@@ -2203,12 +2203,12 @@ ZanshinBuf *zanshin_describe(uint64_t handle, const char *change_id, const char 
  *   written.
  * - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
  * - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
- *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or (one
- *   parent) an `experimental-advance-branches` key is not a list of strings (Story 9.49 closing
- *   run); nothing is written. Or the
+ *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
  *   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
  *   `context`): operations it committed before the fault stay, as in the CLI (colocated:
- *   `import git head`), and the partial `precondition` says which.
+ *   `import git head`), and the partial `precondition` says which. Or (one parent) an
+ *   `experimental-advance-branches` key is not a list of strings (Story 9.49 closing run);
+ *   nothing is written.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.

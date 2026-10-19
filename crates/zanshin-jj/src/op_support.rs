@@ -739,11 +739,13 @@ pub(crate) fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, String
 /// RESOLVED path, as the CLI's do. Empty for an empty list.
 ///
 /// Each entry is first checked by `RepoPath::from_internal_string` (so `/x`, `x/` and `a//b`
-/// stay refused and `""` stays the root), then resolved through jj-lib's
+/// stay refused and `""` stays the root — note the CLI accepts `x/` and `a//b`, normalising
+/// them to `x` and `a/b`; refusing them is this module's older, deliberate contract, kept), then
+/// resolved through jj-lib's
 /// `ui_path::parse_fs_path` (`ui_path.rs:156-169` @ jj-lib 0.46.0) — the function the CLI's
 /// `parse_file_path` and Story 9.22's `wc_ops::parse_paths` call — with a synthetic `"."` as
-/// both the cwd and the workspace root. That is exact, not an approximation: the entry is
-/// already repo-relative, and `parse_fs_path` is purely lexical (`file_util::normalize_path` +
+/// both the cwd and the workspace root. For the `.`/`..` components that is exact, not an
+/// approximation: the entry is already repo-relative, and `parse_fs_path` is purely lexical (`file_util::normalize_path` +
 /// `relative_path` + `RepoPathBuf::from_relative_path`), so `.` drops, `..` pops, and a `..`
 /// with nothing left to pop is refused with jj-lib's own text — what the CLI prints when run
 /// from the workspace root — with no workspace handle needed.
