@@ -1558,3 +1558,9 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **`projects_window_test.dart` fails intermittently under the full gate's load.** Low.
   - `_Rig.settle` (`app/test/features/projects/projects_window_test.dart:147-153`) gives real settings-file IO at most 100 × 5 ms; two of three `cargo make test` runs in this story failed there on different tests ("Add directory …", "drops one jj folder …", "keys ↩ opens a project …"), the file passes alone and the third gate run was green. Pre-existing; the story touched no app code.
   - **Follow-up:** wait on the IO completing (or raise the budget) instead of a fixed 500 ms poll.
+
+## Surfaced in the closing run of Story 9.48 (bmad-build-auto, 2026-10-19)
+
+- **Two sibling test helpers still wait a fixed number of polls on real settings-file IO.** Low.
+  - `home_page_test.dart`'s `settle` (100 × 5 ms, `app/test/features/home/home_page_test.dart:99-105`) and `app_window_coordinator_test.dart`'s `until` (200 × 5 ms, `app/test/features/window/app_window_coordinator_test.dart:135-140`) wait on work that ends in fsync'd, chained `SettingsStore` writes, the pattern that flaked in `projects_window_test.dart`; neither has been seen failing. The closing run fixed only the projects-window helper (real-time budget, spec-9-48-closing-projects-window-settle-budget).
+  - **Follow-up:** give both the same real-time `Stopwatch` budget if either flakes under the gate.
