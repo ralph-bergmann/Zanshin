@@ -31,6 +31,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/mutate.rs new_change; Story 9.48
     severity: low
+    resolved: >-
+      2026-10-19 — fixed (spec-9-49-closing-new-advance-escaping-paths, commit b605329): new_change advances the bookmarks experimental-advance-branches selects for a single parent, reusing commit.rs' helpers; six oracle scenarios.
   - summary: >-
       The shared prefix matcher accepts a path that escapes the repo (`../x`) as a literal prefix, so `commit`, `restore`, `squash` and `split` warn and run where the CLI refuses "Path is not in the repo"; the I/O matrix's "Invalid path" example `../x` therefore does not refuse (`/x` does).
     evidence: |-
@@ -38,6 +40,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/op_support.rs build_matcher / parse_prefixes
     severity: low
+    resolved: >-
+      2026-10-19 — fixed (spec-9-49-closing-new-advance-escaping-paths, commit b605329): parse_prefixes resolves entries with ui_path::parse_fs_path and refuses a path outside the repo with the CLI's text; an oracle scenario per path verb.
 ---
 
 <intent-contract>
