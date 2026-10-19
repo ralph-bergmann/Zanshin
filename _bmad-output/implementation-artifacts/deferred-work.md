@@ -1543,3 +1543,9 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **The shared prefix matcher accepts a path that escapes the repo.** Low.
   - `op_support::parse_prefixes` (`crates/zanshin-jj/src/op_support.rs`) takes `RepoPathBuf::from_internal_string`, which accepts `..` components, so `commit`/`restore`/`squash`/`split` with `../x` warn and run where the CLI refuses ("Path … is not in the repo"); found in Story 9.49's review (`commit(paths: ["../x"])` committed). `file track`/`untrack` (Story 9.22) already parse cwd-relative and refuse escaping paths.
   - **Follow-up:** refuse `.`/`..` components in `parse_prefixes` (or reuse 9.22's parser) with an oracle scenario per path verb.
+
+## Surfaced in the closing run of Story 9.49 (bmad-build-auto, 2026-10-19)
+
+- **`file show` with one path and `file annotate` do not resolve `.`/`..` like the CLI.** Low.
+  - Both parse their path with `file.rs`'s own `parse_path` (`RepoPathBuf::from_internal_string`, `crates/zanshin-jj/src/file.rs:254-258`, used at `:485` and `:545`), so `./x` and `a/../x` are looked up literally and refused as `jj.path_not_found`, and `../x` is refused as `jj.path_not_found` where the CLI resolves the first two and refuses the last with "Path is not in the repo" (`parse_file_path`, jj-lib 0.46.0 `ui_path.rs:156-169`). The closing run fixed the shared prefix matcher only.
+  - **Follow-up:** route `parse_path` through the same resolution as `op_support::parse_prefixes`, with a test per form.
