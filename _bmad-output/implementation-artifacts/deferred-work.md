@@ -1564,3 +1564,12 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **Two sibling test helpers still wait a fixed number of polls on real settings-file IO.** Low.
   - `home_page_test.dart`'s `settle` (100 × 5 ms, `app/test/features/home/home_page_test.dart:99-105`) and `app_window_coordinator_test.dart`'s `until` (200 × 5 ms, `app/test/features/window/app_window_coordinator_test.dart:135-140`) wait on work that ends in fsync'd, chained `SettingsStore` writes, the pattern that flaked in `projects_window_test.dart`; neither has been seen failing. The closing run fixed only the projects-window helper (real-time budget, spec-9-48-closing-projects-window-settle-budget).
   - **Follow-up:** give both the same real-time `Stopwatch` budget if either flakes under the gate.
+
+## Surfaced in Story 9.29 (bmad-build-auto, 2026-10-19)
+
+- **No app-level real-worker test reads a diverged, ahead or behind project through `_WorkerProjectRepo.read()`.** Medium.
+  - A tracked non-`git` remote needs a fetch, a clone or `remotes.<name>.auto-track-bookmarks`: fetch/clone spawn a git child the Dart VM reaps (zanshin_core `mutate_test.dart` `gitFetch` note), and jj 0.46 keeps repo-scope config in the secure store under `$XDG_CONFIG_HOME`, which `test-flutter` deliberately does not pin (`Makefile.toml:138-140`). Covered instead by the pure `statusFrom`/`trackingStatusOf` tests (`app/test/features/projects/worker_project_repos_test.dart`) and zanshin_core's real-cdylib rewrite test.
+  - **Follow-up:** pin `XDG_CONFIG_HOME` for the app suite without breaking flutter's own settings (e.g. seed the pinned dir with the flutter config), then add a real `read()` test that ends `diverged` / `ahead` / `behind`.
+- **A never-pushed tracked bookmark (the CLI's `(not created yet)` remote row) reads as a clean dot, not "ahead of remote".** Low.
+  - The dot follows design question (a)'s "from 9.29's distances"; the CLI prints no distance for an absent remote target (`format_commit_ref`, `cli/src/config/templates.toml` @ v0.46.0), so `trackingStatusOf` (`app/lib/src/features/projects/project_repos.dart`) returns null.
+  - **Follow-up:** Ralph decides; if it should read ahead, count a tracked remote row with a null target next to a present local bookmark as local-ahead.
