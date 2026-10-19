@@ -39,6 +39,7 @@
 //! [`MutateError::InvalidInput`]: a library must not abort the process on a caller-reachable
 //! path.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use futures::TryStreamExt as _;
@@ -52,12 +53,13 @@ use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::ReadonlyRepo;
-use jj_lib::repo_path::RepoPathBuf;
+use jj_lib::repo_path::{RepoPath, RepoPathBuf};
 use jj_lib::revset::{ResolvedRevsetExpression, RevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::{restore_tree, CommitWithSelection};
 use jj_lib::store::Store;
 use jj_lib::trailer::{parse_description_trailers, Trailer};
 use jj_lib::transaction::Transaction;
+use jj_lib::ui_path::parse_fs_path;
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{be, cfg, MutateError};
@@ -700,7 +702,7 @@ pub(crate) fn resolve_or_wc(
 /// reads — filters with.
 ///
 /// An EMPTY `paths` means "all paths" (`EverythingMatcher`); otherwise each entry is a
-/// repo-relative path interpreted as a PREFIX.
+/// repo-relative path interpreted as a PREFIX, parsed by [`parse_prefixes`].
 ///
 /// WHY not the fileset DSL: the CLI parses `paths` with `fileset::parse_maybe_bare`, whose
 /// *bare* form is exactly `prefix_path` — so `PrefixMatcher` reproduces the CLI's
@@ -716,10 +718,15 @@ pub(crate) fn resolve_or_wc(
 /// send an empty LIST, not a list holding an empty string. Pinned by
 /// `build_matcher_treats_an_empty_path_entry_as_the_repo_root` in `mutate.rs`.
 ///
+/// `.` and `..` components resolve the way the CLI resolves a path typed at the workspace root
+/// (Story 9.49 closing run): `./x` is `x`, `a/../b` is `b`, `.` and `a/..` are the root, and a
+/// `..` that leaves the repository is refused — see [`parse_prefixes`].
+///
 /// # Errors
 ///
 /// Returns the human-readable reason an entry is not a valid repo path (a leading or
-/// trailing `/`, or a `//`); each caller wraps it in its own "invalid input" variant.
+/// trailing `/`, or a `//`), or leaves the repository through `..` (`invalid path: Path
+/// "../x" is not in the repo "."`); each caller wraps it in its own "invalid input" variant.
 pub(crate) fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, String> {
     if paths.is_empty() {
         return Ok(Box::new(jj_lib::matchers::EverythingMatcher));
@@ -728,15 +735,30 @@ pub(crate) fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, String
 }
 
 /// The entries of `paths` as repo paths — [`build_matcher`]'s prefixes, and the EXPLICIT paths
-/// the CLI's `print_unmatched_explicit_paths` checks (Story 9.32). Empty for an empty list.
+/// the CLI's `print_unmatched_explicit_paths` checks (Story 9.32), so its warnings name the
+/// RESOLVED path, as the CLI's do. Empty for an empty list.
+///
+/// Each entry is first checked by `RepoPath::from_internal_string` (so `/x`, `x/` and `a//b`
+/// stay refused and `""` stays the root), then resolved through jj-lib's
+/// `ui_path::parse_fs_path` (`ui_path.rs:156-169` @ jj-lib 0.46.0) — the function the CLI's
+/// `parse_file_path` and Story 9.22's `wc_ops::parse_paths` call — with a synthetic `"."` as
+/// both the cwd and the workspace root. That is exact, not an approximation: the entry is
+/// already repo-relative, and `parse_fs_path` is purely lexical (`file_util::normalize_path` +
+/// `relative_path` + `RepoPathBuf::from_relative_path`), so `.` drops, `..` pops, and a `..`
+/// with nothing left to pop is refused with jj-lib's own text — what the CLI prints when run
+/// from the workspace root — with no workspace handle needed.
 ///
 /// # Errors
 ///
 /// As [`build_matcher`].
 pub(crate) fn parse_prefixes(paths: &[String]) -> Result<Vec<RepoPathBuf>, String> {
+    let root = Path::new(".");
     paths
         .iter()
-        .map(|path| RepoPathBuf::from_internal_string(path.clone()).map_err(|e| format!("invalid path: {e}")))
+        .map(|path| {
+            RepoPath::from_internal_string(path).map_err(|e| format!("invalid path: {e}"))?;
+            parse_fs_path(root, root, path).map_err(|e| format!("invalid path: {e}"))
+        })
         .collect()
 }
 
@@ -1476,5 +1498,43 @@ mod tests {
             .to_owned(),
         )];
         assert!(direct_transaction_openers(&sources).is_empty());
+    }
+
+    // ── parse_prefixes: `.`/`..` resolve like the CLI's paths (Story 9.49 closing run) ──
+
+    fn prefixes(entries: &[&str]) -> Result<Vec<String>, String> {
+        let paths: Vec<String> = entries.iter().map(|e| (*e).to_owned()).collect();
+        super::parse_prefixes(&paths).map(|v| v.iter().map(|p| p.as_internal_file_string().to_owned()).collect())
+    }
+
+    #[test]
+    fn parse_prefixes_resolves_dot_components_lexically() {
+        assert_eq!(prefixes(&["."]), Ok(vec![String::new()]));
+        assert_eq!(prefixes(&["./x"]), Ok(vec!["x".to_owned()]));
+        assert_eq!(prefixes(&["a/../b"]), Ok(vec!["b".to_owned()]));
+        assert_eq!(prefixes(&["a/.."]), Ok(vec![String::new()]));
+        assert_eq!(prefixes(&["x/./y"]), Ok(vec!["x/y".to_owned()]));
+        assert_eq!(prefixes(&["", "a/b"]), Ok(vec![String::new(), "a/b".to_owned()]));
+        assert_eq!(prefixes(&[]), Ok(vec![]));
+    }
+
+    #[test]
+    fn parse_prefixes_refuses_a_path_that_leaves_the_repo_with_the_cli_text() {
+        for entry in ["..", "../x", "a/../../x"] {
+            assert_eq!(
+                prefixes(&["ok", entry]),
+                Err(format!(r#"invalid path: Path "{entry}" is not in the repo ".""#)),
+                "{entry}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_prefixes_keeps_refusing_what_is_not_a_repo_path() {
+        for entry in ["/x", "x/", "a//b"] {
+            let reason = prefixes(&[entry]).expect_err(entry);
+            assert!(reason.starts_with("invalid path: "), "{reason}");
+            assert!(!reason.contains("is not in the repo"), "{reason}");
+        }
     }
 }

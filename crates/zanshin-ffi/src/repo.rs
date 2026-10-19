@@ -829,7 +829,8 @@ pub unsafe extern "C" fn zanshin_describe(
 
 /// Create a new, empty change on top of `parents` in the repo referenced by `handle`
 /// and switch the working copy to it — a merge commit when `parents` has more than
-/// one entry.
+/// one entry. With exactly one parent, the bookmarks `experimental-advance-branches` selects
+/// move from that parent's parents to the parent, as the CLI's `jj new` does.
 ///
 /// `parents` crosses as a `ChangeIdList` `FlatBuffers` request buffer (ADR-0001
 /// composite-input pattern), not `args_json` and not a raw C-string array.
@@ -842,10 +843,14 @@ pub unsafe extern "C" fn zanshin_describe(
 /// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
 ///   is not `NewChange`. The two wrappers that read this ONE table carry different kinds, so an
 ///   `Abandon`-tagged buffer is refused here rather than treated as `parents`.
-/// - `jj.invalid_input` — the parsed `parents` list is empty.
+/// - `jj.invalid_input` — the parsed `parents` list is empty, or (one parent) an
+///   `experimental-advance-branches` pattern does not parse (Story 9.49 closing run); nothing is
+///   written.
 /// - `jj.change_not_found` — a parent id is malformed, absent, only-hidden, or divergent.
 /// - `jj.config_error` — the repo's effective jj config stack changed under the open handle and no
-///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
+///   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or (one
+///   parent) an `experimental-advance-branches` key is not a list of strings (Story 9.49 closing
+///   run); nothing is written. Or the
 ///   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
 ///   `context`): operations it committed before the fault stay, as in the CLI (colocated:
 ///   `import git head`), and the partial `precondition` says which.

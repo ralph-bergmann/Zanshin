@@ -112,6 +112,18 @@ parity!(
     commit_path_outside_repo,
     commit_advance_bad_pattern,
     commit_advance_not_a_list,
+    new_advance_bookmarks,
+    new_advance_bookmarks_disabled,
+    new_advance_interior,
+    new_merge_advance_none,
+    new_advance_bad_pattern,
+    new_merge_ignores_bad_pattern,
+    commit_path_escapes_repo,
+    restore_path_escapes_repo,
+    squash_path_escapes_repo,
+    split_path_escapes_repo,
+    absorb_path_escapes_repo,
+    commit_path_dot_components,
 );
 
 /// Every scenario id the table and the init list define.
@@ -126,7 +138,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 77);
+    assert_eq!(SCENARIO_IDS.len(), 89);
 }
 
 #[test]

@@ -972,11 +972,19 @@ impl Repo {
     /// Creates a new, empty change on top of `parents` (FR-JJ-10a) — a merge commit
     /// when `parents.len() > 1` — and switches the working copy to it.
     ///
+    /// With exactly one parent, the bookmarks `experimental-advance-branches` selects (enabled ∩
+    /// ¬disabled; the default `enabled-branches = []` selects none) move from that parent's
+    /// parents to the parent, as the CLI's `jj new` does (Story 9.49 closing run). Two or more
+    /// parents never read that config.
+    ///
     /// # Errors
     ///
-    /// - [`crate::MutateError::InvalidInput`] — `parents` is empty.
+    /// - [`crate::MutateError::InvalidInput`] — `parents` is empty, or (one parent) an
+    ///   `experimental-advance-branches` pattern does not parse; nothing is written.
     /// - [`crate::MutateError::ChangeNotFound`] — a parent id is malformed, absent,
     ///   only-hidden, or divergent.
+    /// - [`crate::MutateError::Config`] — (one parent) an `experimental-advance-branches` key is
+    ///   not a list of strings; nothing is written.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26),
     ///   including an effective jj config that changed and no longer reads (see
     ///   [`Repo::open`]); refused before the verb itself runs.

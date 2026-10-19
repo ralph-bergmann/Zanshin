@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! Story 9.49 — `Repo::commit`, one witness per row of the I/O matrix, read back through
-//! jj-lib.
+//! jj-lib. Its closing run adds `Repo::new_change`'s one-parent bookmark advance and the `.`/`..`
+//! path rule.
 //!
 //! Every repo is built in-test with Zanshin's own verbs on a non-colocated internal-git repo:
 //! `A (a.txt) → B (b.txt) → C (c.txt) = @`, descriptions `A\n`, `B\n`, `C\n`. The CLI comparison
@@ -131,8 +132,11 @@ fn options(paths: &[&str], message: &[&str]) -> CommitOptions {
     }
 }
 
-/// `A (a.txt) → B (b.txt) → C (c.txt) = @`, with `repo_config` as the legacy repo config
-/// (migrated by the start-up fix-up).
+/// `A (a.txt) → B (b.txt) → C (c.txt) = @`, with `repo_config` as the repo config. The history
+/// is built under an empty legacy repo config (migrated by the start-up fix-up into the secure
+/// file it then links to), and `repo_config` is written through that link afterwards: a
+/// one-parent `new` reads `experimental-advance-branches` too (Story 9.49 closing run), so a
+/// bad pattern would refuse the history's own `new`s.
 fn base_with(repo_config: &str) -> Fx {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
@@ -143,7 +147,8 @@ fn base_with(repo_config: &str) -> Fx {
         .expect("init")
         .workspace_root()
         .to_owned();
-    fs::write(root.join(".jj").join("repo").join("config.toml"), repo_config).expect("repo config");
+    let config_path = root.join(".jj").join("repo").join("config.toml");
+    fs::write(&config_path, "").expect("repo config");
     let mut repo = Repo::open(&root).expect("open");
     let step = |repo: &mut Repo, path: &str, description: &str| -> ChangeId {
         fs::write(root.join(path), format!("{path}\n")).expect("write");
@@ -156,6 +161,12 @@ fn base_with(repo_config: &str) -> Fx {
     let b = step(&mut repo, "b.txt", "B\n");
     repo.new_change(std::slice::from_ref(&b)).expect("new");
     let c = step(&mut repo, "c.txt", "C\n");
+    assert!(
+        config_path.is_symlink(),
+        "the fix-up linked the legacy file to the secure one"
+    );
+    fs::write(&config_path, repo_config).expect("repo config");
+    let mut repo = Repo::open(&root).expect("reopen");
     let _ = repo.take_warnings();
     Fx {
         _tmp: tmp,
@@ -546,4 +557,176 @@ fn a_bad_advance_pattern_or_value_is_refused() {
     // The path validation comes before the config read.
     let err = assert_refused_without_an_operation(&mut fx, &options(&["/x"], &["first"]));
     assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
+}
+
+#[test]
+fn a_path_that_leaves_the_repo_is_refused_before_the_transaction() {
+    let mut fx = base();
+    let err = assert_refused_without_an_operation(&mut fx, &options(&["../x"], &["first"]));
+    assert!(
+        matches!(&err, MutateError::InvalidInput { reason } if reason == r#"invalid path: Path "../x" is not in the repo ".""#),
+        "{err:?}"
+    );
+}
+
+/// `.` and `..` components resolve the way the CLI resolves a path typed at the workspace root.
+#[test]
+fn dot_components_in_a_path_resolve_like_the_cli() {
+    let mut fx = base();
+    for name in ["x.txt", "y.txt", "z.txt"] {
+        fs::write(fx.root.join(name), format!("{name}\n")).expect("write");
+    }
+
+    let result = fx
+        .repo
+        .commit(&options(&["./x.txt", "q/../y.txt"], &["first"]))
+        .expect("commit");
+
+    let old = wc(&fx.root);
+    let (committed, _) = assert_committed(&fx, &result, &old);
+    assert_eq!(files(&committed), ["a.txt", "b.txt", "x.txt", "y.txt"]);
+    assert!(fx.repo.take_warnings().is_empty());
+}
+
+// ── `new` with one parent advances bookmarks too (Story 9.49 closing run) ──────────────
+
+const ADVANCE_ALL: &str = "[experimental-advance-branches]\nenabled-branches = [\"*\"]\n";
+const BAD_PATTERN: &str = "[experimental-advance-branches]\nenabled-branches = [\"glob:[\"]\n";
+
+/// Rewrites the repo config (through the legacy file's link) and reopens the handle.
+fn set_repo_config(fx: &mut Fx, repo_config: &str) {
+    fs::write(fx.root.join(".jj").join("repo").join("config.toml"), repo_config).expect("repo config");
+    fx.repo = Repo::open(&fx.root).expect("reopen");
+    let _ = fx.repo.take_warnings();
+}
+
+/// A, the parent of B.
+fn a_of(fx: &Fx) -> ChangeId {
+    parents(&fx.root, &commit(&fx.root, &fx.b))[0].clone()
+}
+
+fn mark(fx: &mut Fx, name: &str, at: &ChangeId) {
+    fx.repo.bookmark_create(&strings(&[name]), Some(at)).expect("bookmark");
+}
+
+/// D, a described sibling of B on A — `@` afterwards.
+fn sibling_on_a(fx: &mut Fx) -> ChangeId {
+    let a = a_of(fx);
+    let d = fx
+        .repo
+        .new_change(std::slice::from_ref(&a))
+        .expect("new")
+        .new_change_ids[0]
+        .clone();
+    fx.repo.describe(d.clone(), "D\n").expect("describe");
+    d
+}
+
+fn assert_new_refused_without_an_operation(fx: &mut Fx, parents: &[ChangeId]) -> MutateError {
+    let before = head_op(&fx.root);
+    let err = fx.repo.new_change(parents).expect_err("refused");
+    assert_eq!(head_op(&fx.root), before, "a refusal writes no operation");
+    err
+}
+
+#[test]
+fn new_on_one_parent_advances_the_bookmarks_of_its_parents() {
+    let mut fx = base_with(ADVANCE_ALL);
+    let (b, c) = (fx.b.clone(), fx.c.clone());
+    mark(&mut fx, "b-mark", &b);
+
+    let result = fx.repo.new_change(std::slice::from_ref(&c)).expect("new");
+
+    assert_eq!(bookmark(&fx.root, "b-mark"), Some(c.clone()));
+    let at = wc(&fx.root);
+    assert_eq!(parents(&fx.root, &at), [c]);
+    assert_eq!(result.new_change_ids, [change_id(&at)]);
+    assert_eq!(head_op(&fx.root).1, "new empty commit");
+}
+
+#[test]
+fn new_leaves_a_disabled_bookmark_and_the_default_config_moves_nothing() {
+    let mut fx =
+        base_with("[experimental-advance-branches]\nenabled-branches = [\"*\"]\ndisabled-branches = [\"b-mark\"]\n");
+    let (b, c) = (fx.b.clone(), fx.c.clone());
+    mark(&mut fx, "b-mark", &b);
+    fx.repo.new_change(std::slice::from_ref(&c)).expect("new");
+    assert_eq!(bookmark(&fx.root, "b-mark"), Some(b));
+
+    let mut fx = base();
+    let (b, c) = (fx.b.clone(), fx.c.clone());
+    mark(&mut fx, "b-mark", &b);
+    fx.repo.new_change(std::slice::from_ref(&c)).expect("new");
+    assert_eq!(bookmark(&fx.root, "b-mark"), Some(b));
+}
+
+/// An interior parent: the bookmarks of ITS parents move, the ones on the parent itself stay.
+#[test]
+fn new_on_an_interior_parent_advances_only_the_grandparent_bookmarks() {
+    let mut fx = base_with(ADVANCE_ALL);
+    let (a, b) = (a_of(&fx), fx.b.clone());
+    mark(&mut fx, "a-mark", &a);
+    mark(&mut fx, "b-mark", &b);
+
+    fx.repo.new_change(std::slice::from_ref(&b)).expect("new");
+
+    assert_eq!(bookmark(&fx.root, "a-mark"), Some(b.clone()));
+    assert_eq!(bookmark(&fx.root, "b-mark"), Some(b));
+}
+
+#[test]
+fn a_merge_new_advances_no_bookmark() {
+    let mut fx = base_with(ADVANCE_ALL);
+    let (a, b, c) = (a_of(&fx), fx.b.clone(), fx.c.clone());
+    mark(&mut fx, "a-mark", &a);
+    mark(&mut fx, "b-mark", &b);
+    let d = sibling_on_a(&mut fx);
+
+    let merge = fx
+        .repo
+        .new_change(&[c.clone(), d.clone()])
+        .expect("merge")
+        .new_change_ids[0]
+        .clone();
+
+    assert_eq!(parents(&fx.root, &commit(&fx.root, &merge)), [c, d]);
+    assert_eq!(bookmark(&fx.root, "a-mark"), Some(a));
+    assert_eq!(bookmark(&fx.root, "b-mark"), Some(b));
+}
+
+#[test]
+fn new_on_one_parent_refuses_a_bad_advance_pattern_or_value() {
+    let mut fx = base_with(BAD_PATTERN);
+    let c = fx.c.clone();
+    let err = assert_new_refused_without_an_operation(&mut fx, std::slice::from_ref(&c));
+    assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
+
+    set_repo_config(&mut fx, "[experimental-advance-branches]\nenabled-branches = \"*\"\n");
+    let err = assert_new_refused_without_an_operation(&mut fx, std::slice::from_ref(&c));
+    assert!(
+        matches!(&err, MutateError::Config { reason } if reason.contains("enabled-branches")),
+        "{err:?}"
+    );
+
+    // The parents resolve before the config is read.
+    let missing = ChangeId("y".repeat(32));
+    let err = assert_new_refused_without_an_operation(&mut fx, std::slice::from_ref(&missing));
+    assert!(matches!(err, MutateError::ChangeNotFound { .. }), "{err:?}");
+}
+
+#[test]
+fn a_merge_new_never_reads_the_advance_config() {
+    let mut fx = base();
+    let c = fx.c.clone();
+    let d = sibling_on_a(&mut fx);
+    set_repo_config(&mut fx, BAD_PATTERN);
+
+    let merge = fx
+        .repo
+        .new_change(&[c.clone(), d.clone()])
+        .expect("merge")
+        .new_change_ids[0]
+        .clone();
+
+    assert_eq!(parents(&fx.root, &commit(&fx.root, &merge)), [c, d]);
 }

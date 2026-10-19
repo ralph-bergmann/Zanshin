@@ -322,6 +322,56 @@ const ADVANCE_MERGE: &[Step] = &[
     Step::Jj(&["new", "c-mark", "s-mark"]),
 ];
 
+/// An `experimental-advance-branches.enabled-branches` pattern that does not parse (Story 9.49
+/// closing run).
+const BAD_PATTERN: &[Step] = &[Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "experimental-advance-branches.enabled-branches",
+    "[\"glob:[\"]",
+])];
+
+/// [`ADVANCE_ALL`] plus `a-mark` on A, so `new B` advances it (Story 9.49 closing run).
+const ADVANCE_ALL_A_MARK: &[Step] = &[
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "experimental-advance-branches.enabled-branches",
+        "[\"*\"]",
+    ]),
+    Step::Jj(&["bookmark", "create", "a-mark", "-r", "@--"]),
+];
+
+/// [`ADVANCE_ALL`] plus a described sibling D (d.txt) of B on A as `@`: `new C D` is a merge
+/// (Story 9.49 closing run).
+const ADVANCE_ALL_SIBLING_D: &[Step] = &[
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "experimental-advance-branches.enabled-branches",
+        "[\"*\"]",
+    ]),
+    Step::Jj(&["new", "@--", "-m", "D"]),
+    Step::Write("d.txt", "d\n"),
+];
+
+/// A described sibling D (d.txt) of B on A as `@`, THEN [`BAD_PATTERN`] — a one-parent `new`
+/// under it would be refused (Story 9.49 closing run).
+const SIBLING_D_BAD_PATTERN: &[Step] = &[
+    Step::Jj(&["new", "@--", "-m", "D"]),
+    Step::Write("d.txt", "d\n"),
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "experimental-advance-branches.enabled-branches",
+        "[\"glob:[\"]",
+    ]),
+];
+
 /// `@` = C with a described child D that `immutable_heads()` makes immutable — so `@` is
 /// immutable too, and `commit` (no rewritability guard) rewrites it while the finish leaves
 /// the immutable D in place (Story 9.49).
@@ -1239,6 +1289,122 @@ pub fn scenarios() -> Vec<Scenario> {
                 "commit_advance_not_a_list",
                 |repo, _, _| commit_outcome(repo, &[], &["first"]),
                 |_| args(&["commit", "-m", "first"]),
+            )
+        },
+        // ── Story 9.49 closing run: `new` advances bookmarks ────────────────────────
+        Scenario {
+            setup: ADVANCE_ALL,
+            ..simple(
+                "new_advance_bookmarks",
+                |repo, _, s| {
+                    let result = repo.new_change(&[s.change("@")]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["new"]),
+            )
+        },
+        Scenario {
+            setup: ADVANCE_ALL_BUT_B_MARK,
+            ..simple(
+                "new_advance_bookmarks_disabled",
+                |repo, _, s| {
+                    let result = repo.new_change(&[s.change("@")]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["new"]),
+            )
+        },
+        Scenario {
+            setup: ADVANCE_ALL_A_MARK,
+            ..simple(
+                "new_advance_interior",
+                |repo, _, s| {
+                    let result = repo.new_change(&[s.change("B")]);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["new".to_owned(), s.change_arg("B")],
+            )
+        },
+        Scenario {
+            setup: ADVANCE_ALL_SIBLING_D,
+            ..simple(
+                "new_merge_advance_none",
+                |repo, _, s| {
+                    let result = repo.new_change(&[s.change("C"), s.change("D")]);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["new".to_owned(), s.change_arg("C"), s.change_arg("D")],
+            )
+        },
+        Scenario {
+            setup: BAD_PATTERN,
+            ..simple(
+                "new_advance_bad_pattern",
+                |repo, _, s| {
+                    let result = repo.new_change(&[s.change("@")]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["new"]),
+            )
+        },
+        Scenario {
+            setup: SIBLING_D_BAD_PATTERN,
+            ..simple(
+                "new_merge_ignores_bad_pattern",
+                |repo, _, s| {
+                    let result = repo.new_change(&[s.change("C"), s.change("D")]);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["new".to_owned(), s.change_arg("C"), s.change_arg("D")],
+            )
+        },
+        // ── Story 9.49 closing run: `.`/`..` in path prefixes ────────────────────────
+        simple(
+            "commit_path_escapes_repo",
+            |repo, _, _| commit_outcome(repo, &["../x"], &["first"]),
+            |_| args(&["commit", "-m", "first", "../x"]),
+        ),
+        simple(
+            "restore_path_escapes_repo",
+            |repo, _, _| {
+                let result = repo.restore(None, None, None, &["../x".to_owned()], false);
+                zanshin_outcome(repo, &result)
+            },
+            |_| args(&["restore", "../x"]),
+        ),
+        Scenario {
+            setup: EDITOR,
+            ..simple(
+                "squash_path_escapes_repo",
+                |repo, _, _| {
+                    let options = SquashOptions {
+                        paths: vec!["../x".to_owned()],
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |_| args(&["squash", "../x"]),
+            )
+        },
+        simple(
+            "split_path_escapes_repo",
+            |repo, _, _| split_outcome(repo, &split_first(&["../x"])),
+            |_| args(&["split", "-m", "first", "../x"]),
+        ),
+        simple(
+            "absorb_path_escapes_repo",
+            |repo, _, _| {
+                let result = repo.absorb(None, None, &["../x".to_owned()]);
+                zanshin_outcome(repo, &result)
+            },
+            |_| args(&["absorb", "../x"]),
+        ),
+        Scenario {
+            files: &[("x.txt", "x\n"), ("y.txt", "y\n"), ("z.txt", "z\n")],
+            ..simple(
+                "commit_path_dot_components",
+                |repo, _, _| commit_outcome(repo, &["./x.txt", "q/../y.txt"], &["first"]),
+                |_| args(&["commit", "-m", "first", "./x.txt", "q/../y.txt"]),
             )
         },
     ]

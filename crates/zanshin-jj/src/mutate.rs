@@ -39,6 +39,7 @@ use jj_lib::transaction::Transaction;
 use jj_lib::working_copy::LockedWorkingCopy;
 use jj_lib::workspace::{LockedWorkspace, Workspace};
 
+use crate::commit::{advance_bookmarks, advance_bookmarks_matcher, advanceable_bookmarks};
 use crate::git::{map_export_err, project_failures};
 use crate::op_support::{check_rewritable, resolve_immutable, start_repo_transaction, ResolveError, SelectedTree};
 use crate::revset::resolve_expression;
@@ -437,13 +438,15 @@ pub(crate) fn res(e: ResolveError, id: Option<&ChangeId>) -> MutateError {
 }
 
 /// Wraps [`crate::op_support::build_matcher`] in this module's error type. The rule —
-/// empty list = everything, entries are PREFIXES, an empty-string entry is the root —
-/// lives in `op_support` because the file reads apply it identically.
+/// empty list = everything, entries are PREFIXES, an empty-string entry is the root, `.`/`..`
+/// components resolve lexically like the CLI's paths — lives in `op_support` because the file
+/// reads apply it identically.
 ///
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — an entry is not a valid repo path (a leading or
-///   trailing `/`, or a `//`).
+///   trailing `/`, or a `//`), or its `..` components leave the repository (the CLI's
+///   `Path "../x" is not in the repo "."`).
 pub(crate) fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, MutateError> {
     crate::op_support::build_matcher(paths).map_err(|reason| MutateError::InvalidInput { reason })
 }
@@ -802,11 +805,21 @@ pub(crate) fn describe(
 /// `parents.len() > 1`, via jj-lib's `merge_commit_trees` — and switches the working
 /// copy to it.
 ///
+/// With exactly ONE parent, the bookmarks `experimental-advance-branches` selects move from
+/// that parent's parents to the parent, as `cmd_new` does (`cli/src/commands/new.rs:194-204`,
+/// `:279-281` @ v0.46.0; Story 9.49 closing run): the advance config is read after the parents
+/// resolve and before anything is written, the bookmarks are taken from the head the verb
+/// loads, and they move after the `edit`. Two or more parents never read the config. The
+/// default config (`enabled-branches = []`) moves nothing.
+///
 /// # Errors
 ///
-/// - [`MutateError::InvalidInput`] — `parents` is empty.
+/// - [`MutateError::InvalidInput`] — `parents` is empty, or (one parent) an
+///   `experimental-advance-branches` pattern does not parse.
 /// - [`MutateError::ChangeNotFound`] — a parent id is malformed, absent, only-hidden, or
 ///   divergent.
+/// - [`MutateError::Config`] — (one parent) an `experimental-advance-branches` key is not a
+///   list of strings.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn new_change(
@@ -828,6 +841,17 @@ pub(crate) fn new_change(
     for change_id in parents {
         parent_commits.push(resolve_commit(tx.repo(), change_id)?);
     }
+    // `new.rs:194-204`: one parent ⇒ the bookmarks on ITS parents advance to it. The config is
+    // read here, after the parents resolved and before the first write.
+    let advance = match parent_commits.as_slice() {
+        [parent] => {
+            let (enabled, disabled) = crate::config::advance_branches(&ctx.config).map_err(cfg)?;
+            let matcher = advance_bookmarks_matcher(&enabled, &disabled)?;
+            let bookmarks = advanceable_bookmarks(readonly.view(), matcher.as_ref(), parent.parent_ids());
+            Some((bookmarks, parent.id().clone()))
+        }
+        _ => None,
+    };
     let parent_ids: Vec<_> = parent_commits.iter().map(|c| c.id().clone()).collect();
     let merged_tree = pollster::block_on(merge_commit_trees(tx.repo(), &parent_commits)).map_err(be)?;
     let new_commit = pollster::block_on(tx.repo_mut().new_commit(parent_ids, merged_tree).write()).map_err(be)?;
@@ -835,6 +859,10 @@ pub(crate) fn new_change(
     // usually a no-op — kept for parity with the CLI's own descendant-rebase step.
     pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
     pollster::block_on(tx.repo_mut().edit(workspace_name.clone(), &new_commit)).map_err(be)?;
+    // `new.rs:279-281`: the advance runs after the `edit`, before the finish.
+    if let Some((bookmarks, target)) = advance {
+        advance_bookmarks(tx.repo_mut(), bookmarks, &target)?;
+    }
     // edit() may have just recorded the previous `@` as abandoned (if it was
     // discardable — empty description, no diff from its parent), which leaves an
     // un-rebased entry in the transaction that would trip tx.commit()'s

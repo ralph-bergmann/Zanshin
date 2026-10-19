@@ -4,7 +4,9 @@
 //! (`cli/src/commands/commit.rs:83-196` @ v0.46.0) with the advance-bookmarks helpers of
 //! `cli/src/cli_util.rs` @ v0.46.0 (`load_advance_bookmarks_matcher` `:921-940`,
 //! `get_advanceable_bookmarks` `:2678-2701`, `advance_bookmarks` `:2880-2898`). Terminal text is
-//! not ported; the one `ui.warning_default` line becomes the call's warning.
+//! not ported; the one `ui.warning_default` line becomes the call's warning. The four advance
+//! items are `pub(crate)`: `jj new` with one parent shares them ([`crate::mutate::new_change`],
+//! Story 9.49 closing run), as the CLI's `cmd_new` shares the `cli_util` helpers.
 //!
 //! `@` is rewritten in place with the selected changes and the `-m` description, a new `@` is
 //! created on top of it with the old `@`'s full tree, and the bookmarks
@@ -53,8 +55,8 @@ pub struct CommitOptions {
 }
 
 /// A local bookmark eligible to advance — the CLI's `AdvanceableBookmark`: its name and the
-/// commit it moves away from.
-struct AdvanceableBookmark {
+/// commit it moves away from. Shared by `commit` and `new`.
+pub(crate) struct AdvanceableBookmark {
     name: RefNameBuf,
     old_commit_id: JjCommitId,
 }
@@ -62,11 +64,15 @@ struct AdvanceableBookmark {
 /// `load_advance_bookmarks_matcher` (`cli_util.rs:921-940` @ v0.46.0) over the two lists
 /// [`crate::config::advance_branches`] read: both are parsed as unioned name patterns, and an
 /// empty `enabled` is the feature off (`None`); otherwise the matcher is enabled ∩ ¬disabled.
+/// Shared by `commit` and `new`.
 ///
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — a pattern of either list does not parse.
-fn advance_bookmarks_matcher(enabled: &[String], disabled: &[String]) -> Result<Option<StringMatcher>, MutateError> {
+pub(crate) fn advance_bookmarks_matcher(
+    enabled: &[String],
+    disabled: &[String],
+) -> Result<Option<StringMatcher>, MutateError> {
     let enabled_expr = union_expression(enabled)?;
     let disabled_expr = union_expression(disabled)?;
     if enabled.is_empty() {
@@ -76,8 +82,8 @@ fn advance_bookmarks_matcher(enabled: &[String], disabled: &[String]) -> Result<
 }
 
 /// `get_advanceable_bookmarks` (`cli_util.rs:2678-2701` @ v0.46.0): the local bookmarks on the
-/// `from` commits whose name `matcher` matches, in `from` order.
-fn advanceable_bookmarks(
+/// `from` commits whose name `matcher` matches, in `from` order. Shared by `commit` and `new`.
+pub(crate) fn advanceable_bookmarks(
     view: &View,
     matcher: Option<&StringMatcher>,
     from: &[JjCommitId],
@@ -100,12 +106,13 @@ fn advanceable_bookmarks(
 }
 
 /// `advance_bookmarks` (`cli_util.rs:2880-2898` @ v0.46.0): each bookmark's old commit is
-/// replaced by `move_to` in its target — a conflicted bookmark stays conflicted.
+/// replaced by `move_to` in its target — a conflicted bookmark stays conflicted. Shared by
+/// `commit` and `new`.
 ///
 /// # Errors
 ///
 /// - [`MutateError::Backend`] — an index failure while merging a target.
-fn advance_bookmarks(
+pub(crate) fn advance_bookmarks(
     repo: &mut MutableRepo,
     bookmarks: Vec<AdvanceableBookmark>,
     move_to: &JjCommitId,
