@@ -2,7 +2,7 @@
 title: 'Story 9.15: `squash`, `split` (partial-file) + the squash plan phase'
 type: 'feature'
 created: '2026-10-19'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '6575d9ec7512b0ce4bca561aa4bd36c6db54ba00'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -24,6 +24,13 @@ deferred:
     location: >-
       crates/zanshin-jj/src/squash_split.rs
     severity: low
+  - summary: >-
+      The "editor saved unchanged" rule of squash and split ignores user templates: with `template-aliases.default_commit_description` (or a custom `templates.draft_commit_description`) the CLI's untouched buffer carries that text, Zanshin writes the bare descriptions.
+    evidence: |-
+      description_util.rs description_template @ v0.46.0 renders draft_commit_description, whose default is coalesce(description, default_commit_description, "\n"); split_builders and combined_editor_text use the descriptions alone. Zanshin renders no jj templates anywhere (same root as the ledgered templates.commit_trailers gap); the oracle runs stock templates only.
+    location: >-
+      crates/zanshin-jj/src/squash_split.rs split_builders; crates/zanshin-jj/src/op_support.rs combined_editor_text
+    severity: medium
 ---
 
 <intent-contract>
@@ -145,9 +152,42 @@ CLI anchors at `v0.46.0`; jj-lib anchors in vendored `jj-lib-0.46.0/src`; Zanshi
 
 ## Review Triage Log
 
+### 2026-10-19 — Review pass
+- verdicts: 29 findings — high 0, medium 6, low 19, false 4, maybe-false 0
+- findings:
+  - `[medium]` `[patch]` (blind) `squash_plan` ran jj-lib's `squash_commits`, so a preview wrote rewritten partial sources / rebased descendants to the store and could trigger commit signing — fixed in d19420b: `plan_squash(&Transaction, …)` is read-only, computes the abandoned set by jj-lib's own rule (rewrite.rs:1376-1385), and `squash_plan` never calls `squash_commits`.
+  - `[medium]` `[defer]` (blind) the "editor saved unchanged" rule ignores a custom `default_commit_description` / `draft_commit_description` — real (description_template @ v0.46.0), but Zanshin renders no jj templates at all (pre-existing root, same as the ledgered trailers gap); deferred and mirrored to deferred-work.md.
+  - `[low]` `[patch]` (blind) `Repo::squash`'s doc put the replacement `@` on the destination — fixed in d19420b (on `@`'s own rewritten parents) and `squash_from_into_moves_changes_and_rebases_the_rest` now asserts the new `@`'s parent and `new_change_ids`.
+  - `[low]` `[patch]` (blind) squashing into a descendant untested — fixed in d19420b: `squash_into_a_descendant_keeps_the_moved_changes` + oracle `squash_from_into_descendant`.
+  - `[low]` `[patch]` (blind) combined-description order never compared with the CLI — fixed in d19420b: `squash_from_in_any_order_combines_oldest_first` + oracle `squash_from_two_into`.
+  - `[low]` `[patch]` (blind) split's no-`-m` cleanup unwitnessed — fixed in d19420b: `split_without_a_message_cleans_the_description_like_a_saved_buffer`.
+  - `[low]` `[patch]` (blind) the empty-target warning rule untested — fixed in d19420b: `split_of_an_empty_commit_warns_only_that_everything_is_selected`.
+  - `[low]` `[patch]` (blind) bookmarks under `--parallel` never compared — fixed in d19420b: oracle `split_parallel_bookmark` and `split_parallel_bookmark_legacy_off`.
+  - `[low]` `[reject]` (blind) plan and squash can disagree when the repo moves in between (no op id in `SquashPlan`) — the plan is advisory like 9.31's `drop_actions` ("the repo can change between hover and drop"); the user's confirmed text is what `-m` writes and the GUI re-plans on op-head events (10.5); an op-id token would add public surface for a rare race.
+  - `[medium]` `[patch]` (blind) the 9.31 shared precondition phase was not side-effect-free — same root as the first row; fixed in d19420b (`plan_squash` takes `&Transaction` and writes nothing).
+  - `[low]` `[patch]` (blind) stale CLI citations (`apply_trailers` :392-417, `squash.rs:415`, `cli_util.rs:2851`) — fixed in d19420b (:449-476, :413, :2852).
+  - `[low]` `[patch]` (edge) the replacement-`@` doc claim — same as the blind doc row; fixed in d19420b.
+  - `[low]` `[reject]` (edge) plan→run staleness — same reasoning as the blind staleness row.
+  - `[low]` `[reject]` (edge) Dart `SplitResult` decodes a missing nested `mutation` as empty fields — Rust always writes it (`ok_split_result`), and it is the house decoder pattern for nested results (`mutate.dart:340`, `workspace.dart:343`); unreachable in everyday use.
+  - `[medium]` `[defer]` (edge) split without `-m` on an undescribed target ignores a custom `default_commit_description` — same as the blind template row; deferred.
+  - `[false]` `[reject]` (edge) with a dirty working copy a refusal or no-op returns the snapshot op, not the pre-call head — that op is Story 9.26's pre-verb snapshot, documented on every verb (`Repo::restore`), not the verb's own; the verb itself writes none, which the tests pin on a clean working copy.
+  - `[low]` `[patch]` (verification-gap) `keepEmptied` / `useDestinationMessage` never observed on the Dart path — fixed in d19420b: `keep_emptied_crosses_the_buffer_and_keeps_the_emptied_source`, `use_destination_message_crosses_the_buffer`.
+  - `[low]` `[patch]` (verification-gap) `--from` ordering untested — same as the blind order row; fixed in d19420b.
+  - `[low]` `[patch]` (verification-gap) split cleanup untested — same as the blind cleanup row; fixed in d19420b.
+  - `[low]` `[patch]` (verification-gap) empty-target split untested — same as the blind empty-target row; fixed in d19420b.
+  - `[low]` `[reject]` (intent) the plan is not tied to an operation (R5) — same as the staleness rows.
+  - `[low]` `[patch]` (intent) oracle `squash_plan_as_message` would pass with a `None` plan — fixed in d19420b: the Zanshin side `expect`s the plan text.
+  - `[medium]` `[defer]` (intent) customised templates untested — same as the template rows; deferred.
+  - `[medium]` `[patch]` (intent) `prepare_squash` was not the pure shared function 9.31 needs — same root as the first row; fixed in d19420b.
+  - `[false]` `[reject]` (intent) nothing forces the GUI to ask before a `-m`-less squash — the verb without `-m` writes exactly what the CLI writes with its editor saved unchanged (oracle `squash_wc_into_parent`, `squash_plan_as_message`); asking is 10.8/10.25's flow, and `squash_plan` gives them the text.
+  - `[false]` `[reject]` (intent) split's warnings are not available before the run — 10.25 knows from its own file selection whether everything or nothing is selected; the split call itself warns, and a backend preview is 9.31's diff source.
+  - `[low]` `[patch]` (intent) no oracle scenario for `--from/--into` with paths (10.27's row) — fixed in d19420b: `squash_from_into_path`.
+  - `[false]` `[reject]` (intent) the spec has no `## Auto Run Result` — written at finalisation of this run.
+  - `[low]` `[patch]` (intent) three extra deferred-work entries used free-text severities — normalised to `Low.` in the finalisation commit; the follow-up of the tree-arm entry now names `plan_squash`.
+
 ## Design Notes
 
-- **Why one preparation function, plan included (9.31 contract).** `prepare_squash` opens the transaction, resolves, refuses, selects, runs `squash_commits` and decides the description; `squash` writes and finishes, `squash_plan` drops the transaction. The plan therefore sees the exact `abandoned_commits` jj-lib computes (abandonment depends on the selection and `-k`), so plan and verb cannot disagree. Rewritten-source commits the plan writes to the store are unreferenced objects, not operations.
+- **Why one preparation function, plan included (9.31 contract).** *(As built after review, d19420b: the function is `plan_squash(&Transaction, …)` and rewrites nothing.)* It resolves, refuses, selects, computes the abandoned set by `squash_commits`' own rule (`!keep_emptied && is_full_selection`, rewrite.rs:1376-1385) and decides the description; `squash` then runs `squash_commits` and writes, `squash_plan` stops after the plan. Plan and verb share every decision, and a preview writes no commit (no signing prompt).
 - **No `-m` in the editor case.** The GUI asks first (10.8/10.25 pre-fill the plan text); a caller that runs without asking gets the CLI's result for an editor saved unchanged, which keeps the verb total and parity-testable (`ui.editor = true`). Example: destination `"B\n"`, abandoned source `"C\n"` → `"B\n\nC\n"`.
 - **Squash scope.** `revision` conflicts with `from`/`into`; `from = []` means `@`; the destination is silently removed from the sources (no error), so `into = @` with source `@` is the CLI's "Nothing changed." no-op through `finish_or_no_op_at`.
 - **Split ids.** Serial/parallel: selected keeps the target's change id, remaining gets a new one; with `-o/-A/-B` it is the reverse. `@` always ends on the remaining commit; `SplitResult` names both so the toast needs no guessing.
@@ -158,3 +198,32 @@ CLI anchors at `v0.46.0`; jj-lib anchors in vendored `jj-lib-0.46.0/src`; Zanshi
 - `cargo make codegen` -- expected: regenerated files committed, no further diff.
 - `cargo test -p zanshin-jj --test squash_split` and `cargo test -p zanshin-parity --test oracle` -- expected: all pass.
 - `cargo make test` (unpiped) -- expected: exit 0, coverage ratchet green.
+
+## Auto Run Result
+
+Status: done
+
+**Summary.** `jj squash` (`-r`, `--from/--into`, paths, `-m`, `-u`, `-k`) and `jj split` (`-r`, paths, `-m`, `--parallel`, `-o/-A/-B`, `split.legacy-bookmark-behavior`) are ported step for step from the CLI at v0.46.0 and wired end to end (`.fbs` → zanshin-jj → `zanshin_squash` / `zanshin_squash_plan` / `zanshin_split` → `RepoHandle.squash` / `squashPlan` / `split`). The read-only squash plan returns the combined description exactly when the CLI would open its editor; a squash or split without `-m` writes what the CLI writes when its editor is saved unchanged. Split's two selection warnings are the new codes `jj.split_all_selected` / `jj.split_none_selected`.
+
+**Items handed to this story.**
+- **I1** (the combined description must be known before squash runs) — **fixed** (96a3b35, made side-effect-free in d19420b): `Repo::squash_plan` / `zanshin_squash_plan` / `RepoHandle.squashPlan` return `SquashPlan.combined_description` (null when nothing needs asking), computed by the same `plan_squash` the verb runs; the oracle scenario `squash_plan_as_message` proves the text equals the CLI's editor result. The `diff` source flag stays Story 9.31's, as the item says. Marked resolved in deferred-work.md.
+
+**Commits.** 96a3b35 (feature), 7d6b516 (spec, sprint-status, I1, deferrals mirrored), d19420b (review patches), 8e0e705 (coverage-floor fix), plus the finalisation commit of this spec and deferred-work.md.
+
+**Files changed.**
+- `crates/zanshin-jj/src/squash_split.rs` (new) — the two verbs, `plan_squash`, `prepare_split`, public `SquashOptions` / `SquashPlan` / `SplitOptions` / `SplitResult`.
+- `crates/zanshin-jj/src/op_support.rs` — ports of `combine_messages_for_editing`, `cleanup_description_lines`, `combined_editor_text`; `join_message_paragraphs` moved here; `compute_commit_location`, `try_combine_messages`, `into_commit_selection` wired.
+- `crates/zanshin-jj/src/{repo,lib,config,warning,mutate,workspace_add}.rs` — facades, re-exports, `[split] legacy-bookmark-behavior = true`, two warning kinds, `MutationResult` field docs, the moved helper.
+- `schemas/envelope.fbs` + generated files — `SquashRequest`, `SplitRequest`, `SquashPlan`, `SplitResult`, `RequestKind.Squash/Split`.
+- `crates/zanshin-ffi/src/squash_split.rs` (new), `envelope.rs`, `lib.rs` — three externs, two envelope builders, two warning codes.
+- `packages/zanshin_core` — `ffi/squash_split.dart` (new), worker commands/methods/arms, `RepoHandle` methods, warning constants, barrel.
+- Tests: `crates/zanshin-jj/tests/squash_split.rs` (31), `crates/zanshin-ffi/tests/squash_split_ffi.rs`, `packages/zanshin_core/test/{ffi,worker}/squash_split_test.dart`, `api_stability.rs`, 24 parity scenarios in `crates/zanshin-parity/tests/oracle`.
+- Docs: `docs/ffi-abi.md`, `docs/rust-error-codes.md`; ledgers: `sprint-status.yaml` (9-15 done), `deferred-work.md`.
+
+**Review.** 29 findings (medium 6, low 19, false 4). Patched: one medium entry (the plan ran the write-performing `squash_commits`; grouped with the 9.31 purity finding) and the low test, doc and citation gaps — see the triage log. Deferred: custom description templates (medium, mirrored). Rejected: plan→run staleness (advisory by design, like 9.31), the Dart nested-`mutation` decode leniency (unreachable, house pattern), and four false findings (snapshot op on a dirty working copy, the GUI-must-ask flow, split warnings before the run, the missing Auto Run Result).
+
+**Follow-up review recommendation:** false — one medium entry patched, no high (patched counts: high 0, medium 1, low 13 entries).
+
+**Verification.** `cargo test -p zanshin-jj --test squash_split` (pass), `cargo test -p zanshin-parity --test oracle` (pass, no ledger entry for any squash/split scenario), `cargo make codegen` (no further diff, per the implementer). `cargo make test`: after the review patches the coverage ratchet first flagged `squash_split.rs` 99.51 % < 99.75 % (an unreachable nested-if arm) — fixed in 8e0e705 by folding it into one match; the next run failed only `app/test/features/projects/projects_window_test.dart` (2 tests, not touched by this story; 45/45 pass in isolation, the same flake the implementer saw); the final run exited 0 with the coverage ratchet and the extern-fn guard green.
+
+**Residual risks.** Custom `default_commit_description` / `draft_commit_description` templates diverge from the CLI's editor default (deferred). The tree arm and split's no-paths default wait for 9.50; `squash -o/-A/-B` is not ported. `projects_window_test.dart` is flaky under gate load (pre-existing, outside this story).

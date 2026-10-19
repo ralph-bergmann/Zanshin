@@ -1511,16 +1511,19 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 - **The tree arm of `squash` and `split` waits for Story 9.50.** Medium.
   - A GUI-selected tree plus `left`, its staleness refusal, and split's interactive default with no paths (`cli/src/commands/split.rs:218` @ v0.46.0) are 9.50's to decide ("The verbs that take a tree id (9.15, 9.49) take `left` as well, and refuse the same way. This story decides the refusal code", epics.md Story 9.50 item 3). 9.15 ships the paths arm only and refuses a split without paths (`jj.invalid_input`); `SelectedTree::from_tree_id` (`crates/zanshin-jj/src/op_support.rs`) stays unwired, its WHY naming 9.50.
-  - **Follow-up:** 9.50 adds the tree arm to `crates/zanshin-jj/src/squash_split.rs`' selection (`prepare_squash` / `prepare_split`).
+  - **Follow-up:** 9.50 adds the tree arm to `crates/zanshin-jj/src/squash_split.rs`' selection (`plan_squash` / `prepare_split`).
 - **`jj squash -o/-A/-B` is not ported.** Low.
   - Experimental at v0.46.0: the squashed changes go into a NEW commit at that location (`squash.rs:113-146`, `:274-326`). No design row needs it — the drops "Into a new change after/before" are `split -A/-B` — and epics.md Story 9.15 lists only `-r`, `--from/--into`, `-m/-u/-k` for squash.
   - **Follow-up:** port it into `crates/zanshin-jj/src/squash_split.rs` if a design asks for it.
-- **`SquashRequest` carries one `RequestKind` for two wrappers.** Low; per the spec, a record.
+- **`SquashRequest` carries one `RequestKind` for two wrappers.** Low.
   - `zanshin_squash` and `zanshin_squash_plan` both accept `RequestKind::Squash`, unlike `ChangeIdList`'s two kinds: a mis-routed buffer can only run or preview the SAME squash (`schemas/envelope.fbs`, `docs/ffi-abi.md` § The `RequestKind` tag).
   - **Follow-up:** a `SquashPlan` kind if Ralph wants every wrapper strictly per-kind.
-- **`squash` reports its abandonments in `MutationResult`.** Decision taken in the implementation; low risk.
+- **`squash` reports its abandonments in `MutationResult`.** Low.
   - The abandoned sources ride `abandoned_change_ids` (as `git_fetch` reports jj-lib's own abandonments there) and the replacement of an abandoned `@` rides `new_change_ids` (as for `abandon`); `split` names its one new change id there too. The field docs (Rust and Dart) say so.
   - **Follow-up:** none unless 10.9's toast needs another shape.
-- **`split` without `-m` cleans both descriptions as a saved editor buffer would.** Decision taken in the implementation; low risk.
-  - The CLI's `edit_multiple_descriptions` runs `cleanup_description_lines` over each block, so a description lacking its final newline gains one and `JJ:` lines in it are dropped; Zanshin applies the same cleanup (`split_builders`). Common descriptions are unchanged; the oracle's `split_paths_editor` matches the CLI.
+- **`split` without `-m` cleans both descriptions as a saved editor buffer would.** Low.
+  - The CLI's `edit_multiple_descriptions` runs `cleanup_description_lines` over each block, so a description lacking its final newline gains one and `JJ:` lines in it are dropped; Zanshin applies the same cleanup (`split_builders`). Common descriptions are unchanged; the oracle's `split_paths_editor` matches the CLI, and `split_without_a_message_cleans_the_description_like_a_saved_buffer` (`crates/zanshin-jj/tests/squash_split.rs`) pins the cleanup.
   - **Follow-up:** none.
+- **The "editor saved unchanged" rule of `squash` and `split` ignores user templates.** Medium.
+  - The CLI's editor buffer is `templates.draft_commit_description`, whose default body is `coalesce(description, default_commit_description, "\n")` (`cli/src/description_util.rs` `description_template` @ v0.46.0); with `template-aliases.default_commit_description` set, `jj split <paths>` without `-m` on an undescribed revision writes that text, while Zanshin writes `""` (`crates/zanshin-jj/src/squash_split.rs` `split_builders`; `op_support.rs` `combined_editor_text`). Zanshin renders no jj templates anywhere (the same root as the ledgered `templates.commit_trailers` gap).
+  - **Follow-up:** render `draft_commit_description` / `default_commit_description` once a template story exists, then add an oracle scenario with a custom `default_commit_description`.
