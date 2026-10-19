@@ -31,6 +31,9 @@ import '../../helpers/shell_host.dart';
 
 const ZsMotion _m = ZsMotion.full;
 
+/// How long `_Rig.settle` waits, in real time, for work started in the fake zone.
+const _settleBudget = Duration(seconds: 10);
+
 /// Work › (Mobile › MyApp, design-kit), api-server · top · gone (missing): the floating export's shape.
 ProjectsSettings _demo(String home) {
   final now = DateTime.now();
@@ -144,12 +147,21 @@ class _Rig {
   }
 
   /// Lets work started in the fake zone finish its settings writes (real file IO) until [done].
+  ///
+  /// The wait is bounded by [_settleBudget] of real time, not by a number of polls: each write
+  /// is fsync'd and chained, so under the full gate's parallel load one can take seconds.
+  /// `Stopwatch` reads real time here — fake_async fakes only `package:clock`.
   Future<void> settle(bool Function() done) async {
-    for (var i = 0; i < 100 && !done(); i++) {
+    final watch = Stopwatch()..start();
+    while (!done() && watch.elapsed < _settleBudget) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
       await tester.pump();
     }
-    expect(done(), isTrue);
+    expect(
+      done(),
+      isTrue,
+      reason: 'settings writes not done within ${_settleBudget.inSeconds} s of real time',
+    );
     await tester.pump();
   }
 
