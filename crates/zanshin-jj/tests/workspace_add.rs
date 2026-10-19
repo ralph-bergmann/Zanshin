@@ -61,11 +61,16 @@ fn main_dir() -> (TempDir, PathBuf) {
 /// config `config`.
 fn init(backend: Option<Backend>, config: &str) -> Fx {
     let (tmp, main) = main_dir();
-    let root = Repo::init(&main, backend)
-        .result
-        .expect("init")
-        .workspace_root()
-        .to_owned();
+    let root = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&main),
+        backend,
+        colocate: backend.map(|_| false),
+        ..Default::default()
+    })
+    .result
+    .expect("init")
+    .workspace_root()
+    .to_owned();
     fs::write(root.join(".jj").join("repo").join("config.toml"), config).expect("repo config");
     Fx { tmp, root }
 }

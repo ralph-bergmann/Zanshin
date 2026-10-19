@@ -13,6 +13,7 @@ use std::path::Path;
 
 mod compare;
 mod driver;
+mod git_scenarios;
 mod harness;
 mod ledger;
 mod scenarios;
@@ -132,21 +133,45 @@ parity!(
     new_insert_after_no_advance,
     new_insert_loop,
     new_duplicate_parents,
+    init_missing_destination,
+    init_over_git_colocate,
+    init_over_git_no_colocate,
+    clone_default,
+    clone_no_colocate,
+    clone_remote_name,
+    clone_branch,
+    clone_empty_source,
+    clone_non_empty_destination,
+    push_bare,
+    push_bookmark,
+    push_all,
+    push_tracked,
+    push_deleted,
+    push_change,
+    push_named,
+    push_dry_run,
+    push_nothing_changed,
+    push_unmatched_remote,
+    push_no_matching_remote,
+    push_skip_undescribed,
+    push_abort_undescribed,
+    push_tag,
+    push_two_remotes,
 );
 
-/// Every scenario id the table and the init list define.
+/// Every scenario id the table and the creation list define.
 fn defined_ids() -> BTreeSet<&'static str> {
     scenarios::scenarios()
         .iter()
         .map(|scenario| scenario.id)
-        .chain(scenarios::INIT_SCENARIOS.iter().map(|(id, _)| *id))
+        .chain(git_scenarios::CREATION_SCENARIOS.iter().map(|creation| creation.id))
         .collect()
 }
 
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 97);
+    assert_eq!(SCENARIO_IDS.len(), 121);
 }
 
 #[test]

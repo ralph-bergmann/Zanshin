@@ -178,22 +178,26 @@ fn progress_message(p: &GitProgress) -> String {
         .unwrap_or_default()
 }
 
-/// Forwards jj-lib's raw `git fetch` subprocess progress ticks to the caller-supplied
-/// [`ProgressFn`] as [`ProgressEvent`]s (FR-JJ-13). Sidebands (auth prompts, remote
-/// server messages) are terminal-UX chatter Zanshin replaces — same no-op treatment
-/// `crate::repo::NoopCallback` already gives those two hooks.
-struct FetchCallback<'a> {
-    progress: &'a ProgressFn,
+/// Forwards jj-lib's raw `git` subprocess progress ticks to the caller-supplied [`ProgressFn`] as
+/// [`ProgressEvent`]s tagged with `operation` — `"fetch"` (FR-JJ-13), `"clone"` and `"push"`
+/// (Story 9.20). Sidebands (auth prompts, remote server messages) are terminal-UX chatter Zanshin
+/// replaces, so both hooks are no-ops; a push's progress arrives mostly as sideband text, so a
+/// push reports few or no ticks (jj-lib parses only the fetch phases into [`GitProgress`]).
+pub(crate) struct ProgressCallback<'a> {
+    /// The operation name every event carries.
+    pub(crate) operation: &'static str,
+    /// The caller's sink.
+    pub(crate) progress: &'a ProgressFn,
 }
 
-impl GitSubprocessCallback for FetchCallback<'_> {
+impl GitSubprocessCallback for ProgressCallback<'_> {
     fn needs_progress(&self) -> bool {
         true
     }
 
     fn progress(&mut self, git_progress: &GitProgress) -> io::Result<()> {
         (self.progress)(ProgressEvent {
-            operation: "fetch".to_owned(),
+            operation: self.operation.to_owned(),
             // `overall()` is jj-lib's own computation; clamp defensively so a
             // transient reporting glitch can never violate this field's documented
             // 0.0..=1.0 guarantee.
@@ -214,8 +218,8 @@ impl GitSubprocessCallback for FetchCallback<'_> {
 
 /// Fetches all branches and tags from `remote_name` and imports them (FR-JJ-13).
 ///
-/// Mirrors [`crate::Repo::clone`]'s own fetch step (`clone_into`), but forwards real
-/// progress via `progress` instead of discarding it via `NoopCallback`. The transaction
+/// Shares its progress forwarding ([`ProgressCallback`]) with [`crate::Repo::clone`]'s fetch
+/// step (Story 9.20), which reports as `"clone"` where this reports as `"fetch"`. The transaction
 /// finishes through [`mutate::finish_verb`] like the CLI's `tx.finish` (Story 9.26): a colocated
 /// workspace exports the fetched refs to Git, and the working copy is checked out at the new
 /// operation — the import may have rebased `@`. A fresh operation is committed even when
@@ -291,7 +295,10 @@ pub(crate) fn git_fetch(
     };
     let refspecs = expand_fetch_refspecs(remote, expr).map_err(mutate::be)?;
 
-    let mut callback = FetchCallback { progress };
+    let mut callback = ProgressCallback {
+        operation: "fetch",
+        progress,
+    };
     // WHY: `depth: None` = a full (non-shallow) fetch. jj 0.44 dropped `fetch`'s trailing
     // `fetch_tags_override`, so the 0.42 call's second `None` is the one that went away — the
     // remaining one is `depth`, unchanged.
@@ -339,7 +346,7 @@ pub(crate) fn git_fetch(
 mod tests {
     use jj_lib::git::GitSubprocessCallback as _;
 
-    use super::{list_remotes, FetchCallback, ProgressEvent, RemoteError};
+    use super::{list_remotes, ProgressCallback, ProgressEvent, RemoteError};
 
     /// A head that no longer loads is this module's own `Backend` failure. Through
     /// [`crate::Repo`] the pre-verb snapshot (Story 9.26) hits it first, so the module function
@@ -410,9 +417,12 @@ mod tests {
     /// instead, exercised by the integration tests in `tests/remotes_write.rs`), so
     /// it is exercised directly here.
     #[test]
-    fn fetch_callback_local_sideband_is_a_no_op() {
+    fn progress_callback_local_sideband_is_a_no_op() {
         let progress = |_: ProgressEvent| {};
-        let mut callback = FetchCallback { progress: &progress };
+        let mut callback = ProgressCallback {
+            operation: "push",
+            progress: &progress,
+        };
         assert!(callback.local_sideband(b"some message", None).is_ok());
     }
 }

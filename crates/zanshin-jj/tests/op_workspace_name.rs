@@ -163,9 +163,14 @@ fn working_copy_change(repo: &Repo) -> ChangeId {
 /// over the root op and `@` is the initial empty change.
 fn git_workspace() -> TempDir {
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), Some(Backend::Git))
-        .result
-        .expect("git-backed init");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("git-backed init");
     tmp
 }
 
@@ -285,9 +290,17 @@ fn clone_names_the_workspace() {
 
     let target = TempDir::new().expect("target tempdir");
     let url = format!("file://{}", src.path().display());
-    Repo::clone(&url, target.path())
-        .result
-        .expect("clone from local file://");
+    Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: String::from(&url),
+            destination: std::path::PathBuf::from(target.path()),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    )
+    .result
+    .expect("clone from local file://");
 
     assert_eq!(head_op_workspace_name(target.path()).as_deref(), Some("default"));
 }

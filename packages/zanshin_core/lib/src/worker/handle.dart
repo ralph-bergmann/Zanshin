@@ -13,6 +13,7 @@ import '../ffi/log_defaults.dart' show LogDefaults;
 import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/precondition.dart' show Precondition;
+import '../ffi/push.dart' show GitPushResult;
 import '../ffi/remotes.dart' show Remote;
 import '../ffi/squash_split.dart' show SplitResult, SquashPlan;
 import '../ffi/status.dart' show WorkingCopyStatus;
@@ -463,6 +464,68 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.gitFetch(_handleId, remoteName);
+  }
+
+  /// Push bookmarks and tags to git remotes (Story 9.20) — the CLI's
+  /// `jj git push` with every parameter passed through.
+  ///
+  /// [remotes] is `--remote` (`null` = not given: `git.push`, else the only
+  /// remote, else `origin`). Exactly one mode: [bookmarks] / [tags] (`-b` /
+  /// `-t` patterns), [all], [tracked], [deleted], [revisions] (`-r`),
+  /// [changes] (`-c`, creates `push-…` bookmarks), [named]
+  /// (`--named NAME=REVISION`) — or none, the `revsets.git-push` default.
+  /// [allowEmptyDescription] / [allowPrivate] / [allowConflicts] relax the
+  /// commit checks; [options] are `--option` push options.
+  ///
+  /// [dryRun] answers the plan — the same planning the real push does: every
+  /// matched remote's rows with their action, path (push / skip / abort),
+  /// refusals and commit rejections — and writes nothing. The real push signs
+  /// with `git.sign-on-push`, pushes per remote and records an operation when
+  /// every ref succeeded or one was exported. A push that fails once the
+  /// network is involved is DATA (`GitPushResult.failure`); a refusal before
+  /// the network throws.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.push_ref_refused`, `jj.push_commit_rejected`,
+  /// `jj.bookmark_exists`, `jj.revset_parse_error`, `jj.config_error`,
+  /// `jj.not_a_git_repo`, `jj.jj_lib_error`).
+  Future<GitPushResult> gitPush({
+    List<String>? remotes,
+    List<String> bookmarks = const [],
+    List<String> tags = const [],
+    bool all = false,
+    bool tracked = false,
+    bool deleted = false,
+    bool allowEmptyDescription = false,
+    bool allowPrivate = false,
+    bool allowConflicts = false,
+    List<String> revisions = const [],
+    List<String> changes = const [],
+    List<String> named = const [],
+    bool dryRun = false,
+    List<String> options = const [],
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.gitPush(
+      _handleId,
+      remotes: remotes,
+      bookmarks: bookmarks,
+      tags: tags,
+      all: all,
+      tracked: tracked,
+      deleted: deleted,
+      allowEmptyDescription: allowEmptyDescription,
+      allowPrivate: allowPrivate,
+      allowConflicts: allowConflicts,
+      revisions: revisions,
+      changes: changes,
+      named: named,
+      dryRun: dryRun,
+      options: options,
+    );
   }
 
   /// Give the paths in [paths] the content they have in another commit

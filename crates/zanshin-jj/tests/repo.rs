@@ -87,7 +87,11 @@ fn repo_open_with_nonexistent_path_returns_path_not_found() {
 fn repo_init_with_nonexistent_path_returns_init_failed() {
     pin_env();
     let missing = std::path::Path::new("/nonexistent/zanshin-test-abc123");
-    let result = Repo::init(missing, None).result;
+    let result = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(missing),
+        ..Default::default()
+    })
+    .result;
     match result {
         Err(RepoError::InitFailed { reason }) => assert!(
             reason.starts_with("/nonexistent/zanshin-test-abc123: "),
@@ -97,18 +101,27 @@ fn repo_init_with_nonexistent_path_returns_init_failed() {
     }
 }
 
-/// Same for `clone`: the target directory must already exist (clone never created it — jj-lib's
-/// `create_jj_dir` needs the parent), so an absent one is refused up front, still as `CloneFailed`.
-/// The prefix match pins the new detection point for the same reason as its `init` sibling.
+/// `clone` creates a missing destination with its parents (`clone.rs:195` @ v0.46.0; Story 9.20),
+/// so only a destination that cannot be created is refused — as the CLI's "Failed to create
+/// <destination>", still `CloneFailed`.
 #[test]
-fn repo_clone_with_nonexistent_target_returns_clone_failed() {
+fn repo_clone_into_an_uncreatable_destination_returns_clone_failed() {
     pin_env();
     let missing = std::path::Path::new("/nonexistent/zanshin-test-abc123");
-    let result = Repo::clone("file:///nowhere", missing).result;
+    let result = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: String::from("file:///nowhere"),
+            destination: std::path::PathBuf::from(missing),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    )
+    .result;
     match result {
         Err(RepoError::CloneFailed { reason }) => assert!(
-            reason.starts_with("/nonexistent/zanshin-test-abc123: "),
-            "the reason must LEAD with the unresolvable target, got: {reason}"
+            reason.starts_with("Failed to create /nonexistent/zanshin-test-abc123: "),
+            "the reason must be the CLI's, naming the destination, got: {reason}"
         ),
         other => panic!("expected CloneFailed, got: {other:?}"),
     }
@@ -156,9 +169,14 @@ fn repo_open_with_corrupt_op_heads_returns_err_no_panic() {
 fn repo_init_with_git_backend_then_open_returns_ok() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), Some(Backend::Git))
-        .result
-        .expect("init git backend");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("init git backend");
     let result = Repo::open(tmp.path());
     assert!(result.is_ok(), "open after git-backend init failed: {result:?}");
 }
@@ -167,7 +185,12 @@ fn repo_init_with_git_backend_then_open_returns_ok() {
 fn repo_init_with_native_backend_then_open_returns_ok() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), None).result.expect("init native backend");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .expect("init native backend");
     let result = Repo::open(tmp.path());
     assert!(result.is_ok(), "open after native-backend init failed: {result:?}");
 }
@@ -182,7 +205,16 @@ fn repo_init_with_native_backend_then_open_returns_ok() {
 fn repo_clone_with_invalid_url_returns_clone_failed() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    let result = Repo::clone("not-a-real-url://nope", tmp.path()).result;
+    let result = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: String::from("not-a-real-url://nope"),
+            destination: std::path::PathBuf::from(tmp.path()),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    )
+    .result;
     assert!(
         matches!(result, Err(RepoError::CloneFailed { .. })),
         "expected CloneFailed for invalid URL, got: {result:?}"
@@ -193,7 +225,16 @@ fn repo_clone_with_invalid_url_returns_clone_failed() {
 fn repo_clone_failure_leaves_no_partial_workspace() {
     pin_env();
     let target_tmp = TempDir::new().expect("target tempdir");
-    let result = Repo::clone("not-a-real-url://nope", target_tmp.path()).result;
+    let result = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: String::from("not-a-real-url://nope"),
+            destination: std::path::PathBuf::from(target_tmp.path()),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    )
+    .result;
     assert!(
         matches!(result, Err(RepoError::CloneFailed { .. })),
         "expected CloneFailed, got {result:?}"
@@ -206,25 +247,38 @@ fn repo_clone_failure_leaves_no_partial_workspace() {
     );
 }
 
-/// A clone into a directory that already holds a jj workspace is refused (jj-lib's
-/// `DestinationExists`) and must leave that workspace alone: the rollback removes only a `.jj/`
-/// the clone itself created (the data loss first surfaced by Story 3.4a). A sentinel inside the
+/// A clone into a directory that already holds a jj workspace is refused as a non-empty
+/// destination before anything is created (Story 9.20, `clone.rs:187-192` @ v0.46.0) and must
+/// leave that workspace alone (the data loss first surfaced by Story 3.4a). A sentinel inside the
 /// existing `.jj/` proves it is the SAME directory afterwards, not a recreated one.
 #[test]
 fn a_clone_into_an_existing_jj_workspace_fails_and_keeps_it() {
     pin_env();
     let target_tmp = TempDir::new().expect("target tempdir");
-    Repo::init(target_tmp.path(), Some(Backend::Git))
-        .result
-        .expect("an existing jj workspace");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(target_tmp.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("an existing jj workspace");
     let sentinel = target_tmp.path().join(".jj").join("sentinel");
     fs::write(&sentinel, "keep me").expect("write the sentinel");
 
-    let outcome = Repo::clone("not-a-real-url://nope", target_tmp.path());
+    let outcome = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: String::from("not-a-real-url://nope"),
+            destination: std::path::PathBuf::from(target_tmp.path()),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    );
 
     assert!(
-        matches!(&outcome.result, Err(RepoError::CloneFailed { reason }) if reason.contains("already exists")),
-        "the init must refuse the existing workspace: {:?}",
+        matches!(&outcome.result, Err(RepoError::DestinationNotEmpty { .. })),
+        "the clone must refuse the existing workspace: {:?}",
         outcome.result
     );
     assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
@@ -235,8 +289,8 @@ fn a_clone_into_an_existing_jj_workspace_fails_and_keeps_it() {
     Repo::open(target_tmp.path()).expect("the existing workspace survives the failed clone");
 }
 
-/// A dangling `.jj` symlink is someone else's too — `symlink_metadata` sees it where `exists()`
-/// would not. The init refuses it (`DestinationExists`) and the refused clone leaves the link.
+/// A dangling `.jj` symlink is someone else's too: the destination is not empty, so the clone is
+/// refused before anything is created and leaves the link (Story 9.20).
 #[test]
 fn a_clone_over_a_dangling_jj_symlink_fails_and_keeps_the_link() {
     pin_env();
@@ -244,11 +298,19 @@ fn a_clone_over_a_dangling_jj_symlink_fails_and_keeps_the_link() {
     let link = target_tmp.path().join(".jj");
     std::os::unix::fs::symlink(target_tmp.path().join("nowhere"), &link).expect("create the dangling link");
 
-    let outcome = Repo::clone("not-a-real-url://nope", target_tmp.path());
+    let outcome = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: String::from("not-a-real-url://nope"),
+            destination: std::path::PathBuf::from(target_tmp.path()),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    );
 
     assert!(
-        matches!(&outcome.result, Err(RepoError::CloneFailed { reason }) if reason.contains("already exists")),
-        "the init must refuse the existing link: {:?}",
+        matches!(&outcome.result, Err(RepoError::DestinationNotEmpty { .. })),
+        "the clone must refuse the existing link: {:?}",
         outcome.result
     );
     assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
@@ -277,7 +339,16 @@ fn repo_clone_from_local_git_source_returns_ok() {
 
     let target_tmp = TempDir::new().expect("target tempdir");
     let src_url = format!("file://{}", src_tmp.path().display());
-    let result = Repo::clone(&src_url, target_tmp.path()).result;
+    let result = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: String::from(&src_url),
+            destination: std::path::PathBuf::from(target_tmp.path()),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    )
+    .result;
     assert!(result.is_ok(), "clone from local file:// failed: {result:?}");
 
     // Verify the cloned workspace is openable.
@@ -369,9 +440,17 @@ fn a_repo_cloned_through_a_symlinked_path_resolves_its_own_root() {
     );
 
     let src_url = format!("file://{}", src_tmp.path().display());
-    let mut cloned = Repo::clone(&src_url, target_tmp.path())
-        .result
-        .expect("clone from local file://");
+    let mut cloned = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: String::from(&src_url),
+            destination: std::path::PathBuf::from(target_tmp.path()),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    )
+    .result
+    .expect("clone from local file://");
 
     assert_own_root_resolves(&mut cloned, target_tmp.path());
 }

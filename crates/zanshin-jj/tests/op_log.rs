@@ -316,7 +316,12 @@ fn op_log_all_ids_match_oracle_walk() {
 fn op_log_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
 
@@ -595,7 +600,12 @@ fn undo_of_a_push_or_a_workspace_removal_warns() {
 fn undo_at_root_operation_returns_nothing_to_undo() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     let (head_hex, root_hex) = {
         let mut repo = Repo::open(tmp.path()).unwrap();
@@ -626,7 +636,12 @@ fn undo_at_root_operation_returns_nothing_to_undo() {
 fn undo_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
 
@@ -647,7 +662,12 @@ fn undo_on_corrupt_repo_returns_backend_error() {
 fn undo_immediately_after_init_returns_backend_error_no_working_copy() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
     let mut repo = Repo::open(tmp.path()).unwrap();
 
     // The head op right after Repo::init is "add workspace 'default'", whose single

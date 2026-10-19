@@ -136,14 +136,30 @@ pub const JJ_WORKSPACE_NO_RECORDED_PATH: &str = "jj.workspace_no_recorded_path";
 /// name already exists; the name in `context` (Story 9.23). Nothing is created.
 pub const JJ_WORKSPACE_EXISTS: &str = "jj.workspace_exists";
 /// AR-P-4: emitted by `workspace.rs::zanshin_workspace_add` when the destination is a file or a
-/// non-empty directory (Story 9.23). Nothing is created.
+/// non-empty directory (Story 9.23), and since Story 9.20 by `repo.rs::zanshin_repo_clone` for the
+/// same condition (the destination in `context`). Nothing is created.
 pub const JJ_DESTINATION_NOT_EMPTY: &str = "jj.destination_not_empty";
+/// AR-P-4: emitted by `repo.rs::zanshin_repo_init` with `--no-colocate` over a directory that
+/// holds `.git/` — the CLI's "Did not create a jj repo because there is an existing Git repo in
+/// this directory." (Story 9.20); the path in `context`. Nothing is created.
+pub const JJ_GIT_REPO_EXISTS: &str = "jj.git_repo_exists";
+/// AR-P-4: emitted by `push.rs::zanshin_git_push` when an explicitly named ref (`-b`, `-t`,
+/// `--change`, `--named`) is refused — conflicted, untracked on the remote, new or deleted where
+/// that is not allowed (Story 9.20); the CLI's message in `context`. Nothing is pushed or
+/// written.
+pub const JJ_PUSH_REF_REFUSED: &str = "jj.push_ref_refused";
+/// AR-P-4: emitted by `push.rs::zanshin_git_push` when an explicitly named ref would push a commit
+/// that is not ready — no description, no author/committer, conflicts, private (Story 9.20); the
+/// CLI's "Won't push commit <hash> since it <reasons>" in `context`. Nothing is pushed or written.
+pub const JJ_PUSH_COMMIT_REJECTED: &str = "jj.push_commit_rejected";
 /// AR-P-4: emitted by `workspace.rs::zanshin_workspace_add` when the new workspace's Git worktree
 /// could not be created — a workspace without a Git backend, or a failing `git`; jj-lib's text in
 /// `context` (Story 9.23). The destination directory created before stays, as in the CLI.
 pub const JJ_GIT_WORKTREE_FAILED: &str = "jj.git_worktree_failed";
 /// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when the underlying `git` subprocess
-/// fails (network, authentication, or transport error); detail in `context`.
+/// fails (network, authentication, or transport error); detail in `context`. (`zanshin_git_push`
+/// reports such a failure as data — `GitPushResult.failure` — and `zanshin_repo_clone` as
+/// `jj.jj_lib_error`, Story 9.20.)
 pub const JJ_NETWORK_ERROR: &str = "jj.network_error";
 /// AR-P-4: emitted by `repo.rs` when a filesystem I/O error (e.g. EACCES, ENOTDIR) prevented repo-kind classification.
 pub const JJ_DETECT_FAILED: &str = "jj.detect_failed";
@@ -286,6 +302,30 @@ pub const JJ_SPLIT_NONE_SELECTED: &str = "jj.split_none_selected";
 /// Warning: `zanshin_commit`'s paths select no change of `@`, so the committed `@` is empty
 /// (Story 9.49).
 pub const JJ_COMMIT_PATHS_UNMATCHED: &str = "jj.commit_paths_unmatched";
+/// Warning: `zanshin_git_push`'s exact `--remote` names that match no git remote (Story 9.20).
+pub const JJ_PUSH_REMOTES_UNMATCHED: &str = "jj.push_remotes_unmatched";
+/// Warning: `zanshin_git_push`'s exact `-b` names that match no bookmark to push (Story 9.20).
+pub const JJ_PUSH_BOOKMARKS_UNMATCHED: &str = "jj.push_bookmarks_unmatched";
+/// Warning: `zanshin_git_push`'s exact `-t` names that match no tag to push (Story 9.20).
+pub const JJ_PUSH_TAGS_UNMATCHED: &str = "jj.push_tags_unmatched";
+/// Warning: the bare `zanshin_git_push` found no bookmark or tag in `revsets.git-push` for a remote (Story 9.20).
+pub const JJ_PUSH_REVSET_EMPTY: &str = "jj.push_revset_empty";
+/// Warning: a `zanshin_git_push` `-r` revision no bookmark or tag points to (Story 9.20).
+pub const JJ_PUSH_REVISIONS_EMPTY: &str = "jj.push_revisions_empty";
+/// Warning: a ref `zanshin_git_push`'s mode refused and skipped (Story 9.20); an explicitly named ref refuses the push instead ([`JJ_PUSH_REF_REFUSED`]).
+pub const JJ_PUSH_REF_SKIPPED: &str = "jj.push_ref_skipped";
+/// Warning: a ref `zanshin_git_push` skipped because a commit it would push is not ready (Story 9.20); an explicitly named ref refuses the push instead ([`JJ_PUSH_COMMIT_REJECTED`]).
+pub const JJ_PUSH_COMMIT_SKIPPED: &str = "jj.push_commit_skipped";
+/// Warning: refs the remote had moved since the last fetch, so `zanshin_git_push`'s lease failed (Story 9.20).
+pub const JJ_PUSH_REFS_MOVED_ON_REMOTE: &str = "jj.push_refs_moved_on_remote";
+/// Warning: updates the remote rejected during `zanshin_git_push` (Story 9.20).
+pub const JJ_PUSH_REMOTE_REJECTED: &str = "jj.push_remote_rejected";
+/// Warning: pushed bookmarks whose remote-tracking ref `zanshin_git_push` could not update locally (Story 9.20).
+pub const JJ_PUSH_BOOKMARKS_NOT_UPDATED_LOCALLY: &str = "jj.push_bookmarks_not_updated_locally";
+/// Warning: sign-on-push left immutable commits unsigned (Story 9.20).
+pub const JJ_PUSH_SIGNING_SKIPPED_IMMUTABLE: &str = "jj.push_signing_skipped_immutable";
+/// Warning: `zanshin_repo_clone`'s exact `-b` names the remote does not have (Story 9.20).
+pub const JJ_CLONE_BRANCHES_UNMATCHED: &str = "jj.clone_branches_unmatched";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -328,6 +368,18 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::SplitAllSelected => JJ_SPLIT_ALL_SELECTED,
         K::SplitNoneSelected => JJ_SPLIT_NONE_SELECTED,
         K::CommitPathsUnmatched => JJ_COMMIT_PATHS_UNMATCHED,
+        K::PushRemotesUnmatched => JJ_PUSH_REMOTES_UNMATCHED,
+        K::PushBookmarksUnmatched => JJ_PUSH_BOOKMARKS_UNMATCHED,
+        K::PushTagsUnmatched => JJ_PUSH_TAGS_UNMATCHED,
+        K::PushRevsetEmpty => JJ_PUSH_REVSET_EMPTY,
+        K::PushRevisionsEmpty => JJ_PUSH_REVISIONS_EMPTY,
+        K::PushRefSkipped => JJ_PUSH_REF_SKIPPED,
+        K::PushCommitSkipped => JJ_PUSH_COMMIT_SKIPPED,
+        K::PushRefsMovedOnRemote => JJ_PUSH_REFS_MOVED_ON_REMOTE,
+        K::PushRemoteRejected => JJ_PUSH_REMOTE_REJECTED,
+        K::PushBookmarksNotUpdatedLocally => JJ_PUSH_BOOKMARKS_NOT_UPDATED_LOCALLY,
+        K::PushSigningSkippedImmutable => JJ_PUSH_SIGNING_SKIPPED_IMMUTABLE,
+        K::CloneBranchesUnmatched => JJ_CLONE_BRANCHES_UNMATCHED,
     }
 }
 
@@ -1120,50 +1172,64 @@ mod tests {
     /// Every `WarningKind` maps to exactly its registry string (`docs/rust-error-codes.md`
     /// § Warning Codes — the same literals as Dart's `ZanshinWarningCode`), so a typo'd or
     /// swapped constant fails here, and no two kinds share a code.
+    /// The registry, literally (`docs/rust-error-codes.md` § Warning Codes). No wildcard arm: a new
+    /// `WarningKind` does not compile here until its registry string is written down.
+    fn registered(kind: zanshin_jj::WarningKind) -> &'static str {
+        use zanshin_jj::WarningKind as K;
+        match kind {
+            K::IdentityMissing => "jj.identity_missing",
+            K::WorkingCopyImmutable => "jj.working_copy_immutable",
+            K::JjconflictFilesPresent => "jj.jjconflict_files_present",
+            K::GitHeadUpdateFailed => "jj.git_head_update_failed",
+            K::GitExportFailed => "jj.git_export_failed",
+            K::GitImportFailed => "jj.git_import_failed",
+            K::SnapshotFilesRefused => "jj.snapshot_files_refused",
+            K::SnapshotPathsNotUtf8 => "jj.snapshot_paths_not_utf8",
+            K::CheckoutFilesSkipped => "jj.checkout_files_skipped",
+            K::PathsUnmatched => "jj.paths_unmatched",
+            K::ConfigAliasInvalid => "jj.config_alias_invalid",
+            K::ConfigAliasRedefined => "jj.config_alias_redefined",
+            K::RevsetDiagnostic => "jj.revset_diagnostic",
+            K::ShortPrefixesFailed => "jj.short_prefixes_failed",
+            K::RemoteUrlDuplicate => "jj.remote_url_duplicate",
+            K::BookmarkTargetEmpty => "jj.bookmark_target_empty",
+            K::BookmarkNamesUnmatched => "jj.bookmark_names_unmatched",
+            K::AbsorbPathSkipped => "jj.absorb_path_skipped",
+            K::PathAccessDenied => "jj.path_access_denied",
+            K::PathNotAFile => "jj.path_not_a_file",
+            K::ConfigWorkingCopyAuthor => "jj.config_working_copy_author",
+            K::ConfigGcDeleteFailed => "jj.config_gc_delete_failed",
+            K::ConfigNothingListed => "jj.config_nothing_listed",
+            K::CloneCleanupFailed => "jj.clone_cleanup_failed",
+            K::ConfigMigrated => "jj.config_migrated",
+            K::ConfigCopied => "jj.config_copied",
+            K::ConfigRegenerated => "jj.config_regenerated",
+            K::UndoPushOperation => "jj.undo_push_operation",
+            K::UndoWorkspaceRemoval => "jj.undo_workspace_removal",
+            K::ColocatedInGitWorktree => "jj.colocated_in_git_worktree",
+            K::WorkspacePathInaccessible => "jj.workspace_path_inaccessible",
+            K::WorkspaceInCurrentDirectory => "jj.workspace_in_current_directory",
+            K::SplitAllSelected => "jj.split_all_selected",
+            K::SplitNoneSelected => "jj.split_none_selected",
+            K::CommitPathsUnmatched => "jj.commit_paths_unmatched",
+            K::PushRemotesUnmatched => "jj.push_remotes_unmatched",
+            K::PushBookmarksUnmatched => "jj.push_bookmarks_unmatched",
+            K::PushTagsUnmatched => "jj.push_tags_unmatched",
+            K::PushRevsetEmpty => "jj.push_revset_empty",
+            K::PushRevisionsEmpty => "jj.push_revisions_empty",
+            K::PushRefSkipped => "jj.push_ref_skipped",
+            K::PushCommitSkipped => "jj.push_commit_skipped",
+            K::PushRefsMovedOnRemote => "jj.push_refs_moved_on_remote",
+            K::PushRemoteRejected => "jj.push_remote_rejected",
+            K::PushBookmarksNotUpdatedLocally => "jj.push_bookmarks_not_updated_locally",
+            K::PushSigningSkippedImmutable => "jj.push_signing_skipped_immutable",
+            K::CloneBranchesUnmatched => "jj.clone_branches_unmatched",
+        }
+    }
+
     #[test]
     fn every_warning_kind_has_its_registered_code() {
         use zanshin_jj::WarningKind as K;
-        // The registry, literally. No wildcard arm: a new `WarningKind` does not compile here
-        // until its registry string is written down.
-        fn registered(kind: K) -> &'static str {
-            match kind {
-                K::IdentityMissing => "jj.identity_missing",
-                K::WorkingCopyImmutable => "jj.working_copy_immutable",
-                K::JjconflictFilesPresent => "jj.jjconflict_files_present",
-                K::GitHeadUpdateFailed => "jj.git_head_update_failed",
-                K::GitExportFailed => "jj.git_export_failed",
-                K::GitImportFailed => "jj.git_import_failed",
-                K::SnapshotFilesRefused => "jj.snapshot_files_refused",
-                K::SnapshotPathsNotUtf8 => "jj.snapshot_paths_not_utf8",
-                K::CheckoutFilesSkipped => "jj.checkout_files_skipped",
-                K::PathsUnmatched => "jj.paths_unmatched",
-                K::ConfigAliasInvalid => "jj.config_alias_invalid",
-                K::ConfigAliasRedefined => "jj.config_alias_redefined",
-                K::RevsetDiagnostic => "jj.revset_diagnostic",
-                K::ShortPrefixesFailed => "jj.short_prefixes_failed",
-                K::RemoteUrlDuplicate => "jj.remote_url_duplicate",
-                K::BookmarkTargetEmpty => "jj.bookmark_target_empty",
-                K::BookmarkNamesUnmatched => "jj.bookmark_names_unmatched",
-                K::AbsorbPathSkipped => "jj.absorb_path_skipped",
-                K::PathAccessDenied => "jj.path_access_denied",
-                K::PathNotAFile => "jj.path_not_a_file",
-                K::ConfigWorkingCopyAuthor => "jj.config_working_copy_author",
-                K::ConfigGcDeleteFailed => "jj.config_gc_delete_failed",
-                K::ConfigNothingListed => "jj.config_nothing_listed",
-                K::CloneCleanupFailed => "jj.clone_cleanup_failed",
-                K::ConfigMigrated => "jj.config_migrated",
-                K::ConfigCopied => "jj.config_copied",
-                K::ConfigRegenerated => "jj.config_regenerated",
-                K::UndoPushOperation => "jj.undo_push_operation",
-                K::UndoWorkspaceRemoval => "jj.undo_workspace_removal",
-                K::ColocatedInGitWorktree => "jj.colocated_in_git_worktree",
-                K::WorkspacePathInaccessible => "jj.workspace_path_inaccessible",
-                K::WorkspaceInCurrentDirectory => "jj.workspace_in_current_directory",
-                K::SplitAllSelected => "jj.split_all_selected",
-                K::SplitNoneSelected => "jj.split_none_selected",
-                K::CommitPathsUnmatched => "jj.commit_paths_unmatched",
-            }
-        }
         let kinds = [
             K::IdentityMissing,
             K::WorkingCopyImmutable,
@@ -1200,6 +1266,18 @@ mod tests {
             K::SplitAllSelected,
             K::SplitNoneSelected,
             K::CommitPathsUnmatched,
+            K::PushRemotesUnmatched,
+            K::PushBookmarksUnmatched,
+            K::PushTagsUnmatched,
+            K::PushRevsetEmpty,
+            K::PushRevisionsEmpty,
+            K::PushRefSkipped,
+            K::PushCommitSkipped,
+            K::PushRefsMovedOnRemote,
+            K::PushRemoteRejected,
+            K::PushBookmarksNotUpdatedLocally,
+            K::PushSigningSkippedImmutable,
+            K::CloneBranchesUnmatched,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");

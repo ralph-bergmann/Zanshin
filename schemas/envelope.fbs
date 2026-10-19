@@ -63,7 +63,7 @@ table FfiError {
 /// named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-/// squash, never a different verb. For the other 31 tables the variant name plus `Request` IS
+/// squash, never a different verb. For the other 34 tables the variant name plus `Request` IS
 /// the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -107,7 +107,10 @@ enum RequestKind : ubyte {
   WorkspaceAdd,
   Squash,
   Split,
-  Commit
+  Commit,
+  GitPush,
+  RepoClone,
+  RepoInit
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -212,6 +215,87 @@ table CommitRequest {
   kind: RequestKind;
   paths: [string];
   message: [string];
+}
+
+/// Arguments of `zanshin_git_push` (Story 9.20) — the CLI's `jj git push` flags, one field each,
+/// passed through (FR-JJ-17). Bookmark, tag and remote names are PATTERNS as in the CLI (a bare
+/// word is a glob, `exact:<name>` matches only itself); revisions are revsets.
+///
+///   remotes            `--remote`; ABSENT = the flag not given (`git.push`, else the only remote,
+///                      else `origin`), present-empty = given with no pattern
+///   bookmarks / tags / revisions / changes / named   `-b` / `-t` / `-r` / `-c` / `--named
+///                      NAME=REVISION`; absent or empty = not given
+///   all / tracked / deleted   `--all` / `--tracked` / `--deleted` (the CLI's conflicts refused as
+///                      `jj.invalid_input`)
+///   allow_empty_description / allow_private / allow_conflicts   the three `--allow-*`
+///   dry_run            `--dry-run`: the plan, nothing pushed or written
+///   options            `-o/--option`: git push options
+table GitPushRequest {
+  kind: RequestKind;
+  remotes: [string];
+  bookmarks: [string];
+  tags: [string];
+  all: bool;
+  tracked: bool;
+  deleted: bool;
+  allow_empty_description: bool;
+  allow_private: bool;
+  allow_conflicts: bool;
+  revisions: [string];
+  changes: [string];
+  named: [string];
+  dry_run: bool;
+  options: [string];
+}
+
+/// The object hash of a new Git repository — the CLI's `--object-hash` (Story 9.20).
+/// `Unspecified = 0` (the absent-field default) = the flag not given: the `git.object-hash`
+/// config decides. Member order IS the wire value — APPEND only.
+enum ObjectHash : ubyte { Unspecified, Sha1, Sha256 }
+
+/// The backend of `zanshin_repo_init` (Story 9.20). `Native = 0` (the absent-field default) is
+/// jj's native backend (Zanshin-only), `Git` is `jj git init`. Member order IS the wire value.
+enum InitBackend : ubyte { Native, Git }
+
+/// Arguments of `zanshin_repo_clone` (Story 9.20) — the CLI's `jj git clone`, passed through.
+///
+///   source             REQUIRED (absent → `jj.invalid_input`): the URL or path, as given
+///   destination        REQUIRED: missing or an empty directory (created with its parents)
+///   remote_name        `--remote`; ABSENT = `origin`
+///   colocate / no_colocate   the CLI's two flags (both set → `jj.invalid_input`); neither =
+///                      `git.colocate` decides
+///   depth              `--depth`; 0 = absent (the whole history)
+///   branches / tags    `-b` / `-t` patterns; ABSENT = the flag not given, present-empty = given
+///                      with nothing (fetches none of that kind)
+///   object_hash        `--object-hash`
+table RepoCloneRequest {
+  kind: RequestKind;
+  source: string;
+  destination: string;
+  remote_name: string;
+  colocate: bool;
+  no_colocate: bool;
+  depth: uint;
+  branches: [string];
+  tags: [string];
+  object_hash: ObjectHash;
+}
+
+/// Arguments of `zanshin_repo_init` (Story 9.20) — the CLI's `jj git init`, passed through.
+///
+///   path               REQUIRED (absent → `jj.invalid_input`); created when missing (one level)
+///                      for the Git backend
+///   backend            Native (Zanshin-only, the path must exist, no Git flag) or Git
+///   colocate / no_colocate   the CLI's two flags (both set → `jj.invalid_input`); neither =
+///                      `git.colocate` decides
+///   object_hash        `--object-hash`
+table RepoInitRequest {
+  kind: RequestKind;
+  path: string;
+  backend: InitBackend;
+  colocate: bool;
+  no_colocate: bool;
+  object_hash: ObjectHash;
 }
 
 /// Arguments of `zanshin_file_list` (Story 9.4, FR-JJ-17).
@@ -866,10 +950,11 @@ table WatcherEvent {
   message: string;
 }
 
-/// Progress notification for a long-running operation (FR-FFI-8), e.g. `git
-/// fetch` (producer lands in Story 6-4a). Dispatched over the same
-/// process-global event sink as `WatcherEvent`, correlated by `session_id`
-/// (same never-reused id as WatcherEvent — see RepoHandle.session_id).
+/// Progress notification for a long-running operation (FR-FFI-8): `git fetch` (Story 6-4a),
+/// `git clone` and `git push` (Story 9.20) — `operation` is `"fetch"`, `"clone"` or `"push"`.
+/// Dispatched over the same process-global event sink as `WatcherEvent`, correlated by
+/// `session_id` (same never-reused id as WatcherEvent — see RepoHandle.session_id). A clone's
+/// events carry the session id its new handle will get (allocated before the clone runs).
 table Progress {
   session_id: uint64;
   operation: string;
@@ -1070,6 +1155,120 @@ table SplitResult {
   mutation: MutationResult;
   selected_change_id: string;
   remaining_change_id: string;
+}
+
+// ── git push (Story 9.20) ───────────────────────────────────────────────────────
+// Member order of the four enums below IS the wire value — APPEND only.
+
+/// Whether a pushed ref is a bookmark or a tag.
+enum PushRefKind : ubyte { Bookmark, Tag }
+
+/// What the push does with a ref of its plan: `Push` it, `Skip` it (the mode refused it or a
+/// commit it would push; warned, the rest is pushed), or `Abort` (an explicitly named ref is
+/// refused — only a dry run gets this far).
+enum PushPath : ubyte { Push, Skip, Abort }
+
+/// What happened to a ref after a real push. `NotReached = 0` (the absent-field default) = a
+/// plan, a skipped ref, or a remote the push did not reach.
+enum PushRefStatus : ubyte { NotReached, Pushed, LeaseRejected, RemoteRejected, Unexported }
+
+/// Why a push failed after its planning phase: a dry run's explicit `RefRefused` /
+/// `CommitRejected` (the real run's error codes), `SomeRefsFailed` (the CLI's "Failed to push
+/// some bookmarks", possibly recorded), `PushError` (the push stopped at a remote; nothing
+/// recorded).
+enum PushFailureKind : ubyte { RefRefused, CommitRejected, SomeRefsFailed, PushError }
+
+/// The CLI's message and hint for a refused ref, verbatim. `hint` ABSENT where the CLI gives
+/// none.
+table PushRefusal {
+  message: string;
+  hint: string;
+}
+
+/// A commit the push refuses to send: its full hex id, the reasons in the CLI's order, the CLI's
+/// text for the ref's path and its hints ("Rejected commit: …" on the abort path, the
+/// `git.private-commits` hint for a private commit).
+table PushCommitRejection {
+  commit_id: string;
+  reasons: [string];
+  message: string;
+  hints: [string];
+}
+
+/// One ref of a remote's plan. `before` / `after` are full commit hex ids — ABSENT when the ref
+/// is absent on that side or conflicted; `action` is the move in jj's words ("move forward from
+/// <old> to <new>", "add to <new>", "delete from <old>"), ABSENT for a conflicted ref.
+/// `refusal` is the mode's refusal (Skip / Abort), `explicit_refusal` the one the ref would get if
+/// named explicitly (ABSENT = it could be), `rejection` the commit the push refuses to send.
+/// `status` / `status_reason` after a real push.
+table PushRef {
+  kind: PushRefKind;
+  name: string;
+  before: string;
+  after: string;
+  action: string;
+  path: PushPath;
+  refusal: PushRefusal;
+  explicit_refusal: PushRefusal;
+  rejection: PushCommitRejection;
+  status: PushRefStatus;
+  status_reason: string;
+}
+
+/// A ref and its kind — an explicitly named ref that already matches (the CLI's "Bookmark
+/// <name>@<remote> already matches <name>").
+table PushRefName {
+  kind: PushRefKind;
+  name: string;
+}
+
+/// One remote's plan and result. `finished` = the push to it ran; `error` = the CLI's
+/// `GitPushError` text that stopped the push there (ABSENT otherwise).
+table PushRemote {
+  name: string;
+  refs: [PushRef];
+  already_matches: [PushRefName];
+  finished: bool;
+  error: string;
+}
+
+/// A bookmark `--change` created ("Creating bookmark <name> for revision <change>").
+table PushCreatedBookmark {
+  name: string;
+  change_id: string;
+}
+
+/// What sign-on-push did: "Updated signatures of N commits." / "Rebased N descendant commits."
+/// Counts saturate at 4294967295.
+table PushSigning {
+  updated_signatures: uint;
+  rebased_descendants: uint;
+}
+
+/// A push failure as data — the CLI's non-zero exit — with the CLI's text and hint.
+table PushFailure {
+  kind: PushFailureKind;
+  message: string;
+  hint: string;
+}
+
+/// Outcome of `zanshin_git_push` (Story 9.20): the plan per remote and ref, and after a real push
+/// what happened. `hints` are the hints a UI shows verbatim ("Pushing to the only existing remote:
+/// …", the push-stats hints). `signing` ABSENT when sign-on-push did not run. `nothing_changed` =
+/// the CLI's "Nothing changed.". `recorded` = the push's operation was written; `description` is
+/// that operation's description (a dry run's: the one the real push would write; ABSENT when
+/// nothing changed); `new_op_id` the head after the call. `failure` ABSENT on full success.
+table GitPushResult {
+  remotes: [PushRemote];
+  created_bookmarks: [PushCreatedBookmark];
+  hints: [string];
+  signing: PushSigning;
+  nothing_changed: bool;
+  dry_run: bool;
+  recorded: bool;
+  description: string;
+  new_op_id: string;
+  failure: PushFailure;
 }
 
 /// What a tree entry IS (Story 9.4) — the CLI's `TreeEntry.file_type` keyword
@@ -1652,6 +1851,7 @@ union Payload {
   StaleRecovery,
   SquashPlan,
   SplitResult,
+  GitPushResult,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

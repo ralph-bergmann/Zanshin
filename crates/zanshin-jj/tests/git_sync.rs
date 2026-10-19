@@ -104,9 +104,14 @@ fn write_repo_config(root: &Path, toml: &str) {
 /// git ref. Returns the temp dir and `A`'s hex commit id.
 fn git_repo_with_one_commit() -> (TempDir, String) {
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), Some(Backend::Git))
-        .result
-        .expect("git-backed init");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("git-backed init");
     let commit = add_commit_off_root(tmp.path(), "a commit only jj knows");
     (tmp, commit)
 }
@@ -338,7 +343,12 @@ fn git_import_with_a_non_boolean_config_value_refuses_as_config() {
 fn git_import_and_export_refuse_a_native_backend() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), None).result.expect("native init");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .expect("native init");
     let mut repo = Repo::open(tmp.path()).expect("reopen");
     let before = head_op_id(&mut repo);
 

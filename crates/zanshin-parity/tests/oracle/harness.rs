@@ -9,21 +9,24 @@ use crate::compare::outcome_aspects;
 use crate::compare::Divergence;
 use crate::driver::fresh_repo;
 use crate::driver::jj;
+use crate::git_scenarios::creation_read_back;
+use crate::git_scenarios::prepare;
+use crate::git_scenarios::CreationScenario;
+use crate::git_scenarios::CREATION_SCENARIOS;
 use crate::scenarios::scenarios;
 use crate::scenarios::Scenario;
 use crate::scenarios::BASE;
-use crate::scenarios::INIT_SCENARIOS;
 use crate::state::capture;
 
-/// The divergences of the scenario `id` (a table scenario or an init scenario).
+/// The divergences of the scenario `id` (a table scenario or a creation scenario).
 ///
 /// # Panics
 /// Panics on an unknown id, and when the two CLI-built repos already differ before the
 /// operation ("setup differs") — the scenario would then blame Zanshin for fixture drift.
 pub fn run(id: &str) -> Vec<Divergence> {
     on_big_stack(|| {
-        if let Some((_, argv)) = INIT_SCENARIOS.iter().find(|(init_id, _)| *init_id == id) {
-            return run_init(argv);
+        if let Some(creation) = CREATION_SCENARIOS.iter().find(|creation| creation.id == id) {
+            return run_creation(creation);
         }
         let scenario = scenarios()
             .into_iter()
@@ -54,27 +57,62 @@ fn run_scenario(scenario: &Scenario) -> Vec<Divergence> {
     let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
     let cli = cli_outcome(&jj(&root_b, &argv));
 
-    let mut aspects_a = capture(&root_a, Some(&before_a)).aspects;
-    let mut aspects_b = capture(&root_b, Some(&before_b)).aspects;
+    let after_a = capture(&root_a, Some(&before_a));
+    let after_b = capture(&root_b, Some(&before_b));
+    let mut aspects_a = after_a.aspects.clone();
+    let mut aspects_b = after_b.aspects.clone();
     aspects_a.extend(outcome_aspects(&zanshin));
     aspects_b.extend(outcome_aspects(&cli));
     if let Some(extra) = scenario.extra {
         aspects_a.insert("extra", extra(&root_a));
         aspects_b.insert("extra", extra(&root_b));
     }
+    // A name derived from a change id (`jj git push -c`'s `push-<change id>`, Story 9.20) differs
+    // between the sides only because change ids are random: compare it by the commit's label.
+    let aspects_a = aspects_a
+        .into_iter()
+        .map(|(k, v)| (k, after_a.normalize_ids(&v)))
+        .collect();
+    let aspects_b = aspects_b
+        .into_iter()
+        .map(|(k, v)| (k, after_b.normalize_ids(&v)))
+        .collect();
     compare(&aspects_a, &aspects_b)
 }
 
-/// `Repo::init` (Git backend) in one empty directory against `jj <argv>` in another.
-fn run_init(argv: &[&str]) -> Vec<Divergence> {
+/// A creation (`jj git init` / `jj git clone`, Story 9.20) through Zanshin in one temp dir
+/// against the CLI in another, both prepared alike. A side whose call created no workspace
+/// contributes only its outcome and its files — there is no repo to capture.
+fn run_creation(scenario: &CreationScenario) -> Vec<Divergence> {
     let (dir_a, dir_b) = (empty_dir(), empty_dir());
-    let zanshin = init_outcome(&zanshin_jj::Repo::init(dir_a.path(), Some(zanshin_jj::Backend::Git)));
-    let cli = cli_outcome(&jj(dir_b.path(), argv));
-    let mut aspects_a = capture(dir_a.path(), None).aspects;
-    let mut aspects_b = capture(dir_b.path(), None).aspects;
+    // WHY canonical: macOS's temp dir is a symlink (`/var` → `/private/var`); both sides must
+    // name the same kind of path, and the CLI resolves its cwd.
+    let (dir_a, dir_b) = (
+        (dir_a.path().canonicalize().expect("temp dir A"), dir_a),
+        (dir_b.path().canonicalize().expect("temp dir B"), dir_b),
+    );
+    prepare(&dir_a.0, scenario.prep);
+    prepare(&dir_b.0, scenario.prep);
+    let zanshin = init_outcome(&(scenario.zanshin)(&dir_a.0));
+    let cli = cli_outcome(&jj(&dir_b.0, scenario.cli));
+    let mut aspects_a = created(&dir_a.0, scenario.target);
+    let mut aspects_b = created(&dir_b.0, scenario.target);
     aspects_a.extend(outcome_aspects(&zanshin));
     aspects_b.extend(outcome_aspects(&cli));
     compare(&aspects_a, &aspects_b)
+}
+
+/// The created workspace's aspects plus the `extra` read-back, or only `extra` (its files)
+/// when no workspace was created.
+fn created(dir: &std::path::Path, target: &str) -> std::collections::BTreeMap<&'static str, String> {
+    let target = dir.join(target);
+    if !target.join(".jj").is_dir() {
+        let files = crate::state::disk_files(&target);
+        return std::collections::BTreeMap::from([("extra", format!("no workspace; files={files}"))]);
+    }
+    let mut aspects = capture(&target, None).aspects;
+    aspects.insert("extra", creation_read_back(dir, &target));
+    aspects
 }
 
 fn empty_dir() -> tempfile::TempDir {

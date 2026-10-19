@@ -16,7 +16,7 @@ use flatbuffers::root as fb_root;
 use test_helpers::extract_fixture;
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
-use zanshin_ffi::repo::{zanshin_new_change, zanshin_repo_close, zanshin_repo_init, zanshin_repo_open};
+use zanshin_ffi::repo::{zanshin_new_change, zanshin_repo_close, zanshin_repo_open};
 use zanshin_ffi::status::zanshin_status;
 use zanshin_ffi::JJ_CONFIG_ERROR;
 
@@ -108,7 +108,7 @@ fn the_config_stack_reaches_the_ffi_envelopes() {
     fs::create_dir_all(&fresh).unwrap();
     let fresh_path = cstr(&fresh);
     // SAFETY: as above.
-    let (code, _) = error_of(&unsafe { read_and_free(zanshin_repo_init(fresh_path.as_ptr(), 0)) });
+    let (code, _) = error_of(&unsafe { read_and_free(repo_init(&fresh_path, 0)) });
     assert_eq!(code, JJ_CONFIG_ERROR);
     assert!(!fresh.join(".jj").exists(), "a refused init writes nothing");
 
@@ -155,4 +155,26 @@ fn the_config_stack_reaches_the_ffi_envelopes() {
     // SAFETY: `handle` is live and closed exactly once.
     let close = unsafe { read_and_free(zanshin_repo_close(handle)) };
     assert!(parse_envelope(&close).ok());
+}
+
+/// `zanshin_repo_init` over a `RepoInitRequest` (Story 9.20): `backend` 0 = native, 1 = git — a git
+/// one with `no_colocate`, the internal workspace these rows were written against.
+unsafe fn repo_init(path: &std::ffi::CString, backend: i32) -> *mut zanshin_ffi::ffi_strings::ZanshinBuf {
+    let mut b = flatbuffers::FlatBufferBuilder::new();
+    let path = b.create_string(path.to_str().expect("UTF-8 path"));
+    let req = zanshin_ffi::fbs::RepoInitRequest::create(
+        &mut b,
+        &zanshin_ffi::fbs::RepoInitRequestArgs {
+            kind: zanshin_ffi::fbs::RequestKind::RepoInit,
+            path: Some(path),
+            backend: zanshin_ffi::fbs::InitBackend(u8::try_from(backend).expect("a backend byte")),
+            colocate: false,
+            no_colocate: backend == 1,
+            object_hash: zanshin_ffi::fbs::ObjectHash::Unspecified,
+        },
+    );
+    b.finish(req, None);
+    let bytes = b.finished_data();
+    // SAFETY: `bytes` is a live, caller-owned request buffer for the duration of the call.
+    unsafe { zanshin_ffi::repo::zanshin_repo_init(bytes.as_ptr(), bytes.len()) }
 }

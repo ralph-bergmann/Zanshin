@@ -48,7 +48,12 @@ fn workspace() -> (TempDir, PathBuf) {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().join("ws");
     fs::create_dir(&root).unwrap();
-    Repo::init(&root, None).result.expect("init");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&root),
+        ..Default::default()
+    })
+    .result
+    .expect("init");
     let root = fs::canonicalize(&root).unwrap();
     (tmp, root)
 }

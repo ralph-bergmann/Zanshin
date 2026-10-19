@@ -122,6 +122,14 @@ async fn capture_async(root: &Path, before: Option<&State>) -> State {
     }
 }
 
+impl State {
+    /// `text` with short commit and change id prefixes (8+ characters) replaced by the labels of
+    /// the commits they prefix (Story 9.20: the change id in `push-<change id>`).
+    pub fn normalize_ids(&self, text: &str) -> String {
+        normalize_short_ids(text, &self.labels)
+    }
+}
+
 /// Ids → labels for one repo's visible commits.
 struct Labels {
     /// commit id (hex) → label

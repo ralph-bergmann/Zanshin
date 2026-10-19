@@ -48,6 +48,7 @@ pub mod handle;
 pub mod log_defaults;
 pub mod logging;
 pub mod op_log;
+pub mod push;
 pub mod remotes;
 pub mod repo;
 pub mod snapshot;

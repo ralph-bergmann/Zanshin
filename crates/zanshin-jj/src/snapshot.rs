@@ -916,7 +916,12 @@ mod tests {
 
         test_helpers::pin_test_env();
         let tmp = tempfile::TempDir::new().expect("tempdir");
-        let mut repo = crate::Repo::init(tmp.path(), None).result.expect("init");
+        let mut repo = crate::Repo::init(&crate::InitOptions {
+            path: std::path::PathBuf::from(tmp.path()),
+            ..Default::default()
+        })
+        .result
+        .expect("init");
         std::fs::write(
             tmp.path().join(".jj").join("repo").join("config.toml"),
             "snapshot.max-new-file-size = true\n",

@@ -164,6 +164,42 @@ abstract final class ZanshinWarningCode {
   /// and the new `@` holds every change; the commit still ran (Story 9.49).
   static const commitPathsUnmatched = 'jj.commit_paths_unmatched';
 
+  /// `gitPush` named `remotes` that match no configured remote ("No matching remotes for names: …"); the push goes on with the rest (Story 9.20).
+  static const pushRemotesUnmatched = 'jj.push_remotes_unmatched';
+
+  /// `gitPush`'s `bookmarks` names match no bookmark on a remote (Story 9.20).
+  static const pushBookmarksUnmatched = 'jj.push_bookmarks_unmatched';
+
+  /// `gitPush`'s `tags` names match no tag on a remote (Story 9.20).
+  static const pushTagsUnmatched = 'jj.push_tags_unmatched';
+
+  /// The bare `gitPush` found no bookmark or tag in `revsets.git-push` for a remote (Story 9.20).
+  static const pushRevsetEmpty = 'jj.push_revset_empty';
+
+  /// `gitPush`'s `revisions` point at no bookmark or tag (Story 9.20).
+  static const pushRevisionsEmpty = 'jj.push_revisions_empty';
+
+  /// A skipping `gitPush` mode refused a ref and left it out; its row carries the refusal (Story 9.20).
+  static const pushRefSkipped = 'jj.push_ref_skipped';
+
+  /// A skipping `gitPush` mode left a ref out because its commit is not ready; its row carries the rejection (Story 9.20).
+  static const pushCommitSkipped = 'jj.push_commit_skipped';
+
+  /// `gitPush`: refs moved on the remote since the last fetch, so their lease failed (Story 9.20).
+  static const pushRefsMovedOnRemote = 'jj.push_refs_moved_on_remote';
+
+  /// `gitPush`: the remote rejected updates, e.g. in a hook (Story 9.20).
+  static const pushRemoteRejected = 'jj.push_remote_rejected';
+
+  /// `gitPush` pushed bookmarks whose remote-tracking refs could not be updated locally (Story 9.20).
+  static const pushBookmarksNotUpdatedLocally = 'jj.push_bookmarks_not_updated_locally';
+
+  /// `git.sign-on-push` left immutable commits unsigned (Story 9.20).
+  static const pushSigningSkippedImmutable = 'jj.push_signing_skipped_immutable';
+
+  /// `cloneRepo`'s exact `branches` names match no branch on the remote (Story 9.20).
+  static const cloneBranchesUnmatched = 'jj.clone_branches_unmatched';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -207,6 +243,18 @@ abstract final class ZanshinWarningCode {
     splitAllSelected,
     splitNoneSelected,
     commitPathsUnmatched,
+    pushRemotesUnmatched,
+    pushBookmarksUnmatched,
+    pushTagsUnmatched,
+    pushRevsetEmpty,
+    pushRevisionsEmpty,
+    pushRefSkipped,
+    pushCommitSkipped,
+    pushRefsMovedOnRemote,
+    pushRemoteRejected,
+    pushBookmarksNotUpdatedLocally,
+    pushSigningSkippedImmutable,
+    cloneBranchesUnmatched,
     loginShellUnresolved,
   ];
 }

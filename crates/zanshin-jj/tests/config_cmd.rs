@@ -53,7 +53,14 @@ fn workspace(backend: Option<Backend>) -> (TempDir, PathBuf) {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().join("ws");
     fs::create_dir(&root).unwrap();
-    Repo::init(&root, backend).result.expect("init");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&root),
+        backend,
+        colocate: backend.map(|_| false),
+        ..Default::default()
+    })
+    .result
+    .expect("init");
     let root = fs::canonicalize(&root).unwrap();
     (tmp, root)
 }

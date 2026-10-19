@@ -69,11 +69,16 @@ struct Fx {
 fn init(backend: Option<Backend>, repo_config: &str) -> Fx {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    let root = Repo::init(tmp.path(), backend)
-        .result
-        .expect("init")
-        .workspace_root()
-        .to_owned();
+    let root = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        backend,
+        colocate: backend.map(|_| false),
+        ..Default::default()
+    })
+    .result
+    .expect("init")
+    .workspace_root()
+    .to_owned();
     assert!(
         !root.join(".jj").join("repo").join("config-id").exists(),
         "a fresh repo must have no config-id, so the legacy file IS the repo layer"

@@ -67,6 +67,39 @@ pub enum Step {
     JjAt(&'static str, &'static [&'static str]),
     /// Writes a file (relative to the repo root) without snapshotting it.
     Write(&'static str, &'static str),
+    /// `git <args>` in the repo root (Story 9.20: a bare remote beside the repo,
+    /// `git init --bare ../remote.git`).
+    Git(&'static [&'static str]),
+}
+
+/// Runs `git <args>` in `cwd` with the hermetic environment and fixed author/committer
+/// identities and dates, so the same steps build the same commit ids on both sides.
+///
+/// # Panics
+/// Panics when `git` cannot be spawned or fails (a setup step must not).
+#[track_caller]
+pub fn git(cwd: &Path, args: &[&str]) -> String {
+    test_helpers::pin_test_env();
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .envs(test_helpers::TEST_ENV)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_AUTHOR_NAME", "Git")
+        .env("GIT_AUTHOR_EMAIL", "git@localhost")
+        .env("GIT_COMMITTER_NAME", "Git")
+        .env("GIT_COMMITTER_EMAIL", "git@localhost")
+        .env("GIT_AUTHOR_DATE", "2001-02-03T04:05:06Z")
+        .env("GIT_COMMITTER_DATE", "2001-02-03T04:05:06Z")
+        .output()
+        .expect("spawn git");
+    assert!(
+        output.status.success(),
+        "git {args:?} failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
 /// A temp dir holding a repo at `<temp>/repo`, created by `jj <init>` and then `steps`.
@@ -90,6 +123,9 @@ pub fn fresh_repo(init: &[&str], steps: &[&[Step]]) -> (tempfile::TempDir, PathB
                 jj(&root.join(relative), args).ok();
             }
             Step::Write(path, text) => std::fs::write(root.join(path), text).expect("write a fixture file"),
+            Step::Git(args) => {
+                git(&root, args);
+            }
         }
     }
     (dir, root)

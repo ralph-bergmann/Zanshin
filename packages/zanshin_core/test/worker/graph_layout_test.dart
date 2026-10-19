@@ -208,7 +208,7 @@ void main() {
     });
 
     test('the_topology_calls_warnings_reach_the_caller', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
 
       // An unresolvable short-prefixes set only warns and degrades (test/worker/warnings_test.dart).
       final Layout layout = await handle.graphLayout(

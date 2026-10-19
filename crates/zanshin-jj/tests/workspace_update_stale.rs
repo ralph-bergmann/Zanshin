@@ -80,11 +80,16 @@ fn two_workspaces(colocated: bool, config: &str) -> (Fx, Repo) {
             .workspace_root()
             .to_owned()
     } else {
-        Repo::init(&main, Some(Backend::Git))
-            .result
-            .expect("init")
-            .workspace_root()
-            .to_owned()
+        Repo::init(&zanshin_jj::InitOptions {
+            path: std::path::PathBuf::from(&main),
+            backend: Some(Backend::Git),
+            colocate: Some(false),
+            ..Default::default()
+        })
+        .result
+        .expect("init")
+        .workspace_root()
+        .to_owned()
     };
     fs::write(root.join(".jj").join("repo").join("config.toml"), config).expect("repo config");
     let mut repo = Repo::open(&root).expect("open");

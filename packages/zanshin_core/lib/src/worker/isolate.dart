@@ -37,6 +37,7 @@ import '../ffi/log_forwarder.dart';
 import '../ffi/mutate.dart' as repo_ffi_mutate;
 import '../ffi/op_log.dart' as repo_ffi_op_log;
 import '../ffi/precondition.dart' as repo_ffi_precondition;
+import '../ffi/push.dart' as repo_ffi_push;
 import '../ffi/remotes.dart' as repo_ffi_remotes;
 import '../ffi/repo.dart' as repo_ffi;
 import '../ffi/repo_detect.dart' as repo_ffi_detect;
@@ -391,44 +392,101 @@ class ZanshinWorker {
     }
   }
 
-  /// Initialise a new jj repository at [path].
+  /// Initialise a new jj repository at [path] (Story 9.20: `jj git init` for
+  /// [backend] `1`, a native workspace for `0`).
   ///
-  /// [backend]: `0` = native/simple, `1` = Git. The returned handle's
-  /// `warnings` are always empty and its `precondition` is `null`: the jj CLI's
-  /// `jj git init --no-colocate` into an empty directory warns about nothing
-  /// (the default colocated init's alias-table warnings are not ported).
-  Future<CreatedRepoHandle> initRepo(String path, {required int backend}) async {
+  /// [colocate] / [noColocate] are the CLI's flags (both is
+  /// `jj.invalid_input`); neither = the `git.colocate` config, whose builtin
+  /// default colocates. [objectHash] is `--object-hash`. A git init creates a
+  /// missing [path] (one level), refuses a directory holding `.git/` with
+  /// [noColocate] (`jj.git_repo_exists`) and turns it into a colocated
+  /// workspace otherwise. The returned handle's `warnings` are the init's —
+  /// the start-up environment's alias-table and `immutable_heads()` warnings,
+  /// then the colocated finish's (Story 9.33); its `precondition` is `null`
+  /// unless an init over `.git/` imported refs.
+  ///
+  /// Throws [ArgumentError] if [path] contains an interior NUL (U+0000) or
+  /// [backend] is not `0`/`1`.
+  Future<CreatedRepoHandle> initRepo(
+    String path, {
+    required int backend,
+    bool colocate = false,
+    bool noColocate = false,
+    repo_ffi.ObjectHash? objectHash,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNul(path, 'path');
+    if (backend != 0 && backend != 1) {
+      throw ArgumentError.value(backend, 'backend', 'must be 0 (native) or 1 (git)');
+    }
     final WorkerResponse response = await _sendCommand(
       InitRepoCommand(
         commandId: _correlator.allocateId(),
         path: path,
         backend: backend,
+        colocate: colocate,
+        noColocate: noColocate,
+        objectHash: objectHash,
       ),
     );
     return _createdOrThrow(response);
   }
 
-  /// Clone a remote repository from [url] into [targetPath].
+  /// Clone the Git repository at [source] into [destination] — the CLI's
+  /// `jj git clone` (Story 9.20).
+  ///
+  /// [destination] must be missing or an empty directory
+  /// (`jj.destination_not_empty` otherwise, before anything is created).
+  /// [remoteName] is `--remote` (`null` = `origin`), [colocate] / [noColocate]
+  /// the CLI's flags (neither = `git.colocate`), [depth] `--depth`,
+  /// [branches] / [tags] the `-b` / `-t` patterns (`null` = not given),
+  /// [objectHash] `--object-hash`. Like the CLI the clone writes three
+  /// operations — add the remote, fetch, check out the default branch — and
+  /// the repo presets (`trunk()`, the remote's fetch patterns).
   ///
   /// The returned handle's `warnings` are the clone's, in the jj CLI's order:
-  /// `jj.git_import_failed`, `jj.checkout_files_skipped` (a file of the default
-  /// branch left alone because an untracked one was in the way — possible only
-  /// because this clone accepts a non-empty target, which the jj CLI refuses;
-  /// Story 9.20), then
-  /// `jj.identity_missing` once when `user.name`/`user.email` is empty. Its
-  /// `precondition` is `null`. The jj CLI's start-up-environment warnings
-  /// (alias tables, `immutable_heads()`) are not ported. A refused clone throws
-  /// [ZanshinFfiException] carrying the clone's warnings (Story 9.35) —
-  /// including `jj.clone_cleanup_failed`, which only an error envelope carries.
+  /// the start-up environment's (twice, as the CLI loads it twice),
+  /// `jj.clone_branches_unmatched`, `jj.git_import_failed`, then
+  /// `jj.identity_missing` once per operation when `user.name`/`user.email` is
+  /// empty. A refused clone throws [ZanshinFfiException] carrying the clone's
+  /// warnings (Story 9.35) — including `jj.clone_cleanup_failed`, which only an
+  /// error envelope carries. Progress rides the event sink as
+  /// `operation: "clone"`.
+  ///
+  /// Throws [ArgumentError] if a string contains an interior NUL (U+0000) or
+  /// [depth] is not positive.
   Future<CreatedRepoHandle> cloneRepo({
-    required String url,
-    required String targetPath,
+    required String source,
+    required String destination,
+    String? remoteName,
+    bool colocate = false,
+    bool noColocate = false,
+    int? depth,
+    List<String>? branches,
+    List<String>? tags,
+    repo_ffi.ObjectHash? objectHash,
   }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNul(source, 'source');
+    rejectInteriorNul(destination, 'destination');
+    rejectInteriorNul(remoteName, 'remoteName');
+    rejectInteriorNuls(branches ?? const [], 'branches');
+    rejectInteriorNuls(tags ?? const [], 'tags');
+    if (depth != null && depth <= 0) {
+      throw ArgumentError.value(depth, 'depth', 'must be positive');
+    }
     final WorkerResponse response = await _sendCommand(
       CloneRepoCommand(
         commandId: _correlator.allocateId(),
-        url: url,
-        targetPath: targetPath,
+        source: source,
+        destination: destination,
+        remoteName: remoteName,
+        colocate: colocate,
+        noColocate: noColocate,
+        depth: depth,
+        branches: branches,
+        tags: tags,
+        objectHash: objectHash,
       ),
     );
     return _createdOrThrow(response);
@@ -1002,6 +1060,62 @@ class ZanshinWorker {
       GitFetchCommand(commandId: _correlator.allocateId(), handleId: handleId, remoteName: remoteName),
     );
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Push bookmarks and tags to git remotes, in the repo identified by
+  /// [handleId] (Story 9.20) — the CLI's `jj git push`. See
+  /// [RepoHandle.gitPush].
+  ///
+  /// Sends a [GitPushCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<GitPushResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if an argument contains an interior NUL (U+0000).
+  Future<repo_ffi_push.GitPushResult> gitPush(
+    int handleId, {
+    List<String>? remotes,
+    List<String> bookmarks = const [],
+    List<String> tags = const [],
+    bool all = false,
+    bool tracked = false,
+    bool deleted = false,
+    bool allowEmptyDescription = false,
+    bool allowPrivate = false,
+    bool allowConflicts = false,
+    List<String> revisions = const [],
+    List<String> changes = const [],
+    List<String> named = const [],
+    bool dryRun = false,
+    List<String> options = const [],
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(remotes ?? const [], 'remotes');
+    rejectInteriorNuls(bookmarks, 'bookmarks');
+    rejectInteriorNuls(tags, 'tags');
+    rejectInteriorNuls(revisions, 'revisions');
+    rejectInteriorNuls(changes, 'changes');
+    rejectInteriorNuls(named, 'named');
+    rejectInteriorNuls(options, 'options');
+    final Uint8List bytes = await send(
+      GitPushCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        remotes: remotes,
+        bookmarks: bookmarks,
+        tags: tags,
+        all: all,
+        tracked: tracked,
+        deleted: deleted,
+        allowEmptyDescription: allowEmptyDescription,
+        allowPrivate: allowPrivate,
+        allowConflicts: allowConflicts,
+        revisions: revisions,
+        changes: changes,
+        named: named,
+        dryRun: dryRun,
+        options: options,
+      ),
+    );
+    return repo_ffi_push.decodeGitPushResultEnvelopeInternal(bytes);
   }
 
   /// Give the paths in [paths] the content they have in another commit, in the
@@ -2152,12 +2266,44 @@ void _workerEntry(_WorkerInit init) {
           final Uint8List bytes = repo_ffi.zanshinRepoOpen(path);
           _replyRepoOp(bytes, commandId, handles, sessionToId, responseSP, log, () => nextHandleId++);
 
-        case InitRepoCommand(:final String path, :final int backend):
-          final Uint8List bytes = repo_ffi.zanshinRepoInit(path, backend);
+        case InitRepoCommand(
+          :final String path,
+          :final int backend,
+          :final bool colocate,
+          :final bool noColocate,
+          :final repo_ffi.ObjectHash? objectHash,
+        ):
+          final Uint8List bytes = repo_ffi.zanshinRepoInit(
+            path,
+            backend: backend,
+            colocate: colocate,
+            noColocate: noColocate,
+            objectHash: objectHash,
+          );
           _replyRepoOp(bytes, commandId, handles, sessionToId, responseSP, log, () => nextHandleId++);
 
-        case CloneRepoCommand(:final String url, :final String targetPath):
-          final Uint8List bytes = repo_ffi.zanshinRepoClone(url, targetPath);
+        case CloneRepoCommand(
+          :final String source,
+          :final String destination,
+          :final String? remoteName,
+          :final bool colocate,
+          :final bool noColocate,
+          :final int? depth,
+          :final List<String>? branches,
+          :final List<String>? tags,
+          :final repo_ffi.ObjectHash? objectHash,
+        ):
+          final Uint8List bytes = repo_ffi.zanshinRepoClone(
+            source: source,
+            destination: destination,
+            remoteName: remoteName,
+            colocate: colocate,
+            noColocate: noColocate,
+            depth: depth,
+            branches: branches,
+            tags: tags,
+            objectHash: objectHash,
+          );
           _replyRepoOp(bytes, commandId, handles, sessionToId, responseSP, log, () => nextHandleId++);
 
         case CloseRepoCommand(:final int handleId):
@@ -2416,6 +2562,49 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinGitFetch(raw, remoteName);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case GitPushCommand(
+          :final int handleId,
+          :final List<String>? remotes,
+          :final List<String> bookmarks,
+          :final List<String> tags,
+          :final bool all,
+          :final bool tracked,
+          :final bool deleted,
+          :final bool allowEmptyDescription,
+          :final bool allowPrivate,
+          :final bool allowConflicts,
+          :final List<String> revisions,
+          :final List<String> changes,
+          :final List<String> named,
+          :final bool dryRun,
+          :final List<String> options,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitPushCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_push.zanshinGitPush(
+              raw,
+              remotes: remotes,
+              bookmarks: bookmarks,
+              tags: tags,
+              all: all,
+              tracked: tracked,
+              deleted: deleted,
+              allowEmptyDescription: allowEmptyDescription,
+              allowPrivate: allowPrivate,
+              allowConflicts: allowConflicts,
+              revisions: revisions,
+              changes: changes,
+              named: named,
+              dryRun: dryRun,
+              options: options,
+            );
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

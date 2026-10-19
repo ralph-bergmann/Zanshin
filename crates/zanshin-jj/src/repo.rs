@@ -1,18 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use std::io;
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
-use jj_lib::git::{
-    expand_fetch_refspecs, GitFetch, GitFetchRefExpression, GitImportOptions, GitProgress, GitSidebandLineTerminator,
-    GitSubprocessCallback,
-};
-use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
-use jj_lib::repo::Repo as _;
 use jj_lib::settings::UserSettings;
-use jj_lib::str_util::{StringExpression, StringPattern};
 use jj_lib::workspace::{DefaultWorkspaceLoaderFactory, Workspace, WorkspaceInitError, WorkspaceLoaderFactory as _};
 
 /// Errors returned by [`Repo::open`], [`Repo::init`], [`Repo::clone`], and
@@ -41,6 +33,28 @@ pub enum RepoError {
     #[error("clone failed: {reason}")]
     CloneFailed {
         /// Human-readable failure reason from jj-lib.
+        reason: String,
+    },
+    /// [`Repo::clone`]'s destination is a file or a non-empty directory (Story 9.20) — the CLI's
+    /// "Destination path exists and is not an empty directory"; refused before anything is
+    /// created.
+    #[error("destination path exists and is not an empty directory: {path}")]
+    DestinationNotEmpty {
+        /// The destination, as the caller spelled it.
+        path: PathBuf,
+    },
+    /// [`Repo::init`] with `--no-colocate` over a directory that holds `.git/` (Story 9.20) — the
+    /// CLI's "Did not create a jj repo because there is an existing Git repo in this directory."
+    #[error("did not create a jj repo because there is an existing Git repo in this directory: {path}")]
+    GitRepoExists {
+        /// The canonical destination.
+        path: PathBuf,
+    },
+    /// The arguments are structurally invalid (Story 9.20): a clone pattern that does not
+    /// parse, or a Git-only flag for the native backend.
+    #[error("invalid input: {reason}")]
+    InvalidInput {
+        /// Human-readable reason, the CLI's text where it has one.
         reason: String,
     },
     /// The path is already a jj workspace (`.jj/` is present).
@@ -106,7 +120,7 @@ pub struct CreationOutcome {
 }
 
 /// Selects the jj backend for a new workspace.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
     /// Git-backed workspace (`init --git`).
     Git,
@@ -1105,6 +1119,63 @@ impl Repo {
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn undo(&mut self, allow_cross_workspace: bool) -> Result<crate::MutationResult, crate::MutateError> {
         self.with_verb(|repo, ctx| crate::op_log::undo(repo.workspace_mut(), ctx, allow_cross_workspace))
+    }
+
+    /// Pushes bookmarks and tags to git remotes — the CLI's `jj git push` (Story 9.20,
+    /// FR-JJ-13b), every `GitPushArgs` parameter passed through. See [`crate::GitPushArgs`] for
+    /// the parameters and the `push` module doc for what is ported.
+    ///
+    /// Runs the pre-verb snapshot first, then ONE transaction: the remotes resolve (`--remote`
+    /// patterns, else `git.push`, else the only remote — with the hint "Pushing to the only
+    /// existing remote" — else `origin`), the `--change` / `--named` bookmarks are created in the
+    /// transaction, the mode's targets are classified per remote — `--all` / `--tracked` /
+    /// `--deleted` and the bare push (`revsets.git-push` with `remote` bound) / `-r` skip a refused
+    /// ref or a rejected commit with a warning, explicitly named refs refuse the whole push — and
+    /// the operation description is built. A dry run returns that plan and writes nothing beyond the
+    /// pre-verb snapshot's operation. A real push then signs (`git.sign-on-push`), pushes remote by
+    /// remote (progress as `"push"` [`crate::ProgressEvent`]s on `progress`; push progress arrives
+    /// mostly as sideband text, so there are few or none), and records the operation when every
+    /// ref succeeded or at least one was exported — the CLI's rule. A push whose plan is empty is
+    /// [`GitPushOutcome::nothing_changed`](crate::GitPushOutcome::nothing_changed): nothing is
+    /// created or written.
+    ///
+    /// Once the push loop has started, its outcome is data: a lease failure, a remote rejection,
+    /// an unexported ref, a remote that could not be reached — per remote and per ref, with the
+    /// CLI's failure text in [`crate::GitPushOutcome::failure`] — on `Ok`.
+    ///
+    /// # Warnings
+    ///
+    /// The CLI's `Warning:` lines on this path, in its order: `jj.push_remotes_unmatched`,
+    /// `jj.push_bookmarks_unmatched` / `jj.push_tags_unmatched`, revset diagnostics,
+    /// `jj.push_revset_empty` / `jj.push_revisions_empty`, `jj.push_ref_skipped` /
+    /// `jj.push_commit_skipped` for each skipped ref, `jj.push_signing_skipped_immutable`, the push
+    /// stats (`jj.push_refs_moved_on_remote`, `jj.push_remote_rejected`,
+    /// `jj.push_bookmarks_not_updated_locally`), and the finish's.
+    ///
+    /// # Errors
+    ///
+    /// Every refusal before the network:
+    /// - [`crate::MutateError::InvalidInput`] — conflicting flags, a pattern that does not parse,
+    ///   "No git remotes to push to", a `--named` argument without `=` or with an empty side or an
+    ///   unparsable name, a customised `templates.git_push_bookmark`, an empty `--change` set.
+    /// - [`crate::MutateError::BookmarkExists`] / [`crate::MutateError::BookmarkTrackedRemoteExists`]
+    ///   — a `--change` / `--named` name that is taken.
+    /// - [`crate::MutateError::PushRefRefused`] / [`crate::MutateError::PushCommitRejected`] — an
+    ///   explicitly named ref is refused, or would push a commit that is not ready (a real push).
+    /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`] — a
+    ///   revision does not parse or resolve (a `--named` one to exactly one commit).
+    /// - [`crate::MutateError::Config`] — a key the push reads is malformed, or `immutable_heads()`
+    ///   does not resolve.
+    /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no Git backend.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed.
+    /// - [`crate::MutateError::Backend`] — any other jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn git_push(
+        &mut self,
+        args: &crate::GitPushArgs,
+        progress: &crate::ProgressFn,
+    ) -> Result<crate::GitPushOutcome, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::push::git_push(repo, ctx, args, progress))
     }
 
     /// Fetches all branches and tags from `remote_name` and imports them (FR-JJ-13).
@@ -2338,361 +2409,98 @@ impl Repo {
         Self::load_effective(&root, RepoError::from, RepoError::Backend, warnings)
     }
 
-    /// Initialises a new jj workspace at `path`.
+    /// Creates a new jj workspace — the CLI's `jj git init` for `options.backend =
+    /// Some(Backend::Git)` (Story 9.20, ported step for step at v0.46.0), or a workspace on jj's
+    /// native backend for `None` (Zanshin-only: the destination must exist, no Git flag applies).
     ///
-    /// `backend = Some(Backend::Git)` creates a git-backed workspace;
-    /// `backend = None` uses jj's native backend.
+    /// The Git backend follows `cmd_git_init` / `do_init` (`cli/src/commands/git/init.rs:146-288`):
     ///
-    /// The outcome never carries a warning or a snapshot report (Story 9.33): the CLI's
-    /// empty-directory `jj git init` finishes no transaction, so nothing reaches a
-    /// `ui.warning_*` — not even the identity check. The CLI's start-up environment
-    /// (`for_workable_repo`: alias tables, `immutable_heads()`) is not ported to creation; its
-    /// warnings belong to that port.
+    /// 1. the CLI's start-up config check, before any path is touched (`git.colocate` and
+    ///    `git.object-hash` are read from that start-up stack);
+    /// 2. the destination is created when missing — ONE level, `create_or_reuse_dir` — and
+    ///    canonicalized ("Failed to create workspace" otherwise);
+    /// 3. colocation is `git.colocate ? colocate != Some(false) : colocate == Some(true)` and the
+    ///    hash is `object_hash`, else `git.object-hash`;
+    /// 4. over an existing `.git/`: colocated, the External flow — the steps
+    ///    [`crate::convert_colocated`] runs (`import git refs`, the snapshot, `.jj/.gitignore`, the
+    ///    `trunk()` alias; their report in [`CreationOutcome::precondition`] and the warnings) but
+    ///    WITHOUT its rollback; not colocated, the CLI's refusal; otherwise a colocated workspace
+    ///    (its start-up environment built, `.jj/.gitignore` = `/*`) or an internal one. No
+    ///    operation beyond jj-lib's `add workspace` is written outside the External flow.
     ///
-    /// # Errors
-    ///
-    /// In [`CreationOutcome::result`]:
-    /// [`RepoError::InitFailed`] on jj-lib workspace initialisation failure, or when
-    /// `path` cannot be resolved (it must already exist); `reason` then names it. Returns
-    /// [`RepoError::Config`] if the jj config stack the workspace would be created with cannot
-    /// be read — refused BEFORE anything is written. A fault of the user-level stack is checked
-    /// first, as the CLI's start-up does, so it wins over an unresolvable `path`. Once created,
-    /// the workspace is re-opened as by [`Repo::open`], so that call's errors apply too.
-    ///
-    /// The workspace is CREATED with the stack resolved for its own paths, as the CLI's
-    /// `settings_for_new_workspace` does (no repo or workspace config file exists yet, but
-    /// `--when.repositories` / `--when.workspaces` scopes already apply); the returned handle
-    /// then carries the full stack — what the CLI's next invocation would use.
-    ///
-    /// `path` must already exist — this verb has never created it (jj-lib's `create_jj_dir` uses
-    /// `create_dir`, which needs the parent). The CLI's `jj git init` DOES create its destination
-    /// (`file_util::create_or_reuse_dir` @ v0.44.0); porting that parity is Story 9.20's.
-    #[must_use = "the outcome carries the result"]
-    pub fn init(path: &Path, backend: Option<Backend>) -> CreationOutcome {
-        CreationOutcome {
-            result: Self::init_workspace(path, backend),
-            precondition: None,
-            warnings: Vec::new(),
-        }
-    }
-
-    /// [`Repo::init`]'s creation.
-    fn init_workspace(path: &Path, backend: Option<Backend>) -> Result<Self, RepoError> {
-        // The CLI's start-up config check runs before the command touches any path.
-        crate::config::check_startup_stack()?;
-        // WHY canonicalize BEFORE the init call: the CLI's `jj git init` canonicalizes its
-        // destination before it creates anything (`cli/src/commands/git/init.rs:162-163` @
-        // v0.46.0), and the settings below are resolved for that canonical root, as the CLI
-        // resolves them. The workspace-store entry itself would be consistent either way: jj-lib's
-        // `init_with_factories` canonicalizes both the store's base (`ReadonlyRepo::init`,
-        // `repo.rs:228`) and the root it records (`Workspace::new`). The handle is then re-opened
-        // through the canonical root — see `Repo::open` for why its base must be canonical.
-        let root = std::fs::canonicalize(path).map_err(|e| RepoError::InitFailed {
-            reason: format!("{}: {e}", path.display()),
-        })?;
-        let settings = crate::config::user_settings_for_new_workspace(&root)?;
-        let (_workspace, _repo) = match backend {
-            // WHY: `object_hash` is jj 0.44's new parameter. jj's CLI resolves it from the
-            // `git.object-hash` config, whose builtin default is "sha1" — passing `Sha1` here
-            // mirrors that default and reproduces pre-0.44 behaviour exactly.
-            // TODO(FR-JJ-17, Epic 9 Story 9.20): resolve `object_hash` the way the CLI does
-            // (`git.object-hash` config, caller-overridable) instead of hardcoding it here and in
-            // `clone_into`; until then a user configuring "sha256" silently gets sha1.
-            Some(Backend::Git) => {
-                pollster::block_on(Workspace::init_internal_git(&settings, &root, gix::hash::Kind::Sha1))
-                    .map_err(|e| creation_error(&e, |reason| RepoError::InitFailed { reason }))?
-            }
-            None => pollster::block_on(Workspace::init_simple(&settings, &root))
-                .map_err(|e| creation_error(&e, |reason| RepoError::InitFailed { reason }))?,
-        };
-        Self::open(&root)
-    }
-
-    /// Clones a remote Git repository into a new jj workspace at `target_path`.
-    ///
-    /// Composes: `init_internal_git` → `add_remote("origin")` → `GitFetch::fetch` → `import_refs`,
-    /// then points the working copy at the fetched default branch (a fresh `@` commit on its tip).
-    ///
-    /// On failure, the partial `.jj/` created under `target_path` is rolled back so a
-    /// retry into the same path starts clean. A `.jj` that existed before the call (an existing
-    /// jj workspace, a symlink) is never touched: creation refuses it and no rollback runs.
-    /// `target_path` must already exist — clone never created it (`create_jj_dir` needs the
-    /// parent), and a missing target is refused up front.
-    /// The CLI's `jj git clone` instead creates its destination and refuses a non-empty one
-    /// (`cli/src/commands/git/clone.rs` @ v0.44.0); that parity is Story 9.20's.
+    /// Nothing is cleaned up on failure beyond what jj-lib's creation removes itself (`.jj`), as
+    /// in the CLI. The created workspace is then opened as by [`Repo::open`], whose errors apply
+    /// too; the handle carries the full config stack.
     ///
     /// # Warnings
     ///
-    /// The outcome's warnings are the CLI's for the steps this port runs, in its order
-    /// (Story 9.33): `jj.git_import_failed` for refs the fetch's import could not read, then
-    /// — after the single `clone` operation is committed — `jj.checkout_files_skipped` for files
-    /// the checkout left alone because an untracked file of the same name was in the way, then
-    /// `jj.identity_missing` ONCE (the CLI warns once per finished transaction; Zanshin writes
-    /// one operation where the CLI writes up to three). On failure the outcome keeps what was
-    /// warned before it, and a rollback that cannot remove `.jj/` adds
-    /// `jj.clone_cleanup_failed` last. There is never a snapshot report. The CLI's
-    /// start-up-environment warnings (`for_workable_repo`: alias tables, `immutable_heads()`)
-    /// are not ported to creation.
+    /// The colocated arm's start-up environment (alias tables, `immutable_heads()`), and the
+    /// External flow's warnings ([`crate::convert_colocated`]'s); none for the internal and
+    /// native arms.
     ///
     /// # Errors
     ///
     /// In [`CreationOutcome::result`]:
-    /// [`RepoError::CloneFailed`] if `target_path` cannot be resolved, or if init, remote
-    /// registration, fetch, or import fails — the init refuses a target that already holds a
-    /// `.jj` (jj-lib's "The destination repo (…) already exists"), which stays untouched.
+    /// - [`RepoError::Config`] — the start-up stack or the new workspace's stack cannot be read,
+    ///   or `git.colocate` / `git.object-hash` is malformed.
+    /// - [`RepoError::InitFailed`] — the destination cannot be created ("Failed to create
+    ///   workspace": a missing parent, a file) or the jj-lib creation failed; for the native
+    ///   backend also a missing destination.
+    /// - [`RepoError::GitRepoExists`] — `--no-colocate` over an existing `.git/` (the CLI's "Did
+    ///   not create a jj repo because there is an existing Git repo in this directory.").
+    /// - [`RepoError::AlreadyJjRepo`] — the destination is already a jj workspace.
+    /// - [`RepoError::ConvertFailed`] — a step of the External flow failed.
+    /// - [`RepoError::InvalidInput`] — the native backend with a colocation flag or a hash.
+    #[must_use = "the outcome carries the result, the snapshot report and the warnings"]
+    pub fn init(options: &crate::InitOptions) -> CreationOutcome {
+        crate::creation::init(options)
+    }
+
+    /// Clones a Git repository into a new jj workspace — the CLI's `jj git clone` (Story 9.20,
+    /// ported step for step at v0.46.0, `cli/src/commands/git/clone.rs:170-460`).
     ///
-    /// [`RepoError::Config`] when the effective jj config cannot be read — the stack
-    /// the workspace is created with (refused BEFORE anything is written; a user-level fault
-    /// is checked first, as the CLI's start-up does, and wins over an unresolvable
-    /// `target_path`), or
-    /// the new workspace's stack the clone's import options are built from, including a
-    /// non-boolean `git.abandon-unreachable-commits` (FR-JJ-17). `reason` names the offending
-    /// KEY for a wrong-typed value, the offending FILE PATH for a config file that is
-    /// unreadable or not valid TOML. A config fault after the workspace was created rolls the
-    /// `.jj/` back like any other clone failure.
+    /// 1. The CLI's start-up config check; then the destination: a non-empty directory or a file
+    ///    is refused before anything is created, a missing one is created with its parents.
+    /// 2. Colocation (`git.colocate` with the two flags), the `-b` / `-t` patterns and the object
+    ///    hash resolve; a fault here leaves the created directory, as in the CLI.
+    /// 3. Inside the clean-up scope: the workspace is created (colocated or internal) with its
+    ///    start-up environment and `.jj/.gitignore`; the fetch expressions are the flags, else
+    ///    `remotes.<remote>.fetch-bookmarks` / `fetch-tags`, else everything; `add git remote
+    ///    <remote>` is finished and the workspace reloaded (a second start-up environment); the
+    ///    fetch runs (progress as `"clone"` [`crate::ProgressEvent`]s on `progress`), the working
+    ///    branch is chosen (the first exact `-b` the remote has, else its default branch), the
+    ///    default bookmark tracked (`git.track-default-bookmark-on-clone`) and `fetch from git
+    ///    remote into empty repo` finished — when it changed anything. A failure here removes
+    ///    `.jj` (and `.git` when colocated), then the destination iff the call created it.
+    /// 4. The repo presets (`remotes.<remote>.fetch-bookmarks` / `fetch-tags` for `-b` / `-t`,
+    ///    `revset-aliases.'trunk()' = <branch>@<remote>` for a default working branch), then
+    ///    `check out git remote's branch: <name>`. A failure from here keeps the workspace.
     ///
-    /// Like [`Repo::init`], the clone runs with the stack resolved for the new workspace's
-    /// paths and the returned handle is re-opened as by [`Repo::open`] — that call's errors
-    /// apply too.
+    /// Every operation is finished like the CLI's `tx.finish`, so each warns the identity check,
+    /// the became-immutable check and — colocated — the export failures on its own. The handle is
+    /// then opened as by [`Repo::open`], whose errors apply too.
+    ///
+    /// # Warnings
+    ///
+    /// In the CLI's order: the start-up environment's (twice: before and after the reload), the
+    /// first finish's, `jj.clone_branches_unmatched`, `jj.git_import_failed`, the fetch finish's,
+    /// the checkout finish's (`jj.checkout_files_skipped`, `jj.identity_missing`, …); on a failure
+    /// inside the clean-up scope, `jj.clone_cleanup_failed` last when the clean-up failed.
+    ///
+    /// # Errors
+    ///
+    /// In [`CreationOutcome::result`]:
+    /// - [`RepoError::DestinationNotEmpty`] — the destination is a file or a non-empty directory.
+    /// - [`RepoError::InvalidInput`] — a `-b` / `-t` pattern does not parse.
+    /// - [`RepoError::Config`] — the start-up or the new workspace's config cannot be read, or a
+    ///   key the clone reads (`git.colocate`, `git.object-hash`, `git.*` import options,
+    ///   `remotes.<name>.*`, `git.track-default-bookmark-on-clone`) is malformed; or the presets
+    ///   could not be written.
+    /// - [`RepoError::CloneFailed`] — creating the destination, the jj-lib creation, the remote
+    ///   (an invalid name), the fetch (an unreachable source), the import or the checkout failed.
     #[must_use = "the outcome carries the result and the warnings"]
-    pub fn clone(url: &str, target_path: &Path) -> CreationOutcome {
-        let mut sink = crate::warning::Warnings::default();
-        let result = Self::clone_reported(url, target_path, &mut sink);
-        CreationOutcome {
-            result,
-            precondition: None,
-            warnings: sink.take(),
-        }
-    }
-
-    /// [`Repo::clone`]'s creation, recording its warnings into `sink`.
-    fn clone_reported(url: &str, target_path: &Path, sink: &mut crate::warning::Warnings) -> Result<Self, RepoError> {
-        // The CLI's start-up config check runs before the command touches any path.
-        crate::config::check_startup_stack()?;
-        // WHY canonicalize: as in `Repo::init` — the CLI's `jj git clone` canonicalizes its
-        // destination too (`cli/src/commands/git/clone.rs:219` @ v0.46.0), and the settings and
-        // the re-opened handle use that root.
-        let target_path = std::fs::canonicalize(target_path).map_err(|e| RepoError::CloneFailed {
-            reason: format!("{}: {e}", target_path.display()),
-        })?;
-        let settings = crate::config::user_settings_for_new_workspace(&target_path)?;
-
-        // Anything already at `.jj` (a workspace, a symlink — even a dangling one) is not this
-        // call's: the init refuses it (`DestinationExists`; a non-directory already fails the
-        // config read above) and the rollback must never remove it. Only a definite `NotFound`
-        // counts as absent — an unreadable entry is treated as someone else's.
-        let jj_preexisted = !matches!(
-            target_path.join(".jj").symlink_metadata(),
-            Err(e) if e.kind() == io::ErrorKind::NotFound
-        );
-
-        // The re-open runs INSIDE the rolled-back result: any failure after creation rolls `.jj/` back.
-        // A missing target can no longer reach the rollback — `canonicalize` above refuses it.
-        Self::clone_into(&settings, url, &target_path, sink)
-            .and_then(|()| Self::open(&target_path))
-            .inspect_err(|_| {
-                if !jj_preexisted {
-                    sink.extend(roll_back_clone(&target_path));
-                }
-            })
-    }
-
-    /// Composes the clone steps; [`Repo::clone`] re-opens the committed result.
-    ///
-    /// `target_path` is the CANONICAL target directory (`Repo::clone` resolves it), so the
-    /// workspace-store entry `init_internal_git` writes and the `Workspace::load` base below
-    /// agree on one spelling.
-    ///
-    /// Its warnings land in `sink` where the CLI prints them: the fetch's failed imports before
-    /// the commit (`clone.rs:456`), the checkout's skipped files and the identity check after it
-    /// (the finish, `cli_util.rs:3304`, `:2387`).
-    fn clone_into(
-        settings: &UserSettings,
-        url: &str,
-        target_path: &Path,
-        sink: &mut crate::warning::Warnings,
-    ) -> Result<(), RepoError> {
-        // Step 1: Create git-backed jj workspace.
-        // WHY: `gix::hash::Kind::Sha1` mirrors jj's own `git.object-hash` default (see
-        // `Repo::init`); making it a caller parameter is Story 9.20's scope.
-        let (workspace_init, repo) = pollster::block_on(Workspace::init_internal_git(
-            settings,
-            target_path,
-            gix::hash::Kind::Sha1,
-        ))
-        .map_err(|e| creation_error(&e, |reason| RepoError::CloneFailed { reason }))?;
-
-        let remote_name_buf: RemoteNameBuf = "origin".into();
-        let remote_name: &RemoteName = &remote_name_buf;
-
-        // Step 2: Write remote to disk via a throwaway transaction.
-        // add_remote calls save_git_config() which writes to disk immediately but
-        // does NOT update the gix::ThreadSafeRepository's in-memory config cache.
-        // We therefore drop this transaction without committing — its only purpose
-        // is the disk side-effect. Step 3 reloads from disk to pick it up.
-        {
-            // WHY: this transaction is dropped without committing, so its metadata is never
-            // written and the workspace name is unobservable here. It goes through the
-            // sanctioned opener anyway, for uniformity — that leaves the creep guard in
-            // `op_support` with zero exceptions to encode, at the cost of one identifier.
-            let mut tx = crate::op_support::start_repo_transaction(&repo, workspace_init.workspace_name());
-            // WHY: jj 0.44 dropped `add_remote`'s trailing `fetch_tags` argument — tag selection
-            // is now driven purely by the fetch refspec, and it is `fetch_expr.tag` below (not
-            // `.bookmark`) that carries it: glob("*"), i.e. the same "all tags" behaviour the old
-            // `Tags::All` requested.
-            jj_lib::git::add_remote(tx.repo_mut(), remote_name, url, None)
-                .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-            // tx is intentionally dropped without commit.
-        }
-
-        // Step 3: Reload workspace so Workspace::load constructs a fresh Store /
-        // GitBackend that reads the git config from disk (now containing "origin").
-        let mut workspace = Workspace::load(
-            settings,
-            target_path,
-            &default_backend_factories(),
-            &default_working_copy_factories(),
-        )
-        .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-        let workspace_name = workspace.workspace_name().to_owned();
-
-        let fresh_repo = pollster::block_on(workspace.repo_loader().load_at_head())
-            .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-
-        // Step 4: Fetch + import refs using the fresh repo whose GitBackend sees "origin".
-        let subprocess_options = crate::environment::git_subprocess_options(settings)
-            .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-
-        // `git.abandon-unreachable-commits` comes from the freshly-initialised workspace's
-        // EFFECTIVE config (FR-JJ-17); no Rust constant decides it. The workspace is the
-        // Step-3 reload, which is why this needs `load_for_workspace` — there is no `Repo`
-        // wrapping it yet.
-        let config = crate::config::load_for_workspace(&workspace)?;
-        let import_options = GitImportOptions {
-            // WHY: CLI parity — `cli/src/commands/git/clone.rs:384-389` @ v0.44.0 pins this
-            // to false REGARDLESS of config ("There may be a large number of new commits").
-            // Only `abandon_unreachable_commits` is taken from config here, exactly as there.
-            record_synthetic_predecessors: false,
-            ..crate::config::git_import_options(&config)?
-        };
-
-        let fetch_expr = GitFetchRefExpression {
-            bookmark: StringExpression::Pattern(Box::new(
-                // WHY: glob("*") selects all remote branches for a full clone.
-                StringPattern::glob("*").map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?,
-            )),
-            tag: StringExpression::Pattern(Box::new(
-                // WHY: glob("*") selects all remote tags for a full clone.
-                StringPattern::glob("*").map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?,
-            )),
-        };
-        let refspecs = expand_fetch_refspecs(remote_name, fetch_expr)
-            .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-
-        let import_stats;
-        let default_branch;
-        let mut tx = crate::op_support::start_repo_transaction(&fresh_repo, &workspace_name);
-        {
-            let mut_repo = tx.repo_mut();
-            let mut fetcher = GitFetch::new(mut_repo, subprocess_options, &import_options)
-                .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-            // TODO(FR-JJ-13, Epic 6 Story 6.4a): wire NativeCallable progress callback
-            // WHY: `depth: None` = a full (non-shallow) clone. jj 0.44 dropped `fetch`'s
-            // trailing `fetch_tags_override`, so the 0.42 call's second `None` is the one that
-            // went away — the remaining one is `depth`, unchanged.
-            let depth = None;
-            fetcher
-                .fetch(remote_name, refspecs, &mut NoopCallback, depth)
-                .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-            import_stats = pollster::block_on(fetcher.import_refs())
-                .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-            default_branch = fetcher
-                .get_default_branch(remote_name)
-                .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-        }
-        // `print_git_import_stats`, after the default branch is known (`clone.rs:406`, `:456`).
-        sink.extend(crate::warning::git_import_failed(&import_stats));
-
-        // Point `@` at the fetched default branch: create a fresh working-copy commit
-        // on its tip so the cloned workspace shows the default branch's files.
-        let target_commit_id = default_branch.as_ref().and_then(|branch| {
-            import_stats.changed_remote_bookmarks.iter().find_map(|update| {
-                if &update.symbol.name == branch && update.symbol.remote == remote_name_buf {
-                    update.new_target.as_normal()
-                } else {
-                    None
-                }
-            })
-        });
-
-        let new_wc_commit = match target_commit_id {
-            Some(commit_id) => {
-                let mut_repo = tx.repo_mut();
-                let commit = mut_repo
-                    .store()
-                    .get_commit(commit_id)
-                    .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-                let wc_commit = pollster::block_on(mut_repo.check_out(workspace_name.clone(), &commit))
-                    .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-                // check_out rewrites the working-copy commit; jj requires descendants to be
-                // rebased before the transaction can commit.
-                pollster::block_on(mut_repo.rebase_descendants())
-                    .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-                Some(wc_commit)
-            }
-            None => None,
-        };
-
-        let new_repo =
-            pollster::block_on(tx.commit("clone")).map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-
-        // Materialise the working copy on disk to match the new `@` commit.
-        if let Some(wc_commit) = &new_wc_commit {
-            let stats = pollster::block_on(workspace.check_out(new_repo.op_id().clone(), None, wc_commit))
-                .map_err(|e| RepoError::CloneFailed { reason: e.to_string() })?;
-            sink.extend(crate::warning::checkout_files_skipped(stats.skipped_files));
-        }
-        sink.extend(crate::warning::identity_missing(settings));
-
-        Ok(())
-    }
-}
-
-/// Rolls a failed clone back: removes the `.jj/` `init_internal_git` wrote under the CANONICAL
-/// `target_path` — Zanshin's rollback scope, which never touches anything else there. Only called
-/// when the clone created that `.jj/`: `Repo::clone` skips the rollback when anything already
-/// existed at `.jj` (the init then refuses with `DestinationExists`), so a pre-existing workspace
-/// is never deleted.
-///
-/// The CLI's `clean_up_dirs` (`clone.rs:262-284` @ v0.44.0) treats a directory that is already
-/// gone as removed and warns about any other failure; so does this, returning that warning.
-fn roll_back_clone(target_path: &Path) -> Option<crate::Warning> {
-    match std::fs::remove_dir_all(target_path.join(".jj")) {
-        Ok(()) => None,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
-        Err(e) => Some(crate::warning::clone_cleanup_failed(target_path, &e)),
-    }
-}
-
-/// No-op subprocess callback — discards all progress and sideband output.
-/// Replaced by a `NativeCallable` in Epic 6 Story 6.4a (FR-JJ-13).
-struct NoopCallback;
-
-impl GitSubprocessCallback for NoopCallback {
-    fn needs_progress(&self) -> bool {
-        false
-    }
-
-    fn progress(&mut self, _progress: &GitProgress) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn local_sideband(&mut self, _message: &[u8], _term: Option<GitSidebandLineTerminator>) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn remote_sideband(&mut self, _message: &[u8], _term: Option<GitSidebandLineTerminator>) -> io::Result<()> {
-        Ok(())
+    pub fn clone(options: &crate::CloneOptions, progress: &crate::ProgressFn) -> CreationOutcome {
+        crate::creation::clone(options, progress)
     }
 }
 
@@ -2810,34 +2618,6 @@ mod tests {
             .refresh_settings(&mut Vec::new())
             .expect_err("an unloadable workspace must refuse");
         assert!(matches!(err, MutateError::Backend(_)), "got {err:?}");
-    }
-
-    /// Story 9.33: the clone rollback removes `.jj/`, treats an absent one as removed, and turns
-    /// any other failure into the CLI's clean-up warning — naming the target and the I/O error.
-    #[cfg(unix)]
-    #[test]
-    fn a_clone_rollback_that_cannot_remove_jj_warns_like_the_cli() {
-        use std::os::unix::fs::PermissionsExt as _;
-
-        let tmp = tempfile::tempdir().unwrap();
-        let target = std::fs::canonicalize(tmp.path()).unwrap();
-        let jj = target.join(".jj");
-        std::fs::create_dir(&jj).unwrap();
-        std::fs::write(jj.join("held"), "x").unwrap();
-        std::fs::set_permissions(&jj, std::fs::Permissions::from_mode(0o555)).unwrap();
-
-        let warning = super::roll_back_clone(&target);
-        std::fs::set_permissions(&jj, std::fs::Permissions::from_mode(0o755)).unwrap();
-
-        let warning = warning.expect("a `.jj/` whose entries cannot be removed must warn");
-        assert_eq!(warning.kind, crate::WarningKind::CloneCleanupFailed);
-        let prefix = format!("Failed to clean up {}: ", target.display());
-        assert!(warning.message.starts_with(&prefix), "got {:?}", warning.message);
-        assert!(jj.join("held").exists(), "a failed removal leaves the entry in place");
-
-        assert_eq!(super::roll_back_clone(&target), None, "now removable: no warning");
-        assert!(!jj.exists());
-        assert_eq!(super::roll_back_clone(&target), None, "an absent `.jj/` is no failure");
     }
 
     /// A secondary workspace whose `.jj/repo` FILE points nowhere fails in the loader, before

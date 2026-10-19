@@ -25,7 +25,12 @@ fn the_editor_half_migrates_a_legacy_repo_config_under_a_broken_user_file() {
     let root = tmp.path().join("ws");
     fs::create_dir(&root).unwrap();
     // Created while `JJ_CONFIG` is still `""`: `init` runs the start-up check first.
-    Repo::init(&root, None).result.expect("init");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&root),
+        ..Default::default()
+    })
+    .result
+    .expect("init");
     let root = fs::canonicalize(&root).unwrap();
     let legacy = "[test]\nmarker = \"legacy\"\n";
     fs::write(root.join(".jj").join("repo").join("config.toml"), legacy).unwrap();

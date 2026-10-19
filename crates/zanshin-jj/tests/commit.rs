@@ -142,11 +142,16 @@ fn base_with(repo_config: &str) -> Fx {
     let tmp = TempDir::new().expect("tempdir");
     let main = tmp.path().join("main");
     fs::create_dir(&main).expect("main dir");
-    let root = Repo::init(&main, Some(Backend::Git))
-        .result
-        .expect("init")
-        .workspace_root()
-        .to_owned();
+    let root = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&main),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("init")
+    .workspace_root()
+    .to_owned();
     let config_path = root.join(".jj").join("repo").join("config.toml");
     fs::write(&config_path, "").expect("repo config");
     let mut repo = Repo::open(&root).expect("open");

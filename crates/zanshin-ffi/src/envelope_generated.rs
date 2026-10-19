@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 34;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 37;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 35] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 38] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -59,6 +59,9 @@ pub mod zanshin {
             RequestKind::Squash,
             RequestKind::Split,
             RequestKind::Commit,
+            RequestKind::GitPush,
+            RequestKind::RepoClone,
+            RequestKind::RepoInit,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -76,7 +79,7 @@ pub mod zanshin {
         /// named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
         /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
         /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-        /// squash, never a different verb. For the other 31 tables the variant name plus `Request` IS
+        /// squash, never a different verb. For the other 34 tables the variant name plus `Request` IS
         /// the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -125,9 +128,12 @@ pub mod zanshin {
             pub const Squash: Self = Self(32);
             pub const Split: Self = Self(33);
             pub const Commit: Self = Self(34);
+            pub const GitPush: Self = Self(35);
+            pub const RepoClone: Self = Self(36);
+            pub const RepoInit: Self = Self(37);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 34;
+            pub const ENUM_MAX: u8 = 37;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -164,6 +170,9 @@ pub mod zanshin {
                 Self::Squash,
                 Self::Split,
                 Self::Commit,
+                Self::GitPush,
+                Self::RepoClone,
+                Self::RepoInit,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -203,6 +212,9 @@ pub mod zanshin {
                     Self::Squash => Some("Squash"),
                     Self::Split => Some("Split"),
                     Self::Commit => Some("Commit"),
+                    Self::GitPush => Some("GitPush"),
+                    Self::RepoClone => Some("RepoClone"),
+                    Self::RepoInit => Some("RepoInit"),
                     _ => None,
                 }
             }
@@ -258,6 +270,190 @@ pub mod zanshin {
         }
 
         impl ::flatbuffers::SimpleToVerifyInSlice for RequestKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_OBJECT_HASH: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_OBJECT_HASH: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_OBJECT_HASH: [ObjectHash; 3] =
+            [ObjectHash::Unspecified, ObjectHash::Sha1, ObjectHash::Sha256];
+
+        /// The object hash of a new Git repository — the CLI's `--object-hash` (Story 9.20).
+        /// `Unspecified = 0` (the absent-field default) = the flag not given: the `git.object-hash`
+        /// config decides. Member order IS the wire value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct ObjectHash(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl ObjectHash {
+            pub const Unspecified: Self = Self(0);
+            pub const Sha1: Self = Self(1);
+            pub const Sha256: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Unspecified, Self::Sha1, Self::Sha256];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Unspecified => Some("Unspecified"),
+                    Self::Sha1 => Some("Sha1"),
+                    Self::Sha256 => Some("Sha256"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for ObjectHash {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for ObjectHash {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for ObjectHash {
+            type Output = ObjectHash;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for ObjectHash {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for ObjectHash {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for ObjectHash {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_INIT_BACKEND: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_INIT_BACKEND: u8 = 1;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_INIT_BACKEND: [InitBackend; 2] = [InitBackend::Native, InitBackend::Git];
+
+        /// The backend of `zanshin_repo_init` (Story 9.20). `Native = 0` (the absent-field default) is
+        /// jj's native backend (Zanshin-only), `Git` is `jj git init`. Member order IS the wire value.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct InitBackend(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl InitBackend {
+            pub const Native: Self = Self(0);
+            pub const Git: Self = Self(1);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 1;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Native, Self::Git];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Native => Some("Native"),
+                    Self::Git => Some("Git"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for InitBackend {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for InitBackend {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for InitBackend {
+            type Output = InitBackend;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for InitBackend {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for InitBackend {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for InitBackend {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -1221,6 +1417,402 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
+        pub const ENUM_MIN_PUSH_REF_KIND: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PUSH_REF_KIND: u8 = 1;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PUSH_REF_KIND: [PushRefKind; 2] = [PushRefKind::Bookmark, PushRefKind::Tag];
+
+        /// Whether a pushed ref is a bookmark or a tag.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct PushRefKind(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl PushRefKind {
+            pub const Bookmark: Self = Self(0);
+            pub const Tag: Self = Self(1);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 1;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Bookmark, Self::Tag];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Bookmark => Some("Bookmark"),
+                    Self::Tag => Some("Tag"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for PushRefKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for PushRefKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for PushRefKind {
+            type Output = PushRefKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for PushRefKind {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for PushRefKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for PushRefKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PUSH_PATH: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PUSH_PATH: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PUSH_PATH: [PushPath; 3] = [PushPath::Push, PushPath::Skip, PushPath::Abort];
+
+        /// What the push does with a ref of its plan: `Push` it, `Skip` it (the mode refused it or a
+        /// commit it would push; warned, the rest is pushed), or `Abort` (an explicitly named ref is
+        /// refused — only a dry run gets this far).
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct PushPath(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl PushPath {
+            pub const Push: Self = Self(0);
+            pub const Skip: Self = Self(1);
+            pub const Abort: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Push, Self::Skip, Self::Abort];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Push => Some("Push"),
+                    Self::Skip => Some("Skip"),
+                    Self::Abort => Some("Abort"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for PushPath {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for PushPath {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for PushPath {
+            type Output = PushPath;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for PushPath {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for PushPath {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for PushPath {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PUSH_REF_STATUS: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PUSH_REF_STATUS: u8 = 4;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PUSH_REF_STATUS: [PushRefStatus; 5] = [
+            PushRefStatus::NotReached,
+            PushRefStatus::Pushed,
+            PushRefStatus::LeaseRejected,
+            PushRefStatus::RemoteRejected,
+            PushRefStatus::Unexported,
+        ];
+
+        /// What happened to a ref after a real push. `NotReached = 0` (the absent-field default) = a
+        /// plan, a skipped ref, or a remote the push did not reach.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct PushRefStatus(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl PushRefStatus {
+            pub const NotReached: Self = Self(0);
+            pub const Pushed: Self = Self(1);
+            pub const LeaseRejected: Self = Self(2);
+            pub const RemoteRejected: Self = Self(3);
+            pub const Unexported: Self = Self(4);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 4;
+            pub const ENUM_VALUES: &'static [Self] = &[
+                Self::NotReached,
+                Self::Pushed,
+                Self::LeaseRejected,
+                Self::RemoteRejected,
+                Self::Unexported,
+            ];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::NotReached => Some("NotReached"),
+                    Self::Pushed => Some("Pushed"),
+                    Self::LeaseRejected => Some("LeaseRejected"),
+                    Self::RemoteRejected => Some("RemoteRejected"),
+                    Self::Unexported => Some("Unexported"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for PushRefStatus {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for PushRefStatus {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for PushRefStatus {
+            type Output = PushRefStatus;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for PushRefStatus {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for PushRefStatus {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for PushRefStatus {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_PUSH_FAILURE_KIND: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_PUSH_FAILURE_KIND: u8 = 3;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_PUSH_FAILURE_KIND: [PushFailureKind; 4] = [
+            PushFailureKind::RefRefused,
+            PushFailureKind::CommitRejected,
+            PushFailureKind::SomeRefsFailed,
+            PushFailureKind::PushError,
+        ];
+
+        /// Why a push failed after its planning phase: a dry run's explicit `RefRefused` /
+        /// `CommitRejected` (the real run's error codes), `SomeRefsFailed` (the CLI's "Failed to push
+        /// some bookmarks", possibly recorded), `PushError` (the push stopped at a remote; nothing
+        /// recorded).
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct PushFailureKind(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl PushFailureKind {
+            pub const RefRefused: Self = Self(0);
+            pub const CommitRejected: Self = Self(1);
+            pub const SomeRefsFailed: Self = Self(2);
+            pub const PushError: Self = Self(3);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 3;
+            pub const ENUM_VALUES: &'static [Self] = &[
+                Self::RefRefused,
+                Self::CommitRejected,
+                Self::SomeRefsFailed,
+                Self::PushError,
+            ];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::RefRefused => Some("RefRefused"),
+                    Self::CommitRejected => Some("CommitRejected"),
+                    Self::SomeRefsFailed => Some("SomeRefsFailed"),
+                    Self::PushError => Some("PushError"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for PushFailureKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for PushFailureKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for PushFailureKind {
+            type Output = PushFailureKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for PushFailureKind {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for PushFailureKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for PushFailureKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
         pub const ENUM_MIN_FILE_TYPE: i8 = 0;
         #[deprecated(
             since = "2.0.0",
@@ -1744,13 +2336,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 40;
+        pub const ENUM_MAX_PAYLOAD: u8 = 41;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 41] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 42] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -1792,6 +2384,7 @@ pub mod zanshin {
             Payload::StaleRecovery,
             Payload::SquashPlan,
             Payload::SplitResult,
+            Payload::GitPushResult,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -1840,9 +2433,10 @@ pub mod zanshin {
             pub const StaleRecovery: Self = Self(38);
             pub const SquashPlan: Self = Self(39);
             pub const SplitResult: Self = Self(40);
+            pub const GitPushResult: Self = Self(41);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 40;
+            pub const ENUM_MAX: u8 = 41;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -1885,6 +2479,7 @@ pub mod zanshin {
                 Self::StaleRecovery,
                 Self::SquashPlan,
                 Self::SplitResult,
+                Self::GitPushResult,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -1930,6 +2525,7 @@ pub mod zanshin {
                     Self::StaleRecovery => Some("StaleRecovery"),
                     Self::SquashPlan => Some("SquashPlan"),
                     Self::SplitResult => Some("SplitResult"),
+                    Self::GitPushResult => Some("GitPushResult"),
                     _ => None,
                 }
             }
@@ -3487,6 +4083,1005 @@ pub mod zanshin {
                 ds.field("kind", &self.kind());
                 ds.field("paths", &self.paths());
                 ds.field("message", &self.message());
+                ds.finish()
+            }
+        }
+        pub enum GitPushRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_git_push` (Story 9.20) — the CLI's `jj git push` flags, one field each,
+        /// passed through (FR-JJ-17). Bookmark, tag and remote names are PATTERNS as in the CLI (a bare
+        /// word is a glob, `exact:<name>` matches only itself); revisions are revsets.
+        ///
+        ///   remotes            `--remote`; ABSENT = the flag not given (`git.push`, else the only remote,
+        ///                      else `origin`), present-empty = given with no pattern
+        ///   bookmarks / tags / revisions / changes / named   `-b` / `-t` / `-r` / `-c` / `--named
+        ///                      NAME=REVISION`; absent or empty = not given
+        ///   all / tracked / deleted   `--all` / `--tracked` / `--deleted` (the CLI's conflicts refused as
+        ///                      `jj.invalid_input`)
+        ///   allow_empty_description / allow_private / allow_conflicts   the three `--allow-*`
+        ///   dry_run            `--dry-run`: the plan, nothing pushed or written
+        ///   options            `-o/--option`: git push options
+        pub struct GitPushRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitPushRequest<'a> {
+            type Inner = GitPushRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitPushRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REMOTES: ::flatbuffers::VOffsetT = 6;
+            pub const VT_BOOKMARKS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TAGS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_ALL: ::flatbuffers::VOffsetT = 12;
+            pub const VT_TRACKED: ::flatbuffers::VOffsetT = 14;
+            pub const VT_DELETED: ::flatbuffers::VOffsetT = 16;
+            pub const VT_ALLOW_EMPTY_DESCRIPTION: ::flatbuffers::VOffsetT = 18;
+            pub const VT_ALLOW_PRIVATE: ::flatbuffers::VOffsetT = 20;
+            pub const VT_ALLOW_CONFLICTS: ::flatbuffers::VOffsetT = 22;
+            pub const VT_REVISIONS: ::flatbuffers::VOffsetT = 24;
+            pub const VT_CHANGES: ::flatbuffers::VOffsetT = 26;
+            pub const VT_NAMED: ::flatbuffers::VOffsetT = 28;
+            pub const VT_DRY_RUN: ::flatbuffers::VOffsetT = 30;
+            pub const VT_OPTIONS: ::flatbuffers::VOffsetT = 32;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitPushRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitPushRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitPushRequest<'bldr>> {
+                let mut builder = GitPushRequestBuilder::new(_fbb);
+                if let Some(x) = args.options {
+                    builder.add_options(x);
+                }
+                if let Some(x) = args.named {
+                    builder.add_named(x);
+                }
+                if let Some(x) = args.changes {
+                    builder.add_changes(x);
+                }
+                if let Some(x) = args.revisions {
+                    builder.add_revisions(x);
+                }
+                if let Some(x) = args.tags {
+                    builder.add_tags(x);
+                }
+                if let Some(x) = args.bookmarks {
+                    builder.add_bookmarks(x);
+                }
+                if let Some(x) = args.remotes {
+                    builder.add_remotes(x);
+                }
+                builder.add_dry_run(args.dry_run);
+                builder.add_allow_conflicts(args.allow_conflicts);
+                builder.add_allow_private(args.allow_private);
+                builder.add_allow_empty_description(args.allow_empty_description);
+                builder.add_deleted(args.deleted);
+                builder.add_tracked(args.tracked);
+                builder.add_all(args.all);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(GitPushRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn remotes(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitPushRequest::VT_REMOTES, None)
+                }
+            }
+            #[inline]
+            pub fn bookmarks(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitPushRequest::VT_BOOKMARKS, None)
+                }
+            }
+            #[inline]
+            pub fn tags(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitPushRequest::VT_TAGS, None)
+                }
+            }
+            #[inline]
+            pub fn all(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GitPushRequest::VT_ALL, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn tracked(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GitPushRequest::VT_TRACKED, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn deleted(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GitPushRequest::VT_DELETED, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn allow_empty_description(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(GitPushRequest::VT_ALLOW_EMPTY_DESCRIPTION, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn allow_private(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(GitPushRequest::VT_ALLOW_PRIVATE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn allow_conflicts(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(GitPushRequest::VT_ALLOW_CONFLICTS, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revisions(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitPushRequest::VT_REVISIONS, None)
+                }
+            }
+            #[inline]
+            pub fn changes(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitPushRequest::VT_CHANGES, None)
+                }
+            }
+            #[inline]
+            pub fn named(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitPushRequest::VT_NAMED, None)
+                }
+            }
+            #[inline]
+            pub fn dry_run(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GitPushRequest::VT_DRY_RUN, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn options(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitPushRequest::VT_OPTIONS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitPushRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("remotes", Self::VT_REMOTES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("bookmarks", Self::VT_BOOKMARKS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("tags", Self::VT_TAGS, false)?
+     .visit_field::<bool>("all", Self::VT_ALL, false)?
+     .visit_field::<bool>("tracked", Self::VT_TRACKED, false)?
+     .visit_field::<bool>("deleted", Self::VT_DELETED, false)?
+     .visit_field::<bool>("allow_empty_description", Self::VT_ALLOW_EMPTY_DESCRIPTION, false)?
+     .visit_field::<bool>("allow_private", Self::VT_ALLOW_PRIVATE, false)?
+     .visit_field::<bool>("allow_conflicts", Self::VT_ALLOW_CONFLICTS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("revisions", Self::VT_REVISIONS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("changes", Self::VT_CHANGES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("named", Self::VT_NAMED, false)?
+     .visit_field::<bool>("dry_run", Self::VT_DRY_RUN, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("options", Self::VT_OPTIONS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct GitPushRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub remotes:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub bookmarks:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub tags:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub all: bool,
+            pub tracked: bool,
+            pub deleted: bool,
+            pub allow_empty_description: bool,
+            pub allow_private: bool,
+            pub allow_conflicts: bool,
+            pub revisions:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub changes:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub named:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub dry_run: bool,
+            pub options:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for GitPushRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitPushRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    remotes: None,
+                    bookmarks: None,
+                    tags: None,
+                    all: false,
+                    tracked: false,
+                    deleted: false,
+                    allow_empty_description: false,
+                    allow_private: false,
+                    allow_conflicts: false,
+                    revisions: None,
+                    changes: None,
+                    named: None,
+                    dry_run: false,
+                    options: None,
+                }
+            }
+        }
+
+        pub struct GitPushRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitPushRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(GitPushRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_remotes(
+                &mut self,
+                remotes: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitPushRequest::VT_REMOTES, remotes);
+            }
+            #[inline]
+            pub fn add_bookmarks(
+                &mut self,
+                bookmarks: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitPushRequest::VT_BOOKMARKS, bookmarks);
+            }
+            #[inline]
+            pub fn add_tags(
+                &mut self,
+                tags: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitPushRequest::VT_TAGS, tags);
+            }
+            #[inline]
+            pub fn add_all(&mut self, all: bool) {
+                self.fbb_.push_slot::<bool>(GitPushRequest::VT_ALL, all, false);
+            }
+            #[inline]
+            pub fn add_tracked(&mut self, tracked: bool) {
+                self.fbb_.push_slot::<bool>(GitPushRequest::VT_TRACKED, tracked, false);
+            }
+            #[inline]
+            pub fn add_deleted(&mut self, deleted: bool) {
+                self.fbb_.push_slot::<bool>(GitPushRequest::VT_DELETED, deleted, false);
+            }
+            #[inline]
+            pub fn add_allow_empty_description(&mut self, allow_empty_description: bool) {
+                self.fbb_.push_slot::<bool>(
+                    GitPushRequest::VT_ALLOW_EMPTY_DESCRIPTION,
+                    allow_empty_description,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_allow_private(&mut self, allow_private: bool) {
+                self.fbb_
+                    .push_slot::<bool>(GitPushRequest::VT_ALLOW_PRIVATE, allow_private, false);
+            }
+            #[inline]
+            pub fn add_allow_conflicts(&mut self, allow_conflicts: bool) {
+                self.fbb_
+                    .push_slot::<bool>(GitPushRequest::VT_ALLOW_CONFLICTS, allow_conflicts, false);
+            }
+            #[inline]
+            pub fn add_revisions(
+                &mut self,
+                revisions: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitPushRequest::VT_REVISIONS, revisions);
+            }
+            #[inline]
+            pub fn add_changes(
+                &mut self,
+                changes: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitPushRequest::VT_CHANGES, changes);
+            }
+            #[inline]
+            pub fn add_named(
+                &mut self,
+                named: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitPushRequest::VT_NAMED, named);
+            }
+            #[inline]
+            pub fn add_dry_run(&mut self, dry_run: bool) {
+                self.fbb_.push_slot::<bool>(GitPushRequest::VT_DRY_RUN, dry_run, false);
+            }
+            #[inline]
+            pub fn add_options(
+                &mut self,
+                options: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitPushRequest::VT_OPTIONS, options);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitPushRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitPushRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitPushRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitPushRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitPushRequest");
+                ds.field("kind", &self.kind());
+                ds.field("remotes", &self.remotes());
+                ds.field("bookmarks", &self.bookmarks());
+                ds.field("tags", &self.tags());
+                ds.field("all", &self.all());
+                ds.field("tracked", &self.tracked());
+                ds.field("deleted", &self.deleted());
+                ds.field("allow_empty_description", &self.allow_empty_description());
+                ds.field("allow_private", &self.allow_private());
+                ds.field("allow_conflicts", &self.allow_conflicts());
+                ds.field("revisions", &self.revisions());
+                ds.field("changes", &self.changes());
+                ds.field("named", &self.named());
+                ds.field("dry_run", &self.dry_run());
+                ds.field("options", &self.options());
+                ds.finish()
+            }
+        }
+        pub enum RepoCloneRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_repo_clone` (Story 9.20) — the CLI's `jj git clone`, passed through.
+        ///
+        ///   source             REQUIRED (absent → `jj.invalid_input`): the URL or path, as given
+        ///   destination        REQUIRED: missing or an empty directory (created with its parents)
+        ///   remote_name        `--remote`; ABSENT = `origin`
+        ///   colocate / no_colocate   the CLI's two flags (both set → `jj.invalid_input`); neither =
+        ///                      `git.colocate` decides
+        ///   depth              `--depth`; 0 = absent (the whole history)
+        ///   branches / tags    `-b` / `-t` patterns; ABSENT = the flag not given, present-empty = given
+        ///                      with nothing (fetches none of that kind)
+        ///   object_hash        `--object-hash`
+        pub struct RepoCloneRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RepoCloneRequest<'a> {
+            type Inner = RepoCloneRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RepoCloneRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SOURCE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_DESTINATION: ::flatbuffers::VOffsetT = 8;
+            pub const VT_REMOTE_NAME: ::flatbuffers::VOffsetT = 10;
+            pub const VT_COLOCATE: ::flatbuffers::VOffsetT = 12;
+            pub const VT_NO_COLOCATE: ::flatbuffers::VOffsetT = 14;
+            pub const VT_DEPTH: ::flatbuffers::VOffsetT = 16;
+            pub const VT_BRANCHES: ::flatbuffers::VOffsetT = 18;
+            pub const VT_TAGS: ::flatbuffers::VOffsetT = 20;
+            pub const VT_OBJECT_HASH: ::flatbuffers::VOffsetT = 22;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RepoCloneRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RepoCloneRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RepoCloneRequest<'bldr>> {
+                let mut builder = RepoCloneRequestBuilder::new(_fbb);
+                if let Some(x) = args.tags {
+                    builder.add_tags(x);
+                }
+                if let Some(x) = args.branches {
+                    builder.add_branches(x);
+                }
+                builder.add_depth(args.depth);
+                if let Some(x) = args.remote_name {
+                    builder.add_remote_name(x);
+                }
+                if let Some(x) = args.destination {
+                    builder.add_destination(x);
+                }
+                if let Some(x) = args.source {
+                    builder.add_source(x);
+                }
+                builder.add_object_hash(args.object_hash);
+                builder.add_no_colocate(args.no_colocate);
+                builder.add_colocate(args.colocate);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(RepoCloneRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn source(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RepoCloneRequest::VT_SOURCE, None)
+                }
+            }
+            #[inline]
+            pub fn destination(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RepoCloneRequest::VT_DESTINATION, None)
+                }
+            }
+            #[inline]
+            pub fn remote_name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RepoCloneRequest::VT_REMOTE_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn colocate(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(RepoCloneRequest::VT_COLOCATE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn no_colocate(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(RepoCloneRequest::VT_NO_COLOCATE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn depth(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(RepoCloneRequest::VT_DEPTH, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn branches(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RepoCloneRequest::VT_BRANCHES, None)
+                }
+            }
+            #[inline]
+            pub fn tags(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RepoCloneRequest::VT_TAGS, None)
+                }
+            }
+            #[inline]
+            pub fn object_hash(&self) -> ObjectHash {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ObjectHash>(RepoCloneRequest::VT_OBJECT_HASH, Some(ObjectHash::Unspecified))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RepoCloneRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("source", Self::VT_SOURCE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("destination", Self::VT_DESTINATION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("remote_name", Self::VT_REMOTE_NAME, false)?
+     .visit_field::<bool>("colocate", Self::VT_COLOCATE, false)?
+     .visit_field::<bool>("no_colocate", Self::VT_NO_COLOCATE, false)?
+     .visit_field::<u32>("depth", Self::VT_DEPTH, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("branches", Self::VT_BRANCHES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("tags", Self::VT_TAGS, false)?
+     .visit_field::<ObjectHash>("object_hash", Self::VT_OBJECT_HASH, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct RepoCloneRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub source: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub destination: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub remote_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub colocate: bool,
+            pub no_colocate: bool,
+            pub depth: u32,
+            pub branches:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub tags:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub object_hash: ObjectHash,
+        }
+        impl<'a> Default for RepoCloneRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RepoCloneRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    source: None,
+                    destination: None,
+                    remote_name: None,
+                    colocate: false,
+                    no_colocate: false,
+                    depth: 0,
+                    branches: None,
+                    tags: None,
+                    object_hash: ObjectHash::Unspecified,
+                }
+            }
+        }
+
+        pub struct RepoCloneRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RepoCloneRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(RepoCloneRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_source(&mut self, source: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RepoCloneRequest::VT_SOURCE, source);
+            }
+            #[inline]
+            pub fn add_destination(&mut self, destination: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RepoCloneRequest::VT_DESTINATION, destination);
+            }
+            #[inline]
+            pub fn add_remote_name(&mut self, remote_name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RepoCloneRequest::VT_REMOTE_NAME, remote_name);
+            }
+            #[inline]
+            pub fn add_colocate(&mut self, colocate: bool) {
+                self.fbb_
+                    .push_slot::<bool>(RepoCloneRequest::VT_COLOCATE, colocate, false);
+            }
+            #[inline]
+            pub fn add_no_colocate(&mut self, no_colocate: bool) {
+                self.fbb_
+                    .push_slot::<bool>(RepoCloneRequest::VT_NO_COLOCATE, no_colocate, false);
+            }
+            #[inline]
+            pub fn add_depth(&mut self, depth: u32) {
+                self.fbb_.push_slot::<u32>(RepoCloneRequest::VT_DEPTH, depth, 0);
+            }
+            #[inline]
+            pub fn add_branches(
+                &mut self,
+                branches: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RepoCloneRequest::VT_BRANCHES, branches);
+            }
+            #[inline]
+            pub fn add_tags(
+                &mut self,
+                tags: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RepoCloneRequest::VT_TAGS, tags);
+            }
+            #[inline]
+            pub fn add_object_hash(&mut self, object_hash: ObjectHash) {
+                self.fbb_.push_slot::<ObjectHash>(
+                    RepoCloneRequest::VT_OBJECT_HASH,
+                    object_hash,
+                    ObjectHash::Unspecified,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RepoCloneRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RepoCloneRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RepoCloneRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RepoCloneRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RepoCloneRequest");
+                ds.field("kind", &self.kind());
+                ds.field("source", &self.source());
+                ds.field("destination", &self.destination());
+                ds.field("remote_name", &self.remote_name());
+                ds.field("colocate", &self.colocate());
+                ds.field("no_colocate", &self.no_colocate());
+                ds.field("depth", &self.depth());
+                ds.field("branches", &self.branches());
+                ds.field("tags", &self.tags());
+                ds.field("object_hash", &self.object_hash());
+                ds.finish()
+            }
+        }
+        pub enum RepoInitRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_repo_init` (Story 9.20) — the CLI's `jj git init`, passed through.
+        ///
+        ///   path               REQUIRED (absent → `jj.invalid_input`); created when missing (one level)
+        ///                      for the Git backend
+        ///   backend            Native (Zanshin-only, the path must exist, no Git flag) or Git
+        ///   colocate / no_colocate   the CLI's two flags (both set → `jj.invalid_input`); neither =
+        ///                      `git.colocate` decides
+        ///   object_hash        `--object-hash`
+        pub struct RepoInitRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RepoInitRequest<'a> {
+            type Inner = RepoInitRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RepoInitRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 6;
+            pub const VT_BACKEND: ::flatbuffers::VOffsetT = 8;
+            pub const VT_COLOCATE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_NO_COLOCATE: ::flatbuffers::VOffsetT = 12;
+            pub const VT_OBJECT_HASH: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RepoInitRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RepoInitRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RepoInitRequest<'bldr>> {
+                let mut builder = RepoInitRequestBuilder::new(_fbb);
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.add_object_hash(args.object_hash);
+                builder.add_no_colocate(args.no_colocate);
+                builder.add_colocate(args.colocate);
+                builder.add_backend(args.backend);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(RepoInitRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RepoInitRequest::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn backend(&self) -> InitBackend {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<InitBackend>(RepoInitRequest::VT_BACKEND, Some(InitBackend::Native))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn colocate(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(RepoInitRequest::VT_COLOCATE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn no_colocate(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(RepoInitRequest::VT_NO_COLOCATE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn object_hash(&self) -> ObjectHash {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ObjectHash>(RepoInitRequest::VT_OBJECT_HASH, Some(ObjectHash::Unspecified))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RepoInitRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<InitBackend>("backend", Self::VT_BACKEND, false)?
+                    .visit_field::<bool>("colocate", Self::VT_COLOCATE, false)?
+                    .visit_field::<bool>("no_colocate", Self::VT_NO_COLOCATE, false)?
+                    .visit_field::<ObjectHash>("object_hash", Self::VT_OBJECT_HASH, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RepoInitRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub backend: InitBackend,
+            pub colocate: bool,
+            pub no_colocate: bool,
+            pub object_hash: ObjectHash,
+        }
+        impl<'a> Default for RepoInitRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RepoInitRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    path: None,
+                    backend: InitBackend::Native,
+                    colocate: false,
+                    no_colocate: false,
+                    object_hash: ObjectHash::Unspecified,
+                }
+            }
+        }
+
+        pub struct RepoInitRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RepoInitRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(RepoInitRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RepoInitRequest::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_backend(&mut self, backend: InitBackend) {
+                self.fbb_
+                    .push_slot::<InitBackend>(RepoInitRequest::VT_BACKEND, backend, InitBackend::Native);
+            }
+            #[inline]
+            pub fn add_colocate(&mut self, colocate: bool) {
+                self.fbb_
+                    .push_slot::<bool>(RepoInitRequest::VT_COLOCATE, colocate, false);
+            }
+            #[inline]
+            pub fn add_no_colocate(&mut self, no_colocate: bool) {
+                self.fbb_
+                    .push_slot::<bool>(RepoInitRequest::VT_NO_COLOCATE, no_colocate, false);
+            }
+            #[inline]
+            pub fn add_object_hash(&mut self, object_hash: ObjectHash) {
+                self.fbb_.push_slot::<ObjectHash>(
+                    RepoInitRequest::VT_OBJECT_HASH,
+                    object_hash,
+                    ObjectHash::Unspecified,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RepoInitRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RepoInitRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RepoInitRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RepoInitRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RepoInitRequest");
+                ds.field("kind", &self.kind());
+                ds.field("path", &self.path());
+                ds.field("backend", &self.backend());
+                ds.field("colocate", &self.colocate());
+                ds.field("no_colocate", &self.no_colocate());
+                ds.field("object_hash", &self.object_hash());
                 ds.finish()
             }
         }
@@ -11405,10 +13000,11 @@ pub mod zanshin {
         pub enum ProgressOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        /// Progress notification for a long-running operation (FR-FFI-8), e.g. `git
-        /// fetch` (producer lands in Story 6-4a). Dispatched over the same
-        /// process-global event sink as `WatcherEvent`, correlated by `session_id`
-        /// (same never-reused id as WatcherEvent — see RepoHandle.session_id).
+        /// Progress notification for a long-running operation (FR-FFI-8): `git fetch` (Story 6-4a),
+        /// `git clone` and `git push` (Story 9.20) — `operation` is `"fetch"`, `"clone"` or `"push"`.
+        /// Dispatched over the same process-global event sink as `WatcherEvent`, correlated by
+        /// `session_id` (same never-reused id as WatcherEvent — see RepoHandle.session_id). A clone's
+        /// events carry the session id its new handle will get (allocated before the clone runs).
         pub struct Progress<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -13807,6 +15403,1747 @@ pub mod zanshin {
                 ds.field("mutation", &self.mutation());
                 ds.field("selected_change_id", &self.selected_change_id());
                 ds.field("remaining_change_id", &self.remaining_change_id());
+                ds.finish()
+            }
+        }
+        pub enum PushRefusalOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The CLI's message and hint for a refused ref, verbatim. `hint` ABSENT where the CLI gives
+        /// none.
+        pub struct PushRefusal<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PushRefusal<'a> {
+            type Inner = PushRefusal<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PushRefusal<'a> {
+            pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_HINT: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PushRefusal { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PushRefusalArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PushRefusal<'bldr>> {
+                let mut builder = PushRefusalBuilder::new(_fbb);
+                if let Some(x) = args.hint {
+                    builder.add_hint(x);
+                }
+                if let Some(x) = args.message {
+                    builder.add_message(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn message(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRefusal::VT_MESSAGE, None)
+                }
+            }
+            #[inline]
+            pub fn hint(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRefusal::VT_HINT, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for PushRefusal<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("hint", Self::VT_HINT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PushRefusalArgs<'a> {
+            pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub hint: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for PushRefusalArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PushRefusalArgs {
+                    message: None,
+                    hint: None,
+                }
+            }
+        }
+
+        pub struct PushRefusalBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PushRefusalBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_message(&mut self, message: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRefusal::VT_MESSAGE, message);
+            }
+            #[inline]
+            pub fn add_hint(&mut self, hint: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRefusal::VT_HINT, hint);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PushRefusalBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PushRefusalBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PushRefusal<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for PushRefusal<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PushRefusal");
+                ds.field("message", &self.message());
+                ds.field("hint", &self.hint());
+                ds.finish()
+            }
+        }
+        pub enum PushCommitRejectionOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A commit the push refuses to send: its full hex id, the reasons in the CLI's order, the CLI's
+        /// text for the ref's path and its hints ("Rejected commit: …" on the abort path, the
+        /// `git.private-commits` hint for a private commit).
+        pub struct PushCommitRejection<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PushCommitRejection<'a> {
+            type Inner = PushCommitRejection<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PushCommitRejection<'a> {
+            pub const VT_COMMIT_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REASONS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_HINTS: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PushCommitRejection { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PushCommitRejectionArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PushCommitRejection<'bldr>> {
+                let mut builder = PushCommitRejectionBuilder::new(_fbb);
+                if let Some(x) = args.hints {
+                    builder.add_hints(x);
+                }
+                if let Some(x) = args.message {
+                    builder.add_message(x);
+                }
+                if let Some(x) = args.reasons {
+                    builder.add_reasons(x);
+                }
+                if let Some(x) = args.commit_id {
+                    builder.add_commit_id(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn commit_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushCommitRejection::VT_COMMIT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn reasons(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(PushCommitRejection::VT_REASONS, None)
+                }
+            }
+            #[inline]
+            pub fn message(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushCommitRejection::VT_MESSAGE, None)
+                }
+            }
+            #[inline]
+            pub fn hints(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(PushCommitRejection::VT_HINTS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for PushCommitRejection<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("commit_id", Self::VT_COMMIT_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("reasons", Self::VT_REASONS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("hints", Self::VT_HINTS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct PushCommitRejectionArgs<'a> {
+            pub commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub reasons:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub hints:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for PushCommitRejectionArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PushCommitRejectionArgs {
+                    commit_id: None,
+                    reasons: None,
+                    message: None,
+                    hints: None,
+                }
+            }
+        }
+
+        pub struct PushCommitRejectionBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PushCommitRejectionBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_commit_id(&mut self, commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushCommitRejection::VT_COMMIT_ID, commit_id);
+            }
+            #[inline]
+            pub fn add_reasons(
+                &mut self,
+                reasons: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushCommitRejection::VT_REASONS, reasons);
+            }
+            #[inline]
+            pub fn add_message(&mut self, message: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushCommitRejection::VT_MESSAGE, message);
+            }
+            #[inline]
+            pub fn add_hints(
+                &mut self,
+                hints: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushCommitRejection::VT_HINTS, hints);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PushCommitRejectionBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PushCommitRejectionBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PushCommitRejection<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for PushCommitRejection<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PushCommitRejection");
+                ds.field("commit_id", &self.commit_id());
+                ds.field("reasons", &self.reasons());
+                ds.field("message", &self.message());
+                ds.field("hints", &self.hints());
+                ds.finish()
+            }
+        }
+        pub enum PushRefOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One ref of a remote's plan. `before` / `after` are full commit hex ids — ABSENT when the ref
+        /// is absent on that side or conflicted; `action` is the move in jj's words ("move forward from
+        /// <old> to <new>", "add to <new>", "delete from <old>"), ABSENT for a conflicted ref.
+        /// `refusal` is the mode's refusal (Skip / Abort), `explicit_refusal` the one the ref would get if
+        /// named explicitly (ABSENT = it could be), `rejection` the commit the push refuses to send.
+        /// `status` / `status_reason` after a real push.
+        pub struct PushRef<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PushRef<'a> {
+            type Inner = PushRef<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PushRef<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 6;
+            pub const VT_BEFORE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_AFTER: ::flatbuffers::VOffsetT = 10;
+            pub const VT_ACTION: ::flatbuffers::VOffsetT = 12;
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 14;
+            pub const VT_REFUSAL: ::flatbuffers::VOffsetT = 16;
+            pub const VT_EXPLICIT_REFUSAL: ::flatbuffers::VOffsetT = 18;
+            pub const VT_REJECTION: ::flatbuffers::VOffsetT = 20;
+            pub const VT_STATUS: ::flatbuffers::VOffsetT = 22;
+            pub const VT_STATUS_REASON: ::flatbuffers::VOffsetT = 24;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PushRef { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PushRefArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PushRef<'bldr>> {
+                let mut builder = PushRefBuilder::new(_fbb);
+                if let Some(x) = args.status_reason {
+                    builder.add_status_reason(x);
+                }
+                if let Some(x) = args.rejection {
+                    builder.add_rejection(x);
+                }
+                if let Some(x) = args.explicit_refusal {
+                    builder.add_explicit_refusal(x);
+                }
+                if let Some(x) = args.refusal {
+                    builder.add_refusal(x);
+                }
+                if let Some(x) = args.action {
+                    builder.add_action(x);
+                }
+                if let Some(x) = args.after {
+                    builder.add_after(x);
+                }
+                if let Some(x) = args.before {
+                    builder.add_before(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.add_status(args.status);
+                builder.add_path(args.path);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> PushRefKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<PushRefKind>(PushRef::VT_KIND, Some(PushRefKind::Bookmark))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRef::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn before(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRef::VT_BEFORE, None)
+                }
+            }
+            #[inline]
+            pub fn after(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRef::VT_AFTER, None)
+                }
+            }
+            #[inline]
+            pub fn action(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRef::VT_ACTION, None)
+                }
+            }
+            #[inline]
+            pub fn path(&self) -> PushPath {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<PushPath>(PushRef::VT_PATH, Some(PushPath::Push))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn refusal(&self) -> Option<PushRefusal<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<PushRefusal>>(PushRef::VT_REFUSAL, None)
+                }
+            }
+            #[inline]
+            pub fn explicit_refusal(&self) -> Option<PushRefusal<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<PushRefusal>>(PushRef::VT_EXPLICIT_REFUSAL, None)
+                }
+            }
+            #[inline]
+            pub fn rejection(&self) -> Option<PushCommitRejection<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<PushCommitRejection>>(PushRef::VT_REJECTION, None)
+                }
+            }
+            #[inline]
+            pub fn status(&self) -> PushRefStatus {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<PushRefStatus>(PushRef::VT_STATUS, Some(PushRefStatus::NotReached))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn status_reason(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRef::VT_STATUS_REASON, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for PushRef<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<PushRefKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("before", Self::VT_BEFORE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("after", Self::VT_AFTER, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("action", Self::VT_ACTION, false)?
+                    .visit_field::<PushPath>("path", Self::VT_PATH, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<PushRefusal>>("refusal", Self::VT_REFUSAL, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<PushRefusal>>(
+                        "explicit_refusal",
+                        Self::VT_EXPLICIT_REFUSAL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<PushCommitRejection>>(
+                        "rejection",
+                        Self::VT_REJECTION,
+                        false,
+                    )?
+                    .visit_field::<PushRefStatus>("status", Self::VT_STATUS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "status_reason",
+                        Self::VT_STATUS_REASON,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PushRefArgs<'a> {
+            pub kind: PushRefKind,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub before: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub after: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub action: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub path: PushPath,
+            pub refusal: Option<::flatbuffers::WIPOffset<PushRefusal<'a>>>,
+            pub explicit_refusal: Option<::flatbuffers::WIPOffset<PushRefusal<'a>>>,
+            pub rejection: Option<::flatbuffers::WIPOffset<PushCommitRejection<'a>>>,
+            pub status: PushRefStatus,
+            pub status_reason: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for PushRefArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PushRefArgs {
+                    kind: PushRefKind::Bookmark,
+                    name: None,
+                    before: None,
+                    after: None,
+                    action: None,
+                    path: PushPath::Push,
+                    refusal: None,
+                    explicit_refusal: None,
+                    rejection: None,
+                    status: PushRefStatus::NotReached,
+                    status_reason: None,
+                }
+            }
+        }
+
+        pub struct PushRefBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PushRefBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: PushRefKind) {
+                self.fbb_
+                    .push_slot::<PushRefKind>(PushRef::VT_KIND, kind, PushRefKind::Bookmark);
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRef::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_before(&mut self, before: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRef::VT_BEFORE, before);
+            }
+            #[inline]
+            pub fn add_after(&mut self, after: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRef::VT_AFTER, after);
+            }
+            #[inline]
+            pub fn add_action(&mut self, action: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRef::VT_ACTION, action);
+            }
+            #[inline]
+            pub fn add_path(&mut self, path: PushPath) {
+                self.fbb_.push_slot::<PushPath>(PushRef::VT_PATH, path, PushPath::Push);
+            }
+            #[inline]
+            pub fn add_refusal(&mut self, refusal: ::flatbuffers::WIPOffset<PushRefusal<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<PushRefusal>>(PushRef::VT_REFUSAL, refusal);
+            }
+            #[inline]
+            pub fn add_explicit_refusal(&mut self, explicit_refusal: ::flatbuffers::WIPOffset<PushRefusal<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<PushRefusal>>(
+                    PushRef::VT_EXPLICIT_REFUSAL,
+                    explicit_refusal,
+                );
+            }
+            #[inline]
+            pub fn add_rejection(&mut self, rejection: ::flatbuffers::WIPOffset<PushCommitRejection<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<PushCommitRejection>>(
+                        PushRef::VT_REJECTION,
+                        rejection,
+                    );
+            }
+            #[inline]
+            pub fn add_status(&mut self, status: PushRefStatus) {
+                self.fbb_
+                    .push_slot::<PushRefStatus>(PushRef::VT_STATUS, status, PushRefStatus::NotReached);
+            }
+            #[inline]
+            pub fn add_status_reason(&mut self, status_reason: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRef::VT_STATUS_REASON, status_reason);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PushRefBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PushRefBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PushRef<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for PushRef<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PushRef");
+                ds.field("kind", &self.kind());
+                ds.field("name", &self.name());
+                ds.field("before", &self.before());
+                ds.field("after", &self.after());
+                ds.field("action", &self.action());
+                ds.field("path", &self.path());
+                ds.field("refusal", &self.refusal());
+                ds.field("explicit_refusal", &self.explicit_refusal());
+                ds.field("rejection", &self.rejection());
+                ds.field("status", &self.status());
+                ds.field("status_reason", &self.status_reason());
+                ds.finish()
+            }
+        }
+        pub enum PushRefNameOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A ref and its kind — an explicitly named ref that already matches (the CLI's "Bookmark
+        /// <name>@<remote> already matches <name>").
+        pub struct PushRefName<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PushRefName<'a> {
+            type Inner = PushRefName<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PushRefName<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PushRefName { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PushRefNameArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PushRefName<'bldr>> {
+                let mut builder = PushRefNameBuilder::new(_fbb);
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> PushRefKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<PushRefKind>(PushRefName::VT_KIND, Some(PushRefKind::Bookmark))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRefName::VT_NAME, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for PushRefName<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<PushRefKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PushRefNameArgs<'a> {
+            pub kind: PushRefKind,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for PushRefNameArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PushRefNameArgs {
+                    kind: PushRefKind::Bookmark,
+                    name: None,
+                }
+            }
+        }
+
+        pub struct PushRefNameBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PushRefNameBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: PushRefKind) {
+                self.fbb_
+                    .push_slot::<PushRefKind>(PushRefName::VT_KIND, kind, PushRefKind::Bookmark);
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRefName::VT_NAME, name);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PushRefNameBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PushRefNameBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PushRefName<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for PushRefName<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PushRefName");
+                ds.field("kind", &self.kind());
+                ds.field("name", &self.name());
+                ds.finish()
+            }
+        }
+        pub enum PushRemoteOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One remote's plan and result. `finished` = the push to it ran; `error` = the CLI's
+        /// `GitPushError` text that stopped the push there (ABSENT otherwise).
+        pub struct PushRemote<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PushRemote<'a> {
+            type Inner = PushRemote<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PushRemote<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REFS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ALREADY_MATCHES: ::flatbuffers::VOffsetT = 8;
+            pub const VT_FINISHED: ::flatbuffers::VOffsetT = 10;
+            pub const VT_ERROR: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PushRemote { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PushRemoteArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PushRemote<'bldr>> {
+                let mut builder = PushRemoteBuilder::new(_fbb);
+                if let Some(x) = args.error {
+                    builder.add_error(x);
+                }
+                if let Some(x) = args.already_matches {
+                    builder.add_already_matches(x);
+                }
+                if let Some(x) = args.refs {
+                    builder.add_refs(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.add_finished(args.finished);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRemote::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn refs(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PushRef<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PushRef>>,
+                    >>(PushRemote::VT_REFS, None)
+                }
+            }
+            #[inline]
+            pub fn already_matches(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PushRefName<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PushRefName>>,
+                    >>(PushRemote::VT_ALREADY_MATCHES, None)
+                }
+            }
+            #[inline]
+            pub fn finished(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(PushRemote::VT_FINISHED, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn error(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushRemote::VT_ERROR, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for PushRemote<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<PushRef>>>>("refs", Self::VT_REFS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<PushRefName>>>>("already_matches", Self::VT_ALREADY_MATCHES, false)?
+     .visit_field::<bool>("finished", Self::VT_FINISHED, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("error", Self::VT_ERROR, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct PushRemoteArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub refs: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PushRef<'a>>>>,
+            >,
+            pub already_matches: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PushRefName<'a>>>>,
+            >,
+            pub finished: bool,
+            pub error: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for PushRemoteArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PushRemoteArgs {
+                    name: None,
+                    refs: None,
+                    already_matches: None,
+                    finished: false,
+                    error: None,
+                }
+            }
+        }
+
+        pub struct PushRemoteBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PushRemoteBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRemote::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_refs(
+                &mut self,
+                refs: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<PushRef<'b>>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRemote::VT_REFS, refs);
+            }
+            #[inline]
+            pub fn add_already_matches(
+                &mut self,
+                already_matches: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<PushRefName<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRemote::VT_ALREADY_MATCHES, already_matches);
+            }
+            #[inline]
+            pub fn add_finished(&mut self, finished: bool) {
+                self.fbb_.push_slot::<bool>(PushRemote::VT_FINISHED, finished, false);
+            }
+            #[inline]
+            pub fn add_error(&mut self, error: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushRemote::VT_ERROR, error);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PushRemoteBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PushRemoteBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PushRemote<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for PushRemote<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PushRemote");
+                ds.field("name", &self.name());
+                ds.field("refs", &self.refs());
+                ds.field("already_matches", &self.already_matches());
+                ds.field("finished", &self.finished());
+                ds.field("error", &self.error());
+                ds.finish()
+            }
+        }
+        pub enum PushCreatedBookmarkOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A bookmark `--change` created ("Creating bookmark <name> for revision <change>").
+        pub struct PushCreatedBookmark<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PushCreatedBookmark<'a> {
+            type Inner = PushCreatedBookmark<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PushCreatedBookmark<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CHANGE_ID: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PushCreatedBookmark { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PushCreatedBookmarkArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PushCreatedBookmark<'bldr>> {
+                let mut builder = PushCreatedBookmarkBuilder::new(_fbb);
+                if let Some(x) = args.change_id {
+                    builder.add_change_id(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushCreatedBookmark::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushCreatedBookmark::VT_CHANGE_ID, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for PushCreatedBookmark<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("change_id", Self::VT_CHANGE_ID, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PushCreatedBookmarkArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for PushCreatedBookmarkArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PushCreatedBookmarkArgs {
+                    name: None,
+                    change_id: None,
+                }
+            }
+        }
+
+        pub struct PushCreatedBookmarkBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PushCreatedBookmarkBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushCreatedBookmark::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_change_id(&mut self, change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushCreatedBookmark::VT_CHANGE_ID, change_id);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PushCreatedBookmarkBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PushCreatedBookmarkBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PushCreatedBookmark<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for PushCreatedBookmark<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PushCreatedBookmark");
+                ds.field("name", &self.name());
+                ds.field("change_id", &self.change_id());
+                ds.finish()
+            }
+        }
+        pub enum PushSigningOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// What sign-on-push did: "Updated signatures of N commits." / "Rebased N descendant commits."
+        /// Counts saturate at 4294967295.
+        pub struct PushSigning<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PushSigning<'a> {
+            type Inner = PushSigning<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PushSigning<'a> {
+            pub const VT_UPDATED_SIGNATURES: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REBASED_DESCENDANTS: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PushSigning { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PushSigningArgs,
+            ) -> ::flatbuffers::WIPOffset<PushSigning<'bldr>> {
+                let mut builder = PushSigningBuilder::new(_fbb);
+                builder.add_rebased_descendants(args.rebased_descendants);
+                builder.add_updated_signatures(args.updated_signatures);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn updated_signatures(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(PushSigning::VT_UPDATED_SIGNATURES, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn rebased_descendants(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(PushSigning::VT_REBASED_DESCENDANTS, Some(0))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for PushSigning<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u32>("updated_signatures", Self::VT_UPDATED_SIGNATURES, false)?
+                    .visit_field::<u32>("rebased_descendants", Self::VT_REBASED_DESCENDANTS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PushSigningArgs {
+            pub updated_signatures: u32,
+            pub rebased_descendants: u32,
+        }
+        impl<'a> Default for PushSigningArgs {
+            #[inline]
+            fn default() -> Self {
+                PushSigningArgs {
+                    updated_signatures: 0,
+                    rebased_descendants: 0,
+                }
+            }
+        }
+
+        pub struct PushSigningBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PushSigningBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_updated_signatures(&mut self, updated_signatures: u32) {
+                self.fbb_
+                    .push_slot::<u32>(PushSigning::VT_UPDATED_SIGNATURES, updated_signatures, 0);
+            }
+            #[inline]
+            pub fn add_rebased_descendants(&mut self, rebased_descendants: u32) {
+                self.fbb_
+                    .push_slot::<u32>(PushSigning::VT_REBASED_DESCENDANTS, rebased_descendants, 0);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PushSigningBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PushSigningBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PushSigning<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for PushSigning<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PushSigning");
+                ds.field("updated_signatures", &self.updated_signatures());
+                ds.field("rebased_descendants", &self.rebased_descendants());
+                ds.finish()
+            }
+        }
+        pub enum PushFailureOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A push failure as data — the CLI's non-zero exit — with the CLI's text and hint.
+        pub struct PushFailure<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PushFailure<'a> {
+            type Inner = PushFailure<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PushFailure<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_HINT: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PushFailure { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PushFailureArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PushFailure<'bldr>> {
+                let mut builder = PushFailureBuilder::new(_fbb);
+                if let Some(x) = args.hint {
+                    builder.add_hint(x);
+                }
+                if let Some(x) = args.message {
+                    builder.add_message(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> PushFailureKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<PushFailureKind>(PushFailure::VT_KIND, Some(PushFailureKind::RefRefused))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn message(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushFailure::VT_MESSAGE, None)
+                }
+            }
+            #[inline]
+            pub fn hint(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PushFailure::VT_HINT, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for PushFailure<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<PushFailureKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("hint", Self::VT_HINT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PushFailureArgs<'a> {
+            pub kind: PushFailureKind,
+            pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub hint: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for PushFailureArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PushFailureArgs {
+                    kind: PushFailureKind::RefRefused,
+                    message: None,
+                    hint: None,
+                }
+            }
+        }
+
+        pub struct PushFailureBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PushFailureBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: PushFailureKind) {
+                self.fbb_
+                    .push_slot::<PushFailureKind>(PushFailure::VT_KIND, kind, PushFailureKind::RefRefused);
+            }
+            #[inline]
+            pub fn add_message(&mut self, message: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushFailure::VT_MESSAGE, message);
+            }
+            #[inline]
+            pub fn add_hint(&mut self, hint: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(PushFailure::VT_HINT, hint);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PushFailureBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PushFailureBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PushFailure<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for PushFailure<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PushFailure");
+                ds.field("kind", &self.kind());
+                ds.field("message", &self.message());
+                ds.field("hint", &self.hint());
+                ds.finish()
+            }
+        }
+        pub enum GitPushResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of `zanshin_git_push` (Story 9.20): the plan per remote and ref, and after a real push
+        /// what happened. `hints` are the hints a UI shows verbatim ("Pushing to the only existing remote:
+        /// …", the push-stats hints). `signing` ABSENT when sign-on-push did not run. `nothing_changed` =
+        /// the CLI's "Nothing changed.". `recorded` = the push's operation was written; `description` is
+        /// that operation's description (a dry run's: the one the real push would write; ABSENT when
+        /// nothing changed); `new_op_id` the head after the call. `failure` ABSENT on full success.
+        pub struct GitPushResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitPushResult<'a> {
+            type Inner = GitPushResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitPushResult<'a> {
+            pub const VT_REMOTES: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CREATED_BOOKMARKS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_HINTS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_SIGNING: ::flatbuffers::VOffsetT = 10;
+            pub const VT_NOTHING_CHANGED: ::flatbuffers::VOffsetT = 12;
+            pub const VT_DRY_RUN: ::flatbuffers::VOffsetT = 14;
+            pub const VT_RECORDED: ::flatbuffers::VOffsetT = 16;
+            pub const VT_DESCRIPTION: ::flatbuffers::VOffsetT = 18;
+            pub const VT_NEW_OP_ID: ::flatbuffers::VOffsetT = 20;
+            pub const VT_FAILURE: ::flatbuffers::VOffsetT = 22;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitPushResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitPushResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitPushResult<'bldr>> {
+                let mut builder = GitPushResultBuilder::new(_fbb);
+                if let Some(x) = args.failure {
+                    builder.add_failure(x);
+                }
+                if let Some(x) = args.new_op_id {
+                    builder.add_new_op_id(x);
+                }
+                if let Some(x) = args.description {
+                    builder.add_description(x);
+                }
+                if let Some(x) = args.signing {
+                    builder.add_signing(x);
+                }
+                if let Some(x) = args.hints {
+                    builder.add_hints(x);
+                }
+                if let Some(x) = args.created_bookmarks {
+                    builder.add_created_bookmarks(x);
+                }
+                if let Some(x) = args.remotes {
+                    builder.add_remotes(x);
+                }
+                builder.add_recorded(args.recorded);
+                builder.add_dry_run(args.dry_run);
+                builder.add_nothing_changed(args.nothing_changed);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn remotes(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PushRemote<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PushRemote>>,
+                    >>(GitPushResult::VT_REMOTES, None)
+                }
+            }
+            #[inline]
+            pub fn created_bookmarks(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PushCreatedBookmark<'a>>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PushCreatedBookmark>>,
+                    >>(GitPushResult::VT_CREATED_BOOKMARKS, None)
+                }
+            }
+            #[inline]
+            pub fn hints(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitPushResult::VT_HINTS, None)
+                }
+            }
+            #[inline]
+            pub fn signing(&self) -> Option<PushSigning<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<PushSigning>>(GitPushResult::VT_SIGNING, None)
+                }
+            }
+            #[inline]
+            pub fn nothing_changed(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(GitPushResult::VT_NOTHING_CHANGED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn dry_run(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GitPushResult::VT_DRY_RUN, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn recorded(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(GitPushResult::VT_RECORDED, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn description(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitPushResult::VT_DESCRIPTION, None)
+                }
+            }
+            #[inline]
+            pub fn new_op_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitPushResult::VT_NEW_OP_ID, None)
+                }
+            }
+            #[inline]
+            pub fn failure(&self) -> Option<PushFailure<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<PushFailure>>(GitPushResult::VT_FAILURE, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitPushResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<PushRemote>>>>("remotes", Self::VT_REMOTES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<PushCreatedBookmark>>>>("created_bookmarks", Self::VT_CREATED_BOOKMARKS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("hints", Self::VT_HINTS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<PushSigning>>("signing", Self::VT_SIGNING, false)?
+     .visit_field::<bool>("nothing_changed", Self::VT_NOTHING_CHANGED, false)?
+     .visit_field::<bool>("dry_run", Self::VT_DRY_RUN, false)?
+     .visit_field::<bool>("recorded", Self::VT_RECORDED, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("description", Self::VT_DESCRIPTION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("new_op_id", Self::VT_NEW_OP_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<PushFailure>>("failure", Self::VT_FAILURE, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct GitPushResultArgs<'a> {
+            pub remotes: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PushRemote<'a>>>>,
+            >,
+            pub created_bookmarks: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PushCreatedBookmark<'a>>>,
+                >,
+            >,
+            pub hints:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub signing: Option<::flatbuffers::WIPOffset<PushSigning<'a>>>,
+            pub nothing_changed: bool,
+            pub dry_run: bool,
+            pub recorded: bool,
+            pub description: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub new_op_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub failure: Option<::flatbuffers::WIPOffset<PushFailure<'a>>>,
+        }
+        impl<'a> Default for GitPushResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitPushResultArgs {
+                    remotes: None,
+                    created_bookmarks: None,
+                    hints: None,
+                    signing: None,
+                    nothing_changed: false,
+                    dry_run: false,
+                    recorded: false,
+                    description: None,
+                    new_op_id: None,
+                    failure: None,
+                }
+            }
+        }
+
+        pub struct GitPushResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitPushResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_remotes(
+                &mut self,
+                remotes: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<PushRemote<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitPushResult::VT_REMOTES, remotes);
+            }
+            #[inline]
+            pub fn add_created_bookmarks(
+                &mut self,
+                created_bookmarks: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<PushCreatedBookmark<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    GitPushResult::VT_CREATED_BOOKMARKS,
+                    created_bookmarks,
+                );
+            }
+            #[inline]
+            pub fn add_hints(
+                &mut self,
+                hints: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitPushResult::VT_HINTS, hints);
+            }
+            #[inline]
+            pub fn add_signing(&mut self, signing: ::flatbuffers::WIPOffset<PushSigning<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<PushSigning>>(GitPushResult::VT_SIGNING, signing);
+            }
+            #[inline]
+            pub fn add_nothing_changed(&mut self, nothing_changed: bool) {
+                self.fbb_
+                    .push_slot::<bool>(GitPushResult::VT_NOTHING_CHANGED, nothing_changed, false);
+            }
+            #[inline]
+            pub fn add_dry_run(&mut self, dry_run: bool) {
+                self.fbb_.push_slot::<bool>(GitPushResult::VT_DRY_RUN, dry_run, false);
+            }
+            #[inline]
+            pub fn add_recorded(&mut self, recorded: bool) {
+                self.fbb_.push_slot::<bool>(GitPushResult::VT_RECORDED, recorded, false);
+            }
+            #[inline]
+            pub fn add_description(&mut self, description: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitPushResult::VT_DESCRIPTION, description);
+            }
+            #[inline]
+            pub fn add_new_op_id(&mut self, new_op_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitPushResult::VT_NEW_OP_ID, new_op_id);
+            }
+            #[inline]
+            pub fn add_failure(&mut self, failure: ::flatbuffers::WIPOffset<PushFailure<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<PushFailure>>(GitPushResult::VT_FAILURE, failure);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitPushResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitPushResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitPushResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitPushResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitPushResult");
+                ds.field("remotes", &self.remotes());
+                ds.field("created_bookmarks", &self.created_bookmarks());
+                ds.field("hints", &self.hints());
+                ds.field("signing", &self.signing());
+                ds.field("nothing_changed", &self.nothing_changed());
+                ds.field("dry_run", &self.dry_run());
+                ds.field("recorded", &self.recorded());
+                ds.field("description", &self.description());
+                ds.field("new_op_id", &self.new_op_id());
+                ds.field("failure", &self.failure());
                 ds.finish()
             }
         }
@@ -21732,6 +25069,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_git_push_result(&self) -> Option<GitPushResult<'a>> {
+                if self.data_type() == Payload::GitPushResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { GitPushResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -21785,6 +25137,7 @@ pub mod zanshin {
           Payload::StaleRecovery => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<StaleRecovery>>("Payload::StaleRecovery", pos),
           Payload::SquashPlan => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<SquashPlan>>("Payload::SquashPlan", pos),
           Payload::SplitResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<SplitResult>>("Payload::SplitResult", pos),
+          Payload::GitPushResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitPushResult>>("Payload::GitPushResult", pos),
           _ => Ok(()),
         }
      })?
@@ -22156,6 +25509,13 @@ pub mod zanshin {
                     }
                     Payload::SplitResult => {
                         if let Some(x) = self.data_as_split_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::GitPushResult => {
+                        if let Some(x) = self.data_as_git_push_result() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

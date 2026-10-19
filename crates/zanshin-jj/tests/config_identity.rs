@@ -510,11 +510,24 @@ fn is_user_name_fault(err: &RepoError) -> bool {
 /// parent of an import destination. Expects `JJ_CONFIG` on a stack with `user.name = 1`.
 fn user_level_faults_refuse_first(tmp: &Path) {
     let missing = tmp.join("missing");
-    let err = Repo::init(&missing, None).result.expect_err("init must refuse");
+    let err = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&missing),
+        ..Default::default()
+    })
+    .result
+    .expect_err("init must refuse");
     assert!(is_user_name_fault(&err), "init reported the path first: {err:?}");
-    let err = Repo::clone("file:///nonexistent-zanshin-source", &missing)
-        .result
-        .expect_err("clone must refuse");
+    let err = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: String::from("file:///nonexistent-zanshin-source"),
+            destination: std::path::PathBuf::from(&missing),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    )
+    .result
+    .expect_err("clone must refuse");
     assert!(is_user_name_fault(&err), "clone reported the path first: {err:?}");
     let err = convert_colocated(&missing).result.expect_err("convert must refuse");
     assert!(is_user_name_fault(&err), "convert reported the path first: {err:?}");
@@ -537,6 +550,7 @@ fn user_level_faults_refuse_first(tmp: &Path) {
 /// canonical paths — the CLI's `settings_for_new_workspace` — so `--when.repositories` /
 /// `--when.workspaces` scopes (a per-directory identity) sign what it writes, and the
 /// re-opened handle resolves the same scope. Leaves `JJ_CONFIG` on a scoped stack.
+#[allow(clippy::too_many_lines)] // WHY: one scenario, step by step; Story 9.20's option structs made it longer
 fn scoped_creation(tmp: &Path) {
     // A per-directory identity: the scope matches only the NEW workspace's own paths.
     let canonical_tmp = fs::canonicalize(tmp).unwrap();
@@ -553,7 +567,12 @@ fn scoped_creation(tmp: &Path) {
     ));
     let scoped_init = scoped_root.join("init");
     fs::create_dir_all(&scoped_init).unwrap();
-    let mut scoped_handle = Repo::init(&scoped_init, None).result.expect("init with a scoped stack");
+    let mut scoped_handle = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&scoped_init),
+        ..Default::default()
+    })
+    .result
+    .expect("init with a scoped stack");
     assert_eq!(
         author(&scoped_init),
         pair("Creator", "scoped@example.com"),
@@ -567,7 +586,12 @@ fn scoped_creation(tmp: &Path) {
     );
     let unscoped_init = canonical_tmp.join("unscoped-init");
     fs::create_dir_all(&unscoped_init).unwrap();
-    Repo::init(&unscoped_init, None).result.expect("init outside the scope");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&unscoped_init),
+        ..Default::default()
+    })
+    .result
+    .expect("init outside the scope");
     assert_eq!(
         author(&unscoped_init),
         pair("Creator", "unscoped@example.com"),
@@ -575,9 +599,12 @@ fn scoped_creation(tmp: &Path) {
     );
     let ws_scoped_init = ws_scoped_root.join("init");
     fs::create_dir_all(&ws_scoped_init).unwrap();
-    Repo::init(&ws_scoped_init, None)
-        .result
-        .expect("init with a workspace scope");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&ws_scoped_init),
+        ..Default::default()
+    })
+    .result
+    .expect("init with a workspace scope");
     assert_eq!(
         author(&ws_scoped_init),
         pair("Workspace Scoped", "unscoped@example.com"),
@@ -589,9 +616,12 @@ fn scoped_creation(tmp: &Path) {
     std::os::unix::fs::symlink(&scoped_root, &link).unwrap();
     let via_link = link.join("via-link");
     fs::create_dir_all(&via_link).unwrap();
-    Repo::init(&via_link, None)
-        .result
-        .expect("init through a symlinked path");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&via_link),
+        ..Default::default()
+    })
+    .result
+    .expect("init through a symlinked path");
     assert_eq!(
         author(&via_link),
         pair("Creator", "scoped@example.com"),
@@ -601,9 +631,17 @@ fn scoped_creation(tmp: &Path) {
     git_repo_with_a_commit(clone_source.path());
     let scoped_clone = scoped_root.join("clone");
     fs::create_dir_all(&scoped_clone).unwrap();
-    Repo::clone(&format!("file://{}", clone_source.path().display()), &scoped_clone)
-        .result
-        .expect("clone with a scoped stack");
+    Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: String::from(&format!("file://{}", clone_source.path().display())),
+            destination: std::path::PathBuf::from(&scoped_clone),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    )
+    .result
+    .expect("clone with a scoped stack");
     assert_eq!(
         author(&scoped_clone),
         pair("Creator", "scoped@example.com"),
@@ -648,9 +686,12 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     let fresh = tmp.join("fresh");
     fs::create_dir_all(&fresh).unwrap();
     set_jj_config(&config_file(tmp, "wrong-type-init.toml", "[user]\nname = 1\n"));
-    let err = Repo::init(&fresh, None)
-        .result
-        .expect_err("init must refuse a broken stack");
+    let err = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&fresh),
+        ..Default::default()
+    })
+    .result
+    .expect_err("init must refuse a broken stack");
     assert!(
         matches!(&err, RepoError::Config { reason } if reason.contains("user.name")),
         "unexpected error: {err:?}"
@@ -667,12 +708,23 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     ));
     let fresh_git = tmp.join("fresh-git");
     fs::create_dir_all(&fresh_git).unwrap();
-    let err = Repo::init(&fresh_git, Some(Backend::Git))
-        .result
-        .expect_err("a wrong-typed git key must refuse");
+    let err = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&fresh_git),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect_err("a wrong-typed git key must refuse");
     assert!(
         matches!(&err, RepoError::Config { reason } if reason.contains("abandon-unreachable-commits")),
         "unexpected error: {err:?}"
+    );
+    // Story 9.20 (deferral I3): jj-lib's own creation removes the `.jj` it started — the CLI's
+    // `jj git init` cleans up nothing beyond that, and neither does `Repo::init`.
+    assert!(
+        !fresh_git.join(".jj").exists(),
+        "a failing git backend leaves no .jj behind"
     );
     let git_repo = TempDir::new().unwrap();
     let status = Command::new("git")
@@ -706,7 +758,12 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     );
 
     set_jj_config(user_file);
-    let mut created = Repo::init(&fresh, None).result.expect("init with a valid stack");
+    let mut created = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&fresh),
+        ..Default::default()
+    })
+    .result
+    .expect("init with a valid stack");
     fs::write(
         fresh.join(".jj").join("repo").join("config.toml"),
         "[user]\nname = \"Fresh Repo\"\n",

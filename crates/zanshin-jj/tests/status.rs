@@ -179,7 +179,12 @@ fn status_on_clean_fixture_returns_no_files() {
 fn status_on_added_file_returns_added() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     fs::write(tmp.path().join("new_file.txt"), b"hello").unwrap();
     snapshot_working_copy(tmp.path()).unwrap();
@@ -198,7 +203,12 @@ fn status_on_added_file_returns_added() {
 fn status_on_modified_file_returns_modified() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     fs::write(tmp.path().join("file.txt"), b"original").unwrap();
     snapshot_working_copy(tmp.path()).unwrap();
@@ -221,7 +231,12 @@ fn status_on_modified_file_returns_modified() {
 fn status_on_removed_file_returns_removed() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     fs::write(tmp.path().join("file.txt"), b"content").unwrap();
     snapshot_working_copy(tmp.path()).unwrap();
@@ -244,7 +259,14 @@ fn status_on_removed_file_returns_removed() {
 fn status_on_renamed_file_on_git_backend_returns_renamed() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), Some(Backend::Git)).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     fs::write(tmp.path().join("old_name.txt"), b"content to rename").unwrap();
     snapshot_working_copy(tmp.path()).unwrap();
@@ -277,7 +299,12 @@ fn status_on_renamed_file_on_git_backend_returns_renamed() {
 fn status_working_copy_change_id_reflects_current_wc_commit() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     fs::write(tmp.path().join("file.txt"), b"content").unwrap();
     snapshot_working_copy(tmp.path()).unwrap();
@@ -299,7 +326,12 @@ fn status_working_copy_change_id_reflects_current_wc_commit() {
 fn status_on_workspace_without_wc_commit_returns_no_working_copy() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
     remove_working_copy(tmp.path()).unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
@@ -315,7 +347,12 @@ fn status_on_workspace_without_wc_commit_returns_no_working_copy() {
 fn status_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
 

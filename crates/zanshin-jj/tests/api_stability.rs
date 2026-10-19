@@ -1350,23 +1350,10 @@ fn story_9_28_surface_resolves() {
     );
 }
 
-/// Story 9.32: the warning channel — `Warning`, every `WarningKind` (matched EXHAUSTIVELY, so a
-/// variant added or removed breaks this test at compile time), `Warned`, and
-/// `Repo::take_warnings`.
-#[test]
-fn story_9_32_warning_surface_resolves() {
+/// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds).
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 47] = {
     use zanshin_jj::WarningKind as K;
-
-    let warning = zanshin_jj::Warning {
-        kind: K::IdentityMissing,
-        message: String::new(),
-    };
-    let warned = zanshin_jj::Warned {
-        value: (),
-        warnings: vec![warning.clone()],
-    };
-    assert_eq!(warned.warnings, [warning]);
-    let every = [
+    [
         K::IdentityMissing,
         K::WorkingCopyImmutable,
         K::JjconflictFilesPresent,
@@ -1402,7 +1389,38 @@ fn story_9_32_warning_surface_resolves() {
         K::SplitAllSelected,
         K::SplitNoneSelected,
         K::CommitPathsUnmatched,
-    ];
+        K::PushRemotesUnmatched,
+        K::PushBookmarksUnmatched,
+        K::PushTagsUnmatched,
+        K::PushRevsetEmpty,
+        K::PushRevisionsEmpty,
+        K::PushRefSkipped,
+        K::PushCommitSkipped,
+        K::PushRefsMovedOnRemote,
+        K::PushRemoteRejected,
+        K::PushBookmarksNotUpdatedLocally,
+        K::PushSigningSkippedImmutable,
+        K::CloneBranchesUnmatched,
+    ]
+};
+
+/// Story 9.32: the warning channel — `Warning`, every `WarningKind` (matched EXHAUSTIVELY, so a
+/// variant added or removed breaks this test at compile time), `Warned`, and
+/// `Repo::take_warnings`.
+#[test]
+fn story_9_32_warning_surface_resolves() {
+    use zanshin_jj::WarningKind as K;
+
+    let warning = zanshin_jj::Warning {
+        kind: K::IdentityMissing,
+        message: String::new(),
+    };
+    let warned = zanshin_jj::Warned {
+        value: (),
+        warnings: vec![warning.clone()],
+    };
+    assert_eq!(warned.warnings, [warning]);
+    let every = EVERY_WARNING_KIND;
     for kind in every {
         match kind {
             K::IdentityMissing
@@ -1439,10 +1457,22 @@ fn story_9_32_warning_surface_resolves() {
             | K::WorkspaceInCurrentDirectory
             | K::SplitAllSelected
             | K::SplitNoneSelected
-            | K::CommitPathsUnmatched => {}
+            | K::CommitPathsUnmatched
+            | K::PushRemotesUnmatched
+            | K::PushBookmarksUnmatched
+            | K::PushTagsUnmatched
+            | K::PushRevsetEmpty
+            | K::PushRevisionsEmpty
+            | K::PushRefSkipped
+            | K::PushCommitSkipped
+            | K::PushRefsMovedOnRemote
+            | K::PushRemoteRejected
+            | K::PushBookmarksNotUpdatedLocally
+            | K::PushSigningSkippedImmutable
+            | K::CloneBranchesUnmatched => {}
         }
     }
-    assert_eq!(every.len(), 35);
+    assert_eq!(every.len(), 47);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 
@@ -1463,8 +1493,10 @@ fn story_9_36_login_shell_adoption_resolves() {
 fn story_9_33_creation_outcome_resolves() {
     use std::path::Path;
 
-    _ = zanshin_jj::Repo::init as fn(&Path, Option<zanshin_jj::Backend>) -> zanshin_jj::CreationOutcome;
-    _ = zanshin_jj::Repo::clone as fn(&str, &Path) -> zanshin_jj::CreationOutcome;
+    // Story 9.20: init and clone take their CLI parameters as option structs.
+    _ = zanshin_jj::Repo::init as fn(&zanshin_jj::InitOptions) -> zanshin_jj::CreationOutcome;
+    _ = zanshin_jj::Repo::clone
+        as fn(&zanshin_jj::CloneOptions, &zanshin_jj::ProgressFn) -> zanshin_jj::CreationOutcome;
     _ = zanshin_jj::convert_colocated as fn(&Path) -> zanshin_jj::CreationOutcome;
     _ = zanshin_jj::convert_import as fn(&Path, &Path) -> zanshin_jj::CreationOutcome;
     // Story 9.37: open reports its start-up secure-config fix-up in the same shape.
@@ -1478,4 +1510,150 @@ fn story_9_33_creation_outcome_resolves() {
         }],
     };
     assert!(outcome.result.is_err());
+}
+
+/// Story 9.20: `git push`, `git clone`, `git init` — every public type and field named by its
+/// public path, so a rename or a type change breaks this test at compile time.
+#[test]
+fn story_9_20_push_clone_init_resolves() {
+    use std::num::NonZeroU32;
+    use std::path::PathBuf;
+
+    let _ = zanshin_jj::InitOptions {
+        path: PathBuf::new(),
+        backend: Some(zanshin_jj::Backend::Git),
+        colocate: Some(true),
+        object_hash: Some(zanshin_jj::ObjectHash::Sha256),
+    };
+    let _ = zanshin_jj::CloneOptions {
+        source: String::new(),
+        destination: PathBuf::new(),
+        remote_name: Some(String::new()),
+        colocate: None,
+        depth: NonZeroU32::new(1),
+        branches: Some(Vec::new()),
+        tags: None,
+        object_hash: Some(zanshin_jj::ObjectHash::Sha1),
+    };
+    _ = zanshin_jj::RepoError::DestinationNotEmpty { path: PathBuf::new() };
+    _ = zanshin_jj::RepoError::GitRepoExists { path: PathBuf::new() };
+    _ = zanshin_jj::RepoError::InvalidInput { reason: String::new() };
+    _ = zanshin_jj::MutateError::PushRefRefused { message: String::new() };
+    _ = zanshin_jj::MutateError::PushCommitRejected { message: String::new() };
+    _ = zanshin_jj::Repo::git_push
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::GitPushArgs,
+            &zanshin_jj::ProgressFn,
+        ) -> Result<zanshin_jj::GitPushOutcome, zanshin_jj::MutateError>;
+    let _ = zanshin_jj::GitPushArgs {
+        remotes: Some(Vec::new()),
+        bookmarks: Vec::new(),
+        tags: Vec::new(),
+        all: false,
+        tracked: false,
+        deleted: false,
+        allow_empty_description: false,
+        allow_private: false,
+        allow_conflicts: false,
+        revisions: Vec::new(),
+        changes: Vec::new(),
+        named: Vec::new(),
+        dry_run: true,
+        options: Vec::new(),
+    };
+}
+
+/// Story 9.20: the push outcome's types — every public type, field and variant named by its
+/// public path.
+#[test]
+fn story_9_20_push_outcome_resolves() {
+    let refusal = zanshin_jj::PushRefusal {
+        message: String::new(),
+        hint: None,
+    };
+    let row = zanshin_jj::PushRef {
+        kind: zanshin_jj::PushRefKind::Tag,
+        name: String::new(),
+        before: None,
+        after: None,
+        action: None,
+        path: zanshin_jj::PushPath::Skip,
+        refusal: Some(refusal.clone()),
+        explicit_refusal: Some(refusal),
+        rejection: Some(zanshin_jj::PushCommitRejection {
+            commit_id: String::new(),
+            reasons: Vec::new(),
+            message: String::new(),
+            hints: Vec::new(),
+        }),
+        status: Some(zanshin_jj::PushRefStatus::Unexported),
+        status_reason: None,
+    };
+    for path in [
+        zanshin_jj::PushPath::Push,
+        zanshin_jj::PushPath::Skip,
+        zanshin_jj::PushPath::Abort,
+    ] {
+        match path {
+            zanshin_jj::PushPath::Push | zanshin_jj::PushPath::Skip | zanshin_jj::PushPath::Abort => {}
+        }
+    }
+    for status in [
+        zanshin_jj::PushRefStatus::Pushed,
+        zanshin_jj::PushRefStatus::LeaseRejected,
+        zanshin_jj::PushRefStatus::RemoteRejected,
+        zanshin_jj::PushRefStatus::Unexported,
+    ] {
+        match status {
+            zanshin_jj::PushRefStatus::Pushed
+            | zanshin_jj::PushRefStatus::LeaseRejected
+            | zanshin_jj::PushRefStatus::RemoteRejected
+            | zanshin_jj::PushRefStatus::Unexported => {}
+        }
+    }
+    for kind in [
+        zanshin_jj::PushFailureKind::RefRefused,
+        zanshin_jj::PushFailureKind::CommitRejected,
+        zanshin_jj::PushFailureKind::SomeRefsFailed,
+        zanshin_jj::PushFailureKind::PushError,
+    ] {
+        match kind {
+            zanshin_jj::PushFailureKind::RefRefused
+            | zanshin_jj::PushFailureKind::CommitRejected
+            | zanshin_jj::PushFailureKind::SomeRefsFailed
+            | zanshin_jj::PushFailureKind::PushError => {}
+        }
+    }
+    let _ = zanshin_jj::GitPushOutcome {
+        remotes: vec![zanshin_jj::PushRemote {
+            name: String::new(),
+            refs: vec![row],
+            already_matches: vec![zanshin_jj::PushRefName {
+                kind: zanshin_jj::PushRefKind::Bookmark,
+                name: String::new(),
+            }],
+            finished: false,
+            error: None,
+        }],
+        created_bookmarks: vec![zanshin_jj::PushCreatedBookmark {
+            name: String::new(),
+            change_id: String::new(),
+        }],
+        hints: Vec::new(),
+        signing: Some(zanshin_jj::PushSigning {
+            updated_signatures: 0,
+            rebased_descendants: 0,
+        }),
+        nothing_changed: false,
+        dry_run: false,
+        recorded: false,
+        description: None,
+        new_op_id: String::new(),
+        failure: Some(zanshin_jj::PushFailure {
+            kind: zanshin_jj::PushFailureKind::PushError,
+            message: String::new(),
+            hint: None,
+        }),
+    };
 }

@@ -1237,7 +1237,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("ws");
         fs::create_dir(&root).unwrap();
-        crate::Repo::init(&root, None).result.expect("init");
+        crate::Repo::init(&crate::InitOptions {
+            path: std::path::PathBuf::from(&root),
+            ..Default::default()
+        })
+        .result
+        .expect("init");
         (tmp, root)
     }
 

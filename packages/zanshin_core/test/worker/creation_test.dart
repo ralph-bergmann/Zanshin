@@ -63,7 +63,7 @@ void main() {
     test('init_reports_nothing_and_open_stays_a_plain_handle', () async {
       final String root = tempDir.resolveSymbolicLinksSync();
 
-      final CreatedRepoHandle created = await worker.initRepo(root, backend: 1);
+      final CreatedRepoHandle created = await worker.initRepo(root, backend: 1, noColocate: true);
 
       expect(created.warnings, isEmpty);
       expect(created.precondition, isNull);
@@ -78,15 +78,53 @@ void main() {
     // WHY no successful clone here: a clone's fetch runs a real `git` subprocess, and
     // `Child::wait()` on it fails ("Failed to wait for the git process") inside any
     // `dart test` process — the Dart VM reaps its children (see `mutate_test.dart`'s
-    // `gitFetch` note). The clone's `jj.checkout_files_skipped` witness is therefore
-    // `crates/zanshin-ffi/tests/repo_ffi.rs::clone_into_a_colliding_target_warns_that_a_checkout_was_skipped`
-    // (a plain `cargo test` process); this covers the refusal arm of `cloneRepo`'s new
-    // return path, which spawns no subprocess.
+    // `gitFetch` note). The clone itself is witnessed in Rust
+    // (`crates/zanshin-jj/tests/clone_init.rs`, `crates/zanshin-ffi/tests/push_ffi.rs`);
+    // this covers the refusal arm of `cloneRepo`'s return path on a destination that
+    // is not empty, which Story 9.20 refuses before anything — and any git — runs.
     test('clone_refusal_arrives_as_an_exception', () async {
+      File('${tempDir.path}/keep.txt').writeAsStringSync('mine');
+
       await expectLater(
-        worker.cloneRepo(url: 'file:///nowhere', targetPath: '${tempDir.path}/missing'),
-        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.jj_lib_error')),
+        worker.cloneRepo(source: 'file:///nowhere', destination: tempDir.path),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.destination_not_empty')),
       );
+      expect(Directory('${tempDir.path}/.jj').existsSync(), isFalse, reason: 'nothing was created');
+      expect(File('${tempDir.path}/keep.txt').readAsStringSync(), 'mine');
+    });
+
+    // Story 9.20: `jj git init`'s two colocation flags reach the Rust verb.
+    test('init_colocate_creates_a_git_dir_and_no_colocate_does_not', () async {
+      final colocated = '${tempDir.resolveSymbolicLinksSync()}/colocated';
+      final internal = '${tempDir.resolveSymbolicLinksSync()}/internal';
+
+      final CreatedRepoHandle a = await worker.initRepo(colocated, backend: 1, colocate: true);
+      final CreatedRepoHandle b = await worker.initRepo(internal, backend: 1, noColocate: true);
+      await a.close();
+      await b.close();
+
+      expect(Directory('$colocated/.git').existsSync(), isTrue, reason: 'a missing path is created, colocated');
+      expect(File('$colocated/.jj/.gitignore').existsSync(), isTrue);
+      expect(Directory('$internal/.git').existsSync(), isFalse);
+      expect(Directory('$internal/.jj/repo/store/git').existsSync(), isTrue);
+    });
+
+    test('init_with_both_colocation_flags_is_refused', () async {
+      await expectLater(
+        worker.initRepo('${tempDir.path}/both', backend: 1, colocate: true, noColocate: true),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+      expect(Directory('${tempDir.path}/both').existsSync(), isFalse);
+    });
+
+    test('init_no_colocate_over_a_git_dir_is_refused', () async {
+      Directory('${tempDir.path}/.git').createSync();
+
+      await expectLater(
+        worker.initRepo(tempDir.path, backend: 1, noColocate: true),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.git_repo_exists')),
+      );
+      expect(Directory('${tempDir.path}/.jj').existsSync(), isFalse);
     });
 
     test('convert_with_a_big_new_file_reports_the_snapshot_and_the_refusal', () async {

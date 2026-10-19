@@ -138,7 +138,14 @@ fn user_scope_matrix() {
 fn reads_and_repair(tmp: &Path, first: &Path, hand: &Path) {
     let ws = tmp.join("ws");
     fs::create_dir(&ws).unwrap();
-    let repo = Repo::init(&ws, Some(Backend::Git)).result.expect("init");
+    let repo = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&ws),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("init");
     config_set(None, &file(first), "revsets.log", "root()")
         .result
         .expect("set");

@@ -200,7 +200,14 @@ fn git_fetch_happy_path_imports_commits_and_reports_progress() {
     let bare = git_bare_clone(src.path(), parent.path());
 
     let dst = TempDir::new().unwrap();
-    Repo::init(dst.path(), Some(Backend::Git)).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(dst.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
     register_remote(dst.path(), "origin", &bare.to_string_lossy());
 
     let mut repo = Repo::open(dst.path()).unwrap();
@@ -275,7 +282,14 @@ fn git_fetch_honours_remote_auto_track_bookmarks() {
     let bare = git_bare_clone(src.path(), parent.path());
 
     let dst = TempDir::new().unwrap();
-    Repo::init(dst.path(), Some(Backend::Git)).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(dst.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
     register_remote(dst.path(), "origin", &bare.to_string_lossy());
     write_repo_config(dst.path(), "[remotes.origin]\nauto-track-bookmarks = \"exact:main\"\n");
 
@@ -309,7 +323,14 @@ fn git_fetch_twice_with_no_new_commits_still_commits_fresh_op_each_time() {
     let bare = git_bare_clone(src.path(), parent.path());
 
     let dst = TempDir::new().unwrap();
-    Repo::init(dst.path(), Some(Backend::Git)).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(dst.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
     register_remote(dst.path(), "origin", &bare.to_string_lossy());
 
     let mut repo = Repo::open(dst.path()).unwrap();
@@ -346,7 +367,14 @@ fn git_fetch_twice_with_no_new_commits_still_commits_fresh_op_each_time() {
 fn git_fetch_nonexistent_remote_returns_remote_not_found() {
     pin_env();
     let dst = TempDir::new().unwrap();
-    Repo::init(dst.path(), Some(Backend::Git)).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(dst.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     let mut repo = Repo::open(dst.path()).unwrap();
     let before = repo.op_log(None).unwrap().len();
@@ -373,7 +401,12 @@ fn git_fetch_nonexistent_remote_returns_remote_not_found() {
 fn git_fetch_on_native_backend_returns_not_a_git_repo() {
     pin_env();
     let dst = TempDir::new().unwrap();
-    Repo::init(dst.path(), None).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(dst.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     let mut repo = Repo::open(dst.path()).unwrap();
     let no_op = |_: ProgressEvent| {};
@@ -412,7 +445,14 @@ fn prune_fixture() -> PruneFixture {
     let bare = git_bare_clone(src.path(), parent.path());
 
     let dst = TempDir::new().unwrap();
-    Repo::init(dst.path(), Some(Backend::Git)).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(dst.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
     register_remote(dst.path(), "origin", &bare.to_string_lossy());
 
     let no_op = |_: ProgressEvent| {};
@@ -545,7 +585,14 @@ fn git_fetch_with_a_non_boolean_config_value_refuses_as_config() {
     let bare = git_bare_clone(src.path(), parent.path());
 
     let dst = TempDir::new().unwrap();
-    Repo::init(dst.path(), Some(Backend::Git)).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(dst.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
     register_remote(dst.path(), "origin", &bare.to_string_lossy());
 
     let mut repo = Repo::open(dst.path()).unwrap();
@@ -643,7 +690,14 @@ fn amend_fixture() -> AmendFixture {
     let bare = git_bare_clone(src.path(), parent.path());
 
     let dst = TempDir::new().unwrap();
-    Repo::init(dst.path(), Some(Backend::Git)).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(dst.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
     register_remote(dst.path(), "origin", &bare.to_string_lossy());
 
     let no_op = |_: ProgressEvent| {};
@@ -749,7 +803,14 @@ fn git_fetch_honours_record_synthetic_predecessors_false() {
 fn git_fetch_reserved_remote_name_returns_backend_error() {
     pin_env();
     let dst = TempDir::new().unwrap();
-    Repo::init(dst.path(), Some(Backend::Git)).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(dst.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     let mut repo = Repo::open(dst.path()).unwrap();
     let no_op = |_: ProgressEvent| {};
@@ -770,7 +831,14 @@ fn git_fetch_reserved_remote_name_returns_backend_error() {
 fn git_fetch_unreachable_remote_returns_network_error() {
     pin_env();
     let dst = TempDir::new().unwrap();
-    Repo::init(dst.path(), Some(Backend::Git)).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(dst.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     let parent = TempDir::new().unwrap();
     let bogus_url = parent.path().join("does-not-exist.git");

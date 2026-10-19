@@ -514,11 +514,16 @@ void main() {
       expect(await creation.repo.read(), const ProjectReading(status: ProjectStatus.clean));
     });
 
-    test('a clone into a target that does not exist is refused with jj.jj_lib_error', () async {
+    // Story 9.20: a non-empty destination is refused before anything — and any git — runs.
+    test('a clone into a non-empty target is refused with jj.destination_not_empty', () async {
+      final destination = '${temp.path}/full';
+      File('$destination/keep.txt').createSync(recursive: true);
+
       await expectLater(
-        repos.clone(url: 'file:///nowhere', destination: '${temp.path}/missing'),
-        throwsA(isA<ZanshinFfiException>().having((error) => error.code, 'code', 'jj.jj_lib_error')),
+        repos.clone(url: 'file:///nowhere', destination: destination),
+        throwsA(isA<ZanshinFfiException>().having((error) => error.code, 'code', 'jj.destination_not_empty')),
       );
+      expect(Directory('$destination/.jj').existsSync(), isFalse);
     });
 
     test('a working-copy heartbeat is no change: only op-heads events count', () async {

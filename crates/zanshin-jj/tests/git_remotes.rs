@@ -125,9 +125,14 @@ fn remote_push_url(repo: &mut Repo, name: &str) -> Option<String> {
 /// existing directory path is exactly as good as a real remote and far cheaper.
 fn git_workspace() -> (TempDir, TempDir, String) {
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), Some(Backend::Git))
-        .result
-        .expect("git-backed init");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("git-backed init");
     let remote_dir = TempDir::new().expect("remote tempdir");
     let url = remote_dir.path().to_string_lossy().into_owned();
     (tmp, remote_dir, url)
@@ -581,7 +586,12 @@ fn git_remote_set_url_refuses_a_missing_remote_and_the_reserved_name() {
 fn every_remote_verb_refuses_a_native_backend() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), None).result.expect("native init");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .expect("native init");
     let mut repo = Repo::open(tmp.path()).expect("open");
     let before = head_op_id(&mut repo);
 

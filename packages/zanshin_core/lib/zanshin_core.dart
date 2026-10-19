@@ -32,6 +32,22 @@ export 'src/ffi/file_ops.dart' show FileNotAutoTracked, FileTooLarge, SnapshotSt
 export 'src/ffi/graph.dart' show GraphTopologyView, TopologyRef, TopologyRefKind;
 export 'src/ffi/log_forwarder.dart' show forwardLogRecord, initLogForwarding;
 export 'src/ffi/precondition.dart' show Precondition;
+export 'src/ffi/push.dart'
+    show
+        GitPushResult,
+        PushCommitRejection,
+        PushCreatedBookmark,
+        PushFailure,
+        PushFailureKind,
+        PushPath,
+        PushRef,
+        PushRefKind,
+        PushRefName,
+        PushRefStatus,
+        PushRefusal,
+        PushRemote,
+        PushSigning;
+export 'src/ffi/repo.dart' show ObjectHash;
 export 'src/ffi/repo_detect.dart' show RepoDetectResult, RepoKind;
 export 'src/ffi/squash_split.dart' show SplitResult, SquashPlan;
 export 'src/ffi/status.dart' show WorkingCopyStatus;

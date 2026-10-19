@@ -132,12 +132,4 @@ pub const LEDGER: &[Expected] = &[
         zanshin: "0",
         cli: "1",
     },
-    Expected {
-        scenario: "init_colocated",
-        aspect: "colocated (.git dir)",
-        reason: "Repo::init(Git) never colocates; `jj git init` does by default",
-        reference: "Story 9.20",
-        zanshin: "false",
-        cli: "true",
-    },
 ];

@@ -56,7 +56,7 @@ void main() {
 
     // AC-4.
     test('snapshot_of_a_dirty_git_repo_is_taken_and_a_following_read_finds_nothing', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       expect(handle.lastPrecondition, isNull, reason: 'no reply has carried a report yet');
       File('${tempDir.path}/zanshin_dirty.dat').writeAsStringSync('dirty');
 
@@ -78,7 +78,7 @@ void main() {
     });
 
     test('a_clean_snapshot_writes_no_operation', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       final List<String> before = await opDescriptions(handle);
 
       final Precondition report = await worker.snapshot(handle.handleId);
@@ -91,7 +91,7 @@ void main() {
     });
 
     test('an_error_reply_still_records_the_precondition_that_ran_before_it', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       File('${tempDir.path}/zanshin_dirty.dat').writeAsStringSync('dirty');
 
       await expectLater(
@@ -105,7 +105,7 @@ void main() {
     });
 
     test('a_wrong_typed_snapshot_knob_is_jj_config_error_with_a_partial_report', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       // The repo layer (a fresh repo has no config-id, so this legacy file IS it); the
       // effective config is re-read per call.
       File('${tempDir.path}/.jj/repo/config.toml').writeAsStringSync('snapshot.auto-track = 5\n');
@@ -122,7 +122,7 @@ void main() {
     });
 
     test('a_call_that_runs_no_precondition_leaves_the_last_report_standing', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       File('${tempDir.path}/zanshin_dirty.dat').writeAsStringSync('dirty');
       await handle.snapshot();
 
@@ -135,7 +135,7 @@ void main() {
     });
 
     test('snapshot_on_a_closed_handle_surfaces_ffi_invalid_handle_through_the_worker', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       await handle.close();
 
       await expectLater(
@@ -163,7 +163,7 @@ void main() {
     });
 
     test('snapshot_on_explicitly_closed_handle_throws_state_error', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       await handle.close();
 
       expect(handle.snapshot, throwsA(isA<StateError>()));

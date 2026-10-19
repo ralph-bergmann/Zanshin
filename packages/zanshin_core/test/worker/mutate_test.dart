@@ -235,7 +235,7 @@ void main() {
     // cdylib call into `zanshin_git_fetch` for the coverage ratchet's
     // extern-fn credit.
     test('gitFetch_unknown_remote_surfaces_jj_remote_not_found', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
 
       await expectLater(
         handle.gitFetch('nonexistent'),
@@ -373,7 +373,7 @@ void main() {
     });
 
     test('gitFetch_on_closed_handle_surfaces_ffi_invalid_handle', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       final int handleId = handle.handleId;
       await handle.close();
 

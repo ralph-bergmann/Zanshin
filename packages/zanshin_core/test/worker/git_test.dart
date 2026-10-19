@@ -57,7 +57,7 @@ void main() {
     // `zanshin_git_export` in the extern-fn guard — and they assert the no-op
     // contract itself (a success carrying the pre-call op-log head, not an error).
     test('gitImport_on_a_fresh_git_workspace_is_a_no_op_success', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
 
       final GitImportResult result = await handle.gitImport();
 
@@ -72,7 +72,7 @@ void main() {
     });
 
     test('gitExport_on_a_fresh_git_workspace_is_a_no_op_success', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
 
       final GitExportResult result = await handle.gitExport();
 
@@ -87,7 +87,7 @@ void main() {
     // handle must reflect each config write with no reopen. Driving all four remote
     // verbs in one sequence also credits all four extern fns.
     test('the_four_remote_verbs_are_visible_through_the_same_handle', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       final String url = remoteDir.path;
 
       final MutationResult added = await handle.gitRemoteAdd(name: 'origin', url: url);
@@ -113,7 +113,7 @@ void main() {
     // carry. `remotes()` now reports the PUSH url too, so this is the end-to-end witness
     // through the real cdylib: the push url arrives and the fetch side is LEFT ALONE.
     test('gitRemoteSetUrl_with_only_a_push_url_leaves_the_fetch_url_alone', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       await handle.gitRemoteAdd(name: 'origin', url: remoteDir.path);
       expect(
         (await handle.remotes()).single.pushUrl,
@@ -137,7 +137,7 @@ void main() {
     // One of the two error codes this story adds, surfacing as a real
     // ZanshinFfiException through the whole worker seam.
     test('gitRemoteAdd_duplicate_surfaces_jj_remote_exists', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       await handle.gitRemoteAdd(name: 'origin', url: remoteDir.path);
 
       await expectLater(
@@ -155,7 +155,7 @@ void main() {
     // The other new code: jj-lib writes a `pushurl` key for a remote added WITH a
     // push url, and its own remove then refuses that remote.
     test('gitRemoteRemove_of_a_remote_added_with_a_push_url_surfaces_jj_remote_nonstandard_config', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       await handle.gitRemoteAdd(name: 'origin', url: remoteDir.path, pushUrl: '${remoteDir.path}-push');
 
       await expectLater(
@@ -179,7 +179,7 @@ void main() {
     });
 
     test('gitRemoteRemove_of_a_missing_remote_surfaces_jj_remote_not_found', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
 
       await expectLater(
         handle.gitRemoteRemove('nonexistent'),
@@ -196,7 +196,7 @@ void main() {
     // Model A: the worker's handle table is the only owner, so a command for a
     // closed handle is answered with a synthesized envelope, never a stale pointer.
     test('gitExport_on_a_closed_handle_surfaces_ffi_invalid_handle', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       final int handleId = handle.handleId;
       await handle.close();
 
@@ -208,7 +208,7 @@ void main() {
 
     // The other five git arms' unknown-handle reply, same synthesized envelope.
     test('gitImport_on_a_closed_handle_surfaces_ffi_invalid_handle', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       final int handleId = handle.handleId;
       await handle.close();
 
@@ -219,7 +219,7 @@ void main() {
     });
 
     test('gitRemoteAdd_on_a_closed_handle_surfaces_ffi_invalid_handle', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       final int handleId = handle.handleId;
       await handle.close();
 
@@ -230,7 +230,7 @@ void main() {
     });
 
     test('gitRemoteRemove_on_a_closed_handle_surfaces_ffi_invalid_handle', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       final int handleId = handle.handleId;
       await handle.close();
 
@@ -241,7 +241,7 @@ void main() {
     });
 
     test('gitRemoteRename_on_a_closed_handle_surfaces_ffi_invalid_handle', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       final int handleId = handle.handleId;
       await handle.close();
 
@@ -252,7 +252,7 @@ void main() {
     });
 
     test('gitRemoteSetUrl_on_a_closed_handle_surfaces_ffi_invalid_handle', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       final int handleId = handle.handleId;
       await handle.close();
 
@@ -265,7 +265,7 @@ void main() {
     // The RepoHandle close-guard is SYNCHRONOUS for every verb — a closed handle
     // must not even reach the worker.
     test('every_git_verb_throws_StateError_synchronously_after_close', () async {
-      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1);
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
       await handle.close();
 
       expect(handle.gitImport, throwsStateError);

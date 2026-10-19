@@ -40,13 +40,7 @@ pub const BASE: &[Step] = &[
 ];
 
 /// How both repos are created; the CLI's default is colocated.
-const GIT_INIT: &[&str] = &["git", "init"];
-
-/// `Repo::init` against `jj <argv>` on an empty directory: no shared history.
-pub const INIT_SCENARIOS: &[(&str, &[&str])] = &[
-    ("init_colocated", &["git", "init"]),
-    ("init_no_colocate", &["git", "init", "--no-colocate"]),
-];
+pub const GIT_INIT: &[&str] = &["git", "init"];
 
 /// One operation, run through Zanshin in repo A and through the CLI in repo B.
 pub struct Scenario {
@@ -1515,4 +1509,7 @@ pub fn scenarios() -> Vec<Scenario> {
             )
         },
     ]
+    .into_iter()
+    .chain(crate::git_scenarios::push_scenarios())
+    .collect()
 }

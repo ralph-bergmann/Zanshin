@@ -17,20 +17,20 @@ use std::thread::{self, JoinHandle};
 use flatbuffers::{FlatBufferBuilder, VerifierOptions};
 use tracing::debug;
 use zanshin_jj::{
-    convert_colocated, detect_repo, find_repo_root, Backend, ChangeId, CreationOutcome, DetectError, MutateError, Repo,
-    RepoError, RepoKind, RepoRoot,
+    convert_colocated, detect_repo, find_repo_root, Backend, ChangeId, CloneOptions, CreationOutcome, DetectError,
+    InitOptions, MutateError, ObjectHash, Repo, RepoError, RepoKind, RepoRoot,
 };
 
 use crate::envelope::{
-    catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, ok_absorb_result, ok_empty,
-    ok_mutation_result, ok_repo_handle, precondition_envelope, reject_null_request, session_from_handle, CallReport,
-    FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_BOOKMARK_EXISTS,
-    JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND, JJ_CONCURRENT_WORKING_COPY, JJ_CONFIG_ERROR,
-    JJ_CONVERT_FAILED, JJ_DESTINATION_NOT_EMPTY, JJ_DETECT_FAILED, JJ_GIT_WORKTREE_FAILED, JJ_IMMUTABLE,
-    JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY,
-    JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND,
-    JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, JJ_UNDO_CROSS_WORKSPACE, JJ_WORKSPACE_EXISTS,
-    WATCHER_IO_ERROR,
+    catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, missing_field,
+    ok_absorb_result, ok_empty, ok_mutation_result, ok_repo_handle, precondition_envelope, reject_null_request,
+    session_from_handle, CallReport, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO,
+    JJ_BOOKMARK_EXISTS, JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND, JJ_CONCURRENT_WORKING_COPY,
+    JJ_CONFIG_ERROR, JJ_CONVERT_FAILED, JJ_DESTINATION_NOT_EMPTY, JJ_DETECT_FAILED, JJ_GIT_REPO_EXISTS,
+    JJ_GIT_WORKTREE_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO,
+    JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY, JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED, JJ_PUSH_COMMIT_REJECTED,
+    JJ_PUSH_REF_REFUSED, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND,
+    JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, JJ_UNDO_CROSS_WORKSPACE, JJ_WORKSPACE_EXISTS, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -62,6 +62,21 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
         RepoError::ConvertFailed { reason } => FfiErrorObj {
             report: None,
             code: JJ_CONVERT_FAILED.to_owned(),
+            context: Some(reason),
+        },
+        RepoError::DestinationNotEmpty { path } => FfiErrorObj {
+            report: None,
+            code: JJ_DESTINATION_NOT_EMPTY.to_owned(),
+            context: Some(path.display().to_string()),
+        },
+        RepoError::GitRepoExists { path } => FfiErrorObj {
+            report: None,
+            code: JJ_GIT_REPO_EXISTS.to_owned(),
+            context: Some(path.display().to_string()),
+        },
+        RepoError::InvalidInput { reason } => FfiErrorObj {
+            report: None,
+            code: JJ_INVALID_INPUT.to_owned(),
             context: Some(reason),
         },
         RepoError::AlreadyJjRepo { path } => FfiErrorObj {
@@ -111,7 +126,8 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
 /// (Story 9.22), whose three new variants map to the new `jj.concurrent_working_copy` and
 /// `jj.path_not_ignored` and to the registered `jj.no_working_copy`. Story 9.23's
 /// `zanshin_workspace_add` adds three: `jj.workspace_exists`, `jj.destination_not_empty` and
-/// `jj.git_worktree_failed`.
+/// `jj.git_worktree_failed`. Story 9.20's `zanshin_git_push` adds `jj.push_ref_refused` and
+/// `jj.push_commit_rejected`.
 pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
     let (code, context) = match e {
         MutateError::Precondition(e) => return map_precondition_err(e),
@@ -140,6 +156,8 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         MutateError::WorkspaceExists { name } => (JJ_WORKSPACE_EXISTS, Some(name)),
         MutateError::DestinationNotEmpty => (JJ_DESTINATION_NOT_EMPTY, None),
         MutateError::GitWorktree(reason) => (JJ_GIT_WORKTREE_FAILED, Some(reason)),
+        MutateError::PushRefRefused { message } => (JJ_PUSH_REF_REFUSED, Some(message)),
+        MutateError::PushCommitRejected { message } => (JJ_PUSH_COMMIT_REJECTED, Some(message)),
         MutateError::Backend(reason) => (JJ_JJ_LIB_ERROR, Some(reason)),
     };
     FfiErrorObj {
@@ -297,6 +315,98 @@ fn read_absorb_request(data: *const u8, len: usize) -> Result<AbsorbRequestOwned
     })
 }
 
+/// The CLI's two colocation flags as the verbs' tri-state: both set is the CLI's clap conflict.
+fn colocation(colocate: bool, no_colocate: bool) -> Result<Option<bool>, FfiErrorObj> {
+    match (colocate, no_colocate) {
+        (true, true) => Err(FfiErrorObj {
+            report: None,
+            code: JJ_INVALID_INPUT.to_owned(),
+            context: Some("colocate and no_colocate cannot be used together".to_owned()),
+        }),
+        (true, false) => Ok(Some(true)),
+        (false, true) => Ok(Some(false)),
+        (false, false) => Ok(None),
+    }
+}
+
+/// The `--object-hash` flag: `Unspecified` = not given.
+fn object_hash(value: fbs::ObjectHash) -> Result<Option<ObjectHash>, FfiErrorObj> {
+    match value {
+        fbs::ObjectHash::Unspecified => Ok(None),
+        fbs::ObjectHash::Sha1 => Ok(Some(ObjectHash::Sha1)),
+        fbs::ObjectHash::Sha256 => Ok(Some(ObjectHash::Sha256)),
+        other => Err(FfiErrorObj {
+            report: None,
+            code: FFI_INVALID_ARGUMENT.to_owned(),
+            context: Some(format!("unknown object_hash {other:?}")),
+        }),
+    }
+}
+
+/// Parse a `RepoInitRequest` buffer into owned [`InitOptions`] (Story 9.20).
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `RepoInitRequest`, its `kind` is not
+///   `RepoInit`, or `backend` / `object_hash` is out of range.
+/// - `jj.invalid_input` — `path` is absent, or both colocation flags are set.
+fn read_init_request(data: *const u8, len: usize) -> Result<InitOptions, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::RepoInitRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::RepoInit)?;
+    let path = req.path().ok_or_else(|| missing_field("path"))?;
+    let backend = match req.backend() {
+        fbs::InitBackend::Native => None,
+        fbs::InitBackend::Git => Some(Backend::Git),
+        other => {
+            return Err(FfiErrorObj {
+                report: None,
+                code: FFI_INVALID_ARGUMENT.to_owned(),
+                context: Some(format!("unknown backend {other:?}")),
+            })
+        }
+    };
+    Ok(InitOptions {
+        path: path.into(),
+        backend,
+        colocate: colocation(req.colocate(), req.no_colocate())?,
+        object_hash: object_hash(req.object_hash())?,
+    })
+}
+
+/// Parse a `RepoCloneRequest` buffer into owned [`CloneOptions`] (Story 9.20). ABSENT
+/// `branches` / `tags` are the flags not given; a present-empty one is a value.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `RepoCloneRequest`, its `kind` is not
+///   `RepoClone`, or `object_hash` is out of range.
+/// - `jj.invalid_input` — `source` or `destination` is absent, or both colocation flags are set.
+fn read_clone_request(data: *const u8, len: usize) -> Result<CloneOptions, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::RepoCloneRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::RepoClone)?;
+    let strings = |v: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&str>>>| {
+        v.map(|v| v.iter().map(ToOwned::to_owned).collect::<Vec<String>>())
+    };
+    Ok(CloneOptions {
+        source: req.source().ok_or_else(|| missing_field("source"))?.to_owned(),
+        destination: req.destination().ok_or_else(|| missing_field("destination"))?.into(),
+        remote_name: req.remote_name().map(ToOwned::to_owned),
+        colocate: colocation(req.colocate(), req.no_colocate())?,
+        depth: std::num::NonZeroU32::new(req.depth()),
+        branches: strings(req.branches()),
+        tags: strings(req.tags()),
+        object_hash: object_hash(req.object_hash())?,
+    })
+}
+
 fn map_detect_err(e: &DetectError) -> FfiErrorObj {
     FfiErrorObj {
         report: None,
@@ -345,7 +455,7 @@ fn ok_repo_detect(kind: RepoKind, suggestion: Option<RepoRoot>) -> Vec<u8> {
 /// ADR-0002:34 defines the repo handle as a warm `Workspace` loader **and**
 /// the owner of the repo's op-heads watcher; this struct makes that literal.
 /// All four handle-producing wrappers (open/init/clone/convert) construct one
-/// via [`arm_session`]; the read wrappers borrow `.repo` — `status.rs`,
+/// via [`arm_session_with`]; the read wrappers borrow `.repo` — `status.rs`,
 /// `change.rs`, `op_log.rs`, `bookmarks.rs`, `remotes.rs`, plus `file.rs`'s four
 /// (Story 9.4), `commit_views.rs`'s three (Story 9.6) and `workspace.rs`'s two
 /// (Story 9.7); the mutation wrappers borrow it mutably — `git.rs`'s six (Story 9.5) and
@@ -355,7 +465,7 @@ fn ok_repo_detect(kind: RepoKind, suggestion: Option<RepoRoot>) -> Vec<u8> {
 pub(crate) struct RepoSession {
     pub(crate) repo: Repo,
     // `Option` so `close()` can `take()` each for teardown (AC 8). Both are
-    // always `Some` for a session returned by `arm_session`.
+    // always `Some` for a session returned by `arm_session_with`.
     watcher: Option<Watcher>,
     dispatch: Option<JoinHandle<()>>,
     // The same process-unique, never-reused id returned to Dart as
@@ -402,7 +512,7 @@ fn map_watcher_err(e: &WatcherError) -> FfiErrorObj {
 fn spawn_dispatch_thread(session_id: u64, rx: Receiver<WatcherEvent>) -> std::io::Result<JoinHandle<()>> {
     // WHY thread::Builder instead of thread::spawn: bare `spawn` PANICS on OS
     // spawn failure — a panic source on an FFI-reachable path (forbidden); the
-    // Builder returns the error so arm_session can map it to watcher.io_error
+    // Builder returns the error so arm_session_with can map it to watcher.io_error
     // and reclaim the session instead of leaking it into catch_unwind.
     thread::Builder::new()
         .name("zanshin-event-dispatch".to_owned())
@@ -413,38 +523,38 @@ fn spawn_dispatch_thread(session_id: u64, rx: Receiver<WatcherEvent>) -> std::io
         })
 }
 
-/// Construct a [`RepoSession`] for `repo`, arm its filesystem watcher, and
-/// spawn the per-session dispatch thread — all before returning (AR-G-5:
-/// "watcher must start before the wrapper returns").
+/// A process-unique event-correlation id (starts at 1; 0 is never issued).
 ///
-/// Returns `(handle, session_id)` on success: the session's opaque `u64`
-/// handle plus the process-unique session id that async events carry as
-/// their correlation id (never reused — ABA-safe across close→reopen,
-/// unlike the raw handle's allocation address). On watcher-arming failure
-/// the already-opened `repo` (and the just-allocated session box) are
-/// dropped — no leak — and the caller returns a `watcher.io_error` envelope
-/// with NO handle (OQ-1 strict-fail: a repo we can't watch does not open).
-fn arm_session(repo: Repo) -> Result<(u64, u64), FfiErrorObj> {
-    arm_session_with(repo, spawn_dispatch_thread)
+/// WHY not the raw pointer: a close→reopen can reuse the freed session's allocation ADDRESS, so a
+/// stale queued event could be misattributed to the NEW session (rawToId ABA, 3-6 review; fixed
+/// 2026-07-04). A monotonic counter can never collide with a later session. A clone allocates its
+/// id BEFORE it runs (Story 9.20), so its progress events carry the id its handle will get.
+fn next_session_id() -> u64 {
+    static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+    NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed)
 }
 
-/// [`arm_session`]'s body with the dispatch-thread spawner injected.
+/// Construct a [`RepoSession`] for `repo`, arm its filesystem watcher, and spawn the per-session
+/// dispatch thread — all before returning (AR-G-5: "watcher must start before the wrapper
+/// returns").
+///
+/// Returns `(handle, session_id)` on success: the session's opaque `u64` handle plus
+/// `session_id`, the process-unique id async events carry as their correlation id
+/// ([`next_session_id`]). On watcher-arming failure the already-opened `repo` (and the
+/// just-allocated session box) are dropped — no leak — and the caller returns a
+/// `watcher.io_error` envelope with NO handle (OQ-1 strict-fail: a repo we can't watch does not
+/// open).
+///
+/// The dispatch-thread spawner is injected.
 ///
 /// The seam exists solely so the spawn-failure arm is unit-testable (OS
 /// thread exhaustion cannot be forced in a test); production always goes
-/// through [`arm_session`] → [`spawn_dispatch_thread`].
+/// through [`spawn_dispatch_thread`].
 fn arm_session_with(
     repo: Repo,
+    session_id: u64,
     spawn: impl FnOnce(u64, Receiver<WatcherEvent>) -> std::io::Result<JoinHandle<()>>,
 ) -> Result<(u64, u64), FfiErrorObj> {
-    // Process-unique event-correlation id (starts at 1; 0 is never issued).
-    // WHY not the raw pointer: a close→reopen can reuse the freed session's
-    // allocation ADDRESS, so a stale queued event could be misattributed to
-    // the NEW session (rawToId ABA, 3-6 review; fixed 2026-07-04). A
-    // monotonic counter can never collide with a later session.
-    static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
-    let session_id = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
-
     let repo_path = repo.workspace_root().to_path_buf();
     let raw = handle_into_raw(RepoSession {
         repo,
@@ -491,11 +601,21 @@ fn arm_session_with(
 /// conversion's snapshot report) onto whichever envelope answers — the `RepoHandle` ok envelope,
 /// the refusal, or the `watcher.io_error` of an arming that failed after the call succeeded.
 fn creation_envelope(outcome: CreationOutcome) -> Result<Vec<u8>, FfiErrorObj> {
+    creation_envelope_for(outcome, next_session_id())
+}
+
+/// [`creation_envelope`] with the session id already allocated — the clone's, whose progress
+/// events carry it before the handle exists (Story 9.20).
+fn creation_envelope_for(outcome: CreationOutcome, session_id: u64) -> Result<Vec<u8>, FfiErrorObj> {
     let report = CallReport {
         precondition: outcome.precondition,
         warnings: outcome.warnings,
     };
-    match outcome.result.map_err(map_repo_err).and_then(arm_session) {
+    let armed = outcome
+        .result
+        .map_err(map_repo_err)
+        .and_then(|repo| arm_session_with(repo, session_id, spawn_dispatch_thread));
+    match armed {
         Ok((handle, session_id)) => Ok(ok_repo_handle(handle, session_id, &report)),
         Err(e) => Err(e.with_report(report)),
     }
@@ -547,105 +667,125 @@ pub unsafe extern "C" fn zanshin_repo_open(path: *const c_char) -> *mut ZanshinB
     vec_into_token(buf)
 }
 
-/// Initialise a new jj repository at `path`.
+/// Create a new jj repository — the CLI's `jj git init` (Story 9.20), or a workspace on jj's
+/// native backend.
 ///
-/// `backend` selects the storage backend: `0` → native/simple, `1` → Git.
-/// Any other value returns `ffi.invalid_argument`.
+/// The arguments cross as a `RepoInitRequest` `FlatBuffers` request buffer, one field per CLI
+/// parameter: `path` (REQUIRED; created when missing, one level, for the Git backend), `backend`
+/// (`Native` — Zanshin-only, the path must exist and no Git flag applies — or `Git`), `colocate` /
+/// `no_colocate` (the CLI's two flags; neither = `git.colocate`), `object_hash` (`Unspecified` =
+/// `git.object-hash`). Over an existing `.git/` a colocated init runs the CLI's External flow (the
+/// steps `zanshin_repo_convert` runs, without its rollback); `--no-colocate` there is refused.
 ///
 /// Returns a `RepoHandle` envelope on success.
 ///
 /// # Errors
-/// - `ffi.invalid_argument` — `backend` is not `0` or `1`.
-/// - `ffi.null_pointer` / `ffi.utf8_error` — invalid `path` pointer.
-/// - `jj.jj_lib_error` — init failed (e.g. repo already exists).
-/// - `jj.config_error` — the jj config stack the workspace is created with cannot be read
-///   (the user-level stack first, as the CLI's start-up, then the stack resolved for the new
-///   workspace's paths; refused before anything is written), or the created workspace's own
-///   stack cannot when it is re-opened. `context` names the path or key.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `RepoInitRequest`, its `kind` is not
+///   `RepoInit`, or `backend` / `object_hash` is out of range.
+/// - `jj.invalid_input` — `path` is absent, both colocation flags are set, or the native backend
+///   is given a Git flag.
+/// - `jj.jj_lib_error` — the destination cannot be created ("Failed to create workspace: …") or
+///   the jj-lib creation failed; detail in `context`.
+/// - `jj.git_repo_exists` — `no_colocate` over a directory holding `.git/`; the path in `context`.
+/// - `jj.already_jj_repo` — the destination is already a jj workspace.
+/// - `jj.convert_failed` — a step of the External flow failed.
+/// - `jj.config_error` — the jj config stack cannot be read (the user-level stack first, as the
+///   CLI's start-up, then the stack resolved for the new workspace's paths), `git.colocate` /
+///   `git.object-hash` is malformed, or the created workspace's own stack cannot when it is
+///   re-opened. `context` names the path or key.
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
 ///   no handle is returned rather than one for an unwatched repo. It runs AFTER the init
 ///   has succeeded, so the created `.jj/` persists and a retry sees an existing repo.
 ///   Detail in `context`.
 ///
 /// # Warnings
-/// None, and no `Envelope.precondition` (Story 9.33): this creates what the CLI's
-/// `jj git init --no-colocate` creates, which finishes no transaction and builds no workspace
-/// environment, so it reaches no `ui.warning_*`. (The CLI's default colocated init also loads
-/// the alias tables — `for_workable_repo` — whose warnings are not ported; see the registry's
-/// start-up-environment entry.) The envelope carries the creating call's report the way
-/// `zanshin_repo_clone` does — always empty here.
+/// `Envelope.warnings` on the ok envelope and on every error envelope: a colocated init's
+/// start-up environment (the alias tables and `immutable_heads()` the CLI's `for_workable_repo`
+/// loads), and the External flow's (as `zanshin_repo_convert`'s), whose snapshot report is
+/// `Envelope.precondition`. The internal and native arms finish no transaction: nothing.
 ///
 /// # Safety
-/// `path` must be a valid, NUL-terminated C string or null. The returned token
-/// must be freed via `zanshin_buffer_free_token`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.RepoInitRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the call.
+/// The returned token must be freed via `zanshin_buffer_free_token`.
 #[no_mangle]
-pub unsafe extern "C" fn zanshin_repo_init(path: *const c_char, backend: i32) -> *mut ZanshinBuf {
-    debug!(fn_name = "zanshin_repo_init", backend);
-    // SAFETY: caller guarantees path is null or a valid NUL-terminated C string.
+pub unsafe extern "C" fn zanshin_repo_init(data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_repo_init");
     let buf = catch(|| {
-        let p = unsafe { cstr_to_string(path) }?;
-        let backend_opt = match backend {
-            0 => None,
-            1 => Some(Backend::Git),
-            _ => {
-                return Err(FfiErrorObj {
-                    report: None,
-                    code: FFI_INVALID_ARGUMENT.to_owned(),
-                    context: Some(format!("backend discriminant {backend} is not 0 (native) or 1 (git)")),
-                })
-            }
-        };
-        creation_envelope(Repo::init(Path::new(&p), backend_opt))
+        let options = read_init_request(data, len)?;
+        creation_envelope(Repo::init(&options))
     });
     vec_into_token(buf)
 }
 
-/// Clone a jj repository from `url` into `target_path`.
+/// Clone a Git repository into a new jj workspace — the CLI's `jj git clone` (Story 9.20).
 ///
-/// Uses a `file://` local source in tests — no network access is needed or allowed.
-/// On failure the partial workspace is already rolled back by `zanshin-jj::Repo::clone` — only a
-/// `.jj/` the clone created; a target that already held one (an existing jj workspace) is
-/// refused and left untouched.
+/// The arguments cross as a `RepoCloneRequest` `FlatBuffers` request buffer, one field per CLI
+/// parameter: `source` and `destination` (both REQUIRED; the destination must be missing or an
+/// empty directory and is created with its parents), `remote_name` (absent = `origin`),
+/// `colocate` / `no_colocate`, `depth` (0 = the whole history), `branches` / `tags` (ABSENT = the
+/// flag not given) and `object_hash`. The clone writes the CLI's three operations (`add git
+/// remote`, `fetch from git remote into empty repo`, `check out git remote's branch`), each only
+/// when it changed something, and the repo presets (`trunk()`, the fetch presets for `-b` / `-t`).
+/// Tests use a `file://` local source — no network access is needed or allowed.
+///
+/// Progress is dispatched over the process-global event sink as `Progress` events with
+/// `operation = "clone"`, tagged with the session id the new handle gets (allocated before the
+/// clone runs), exactly like `zanshin_git_fetch`'s.
+///
+/// A failure inside the clone's clean-up scope (creating the workspace, adding the remote, the
+/// fetch) removes `.jj` (and `.git` when colocated), then the destination iff the call created it;
+/// a later failure (the presets, the checkout, the re-open) keeps the workspace — the CLI's scope.
 ///
 /// Returns a `RepoHandle` envelope on success.
 ///
 /// # Errors
-/// - `ffi.null_pointer` / `ffi.utf8_error` — invalid pointer arguments.
-/// - `jj.jj_lib_error` — clone failed; detail in `context`.
-/// - `jj.config_error` — the effective jj config cannot be read: the stack the workspace is
-///   created with (the user-level stack first, as the CLI's start-up, then the stack resolved
-///   for the new workspace's paths; refused before anything is written), or the new
-///   workspace's stack — which the clone reads `git.abandon-unreachable-commits` from, so a non-boolean
-///   value refuses here too. `context` names the offending KEY for a wrong-typed value, and
-///   the offending FILE PATH for a config file that is unreadable or not valid TOML.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `RepoCloneRequest`, its `kind` is not
+///   `RepoClone`, or `object_hash` is out of range.
+/// - `jj.invalid_input` — `source` or `destination` is absent, both colocation flags are set, or a
+///   `branches` / `tags` pattern does not parse.
+/// - `jj.destination_not_empty` — the destination is a file or a non-empty directory; refused
+///   before anything is created. The destination in `context`.
+/// - `jj.jj_lib_error` — the destination cannot be created, or the creation, the remote, the
+///   fetch (an unreachable source), the import or the checkout failed; detail in `context`.
+/// - `jj.config_error` — the effective jj config cannot be read, or a key the clone reads is
+///   malformed (`git.colocate`, `git.object-hash`, the import options, `remotes.<name>.*`,
+///   `git.track-default-bookmark-on-clone`), or the presets cannot be written. `context` names the
+///   offending KEY or FILE PATH.
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
 ///   no handle is returned rather than one for an unwatched repo. It runs AFTER the clone
-///   has SUCCEEDED, so the rollback described above does not apply — the cloned workspace
-///   persists and a retry sees an existing repo. Detail in `context`.
+///   has SUCCEEDED, so the cloned workspace persists and a retry sees a non-empty destination.
+///   Detail in `context`.
 ///
 /// # Warnings
 /// `Envelope.warnings` carries the clone's warnings on the ok envelope AND on every error
-/// envelope, in the CLI's order (Story 9.33): `jj.git_import_failed` (refs the fetch's import
-/// could not read), then `jj.checkout_files_skipped` (files the checkout left alone because an
-/// untracked file of the same name was in the way — reachable only because this clone accepts a
-/// non-empty target, which the CLI refuses; Story 9.20), then `jj.identity_missing` once when
-/// `user.name`/`user.email` is empty; on a failure, whatever was warned before it, and
-/// `jj.clone_cleanup_failed` last when the rollback could not remove `.jj/`. No
-/// `Envelope.precondition`. The CLI's start-up-environment warnings (the alias tables and
-/// `immutable_heads()` its `for_workable_repo` loads, twice on a clone) are not ported — see the
-/// registry's start-up-environment entry.
+/// envelope, in the CLI's order: the start-up environment's (twice: before and after the remote
+/// is added), each finish's (`jj.identity_missing` once per operation written, `jj.git_export_failed`
+/// colocated, `jj.working_copy_immutable`, `jj.checkout_files_skipped`), `jj.clone_branches_unmatched`
+/// and `jj.git_import_failed` before the fetch's finish; on a failure inside the clean-up scope,
+/// `jj.clone_cleanup_failed` last when the clean-up failed. No `Envelope.precondition`.
 ///
 /// # Safety
-/// `url` and `target_path` must each be a valid, NUL-terminated C string or null.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.RepoCloneRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the call.
 /// The returned token must be freed via `zanshin_buffer_free_token`.
 #[no_mangle]
-pub unsafe extern "C" fn zanshin_repo_clone(url: *const c_char, target_path: *const c_char) -> *mut ZanshinBuf {
+pub unsafe extern "C" fn zanshin_repo_clone(data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_repo_clone");
-    // SAFETY: caller guarantees url and target_path are null or valid NUL-terminated C strings.
     let buf = catch(|| {
-        let u = unsafe { cstr_to_string(url) }?;
-        let t = unsafe { cstr_to_string(target_path) }?;
-        creation_envelope(Repo::clone(&u, Path::new(&t)))
+        let options = read_clone_request(data, len)?;
+        let session_id = next_session_id();
+        let progress = move |e: zanshin_jj::ProgressEvent| {
+            events::dispatch(events::progress_to_envelope(
+                session_id,
+                &e.operation,
+                e.progress,
+                &e.message,
+            ));
+        };
+        creation_envelope_for(Repo::clone(&options, &progress), session_id)
     });
     vec_into_token(buf)
 }
@@ -684,7 +824,7 @@ pub unsafe extern "C" fn zanshin_repo_close(handle: u64) -> *mut ZanshinBuf {
                 context: None,
             });
         }
-        // SAFETY: handle is a non-zero value that originated from arm_session's
+        // SAFETY: handle is a non-zero value that originated from arm_session_with's
         // handle_into_raw in zanshin_repo_open/init/clone/convert (a Box<RepoSession>
         // leaked to Dart). The single-isolate model (AD-2) guarantees no concurrent
         // access. The Dart worker removes the handleId mapping on close (Model A,
@@ -1379,6 +1519,37 @@ mod tests {
         assert_eq!(e.context.unwrap(), "empty list");
     }
 
+    /// Story 9.20: the push refusals and the creations' invalid input keep the CLI's message.
+    #[test]
+    fn story_9_20_errors_map_to_their_codes() {
+        let e = map_mutate_err(MutateError::PushRefRefused {
+            message: "refused".to_owned(),
+        });
+        assert_eq!(
+            (e.code.as_str(), e.context.as_deref()),
+            (crate::JJ_PUSH_REF_REFUSED, Some("refused"))
+        );
+        let e = map_mutate_err(MutateError::PushCommitRejected {
+            message: "rejected".to_owned(),
+        });
+        assert_eq!(
+            (e.code.as_str(), e.context.as_deref()),
+            (crate::JJ_PUSH_COMMIT_REJECTED, Some("rejected"))
+        );
+        let e = map_repo_err(RepoError::InvalidInput {
+            reason: "bad pattern".to_owned(),
+        });
+        assert_eq!(
+            (e.code.as_str(), e.context.as_deref()),
+            (JJ_INVALID_INPUT, Some("bad pattern"))
+        );
+        assert!(matches!(object_hash(fbs::ObjectHash::Sha1), Ok(Some(ObjectHash::Sha1))));
+        assert!(matches!(
+            object_hash(fbs::ObjectHash::Sha256),
+            Ok(Some(ObjectHash::Sha256))
+        ));
+    }
+
     #[test]
     fn map_mutate_err_immutable_maps_to_jj_immutable() {
         let e = map_mutate_err(MutateError::Immutable {
@@ -1524,17 +1695,18 @@ mod tests {
         // AC 14's arming-failure test: deleting `.jj/working_copy/checkout`
         // BEFORE zanshin_repo_open fails inside jj-lib's Workspace::load itself
         // (jj.jj_lib_error, verified empirically) — Repo::open never even
-        // reaches arm_session. Per AC 14's explicit fallback ("if Repo::open
+        // reaches arm_session_with. Per AC 14's explicit fallback ("if Repo::open
         // itself refuses that state, fall back to unit-testing the arm-helper's
         // error path directly"), sabotage AFTER a successful open instead: the
-        // repo is already loaded, but arm_session's Watcher::new(&repo_path)
+        // repo is already loaded, but arm_session_with's Watcher::new(&repo_path)
         // call still needs the checkout file to exist to arm the heartbeat watch.
         let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture must extract");
         let repo = Repo::open(&fixture.path).expect("Repo::open must succeed while checkout exists");
         std::fs::remove_file(fixture.path.join(".jj/working_copy/checkout"))
             .expect("checkout file must exist to sabotage");
 
-        let err = arm_session(repo).expect_err("arm_session must fail when the checkout file is missing");
+        let err = arm_session_with(repo, next_session_id(), spawn_dispatch_thread)
+            .expect_err("arm_session_with must fail when the checkout file is missing");
         assert_eq!(err.code, crate::WATCHER_IO_ERROR);
     }
 
@@ -1549,8 +1721,10 @@ mod tests {
         let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture must extract");
         let repo = Repo::open(&fixture.path).expect("Repo::open must succeed");
 
-        let err = arm_session_with(repo, |_, _| Err(std::io::Error::other("injected: thread spawn failed")))
-            .expect_err("arm_session_with must fail when the spawner fails");
+        let err = arm_session_with(repo, next_session_id(), |_, _| {
+            Err(std::io::Error::other("injected: thread spawn failed"))
+        })
+        .expect_err("arm_session_with must fail when the spawner fails");
         assert_eq!(err.code, crate::WATCHER_IO_ERROR);
     }
 
@@ -1617,21 +1791,55 @@ mod tests {
         unsafe { crate::ffi_strings::zanshin_buffer_free_token(token) };
     }
 
+    /// An out-of-range `backend` / `object_hash` and both colocation flags are refused before
+    /// anything is created (Story 9.20).
     #[test]
-    fn repo_init_invalid_backend_returns_ffi_invalid_argument() {
-        use std::ffi::CString;
+    fn repo_init_with_invalid_request_fields_is_refused() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let path = CString::new(tmp.path().to_str().unwrap()).unwrap();
-        let token = unsafe { zanshin_repo_init(path.as_ptr(), 99) };
-        assert!(!token.is_null());
-        let bytes = unsafe {
-            let t = &*token;
-            std::slice::from_raw_parts(t.ptr, t.len)
+        let path = tmp.path().to_str().unwrap();
+        let request = |backend: fbs::InitBackend, hash: fbs::ObjectHash, colocate: bool, no_colocate: bool| {
+            let mut b = FlatBufferBuilder::new();
+            let path = b.create_string(path);
+            let req = fbs::RepoInitRequest::create(
+                &mut b,
+                &fbs::RepoInitRequestArgs {
+                    kind: fbs::RequestKind::RepoInit,
+                    path: Some(path),
+                    backend,
+                    colocate,
+                    no_colocate,
+                    object_hash: hash,
+                },
+            );
+            b.finish(req, None);
+            b.finished_data().to_vec()
         };
-        let env = verified_envelope(bytes);
-        assert!(!env.ok());
-        assert_eq!(env.error().and_then(|e| e.code()), Some(FFI_INVALID_ARGUMENT));
-        unsafe { crate::ffi_strings::zanshin_buffer_free_token(token) };
+        for (bytes, code) in [
+            (
+                request(fbs::InitBackend(99), fbs::ObjectHash::Unspecified, false, false),
+                FFI_INVALID_ARGUMENT,
+            ),
+            (
+                request(fbs::InitBackend::Git, fbs::ObjectHash(99), false, false),
+                FFI_INVALID_ARGUMENT,
+            ),
+            (
+                request(fbs::InitBackend::Git, fbs::ObjectHash::Unspecified, true, true),
+                JJ_INVALID_INPUT,
+            ),
+        ] {
+            let token = unsafe { zanshin_repo_init(bytes.as_ptr(), bytes.len()) };
+            assert!(!token.is_null());
+            let out = unsafe {
+                let t = &*token;
+                std::slice::from_raw_parts(t.ptr, t.len)
+            };
+            let env = verified_envelope(out);
+            assert!(!env.ok());
+            assert_eq!(env.error().and_then(|e| e.code()), Some(code));
+            unsafe { crate::ffi_strings::zanshin_buffer_free_token(token) };
+        }
+        assert!(!tmp.path().join(".jj").exists());
     }
 
     #[test]

@@ -14,7 +14,15 @@
 
 #define ENUM_MIN_REQUEST_KIND 0
 
-#define ENUM_MAX_REQUEST_KIND 34
+#define ENUM_MAX_REQUEST_KIND 37
+
+#define ENUM_MIN_OBJECT_HASH 0
+
+#define ENUM_MAX_OBJECT_HASH 2
+
+#define ENUM_MIN_INIT_BACKEND 0
+
+#define ENUM_MAX_INIT_BACKEND 1
 
 #define ENUM_MIN_REVISION_REF 0
 
@@ -55,6 +63,22 @@
 #define ENUM_MIN_TOPOLOGY_REF_KIND 0
 
 #define ENUM_MAX_TOPOLOGY_REF_KIND 1
+
+#define ENUM_MIN_PUSH_REF_KIND 0
+
+#define ENUM_MAX_PUSH_REF_KIND 1
+
+#define ENUM_MIN_PUSH_PATH 0
+
+#define ENUM_MAX_PUSH_PATH 2
+
+#define ENUM_MIN_PUSH_REF_STATUS 0
+
+#define ENUM_MAX_PUSH_REF_STATUS 4
+
+#define ENUM_MIN_PUSH_FAILURE_KIND 0
+
+#define ENUM_MAX_PUSH_FAILURE_KIND 3
 
 #define ENUM_MIN_FILE_TYPE 0
 
@@ -117,7 +141,53 @@ typedef struct {
 
 #define SplitRequest_VT_ONTO 14
 
-#define FileAnnotateRequest_VT_PATH 8
+#define GitPushRequest_VT_REMOTES 6
+
+#define GitPushRequest_VT_BOOKMARKS 8
+
+#define GitPushRequest_VT_TAGS 10
+
+#define GitPushRequest_VT_ALL 12
+
+#define GitPushRequest_VT_TRACKED 14
+
+#define GitPushRequest_VT_DELETED 16
+
+#define GitPushRequest_VT_ALLOW_EMPTY_DESCRIPTION 18
+
+#define GitPushRequest_VT_ALLOW_PRIVATE 20
+
+#define GitPushRequest_VT_ALLOW_CONFLICTS 22
+
+#define GitPushRequest_VT_REVISIONS 24
+
+#define GitPushRequest_VT_CHANGES 26
+
+#define GitPushRequest_VT_NAMED 28
+
+#define GitPushRequest_VT_DRY_RUN 30
+
+#define GitPushRequest_VT_OPTIONS 32
+
+#define RepoCloneRequest_VT_SOURCE 6
+
+#define RepoCloneRequest_VT_DESTINATION 8
+
+#define RepoCloneRequest_VT_REMOTE_NAME 10
+
+#define RepoCloneRequest_VT_COLOCATE 12
+
+#define RepoCloneRequest_VT_NO_COLOCATE 14
+
+#define RepoCloneRequest_VT_DEPTH 16
+
+#define RepoCloneRequest_VT_BRANCHES 18
+
+#define RepoCloneRequest_VT_OBJECT_HASH 22
+
+#define RepoInitRequest_VT_PATH 6
+
+#define RepoInitRequest_VT_BACKEND 8
 
 #define FileSearchRequest_VT_PATTERN 8
 
@@ -143,15 +213,7 @@ typedef struct {
 
 #define InterdiffRequest_VT_TO 12
 
-#define WorkspaceAddRequest_VT_DESTINATION 6
-
-#define WorkspaceAddRequest_VT_REVISIONS 10
-
 #define WorkspaceAddRequest_VT_MESSAGE_PARAGRAPHS 12
-
-#define WorkspaceAddRequest_VT_COLOCATE 14
-
-#define WorkspaceAddRequest_VT_NO_COLOCATE 16
 
 #define WorkspaceAddRequest_VT_SPARSE_PATTERNS 18
 
@@ -245,21 +307,13 @@ typedef struct {
 
 #define Bookmark_VT_TARGET 6
 
-#define Bookmark_VT_REMOTE_NAME 10
-
 #define Bookmark_VT_CONFLICTED 12
 
 #define Bookmark_VT_SYNCED 14
 
-#define Bookmark_VT_TRACKED 16
-
 #define Bookmark_VT_AHEAD 18
 
 #define Bookmark_VT_BEHIND 20
-
-#define Bookmarks_VT_BOOKMARKS 4
-
-#define Remotes_VT_REMOTES 4
 
 #define RepoDetect_VT_SUGGESTED_ROOT 6
 
@@ -343,6 +397,48 @@ typedef struct {
 
 #define SplitResult_VT_REMAINING_CHANGE_ID 8
 
+#define PushRefusal_VT_HINT 6
+
+#define PushCommitRejection_VT_REASONS 6
+
+#define PushCommitRejection_VT_HINTS 10
+
+#define PushRef_VT_BEFORE 8
+
+#define PushRef_VT_AFTER 10
+
+#define PushRef_VT_ACTION 12
+
+#define PushRef_VT_REFUSAL 16
+
+#define PushRef_VT_EXPLICIT_REFUSAL 18
+
+#define PushRef_VT_REJECTION 20
+
+#define PushRef_VT_STATUS 22
+
+#define PushRef_VT_STATUS_REASON 24
+
+#define PushRemote_VT_ALREADY_MATCHES 8
+
+#define PushRemote_VT_FINISHED 10
+
+#define PushCreatedBookmark_VT_CHANGE_ID 6
+
+#define PushSigning_VT_UPDATED_SIGNATURES 4
+
+#define PushSigning_VT_REBASED_DESCENDANTS 6
+
+#define GitPushResult_VT_CREATED_BOOKMARKS 6
+
+#define GitPushResult_VT_SIGNING 10
+
+#define GitPushResult_VT_NOTHING_CHANGED 12
+
+#define GitPushResult_VT_RECORDED 16
+
+#define GitPushResult_VT_FAILURE 22
+
 #define FileEntry_VT_FILE_TYPE 6
 
 #define FileEntry_VT_EXECUTABLE 8
@@ -354,8 +450,6 @@ typedef struct {
 #define ShownFile_VT_CONTENT 6
 
 #define FileContents_VT_SKIPPED 6
-
-#define AnnotationLine_VT_CHANGE_ID 6
 
 #define AnnotationLine_VT_ORIGINAL_LINE_NUMBER 8
 
@@ -443,8 +537,6 @@ typedef struct {
 
 #define Precondition_VT_STALE_RECOVERY 22
 
-#define ConfigEntry_VT_SOURCE 8
-
 #define ConfigEntry_VT_OVERRIDDEN 12
 
 #define ConfigSetResult_VT_WORKING_COPY_AUTHOR 6
@@ -454,8 +546,6 @@ typedef struct {
 #define MissingRepoConfig_VT_REPO_PATH 6
 
 #define ConfigGcList_VT_MISSING 4
-
-#define ConfigGcResult_VT_DELETED 4
 
 #define ConfigGcResult_VT_FAILED 6
 
@@ -1905,6 +1995,60 @@ void zanshin_logging_init(void);
 ZanshinBuf *zanshin_op_log(uint64_t handle, int64_t limit);
 
 /**
+ * Push bookmarks and tags to git remotes, in the repo identified by `handle` — the CLI's
+ * `jj git push` (Story 9.20), every parameter passed through.
+ *
+ * The arguments cross as a `GitPushRequest` `FlatBuffers` request buffer, one field per CLI flag
+ * (`remotes` — ABSENT = `--remote` not given: `git.push`, else the only remote, else `origin`;
+ * `bookmarks`, `tags`, `all`, `tracked`, `deleted`, the three `allow_*`, `revisions`, `changes`,
+ * `named`, `dry_run`, `options`). The working copy is snapshotted first (Story 9.26); then ONE
+ * transaction: the remotes resolve, `--change` / `--named` bookmarks are created, each remote's
+ * refs are classified — the bare push / `-r` / `--all` / `--tracked` / `--deleted` skip a refused
+ * ref or a rejected commit with a warning, explicitly named refs refuse the whole push — and a
+ * real push signs (`git.sign-on-push`), pushes remote by remote and records the operation when
+ * every ref succeeded or at least one was exported. A dry run returns the plan and writes nothing
+ * beyond the snapshot's operation.
+ *
+ * Progress is dispatched over the process-global event sink as `Progress` events with
+ * `operation = "push"`, tagged with the session's `session_id` (push progress arrives mostly as
+ * sideband text, so there may be none).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `GitPushResult` payload on success — also when the
+ * push failed after it started (`GitPushResult.failure`: a lease failure, a remote rejection, an
+ * unreachable remote; `recorded` says whether Undo applies).
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `GitPushRequest` buffer, or its `kind`
+ *   is not `GitPush`.
+ * - `jj.invalid_input` — conflicting flags, a pattern that does not parse, "No git remotes to
+ *   push to", a malformed `--named`, a customised `templates.git_push_bookmark`, an empty
+ *   `--change` set; the CLI's text in `context`.
+ * - `jj.bookmark_exists` / `jj.bookmark_tracked_remote_exists` — a `--change` / `--named` name is
+ *   taken; the name in `context`.
+ * - `jj.push_ref_refused` / `jj.push_commit_rejected` — an explicitly named ref is refused, or
+ *   would push a commit that is not ready (a real push); the CLI's text in `context`.
+ * - `jj.revset_parse_error` / `jj.revset_resolution_error` — a revision does not parse or resolve.
+ * - `jj.config_error` — a key the push reads is malformed, or `immutable_heads()` does not resolve.
+ * - `jj.not_a_git_repo` — the workspace has no git backend.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — any other underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.GitPushRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_git_push(uint64_t handle,
+                             const uint8_t *data,
+                             uintptr_t len);
+
+/**
  * List the configured git remotes of the repo identified by `handle`.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `Remotes` payload on success.
@@ -1967,82 +2111,108 @@ ZanshinBuf *zanshin_remotes(uint64_t handle);
 ZanshinBuf *zanshin_repo_open(const char *path);
 
 /**
- * Initialise a new jj repository at `path`.
+ * Create a new jj repository — the CLI's `jj git init` (Story 9.20), or a workspace on jj's
+ * native backend.
  *
- * `backend` selects the storage backend: `0` → native/simple, `1` → Git.
- * Any other value returns `ffi.invalid_argument`.
+ * The arguments cross as a `RepoInitRequest` `FlatBuffers` request buffer, one field per CLI
+ * parameter: `path` (REQUIRED; created when missing, one level, for the Git backend), `backend`
+ * (`Native` — Zanshin-only, the path must exist and no Git flag applies — or `Git`), `colocate` /
+ * `no_colocate` (the CLI's two flags; neither = `git.colocate`), `object_hash` (`Unspecified` =
+ * `git.object-hash`). Over an existing `.git/` a colocated init runs the CLI's External flow (the
+ * steps `zanshin_repo_convert` runs, without its rollback); `--no-colocate` there is refused.
  *
  * Returns a `RepoHandle` envelope on success.
  *
  * # Errors
- * - `ffi.invalid_argument` — `backend` is not `0` or `1`.
- * - `ffi.null_pointer` / `ffi.utf8_error` — invalid `path` pointer.
- * - `jj.jj_lib_error` — init failed (e.g. repo already exists).
- * - `jj.config_error` — the jj config stack the workspace is created with cannot be read
- *   (the user-level stack first, as the CLI's start-up, then the stack resolved for the new
- *   workspace's paths; refused before anything is written), or the created workspace's own
- *   stack cannot when it is re-opened. `context` names the path or key.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `RepoInitRequest`, its `kind` is not
+ *   `RepoInit`, or `backend` / `object_hash` is out of range.
+ * - `jj.invalid_input` — `path` is absent, both colocation flags are set, or the native backend
+ *   is given a Git flag.
+ * - `jj.jj_lib_error` — the destination cannot be created ("Failed to create workspace: …") or
+ *   the jj-lib creation failed; detail in `context`.
+ * - `jj.git_repo_exists` — `no_colocate` over a directory holding `.git/`; the path in `context`.
+ * - `jj.already_jj_repo` — the destination is already a jj workspace.
+ * - `jj.convert_failed` — a step of the External flow failed.
+ * - `jj.config_error` — the jj config stack cannot be read (the user-level stack first, as the
+ *   CLI's start-up, then the stack resolved for the new workspace's paths), `git.colocate` /
+ *   `git.object-hash` is malformed, or the created workspace's own stack cannot when it is
+ *   re-opened. `context` names the path or key.
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
  *   no handle is returned rather than one for an unwatched repo. It runs AFTER the init
  *   has succeeded, so the created `.jj/` persists and a retry sees an existing repo.
  *   Detail in `context`.
  *
  * # Warnings
- * None, and no `Envelope.precondition` (Story 9.33): this creates what the CLI's
- * `jj git init --no-colocate` creates, which finishes no transaction and builds no workspace
- * environment, so it reaches no `ui.warning_*`. (The CLI's default colocated init also loads
- * the alias tables — `for_workable_repo` — whose warnings are not ported; see the registry's
- * start-up-environment entry.) The envelope carries the creating call's report the way
- * `zanshin_repo_clone` does — always empty here.
+ * `Envelope.warnings` on the ok envelope and on every error envelope: a colocated init's
+ * start-up environment (the alias tables and `immutable_heads()` the CLI's `for_workable_repo`
+ * loads), and the External flow's (as `zanshin_repo_convert`'s), whose snapshot report is
+ * `Envelope.precondition`. The internal and native arms finish no transaction: nothing.
  *
  * # Safety
- * `path` must be a valid, NUL-terminated C string or null. The returned token
- * must be freed via `zanshin_buffer_free_token`.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.RepoInitRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the call.
+ * The returned token must be freed via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_repo_init(const char *path, int32_t backend);
+ZanshinBuf *zanshin_repo_init(const uint8_t *data,
+                              uintptr_t len);
 
 /**
- * Clone a jj repository from `url` into `target_path`.
+ * Clone a Git repository into a new jj workspace — the CLI's `jj git clone` (Story 9.20).
  *
- * Uses a `file://` local source in tests — no network access is needed or allowed.
- * On failure the partial workspace is already rolled back by `zanshin-jj::Repo::clone` — only a
- * `.jj/` the clone created; a target that already held one (an existing jj workspace) is
- * refused and left untouched.
+ * The arguments cross as a `RepoCloneRequest` `FlatBuffers` request buffer, one field per CLI
+ * parameter: `source` and `destination` (both REQUIRED; the destination must be missing or an
+ * empty directory and is created with its parents), `remote_name` (absent = `origin`),
+ * `colocate` / `no_colocate`, `depth` (0 = the whole history), `branches` / `tags` (ABSENT = the
+ * flag not given) and `object_hash`. The clone writes the CLI's three operations (`add git
+ * remote`, `fetch from git remote into empty repo`, `check out git remote's branch`), each only
+ * when it changed something, and the repo presets (`trunk()`, the fetch presets for `-b` / `-t`).
+ * Tests use a `file://` local source — no network access is needed or allowed.
+ *
+ * Progress is dispatched over the process-global event sink as `Progress` events with
+ * `operation = "clone"`, tagged with the session id the new handle gets (allocated before the
+ * clone runs), exactly like `zanshin_git_fetch`'s.
+ *
+ * A failure inside the clone's clean-up scope (creating the workspace, adding the remote, the
+ * fetch) removes `.jj` (and `.git` when colocated), then the destination iff the call created it;
+ * a later failure (the presets, the checkout, the re-open) keeps the workspace — the CLI's scope.
  *
  * Returns a `RepoHandle` envelope on success.
  *
  * # Errors
- * - `ffi.null_pointer` / `ffi.utf8_error` — invalid pointer arguments.
- * - `jj.jj_lib_error` — clone failed; detail in `context`.
- * - `jj.config_error` — the effective jj config cannot be read: the stack the workspace is
- *   created with (the user-level stack first, as the CLI's start-up, then the stack resolved
- *   for the new workspace's paths; refused before anything is written), or the new
- *   workspace's stack — which the clone reads `git.abandon-unreachable-commits` from, so a non-boolean
- *   value refuses here too. `context` names the offending KEY for a wrong-typed value, and
- *   the offending FILE PATH for a config file that is unreadable or not valid TOML.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `RepoCloneRequest`, its `kind` is not
+ *   `RepoClone`, or `object_hash` is out of range.
+ * - `jj.invalid_input` — `source` or `destination` is absent, both colocation flags are set, or a
+ *   `branches` / `tags` pattern does not parse.
+ * - `jj.destination_not_empty` — the destination is a file or a non-empty directory; refused
+ *   before anything is created. The destination in `context`.
+ * - `jj.jj_lib_error` — the destination cannot be created, or the creation, the remote, the
+ *   fetch (an unreachable source), the import or the checkout failed; detail in `context`.
+ * - `jj.config_error` — the effective jj config cannot be read, or a key the clone reads is
+ *   malformed (`git.colocate`, `git.object-hash`, the import options, `remotes.<name>.*`,
+ *   `git.track-default-bookmark-on-clone`), or the presets cannot be written. `context` names the
+ *   offending KEY or FILE PATH.
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
  *   no handle is returned rather than one for an unwatched repo. It runs AFTER the clone
- *   has SUCCEEDED, so the rollback described above does not apply — the cloned workspace
- *   persists and a retry sees an existing repo. Detail in `context`.
+ *   has SUCCEEDED, so the cloned workspace persists and a retry sees a non-empty destination.
+ *   Detail in `context`.
  *
  * # Warnings
  * `Envelope.warnings` carries the clone's warnings on the ok envelope AND on every error
- * envelope, in the CLI's order (Story 9.33): `jj.git_import_failed` (refs the fetch's import
- * could not read), then `jj.checkout_files_skipped` (files the checkout left alone because an
- * untracked file of the same name was in the way — reachable only because this clone accepts a
- * non-empty target, which the CLI refuses; Story 9.20), then `jj.identity_missing` once when
- * `user.name`/`user.email` is empty; on a failure, whatever was warned before it, and
- * `jj.clone_cleanup_failed` last when the rollback could not remove `.jj/`. No
- * `Envelope.precondition`. The CLI's start-up-environment warnings (the alias tables and
- * `immutable_heads()` its `for_workable_repo` loads, twice on a clone) are not ported — see the
- * registry's start-up-environment entry.
+ * envelope, in the CLI's order: the start-up environment's (twice: before and after the remote
+ * is added), each finish's (`jj.identity_missing` once per operation written, `jj.git_export_failed`
+ * colocated, `jj.working_copy_immutable`, `jj.checkout_files_skipped`), `jj.clone_branches_unmatched`
+ * and `jj.git_import_failed` before the fetch's finish; on a failure inside the clean-up scope,
+ * `jj.clone_cleanup_failed` last when the clean-up failed. No `Envelope.precondition`.
  *
  * # Safety
- * `url` and `target_path` must each be a valid, NUL-terminated C string or null.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.RepoCloneRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the call.
  * The returned token must be freed via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_repo_clone(const char *url,
-                               const char *target_path);
+ZanshinBuf *zanshin_repo_clone(const uint8_t *data,
+                               uintptr_t len);
 
 /**
  * Close an open repository and release its resources.

@@ -166,7 +166,7 @@ fn repo_init_native_backend_then_open_succeeds() {
     let path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
 
     // Init with native backend (0).
-    let t = unsafe { zanshin_repo_init(path.as_ptr(), 0) };
+    let t = unsafe { repo_init(&path, 0) };
     let b = unsafe { read_and_free(t) };
     let env = parse_envelope(&b);
     assert!(env.ok(), "init(native) must succeed");
@@ -195,7 +195,7 @@ fn repo_init_git_backend_then_open_succeeds() {
     let tmp = TempDir::new().expect("tempdir");
     let path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
 
-    let t = unsafe { zanshin_repo_init(path.as_ptr(), 1) };
+    let t = unsafe { repo_init(&path, 1) };
     let b = unsafe { read_and_free(t) };
     let env = parse_envelope(&b);
     assert!(env.ok(), "init(git) must succeed");
@@ -218,12 +218,12 @@ fn repo_init_git_backend_then_open_succeeds() {
 }
 
 #[test]
-fn repo_init_twice_at_same_location_returns_jj_lib_error() {
+fn repo_init_twice_at_same_location_returns_already_jj_repo() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
     let path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
 
-    let t1 = unsafe { zanshin_repo_init(path.as_ptr(), 0) };
+    let t1 = unsafe { repo_init(&path, 0) };
     let b1 = unsafe { read_and_free(t1) };
     let e1 = parse_envelope(&b1);
     assert!(e1.ok(), "first init must succeed");
@@ -232,12 +232,13 @@ fn repo_init_twice_at_same_location_returns_jj_lib_error() {
     let cb = unsafe { read_and_free(ct) };
     assert!(parse_envelope(&cb).ok());
 
-    // Second init at same path must fail with jj.jj_lib_error.
-    let t2 = unsafe { zanshin_repo_init(path.as_ptr(), 0) };
+    // Second init at same path is jj-lib's `DestinationExists` — `jj.already_jj_repo` since
+    // Story 9.20 (was the generic `jj.jj_lib_error`).
+    let t2 = unsafe { repo_init(&path, 0) };
     let b2 = unsafe { read_and_free(t2) };
     let e2 = parse_envelope(&b2);
     assert!(!e2.ok(), "second init at same path must fail");
-    assert_eq!(e2.error().and_then(|e| e.code()), Some(JJ_JJ_LIB_ERROR));
+    assert_eq!(e2.error().and_then(|e| e.code()), Some(zanshin_ffi::JJ_ALREADY_JJ_REPO));
 }
 
 #[test]
@@ -245,7 +246,7 @@ fn repo_init_invalid_backend_returns_ffi_invalid_argument() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
     let path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
-    let token = unsafe { zanshin_repo_init(path.as_ptr(), 99) };
+    let token = unsafe { repo_init(&path, 99) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
     assert!(!env.ok());
@@ -281,7 +282,7 @@ fn repo_clone_from_local_git_source_returns_repo_handle() {
     let url = cstr(&src_url);
     let target = cstr(target_tmp.path().to_str().expect("path must be UTF-8"));
 
-    let token = unsafe { zanshin_repo_clone(url.as_ptr(), target.as_ptr()) };
+    let token = unsafe { repo_clone(&url, &target) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
     assert!(env.ok(), "clone from local file:// must succeed");
@@ -300,7 +301,7 @@ fn repo_clone_with_invalid_url_returns_jj_lib_error() {
     let tmp = TempDir::new().expect("tempdir");
     let url = cstr("not-a-real-url://nope");
     let target = cstr(tmp.path().to_str().expect("path must be UTF-8"));
-    let token = unsafe { zanshin_repo_clone(url.as_ptr(), target.as_ptr()) };
+    let token = unsafe { repo_clone(&url, &target) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
     assert!(!env.ok());
@@ -308,28 +309,80 @@ fn repo_clone_with_invalid_url_returns_jj_lib_error() {
 }
 
 #[test]
-fn repo_clone_null_url_returns_null_pointer_error() {
+fn repo_clone_null_request_returns_null_pointer_error() {
     pin_env();
-    let tmp = TempDir::new().expect("tempdir");
-    let target = cstr(tmp.path().to_str().expect("path must be UTF-8"));
-    let token = unsafe { zanshin_repo_clone(std::ptr::null(), target.as_ptr()) };
+    let token = unsafe { zanshin_repo_clone(std::ptr::null(), 0) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
     assert!(!env.ok());
     assert_eq!(env.error().and_then(|e| e.code()), Some(zanshin_ffi::FFI_NULL_POINTER));
 }
 
+/// Story 9.20: the request's required fields, its kind tag and a malformed buffer are refused
+/// before anything is created; absent vs present-empty `branches` is read as the CLI's flag.
 #[test]
-fn repo_clone_null_target_returns_null_pointer_error() {
+fn repo_clone_request_is_validated_before_anything_is_created() {
     pin_env();
-    // url is read and validated before target_path, so a null target only surfaces
-    // when url is a valid C string — this exercises the second, otherwise-unreached check.
-    let url = cstr("file:///tmp/zanshin-ffi-clone-null-target");
-    let token = unsafe { zanshin_repo_clone(url.as_ptr(), std::ptr::null()) };
+    let tmp = TempDir::new().expect("tempdir");
+    let target = tmp.path().join("dst");
+    let build = |kind: fbs::RequestKind, source: Option<&str>, destination: Option<&str>| {
+        let mut b = flatbuffers::FlatBufferBuilder::new();
+        let source = source.map(|s| b.create_string(s));
+        let destination = destination.map(|d| b.create_string(d));
+        let req = fbs::RepoCloneRequest::create(
+            &mut b,
+            &fbs::RepoCloneRequestArgs {
+                kind,
+                source,
+                destination,
+                ..Default::default()
+            },
+        );
+        b.finish(req, None);
+        b.finished_data().to_vec()
+    };
+    let dst = target.to_str().expect("UTF-8");
+    for (bytes, code) in [
+        (
+            build(fbs::RequestKind::RepoClone, None, Some(dst)),
+            zanshin_ffi::JJ_INVALID_INPUT,
+        ),
+        (
+            build(fbs::RequestKind::RepoClone, Some("file:///nowhere"), None),
+            zanshin_ffi::JJ_INVALID_INPUT,
+        ),
+        (
+            build(fbs::RequestKind::RepoInit, Some("file:///nowhere"), Some(dst)),
+            FFI_INVALID_ARGUMENT,
+        ),
+        (vec![1, 2, 3], FFI_INVALID_ARGUMENT),
+    ] {
+        let token = unsafe { zanshin_repo_clone(bytes.as_ptr(), bytes.len()) };
+        let out = unsafe { read_and_free(token) };
+        let env = parse_envelope(&out);
+        assert!(!env.ok());
+        assert_eq!(env.error().and_then(|e| e.code()), Some(code));
+    }
+    assert!(!target.exists(), "a refused request creates nothing");
+}
+
+/// Story 9.20: a non-empty destination is `jj.destination_not_empty`, before anything is created.
+#[test]
+fn repo_clone_into_a_non_empty_destination_returns_destination_not_empty() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    fs::write(tmp.path().join("file"), "x").expect("write");
+    let url = cstr("file:///nowhere");
+    let target = cstr(tmp.path().to_str().expect("path must be UTF-8"));
+    let token = unsafe { repo_clone(&url, &target) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
     assert!(!env.ok());
-    assert_eq!(env.error().and_then(|e| e.code()), Some(zanshin_ffi::FFI_NULL_POINTER));
+    assert_eq!(
+        env.error().and_then(|e| e.code()),
+        Some(zanshin_ffi::JJ_DESTINATION_NOT_EMPTY)
+    );
+    assert!(!tmp.path().join(".jj").exists());
 }
 
 // ── zanshin_repo_close ────────────────────────────────────────────────────────
@@ -489,7 +542,7 @@ fn detect_neither_subdir_inside_jj_repo_returns_suggestion() {
     let jj_path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
 
     // Init a jj repo at tmp.
-    let init_tok = unsafe { zanshin_repo_init(jj_path.as_ptr(), 0) };
+    let init_tok = unsafe { repo_init(&jj_path, 0) };
     let init_bytes = unsafe { read_and_free(init_tok) };
     let init_env = parse_envelope(&init_bytes);
     assert!(init_env.ok(), "jj init must succeed");
@@ -554,7 +607,7 @@ fn detect_path_not_found_inside_jj_repo_returns_jj_suggestion() {
     let tmp = TempDir::new().expect("tempdir");
     let jj_path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
 
-    let init_tok = unsafe { zanshin_repo_init(jj_path.as_ptr(), 0) };
+    let init_tok = unsafe { repo_init(&jj_path, 0) };
     let init_bytes = unsafe { read_and_free(init_tok) };
     let init_env = parse_envelope(&init_bytes);
     assert!(init_env.ok(), "jj init must succeed");
@@ -686,7 +739,7 @@ fn init_and_open_envelopes_carry_no_report() {
     let tmp = TempDir::new().expect("tempdir");
     let path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
 
-    let init_bytes = unsafe { read_and_free(zanshin_repo_init(path.as_ptr(), 1)) };
+    let init_bytes = unsafe { read_and_free(repo_init(&path, 1)) };
     let init = parse_envelope(&init_bytes);
     assert!(init.ok());
     assert!(init.precondition().is_none(), "init runs no snapshot");
@@ -702,11 +755,11 @@ fn init_and_open_envelopes_carry_no_report() {
 }
 
 /// A clone into a target that already holds an untracked `README.md` the default branch also
-/// has: the checkout leaves it alone, and the ok envelope says so. Reachable only because
-/// Zanshin's clone accepts a non-empty target, which the CLI refuses (`git/clone.rs:188-192`) —
-/// a Story 9.20 divergence; this witness flips to a refusal when 9.20 lands.
+/// has. Story 9.33 witnessed `jj.checkout_files_skipped` here, reachable only through Zanshin's
+/// old non-empty-target divergence; since Story 9.20 the clone refuses the target first, as the
+/// CLI does (`git/clone.rs:186-196` @ v0.46.0), and leaves the file alone.
 #[test]
-fn clone_into_a_colliding_target_warns_that_a_checkout_was_skipped() {
+fn clone_into_a_colliding_target_is_refused_and_keeps_the_file() {
     pin_env();
     let src = TempDir::new().expect("src tempdir");
     git_with_commit(src.path());
@@ -715,23 +768,13 @@ fn clone_into_a_colliding_target_warns_that_a_checkout_was_skipped() {
     let url = cstr(&format!("file://{}", src.path().display()));
     let target_c = cstr(target.path().to_str().expect("path must be UTF-8"));
 
-    let bytes = unsafe { read_and_free(zanshin_repo_clone(url.as_ptr(), target_c.as_ptr())) };
+    let bytes = unsafe { read_and_free(repo_clone(&url, &target_c)) };
     let env = parse_envelope(&bytes);
-    assert!(
-        env.ok(),
-        "clone must succeed: {:?}",
-        env.error().and_then(|e| e.context())
-    );
-    assert!(env.precondition().is_none(), "a clone runs no snapshot");
-    assert_eq!(
-        wire_warnings(&env),
-        [(
-            "jj.checkout_files_skipped".to_owned(),
-            "1 of those updates were skipped because there were conflicting changes in the working copy.".to_owned()
-        )]
-    );
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some("jj.destination_not_empty"));
+    assert!(env.warnings().is_none(), "nothing ran, nothing warned");
     assert_eq!(fs::read_to_string(target.path().join("README.md")).unwrap(), "local");
-    close(env.data_as_repo_handle().expect("RepoHandle").handle());
+    assert!(!target.path().join(".jj").exists());
 }
 
 /// A conversion whose work tree holds a new file over the builtin 1 MiB limit: the ok envelope
@@ -807,4 +850,48 @@ fn convert_whose_snapshot_fails_reports_on_the_error_envelope() {
         precondition.git_head_imported(),
         "the head import ran before the snapshot failed"
     );
+}
+
+/// `zanshin_repo_init` over a `RepoInitRequest` (Story 9.20): `backend` 0 = native, 1 = git — a git
+/// one with `no_colocate`, the internal workspace these rows were written against.
+unsafe fn repo_init(path: &std::ffi::CString, backend: i32) -> *mut zanshin_ffi::ffi_strings::ZanshinBuf {
+    let mut b = flatbuffers::FlatBufferBuilder::new();
+    let path = b.create_string(path.to_str().expect("UTF-8 path"));
+    let req = zanshin_ffi::fbs::RepoInitRequest::create(
+        &mut b,
+        &zanshin_ffi::fbs::RepoInitRequestArgs {
+            kind: zanshin_ffi::fbs::RequestKind::RepoInit,
+            path: Some(path),
+            backend: zanshin_ffi::fbs::InitBackend(u8::try_from(backend).expect("a backend byte")),
+            colocate: false,
+            no_colocate: backend == 1,
+            object_hash: zanshin_ffi::fbs::ObjectHash::Unspecified,
+        },
+    );
+    b.finish(req, None);
+    let bytes = b.finished_data();
+    // SAFETY: `bytes` is a live, caller-owned request buffer for the duration of the call.
+    unsafe { zanshin_ffi::repo::zanshin_repo_init(bytes.as_ptr(), bytes.len()) }
+}
+
+/// `zanshin_repo_clone` over a `RepoCloneRequest` (Story 9.20), `no_colocate` — the internal
+/// workspace these rows were written against.
+unsafe fn repo_clone(url: &std::ffi::CString, target: &std::ffi::CString) -> *mut zanshin_ffi::ffi_strings::ZanshinBuf {
+    let mut b = flatbuffers::FlatBufferBuilder::new();
+    let source = b.create_string(url.to_str().expect("UTF-8 url"));
+    let destination = b.create_string(target.to_str().expect("UTF-8 target"));
+    let req = zanshin_ffi::fbs::RepoCloneRequest::create(
+        &mut b,
+        &zanshin_ffi::fbs::RepoCloneRequestArgs {
+            kind: zanshin_ffi::fbs::RequestKind::RepoClone,
+            source: Some(source),
+            destination: Some(destination),
+            no_colocate: true,
+            ..Default::default()
+        },
+    );
+    b.finish(req, None);
+    let bytes = b.finished_data();
+    // SAFETY: `bytes` is a live, caller-owned request buffer for the duration of the call.
+    unsafe { zanshin_ffi::repo::zanshin_repo_clone(bytes.as_ptr(), bytes.len()) }
 }

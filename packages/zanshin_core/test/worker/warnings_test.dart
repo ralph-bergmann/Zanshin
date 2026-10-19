@@ -78,7 +78,7 @@ void main() {
     });
 
     /// A fresh Git-backend workspace at [root].
-    Future<RepoHandle> initGit() => worker.initRepo(root, backend: 1);
+    Future<RepoHandle> initGit() => worker.initRepo(root, backend: 1, noColocate: true);
 
     /// A fresh Git-backend workspace whose repo-scope config file holds [toml],
     /// opened AFTER the write so the handle's config stack sees it.

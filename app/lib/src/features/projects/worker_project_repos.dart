@@ -47,12 +47,14 @@ class WorkerProjectRepos implements ProjectRepos {
   @override
   Future<ProjectCreation> convert(String path) => _create('convert', (worker) => worker.convert(path));
 
+  /// Init and clone run with `noColocate: true` — the `--no-colocate` commands the Projects window shows (Story 9.20).
   @override
-  Future<ProjectCreation> init(String path) => _create('init', (worker) => worker.initRepo(path, backend: _gitBackend));
+  Future<ProjectCreation> init(String path) =>
+      _create('init', (worker) => worker.initRepo(path, backend: _gitBackend, noColocate: true));
 
   @override
   Future<ProjectCreation> clone({required String url, required String destination}) =>
-      _create('clone', (worker) => worker.cloneRepo(url: url, targetPath: destination));
+      _create('clone', (worker) => worker.cloneRepo(source: url, destination: destination, noColocate: true));
 
   /// Runs one creation [call]: its handle becomes a [ProjectRepo] like an opened one; a failure is rethrown with its
   /// warnings, which are logged by code either way.

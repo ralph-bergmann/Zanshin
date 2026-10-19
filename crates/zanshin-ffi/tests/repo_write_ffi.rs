@@ -27,7 +27,7 @@ use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::repo::{
     zanshin_abandon, zanshin_absorb, zanshin_describe, zanshin_edit, zanshin_git_fetch, zanshin_new_change,
-    zanshin_repo_close, zanshin_repo_init, zanshin_repo_open, zanshin_restore, zanshin_undo,
+    zanshin_repo_close, zanshin_repo_open, zanshin_restore, zanshin_undo,
 };
 use zanshin_ffi::status::zanshin_status;
 use zanshin_ffi::{
@@ -602,7 +602,7 @@ fn undo_valid_round_trip_restores_previous_op() {
     let tmp = tempfile::TempDir::new().unwrap();
     let path_cstr = cstr(tmp.path().to_str().unwrap());
 
-    let init_token = unsafe { zanshin_repo_init(path_cstr.as_ptr(), 0) };
+    let init_token = unsafe { repo_init(&path_cstr, 0) };
     let init_bytes = unsafe { read_and_free(init_token) };
     let init_env = parse_envelope(&init_bytes);
     assert!(init_env.ok(), "init must succeed");
@@ -651,7 +651,7 @@ fn undo_root_op_returns_jj_nothing_to_undo() {
     let tmp = tempfile::TempDir::new().unwrap();
     let path_cstr = cstr(tmp.path().to_str().unwrap());
 
-    let init_token = unsafe { zanshin_repo_init(path_cstr.as_ptr(), 0) };
+    let init_token = unsafe { repo_init(&path_cstr, 0) };
     let init_bytes = unsafe { read_and_free(init_token) };
     let init_env = parse_envelope(&init_bytes);
     assert!(init_env.ok(), "init must succeed");
@@ -812,7 +812,7 @@ fn git_fetch_happy_path_reports_progress_and_returns_mutation_result() {
 
     let dst = tempfile::TempDir::new().unwrap();
     let dst_cstr = cstr(dst.path().to_str().unwrap());
-    let init_token = unsafe { zanshin_repo_init(dst_cstr.as_ptr(), 1) };
+    let init_token = unsafe { repo_init(&dst_cstr, 1) };
     let init_bytes = unsafe { read_and_free(init_token) };
     let init_env = parse_envelope(&init_bytes);
     assert!(init_env.ok(), "init (git backend) must succeed");
@@ -884,7 +884,7 @@ fn git_fetch_nonexistent_remote_returns_jj_remote_not_found() {
     pin_env();
     let dst = tempfile::TempDir::new().unwrap();
     let dst_cstr = cstr(dst.path().to_str().unwrap());
-    let init_token = unsafe { zanshin_repo_init(dst_cstr.as_ptr(), 1) };
+    let init_token = unsafe { repo_init(&dst_cstr, 1) };
     let init_bytes = unsafe { read_and_free(init_token) };
     let init_env = parse_envelope(&init_bytes);
     assert!(init_env.ok(), "init (git backend) must succeed");
@@ -917,7 +917,7 @@ fn git_fetch_on_native_backend_returns_jj_not_a_git_repo() {
     pin_env();
     let dst = tempfile::TempDir::new().unwrap();
     let dst_cstr = cstr(dst.path().to_str().unwrap());
-    let init_token = unsafe { zanshin_repo_init(dst_cstr.as_ptr(), 0) };
+    let init_token = unsafe { repo_init(&dst_cstr, 0) };
     let init_bytes = unsafe { read_and_free(init_token) };
     let init_env = parse_envelope(&init_bytes);
     assert!(init_env.ok(), "init (native backend) must succeed");
@@ -1419,7 +1419,7 @@ fn git_fetch_null_remote_name_returns_ffi_null_pointer() {
     pin_env();
     let dst = tempfile::TempDir::new().unwrap();
     let dst_cstr = cstr(dst.path().to_str().unwrap());
-    let init_token = unsafe { zanshin_repo_init(dst_cstr.as_ptr(), 1) };
+    let init_token = unsafe { repo_init(&dst_cstr, 1) };
     let init_bytes = unsafe { read_and_free(init_token) };
     let init_env = parse_envelope(&init_bytes);
     assert!(init_env.ok());
@@ -1690,4 +1690,26 @@ fn tagged_request_bytes(kind: fbs::RequestKind) -> Vec<u8> {
     );
     b.finish(req, None);
     b.finished_data().to_vec()
+}
+
+/// `zanshin_repo_init` over a `RepoInitRequest` (Story 9.20): `backend` 0 = native, 1 = git — a git
+/// one with `no_colocate`, the internal workspace these rows were written against.
+unsafe fn repo_init(path: &std::ffi::CString, backend: i32) -> *mut zanshin_ffi::ffi_strings::ZanshinBuf {
+    let mut b = flatbuffers::FlatBufferBuilder::new();
+    let path = b.create_string(path.to_str().expect("UTF-8 path"));
+    let req = zanshin_ffi::fbs::RepoInitRequest::create(
+        &mut b,
+        &zanshin_ffi::fbs::RepoInitRequestArgs {
+            kind: zanshin_ffi::fbs::RequestKind::RepoInit,
+            path: Some(path),
+            backend: zanshin_ffi::fbs::InitBackend(u8::try_from(backend).expect("a backend byte")),
+            colocate: false,
+            no_colocate: backend == 1,
+            object_hash: zanshin_ffi::fbs::ObjectHash::Unspecified,
+        },
+    );
+    b.finish(req, None);
+    let bytes = b.finished_data();
+    // SAFETY: `bytes` is a live, caller-owned request buffer for the duration of the call.
+    unsafe { zanshin_ffi::repo::zanshin_repo_init(bytes.as_ptr(), bytes.len()) }
 }

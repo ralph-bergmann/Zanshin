@@ -178,7 +178,7 @@ write ride `MutationResult.finish` (absent when none failed); `@` becoming immut
 a failed HEAD reset, the export failures themselves and an empty identity are
 `Envelope.warnings` (Story 9.32).
 
-`Payload` has **38** members. Two of them — `WatcherEvent` and `Progress` — are
+`Payload` has **41** members. Two of them — `WatcherEvent` and `Progress` — are
 returned by no exported symbol: they arrive asynchronously through the
 `zanshin_events_register` callback (see *Async events* below). Union member order
 is the wire discriminant, so the union is **append-only**.
@@ -373,7 +373,7 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **33** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **36** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
@@ -386,8 +386,10 @@ lists — `jj new -A` / `-B`, Story 9.48 — are read only by `zanshin_new_chang
 `zanshin_abandon` ignores them) and `SquashRequest`
 (`zanshin_squash` and `zanshin_squash_plan`, Story 9.15 — the plan previews the
 squash its caller is about to run, with the same arguments). Every other table has
-exactly one caller, and no table is orphaned. 33 tables + 2 shared reuses = the 35
-request-buffer symbols.
+exactly one caller, and no table is orphaned. 36 tables + 2 shared reuses = the 38
+request-buffer symbols (Story 9.20 adds `GitPushRequest`, `RepoCloneRequest` and
+`RepoInitRequest` — `zanshin_repo_init` / `zanshin_repo_clone` took two C strings / a string and
+an `int32_t` backend before).
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
 members of the `RevisionRef` union carried by `InterdiffRequest`'s `from`/`to`,
@@ -406,7 +408,7 @@ request table is therefore `kind: RequestKind`, and every reader refuses a buffe
 whose tag is not its own — row 3 of the ladder above, before any other field is
 read and before the handle is borrowed.
 
-The tag is per-**wrapper**, not per-table. For 32 tables the variant name plus
+The tag is per-**wrapper**, not per-table. For 35 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **two** kinds, `NewChange`
 and `Abandon`, because a per-table tag would have left the sharpest collision
 unrefused — a buffer meant as `parents` abandoning those commits instead. Only
@@ -455,7 +457,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **67** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **68** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -475,8 +477,8 @@ or no `# Errors` block.
 | Symbol | Args | Request table | Success payload | Error codes | Story |
 |--------|------|---------------|-----------------|-------------|-------|
 | `zanshin_repo_open` | `(const char *path)` | — | `RepoHandle` | `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4a (+9.37) |
-| `zanshin_repo_init` | `(const char *path, int32_t backend)` | — | `RepoHandle` | `ffi.invalid_argument`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a (+9.33) |
-| `zanshin_repo_clone` | `(const char *url, const char *target_path)` | — | `RepoHandle` | `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.jj_lib_error`, `watcher.io_error` | 3.4a (+9.33) |
+| `zanshin_repo_init` | `(const uint8_t *data, uintptr_t len)` | `RepoInitRequest` | `RepoHandle` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.jj_lib_error`, `jj.git_repo_exists`, `jj.already_jj_repo`, `jj.convert_failed`, `jj.config_error`, `watcher.io_error` | 3.4a (+9.33, 9.20) |
+| `zanshin_repo_clone` | `(const uint8_t *data, uintptr_t len)` | `RepoCloneRequest` | `RepoHandle` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.destination_not_empty`, `jj.jj_lib_error`, `jj.config_error`, `watcher.io_error` | 3.4a (+9.33, 9.20; `Progress`: 9.20) |
 | `zanshin_repo_convert` | `(const char *path)` | — | `RepoHandle` | `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4c (+9.33) |
 | `zanshin_repo_detect` | `(const char *path)` | — | `RepoDetect` | `jj.detect_failed`, `ffi.null_pointer`, `ffi.utf8_error` | 3.4c |
 | `zanshin_repo_close` | `(uint64_t handle)` | — | — (no-payload success) | `ffi.invalid_handle` | 3.4a |
@@ -516,6 +518,7 @@ or no `# Errors` block.
 | `zanshin_file_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileUntrackRequest` | `UntrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.path_not_ignored`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_snapshot` | `(uint64_t handle)` | — | — (no-payload success; the report is `Envelope.precondition`) | `ffi.invalid_handle`, `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error` | 9.26 |
 | `zanshin_git_fetch` | `(uint64_t handle, const char *remote_name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.network_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (domain side + `Progress`: 6.4a) |
+| `zanshin_git_push` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitPushRequest` | `GitPushResult` (see § `GitPushResult` payload) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.push_ref_refused`, `jj.push_commit_rejected`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.20 (+`Progress`) |
 | `zanshin_git_import` | `(uint64_t handle)` | — | `GitImportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_export` | `(uint64_t handle)` | — | `GitExportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_remote_add` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitRemoteAddRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.remote_exists`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
@@ -831,11 +834,19 @@ WatcherEvent {
 
 Progress {
   session_id:  uint64          // same correlation id; first real producer is Story 6-4a
-  operation:   string          // e.g. "fetch"
+  operation:   string          // "fetch" (6-4a), "clone" or "push" (Story 9.20)
   progress:    float           // ∈ [0, 1]
   message:     string
 }
 ```
+
+Story 9.20 adds two producers. `zanshin_git_push` tags its events with the session's id like
+`zanshin_git_fetch`; a push's progress arrives mostly as git sideband text, which Zanshin does not
+forward, so a push may report none. `zanshin_repo_clone` has no session yet while it runs: it
+allocates the session id BEFORE the clone and tags its events with it, so they carry the id the
+returned `RepoHandle.session_id` names. The worker can only map that id once the handle is
+registered — today the events reach the main isolate after the command returned anyway (the
+worker runs the call synchronously; live delivery is a recorded deferral), so the mapping holds.
 
 `WatchError` is a **degraded-watch signal, not a failed call** — it never
 carries the `watcher.io_error` code string (single-emission-point rule).
@@ -1355,3 +1366,42 @@ as the listing; a failing distance revset is `jj.jj_lib_error`. Dart: `Bookmark.
 `String?`, `conflicted`/`synced` sit on `Bookmark`, `tracked`/`ahead`/`behind` on `RemoteBookmark`,
 and `RefDistance.upper` is null when `has_upper` is false
 (`packages/zanshin_core/lib/src/ffi/bookmarks.dart`).
+
+---
+
+## `GitPushResult` payload and `zanshin_git_push` (Story 9.20)
+
+`zanshin_git_push` is the CLI's `jj git push` at v0.46.0 with every parameter passed through
+(`GitPushRequest`: `remotes` — ABSENT = `--remote` not given —, `bookmarks`, `tags`, `all`,
+`tracked`, `deleted`, the three `allow_*`, `revisions`, `changes`, `named`, `dry_run`, `options`).
+It runs the pre-verb snapshot, then ONE transaction whose planning phase — remotes, the
+`--change` / `--named` bookmarks, the targets of the mode, the classification per remote, the
+commit checks, the operation description — is shared by the dry run and the real run. A refusal
+before the network is an error envelope (`jj.invalid_input`, `jj.push_ref_refused`,
+`jj.push_commit_rejected`, …); once the push loop has started, the outcome is DATA on an ok
+envelope:
+
+| Field | Meaning |
+|-------|---------|
+| `remotes` | `PushRemote` per matched remote, sorted: `name`, `refs`, `already_matches` (explicit refs already where the push would put them — the CLI's "Bookmark N@R already matches N"), `finished` (the push to it ran), `error` (the CLI's `GitPushError` text that stopped the push there). |
+| `PushRef` | `kind` (`Bookmark`/`Tag`), `name`, `before` / `after` (full hex, ABSENT when absent there or conflicted), `action` (jj's words: "move forward/backward/sideways from <old> to <new>", "add to <new>", "delete from <old>"), `path` (`Push`, `Skip` — the mode refused it and warned —, `Abort` — an explicit ref refused, dry run only), `refusal` / `explicit_refusal` (`PushRefusal { message, hint }` verbatim; the second is what `-b`/`-t` would get — ABSENT = tickable), `rejection` (`PushCommitRejection { commit_id, reasons, message, hints }`), `status` (`NotReached`, `Pushed`, `LeaseRejected`, `RemoteRejected`, `Unexported`) and `status_reason`. |
+| `created_bookmarks` | The bookmarks `--change` created (`name`, `change_id`). |
+| `hints` | Hints a UI shows verbatim: "Pushing to the only existing remote: R", the push-stats hints. |
+| `signing` | `PushSigning { updated_signatures, rebased_descendants }` when sign-on-push signed; ABSENT otherwise. |
+| `nothing_changed` / `dry_run` / `recorded` | The CLI's "Nothing changed."; a plan; the operation was written (only when every ref succeeded or one was exported — "Undo works"). |
+| `description` / `new_op_id` | The operation's description (a dry run's: the one the real push writes; ABSENT when nothing changed) and the head after the call. |
+| `failure` | `PushFailure { kind, message, hint }`: `RefRefused` / `CommitRejected` (a dry run's explicit refusal), `SomeRefsFailed` ("Failed to push some bookmarks", possibly recorded), `PushError` (stopped at a remote; nothing recorded). ABSENT on full success. |
+
+Warnings: `jj.push_remotes_unmatched`, `jj.push_bookmarks_unmatched`, `jj.push_tags_unmatched`,
+`jj.push_revset_empty`, `jj.push_revisions_empty`, `jj.push_ref_skipped`, `jj.push_commit_skipped`,
+`jj.push_signing_skipped_immutable`, `jj.push_refs_moved_on_remote`, `jj.push_remote_rejected`,
+`jj.push_bookmarks_not_updated_locally`, plus the finish's. Dart: `RepoHandle.gitPush(...)` →
+`GitPushResult` (`packages/zanshin_core/lib/src/ffi/push.dart`).
+
+`zanshin_repo_init` (`RepoInitRequest`: `path`, `backend`, `colocate` / `no_colocate`,
+`object_hash`) and `zanshin_repo_clone` (`RepoCloneRequest`: `source`, `destination`,
+`remote_name`, `colocate` / `no_colocate`, `depth` — 0 = absent —, `branches` / `tags` — ABSENT =
+the flag not given —, `object_hash`) take request buffers since Story 9.20 and follow `jj git init`
+/ `jj git clone` step for step: the destination rules, colocation by `git.colocate`, the clone's
+three operations and repo presets, its clean-up scope. Both colocation flags set is
+`jj.invalid_input`.

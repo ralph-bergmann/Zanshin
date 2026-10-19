@@ -45,11 +45,16 @@ fn pin_env() {
 fn init(config: &str) -> (TempDir, PathBuf) {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    let root = Repo::init(tmp.path(), Some(Backend::Git))
-        .result
-        .expect("init")
-        .workspace_root()
-        .to_owned();
+    let root = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("init")
+    .workspace_root()
+    .to_owned();
     fs::write(root.join(".jj").join("repo").join("config.toml"), config).expect("repo config");
     (tmp, root)
 }

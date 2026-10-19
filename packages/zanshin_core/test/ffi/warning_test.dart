@@ -410,9 +410,21 @@ void main() {
         'jj.split_all_selected',
         'jj.split_none_selected',
         'jj.commit_paths_unmatched',
+        'jj.push_remotes_unmatched',
+        'jj.push_bookmarks_unmatched',
+        'jj.push_tags_unmatched',
+        'jj.push_revset_empty',
+        'jj.push_revisions_empty',
+        'jj.push_ref_skipped',
+        'jj.push_commit_skipped',
+        'jj.push_refs_moved_on_remote',
+        'jj.push_remote_rejected',
+        'jj.push_bookmarks_not_updated_locally',
+        'jj.push_signing_skipped_immutable',
+        'jj.clone_branches_unmatched',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(36), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(48), reason: 'no code is registered twice');
     });
   });
 

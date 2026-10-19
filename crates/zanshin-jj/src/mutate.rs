@@ -328,6 +328,24 @@ pub enum MutateError {
     /// verb created before stays, as in the CLI.
     #[error("git worktree failed: {0}")]
     GitWorktree(String),
+    /// [`crate::Repo::git_push`] with an explicitly named ref (`-b`, `-t`, `--change`, `--named`)
+    /// the push refuses — conflicted, an untracked ref of that name on the remote, new or deleted
+    /// where that is not allowed (Story 9.20, `cli/src/commands/git/push.rs:1157-1254` @ v0.46.0).
+    /// `message` is the CLI's text; its hint rides a dry run's plan. Nothing is pushed or written.
+    #[error("{message}")]
+    PushRefRefused {
+        /// The CLI's refusal, e.g. "Bookmark main is conflicted".
+        message: String,
+    },
+    /// [`crate::Repo::git_push`] with an explicitly named ref that would push a commit that is not
+    /// ready — no description, no author/committer, conflicts, private (Story 9.20, `push.rs:762-775`
+    /// @ v0.46.0). `message` is the CLI's "Won't push commit <hash> since it <reasons>"; its hints
+    /// ride a dry run's plan. Nothing is pushed or written.
+    #[error("{message}")]
+    PushCommitRejected {
+        /// The CLI's refusal.
+        message: String,
+    },
     /// The pre-verb snapshot failed (Story 9.26) — the verb itself never ran. See
     /// [`crate::PreconditionError`]; the partial facts ride [`crate::Repo::take_precondition`].
     #[error(transparent)]
@@ -1744,7 +1762,12 @@ mod tests {
 
         test_helpers::pin_test_env();
         let tmp = tempfile::TempDir::new().expect("tempdir");
-        let repo = crate::Repo::init(tmp.path(), None).result.expect("init");
+        let repo = crate::Repo::init(&crate::InitOptions {
+            path: std::path::PathBuf::from(tmp.path()),
+            ..Default::default()
+        })
+        .result
+        .expect("init");
         let load_head = |repo: &crate::Repo| {
             pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("load_at_head")
         };

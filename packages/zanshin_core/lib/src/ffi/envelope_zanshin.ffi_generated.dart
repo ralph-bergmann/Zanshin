@@ -22,7 +22,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 ///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 ///  very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-///  squash, never a different verb. For the other 31 tables the variant name plus `Request` IS
+///  squash, never a different verb. For the other 34 tables the variant name plus `Request` IS
 ///  the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -66,7 +66,10 @@ enum RequestKind {
   WorkspaceAdd(31),
   Squash(32),
   Split(33),
-  Commit(34);
+  Commit(34),
+  GitPush(35),
+  RepoClone(36),
+  RepoInit(37);
 
   final int value;
   const RequestKind(this.value);
@@ -143,6 +146,12 @@ enum RequestKind {
         return RequestKind.Split;
       case 34:
         return RequestKind.Commit;
+      case 35:
+        return RequestKind.GitPush;
+      case 36:
+        return RequestKind.RepoClone;
+      case 37:
+        return RequestKind.RepoInit;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -151,7 +160,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 34;
+  static const int maxValue = 37;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -163,6 +172,84 @@ class _RequestKindReader extends fb.Reader<RequestKind> {
 
   @override
   RequestKind read(fb.BufferContext bc, int offset) => RequestKind.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  The object hash of a new Git repository — the CLI's `--object-hash` (Story 9.20).
+///  `Unspecified = 0` (the absent-field default) = the flag not given: the `git.object-hash`
+///  config decides. Member order IS the wire value — APPEND only.
+enum ObjectHash {
+  Unspecified(0),
+  Sha1(1),
+  Sha256(2);
+
+  final int value;
+  const ObjectHash(this.value);
+
+  factory ObjectHash.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return ObjectHash.Unspecified;
+      case 1:
+        return ObjectHash.Sha1;
+      case 2:
+        return ObjectHash.Sha256;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static ObjectHash? _createOrNull(int? value) => value == null ? null : ObjectHash.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<ObjectHash> reader = _ObjectHashReader();
+}
+
+class _ObjectHashReader extends fb.Reader<ObjectHash> {
+  const _ObjectHashReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  ObjectHash read(fb.BufferContext bc, int offset) => ObjectHash.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  The backend of `zanshin_repo_init` (Story 9.20). `Native = 0` (the absent-field default) is
+///  jj's native backend (Zanshin-only), `Git` is `jj git init`. Member order IS the wire value.
+enum InitBackend {
+  Native(0),
+  Git(1);
+
+  final int value;
+  const InitBackend(this.value);
+
+  factory InitBackend.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return InitBackend.Native;
+      case 1:
+        return InitBackend.Git;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static InitBackend? _createOrNull(int? value) => value == null ? null : InitBackend.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 1;
+  static const fb.Reader<InitBackend> reader = _InitBackendReader();
+}
+
+class _InitBackendReader extends fb.Reader<InitBackend> {
+  const _InitBackendReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  InitBackend read(fb.BufferContext bc, int offset) => InitBackend.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
 ///  Which currency one side of `zanshin_interdiff` is written in.
@@ -584,6 +671,176 @@ class _TopologyRefKindReader extends fb.Reader<TopologyRefKind> {
       TopologyRefKind.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
+///  Whether a pushed ref is a bookmark or a tag.
+enum PushRefKind {
+  Bookmark(0),
+  Tag(1);
+
+  final int value;
+  const PushRefKind(this.value);
+
+  factory PushRefKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return PushRefKind.Bookmark;
+      case 1:
+        return PushRefKind.Tag;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static PushRefKind? _createOrNull(int? value) => value == null ? null : PushRefKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 1;
+  static const fb.Reader<PushRefKind> reader = _PushRefKindReader();
+}
+
+class _PushRefKindReader extends fb.Reader<PushRefKind> {
+  const _PushRefKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  PushRefKind read(fb.BufferContext bc, int offset) => PushRefKind.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  What the push does with a ref of its plan: `Push` it, `Skip` it (the mode refused it or a
+///  commit it would push; warned, the rest is pushed), or `Abort` (an explicitly named ref is
+///  refused — only a dry run gets this far).
+enum PushPath {
+  Push(0),
+  Skip(1),
+  Abort(2);
+
+  final int value;
+  const PushPath(this.value);
+
+  factory PushPath.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return PushPath.Push;
+      case 1:
+        return PushPath.Skip;
+      case 2:
+        return PushPath.Abort;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static PushPath? _createOrNull(int? value) => value == null ? null : PushPath.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<PushPath> reader = _PushPathReader();
+}
+
+class _PushPathReader extends fb.Reader<PushPath> {
+  const _PushPathReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  PushPath read(fb.BufferContext bc, int offset) => PushPath.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  What happened to a ref after a real push. `NotReached = 0` (the absent-field default) = a
+///  plan, a skipped ref, or a remote the push did not reach.
+enum PushRefStatus {
+  NotReached(0),
+  Pushed(1),
+  LeaseRejected(2),
+  RemoteRejected(3),
+  Unexported(4);
+
+  final int value;
+  const PushRefStatus(this.value);
+
+  factory PushRefStatus.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return PushRefStatus.NotReached;
+      case 1:
+        return PushRefStatus.Pushed;
+      case 2:
+        return PushRefStatus.LeaseRejected;
+      case 3:
+        return PushRefStatus.RemoteRejected;
+      case 4:
+        return PushRefStatus.Unexported;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static PushRefStatus? _createOrNull(int? value) => value == null ? null : PushRefStatus.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 4;
+  static const fb.Reader<PushRefStatus> reader = _PushRefStatusReader();
+}
+
+class _PushRefStatusReader extends fb.Reader<PushRefStatus> {
+  const _PushRefStatusReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  PushRefStatus read(fb.BufferContext bc, int offset) =>
+      PushRefStatus.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  Why a push failed after its planning phase: a dry run's explicit `RefRefused` /
+///  `CommitRejected` (the real run's error codes), `SomeRefsFailed` (the CLI's "Failed to push
+///  some bookmarks", possibly recorded), `PushError` (the push stopped at a remote; nothing
+///  recorded).
+enum PushFailureKind {
+  RefRefused(0),
+  CommitRejected(1),
+  SomeRefsFailed(2),
+  PushError(3);
+
+  final int value;
+  const PushFailureKind(this.value);
+
+  factory PushFailureKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return PushFailureKind.RefRefused;
+      case 1:
+        return PushFailureKind.CommitRejected;
+      case 2:
+        return PushFailureKind.SomeRefsFailed;
+      case 3:
+        return PushFailureKind.PushError;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static PushFailureKind? _createOrNull(int? value) => value == null ? null : PushFailureKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 3;
+  static const fb.Reader<PushFailureKind> reader = _PushFailureKindReader();
+}
+
+class _PushFailureKindReader extends fb.Reader<PushFailureKind> {
+  const _PushFailureKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  PushFailureKind read(fb.BufferContext bc, int offset) =>
+      PushFailureKind.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
 ///  What a tree entry IS (Story 9.4) — the CLI's `TreeEntry.file_type` keyword
 ///  (`cli/src/commit_templater.rs::describe_file_type` @ v0.44.0).
 ///  `Tree` is UNREACHABLE through `zanshin_file_list` (jj-lib's `entries_matching` recurses
@@ -853,7 +1110,8 @@ enum PayloadTypeId {
   WorkspaceAddResult(37),
   StaleRecovery(38),
   SquashPlan(39),
-  SplitResult(40);
+  SplitResult(40),
+  GitPushResult(41);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -942,6 +1200,8 @@ enum PayloadTypeId {
         return PayloadTypeId.SquashPlan;
       case 40:
         return PayloadTypeId.SplitResult;
+      case 41:
+        return PayloadTypeId.GitPushResult;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -950,7 +1210,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 40;
+  static const int maxValue = 41;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -1824,6 +2084,553 @@ class CommitRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, pathsOffset);
     fbBuilder.addOffset(2, messageOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_git_push` (Story 9.20) — the CLI's `jj git push` flags, one field each,
+///  passed through (FR-JJ-17). Bookmark, tag and remote names are PATTERNS as in the CLI (a bare
+///  word is a glob, `exact:<name>` matches only itself); revisions are revsets.
+///
+///    remotes            `--remote`; ABSENT = the flag not given (`git.push`, else the only remote,
+///                       else `origin`), present-empty = given with no pattern
+///    bookmarks / tags / revisions / changes / named   `-b` / `-t` / `-r` / `-c` / `--named
+///                       NAME=REVISION`; absent or empty = not given
+///    all / tracked / deleted   `--all` / `--tracked` / `--deleted` (the CLI's conflicts refused as
+///                       `jj.invalid_input`)
+///    allow_empty_description / allow_private / allow_conflicts   the three `--allow-*`
+///    dry_run            `--dry-run`: the plan, nothing pushed or written
+///    options            `-o/--option`: git push options
+class GitPushRequest {
+  GitPushRequest._(this._bc, this._bcOffset);
+  factory GitPushRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitPushRequest> reader = _GitPushRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get remotes => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get bookmarks => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get tags => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  bool get all => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  bool get tracked => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+  bool get deleted => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
+  bool get allowEmptyDescription => const fb.BoolReader().vTableGet(_bc, _bcOffset, 18, false);
+  bool get allowPrivate => const fb.BoolReader().vTableGet(_bc, _bcOffset, 20, false);
+  bool get allowConflicts => const fb.BoolReader().vTableGet(_bc, _bcOffset, 22, false);
+  List<String>? get revisions => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 24);
+  List<String>? get changes => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 26);
+  List<String>? get named => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 28);
+  bool get dryRun => const fb.BoolReader().vTableGet(_bc, _bcOffset, 30, false);
+  List<String>? get options => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 32);
+
+  @override
+  String toString() {
+    return 'GitPushRequest{kind: ${kind}, remotes: ${remotes}, bookmarks: ${bookmarks}, tags: ${tags}, all: ${all}, tracked: ${tracked}, deleted: ${deleted}, allowEmptyDescription: ${allowEmptyDescription}, allowPrivate: ${allowPrivate}, allowConflicts: ${allowConflicts}, revisions: ${revisions}, changes: ${changes}, named: ${named}, dryRun: ${dryRun}, options: ${options}}';
+  }
+}
+
+class _GitPushRequestReader extends fb.TableReader<GitPushRequest> {
+  const _GitPushRequestReader();
+
+  @override
+  GitPushRequest createObject(fb.BufferContext bc, int offset) => GitPushRequest._(bc, offset);
+}
+
+class GitPushRequestBuilder {
+  GitPushRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(15);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRemotesOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addBookmarksOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTagsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAll(bool? all) {
+    fbBuilder.addBool(4, all);
+    return fbBuilder.offset;
+  }
+
+  int addTracked(bool? tracked) {
+    fbBuilder.addBool(5, tracked);
+    return fbBuilder.offset;
+  }
+
+  int addDeleted(bool? deleted) {
+    fbBuilder.addBool(6, deleted);
+    return fbBuilder.offset;
+  }
+
+  int addAllowEmptyDescription(bool? allowEmptyDescription) {
+    fbBuilder.addBool(7, allowEmptyDescription);
+    return fbBuilder.offset;
+  }
+
+  int addAllowPrivate(bool? allowPrivate) {
+    fbBuilder.addBool(8, allowPrivate);
+    return fbBuilder.offset;
+  }
+
+  int addAllowConflicts(bool? allowConflicts) {
+    fbBuilder.addBool(9, allowConflicts);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionsOffset(int? offset) {
+    fbBuilder.addOffset(10, offset);
+    return fbBuilder.offset;
+  }
+
+  int addChangesOffset(int? offset) {
+    fbBuilder.addOffset(11, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNamedOffset(int? offset) {
+    fbBuilder.addOffset(12, offset);
+    return fbBuilder.offset;
+  }
+
+  int addDryRun(bool? dryRun) {
+    fbBuilder.addBool(13, dryRun);
+    return fbBuilder.offset;
+  }
+
+  int addOptionsOffset(int? offset) {
+    fbBuilder.addOffset(14, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitPushRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _remotes;
+  final List<String>? _bookmarks;
+  final List<String>? _tags;
+  final bool? _all;
+  final bool? _tracked;
+  final bool? _deleted;
+  final bool? _allowEmptyDescription;
+  final bool? _allowPrivate;
+  final bool? _allowConflicts;
+  final List<String>? _revisions;
+  final List<String>? _changes;
+  final List<String>? _named;
+  final bool? _dryRun;
+  final List<String>? _options;
+
+  GitPushRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? remotes,
+    List<String>? bookmarks,
+    List<String>? tags,
+    bool? all,
+    bool? tracked,
+    bool? deleted,
+    bool? allowEmptyDescription,
+    bool? allowPrivate,
+    bool? allowConflicts,
+    List<String>? revisions,
+    List<String>? changes,
+    List<String>? named,
+    bool? dryRun,
+    List<String>? options,
+  }) : _kind = kind,
+       _remotes = remotes,
+       _bookmarks = bookmarks,
+       _tags = tags,
+       _all = all,
+       _tracked = tracked,
+       _deleted = deleted,
+       _allowEmptyDescription = allowEmptyDescription,
+       _allowPrivate = allowPrivate,
+       _allowConflicts = allowConflicts,
+       _revisions = revisions,
+       _changes = changes,
+       _named = named,
+       _dryRun = dryRun,
+       _options = options;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? remotesOffset = _remotes == null
+        ? null
+        : fbBuilder.writeList(_remotes!.map(fbBuilder.writeString).toList());
+    final int? bookmarksOffset = _bookmarks == null
+        ? null
+        : fbBuilder.writeList(_bookmarks!.map(fbBuilder.writeString).toList());
+    final int? tagsOffset = _tags == null ? null : fbBuilder.writeList(_tags!.map(fbBuilder.writeString).toList());
+    final int? revisionsOffset = _revisions == null
+        ? null
+        : fbBuilder.writeList(_revisions!.map(fbBuilder.writeString).toList());
+    final int? changesOffset = _changes == null
+        ? null
+        : fbBuilder.writeList(_changes!.map(fbBuilder.writeString).toList());
+    final int? namedOffset = _named == null ? null : fbBuilder.writeList(_named!.map(fbBuilder.writeString).toList());
+    final int? optionsOffset = _options == null
+        ? null
+        : fbBuilder.writeList(_options!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(15);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, remotesOffset);
+    fbBuilder.addOffset(2, bookmarksOffset);
+    fbBuilder.addOffset(3, tagsOffset);
+    fbBuilder.addBool(4, _all);
+    fbBuilder.addBool(5, _tracked);
+    fbBuilder.addBool(6, _deleted);
+    fbBuilder.addBool(7, _allowEmptyDescription);
+    fbBuilder.addBool(8, _allowPrivate);
+    fbBuilder.addBool(9, _allowConflicts);
+    fbBuilder.addOffset(10, revisionsOffset);
+    fbBuilder.addOffset(11, changesOffset);
+    fbBuilder.addOffset(12, namedOffset);
+    fbBuilder.addBool(13, _dryRun);
+    fbBuilder.addOffset(14, optionsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_repo_clone` (Story 9.20) — the CLI's `jj git clone`, passed through.
+///
+///    source             REQUIRED (absent → `jj.invalid_input`): the URL or path, as given
+///    destination        REQUIRED: missing or an empty directory (created with its parents)
+///    remote_name        `--remote`; ABSENT = `origin`
+///    colocate / no_colocate   the CLI's two flags (both set → `jj.invalid_input`); neither =
+///                       `git.colocate` decides
+///    depth              `--depth`; 0 = absent (the whole history)
+///    branches / tags    `-b` / `-t` patterns; ABSENT = the flag not given, present-empty = given
+///                       with nothing (fetches none of that kind)
+///    object_hash        `--object-hash`
+class RepoCloneRequest {
+  RepoCloneRequest._(this._bc, this._bcOffset);
+  factory RepoCloneRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RepoCloneRequest> reader = _RepoCloneRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get source => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get destination => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  String? get remoteName => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  bool get colocate => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  bool get noColocate => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+  int get depth => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 16, 0);
+  List<String>? get branches => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 18);
+  List<String>? get tags => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 20);
+  ObjectHash get objectHash => ObjectHash.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 22, 0));
+
+  @override
+  String toString() {
+    return 'RepoCloneRequest{kind: ${kind}, source: ${source}, destination: ${destination}, remoteName: ${remoteName}, colocate: ${colocate}, noColocate: ${noColocate}, depth: ${depth}, branches: ${branches}, tags: ${tags}, objectHash: ${objectHash}}';
+  }
+}
+
+class _RepoCloneRequestReader extends fb.TableReader<RepoCloneRequest> {
+  const _RepoCloneRequestReader();
+
+  @override
+  RepoCloneRequest createObject(fb.BufferContext bc, int offset) => RepoCloneRequest._(bc, offset);
+}
+
+class RepoCloneRequestBuilder {
+  RepoCloneRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(10);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addSourceOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addDestinationOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemoteNameOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addColocate(bool? colocate) {
+    fbBuilder.addBool(4, colocate);
+    return fbBuilder.offset;
+  }
+
+  int addNoColocate(bool? noColocate) {
+    fbBuilder.addBool(5, noColocate);
+    return fbBuilder.offset;
+  }
+
+  int addDepth(int? depth) {
+    fbBuilder.addUint32(6, depth);
+    return fbBuilder.offset;
+  }
+
+  int addBranchesOffset(int? offset) {
+    fbBuilder.addOffset(7, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTagsOffset(int? offset) {
+    fbBuilder.addOffset(8, offset);
+    return fbBuilder.offset;
+  }
+
+  int addObjectHash(ObjectHash? objectHash) {
+    fbBuilder.addUint8(9, objectHash?.value);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RepoCloneRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _source;
+  final String? _destination;
+  final String? _remoteName;
+  final bool? _colocate;
+  final bool? _noColocate;
+  final int? _depth;
+  final List<String>? _branches;
+  final List<String>? _tags;
+  final ObjectHash? _objectHash;
+
+  RepoCloneRequestObjectBuilder({
+    RequestKind? kind,
+    String? source,
+    String? destination,
+    String? remoteName,
+    bool? colocate,
+    bool? noColocate,
+    int? depth,
+    List<String>? branches,
+    List<String>? tags,
+    ObjectHash? objectHash,
+  }) : _kind = kind,
+       _source = source,
+       _destination = destination,
+       _remoteName = remoteName,
+       _colocate = colocate,
+       _noColocate = noColocate,
+       _depth = depth,
+       _branches = branches,
+       _tags = tags,
+       _objectHash = objectHash;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? sourceOffset = _source == null ? null : fbBuilder.writeString(_source!);
+    final int? destinationOffset = _destination == null ? null : fbBuilder.writeString(_destination!);
+    final int? remoteNameOffset = _remoteName == null ? null : fbBuilder.writeString(_remoteName!);
+    final int? branchesOffset = _branches == null
+        ? null
+        : fbBuilder.writeList(_branches!.map(fbBuilder.writeString).toList());
+    final int? tagsOffset = _tags == null ? null : fbBuilder.writeList(_tags!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(10);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, sourceOffset);
+    fbBuilder.addOffset(2, destinationOffset);
+    fbBuilder.addOffset(3, remoteNameOffset);
+    fbBuilder.addBool(4, _colocate);
+    fbBuilder.addBool(5, _noColocate);
+    fbBuilder.addUint32(6, _depth);
+    fbBuilder.addOffset(7, branchesOffset);
+    fbBuilder.addOffset(8, tagsOffset);
+    fbBuilder.addUint8(9, _objectHash?.value);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_repo_init` (Story 9.20) — the CLI's `jj git init`, passed through.
+///
+///    path               REQUIRED (absent → `jj.invalid_input`); created when missing (one level)
+///                       for the Git backend
+///    backend            Native (Zanshin-only, the path must exist, no Git flag) or Git
+///    colocate / no_colocate   the CLI's two flags (both set → `jj.invalid_input`); neither =
+///                       `git.colocate` decides
+///    object_hash        `--object-hash`
+class RepoInitRequest {
+  RepoInitRequest._(this._bc, this._bcOffset);
+  factory RepoInitRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RepoInitRequest> reader = _RepoInitRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  InitBackend get backend => InitBackend.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+  bool get colocate => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+  bool get noColocate => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  ObjectHash get objectHash => ObjectHash.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 14, 0));
+
+  @override
+  String toString() {
+    return 'RepoInitRequest{kind: ${kind}, path: ${path}, backend: ${backend}, colocate: ${colocate}, noColocate: ${noColocate}, objectHash: ${objectHash}}';
+  }
+}
+
+class _RepoInitRequestReader extends fb.TableReader<RepoInitRequest> {
+  const _RepoInitRequestReader();
+
+  @override
+  RepoInitRequest createObject(fb.BufferContext bc, int offset) => RepoInitRequest._(bc, offset);
+}
+
+class RepoInitRequestBuilder {
+  RepoInitRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(6);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addBackend(InitBackend? backend) {
+    fbBuilder.addUint8(2, backend?.value);
+    return fbBuilder.offset;
+  }
+
+  int addColocate(bool? colocate) {
+    fbBuilder.addBool(3, colocate);
+    return fbBuilder.offset;
+  }
+
+  int addNoColocate(bool? noColocate) {
+    fbBuilder.addBool(4, noColocate);
+    return fbBuilder.offset;
+  }
+
+  int addObjectHash(ObjectHash? objectHash) {
+    fbBuilder.addUint8(5, objectHash?.value);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RepoInitRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _path;
+  final InitBackend? _backend;
+  final bool? _colocate;
+  final bool? _noColocate;
+  final ObjectHash? _objectHash;
+
+  RepoInitRequestObjectBuilder({
+    RequestKind? kind,
+    String? path,
+    InitBackend? backend,
+    bool? colocate,
+    bool? noColocate,
+    ObjectHash? objectHash,
+  }) : _kind = kind,
+       _path = path,
+       _backend = backend,
+       _colocate = colocate,
+       _noColocate = noColocate,
+       _objectHash = objectHash;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    fbBuilder.startTable(6);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, pathOffset);
+    fbBuilder.addUint8(2, _backend?.value);
+    fbBuilder.addBool(3, _colocate);
+    fbBuilder.addBool(4, _noColocate);
+    fbBuilder.addUint8(5, _objectHash?.value);
     return fbBuilder.endTable();
   }
 
@@ -6613,10 +7420,11 @@ class WatcherEventObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  Progress notification for a long-running operation (FR-FFI-8), e.g. `git
-///  fetch` (producer lands in Story 6-4a). Dispatched over the same
-///  process-global event sink as `WatcherEvent`, correlated by `session_id`
-///  (same never-reused id as WatcherEvent — see RepoHandle.session_id).
+///  Progress notification for a long-running operation (FR-FFI-8): `git fetch` (Story 6-4a),
+///  `git clone` and `git push` (Story 9.20) — `operation` is `"fetch"`, `"clone"` or `"push"`.
+///  Dispatched over the same process-global event sink as `WatcherEvent`, correlated by
+///  `session_id` (same never-reused id as WatcherEvent — see RepoHandle.session_id). A clone's
+///  events carry the session id its new handle will get (allocated before the clone runs).
 class Progress {
   Progress._(this._bc, this._bcOffset);
   factory Progress(List<int> bytes) {
@@ -7979,6 +8787,1024 @@ class SplitResultObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(0, mutationOffset);
     fbBuilder.addOffset(1, selectedChangeIdOffset);
     fbBuilder.addOffset(2, remainingChangeIdOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The CLI's message and hint for a refused ref, verbatim. `hint` ABSENT where the CLI gives
+///  none.
+class PushRefusal {
+  PushRefusal._(this._bc, this._bcOffset);
+  factory PushRefusal(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<PushRefusal> reader = _PushRefusalReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get message => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get hint => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'PushRefusal{message: ${message}, hint: ${hint}}';
+  }
+}
+
+class _PushRefusalReader extends fb.TableReader<PushRefusal> {
+  const _PushRefusalReader();
+
+  @override
+  PushRefusal createObject(fb.BufferContext bc, int offset) => PushRefusal._(bc, offset);
+}
+
+class PushRefusalBuilder {
+  PushRefusalBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addMessageOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addHintOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class PushRefusalObjectBuilder extends fb.ObjectBuilder {
+  final String? _message;
+  final String? _hint;
+
+  PushRefusalObjectBuilder({
+    String? message,
+    String? hint,
+  }) : _message = message,
+       _hint = hint;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? messageOffset = _message == null ? null : fbBuilder.writeString(_message!);
+    final int? hintOffset = _hint == null ? null : fbBuilder.writeString(_hint!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, messageOffset);
+    fbBuilder.addOffset(1, hintOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A commit the push refuses to send: its full hex id, the reasons in the CLI's order, the CLI's
+///  text for the ref's path and its hints ("Rejected commit: …" on the abort path, the
+///  `git.private-commits` hint for a private commit).
+class PushCommitRejection {
+  PushCommitRejection._(this._bc, this._bcOffset);
+  factory PushCommitRejection(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<PushCommitRejection> reader = _PushCommitRejectionReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get commitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get reasons => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  String? get message => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get hints => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'PushCommitRejection{commitId: ${commitId}, reasons: ${reasons}, message: ${message}, hints: ${hints}}';
+  }
+}
+
+class _PushCommitRejectionReader extends fb.TableReader<PushCommitRejection> {
+  const _PushCommitRejectionReader();
+
+  @override
+  PushCommitRejection createObject(fb.BufferContext bc, int offset) => PushCommitRejection._(bc, offset);
+}
+
+class PushCommitRejectionBuilder {
+  PushCommitRejectionBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addCommitIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addReasonsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addMessageOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addHintsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class PushCommitRejectionObjectBuilder extends fb.ObjectBuilder {
+  final String? _commitId;
+  final List<String>? _reasons;
+  final String? _message;
+  final List<String>? _hints;
+
+  PushCommitRejectionObjectBuilder({
+    String? commitId,
+    List<String>? reasons,
+    String? message,
+    List<String>? hints,
+  }) : _commitId = commitId,
+       _reasons = reasons,
+       _message = message,
+       _hints = hints;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? commitIdOffset = _commitId == null ? null : fbBuilder.writeString(_commitId!);
+    final int? reasonsOffset = _reasons == null
+        ? null
+        : fbBuilder.writeList(_reasons!.map(fbBuilder.writeString).toList());
+    final int? messageOffset = _message == null ? null : fbBuilder.writeString(_message!);
+    final int? hintsOffset = _hints == null ? null : fbBuilder.writeList(_hints!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, commitIdOffset);
+    fbBuilder.addOffset(1, reasonsOffset);
+    fbBuilder.addOffset(2, messageOffset);
+    fbBuilder.addOffset(3, hintsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One ref of a remote's plan. `before` / `after` are full commit hex ids — ABSENT when the ref
+///  is absent on that side or conflicted; `action` is the move in jj's words ("move forward from
+///  <old> to <new>", "add to <new>", "delete from <old>"), ABSENT for a conflicted ref.
+///  `refusal` is the mode's refusal (Skip / Abort), `explicit_refusal` the one the ref would get if
+///  named explicitly (ABSENT = it could be), `rejection` the commit the push refuses to send.
+///  `status` / `status_reason` after a real push.
+class PushRef {
+  PushRef._(this._bc, this._bcOffset);
+  factory PushRef(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<PushRef> reader = _PushRefReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  PushRefKind get kind => PushRefKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get before => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  String? get after => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  String? get action => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 12);
+  PushPath get path => PushPath.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 14, 0));
+  PushRefusal? get refusal => PushRefusal.reader.vTableGetNullable(_bc, _bcOffset, 16);
+  PushRefusal? get explicitRefusal => PushRefusal.reader.vTableGetNullable(_bc, _bcOffset, 18);
+  PushCommitRejection? get rejection => PushCommitRejection.reader.vTableGetNullable(_bc, _bcOffset, 20);
+  PushRefStatus get status => PushRefStatus.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 22, 0));
+  String? get statusReason => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 24);
+
+  @override
+  String toString() {
+    return 'PushRef{kind: ${kind}, name: ${name}, before: ${before}, after: ${after}, action: ${action}, path: ${path}, refusal: ${refusal}, explicitRefusal: ${explicitRefusal}, rejection: ${rejection}, status: ${status}, statusReason: ${statusReason}}';
+  }
+}
+
+class _PushRefReader extends fb.TableReader<PushRef> {
+  const _PushRefReader();
+
+  @override
+  PushRef createObject(fb.BufferContext bc, int offset) => PushRef._(bc, offset);
+}
+
+class PushRefBuilder {
+  PushRefBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(11);
+  }
+
+  int addKind(PushRefKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addBeforeOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAfterOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addActionOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPath(PushPath? path) {
+    fbBuilder.addUint8(5, path?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRefusalOffset(int? offset) {
+    fbBuilder.addOffset(6, offset);
+    return fbBuilder.offset;
+  }
+
+  int addExplicitRefusalOffset(int? offset) {
+    fbBuilder.addOffset(7, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRejectionOffset(int? offset) {
+    fbBuilder.addOffset(8, offset);
+    return fbBuilder.offset;
+  }
+
+  int addStatus(PushRefStatus? status) {
+    fbBuilder.addUint8(9, status?.value);
+    return fbBuilder.offset;
+  }
+
+  int addStatusReasonOffset(int? offset) {
+    fbBuilder.addOffset(10, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class PushRefObjectBuilder extends fb.ObjectBuilder {
+  final PushRefKind? _kind;
+  final String? _name;
+  final String? _before;
+  final String? _after;
+  final String? _action;
+  final PushPath? _path;
+  final PushRefusalObjectBuilder? _refusal;
+  final PushRefusalObjectBuilder? _explicitRefusal;
+  final PushCommitRejectionObjectBuilder? _rejection;
+  final PushRefStatus? _status;
+  final String? _statusReason;
+
+  PushRefObjectBuilder({
+    PushRefKind? kind,
+    String? name,
+    String? before,
+    String? after,
+    String? action,
+    PushPath? path,
+    PushRefusalObjectBuilder? refusal,
+    PushRefusalObjectBuilder? explicitRefusal,
+    PushCommitRejectionObjectBuilder? rejection,
+    PushRefStatus? status,
+    String? statusReason,
+  }) : _kind = kind,
+       _name = name,
+       _before = before,
+       _after = after,
+       _action = action,
+       _path = path,
+       _refusal = refusal,
+       _explicitRefusal = explicitRefusal,
+       _rejection = rejection,
+       _status = status,
+       _statusReason = statusReason;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? beforeOffset = _before == null ? null : fbBuilder.writeString(_before!);
+    final int? afterOffset = _after == null ? null : fbBuilder.writeString(_after!);
+    final int? actionOffset = _action == null ? null : fbBuilder.writeString(_action!);
+    final int? refusalOffset = _refusal?.getOrCreateOffset(fbBuilder);
+    final int? explicitRefusalOffset = _explicitRefusal?.getOrCreateOffset(fbBuilder);
+    final int? rejectionOffset = _rejection?.getOrCreateOffset(fbBuilder);
+    final int? statusReasonOffset = _statusReason == null ? null : fbBuilder.writeString(_statusReason!);
+    fbBuilder.startTable(11);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, nameOffset);
+    fbBuilder.addOffset(2, beforeOffset);
+    fbBuilder.addOffset(3, afterOffset);
+    fbBuilder.addOffset(4, actionOffset);
+    fbBuilder.addUint8(5, _path?.value);
+    fbBuilder.addOffset(6, refusalOffset);
+    fbBuilder.addOffset(7, explicitRefusalOffset);
+    fbBuilder.addOffset(8, rejectionOffset);
+    fbBuilder.addUint8(9, _status?.value);
+    fbBuilder.addOffset(10, statusReasonOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A ref and its kind — an explicitly named ref that already matches (the CLI's "Bookmark
+///  <name>@<remote> already matches <name>").
+class PushRefName {
+  PushRefName._(this._bc, this._bcOffset);
+  factory PushRefName(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<PushRefName> reader = _PushRefNameReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  PushRefKind get kind => PushRefKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'PushRefName{kind: ${kind}, name: ${name}}';
+  }
+}
+
+class _PushRefNameReader extends fb.TableReader<PushRefName> {
+  const _PushRefNameReader();
+
+  @override
+  PushRefName createObject(fb.BufferContext bc, int offset) => PushRefName._(bc, offset);
+}
+
+class PushRefNameBuilder {
+  PushRefNameBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addKind(PushRefKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class PushRefNameObjectBuilder extends fb.ObjectBuilder {
+  final PushRefKind? _kind;
+  final String? _name;
+
+  PushRefNameObjectBuilder({
+    PushRefKind? kind,
+    String? name,
+  }) : _kind = kind,
+       _name = name;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    fbBuilder.startTable(2);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, nameOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One remote's plan and result. `finished` = the push to it ran; `error` = the CLI's
+///  `GitPushError` text that stopped the push there (ABSENT otherwise).
+class PushRemote {
+  PushRemote._(this._bc, this._bcOffset);
+  factory PushRemote(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<PushRemote> reader = _PushRemoteReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  List<PushRef>? get refs => const fb.ListReader<PushRef>(PushRef.reader).vTableGetNullable(_bc, _bcOffset, 6);
+  List<PushRefName>? get alreadyMatches =>
+      const fb.ListReader<PushRefName>(PushRefName.reader).vTableGetNullable(_bc, _bcOffset, 8);
+  bool get finished => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+  String? get error => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 12);
+
+  @override
+  String toString() {
+    return 'PushRemote{name: ${name}, refs: ${refs}, alreadyMatches: ${alreadyMatches}, finished: ${finished}, error: ${error}}';
+  }
+}
+
+class _PushRemoteReader extends fb.TableReader<PushRemote> {
+  const _PushRemoteReader();
+
+  @override
+  PushRemote createObject(fb.BufferContext bc, int offset) => PushRemote._(bc, offset);
+}
+
+class PushRemoteBuilder {
+  PushRemoteBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRefsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAlreadyMatchesOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFinished(bool? finished) {
+    fbBuilder.addBool(3, finished);
+    return fbBuilder.offset;
+  }
+
+  int addErrorOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class PushRemoteObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final List<PushRefObjectBuilder>? _refs;
+  final List<PushRefNameObjectBuilder>? _alreadyMatches;
+  final bool? _finished;
+  final String? _error;
+
+  PushRemoteObjectBuilder({
+    String? name,
+    List<PushRefObjectBuilder>? refs,
+    List<PushRefNameObjectBuilder>? alreadyMatches,
+    bool? finished,
+    String? error,
+  }) : _name = name,
+       _refs = refs,
+       _alreadyMatches = alreadyMatches,
+       _finished = finished,
+       _error = error;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? refsOffset = _refs == null
+        ? null
+        : fbBuilder.writeList(_refs!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? alreadyMatchesOffset = _alreadyMatches == null
+        ? null
+        : fbBuilder.writeList(_alreadyMatches!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? errorOffset = _error == null ? null : fbBuilder.writeString(_error!);
+    fbBuilder.startTable(5);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, refsOffset);
+    fbBuilder.addOffset(2, alreadyMatchesOffset);
+    fbBuilder.addBool(3, _finished);
+    fbBuilder.addOffset(4, errorOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A bookmark `--change` created ("Creating bookmark <name> for revision <change>").
+class PushCreatedBookmark {
+  PushCreatedBookmark._(this._bc, this._bcOffset);
+  factory PushCreatedBookmark(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<PushCreatedBookmark> reader = _PushCreatedBookmarkReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get changeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'PushCreatedBookmark{name: ${name}, changeId: ${changeId}}';
+  }
+}
+
+class _PushCreatedBookmarkReader extends fb.TableReader<PushCreatedBookmark> {
+  const _PushCreatedBookmarkReader();
+
+  @override
+  PushCreatedBookmark createObject(fb.BufferContext bc, int offset) => PushCreatedBookmark._(bc, offset);
+}
+
+class PushCreatedBookmarkBuilder {
+  PushCreatedBookmarkBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class PushCreatedBookmarkObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _changeId;
+
+  PushCreatedBookmarkObjectBuilder({
+    String? name,
+    String? changeId,
+  }) : _name = name,
+       _changeId = changeId;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? changeIdOffset = _changeId == null ? null : fbBuilder.writeString(_changeId!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, changeIdOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  What sign-on-push did: "Updated signatures of N commits." / "Rebased N descendant commits."
+///  Counts saturate at 4294967295.
+class PushSigning {
+  PushSigning._(this._bc, this._bcOffset);
+  factory PushSigning(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<PushSigning> reader = _PushSigningReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get updatedSignatures => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  int get rebasedDescendants => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+
+  @override
+  String toString() {
+    return 'PushSigning{updatedSignatures: ${updatedSignatures}, rebasedDescendants: ${rebasedDescendants}}';
+  }
+}
+
+class _PushSigningReader extends fb.TableReader<PushSigning> {
+  const _PushSigningReader();
+
+  @override
+  PushSigning createObject(fb.BufferContext bc, int offset) => PushSigning._(bc, offset);
+}
+
+class PushSigningBuilder {
+  PushSigningBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addUpdatedSignatures(int? updatedSignatures) {
+    fbBuilder.addUint32(0, updatedSignatures);
+    return fbBuilder.offset;
+  }
+
+  int addRebasedDescendants(int? rebasedDescendants) {
+    fbBuilder.addUint32(1, rebasedDescendants);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class PushSigningObjectBuilder extends fb.ObjectBuilder {
+  final int? _updatedSignatures;
+  final int? _rebasedDescendants;
+
+  PushSigningObjectBuilder({
+    int? updatedSignatures,
+    int? rebasedDescendants,
+  }) : _updatedSignatures = updatedSignatures,
+       _rebasedDescendants = rebasedDescendants;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    fbBuilder.startTable(2);
+    fbBuilder.addUint32(0, _updatedSignatures);
+    fbBuilder.addUint32(1, _rebasedDescendants);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A push failure as data — the CLI's non-zero exit — with the CLI's text and hint.
+class PushFailure {
+  PushFailure._(this._bc, this._bcOffset);
+  factory PushFailure(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<PushFailure> reader = _PushFailureReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  PushFailureKind get kind => PushFailureKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get message => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get hint => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'PushFailure{kind: ${kind}, message: ${message}, hint: ${hint}}';
+  }
+}
+
+class _PushFailureReader extends fb.TableReader<PushFailure> {
+  const _PushFailureReader();
+
+  @override
+  PushFailure createObject(fb.BufferContext bc, int offset) => PushFailure._(bc, offset);
+}
+
+class PushFailureBuilder {
+  PushFailureBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(PushFailureKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addMessageOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addHintOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class PushFailureObjectBuilder extends fb.ObjectBuilder {
+  final PushFailureKind? _kind;
+  final String? _message;
+  final String? _hint;
+
+  PushFailureObjectBuilder({
+    PushFailureKind? kind,
+    String? message,
+    String? hint,
+  }) : _kind = kind,
+       _message = message,
+       _hint = hint;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? messageOffset = _message == null ? null : fbBuilder.writeString(_message!);
+    final int? hintOffset = _hint == null ? null : fbBuilder.writeString(_hint!);
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, messageOffset);
+    fbBuilder.addOffset(2, hintOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Outcome of `zanshin_git_push` (Story 9.20): the plan per remote and ref, and after a real push
+///  what happened. `hints` are the hints a UI shows verbatim ("Pushing to the only existing remote:
+///  …", the push-stats hints). `signing` ABSENT when sign-on-push did not run. `nothing_changed` =
+///  the CLI's "Nothing changed.". `recorded` = the push's operation was written; `description` is
+///  that operation's description (a dry run's: the one the real push would write; ABSENT when
+///  nothing changed); `new_op_id` the head after the call. `failure` ABSENT on full success.
+class GitPushResult {
+  GitPushResult._(this._bc, this._bcOffset);
+  factory GitPushResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitPushResult> reader = _GitPushResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<PushRemote>? get remotes =>
+      const fb.ListReader<PushRemote>(PushRemote.reader).vTableGetNullable(_bc, _bcOffset, 4);
+  List<PushCreatedBookmark>? get createdBookmarks =>
+      const fb.ListReader<PushCreatedBookmark>(PushCreatedBookmark.reader).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get hints => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  PushSigning? get signing => PushSigning.reader.vTableGetNullable(_bc, _bcOffset, 10);
+  bool get nothingChanged => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  bool get dryRun => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+  bool get recorded => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
+  String? get description => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 18);
+  String? get newOpId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 20);
+  PushFailure? get failure => PushFailure.reader.vTableGetNullable(_bc, _bcOffset, 22);
+
+  @override
+  String toString() {
+    return 'GitPushResult{remotes: ${remotes}, createdBookmarks: ${createdBookmarks}, hints: ${hints}, signing: ${signing}, nothingChanged: ${nothingChanged}, dryRun: ${dryRun}, recorded: ${recorded}, description: ${description}, newOpId: ${newOpId}, failure: ${failure}}';
+  }
+}
+
+class _GitPushResultReader extends fb.TableReader<GitPushResult> {
+  const _GitPushResultReader();
+
+  @override
+  GitPushResult createObject(fb.BufferContext bc, int offset) => GitPushResult._(bc, offset);
+}
+
+class GitPushResultBuilder {
+  GitPushResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(10);
+  }
+
+  int addRemotesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCreatedBookmarksOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addHintsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSigningOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNothingChanged(bool? nothingChanged) {
+    fbBuilder.addBool(4, nothingChanged);
+    return fbBuilder.offset;
+  }
+
+  int addDryRun(bool? dryRun) {
+    fbBuilder.addBool(5, dryRun);
+    return fbBuilder.offset;
+  }
+
+  int addRecorded(bool? recorded) {
+    fbBuilder.addBool(6, recorded);
+    return fbBuilder.offset;
+  }
+
+  int addDescriptionOffset(int? offset) {
+    fbBuilder.addOffset(7, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNewOpIdOffset(int? offset) {
+    fbBuilder.addOffset(8, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFailureOffset(int? offset) {
+    fbBuilder.addOffset(9, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitPushResultObjectBuilder extends fb.ObjectBuilder {
+  final List<PushRemoteObjectBuilder>? _remotes;
+  final List<PushCreatedBookmarkObjectBuilder>? _createdBookmarks;
+  final List<String>? _hints;
+  final PushSigningObjectBuilder? _signing;
+  final bool? _nothingChanged;
+  final bool? _dryRun;
+  final bool? _recorded;
+  final String? _description;
+  final String? _newOpId;
+  final PushFailureObjectBuilder? _failure;
+
+  GitPushResultObjectBuilder({
+    List<PushRemoteObjectBuilder>? remotes,
+    List<PushCreatedBookmarkObjectBuilder>? createdBookmarks,
+    List<String>? hints,
+    PushSigningObjectBuilder? signing,
+    bool? nothingChanged,
+    bool? dryRun,
+    bool? recorded,
+    String? description,
+    String? newOpId,
+    PushFailureObjectBuilder? failure,
+  }) : _remotes = remotes,
+       _createdBookmarks = createdBookmarks,
+       _hints = hints,
+       _signing = signing,
+       _nothingChanged = nothingChanged,
+       _dryRun = dryRun,
+       _recorded = recorded,
+       _description = description,
+       _newOpId = newOpId,
+       _failure = failure;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? remotesOffset = _remotes == null
+        ? null
+        : fbBuilder.writeList(_remotes!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? createdBookmarksOffset = _createdBookmarks == null
+        ? null
+        : fbBuilder.writeList(_createdBookmarks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? hintsOffset = _hints == null ? null : fbBuilder.writeList(_hints!.map(fbBuilder.writeString).toList());
+    final int? signingOffset = _signing?.getOrCreateOffset(fbBuilder);
+    final int? descriptionOffset = _description == null ? null : fbBuilder.writeString(_description!);
+    final int? newOpIdOffset = _newOpId == null ? null : fbBuilder.writeString(_newOpId!);
+    final int? failureOffset = _failure?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(10);
+    fbBuilder.addOffset(0, remotesOffset);
+    fbBuilder.addOffset(1, createdBookmarksOffset);
+    fbBuilder.addOffset(2, hintsOffset);
+    fbBuilder.addOffset(3, signingOffset);
+    fbBuilder.addBool(4, _nothingChanged);
+    fbBuilder.addBool(5, _dryRun);
+    fbBuilder.addBool(6, _recorded);
+    fbBuilder.addOffset(7, descriptionOffset);
+    fbBuilder.addOffset(8, newOpIdOffset);
+    fbBuilder.addOffset(9, failureOffset);
     return fbBuilder.endTable();
   }
 
@@ -12507,6 +14333,8 @@ class Envelope {
         return SquashPlan.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 40:
         return SplitResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 41:
+        return GitPushResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

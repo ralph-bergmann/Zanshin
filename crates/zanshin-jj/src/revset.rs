@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::ops::ControlFlow;
 use std::path::Path;
 use std::sync::Arc;
@@ -300,8 +300,25 @@ pub(crate) fn parse_diagnosed(
     (expr, context): (&str, &str),
     sink: &mut Warnings,
 ) -> Result<Arc<UserRevsetExpression>, RevsetError> {
+    parse_diagnosed_with(workspace, parse_config, (expr, context), &[], sink)
+}
+
+/// [`parse_diagnosed`] with string-valued local variables bound in the parse context — the CLI's
+/// `context.local_variables.insert(name, revset::new_string_node(value))`, which `jj git push`
+/// uses to bind `remote` while it parses `revsets.git-push` (`push.rs:1433-1436` @ v0.46.0).
+///
+/// # Errors
+///
+/// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function.
+pub(crate) fn parse_diagnosed_with(
+    workspace: &Workspace,
+    parse_config: &RevsetConfig,
+    (expr, context): (&str, &str),
+    locals: &[(&str, &str)],
+    sink: &mut Warnings,
+) -> Result<Arc<UserRevsetExpression>, RevsetError> {
     let mut diagnostics = RevsetDiagnostics::new();
-    let parsed = parse_revset_in(workspace, parse_config, expr, &mut diagnostics)?;
+    let parsed = parse_revset_in(workspace, parse_config, expr, locals, &mut diagnostics)?;
     sink.extend(warning::parse_diagnostics(context, &diagnostics));
     Ok(parsed)
 }
@@ -317,6 +334,7 @@ fn parse_revset_in(
     workspace: &Workspace,
     parse_config: &RevsetConfig,
     expr: &str,
+    locals: &[(&str, &str)],
     diagnostics: &mut RevsetDiagnostics,
 ) -> Result<Arc<UserRevsetExpression>, RevsetError> {
     // Parse context — every borrowed local is declared before `context` so it outlives it.
@@ -367,7 +385,10 @@ fn parse_revset_in(
     // regression test.
     let context = RevsetParseContext {
         aliases_map: &parse_config.aliases_map,
-        local_variables: HashMap::new(),
+        local_variables: locals
+            .iter()
+            .map(|(name, value)| (*name, revset::new_string_node(value)))
+            .collect(),
         user_email,
         date_pattern_context: date_ctx,
         default_ignored_remote: Some("git".as_ref()),
@@ -545,6 +566,24 @@ pub(crate) fn immutable_expression(
     parse_config: &RevsetConfig,
     sink: &mut Warnings,
 ) -> Result<Arc<UserRevsetExpression>, RevsetError> {
+    Ok(immutable_heads_expression(workspace, parse_config, sink)?
+        .union(&RevsetExpression::root())
+        .ancestors())
+}
+
+/// The `immutable_heads()` expression alone — the CLI's `immutable_heads_expression()`
+/// (`cli/src/cli_util.rs` @ v0.46.0), which [`immutable_expression`] widens to the immutable SET
+/// and `jj git push`'s commit checks use as it is (Story 9.20). Its diagnostics are recorded once
+/// per call, as in [`immutable_expression`].
+///
+/// # Errors
+///
+/// - [`RevsetError::ParseError`] — the `immutable_heads()` alias does not parse.
+pub(crate) fn immutable_heads_expression(
+    workspace: &Workspace,
+    parse_config: &RevsetConfig,
+    sink: &mut Warnings,
+) -> Result<Arc<UserRevsetExpression>, RevsetError> {
     let definition = parse_config
         .aliases_map
         .get_function("immutable_heads", 0)
@@ -554,11 +593,12 @@ pub(crate) fn immutable_expression(
         workspace,
         parse_config,
         definition.as_deref().unwrap_or("immutable_heads()"),
+        &[],
         &mut diagnostics,
     )?;
     sink.record_load(
         Load::ImmutableHeads,
         warning::parse_diagnostics("In `revset-aliases.immutable_heads()`", &diagnostics),
     );
-    Ok(heads.union(&RevsetExpression::root()).ancestors())
+    Ok(heads)
 }

@@ -84,7 +84,7 @@ void main() {
     });
 
     /// A fresh Git-backend workspace at [root], closed again.
-    Future<void> initGit() async => (await worker.initRepo(root, backend: 1)).close();
+    Future<void> initGit() async => (await worker.initRepo(root, backend: 1, noColocate: true)).close();
 
     /// Replace the repo-scope config file of the workspace at [root] with [toml].
     Future<void> writeRepoConfig(String toml) async {

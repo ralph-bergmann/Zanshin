@@ -83,11 +83,16 @@ fn base() -> Fx {
     let tmp = tempfile::TempDir::new().expect("tempdir");
     let main = tmp.path().join("main");
     fs::create_dir(&main).expect("main dir");
-    let root = Repo::init(&main, Some(Backend::Git))
-        .result
-        .expect("init")
-        .workspace_root()
-        .to_owned();
+    let root = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&main),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("init")
+    .workspace_root()
+    .to_owned();
     let mut repo = Repo::open(&root).expect("open");
     let mut ids: Vec<ChangeId> = Vec::new();
     for (path, description) in [("a.txt", "A\n"), ("b.txt", "B\n"), ("c.txt", "C\n")] {

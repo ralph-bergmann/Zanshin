@@ -2,6 +2,7 @@
 
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 import '../ffi/config.dart' show ConfigScope, ConfigTarget;
+import '../ffi/repo.dart' show ObjectHash;
 import '../ffi/workspace.dart' show SparseInheritance;
 import '../graph_layout/layout_request.dart' show LaneOrder, LayoutMode;
 
@@ -41,12 +42,16 @@ final class OpenRepoCommand extends WorkerCommand {
   final String path;
 }
 
-/// Initialise a new jj repository at [path].
+/// Initialise a new jj repository at [path] — `jj git init` for [backend]
+/// `1`, a native workspace for `0` (Story 9.20 adds the CLI's flags).
 final class InitRepoCommand extends WorkerCommand {
   const InitRepoCommand({
     required super.commandId,
     required this.path,
     required this.backend,
+    this.colocate = false,
+    this.noColocate = false,
+    this.objectHash,
   });
 
   /// Filesystem path at which to create the repository.
@@ -54,21 +59,59 @@ final class InitRepoCommand extends WorkerCommand {
 
   /// Storage backend: `0` = native/simple, `1` = Git.
   final int backend;
+
+  /// `--colocate`.
+  final bool colocate;
+
+  /// `--no-colocate`.
+  final bool noColocate;
+
+  /// `--object-hash`; `null` = not given.
+  final ObjectHash? objectHash;
 }
 
-/// Clone a remote repository from [url] into [targetPath].
+/// Clone the Git repository at [source] into [destination] — the CLI's
+/// `jj git clone` (Story 9.20).
 final class CloneRepoCommand extends WorkerCommand {
   const CloneRepoCommand({
     required super.commandId,
-    required this.url,
-    required this.targetPath,
+    required this.source,
+    required this.destination,
+    this.remoteName,
+    this.colocate = false,
+    this.noColocate = false,
+    this.depth,
+    this.branches,
+    this.tags,
+    this.objectHash,
   });
 
-  /// Remote URL to clone from.
-  final String url;
+  /// The URL or path to clone from.
+  final String source;
 
-  /// Local filesystem path to clone into.
-  final String targetPath;
+  /// Local filesystem path to clone into: missing or an empty directory.
+  final String destination;
+
+  /// `--remote`; `null` = `origin`.
+  final String? remoteName;
+
+  /// `--colocate`.
+  final bool colocate;
+
+  /// `--no-colocate`.
+  final bool noColocate;
+
+  /// `--depth`; `null` = the whole history.
+  final int? depth;
+
+  /// `-b` patterns; `null` = the flag not given.
+  final List<String>? branches;
+
+  /// `-t` patterns; `null` = the flag not given.
+  final List<String>? tags;
+
+  /// `--object-hash`; `null` = not given.
+  final ObjectHash? objectHash;
 }
 
 /// Close the repository identified by [handleId] in the worker's handle table.
@@ -451,6 +494,80 @@ final class GitFetchCommand extends WorkerCommand implements HandleScopedCommand
 
   /// Name of the configured git remote to fetch from.
   final String remoteName;
+}
+
+/// Push bookmarks and tags to git remotes, in the repo identified by
+/// [handleId] (Story 9.20) — the CLI's `jj git push`, every parameter passed
+/// through.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinGitPush(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<GitPushResult>` bytes.
+final class GitPushCommand extends WorkerCommand implements HandleScopedCommand {
+  const GitPushCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.remotes,
+    required this.bookmarks,
+    required this.tags,
+    required this.all,
+    required this.tracked,
+    required this.deleted,
+    required this.allowEmptyDescription,
+    required this.allowPrivate,
+    required this.allowConflicts,
+    required this.revisions,
+    required this.changes,
+    required this.named,
+    required this.dryRun,
+    required this.options,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `--remote`; `null` = not given.
+  final List<String>? remotes;
+
+  /// `-b` patterns.
+  final List<String> bookmarks;
+
+  /// `-t` patterns.
+  final List<String> tags;
+
+  /// `--all`.
+  final bool all;
+
+  /// `--tracked`.
+  final bool tracked;
+
+  /// `--deleted`.
+  final bool deleted;
+
+  /// `--allow-empty-description`.
+  final bool allowEmptyDescription;
+
+  /// `--allow-private`.
+  final bool allowPrivate;
+
+  /// `--allow-conflicts` (hidden in the CLI).
+  final bool allowConflicts;
+
+  /// `-r` revsets.
+  final List<String> revisions;
+
+  /// `-c` revsets.
+  final List<String> changes;
+
+  /// `--named NAME=REVISION`.
+  final List<String> named;
+
+  /// `--dry-run`.
+  final bool dryRun;
+
+  /// `--option` push options.
+  final List<String> options;
 }
 
 /// Give the paths selected here the content they have in another commit, in the

@@ -171,9 +171,14 @@ fn interdiff_pair() -> InterdiffPair {
 /// express.
 fn git_workspace() -> TempDir {
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), Some(Backend::Git))
-        .result
-        .expect("git-backed init");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("git-backed init");
     tmp
 }
 
@@ -261,9 +266,14 @@ fn jj_new(workspace_root: &Path) {
 /// A git-backed repo whose `@` RENAMES `old_name.txt` to `new_name.txt`.
 fn renamed_on_git_backend() -> (TempDir, Repo) {
     let tmp = TempDir::new().expect("tempdir");
-    Repo::init(tmp.path(), Some(Backend::Git))
-        .result
-        .expect("git-backed init");
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("git-backed init");
 
     fs::write(tmp.path().join("old_name.txt"), b"content to rename").expect("write");
     snapshot_working_copy(tmp.path());

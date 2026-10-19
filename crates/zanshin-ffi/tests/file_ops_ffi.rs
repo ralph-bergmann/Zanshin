@@ -166,11 +166,16 @@ fn call(wrapper: BufWrapper, handle: u64, req: &[u8]) -> Vec<u8> {
 fn init_repo(repo_config: &str) -> PathBuf {
     pin_env();
     let tmp = TempDir::new().expect("tempdir").keep();
-    let root = Repo::init(&tmp, Some(Backend::Git))
-        .result
-        .expect("init")
-        .workspace_root()
-        .to_owned();
+    let root = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&tmp),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("init")
+    .workspace_root()
+    .to_owned();
     fs::write(root.join(".jj").join("repo").join("config.toml"), repo_config).expect("repo config");
     root
 }

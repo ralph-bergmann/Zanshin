@@ -37,6 +37,7 @@ pub(crate) mod commit_views;
 pub(crate) mod config;
 pub(crate) mod config_cmd;
 pub(crate) mod convert;
+pub(crate) mod creation;
 pub(crate) mod detect;
 pub(crate) mod environment;
 pub(crate) mod file;
@@ -45,6 +46,7 @@ pub(crate) mod graph;
 pub(crate) mod mutate;
 pub(crate) mod op_log;
 pub(crate) mod op_support;
+pub(crate) mod push;
 pub(crate) mod remotes;
 mod repo;
 pub(crate) mod revset;
@@ -74,6 +76,7 @@ pub use config_cmd::{
     MissingRepoConfig, WorkingCopyAuthor,
 };
 pub use convert::{convert_colocated, convert_import};
+pub use creation::{CloneOptions, InitOptions, ObjectHash};
 pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};
 pub use environment::adopt_environment;
 pub use file::{AnnotationLine, FileContents, FileEntry, FileError, FileSearch, FileType, SearchMatch, ShownFile};
@@ -81,6 +84,10 @@ pub use git::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate, 
 pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};
 pub use mutate::{AbsorbResult, MutateError, MutationResult, SkippedPath};
 pub use op_log::{OpLogError, Operation, OperationId};
+pub use push::{
+    GitPushArgs, GitPushOutcome, PushCommitRejection, PushCreatedBookmark, PushFailure, PushFailureKind, PushPath,
+    PushRef, PushRefKind, PushRefName, PushRefStatus, PushRefusal, PushRemote, PushSigning,
+};
 pub use remotes::{ProgressEvent, ProgressFn, Remote, RemoteError};
 pub use repo::{Backend, CreationOutcome, Repo, RepoError};
 pub use revset::{resolve_revset, RevsetError, DEFAULT_LOG_REVSET};
@@ -107,7 +114,12 @@ pub(crate) mod test_support {
     pub(crate) fn repo_with_a_broken_head() -> (tempfile::TempDir, crate::Repo) {
         test_helpers::pin_test_env();
         let tmp = tempfile::TempDir::new().expect("tempdir");
-        let repo = crate::Repo::init(tmp.path(), None).result.expect("init");
+        let repo = crate::Repo::init(&crate::InitOptions {
+            path: tmp.path().to_owned(),
+            ..Default::default()
+        })
+        .result
+        .expect("init");
         std::fs::remove_dir_all(repo.workspace().repo_path().join("op_heads")).expect("remove op_heads");
         (tmp, repo)
     }

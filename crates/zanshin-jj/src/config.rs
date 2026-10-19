@@ -164,7 +164,13 @@ use crate::Repo;
 /// bookmarks; jj-lib has no default for it either); the `[experimental-advance-branches]` table
 /// (`enabled-branches = []`, `disabled-branches = []`) is verbatim from
 /// `cli/src/config/misc.toml:20-22` (Story 9.49 — the bookmarks `commit` advances; an empty
-/// `enabled-branches` is the feature off, and jj-lib has no default for either key).
+/// `enabled-branches` is the feature off, and jj-lib has no default for either key). Story 9.20
+/// adds the rest of the CLI's `[git]` table — `object-hash`, `private-commits`, `sign-on-push`
+/// and `track-default-bookmark-on-clone`, verbatim from `cli/src/config/misc.toml:29-32` (init
+/// and clone's object hash, push's commit checks and signing, clone's tracked default bookmark)
+/// — `revsets.git-push` from `cli/src/config/revsets.toml:8` (push's default targets) and
+/// `templates.git_push_bookmark` from `cli/src/config/templates.toml:30` (push's `--change`
+/// bookmark name); jj-lib has a default for none of them.
 ///
 /// # WHY: a config layer, not a Rust table
 ///
@@ -175,13 +181,19 @@ use crate::Repo;
 /// one insertion path over layered config; a hardcoded array plus a config pass would get
 /// the arity semantics wrong.
 ///
-/// The CLI's other `[revsets]` keys (`arrange`, `converge`, `fix`, `git-push`, `run`, `sign`,
+/// The CLI's other `[revsets]` keys (`arrange`, `converge`, `fix`, `run`, `sign`,
 /// `op-diff-changes-in`, `simplify-parents`, `bookmark-advance-*`) are deliberately NOT copied — no Zanshin verb
-/// consumes them, and an unread default is a lie about what we honour.
+/// consumes them, and an unread default is a lie about what we honour. The same holds for every
+/// other `[templates]` key: Zanshin renders no template, and `git_push_bookmark` is there only
+/// so push can recognise the builtin default it ports (Story 9.20).
 const BUILTIN_CONFIG_TOML: &str = r#"
 [revsets]
+git-push = "remote_bookmarks(remote=exact:remote)..@"
 log = "present(@) | ancestors(immutable_heads().., 2) | trunk()"
 log-graph-prioritize = "present(@)"
+
+[templates]
+git_push_bookmark = '"push-" ++ change_id.short()'
 
 [ui]
 log-synthetic-elided-nodes = true
@@ -194,6 +206,10 @@ auto-update-stale = false
 
 [git]
 colocate = true
+object-hash = "sha1"
+private-commits = "none()"
+sign-on-push = false
+track-default-bookmark-on-clone = true
 
 [experimental-advance-branches]
 enabled-branches = []
@@ -299,7 +315,7 @@ fn file_error(path: &Path, err: &ConfigLoadError) -> ConfigError {
 }
 
 /// A lookup failure. `ConfigGetError`'s Display already names the config key.
-fn value_error(err: &ConfigGetError) -> ConfigError {
+pub(crate) fn value_error(err: &ConfigGetError) -> ConfigError {
     ConfigError::Load { reason: describe(err) }
 }
 
@@ -1008,14 +1024,18 @@ pub(crate) fn user_settings_for(loader: &dyn WorkspaceLoader) -> Result<UserSett
 /// `cli/src/cli_util.rs:4543-4627` @ v0.44.0). A broken system/user file or a wrong-typed
 /// `user.*` / `operation.*` value therefore refuses before a destination is created and wins
 /// over every path or precondition error — only a fault that needs the new workspace's paths
-/// (a scoped table) surfaces later, in [`user_settings_for_new_workspace`].
+/// (a scoped table) surfaces later, in [`user_settings_for_new_workspace`]. Returns the checked
+/// stack: `jj git init` / `jj git clone` read `git.colocate` and `git.object-hash` from it
+/// (Story 9.20), as the CLI reads them from its start-up `command.settings()`.
 ///
 /// # Errors
 ///
 /// - [`ConfigError::Load`] — as [`user_settings_for`].
-pub(crate) fn check_startup_stack() -> Result<(), ConfigError> {
+pub(crate) fn check_startup_stack() -> Result<StackedConfig, ConfigError> {
     let env = ConfigEnv::from_env();
-    settings_from(&env, load_with(&env, None)?).map(drop)
+    let config = load_with(&env, None)?;
+    settings_from(&env, config.clone())?;
+    Ok(config)
 }
 
 /// The `UserSettings` the workspace at `workspace_root` is CREATED with (`init`, `clone`,
@@ -1189,7 +1209,7 @@ pub(crate) fn stack_fingerprint(repo_path: &Path, workspace_root: &Path) -> Resu
 
 /// Loads `workspace`'s effective jj config stack, for a caller that has no [`Repo`] yet.
 ///
-/// [`load`] is the usual entry point; this exists because `Repo::clone_into` must read the
+/// [`load`] is the usual entry point; this exists because `Repo::clone` must read the
 /// effective config of the workspace it just initialised, several steps BEFORE that workspace
 /// is wrapped in a [`Repo`].
 ///
@@ -1356,6 +1376,127 @@ pub(crate) fn snapshot_auto_update_stale(config: &StackedConfig) -> Result<bool,
 ///   every layer (impossible while the builtin layer is present).
 pub(crate) fn git_colocate(config: &StackedConfig) -> Result<bool, ConfigError> {
     config.get("git.colocate").map_err(|e| value_error(&e))
+}
+
+/// Reads the effective `git.object-hash` (Story 9.20) — the CLI's
+/// `settings().get::<ObjectHash>("git.object-hash")` in `jj git init` / `jj git clone`
+/// (`cli/src/commands/git/init.rs:172-175`, `clone.rs:212-215` @ v0.46.0), read only when no
+/// `--object-hash` was given. Its default `"sha1"` is [`BUILTIN_CONFIG_TOML`]'s (the CLI's
+/// `config/misc.toml:29`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is neither `"sha1"` nor `"sha256"` (the key is named), or
+///   is missing from every layer (impossible while the builtin layer is present).
+pub(crate) fn git_object_hash(config: &StackedConfig) -> Result<crate::ObjectHash, ConfigError> {
+    config
+        .get_value_with("git.object-hash", |value| match value.as_str() {
+            Some("sha1") => Ok(crate::ObjectHash::Sha1),
+            Some("sha256") => Ok(crate::ObjectHash::Sha256),
+            _ => Err(format!("unknown variant {value}, expected `sha1` or `sha256`")),
+        })
+        .map_err(|e| value_error(&e))
+}
+
+/// Reads the effective `git.track-default-bookmark-on-clone` (Story 9.20) — the CLI's
+/// `settings.get_bool(..)` in `jj git clone`'s fetch (`cli/src/commands/git/clone.rs:390` @
+/// v0.46.0). Its default `true` is [`BUILTIN_CONFIG_TOML`]'s (the CLI's `config/misc.toml:32`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a boolean (the key is named).
+pub(crate) fn git_track_default_bookmark_on_clone(config: &StackedConfig) -> Result<bool, ConfigError> {
+    config
+        .get("git.track-default-bookmark-on-clone")
+        .map_err(|e| value_error(&e))
+}
+
+/// Reads the effective `git.sign-on-push` (Story 9.20) — the CLI's `get_bool` in `jj git push`
+/// (`cli/src/commands/git/push.rs:566` @ v0.46.0). Its default `false` is
+/// [`BUILTIN_CONFIG_TOML`]'s (the CLI's `config/misc.toml:31`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a boolean (the key is named).
+pub(crate) fn git_sign_on_push(config: &StackedConfig) -> Result<bool, ConfigError> {
+    config.get("git.sign-on-push").map_err(|e| value_error(&e))
+}
+
+/// Reads the effective `git.private-commits` revset TEXT (Story 9.20) — the CLI's `get_string` in
+/// `jj git push`'s commit checks (`push.rs:808` @ v0.46.0). Its default `"none()"` is
+/// [`BUILTIN_CONFIG_TOML`]'s (the CLI's `config/misc.toml:30`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a string (the key is named).
+pub(crate) fn git_private_commits(config: &StackedConfig) -> Result<String, ConfigError> {
+    config.get("git.private-commits").map_err(|e| value_error(&e))
+}
+
+/// Reads the effective `revsets.git-push` revset TEXT (Story 9.20) — the CLI's `get_string` in
+/// `jj git push` without explicit targets (`push.rs:420-422` @ v0.46.0). Its default
+/// `remote_bookmarks(remote=exact:remote)..@` is [`BUILTIN_CONFIG_TOML`]'s (the CLI's
+/// `config/revsets.toml:8`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a string (the key is named).
+pub(crate) fn revsets_git_push(config: &StackedConfig) -> Result<String, ConfigError> {
+    config.get("revsets.git-push").map_err(|e| value_error(&e))
+}
+
+/// Reads the effective `templates.git_push_bookmark` TEXT (Story 9.20) — the CLI's `get_string`
+/// in `jj git push --change` (`push.rs:1323` @ v0.46.0). Its default is
+/// [`BUILTIN_CONFIG_TOML`]'s (the CLI's `config/templates.toml:30`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a string (the key is named).
+pub(crate) fn templates_git_push_bookmark(config: &StackedConfig) -> Result<String, ConfigError> {
+    config.get("templates.git_push_bookmark").map_err(|e| value_error(&e))
+}
+
+/// Reads the effective `git.push` (Story 9.20) the way the CLI's `get_default_push_remotes` does
+/// (`push.rs:1111-1116` @ v0.46.0): a list of name patterns, else one pattern string, else
+/// `None` (the key is unset; the CLI then falls back to the single remote, then `origin`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is neither a list of strings nor a string.
+pub(crate) fn git_push_remotes(config: &StackedConfig) -> Result<Option<Vec<String>>, ConfigError> {
+    if let Ok(list) = config.get::<Vec<String>>("git.push") {
+        return Ok(Some(list));
+    }
+    match config.get::<String>("git.push") {
+        Ok(text) => Ok(Some(vec![text])),
+        Err(jj_lib::config::ConfigGetError::NotFound { .. }) => Ok(None),
+        Err(e) => Err(value_error(&e)),
+    }
+}
+
+/// The effective `remotes.<remote>` settings (Story 9.20) — jj-lib's
+/// `RemoteSettings::table_from_settings` (which the CLI's `settings.remote_settings()` calls,
+/// `clone.rs:231` @ v0.46.0) read off the stack directly: EVERY remote's entry is read, so a
+/// malformed entry of any remote refuses, as in the CLI; then `remote`'s entry, `None` without
+/// one.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — a `remotes.<name>` entry is not a table of the known string keys.
+pub(crate) fn remote_settings(
+    config: &StackedConfig,
+    remote: &str,
+) -> Result<Option<jj_lib::settings::RemoteSettings>, ConfigError> {
+    let mut found = None;
+    let names: Vec<String> = config.table_keys("remotes").map(str::to_owned).collect();
+    for name in names {
+        let settings: jj_lib::settings::RemoteSettings =
+            config.get(["remotes", name.as_str()]).map_err(|e| value_error(&e))?;
+        if name == remote {
+            found = Some(settings);
+        }
+    }
+    Ok(found)
 }
 
 /// Reads the effective `split.legacy-bookmark-behavior` (Story 9.15) — the CLI's
@@ -1578,12 +1719,83 @@ pub(crate) fn new_repo_config_file(workspace: &Workspace) -> Result<Option<Confi
     )
 }
 
-/// Writes `revset-aliases.'trunk()' = <symbol>` — the one preset `jj git init` sets.
+/// The repo-level presets `jj git clone` and `jj git init` write — the fields of the CLI's
+/// `RepoPresets` (`cli/src/commands/git/mod.rs:135-153` @ v0.46.0).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RepoPresets<'a> {
+    /// The remote the fetch presets belong to.
+    pub(crate) remote: &'a str,
+    /// `remotes.<remote>.fetch-bookmarks` — clone's `-b` texts (`Some(&[])` when only `-t` was
+    /// given); `None` writes nothing.
+    pub(crate) fetch_bookmarks: Option<&'a [String]>,
+    /// `remotes.<remote>.fetch-tags` — clone's `-t` texts, as above.
+    pub(crate) fetch_tags: Option<&'a [String]>,
+    /// `revset-aliases.'trunk()'` — the rendered `<bookmark>@<remote>` symbol.
+    pub(crate) trunk: Option<&'a str>,
+}
+
+impl RepoPresets<'_> {
+    /// Whether nothing is to be written — the CLI's `is_default` (`mod.rs:143-153`).
+    fn is_default(self) -> bool {
+        self.fetch_bookmarks.is_none() && self.fetch_tags.is_none() && self.trunk.is_none()
+    }
+}
+
+/// The CLI's `join_string_expressions` (`cli/src/commands/git/mod.rs:276-281` @ v0.46.0): the
+/// texts joined by `" | "` (no parentheses — `|` is the weakest operator), `"~*"` (no matches)
+/// for an empty list.
+fn join_string_expressions(exprs: &[String]) -> String {
+    if exprs.is_empty() {
+        "~*".to_owned()
+    } else {
+        exprs.join(" | ")
+    }
+}
+
+/// Saves the presets to the repo-level config file — the CLI's `write_repo_presets`
+/// (`cli/src/commands/git/mod.rs:155-193` @ v0.46.0) minus its `ui.status` line.
 ///
-/// The `trunk` half of the CLI's `write_repo_presets`; its `fetch-bookmarks` / `fetch-tags`
-/// halves belong to `jj git clone` (Story 9.20) and are deliberately absent, as is its
-/// `is_default()` early return, which only matters when all three presets are `None` — a
-/// state this single-preset entry point cannot be in.
+/// Default presets write nothing and do not even resolve the file — the CLI's "Don't initialize
+/// config directory" early return — which is why the file comes from `file`, a loader called
+/// only when something is to be written ([`new_repo_config_file`] in production). The loader's
+/// `None` (no `<config_dir>` could be determined) is the CLI's "couldn't find the user's home
+/// directory" skip: nothing is written.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the loader failed, or the file could not be written back.
+pub(crate) fn write_repo_presets(
+    file: impl FnOnce() -> Result<Option<ConfigFile>, ConfigError>,
+    presets: RepoPresets<'_>,
+) -> Result<(), ConfigError> {
+    if presets.is_default() {
+        return Ok(());
+    }
+    let Some(mut file) = file()? else {
+        return Ok(());
+    };
+    if let Some(exprs) = presets.fetch_bookmarks {
+        file.set_value(
+            ["remotes", presets.remote, "fetch-bookmarks"],
+            join_string_expressions(exprs),
+        )
+        .map_err(write_error)?;
+    }
+    if let Some(exprs) = presets.fetch_tags {
+        file.set_value(
+            ["remotes", presets.remote, "fetch-tags"],
+            join_string_expressions(exprs),
+        )
+        .map_err(write_error)?;
+    }
+    if let Some(symbol) = presets.trunk {
+        file.set_value(TRUNK_CONFIG_NAME, symbol).map_err(write_error)?;
+    }
+    save_config_file(&file)
+}
+
+/// Writes `revset-aliases.'trunk()' = <symbol>` — the one preset `jj git init`'s External flow
+/// sets (`maybe_set_repository_level_trunk_alias`): [`write_repo_presets`] with the trunk alone.
 ///
 /// `file` is [`new_repo_config_file`]'s answer: `None` means no `<config_dir>` could be
 /// determined, and then this is a no-op that creates nothing.
@@ -1592,11 +1804,15 @@ pub(crate) fn new_repo_config_file(workspace: &Workspace) -> Result<Option<Confi
 ///
 /// - [`ConfigError::Load`] — the file could not be written back.
 pub(crate) fn set_trunk_alias(file: Option<ConfigFile>, symbol: &str) -> Result<(), ConfigError> {
-    let Some(mut file) = file else {
-        return Ok(());
-    };
-    file.set_value(TRUNK_CONFIG_NAME, symbol).map_err(write_error)?;
-    save_config_file(&file)
+    write_repo_presets(
+        || Ok(file),
+        RepoPresets {
+            remote: "",
+            fetch_bookmarks: None,
+            fetch_tags: None,
+            trunk: Some(symbol),
+        },
+    )
 }
 
 /// The `trunk()` alias's value as `(bookmark, remote)`, iff it is a PLAIN remote symbol.
@@ -3034,7 +3250,12 @@ fetch-bookmarks = \"main\"
     fn existing_repo_config_file_refuses_a_malformed_config_id() {
         test_helpers::pin_test_env();
         let tmp = tempfile::tempdir().unwrap();
-        let repo = crate::Repo::init(tmp.path(), None).result.expect("init");
+        let repo = crate::Repo::init(&crate::InitOptions {
+            path: std::path::PathBuf::from(tmp.path()),
+            ..Default::default()
+        })
+        .result
+        .expect("init");
         std::fs::write(repo.workspace().repo_path().join("config-id"), "not-hex").unwrap();
         let err = super::existing_repo_config_file(repo.workspace()).expect_err("a malformed config-id must refuse");
         assert!(err.to_string().contains("config-id"), "{err}");
@@ -3260,5 +3481,51 @@ fetch-bookmarks = \"main\"
             .starts_with("Per-repo config not found. Generating an empty one."));
         assert!(repos.join(&id_a).join("metadata.binpb").exists());
         assert_eq!(std::fs::read_to_string(repo_c.join("config-id")).unwrap(), id_a);
+    }
+
+    // ── Story 9.20 readers ───────────────────────────────────────────────────
+
+    #[test]
+    fn git_object_hash_reads_both_hashes_and_refuses_another() {
+        let builtin = load_with(&bare_env(), None).expect("the bare stack loads");
+        assert!(matches!(super::git_object_hash(&builtin), Ok(crate::ObjectHash::Sha1)));
+        let sha256 = stack_with("git.object-hash = \"sha256\"\n");
+        assert!(matches!(super::git_object_hash(&sha256), Ok(crate::ObjectHash::Sha256)));
+        let md5 = stack_with("git.object-hash = \"md5\"\n");
+        assert!(super::git_object_hash(&md5).is_err());
+    }
+
+    #[test]
+    fn git_push_remotes_reads_a_list_a_string_or_nothing() {
+        let unset = load_with(&bare_env(), None).expect("the bare stack loads");
+        assert_eq!(super::git_push_remotes(&unset).unwrap(), None);
+        let list = stack_with("git.push = [\"a\", \"b\"]\n");
+        assert_eq!(
+            super::git_push_remotes(&list).unwrap(),
+            Some(vec!["a".to_owned(), "b".to_owned()])
+        );
+        let text = stack_with("git.push = \"up\"\n");
+        assert_eq!(super::git_push_remotes(&text).unwrap(), Some(vec!["up".to_owned()]));
+        let wrong = stack_with("git.push = 1\n");
+        assert!(super::git_push_remotes(&wrong).is_err());
+    }
+
+    #[test]
+    fn remote_settings_reads_every_entry_and_returns_the_named_one() {
+        let config = stack_with("[remotes.origin]\nfetch-bookmarks = \"main\"\n[remotes.up]\nfetch-tags = \"v*\"\n");
+        let origin = super::remote_settings(&config, "origin")
+            .unwrap()
+            .expect("origin's entry");
+        assert_eq!(origin.fetch_bookmarks.as_deref(), Some("main"));
+        assert!(super::remote_settings(&config, "nope").unwrap().is_none());
+        let broken = stack_with("[remotes]\nup = 1\n[remotes.origin]\nfetch-bookmarks = \"main\"\n");
+        assert!(
+            super::remote_settings(&broken, "origin").is_err(),
+            "a malformed entry of any remote refuses"
+        );
+        assert!(
+            git_import_options(&config).is_ok_and(|options| options.remote_auto_track_bookmarks.is_empty()),
+            "an entry without auto-track-bookmarks tracks nothing"
+        );
     }
 }

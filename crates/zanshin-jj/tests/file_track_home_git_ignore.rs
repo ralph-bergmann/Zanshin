@@ -61,11 +61,16 @@ fn an_empty_xdg_config_home_falls_back_to_the_home_git_ignore() {
     }
 
     let tmp = TempDir::new().expect("tempdir");
-    let root = Repo::init(tmp.path(), Some(Backend::Git))
-        .result
-        .expect("init")
-        .workspace_root()
-        .to_owned();
+    let root = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("init")
+    .workspace_root()
+    .to_owned();
     // `auto-track = none()`: only the track itself may start tracking, so the control file
     // proves the verb ran and the ignore file alone kept the other one out.
     fs::write(

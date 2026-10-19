@@ -522,6 +522,19 @@ fn maybe_set_trunk_alias(workspace: &Workspace, repo: &impl jj_lib::repo::Repo) 
     Ok(())
 }
 
+/// `jj git init`'s External arm over an existing `<root>/.git` (`init.rs:222-224`, `:249-282` @
+/// v0.46.0; Story 9.20): [`convert_into`]'s steps with their report — the snapshot report and the
+/// warnings — and WITHOUT [`convert_colocated`]'s rollback, since `jj git init` cleans up nothing
+/// beyond jj-lib's own `.jj` removal. `root` is canonical and `settings` are the new workspace's.
+pub(crate) fn init_over_git_dir(
+    settings: &UserSettings,
+    root: &Path,
+) -> (Result<(), RepoError>, Option<crate::Precondition>, Vec<crate::Warning>) {
+    let mut report = ConversionReport::default();
+    let result = convert_into(settings, root, &mut report);
+    (result, report.precondition, report.warnings.take())
+}
+
 /// Runs the colocated external-git init and then `do_init`'s External sequence, reporting into
 /// `report`. On `Err`, the caller rolls back `.jj/`.
 fn convert_into(settings: &UserSettings, path: &Path, report: &mut ConversionReport) -> Result<(), RepoError> {

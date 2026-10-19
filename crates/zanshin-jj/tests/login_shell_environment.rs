@@ -94,7 +94,14 @@ fn the_adopted_login_shell_environment_reaches_the_config_stack_and_git() {
     // A git-backed workspace with a remote, set up in the process environment.
     let ws = tmp.path().join("ws");
     fs::create_dir_all(&ws).expect("ws dir");
-    let mut repo = Repo::init(&ws, Some(Backend::Git)).result.expect("init");
+    let mut repo = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&ws),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("init");
     repo.git_remote_add("origin", "file:///nonexistent-zanshin-remote", None)
         .expect("add the remote");
     let mut repo = Repo::open(&ws).expect("reopen with the remote");
@@ -124,7 +131,16 @@ fn the_adopted_login_shell_environment_reaches_the_config_stack_and_git() {
     fs::write(&git_env, "").expect("truncate the git log");
     let clone = tmp.path().join("clone");
     fs::create_dir_all(&clone).expect("clone dir");
-    let _ = Repo::clone("file:///nonexistent-zanshin-remote", &clone).result;
+    let _ = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: String::from("file:///nonexistent-zanshin-remote"),
+            destination: std::path::PathBuf::from(&clone),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    )
+    .result;
     git_saw_the_shell_environment(&git_env, "Repo::clone");
 
     // …its XDG_CONFIG_HOME names the global git ignore every snapshot starts from (the control

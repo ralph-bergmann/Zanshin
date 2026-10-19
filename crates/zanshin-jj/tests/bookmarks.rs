@@ -287,7 +287,12 @@ fn bookmarks_are_sorted_by_name_then_kind() {
 fn bookmarks_on_corrupt_repo_returns_backend_error() {
     pin_env();
     let tmp = TempDir::new().unwrap();
-    Repo::init(tmp.path(), None).result.unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
 

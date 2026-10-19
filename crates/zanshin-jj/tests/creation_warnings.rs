@@ -18,7 +18,8 @@
 //! config root is ours.
 //!
 //! The FFI rows (`open`) live in `crates/zanshin-ffi/tests/repo_ffi.rs`; the clone clean-up
-//! failure is pinned inline in `src/repo.rs` (a `.jj/` that cannot be removed).
+//! failure is pinned inline in `src/creation.rs` (a `.jj/` that cannot be removed). Story 9.20
+//! re-derives the clone rows for the CLI's three operations and its non-empty refusal.
 
 use std::env;
 use std::fs;
@@ -108,17 +109,17 @@ fn creation_paths_report_what_the_cli_prints() {
     set_env("JJ_USER", None);
     set_env("JJ_EMAIL", None);
     init_reports_nothing();
-    clone_warns_an_empty_identity_once_and_last();
+    clone_warns_an_empty_identity_per_finish();
+    clone_of_an_empty_source_warns_the_identity_once();
     convert_import_warns_an_empty_identity_once();
     convert_colocated_does_not_warn_an_empty_identity();
-    clone_warns_the_checkout_skip_before_the_identity();
     convert_import_warns_refusal_then_checkout_skip_then_identity();
 
     // ── A configured identity ─────────────────────────────────────────────────────
     set_env("JJ_USER", Some("Zanshin"));
     set_env("JJ_EMAIL", Some("zanshin@localhost"));
     clone_with_an_identity_reports_nothing();
-    clone_over_an_untracked_file_skips_it();
+    clone_into_a_non_empty_destination_is_refused();
     a_big_new_file_is_refused_and_reported();
     a_reserved_ref_warns_in_the_refs_step_and_again_in_the_snapshot();
     a_refs_step_that_imports_nothing_still_warns();
@@ -131,6 +132,7 @@ fn creation_paths_report_what_the_cli_prints() {
     a_bad_immutable_heads_alias_fails_before_the_conversion_snapshot(tmp.path());
     a_wrong_typed_snapshot_knob_fails_inside_the_import_snapshot(tmp.path());
     a_late_failure_keeps_the_report(tmp.path(), &xdg);
+    a_clone_failing_after_the_fetch_keeps_the_workspace(tmp.path(), &xdg);
 }
 
 /// Init: the CLI's empty-directory `jj git init` finishes no transaction — no warning, not even
@@ -138,23 +140,63 @@ fn creation_paths_report_what_the_cli_prints() {
 fn init_reports_nothing() {
     for backend in [Some(Backend::Git), None] {
         let dir = TempDir::new().unwrap();
-        let outcome = Repo::init(dir.path(), backend);
+        let outcome = Repo::init(&zanshin_jj::InitOptions {
+            path: std::path::PathBuf::from(dir.path()),
+            backend,
+            colocate: backend.map(|_| false),
+            ..Default::default()
+        });
         assert!(outcome.result.is_ok(), "{:?}", outcome.result);
         assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
         assert!(outcome.precondition.is_none());
     }
 }
 
-/// Clone with an empty identity: exactly ONE `jj.identity_missing` (Zanshin writes one `clone`
-/// operation where the CLI finishes up to three), and it is the last warning.
-fn clone_warns_an_empty_identity_once_and_last() {
+/// Clone with an empty identity: one `jj.identity_missing` per finished transaction — `add git
+/// remote origin`, `fetch from git remote into empty repo`, `check out git remote's branch: main`
+/// (`clone.rs:352`, `:457`, `:314` @ v0.46.0; Story 9.20's op split).
+fn clone_warns_an_empty_identity_per_finish() {
     let src = TempDir::new().unwrap();
     git_with_commit(src.path());
     let dst = TempDir::new().unwrap();
-    let outcome = Repo::clone(&file_url(src.path()), dst.path());
+    let outcome = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: file_url(src.path()),
+            destination: dst.path().to_owned(),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    );
+    assert!(outcome.result.is_ok(), "{:?}", outcome.result);
+    assert_eq!(
+        warnings(&outcome),
+        [
+            (WarningKind::IdentityMissing, IDENTITY),
+            (WarningKind::IdentityMissing, IDENTITY),
+            (WarningKind::IdentityMissing, IDENTITY)
+        ]
+    );
+    assert!(outcome.precondition.is_none(), "a clone runs no snapshot");
+}
+
+/// A source without commits: the fetch and the checkout change nothing and finish nothing, so
+/// only the `add git remote` finish warns the empty identity.
+fn clone_of_an_empty_source_warns_the_identity_once() {
+    let src = TempDir::new().unwrap();
+    git(&["init", "--initial-branch=main"], src.path());
+    let dst = TempDir::new().unwrap();
+    let outcome = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: file_url(src.path()),
+            destination: dst.path().to_owned(),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    );
     assert!(outcome.result.is_ok(), "{:?}", outcome.result);
     assert_eq!(warnings(&outcome), [(WarningKind::IdentityMissing, IDENTITY)]);
-    assert!(outcome.precondition.is_none(), "a clone runs no snapshot");
 }
 
 /// The non-colocated conversion finishes its `import git head` (`init.rs:268`): ONE identity
@@ -185,27 +227,6 @@ fn convert_colocated_does_not_warn_an_empty_identity() {
     let precondition = outcome.precondition.expect("the conversion's snapshot ran");
     assert!(precondition.git_head_imported);
     assert!(precondition.was_snapshot_taken);
-}
-
-/// Clone over an untracked colliding `README.md` with an empty identity: the checkout's skip,
-/// then the identity — the finish's order (`cli_util.rs:2369` → `:3304`, then `:2387`). The
-/// collision is reachable only because Zanshin's clone accepts a non-empty target (the CLI
-/// refuses it, `git/clone.rs:188-192`) — a Story 9.20 divergence; this row flips to a refusal
-/// when 9.20 lands.
-fn clone_warns_the_checkout_skip_before_the_identity() {
-    let src = TempDir::new().unwrap();
-    git_with_commit(src.path());
-    let dst = TempDir::new().unwrap();
-    fs::write(dst.path().join("README.md"), "local").unwrap();
-    let outcome = Repo::clone(&file_url(src.path()), dst.path());
-    assert!(outcome.result.is_ok(), "{:?}", outcome.result);
-    assert_eq!(
-        warnings(&outcome),
-        [
-            (WarningKind::CheckoutFilesSkipped, SKIPPED),
-            (WarningKind::IdentityMissing, IDENTITY)
-        ]
-    );
 }
 
 /// `convert_import` from a source whose HEAD holds a [`BIG`] `big.bin` into an EXISTING
@@ -241,31 +262,77 @@ fn clone_with_an_identity_reports_nothing() {
     let src = TempDir::new().unwrap();
     git_with_commit(src.path());
     let dst = TempDir::new().unwrap();
-    let outcome = Repo::clone(&file_url(src.path()), dst.path());
+    let outcome = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: String::from(&file_url(src.path())),
+            destination: std::path::PathBuf::from(dst.path()),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    );
     assert!(outcome.result.is_ok(), "{:?}", outcome.result);
     assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
     assert!(outcome.precondition.is_none());
 }
 
-/// The target already holds an untracked `README.md` the default branch also has: the checkout
-/// leaves it alone and says so (`print_checkout_stats`). Reachable only because Zanshin's clone
-/// accepts a non-empty target, which the CLI refuses (`git/clone.rs:188-192`) — a Story 9.20
-/// divergence; this row flips to a refusal when 9.20 lands.
-fn clone_over_an_untracked_file_skips_it() {
+/// A clone into a destination that already holds a file is refused before anything is created
+/// (`clone.rs:187-192` @ v0.46.0; Story 9.20): no warning, the file untouched, no `.jj`.
+fn clone_into_a_non_empty_destination_is_refused() {
     let src = TempDir::new().unwrap();
     git_with_commit(src.path());
     let dst = TempDir::new().unwrap();
     fs::write(dst.path().join("README.md"), "local").unwrap();
-    let outcome = Repo::clone(&file_url(src.path()), dst.path());
-    assert!(outcome.result.is_ok(), "{:?}", outcome.result);
-    assert_eq!(
-        warnings(&outcome),
-        [(
-            WarningKind::CheckoutFilesSkipped,
-            "1 of those updates were skipped because there were conflicting changes in the working copy."
-        )]
+    let outcome = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: file_url(src.path()),
+            destination: dst.path().to_owned(),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
     );
+    assert!(
+        matches!(outcome.result, Err(RepoError::DestinationNotEmpty { .. })),
+        "{:?}",
+        outcome.result
+    );
+    assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
     assert_eq!(fs::read_to_string(dst.path().join("README.md")).unwrap(), "local");
+    assert!(!dst.path().join(".jj").exists());
+}
+
+/// A clone whose repo presets cannot be written (`<xdg>/jj` is a FILE, so no repo config file
+/// can be created) fails AFTER the clean-up scope: the workspace stays (`clone.rs:287-301`).
+fn a_clone_failing_after_the_fetch_keeps_the_workspace(tmp: &Path, xdg: &Path) {
+    let src = TempDir::new().unwrap();
+    git_with_commit(src.path());
+    let parent = TempDir::new().unwrap();
+    let dst = parent.path().join("dst");
+    let broken = tmp.join("broken-xdg-clone");
+    fs::create_dir_all(&broken).unwrap();
+    fs::write(broken.join("jj"), "not a directory").unwrap();
+    set_env("XDG_CONFIG_HOME", Some(broken.to_str().unwrap()));
+    let outcome = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: file_url(src.path()),
+            destination: dst.clone(),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+    );
+    set_env("XDG_CONFIG_HOME", Some(xdg.to_str().unwrap()));
+    assert!(
+        matches!(outcome.result, Err(RepoError::Config { .. })),
+        "{:?}",
+        outcome.result
+    );
+    assert!(
+        dst.join(".jj").is_dir(),
+        "a failure after the fetch keeps the workspace"
+    );
+    assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
 }
 
 /// A new file over `snapshot.max-new-file-size` stays untracked: the conversion's snapshot
