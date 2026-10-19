@@ -124,6 +124,18 @@ script_runner = "bash"
 script = '''
 set -euo pipefail
 rm -f build/unit_test_assets/AssetManifest.bin
+xdg_config="${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-xdg-config"
+flutter_config="${XDG_CONFIG_HOME:-$HOME/.config/flutter}"
+if [ "$flutter_config" != "$xdg_config" ]; then
+    mkdir -p "$xdg_config"
+    for name in settings tool_state; do
+        rm -f "$xdg_config/$name"
+        if [ -f "$flutter_config/$name" ]; then
+            cp "$flutter_config/$name" "$xdg_config/$name"
+        fi
+    done
+fi
+export XDG_CONFIG_HOME="$xdg_config"
 flutter test
 '''
 cwd = "app"
@@ -135,10 +147,14 @@ cwd = "app"
 # ZANSHIN_LOG_DIR redirects the cdylib's tracing file sink to a throwaway dir: the worker-isolate
 # tests boot a real worker which calls zanshin_logging_init -> init_tracing, which would otherwise
 # write into the developer's real ~/Library/Logs/Zanshin (test-isolation leak, fixed 2026-06-21).
-# NOT XDG_CONFIG_HOME (unlike test-core/coverage, Story 9.28): `flutter test` reads its own
-# settings (e.g. `flutter config --enable-windowing`) from $XDG_CONFIG_HOME/flutter, so pinning it
-# here breaks the app's windowing tests; no app test calls a jj config verb.
-env = { JJ_CONFIG = "", GIT_CONFIG_GLOBAL = "", JJ_USER = "Zanshin", JJ_EMAIL = "zanshin@localhost", JJ_OP_HOSTNAME = "localhost", JJ_OP_USERNAME = "zanshin", ZANSHIN_LOG_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-logs" }
+# XDG_CONFIG_HOME is pinned like test-core/coverage (Story 9.28) — the app's real-worker tests
+# write repo-scope jj config, which jj keeps in its secure store under $XDG_CONFIG_HOME/jj — but in
+# the script, not in `env`, so it cannot leak into later tasks. `flutter test` reads its own
+# config (e.g. `flutter config --enable-windowing`) from $XDG_CONFIG_HOME/<name> when that is set,
+# else from ~/.config/flutter/<name> (flutter_tools base/config.dart `_configPath`), and it and the
+# flutter_tester processes share one environment, so the pinned dir first gets a fresh copy of the
+# developer's flutter config files (copied from, never written to).
+env ={ JJ_CONFIG = "", GIT_CONFIG_GLOBAL = "", JJ_USER = "Zanshin", JJ_EMAIL = "zanshin@localhost", JJ_OP_HOSTNAME = "localhost", JJ_OP_USERNAME = "zanshin", ZANSHIN_LOG_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-logs" }
 
 [tasks.test-dart-analyze]
 private = true

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 // The adapter against the REAL worker isolate and cdylib (project-context "Worker / isolate testing"): temp
-// repositories made with the native backend; JJ_CONFIG and GIT_CONFIG_GLOBAL are pinned by Makefile.toml's
-// test-flutter, and no test here calls a jj config verb.
+// repositories made with the native backend; JJ_CONFIG, GIT_CONFIG_GLOBAL and XDG_CONFIG_HOME are pinned by
+// Makefile.toml's test-flutter. The tracking tests (Story 9.29) write repo-scope jj config, which jj keeps under
+// XDG_CONFIG_HOME, so they fail before any write when it is not pinned.
 
 import 'dart:async';
 import 'dart:io';
@@ -368,9 +369,8 @@ void main() {
 
     // Story 9.29. A TRACKED non-`git` remote needs a fetch, a clone or `remotes.<name>.auto-track-bookmarks`: the first
     // two cannot run under a Dart test (the VM reaps jj-lib's git child, zanshin_core's mutate_test.dart `gitFetch`
-    // note) and no app test writes jj config (Makefile.toml test-flutter). The diverged facts are asserted through the
-    // real worker in zanshin_core's test/worker/bookmarks_test.dart; here the read runs over remote rows that must NOT
-    // count — the colocated `@git` row and an untracked `main@origin` the local `main` is ahead of.
+    // note), so the tracking tests below set the third. Here the read runs over remote rows that must NOT count — the
+    // colocated `@git` row and an untracked `main@origin` the local `main` is ahead of.
     test('the read over an untracked remote and the @git row stays clean', () async {
       final path = '${temp.resolveSymbolicLinksSync()}/remotes';
       await Directory(path).create();
@@ -402,6 +402,98 @@ void main() {
       );
 
       expect(await creation.repo.read(), const ProjectReading(status: ProjectStatus.clean, bookmark: 'main'));
+    });
+
+    /// Runs `git -C [path]` and returns its trimmed stdout.
+    Future<String> Function(List<String>) gitAt(String path) => (args) async {
+      final ProcessResult result = await Process.run('git', <String>['-C', path, ...args]);
+      if (result.exitCode != 0) {
+        fail('git ${args.join(' ')} failed: ${result.stderr}');
+      }
+      return (result.stdout as String).trim();
+    };
+
+    /// Story 9.29's tracked start: a Git repository with A0 → A on `main`, converted, and `main@origin` at A tracked
+    /// through repo-scope `remotes.origin.auto-track-bookmarks` (zanshin_core's test/worker/bookmarks_test.dart recipe);
+    /// the git remote-tracking ref is imported by the next verb's precondition.
+    Future<(ProjectRepo, Future<String> Function(List<String>))> trackedMain(String name) async {
+      // The repo-scope write lands in jj's secure store under XDG_CONFIG_HOME: never the developer's ~/.config/jj.
+      Platform.environment['XDG_CONFIG_HOME'] ?? fail('XDG_CONFIG_HOME is not pinned — run via cargo make');
+      final path = '${temp.resolveSymbolicLinksSync()}/$name';
+      await Directory(path).create();
+      await gitWithCommit(path);
+      final Future<String> Function(List<String>) git = gitAt(path);
+      File('$path/second.txt').writeAsStringSync('second');
+      await git(<String>['add', '.']);
+      await git(<String>['commit', '-m', 'second', '--no-gpg-sign']);
+
+      final ProjectCreation creation = await repos.convert(path);
+      addTearDown(creation.repo.close);
+      await worker.configSet(
+        const ConfigScopeTarget(ConfigScope.repo),
+        'remotes.origin.auto-track-bookmarks',
+        'glob:*',
+        workspaceRoot: path,
+      );
+      await git(<String>['update-ref', 'refs/remotes/origin/main', 'HEAD']);
+
+      final Bookmark origin = (await creation.repo.handle.bookmarks()).singleWhere(
+        (b) => switch (b.kind) {
+          RemoteBookmark(remoteName: 'origin') => true,
+          _ => false,
+        },
+      );
+      expect(((origin.kind as RemoteBookmark).tracked, origin.synced), (true, true));
+      expect(await creation.repo.read(), const ProjectReading(status: ProjectStatus.clean, bookmark: 'main'));
+      return (creation.repo, git);
+    }
+
+    /// Moves the local `main` to the commit [rev] names on the git side (imported by the next verb as the local bookmark, while
+    /// `main@origin` stays at A) and starts a new @ on it. A tracked import would resync an unmoved local `main`, so the
+    /// local side moves. Git HEAD follows `main` after `convert`, so the import also moves @ onto [commit] with the old
+    /// files still on disk; the new change checks out that commit's tree, which leaves @ empty with `main` on its
+    /// ancestry.
+    Future<void> moveLocalMain(ProjectRepo repo, Future<String> Function(List<String>) git, String rev) async {
+      await git(<String>['update-ref', 'refs/heads/main', rev]);
+      final String main = (await repo.handle.bookmarks()).singleWhere((b) => b.kind is LocalBookmark).target!;
+      await repo.handle.newChange(<String>[main]);
+    }
+
+    /// A new commit with A's tree on [parent].
+    Future<String> commitOn(Future<String> Function(List<String>) git, String parent) => git(<String>[
+      'commit-tree',
+      'refs/remotes/origin/main^{tree}',
+      '-p',
+      parent,
+      '-m',
+      'moved',
+      '--no-gpg-sign',
+    ]);
+
+    // Not a `describe` of A: jj's default `trunk()` is `main@origin`, so A is immutable and the rewrite is refused
+    // (jj.immutable), as by the CLI. A sibling of A gives the same two-sided distance.
+    test('a local main moved to a sibling of the tracked commit reads diverged', () async {
+      final (ProjectRepo repo, Future<String> Function(List<String>) git) = await trackedMain('diverged');
+
+      await moveLocalMain(repo, git, await commitOn(git, 'refs/remotes/origin/main~1'));
+
+      expect(await repo.read(), const ProjectReading(status: ProjectStatus.diverged, bookmark: 'main'));
+    });
+
+    test('a local main moved to a child of the tracked commit reads ahead', () async {
+      final (ProjectRepo repo, Future<String> Function(List<String>) git) = await trackedMain('ahead');
+
+      await moveLocalMain(repo, git, await commitOn(git, 'refs/remotes/origin/main'));
+
+      expect(await repo.read(), const ProjectReading(status: ProjectStatus.ahead, bookmark: 'main'));
+    });
+
+    test('a local main moved back to the parent of the tracked commit reads behind', () async {
+      final (ProjectRepo repo, Future<String> Function(List<String>) git) = await trackedMain('behind');
+
+      await moveLocalMain(repo, git, 'refs/remotes/origin/main~1');
+
+      expect(await repo.read(), const ProjectReading(status: ProjectStatus.behind, bookmark: 'main'));
     });
 
     test('init creates a Git-backed workspace whose Git store stays inside .jj', () async {
