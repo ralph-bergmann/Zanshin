@@ -273,7 +273,7 @@ fn push(
 }
 
 /// Every push scenario.
-#[allow(clippy::too_many_lines)] // WHY: one flat table reads better than 15 helper fns
+#[allow(clippy::too_many_lines)] // WHY: one flat table reads better than 21 helper fns
 pub fn push_scenarios() -> Vec<Scenario> {
     vec![
         push(
@@ -515,6 +515,128 @@ pub fn push_scenarios() -> Vec<Scenario> {
                 )
             },
             |_| strings(&["git", "push", "--remote", "*", "-b", "b-mark"]),
+        ),
+        // The default revset `remote_bookmarks(remote=origin)..@` = {C, D}: tracked `b-mark` on
+        // the described C is pushed, tracked `d-mark` on the undescribed D is skipped with a
+        // warning (the skip path; only tracked bookmarks get past the bare push's
+        // `allow_new: false`, `push.rs:518-538` @ v0.46.0).
+        push(
+            "push_bare_skip_undescribed",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&["bookmark", "create", "d-mark", "-r", "@-"]),
+                Step::Jj(&["git", "push", "-b", "b-mark", "-b", "d-mark"]),
+                Step::Jj(&["bookmark", "set", "b-mark", "-r", "@"]),
+                Step::Jj(&["new"]),
+                Step::Jj(&["bookmark", "set", "d-mark", "-r", "@"]),
+            ],
+            |repo, _, _| push_outcome(repo, &GitPushArgs::default()),
+            |_| strings(&["git", "push"]),
+        ),
+        // The default revset holds C with tracked `b-mark` (pushed) and the new tag `v1`, which
+        // the bare push refuses: "Refusing to create new remote tag v1@origin" (`push.rs:1236`).
+        push(
+            "push_bare_new_tag",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&["git", "push", "-b", "b-mark"]),
+                Step::Jj(&["bookmark", "set", "b-mark", "-r", "@"]),
+                Step::Jj(&["tag", "set", "v1", "-r", "@"]),
+            ],
+            |repo, _, _| push_outcome(repo, &GitPushArgs::default()),
+            |_| strings(&["git", "push"]),
+        ),
+        // `-r @`: tracked `b-mark` on C is pushed, the untracked `c-mark` on C is refused as a
+        // new remote bookmark (`-r` classifies with `allow_new: false`).
+        push(
+            "push_revision",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&["git", "push", "-b", "b-mark"]),
+                Step::Jj(&["bookmark", "set", "b-mark", "-r", "@"]),
+                Step::Jj(&["bookmark", "create", "c-mark", "-r", "@"]),
+            ],
+            |repo, _, _| {
+                push_outcome(
+                    repo,
+                    &GitPushArgs {
+                        revisions: strings(&["@"]),
+                        ..GitPushArgs::default()
+                    },
+                )
+            },
+            |_| strings(&["git", "push", "-r", "@"]),
+        ),
+        // `--all` to both remotes: `origin` receives `b-mark` and `c-mark`, `up` refuses
+        // `b-mark` with a warning — its `b-mark@up` exists but is not tracked ("Non-tracking
+        // remote bookmark … exists") — and receives `c-mark`.
+        push(
+            "push_all_two_remotes_one_refuses",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Git(&["init", "-q", "--bare", "../remote2.git"]),
+                Step::Jj(&["git", "remote", "add", "up", "../remote2.git"]),
+                Step::Jj(&["git", "push", "--remote", "up", "-b", "b-mark"]),
+                Step::Jj(&["bookmark", "untrack", "b-mark@up"]),
+                Step::Jj(&["bookmark", "create", "c-mark", "-r", "@"]),
+            ],
+            |repo, _, _| {
+                push_outcome(
+                    repo,
+                    &GitPushArgs {
+                        remotes: Some(strings(&["*"])),
+                        all: true,
+                        ..GitPushArgs::default()
+                    },
+                )
+            },
+            |_| strings(&["git", "push", "--remote", "*", "--all"]),
+        ),
+        // As above without `c-mark`: nothing is left for `up`, yet the CLI still runs
+        // `git push` for it with no refspecs (`push.rs:588-615` has no empty check), which git
+        // fails ("You are not currently on a branch") — after `origin` already received
+        // `b-mark`, so the push is refused and no operation is written.
+        push(
+            "push_all_one_remote_left_empty",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Git(&["init", "-q", "--bare", "../remote2.git"]),
+                Step::Jj(&["git", "remote", "add", "up", "../remote2.git"]),
+                Step::Jj(&["git", "push", "--remote", "up", "-b", "b-mark"]),
+                Step::Jj(&["bookmark", "untrack", "b-mark@up"]),
+            ],
+            |repo, _, _| {
+                push_outcome(
+                    repo,
+                    &GitPushArgs {
+                        remotes: Some(strings(&["*"])),
+                        all: true,
+                        ..GitPushArgs::default()
+                    },
+                )
+            },
+            |_| strings(&["git", "push", "--remote", "*", "--all"]),
+        ),
+        // `--all` with `-b`: clap's group conflict (`push.rs:121-122`), refused before any work.
+        push(
+            "push_all_with_bookmark_refused",
+            REMOTE,
+            |repo, _, _| {
+                push_outcome(
+                    repo,
+                    &GitPushArgs {
+                        all: true,
+                        bookmarks: strings(&["b-mark"]),
+                        ..GitPushArgs::default()
+                    },
+                )
+            },
+            |_| strings(&["git", "push", "--all", "-b", "b-mark"]),
         ),
     ]
 }

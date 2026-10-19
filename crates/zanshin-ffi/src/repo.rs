@@ -392,17 +392,14 @@ fn read_clone_request(data: *const u8, len: usize) -> Result<CloneOptions, FfiEr
     let req = flatbuffers::root_with_opts::<fbs::RepoCloneRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
     expect_request_kind(req.kind(), fbs::RequestKind::RepoClone)?;
-    let strings = |v: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&str>>>| {
-        v.map(|v| v.iter().map(ToOwned::to_owned).collect::<Vec<String>>())
-    };
     Ok(CloneOptions {
         source: req.source().ok_or_else(|| missing_field("source"))?.to_owned(),
         destination: req.destination().ok_or_else(|| missing_field("destination"))?.into(),
         remote_name: req.remote_name().map(ToOwned::to_owned),
         colocate: colocation(req.colocate(), req.no_colocate())?,
         depth: std::num::NonZeroU32::new(req.depth()),
-        branches: strings(req.branches()),
-        tags: strings(req.tags()),
+        branches: crate::push::strings(req.branches()),
+        tags: crate::push::strings(req.tags()),
         object_hash: object_hash(req.object_hash())?,
     })
 }

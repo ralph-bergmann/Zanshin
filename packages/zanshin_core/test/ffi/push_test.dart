@@ -274,6 +274,8 @@ void main() {
       expect(() => zanshinRepoClone(source: 's', destination: '/d', branches: const [nul]), throwsArgumentError);
       expect(() => zanshinRepoClone(source: 's', destination: '/d', tags: const [nul]), throwsArgumentError);
       expect(() => zanshinRepoClone(source: 's', destination: '/d', depth: 0), throwsArgumentError);
+      // The wire's `depth` is a uint32: a larger value would wrap silently.
+      expect(() => zanshinRepoClone(source: 's', destination: '/d', depth: 0x100000000), throwsArgumentError);
     });
   });
 }

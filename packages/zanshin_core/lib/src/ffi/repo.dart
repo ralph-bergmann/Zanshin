@@ -111,6 +111,9 @@ Uint8List zanshinRepoClone({
   if (depth != null && depth <= 0) {
     throw ArgumentError.value(depth, 'depth', 'must be positive');
   }
+  if (depth != null && depth > 0xFFFFFFFF) {
+    throw ArgumentError.value(depth, 'depth', 'must fit in 32 bits');
+  }
   final Uint8List request = fbs.RepoCloneRequestObjectBuilder(
     kind: fbs.RequestKind.RepoClone,
     source: source,

@@ -470,10 +470,13 @@ final class RepoHandle {
   /// `jj git push` with every parameter passed through.
   ///
   /// [remotes] is `--remote` (`null` = not given: `git.push`, else the only
-  /// remote, else `origin`). Exactly one mode: [bookmarks] / [tags] (`-b` /
-  /// `-t` patterns), [all], [tracked], [deleted], [revisions] (`-r`),
-  /// [changes] (`-c`, creates `push-…` bookmarks), [named]
-  /// (`--named NAME=REVISION`) — or none, the `revsets.git-push` default.
+  /// remote, else `origin`). The specific refs — [bookmarks] / [tags] (`-b` /
+  /// `-t` patterns), [revisions] (`-r`), [changes] (`-c`, creates `push-…`
+  /// bookmarks) and [named] (`--named NAME=REVISION`) — combine with each
+  /// other; [all] and [tracked] exclude each other and the specific refs;
+  /// [deleted] excludes the specific refs and combines with [all] / [tracked]
+  /// (the CLI's argument groups). None of them is the `revsets.git-push`
+  /// default.
   /// [allowEmptyDescription] / [allowPrivate] / [allowConflicts] relax the
   /// commit checks; [options] are `--option` push options.
   ///
@@ -487,9 +490,11 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.invalid_input`, `jj.push_ref_refused`, `jj.push_commit_rejected`,
-  /// `jj.bookmark_exists`, `jj.revset_parse_error`, `jj.config_error`,
-  /// `jj.not_a_git_repo`, `jj.jj_lib_error`).
+  /// `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`,
+  /// `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`,
+  /// `jj.push_ref_refused`, `jj.push_commit_rejected`, `jj.revset_parse_error`,
+  /// `jj.revset_resolution_error`, `jj.config_error`, `jj.not_a_git_repo`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
   Future<GitPushResult> gitPush({
     List<String>? remotes,
     List<String> bookmarks = const [],

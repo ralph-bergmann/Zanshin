@@ -27,8 +27,9 @@ use crate::repo::map_mutate_err;
 
 // ── Request reader ───────────────────────────────────────────────────────────────
 
-/// A string vector as owned strings; ABSENT is `None`, distinct from present-empty.
-fn strings(v: Option<Vector<'_, ForwardsUOffset<&str>>>) -> Option<Vec<String>> {
+/// A string vector as owned strings; ABSENT is `None`, distinct from present-empty. Shared by
+/// the request readers (`repo.rs`'s `RepoCloneRequest` one too).
+pub(crate) fn strings(v: Option<Vector<'_, ForwardsUOffset<&str>>>) -> Option<Vec<String>> {
     v.map(|v| v.iter().map(ToOwned::to_owned).collect())
 }
 

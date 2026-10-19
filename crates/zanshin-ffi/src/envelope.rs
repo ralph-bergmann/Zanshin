@@ -1169,9 +1169,6 @@ mod tests {
         );
     }
 
-    /// Every `WarningKind` maps to exactly its registry string (`docs/rust-error-codes.md`
-    /// § Warning Codes — the same literals as Dart's `ZanshinWarningCode`), so a typo'd or
-    /// swapped constant fails here, and no two kinds share a code.
     /// The registry, literally (`docs/rust-error-codes.md` § Warning Codes). No wildcard arm: a new
     /// `WarningKind` does not compile here until its registry string is written down.
     fn registered(kind: zanshin_jj::WarningKind) -> &'static str {
@@ -1227,6 +1224,9 @@ mod tests {
         }
     }
 
+    /// Every `WarningKind` maps to exactly its registry string (`docs/rust-error-codes.md`
+    /// § Warning Codes — the same literals as Dart's `ZanshinWarningCode`), so a typo'd or
+    /// swapped constant fails here, and no two kinds share a code.
     #[test]
     fn every_warning_kind_has_its_registered_code() {
         use zanshin_jj::WarningKind as K;

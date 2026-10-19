@@ -242,6 +242,11 @@ fn malformed_requests_and_handles_are_refused() {
 
 static RECEIVED: Mutex<Vec<Vec<u8>>> = Mutex::new(Vec::new());
 
+/// Serializes the tests of this binary that register the process-global event sink — a second
+/// registration would replace the first test's sink mid-run. Hold it from register to
+/// unregister.
+static SINK_GUARD: Mutex<()> = Mutex::new(());
+
 fn received() -> MutexGuard<'static, Vec<Vec<u8>>> {
     RECEIVED.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
@@ -253,7 +258,8 @@ unsafe extern "C" fn sink(token: *mut ZanshinBuf) {
 }
 
 /// A clone's progress events carry the session id its new handle gets — allocated before the
-/// clone ran.
+/// clone ran. The sink is process-global: the other tests' pushes dispatch their progress
+/// through it too, so only this clone's session id is asserted on.
 #[test]
 fn clone_progress_carries_the_new_handles_session_id() {
     test_helpers::pin_test_env();
@@ -277,6 +283,7 @@ fn clone_progress_carries_the_new_handles_session_id() {
         b.finish(req, None);
         b.finished_data().to_vec()
     };
+    let _sink_guard = SINK_GUARD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     received().clear();
     zanshin_events_register(Some(sink));
     let bytes = unsafe { read_and_free(zanshin_repo_clone(request.as_ptr(), request.len())) };
@@ -289,18 +296,21 @@ fn clone_progress_carries_the_new_handles_session_id() {
     let mut progress = Vec::new();
     while progress.is_empty() && Instant::now() < deadline {
         for raw in std::mem::take(&mut *received()) {
-            if envelope(&raw).data_type() == fbs::Payload::Progress {
+            let event = envelope(&raw);
+            if event.data_as_progress().is_some_and(|p| p.session_id() == session_id) {
                 progress.push(raw);
             }
         }
         std::thread::sleep(Duration::from_millis(10));
     }
     zanshin_events_unregister();
-    assert!(!progress.is_empty(), "a local clone reports progress");
+    assert!(
+        !progress.is_empty(),
+        "a local clone reports progress under its new handle's session id"
+    );
     for raw in &progress {
         let event = envelope(raw).data_as_progress().expect("Progress");
         assert_eq!(event.operation(), Some("clone"));
-        assert_eq!(event.session_id(), session_id);
     }
     close(raw);
 }

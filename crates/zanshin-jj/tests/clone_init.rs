@@ -5,7 +5,13 @@
 //! clean-up scope, the init modes. Sources are local git repositories (`file://`), never the
 //! network. The identity and warning ORDER rows live in `tests/creation_warnings.rs` (they need
 //! an empty identity); the oracle (`crates/zanshin-parity`) compares the same flows with the CLI.
+//!
+//! The config-driven rows (a flag left `None` so the user config decides) need `JJ_CONFIG`
+//! repointed and, for one row, the identity variables removed — process-global state that would
+//! race the other tests of this binary. Each such test therefore re-runs ITSELF in a child
+//! process ([`with_user_config`]) and changes the environment only there.
 
+use std::env;
 use std::fs;
 use std::num::NonZeroU32;
 use std::ops::ControlFlow;
@@ -502,6 +508,250 @@ fn init_over_an_existing_repository_follows_the_cli_modes() {
         matches!(outcome.result, Err(RepoError::AlreadyJjRepo { .. })),
         "{:?}",
         outcome.result
+    );
+}
+
+// ── config-driven defaults ────────────────────────────────────────────────────────
+
+/// Set in a child process: the path of the user config file it runs with.
+const CHILD_USER_CONFIG: &str = "ZANSHIN_CLONE_INIT_USER_CONFIG";
+
+/// Runs `body` with `config` as the USER config layer (`JJ_CONFIG`). The calling test `test` (its
+/// exact name) re-runs itself in a child process with [`CHILD_USER_CONFIG`] set; only the child
+/// repoints `JJ_CONFIG` and runs `body`, so no other test of this binary sees the change. The
+/// parent asserts that the child ran exactly that one test and that it passed.
+fn with_user_config(test: &str, config: &str, body: impl FnOnce()) {
+    if let Some(path) = env::var_os(CHILD_USER_CONFIG) {
+        test_helpers::pin_test_env();
+        // SAFETY: the child runs this one test only (`--exact`), on one thread.
+        unsafe { env::set_var("JJ_CONFIG", path) };
+        body();
+        return;
+    }
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("config.toml");
+    fs::write(&path, config).unwrap();
+    let out = Command::new(env::current_exe().expect("test binary"))
+        .args([test, "--exact", "--nocapture", "--test-threads=1"])
+        .env(CHILD_USER_CONFIG, &path)
+        .output()
+        .expect("the test binary re-runs");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && stdout.contains("1 passed"),
+        "child run of {test} failed:\n{stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// Removes the identity variables [`test_helpers::pin_test_env`] sets — an empty identity. Only
+/// inside a [`with_user_config`] body (the child process).
+fn unset_identity() {
+    // SAFETY: called only in the single-test child process of `with_user_config`.
+    unsafe {
+        env::remove_var("JJ_USER");
+        env::remove_var("JJ_EMAIL");
+    }
+}
+
+/// `git.track-default-bookmark-on-clone = false` (`clone.rs:390,447-455` @ v0.46.0): the default
+/// branch is still the working branch (checked out, `trunk()` preset) but `main@origin` stays
+/// untracked and no local `main` is created.
+#[test]
+fn track_default_bookmark_on_clone_false_leaves_the_default_branch_untracked() {
+    with_user_config(
+        "track_default_bookmark_on_clone_false_leaves_the_default_branch_untracked",
+        "[git]\ntrack-default-bookmark-on-clone = false\n",
+        || {
+            let src = TempDir::new().unwrap();
+            source_repo(src.path());
+            let dst = TempDir::new().unwrap();
+            let outcome = clone(&CloneOptions {
+                source: file_url(src.path()),
+                destination: dst.path().to_owned(),
+                ..Default::default()
+            });
+            let mut repo = outcome.result.expect("clone succeeds");
+            assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
+            let bookmarks = repo.list_bookmarks().expect("bookmarks");
+            assert!(
+                bookmarks.iter().any(|b| b.name == "main"
+                    && matches!(&b.kind, BookmarkKind::Remote { remote_name, tracked: false, .. } if remote_name == "origin")),
+                "main@origin is fetched, untracked: {bookmarks:?}"
+            );
+            assert!(
+                !bookmarks
+                    .iter()
+                    .any(|b| b.name == "main" && matches!(b.kind, BookmarkKind::Local)),
+                "no local main: {bookmarks:?}"
+            );
+            assert_eq!(ops(&mut repo)[0], "check out git remote's branch: main");
+            assert_eq!(descriptions(&mut repo, "@-"), ["second\n"]);
+            assert_eq!(descriptions(&mut repo, "trunk()"), ["second\n"]);
+        },
+    );
+}
+
+/// `remotes.origin.fetch-bookmarks = "feature"` with no `-b` (`clone.rs:231-238` @ v0.46.0): only
+/// `feature` is fetched. The configured expression's exact name is the working branch
+/// (`clone.rs:414-434`), so `feature` is checked out — but it is not the default branch, so it is
+/// not tracked and no `trunk()` is preset; no `-b`/`-t` given, no fetch preset is written either.
+#[test]
+fn remote_fetch_bookmarks_config_limits_the_clone() {
+    with_user_config(
+        "remote_fetch_bookmarks_config_limits_the_clone",
+        "[remotes.origin]\nfetch-bookmarks = \"feature\"\n",
+        || {
+            let src = TempDir::new().unwrap();
+            source_repo(src.path());
+            let dst = TempDir::new().unwrap();
+            let outcome = clone(&CloneOptions {
+                source: file_url(src.path()),
+                destination: dst.path().to_owned(),
+                colocate: Some(false),
+                ..Default::default()
+            });
+            let mut repo = outcome.result.expect("clone succeeds");
+            assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
+            let mut remote: Vec<String> = repo
+                .list_bookmarks()
+                .expect("bookmarks")
+                .into_iter()
+                .filter(|b| matches!(&b.kind, BookmarkKind::Remote { remote_name, .. } if remote_name == "origin"))
+                .map(|b| b.name)
+                .collect();
+            remote.sort();
+            assert_eq!(remote, ["feature"], "only the configured bookmark is fetched");
+            assert!(!tracked(&mut repo, "feature", "origin"), "not the default branch");
+            assert_eq!(
+                ops(&mut repo)[..3],
+                [
+                    "check out git remote's branch: feature",
+                    "fetch from git remote into empty repo",
+                    "add git remote origin",
+                ]
+            );
+            assert_eq!(descriptions(&mut repo, "@-"), ["feature\n"]);
+            assert_eq!(repo_config(dst.path()), None, "nothing to preset");
+        },
+    );
+}
+
+/// `git.colocate = false` with no colocation flag (`init.rs:166-170`, `clone.rs:198-202` @
+/// v0.46.0): both `jj git init` and `jj git clone` create an internal Git repo — no `.git` in the
+/// workspace root, no `.jj/.gitignore`, the Git store under `.jj/repo/store/git`.
+#[test]
+fn git_colocate_false_makes_init_and_clone_internal() {
+    with_user_config(
+        "git_colocate_false_makes_init_and_clone_internal",
+        "[git]\ncolocate = false\n",
+        || {
+            let internal = |root: &Path| {
+                assert!(!root.join(".git").exists(), "{root:?}: not colocated");
+                assert!(!root.join(".jj").join(".gitignore").exists(), "{root:?}");
+                assert!(
+                    root.join(".jj").join("repo").join("store").join("git").is_dir(),
+                    "{root:?}: the Git store is internal"
+                );
+            };
+
+            let parent = TempDir::new().unwrap();
+            let dst = parent.path().join("init");
+            init(&InitOptions {
+                path: dst.clone(),
+                backend: Some(Backend::Git),
+                ..Default::default()
+            })
+            .result
+            .expect("init succeeds");
+            internal(&dst);
+
+            let src = TempDir::new().unwrap();
+            source_repo(src.path());
+            let dst = parent.path().join("clone");
+            let mut repo = clone(&CloneOptions {
+                source: file_url(src.path()),
+                destination: dst.clone(),
+                ..Default::default()
+            })
+            .result
+            .expect("clone succeeds");
+            internal(&dst);
+            assert_eq!(descriptions(&mut repo, "@-"), ["second\n"]);
+        },
+    );
+}
+
+/// `git.object-hash = "sha256"` with no `--object-hash` (`init.rs:172-175`, `clone.rs:212-215` @
+/// v0.46.0) reaches the new Git repository — for `jj git init`, and for a clone of a SHA-256
+/// source (a SHA-1 source cannot be fetched into a SHA-256 repository).
+#[test]
+fn git_object_hash_config_reaches_the_new_repository() {
+    with_user_config(
+        "git_object_hash_config_reaches_the_new_repository",
+        "[git]\nobject-hash = \"sha256\"\n",
+        || {
+            let parent = TempDir::new().unwrap();
+            let dst = parent.path().join("init");
+            init(&InitOptions {
+                path: dst.clone(),
+                backend: Some(Backend::Git),
+                ..Default::default()
+            })
+            .result
+            .expect("init succeeds");
+            assert_eq!(git(&["rev-parse", "--show-object-format"], &dst), "sha256");
+
+            let src = TempDir::new().unwrap();
+            git(&["init", "--object-format=sha256", "--initial-branch=main"], src.path());
+            git(&["config", "user.email", "test@zanshin.test"], src.path());
+            git(&["config", "user.name", "Fixture"], src.path());
+            fs::write(src.path().join("README.md"), "hello").unwrap();
+            git(&["add", "."], src.path());
+            git(&["commit", "-m", "initial"], src.path());
+            let dst = parent.path().join("clone");
+            let mut repo = clone(&CloneOptions {
+                source: file_url(src.path()),
+                destination: dst.clone(),
+                ..Default::default()
+            })
+            .result
+            .expect("clone succeeds");
+            assert_eq!(git(&["rev-parse", "--show-object-format"], &dst), "sha256");
+            assert_eq!(descriptions(&mut repo, "@-"), ["initial\n"]);
+        },
+    );
+}
+
+/// A clone whose fetch fails (the source is no Git repository) with an EMPTY identity keeps the
+/// identity warning of the `add git remote` operation finished before the fetch — the CLI prints
+/// it from that finish (`cli_util.rs:2442-2456` @ v0.46.0) before the fetch error; the clean-up
+/// still removes the destination the clone created.
+#[test]
+fn a_failing_fetch_keeps_the_identity_warning_of_the_finished_add_remote() {
+    with_user_config(
+        "a_failing_fetch_keeps_the_identity_warning_of_the_finished_add_remote",
+        "",
+        || {
+            unset_identity();
+            let parent = TempDir::new().unwrap();
+            let not_a_repo = parent.path().join("plain");
+            fs::create_dir(&not_a_repo).unwrap();
+            let dst = parent.path().join("dst");
+            let outcome = clone(&CloneOptions {
+                source: file_url(&not_a_repo),
+                destination: dst.clone(),
+                ..Default::default()
+            });
+            assert!(
+                matches!(outcome.result, Err(RepoError::CloneFailed { .. })),
+                "{:?}",
+                outcome.result
+            );
+            let kinds: Vec<_> = outcome.warnings.iter().map(|w| w.kind).collect();
+            assert_eq!(kinds, [WarningKind::IdentityMissing], "{:?}", outcome.warnings);
+            assert!(!dst.exists(), "the destination the clone created is removed");
+        },
     );
 }
 

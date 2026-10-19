@@ -252,8 +252,9 @@ pub enum PushFailureKind {
     /// push some bookmarks". The operation may still have been recorded.
     SomeRefsFailed,
     /// The push itself failed at a remote (the network, the credentials, an invalid remote
-    /// name): the CLI's `GitPushError`. Earlier remotes may already have their refs; nothing is
-    /// recorded.
+    /// name): the CLI's `GitPushError` — earlier remotes may already have their refs, nothing is
+    /// recorded. Also a step after the push loop that failed (the error's text);
+    /// [`GitPushOutcome::recorded`] then says whether the operation was written.
     PushError,
 }
 
@@ -291,7 +292,8 @@ pub struct GitPushOutcome {
     /// succeeded or at least one was exported).
     pub recorded: bool,
     /// The operation's description as the CLI writes it (e.g. "push bookmark main to git remote
-    /// origin"); in a dry run, the one the real push would write; `None` when nothing changed.
+    /// origin"); in a dry run, the one the real push would write; `None` when no ref would be
+    /// pushed (nothing changed, or a dry run whose every explicitly named ref aborts).
     pub description: Option<String>,
     /// The operation-log head after the call — the push's operation when recorded, else the
     /// head the push started from.
@@ -1163,7 +1165,7 @@ fn validate_explicit(
     abort.get_or_insert_with(|| PushFailure {
         kind: PushFailureKind::CommitRejected,
         message: rejection.message.clone(),
-        hint: rejection.hints.first().cloned(),
+        hint: (!rejection.hints.is_empty()).then(|| rejection.hints.join("\n")),
     });
     // Each explicit row checked on its own, from the heads known before the explicit check.
     let known = validator.known_heads.clone();
@@ -1467,19 +1469,16 @@ fn sign_before_push(
             .collect()
     };
 
-    let skipped = commits_of(&to_push.intersection(immutable))?
+    let skipped: Vec<String> = commits_of(&to_push.intersection(immutable))?
         .into_iter()
         .filter(|commit| needs_signing(commit))
-        .count();
-    if skipped > 0 {
-        let count = if skipped > 10 {
-            "10+".to_owned()
-        } else {
-            skipped.to_string()
-        };
+        .take(11)
+        .map(|commit| commit_summary(base.as_ref(), &commit))
+        .collect();
+    if !skipped.is_empty() {
         sink.push(
             WarningKind::PushSigningSkippedImmutable,
-            format!("Skipped signing {count} immutable commits:"),
+            skipped_signing_message(&skipped),
         );
     }
     let mut to_sign: Vec<JjCommitId> = Vec::new();
@@ -1533,6 +1532,24 @@ fn sign_before_push(
         updated_signatures: to_sign.len(),
         rebased_descendants,
     }))
+}
+
+/// The "Skipped signing N immutable commits:" warning with the commit list the CLI prints after
+/// it (`push.rs:940-956` @ v0.46.0, `print_updated_commits` `cli_util.rs:3111-3125`): at most 10
+/// summaries, each indented by two spaces, then "  ..." when there are more. `summaries` holds
+/// up to 11 (the CLI's `take(11)`).
+fn skipped_signing_message(summaries: &[String]) -> String {
+    let count = if summaries.len() > 10 {
+        "10+".to_owned()
+    } else {
+        summaries.len().to_string()
+    };
+    let mut lines = vec![format!("Skipped signing {count} immutable commits:")];
+    lines.extend(summaries.iter().take(10).map(|summary| format!("  {summary}")));
+    if summaries.len() > 10 {
+        lines.push("  ...".to_owned());
+    }
+    lines.join("\n")
 }
 
 /// A ref's status after the push, from the push's stats.
@@ -1706,7 +1723,8 @@ pub(crate) fn git_push(
         return Ok(outcome);
     }
     let description = plan.description(args);
-    outcome.description = Some(description.clone());
+    // A dry run whose every explicit ref aborts has no update to describe.
+    outcome.description = (!plan.nothing_changed()).then(|| description.clone());
     if args.dry_run {
         outcome.failure = plan.abort.take();
         outcome.remotes = render(tx.repo(), plan.remotes, &HashMap::new())?;
@@ -1719,20 +1737,47 @@ pub(crate) fn git_push(
     let pushed = push_remotes(&mut tx, &readonly, &plan.remotes, (args, progress), ctx)?;
     outcome.hints.extend(pushed.hints);
     outcome.failure = pushed.failure.or_else(|| (!pushed.all_ok).then(some_refs_failed));
-    outcome.recorded = pushed.recordable;
-    outcome.remotes = render(tx.repo(), plan.remotes, &pushed.results)?;
+    // Refs are on the remotes now: a later error is data, not an `Err` (Story 9.20).
+    let mut late_error = None;
+    match render(tx.repo(), plan.remotes, &pushed.results) {
+        Ok(remotes) => outcome.remotes = remotes,
+        Err(e) => late_error = Some(e),
+    }
     if pushed.recordable {
-        let immutable = crate::op_support::resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
-        pollster::block_on(tx.repo_mut().rebase_descendants_with_options(
-            &immutable,
-            &RebaseOptions::default(),
-            |_, _| {},
-        ))
-        .map_err(be)?;
-        let finish = crate::mutate::finish_verb(repo.workspace_mut(), tx, &description, ctx)?;
-        outcome.new_op_id = finish.repo.op_id().hex();
+        match record_push(repo, ctx, tx, &description) {
+            Ok(op_id) => {
+                outcome.recorded = true;
+                outcome.new_op_id = op_id;
+            }
+            Err(e) => late_error = late_error.or(Some(e)),
+        }
+    }
+    if let Some(e) = late_error {
+        outcome.failure = Some(PushFailure {
+            kind: PushFailureKind::PushError,
+            message: crate::mutate::flatten_chain(&e),
+            hint: None,
+        });
     }
     Ok(outcome)
+}
+
+/// The record step (`push.rs:622-655`): descendants rebased, then the push's operation written
+/// with `description`. Returns the new operation's id.
+fn record_push(
+    repo: &mut Repo,
+    ctx: &mut VerbContext,
+    mut tx: Transaction,
+    description: &str,
+) -> Result<String, MutateError> {
+    let immutable = crate::op_support::resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
+    pollster::block_on(
+        tx.repo_mut()
+            .rebase_descendants_with_options(&immutable, &RebaseOptions::default(), |_, _| {}),
+    )
+    .map_err(be)?;
+    let finish = crate::mutate::finish_verb(repo.workspace_mut(), tx, description, ctx)?;
+    Ok(finish.repo.op_id().hex())
 }
 
 /// What the push loop leaves behind.
@@ -1810,5 +1855,30 @@ fn some_refs_failed() -> PushFailure {
         kind: PushFailureKind::SomeRefsFailed,
         message: "Failed to push some bookmarks".to_owned(),
         hint: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skipped_signing_lists_the_commits_like_the_cli() {
+        let summaries: Vec<String> = (0..3).map(|i| format!("c{i}")).collect();
+        assert_eq!(
+            skipped_signing_message(&summaries),
+            "Skipped signing 3 immutable commits:\n  c0\n  c1\n  c2"
+        );
+    }
+
+    #[test]
+    fn skipped_signing_caps_the_list_at_ten() {
+        let summaries: Vec<String> = (0..11).map(|i| format!("c{i}")).collect();
+        let message = skipped_signing_message(&summaries);
+        let lines: Vec<&str> = message.lines().collect();
+        assert_eq!(lines[0], "Skipped signing 10+ immutable commits:");
+        assert_eq!(lines.len(), 12, "the heading, ten summaries and the overflow line");
+        assert_eq!(lines[10], "  c9");
+        assert_eq!(lines[11], "  ...");
     }
 }

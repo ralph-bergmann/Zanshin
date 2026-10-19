@@ -14,7 +14,7 @@ use std::process::Command;
 use tempfile::TempDir;
 use zanshin_jj::{
     ChangeId, CloneOptions, GitPushArgs, GitPushOutcome, MutateError, ProgressEvent, PushFailureKind, PushPath,
-    PushRefKind, PushRefStatus, Repo, WarningKind,
+    PushRefKind, PushRefName, PushRefStatus, Repo, WarningKind,
 };
 
 /// Runs `git` in `dir`; panics on a non-zero exit. Fixture setup only.
@@ -295,6 +295,35 @@ fn skip_versus_abort_for_a_commit_without_description() {
         row.rejection.as_ref().expect("rejection").reasons,
         ["has no description"]
     );
+    assert!(
+        plan.description.is_none(),
+        "every explicit ref aborts: nothing to describe"
+    );
+
+    // Two explicit bookmarks, only one commit undescribed: the good row is planned, the bad one
+    // aborts, and the description names only the good one.
+    let plan = w
+        .push(&GitPushArgs {
+            bookmarks: vec!["main".to_owned(), "side".to_owned()],
+            dry_run: true,
+            ..Default::default()
+        })
+        .expect("the dry run plans");
+    let rows: Vec<_> = plan.remotes[0].refs.iter().map(|r| (r.name.as_str(), r.path)).collect();
+    assert_eq!(rows, [("main", PushPath::Push), ("side", PushPath::Abort)]);
+    let side_row = &plan.remotes[0].refs[1];
+    assert_eq!(
+        side_row.rejection.as_ref().map(|r| r.message.as_str()),
+        Some(message.as_str())
+    );
+    assert_eq!(
+        plan.failure.as_ref().map(|f| f.kind),
+        Some(PushFailureKind::CommitRejected)
+    );
+    assert_eq!(
+        plan.description.as_deref(),
+        Some("push bookmark main to git remote origin")
+    );
 
     w.take_and_ignore_warnings();
     let outcome = w.push(&GitPushArgs::default()).expect("the bare push skips");
@@ -374,8 +403,16 @@ fn refused_refs_carry_the_cli_message_and_hint() {
         Some("Non-tracking remote bookmark side@origin exists")
     );
     assert_eq!(
-        side_row.refusal.and_then(|r| r.hint).as_deref(),
+        side_row.refusal.clone().and_then(|r| r.hint).as_deref(),
         Some("Run `jj bookmark track side@origin` to import the remote bookmark.")
+    );
+    assert_eq!(
+        side_row.explicit_refusal, side_row.refusal,
+        "-b would refuse it with the same CLI text"
+    );
+    assert_eq!(
+        main_row.explicit_refusal.map(|r| r.message).as_deref(),
+        Some("Bookmark main is conflicted")
     );
     let fresh_row = row("fresh");
     assert_eq!(fresh_row.path, PushPath::Push, "--all allows new bookmarks");
@@ -758,4 +795,346 @@ fn sign_on_push_signs_the_commits_to_push() {
         })
         .expect("revset");
     assert!(signed);
+}
+
+/// A new commit on `parent` whose author has neither name nor email — written through jj-lib,
+/// since every Zanshin verb stamps the configured identity.
+fn commit_without_author(root: &Path, parent: &str) -> String {
+    let settings = test_helpers::test_settings();
+    let workspace = jj_lib::workspace::Workspace::load(
+        &settings,
+        root,
+        &jj_lib::default_backend_factories::default_backend_factories(),
+        &jj_lib::default_backend_factories::default_working_copy_factories(),
+    )
+    .expect("load");
+    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).expect("head");
+    let parent = jj_lib::backend::CommitId::try_from_hex(parent).expect("hex");
+    let tree = jj_lib::repo::Repo::store(repo.as_ref())
+        .get_commit(&parent)
+        .expect("parent")
+        .tree();
+    let mut tx = repo.start_transaction();
+    let builder = tx.repo_mut().new_commit(vec![parent], tree);
+    let timestamp = builder.author().timestamp;
+    let commit = pollster::block_on(
+        builder
+            .set_author(jj_lib::backend::Signature {
+                name: String::new(),
+                email: String::new(),
+                timestamp,
+            })
+            .set_description("no author")
+            .write(),
+    )
+    .expect("write");
+    pollster::block_on(tx.commit("test: commit without author")).expect("commit");
+    jj_lib::object_id::ObjectId::hex(commit.id())
+}
+
+/// The commit checks and their overrides: a conflicted commit (`--allow-conflicts`), an
+/// undescribed one (`--allow-empty-description`), a commit without author (never overridable).
+#[test]
+fn commit_checks_have_their_overrides() {
+    let mut w = world();
+    let main = w.hex("main");
+    let conflicted = test_helpers::add_conflicted_merge_off_root(&w.root);
+    let undescribed = w.commit(&[&main], "u.txt", "");
+    let no_author = commit_without_author(&w.root, &main);
+    test_helpers::set_local_bookmark(&w.root, "conf", &[&conflicted]);
+    test_helpers::set_local_bookmark(&w.root, "undesc", &[&undescribed]);
+    test_helpers::set_local_bookmark(&w.root, "anon", &[&no_author]);
+    w.reopen();
+    let only = |name: &str| GitPushArgs {
+        bookmarks: vec![name.to_owned()],
+        ..Default::default()
+    };
+    let rejected = |err: &MutateError| match err {
+        MutateError::PushCommitRejected { message } => message.clone(),
+        other => panic!("{other:?}"),
+    };
+
+    let err = w.push(&only("conf")).expect_err("a conflicted commit is rejected");
+    assert!(rejected(&err).ends_with("since it has conflicts"), "{err:?}");
+    let outcome = w
+        .push(&GitPushArgs {
+            allow_conflicts: true,
+            ..only("conf")
+        })
+        .expect("--allow-conflicts pushes it");
+    assert!(outcome.recorded && outcome.failure.is_none());
+    assert_eq!(w.remote_refs()["refs/heads/conf"], conflicted);
+
+    let err = w.push(&only("undesc")).expect_err("an undescribed commit is rejected");
+    assert_eq!(
+        rejected(&err),
+        format!("Won't push commit {} since it has no description", short(&undescribed))
+    );
+    w.push(&GitPushArgs {
+        allow_empty_description: true,
+        ..only("undesc")
+    })
+    .expect("--allow-empty-description pushes it");
+    assert_eq!(w.remote_refs()["refs/heads/undesc"], undescribed);
+
+    let err = w
+        .push(&GitPushArgs {
+            allow_empty_description: true,
+            allow_private: true,
+            allow_conflicts: true,
+            ..only("anon")
+        })
+        .expect_err("no flag overrides a missing author");
+    assert_eq!(
+        rejected(&err),
+        format!(
+            "Won't push commit {} since it has no author and/or committer set",
+            short(&no_author)
+        )
+    );
+    assert!(!w.remote_refs().contains_key("refs/heads/anon"));
+}
+
+/// `git.private-commits`: a private commit is rejected with the CLI's reason and hint (after the
+/// "Rejected commit" one); `--allow-private` pushes it.
+#[test]
+fn private_commits_are_rejected_unless_allowed() {
+    let mut w = world();
+    let main = w.hex("main");
+    let wip = w.commit(&[&main], "wip.txt", "wip: not yet");
+    test_helpers::set_local_bookmark(&w.root, "main", &[&wip]);
+    w.add_repo_config("[git]\nprivate-commits = \"description(glob:'wip*')\"\n");
+    w.new_wc_on(&[&wip]);
+    let message = format!("Won't push commit {} since it is private", short(&wip));
+    let main_only = GitPushArgs {
+        bookmarks: vec!["main".to_owned()],
+        ..Default::default()
+    };
+    let err = w.push(&main_only).expect_err("a private commit is rejected");
+    assert!(
+        matches!(&err, MutateError::PushCommitRejected { message: m } if *m == message),
+        "{err:?}"
+    );
+    let plan = w
+        .push(&GitPushArgs {
+            dry_run: true,
+            ..main_only.clone()
+        })
+        .expect("the dry run plans");
+    let rejection = plan.remotes[0].refs[0].rejection.clone().expect("rejected");
+    assert_eq!(rejection.reasons, ["is private"]);
+    let hint = "Configured git.private-commits: 'description(glob:'wip*')'";
+    assert_eq!(rejection.hints.last().map(String::as_str), Some(hint));
+    let failure_hint = plan.failure.and_then(|f| f.hint).expect("hint");
+    let lines: Vec<&str> = failure_hint.lines().collect();
+    assert!(lines[0].starts_with("Rejected commit: "), "{failure_hint}");
+    assert_eq!(lines[1..], [hint], "every hint of the rejection is kept");
+
+    let outcome = w
+        .push(&GitPushArgs {
+            allow_private: true,
+            ..main_only
+        })
+        .expect("--allow-private pushes it");
+    assert!(outcome.recorded);
+    assert_eq!(w.remote_refs()["refs/heads/main"], wip);
+}
+
+/// A second remote `up`: a clone of the bare remote, with `main@up` tracked where `main@origin`
+/// is.
+fn add_second_remote(w: &mut World) -> PathBuf {
+    let up = w.bare.with_file_name("up.git");
+    git(
+        &["clone", "--bare", &w.bare.to_string_lossy(), &up.to_string_lossy()],
+        w.bare.parent().unwrap(),
+    );
+    w.repo
+        .git_remote_add("up", &up.to_string_lossy(), None)
+        .expect("add a remote");
+    let old = w.hex("main@origin");
+    test_helpers::set_remote_bookmark(&w.root, "main", "up", &old, true);
+    w.reopen();
+    up
+}
+
+/// `git.push` as a string picks the remote of a bare push.
+#[test]
+fn git_push_config_as_a_string_selects_the_remote() {
+    let mut w = world();
+    let up = add_second_remote(&mut w);
+    w.add_repo_config("[git]\npush = \"up\"\n");
+    let third = advance_main(&mut w);
+    let outcome = w.push(&GitPushArgs::default()).expect("push");
+    let names: Vec<&str> = outcome.remotes.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(names, ["up"]);
+    assert_eq!(
+        outcome.description.as_deref(),
+        Some("push bookmark main to git remote up")
+    );
+    assert_eq!(
+        git(&["rev-parse", "refs/heads/main"], &up),
+        third,
+        "the configured remote got the ref"
+    );
+    assert_ne!(w.remote_refs()["refs/heads/main"], third, "origin did not");
+}
+
+/// `git.push` as a list picks every remote it names, in sorted order.
+#[test]
+fn git_push_config_as_a_list_selects_the_remotes() {
+    let mut w = world();
+    add_second_remote(&mut w);
+    w.add_repo_config("[git]\npush = [\"up\", \"origin\"]\n");
+    advance_main(&mut w);
+    let plan = w
+        .push(&GitPushArgs {
+            dry_run: true,
+            ..Default::default()
+        })
+        .expect("plan");
+    let names: Vec<&str> = plan.remotes.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(names, ["origin", "up"]);
+    assert_eq!(
+        plan.description.as_deref(),
+        Some("push bookmark main to git remotes origin, up")
+    );
+}
+
+/// The only remote, not named `origin`, is pushed to with the CLI's hint.
+#[test]
+fn the_only_remote_not_named_origin_gets_the_hint() {
+    let mut w = world();
+    w.repo.git_remote_rename("origin", "up").expect("rename");
+    let third = advance_main(&mut w);
+    let outcome = w.push(&GitPushArgs::default()).expect("push");
+    assert_eq!(outcome.hints, ["Pushing to the only existing remote: up".to_owned()]);
+    assert_eq!(outcome.remotes[0].name, "up");
+    assert_eq!(w.remote_refs()["refs/heads/main"], third);
+}
+
+/// A custom `revsets.git-push` decides which refs a bare push plans.
+#[test]
+fn a_custom_git_push_revset_changes_the_planned_refs() {
+    let mut w = world();
+    let side = w.hex("side@origin");
+    let next = w.commit(&[&side], "next.txt", "next");
+    test_helpers::set_remote_bookmark(&w.root, "side", "origin", &side, true);
+    test_helpers::set_local_bookmark(&w.root, "side", &[&next]);
+    w.reopen();
+    advance_main(&mut w);
+    let names = |w: &mut World| {
+        let plan = w
+            .push(&GitPushArgs {
+                dry_run: true,
+                ..Default::default()
+            })
+            .expect("plan");
+        plan.remotes[0].refs.iter().map(|r| r.name.clone()).collect::<Vec<_>>()
+    };
+    assert_eq!(names(&mut w), ["main"], "the default revset follows @");
+    w.add_repo_config("[revsets]\ngit-push = \"side\"\n");
+    assert_eq!(names(&mut w), ["side"], "the configured revset");
+}
+
+/// A second `-b main` after `main` was pushed: the CLI's "already matches" fact, nothing changed.
+#[test]
+fn an_explicit_bookmark_already_on_the_remote_already_matches() {
+    let mut w = world();
+    advance_main(&mut w);
+    let main_only = GitPushArgs {
+        bookmarks: vec!["main".to_owned()],
+        ..Default::default()
+    };
+    w.push(&main_only).expect("first push");
+    let again = w.push(&main_only).expect("second push");
+    assert!(again.nothing_changed);
+    assert_eq!(
+        again.remotes[0].already_matches,
+        [PushRefName {
+            kind: PushRefKind::Bookmark,
+            name: "main".to_owned()
+        }]
+    );
+}
+
+/// One ref pushed and exported, another lease-rejected: the operation is recorded (the CLI's
+/// record rule) with its description, and the failure is still "Failed to push some bookmarks".
+#[test]
+fn a_partial_success_with_an_export_records() {
+    let mut w = world();
+    let side = w.hex("side@origin");
+    let next = w.commit(&[&side], "next.txt", "next");
+    test_helpers::set_remote_bookmark(&w.root, "side", "origin", &side, true);
+    test_helpers::set_local_bookmark(&w.root, "side", &[&next]);
+    w.reopen();
+    let main = w.hex("main");
+    let third = w.commit(&[&main], "third.txt", "third");
+    test_helpers::set_local_bookmark(&w.root, "main", &[&third]);
+    w.reopen();
+    w.new_wc_on(&[&third, &next]);
+    let other = TempDir::new().unwrap();
+    git(
+        &["clone", &w.bare.to_string_lossy(), &other.path().to_string_lossy()],
+        other.path().parent().unwrap(),
+    );
+    git(&["config", "user.email", "x@zanshin.test"], other.path());
+    git(&["config", "user.name", "X"], other.path());
+    git(&["checkout", "side"], other.path());
+    fs::write(other.path().join("moved.txt"), "moved").unwrap();
+    git(&["add", "."], other.path());
+    git(&["commit", "-m", "moved"], other.path());
+    git(&["push", "origin", "side"], other.path());
+
+    let before = w.head_op();
+    let outcome = w.push(&GitPushArgs::default()).expect("the outcome is data");
+    assert!(outcome.recorded, "main was exported");
+    assert_eq!(
+        outcome.failure.as_ref().map(|f| (f.kind, f.message.as_str())),
+        Some((PushFailureKind::SomeRefsFailed, "Failed to push some bookmarks"))
+    );
+    let statuses: Vec<_> = outcome.remotes[0]
+        .refs
+        .iter()
+        .map(|r| (r.name.as_str(), r.status))
+        .collect();
+    assert_eq!(
+        statuses,
+        [
+            ("main", Some(PushRefStatus::Pushed)),
+            ("side", Some(PushRefStatus::LeaseRejected))
+        ]
+    );
+    assert_ne!(outcome.new_op_id, before);
+    assert_eq!(w.head_op(), outcome.new_op_id);
+    let description = w.repo.op_log(Some(1)).expect("op log")[0].description.clone();
+    assert_eq!(description, "push bookmarks main, side to git remote origin");
+    assert_eq!(outcome.description.as_deref(), Some(description.as_str()));
+    assert_eq!(w.remote_refs()["refs/heads/main"], third);
+}
+
+/// Sign-on-push skips an immutable commit to push with the CLI's warning and its commit list.
+#[test]
+fn sign_on_push_lists_the_immutable_commits_it_skips() {
+    let mut w = world();
+    w.add_repo_config("[git]\nsign-on-push = true\n\n[signing]\nbackend = \"test\"\n");
+    let third = advance_main(&mut w);
+    // A tag makes `third` immutable (`builtin_immutable_heads()` holds `tags()`).
+    test_helpers::set_tag(&w.root, "v2", &[&third]);
+    w.reopen();
+    let outcome = w.push(&GitPushArgs::default()).expect("push");
+    assert!(outcome.signing.is_none(), "nothing mutable needed a signature");
+    let warning = w
+        .warnings()
+        .into_iter()
+        .find(|(kind, _)| *kind == WarningKind::PushSigningSkippedImmutable)
+        .map(|(_, message)| message)
+        .expect("warned");
+    let lines: Vec<&str> = warning.lines().collect();
+    assert_eq!(lines[0], "Skipped signing 1 immutable commits:");
+    assert_eq!(lines.len(), 2, "{warning}");
+    assert!(
+        lines[1].starts_with("  ") && lines[1].contains(&third[..8]) && lines[1].ends_with(" third"),
+        "{warning}"
+    );
+    assert_eq!(w.remote_refs()["refs/heads/main"], third, "pushed unsigned");
 }

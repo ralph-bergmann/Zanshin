@@ -441,7 +441,8 @@ class ZanshinWorker {
   /// the CLI's flags (neither = `git.colocate`), [depth] `--depth`,
   /// [branches] / [tags] the `-b` / `-t` patterns (`null` = not given),
   /// [objectHash] `--object-hash`. Like the CLI the clone writes three
-  /// operations — add the remote, fetch, check out the default branch — and
+  /// operations — add the remote, fetch, check out the working branch (the
+  /// first exact [branches] name the remote has, else its default branch) — and
   /// the repo presets (`trunk()`, the remote's fetch patterns).
   ///
   /// The returned handle's `warnings` are the clone's, in the jj CLI's order:
@@ -454,7 +455,7 @@ class ZanshinWorker {
   /// `operation: "clone"`.
   ///
   /// Throws [ArgumentError] if a string contains an interior NUL (U+0000) or
-  /// [depth] is not positive.
+  /// [depth] is not in `1..0xFFFFFFFF` (the wire's `uint32`).
   Future<CreatedRepoHandle> cloneRepo({
     required String source,
     required String destination,
@@ -474,6 +475,9 @@ class ZanshinWorker {
     rejectInteriorNuls(tags ?? const [], 'tags');
     if (depth != null && depth <= 0) {
       throw ArgumentError.value(depth, 'depth', 'must be positive');
+    }
+    if (depth != null && depth > 0xFFFFFFFF) {
+      throw ArgumentError.value(depth, 'depth', 'must fit in 32 bits');
     }
     final WorkerResponse response = await _sendCommand(
       CloneRepoCommand(

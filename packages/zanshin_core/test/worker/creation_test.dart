@@ -93,6 +93,16 @@ void main() {
       expect(File('${tempDir.path}/keep.txt').readAsStringSync(), 'mine');
     });
 
+    // Story 9.20: `depth` crosses as a uint32 — a value outside it is refused on the
+    // calling side instead of wrapping on the wire.
+    test('clone_refuses_a_depth_beyond_32_bits', () async {
+      await expectLater(
+        worker.cloneRepo(source: 'file:///nowhere', destination: tempDir.path, depth: 0x100000000),
+        throwsArgumentError,
+      );
+      expect(Directory('${tempDir.path}/.jj').existsSync(), isFalse, reason: 'nothing was sent');
+    });
+
     // Story 9.20: `jj git init`'s two colocation flags reach the Rust verb.
     test('init_colocate_creates_a_git_dir_and_no_colocate_does_not', () async {
       final colocated = '${tempDir.resolveSymbolicLinksSync()}/colocated';

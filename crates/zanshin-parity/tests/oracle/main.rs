@@ -157,6 +157,12 @@ parity!(
     push_abort_undescribed,
     push_tag,
     push_two_remotes,
+    push_bare_skip_undescribed,
+    push_bare_new_tag,
+    push_revision,
+    push_all_two_remotes_one_refuses,
+    push_all_one_remote_left_empty,
+    push_all_with_bookmark_refused,
 );
 
 /// Every scenario id the table and the creation list define.
@@ -171,7 +177,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 121);
+    assert_eq!(SCENARIO_IDS.len(), 127);
 }
 
 #[test]
