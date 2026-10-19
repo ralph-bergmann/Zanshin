@@ -25,6 +25,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/mutate.rs new_change
     severity: low
+    resolved: >-
+      2026-10-19 — fixed (spec-9-48-new-insert-after-before, commit 99d8017): plan_new resolves each parent list in order and drops duplicates, so [c, c] is one parent and advances like jj new c c.
 ---
 
 <intent-contract>
