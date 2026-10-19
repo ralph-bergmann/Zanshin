@@ -443,6 +443,11 @@ pub(crate) fn run(
 /// set from whether the head moved off `repo`'s operation — the body the verb precondition
 /// ([`run`]) and the conversions' `maybe_snapshot` share.
 ///
+/// When a step fails, the flag comes from a READ of the operation heads — `false` only while
+/// they are exactly `repo`'s operation — and nothing more is written: divergent heads stay
+/// divergent until a later head load reconciles them — the next precondition's [`load_head`] in
+/// this workspace, as the CLI's next command does.
+///
 /// # Errors
 ///
 /// Anything [`snapshot_impl`] returns.
@@ -461,10 +466,13 @@ pub(crate) fn snapshot_locked(
         }
         Err(e) => {
             // A later step failed after an earlier one may have committed (e.g. `import git
-            // head`, then a snapshot jj-lib refuses): the partial report says so. A head that
-            // no longer loads leaves the flag at its default.
-            if let Ok(head) = pollster::block_on(workspace.repo_loader().load_at_head()) {
-                report.was_snapshot_taken = head.op_id() != &loaded_op_id;
+            // head`, then a snapshot jj-lib refuses): the partial report says so. The heads are
+            // only READ — loading them would merge divergent heads and write an unnamed
+            // reconcile, where the CLI returns the error and writes nothing more
+            // (`cli_util.rs:498` @ v0.46.0). An unreadable store leaves the flag as it was.
+            let op_heads = workspace.repo_loader().op_heads_store().get_op_heads();
+            if let Ok(heads) = pollster::block_on(op_heads) {
+                report.was_snapshot_taken = heads != [loaded_op_id];
             }
             Err(e)
         }
@@ -896,5 +904,70 @@ mod tests {
             PreconditionError::from(crate::ConfigError::Load { reason: "c".to_owned() }),
             PreconditionError::Config { reason } if reason == "c"
         ));
+    }
+
+    /// A snapshot step that fails while the operation heads are divergent writes no reconcile
+    /// operation of its own — the CLI returns the step's error and leaves the heads for its next
+    /// command (`cli_util.rs:498` @ v0.46.0) — and the partial report still says the head moved.
+    /// The next precondition's head load then reconciles them, naming this workspace.
+    #[test]
+    fn a_failed_step_leaves_divergent_heads_unreconciled() {
+        use jj_lib::repo::Repo as _;
+
+        test_helpers::pin_test_env();
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let mut repo = crate::Repo::init(tmp.path(), None).result.expect("init");
+        std::fs::write(
+            tmp.path().join(".jj").join("repo").join("config.toml"),
+            "snapshot.max-new-file-size = true\n",
+        )
+        .expect("repo config");
+        let config = crate::config::load(&repo).expect("config");
+        let mut sink = super::Warnings::default();
+        let env = super::CommandEnv::load(repo.workspace(), &config, &mut sink).expect("env");
+        let base = super::load_head(repo.workspace()).expect("head");
+        let workspace_name = repo.workspace().workspace_name().to_owned();
+        let mut siblings = Vec::new();
+        for name in ["left", "right"] {
+            let mut tx = super::start_repo_transaction(&base, &workspace_name);
+            let tree = base.store().root_commit().tree();
+            pollster::block_on(
+                tx.repo_mut()
+                    .new_commit(vec![base.store().root_commit_id().clone()], tree)
+                    .set_description(name)
+                    .write(),
+            )
+            .expect("sibling commit");
+            let committed = pollster::block_on(tx.commit(format!("test: {name}"))).expect("commit");
+            siblings.push(committed.op_id().clone());
+        }
+
+        let lock = super::lock_git_import_export(repo.workspace(), false).expect("lock");
+        let ctx = super::StepCtx {
+            config: &config,
+            env: &env,
+            colocated: false,
+            lock: &lock,
+        };
+        let mut report = super::Precondition::default();
+        let result = super::snapshot_locked(repo.workspace_mut(), base, &ctx, &mut report, &mut sink);
+        drop(lock);
+
+        assert!(
+            matches!(&result, Err(PreconditionError::Config { reason }) if reason.contains("snapshot.max-new-file-size")),
+            "{:?}",
+            result.err()
+        );
+        assert!(report.was_snapshot_taken, "the head moved off the loaded operation");
+        let loader = repo.workspace().repo_loader();
+        let mut heads = pollster::block_on(loader.op_heads_store().get_op_heads()).expect("op heads");
+        heads.sort();
+        siblings.sort();
+        assert_eq!(heads, siblings, "exactly the two siblings: nothing written");
+
+        let next = super::load_head(repo.workspace()).expect("next head load");
+        let meta = next.operation().metadata();
+        assert_eq!(meta.description, "reconcile divergent operations");
+        assert_eq!(meta.workspace_name.as_deref(), Some(workspace_name.as_ref()));
     }
 }
