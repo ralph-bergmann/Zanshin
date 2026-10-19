@@ -237,3 +237,8 @@ Status: done
 - Every verb's pre-verb snapshot now names the workspace on a reconcile op — a parity change wider than the two new verbs.
 - The colocated `workspaceAdd(colocate: true)` worktree is only proven from Rust; Dart cannot wait on the `git` child inside `dart test`.
 - A dirty stale working copy's edits move into a divergent commit and leave the disk (the CLI's behaviour).
+
+**Dispatched deferred items.**
+- I1 (`snapshot.auto-update-stale = true` still refuses a stale working copy): fixed (29cb597e0972b9746e46860c37e92e1acde945ce). The auto arm runs the recovery inside `snapshot::run` under its lock; the pin `auto_update_stale_still_refuses_until_the_recovery_lands` is replaced by `auto_update_stale_recovers_a_stale_working_copy` (+ sibling-op and missing-op cases) in `crates/zanshin-jj/tests/snapshot_precondition.rs`, plus `auto_update_stale_recovers_in_front_of_status` / `_a_colocated_working_copy` in `tests/workspace_update_stale.rs`.
+- I2 (stale-recovery comments cite the CLI at v0.44.0): fixed (29cb597e0972b9746e46860c37e92e1acde945ce). The stale-working-copy recovery citations in `snapshot.rs` / `repo.rs` now point at `cli_util.rs` @ v0.46.0; the other v0.44.0 citations stay for Story 9.46, as dispatched.
+- I3 (the adapter's stale mapping never tested against a real stale working copy): fixed (29cb597e0972b9746e46860c37e92e1acde945ce). `app/test/features/projects/worker_project_repos_test.dart` makes a working copy stale through `RepoHandle.workspaceAdd` + a rewrite from the second workspace, asserts `ProjectStatus.stale`, and asserts it clears after `workspaceUpdateStale()`.
