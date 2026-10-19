@@ -2,8 +2,8 @@
 title: 'Story 9.49 closing run — `new` advances bookmarks; path prefixes resolve `.`/`..` like the CLI'
 type: 'bugfix'
 created: '2026-10-19'
-status: 'ready-for-dev'
-baseline_revision: '114cb67d1d166c64390d9c799ee76be66511779a'
+status: 'done'
+baseline_revision: '67c6081f01e4eae1fcb1e345be3b456344668ba0'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -17,6 +17,13 @@ deferred:
       crates/zanshin-jj/src/file.rs:254-258 (`parse_path`), used at :485 (single-entry `file show` fast path) and :545 (`file_annotate`); the CLI parses both through `parse_file_path` (cwd-relative, `ui_path.rs:156-169` @ jj-lib 0.46.0). Outside this run's items (Story 9.4 code); every outcome is already a refusal or a CLI-equal answer except the `./x` / `a/../x` forms.
     location: >-
       crates/zanshin-jj/src/file.rs parse_path
+    severity: low
+  - summary: >-
+      `new_change` does not deduplicate its parents, so `new_change(&[c, c])` writes a commit with the same parent twice and — since this run — skips the bookmark advance, where the CLI's `jj new c c` collapses to one parent and advances.
+    evidence: |-
+      The CLI resolves `new`'s revisions through `resolve_some_revsets` → `resolve_revsets_ordered`, an `IndexSet<CommitId>` (`cli/src/cli_util.rs:1861-1870` @ v0.46.0), then advances on `parent_commits.len() == 1` (`new.rs:194-204`); `crates/zanshin-jj/src/mutate.rs` `new_change` pushes every resolved parent and matches `[parent]` on the raw list. The duplicate-parent merge is pre-existing (since Story 6.1); the advance only follows it. Found by this run's review (blind, edge, verification-gap layers).
+    location: >-
+      crates/zanshin-jj/src/mutate.rs new_change
     severity: low
 ---
 
@@ -92,6 +99,35 @@ deferred:
 
 ## Review Triage Log
 
+### 2026-10-19 — Review pass
+- verdicts: 25 findings — high 0, medium 0, low 21, false 4, maybe-false 0
+- findings:
+  - `[low]` `[defer]` (edge 1) `new_change(&[c, c])` skips the advance where the CLI dedups to one parent and advances — verified: the CLI's `resolve_some_revsets` is an `IndexSet` (`cli_util.rs:1861-1870` @ v0.46.0), `new_change` never dedups; the root cause (no dedup, duplicate-parent merge) predates this story, the advance only follows it. Deferred (frontmatter `deferred:` item 2, mirrored in deferred-work.md).
+  - `[low]` `[defer]` (edge 2) single-entry `file show` / `file annotate` still parse `./x`, `a/..`, `../x` literally — already this run's `deferred:` item 1 (67c6081), not added again.
+  - `[low]` `[reject]` (edge 3) the Approach says the config is read "before the transaction", the code reads it after `start_repo_transaction` — starting a transaction writes nothing, the read precedes every write (as the rustdoc says); the only fix is to edit this build's intent wording.
+  - `[low]` `[defer]` (verification-gap, other 1) single-path `file show` / `file annotate` — same as edge 2, already deferred.
+  - `[low]` `[defer]` (verification-gap, other 2) duplicate parents skip the advance — same root cause as edge 1, deferred there.
+  - `[low]` `[reject]` (intent) item 2's tests are narrower than the shared parser's reach (file reads, interdiff, commit views) — every caller forwards `parse_prefixes`' result/reason unchanged; the function is unit-tested on every form and the five mutation verbs in the oracle; per-caller copies add no signal.
+  - `[false]` `[reject]` (intent) the diff differs from 9.22's parser (`""`, absolute paths, error base) — the intent offers 9.22's parser as one option ("or"); `""` = root is build_matcher's documented contract, and `"."` as the base is the CLI's own text from the workspace root (Design Notes).
+  - `[low]` `[defer]` (intent) `file.rs::parse_path` left open — same as edge 2, already deferred.
+  - `[low]` `[reject]` (intent) not every `test_advance_bookmarks.rs` `jj new` case is mirrored — `at_minus` (bookmark on the parent stays) is asserted in `new_on_an_interior_parent_advances_only_the_grandparent_bookmarks` (b-mark stays on B), multiple bookmarks is the shared helper's loop witnessed by commit's merge tests, a named pattern is the matcher's unit test; `--before`/`--after` belong to 9.48.
+  - `[false]` `[reject]` (intent) Story 9.49's `base_with` fixture changed — required by item 1: a one-parent `new` now reads the advance config, so the fixture's own `new`s must run before a bad config is written.
+  - `[low]` `[defer]` (intent) duplicate parents may diverge — same root cause as edge 1, deferred there.
+  - `[low]` `[reject]` (intent) the FFI surface changed docs only, no FFI/Dart test — the wrapper's code is unchanged and `map_mutate_err`'s `InvalidInput`/`Config` arms are unit-tested; the new causes are witnessed at zanshin-jj and in the oracle.
+  - `[false]` `[reject]` (intent) no `## Auto Run Result` yet — a mid-run state; finalize writes it.
+  - `[low]` `[defer]` (blind 1) duplicate parents skip the advance — same root cause as edge 1, deferred there.
+  - `[low]` `[defer]` (blind 2) single-path `file show` / `file annotate` — same as edge 2, already deferred.
+  - `[low]` `[patch]` (blind 3) `parse_prefixes`' doc called the resolution "exact" although `x/` and `a//b` stay refused where the CLI accepts them — patched: the doc names that divergence as the module's older, kept contract and scopes "exact" to the `.`/`..` components.
+  - `[low]` `[reject]` (blind 4) the `..` refusal is untested on interdiff / file_list / file_search / multi-entry file_show, dot success only on commit — same as the intent row: one shared function, callers forward it unchanged.
+  - `[low]` `[reject]` (blind 5) "warnings name the RESOLVED path" is untested — true by construction: `warn_unmatched` (`crates/zanshin-jj/src/mutate.rs:467`) renders exactly the `RepoPathBuf`s `parse_prefixes` returns.
+  - `[low]` `[reject]` (blind 6) no test edits the advance config under an open handle — the verb reads `ctx.config`, refreshed by Story 9.27's generic `refresh_settings` for every key; nothing advance-specific to witness.
+  - `[low]` `[reject]` (blind 7) no test for a single parent that is itself a merge — `advanceable_bookmarks` iterates every `parent_ids()` entry, witnessed for a merge `@` by `a_merge_at_advances_the_bookmarks_of_every_parent` and oracle `commit_advance_merge_parents`.
+  - `[low]` `[reject]` (blind 8) no `new` not-a-list oracle scenario, no merge-with-wrong-type test — `new_on_one_parent_refuses_a_bad_advance_pattern_or_value` witnesses `Config` for `new`; the oracle compares only refused/ok, which `commit_advance_not_a_list` already pins for the shared reader; a merge never reaches the read (one `[parent]` match arm).
+  - `[false]` `[reject]` (blind 9) `base_with` keeps two live handles — nothing runs on the shadowed handle after the reopen and it drops at return; the `is_symlink` assert guards the fixture's own assumption that the write reaches the effective config.
+  - `[low]` `[reject]` (blind 10) the public per-verb docs (Repo/FFI/Dart) only say "not a valid repo path" — still true for the escaping refusal (`invalid path: …`), and `docs/rust-error-codes.md` states the full rule; updating ~15 doc sites plus codegen is churn without a caller-visible gain.
+  - `[low]` `[patch]` (blind 11) the `jj.config_error` bullet of `zanshin_new_change` splices the new clause into the snapshot sentence — patched: the advance-config clause moved after the snapshot clause (`crates/zanshin-ffi/src/repo.rs`, header and Dart bindings regenerated with `cargo make codegen`).
+  - `[low]` `[patch]` (blind 12) one test covered the disabled bookmark and the default config — patched: split into `new_leaves_a_disabled_bookmark` and `new_under_the_default_config_moves_nothing`.
+
 ## Design Notes
 
 **Item 2: resolve rather than refuse `.`.** The ledger's follow-up offers "refuse `.`/`..` components" or "reuse 9.22's parser". Refusing `./x` and `a/../b` would trade one CLI divergence for another (the CLI accepts both, resolving to `x` and `b`). jj-lib's `parse_fs_path` — the function 9.22's parser calls — is purely lexical (`normalize_path` + `relative_path` + `from_relative_path`), so calling it with `cwd = base = "."` resolves the entry exactly as the CLI does from the workspace root, with no workspace handle (the 14 callers of `build_matcher` keep their signature) and with the CLI's own refusal text. The existing `from_internal_string` check runs first so `/x`, `x/` and `a//b` keep their current (documented, tested) refusals and `""` stays the root — widening those is not this item's.
@@ -106,3 +142,43 @@ Golden: `parse_fs_path(".", ".", "a/../b")` → `"./a/../b"` normalises to `b` �
 - `cargo test -p zanshin-jj --lib op_support` and `cargo test -p zanshin-jj --test commit --test mutate` -- expected: green, new tests included.
 - `cargo test -p zanshin-parity --test oracle` -- expected: all 89 pass (the existing ledgered divergences only).
 - `cargo make test` (repo root, unpiped, synchronous, long timeout; PATH with `~/development/sdks/flutter/bin` and `~/development/sdks/cargo/bin`, `CARGO_HOME=~/development/sdks/cargo`, `RUSTUP_HOME` unset) -- expected: exit 0; coverage held or raised.
+
+## Auto Run Result
+
+Status: done (2026-10-19). Blocking condition: none. Code commits: b6053291cd662da88b068059f7ed33973eb00052 (fix), 7baa160cdf7b24b70d856d504de1f3616502eea9 (review patches); spec + deferral mirror 67c6081f01e4eae1fcb1e345be3b456344668ba0, plus the finalisation commit of this spec and deferred-work.md.
+
+**Items handed to this closing run.**
+1. **`jj new` with one parent advances bookmarks under `experimental-advance-branches`; `new_change` did not — fixed** (commit `b6053291cd662da88b068059f7ed33973eb00052`, review patches `7baa160cdf7b24b70d856d504de1f3616502eea9`).
+   - Verified first: `new_change` (`crates/zanshin-jj/src/mutate.rs`) had no advance step; `cmd_new` (`new.rs:194-204`, `:279-281` @ v0.46.0) advances to the single parent. Story 9.48 is still backlog, so `new_change` has no `-A`/`-B` and the "no advance with `-A`/`-B`" rule stays 9.48's.
+   - Now: with exactly one parent, the config is read after the parents resolve and before any write (bad pattern → `jj.invalid_input`, not a list → `jj.config_error`), the bookmarks on that parent's parents are merged onto the parent after `edit`, through Story 9.49's helpers (made `pub(crate)`). A merge never reads the config. Six oracle scenarios mirror `test_advance_bookmarks.rs`' `jj new` cases plus the refusal/merge corners.
+2. **The shared prefix matcher accepted a path that escapes the repo — fixed** (commit `b6053291cd662da88b068059f7ed33973eb00052`, doc patch `7baa160cdf7b24b70d856d504de1f3616502eea9`).
+   - Verified first: `op_support::parse_prefixes` took `../x` as a literal prefix. Fixed by resolving each entry through jj-lib's `ui_path::parse_fs_path` (the function 9.22's parser calls) at a synthetic `"."` root, after the existing validity check: `./x` → `x`, `a/../b` → `b`, `.` → root, a `..` that leaves the repo → `jj.invalid_input` with `Path "../x" is not in the repo "."`. Chosen over "refuse every `.`/`..`" because the CLI accepts `./x` and `a/../b` (Design Notes). Oracle scenarios per path verb: commit, restore, squash, split, absorb (`../x`) and commit with dot components.
+
+**Summary.** `Repo::new_change` with one parent now moves the `experimental-advance-branches` bookmarks like `jj new`; every prefix-path verb (commit, restore, absorb, squash, split, interdiff, the file reads) resolves `.`/`..` like the CLI and refuses a path outside the repo. No API, schema, error-code or Dart change.
+
+**Files changed:**
+- `crates/zanshin-jj/src/mutate.rs` — `new_change` one-parent advance; `build_matcher` wrapper doc.
+- `crates/zanshin-jj/src/commit.rs` — the four advance helpers `pub(crate)`, docs.
+- `crates/zanshin-jj/src/op_support.rs` — `parse_prefixes` resolution, docs, three inline tests.
+- `crates/zanshin-jj/src/repo.rs`, `crates/zanshin-ffi/src/repo.rs` (+ regenerated `zanshin_ffi.h`, `bindings.dart`, comments only), `docs/rust-error-codes.md` — the new causes and rules.
+- `crates/zanshin-jj/tests/commit.rs` — `new_change` advance witnesses, `../x` refusal, dot components; `base_with` builds the history before writing the config.
+- `crates/zanshin-parity/tests/oracle/{scenarios,main}.rs` — 12 scenarios (77 → 89).
+- Tracking: this spec; `deferred-work.md` ("Surfaced in the closing run of Story 9.49": 2 items).
+
+**Review findings.** 25 findings (high 0, medium 0, low 21, false 4).
+- **Patched, 3 entries (all low):** `parse_prefixes`' "exact" doc scoped to `.`/`..` and the kept `x/`/`a//b` refusals named (blind 3); `zanshin_new_change`'s `jj.config_error` bullet reordered (blind 11, codegen); a two-case test split (blind 12). The implementation subagent was not re-engaged (a resumed agent reports asynchronously, which this unattended run cannot wait for); the parent applied the patches.
+- **Deferred (new, mirrored in deferred-work.md):** `new_change` does not dedup its parents, so `[c, c]` skips the advance the CLI makes (edge 1, verification-gap other 2, intent, blind 1; low, root cause pre-existing). The single-path `file show` / `file annotate` parser (edge 2, verification-gap other 1, intent, blind 2) is this run's earlier `deferred:` item 1, not added twice.
+- **Rejected, low (reasons in the triage log):** "before the transaction" wording (edge 3), per-caller tests of the shared parser (intent, blind 4), the resolved-path warning test (blind 5, by construction), open-handle config refresh (blind 6), merge-parent / not-a-list / merge-wrong-type witnesses (blind 7, 8), partial upstream mirroring (intent), FFI docs-only (intent), public per-verb doc sites (blind 10).
+- **False, 4:** the 9.22-parser differences (deliberate, CLI from the root), the fixture change (required), the missing Auto Run Result (mid-run), two live handles (blind 9).
+
+**Follow-up review recommendation:** false — this first pass patched 3 entries, all low (patched counts: high 0, medium 0, low 3).
+
+**Verification:**
+- Implementation run: `cargo test -p zanshin-jj` all suites green; `cargo test -p zanshin-parity --test oracle` 98 passed, no ledger change; deliberate break (advance step off) fails `new_advance_bookmarks` and `new_advance_interior`, restored; `cargo make test` exit 0.
+- Orchestrator: `cargo test -p zanshin-jj --lib op_support` 39 passed, `--test commit` 26 passed (27 after the split), oracle 98 passed. After the review patches: `cargo make codegen` (comment-only diffs committed), `cargo fmt --check` clean, `cargo make test` (repo root, unpiped to a log, `CARGO_HOME=~/development/sdks/cargo`, `RUSTUP_HOME` unset) exit 0, coverage held at 99.44 % (16379/16471 lines), extern-fn coverage OK; `coverage-baseline.txt` unchanged.
+- Matrix audit: rows 1-6 — `tests/commit.rs` (`new_on_one_parent_advances_the_bookmarks_of_its_parents`, `new_leaves_a_disabled_bookmark`, `new_on_an_interior_parent_advances_only_the_grandparent_bookmarks`, `a_merge_new_advances_no_bookmark`, `new_on_one_parent_refuses_a_bad_advance_pattern_or_value`, `a_merge_new_never_reads_the_advance_config`) and the six `new_*` oracle scenarios; row 7 — `new_under_the_default_config_moves_nothing` and oracle `new_on_wc`; row 8 — `a_path_that_leaves_the_repo_is_refused_before_the_transaction` and the five `*_path_escapes_repo` scenarios; row 9 — `dot_components_in_a_path_resolve_like_the_cli` and `commit_path_dot_components`; row 10 — `parse_prefixes_resolves_dot_components_lexically`, `parse_prefixes_keeps_refusing_what_is_not_a_repo_path`, `an_invalid_path_is_refused_before_the_transaction`. All ran and passed.
+
+**Residual risks:**
+- `new_change(&[c, c])` still diverges from `jj new c c` (deferred).
+- Single-path `file show` / `file annotate` still parse `.`/`..` literally (deferred).
+- `x/` and `a//b` stay refused where the CLI normalises them (the module's older contract, documented).

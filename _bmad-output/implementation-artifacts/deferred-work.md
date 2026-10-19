@@ -1549,3 +1549,6 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **`file show` with one path and `file annotate` do not resolve `.`/`..` like the CLI.** Low.
   - Both parse their path with `file.rs`'s own `parse_path` (`RepoPathBuf::from_internal_string`, `crates/zanshin-jj/src/file.rs:254-258`, used at `:485` and `:545`), so `./x` and `a/../x` are looked up literally and refused as `jj.path_not_found`, and `../x` is refused as `jj.path_not_found` where the CLI resolves the first two and refuses the last with "Path is not in the repo" (`parse_file_path`, jj-lib 0.46.0 `ui_path.rs:156-169`). The closing run fixed the shared prefix matcher only.
   - **Follow-up:** route `parse_path` through the same resolution as `op_support::parse_prefixes`, with a test per form.
+- **`new_change` does not deduplicate its parents.** Low.
+  - `new_change(&[c, c])` writes a commit with the same parent twice and so skips the one-parent bookmark advance; the CLI resolves `jj new c c` through an `IndexSet` (`cli/src/cli_util.rs:1861-1870` @ v0.46.0) into one parent and advances (`new.rs:194-204`). The duplicate-parent merge predates this run (`crates/zanshin-jj/src/mutate.rs` `new_change`).
+  - **Follow-up:** dedup `parents` in order before the merge/advance decision (Story 9.48 touches the same resolution), with a test for `[c, c]`.
