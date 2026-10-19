@@ -27,17 +27,18 @@
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-# Nächster Schritt: die offenen Stories der Epics 4, 9, 10 und 11 in Reihenfolge (Stand 2026-10-19)
+# Nächster Schritt: die offenen Stories der Epics 4, 5, 9, 10 und 11 in Reihenfolge (Stand 2026-10-19)
 #
 #   So ist die Liste zu lesen: Eine Story kann starten, sobald die Stories fertig sind, die hinter
 #   "Braucht" stehen. Diese stehen immer in einer früheren Stufe. Innerhalb einer Stufe ist die
-#   Reihenfolge frei. Gestrichen ist keine Story: Keine offene Story der vier Epics ist überholt.
+#   Reihenfolge frei. Gestrichen ist keine Story: Keine offene Story der fünf Epics ist überholt.
 #
 #   Stufe 1 – kann sofort starten:
 #     10.1   Graph-Viewport. Alle anderen Graph-Stories bauen darauf auf.
 #     4.14   Gemeinsame Spalten für Free und Compact.
 #     4.15   Linien-Router B. 10.4 braucht ihn.
 #     9.25   Backend der Graph-Suche. 10.21 braucht es.
+#     5.1    Diff: Hunks Zeile für Zeile. Damit beginnt der Diff für den Inspector.
 #
 #   Stufe 2:
 #     10.2   Hintergrund und Tages-Achse. Braucht 10.1.
@@ -45,11 +46,13 @@
 #     10.4   Kanten. Braucht 10.1 und 4.15.
 #     10.5   View-Model und Anbindung ans Repo. Braucht 10.1.
 #     11.10  Alte Mock-UI entfernen. Braucht nur noch 10.1; alles andere, worauf sie gewartet hat, ist fertig.
+#     5.5    Diff: das Datenformat (FlatBuffers), vorerst ohne Wort-Segmente. Braucht 5.1.
 #
 #   Stufe 3:
 #     10.6   Auswahl, Hover und Tastatur. Braucht 10.3 und 10.4.
 #     10.9   Action-Runner. Braucht 10.3 und 10.5.
 #     10.11  Karten-Inhalte seitenweise laden. Braucht 10.3 und 10.5.
+#     5.6    Diff zwischen zwei Revisionen (jj diff -r). Braucht 5.1 und 5.5.
 #
 #   Stufe 4:
 #     10.7   Toolbar. Braucht 10.2, 10.3, 10.5 und 10.6.
@@ -57,6 +60,7 @@
 #     10.17  Commit-Stacks in der Ansicht. Braucht 10.3, 10.5 und 10.6.
 #     10.21  Graph-Suche. Braucht 10.5, 10.6, 10.11 und 9.25.
 #     10.23  Toast nach einer Operation. Braucht 10.6 und 10.9.
+#     5.8    Diff über die FFI, damit Dart ihn abrufen kann. Braucht 5.5 und 5.6.
 #
 #   Stufe 5:
 #     11.13  Menüleiste und Shortcuts. Braucht 10.9 und 10.23. Damit funktionieren auch ⌘W und ⇧⌘O aus 11.5 und 11.6.
@@ -67,7 +71,7 @@
 #     10.19  Versteckte History (Lücken). Braucht 10.4, 10.6, 10.21 und 4.15.
 #     10.20  Graph-Animationen. Braucht 10.4, 10.5 und 10.17.
 #     10.22  Fenster für die jj-log-Konfigurationen. Braucht 10.21.
-#     10.24  Diff im Inspector. Braucht 10.8 und aus Epic 5 die Stories 5.1, 5.5, 5.6 und 5.8.
+#     10.24  Diff im Inspector. Braucht 10.8 und 5.8.
 #     10.25  Composer für commit und split. Braucht 10.8, 10.9, 10.23, 9.15 und 9.49.
 #
 #   Stufe 6:
@@ -97,12 +101,17 @@
 #     9.16   rebase, parallelize und arrange. Für 10.10.
 #     9.9    metaedit, duplicate und fix. Für 10.10.
 #     9.19   bookmark move, advance und rename. Braucht 9.29. Für 10.10.
-#     9.50   Hunk-Auswahl als Baum. Braucht aus Epic 5 die Stories 5.1 und 5.6. Für 10.26.
+#     9.50   Hunk-Auswahl als Baum. Braucht 5.1 und 5.6. Für 10.26.
 #     9.21   Operation-Log, unter anderem Redo. Für 11.9.
 #     9.12   op restore und op revert. Für 11.9.
 #     Noch ohne UI-Story, die sie braucht, also jederzeit: 9.10, 9.11, 9.13, 9.14, 9.17, 9.18, 9.38, 9.40, 9.41,
 #     9.44, 9.45 und 9.46.
 #     9.42   Niedrige Priorität: nur ein Randfall.
+#
+#   Später aus Epic 5, weil noch keine UI-Story sie braucht (der Diff kommt zuerst Zeile für Zeile):
+#     5.2    Wort-Diff innerhalb geänderter Zeilen. Braucht 5.1.
+#     5.3    Syntax-Hervorhebung mit tree-sitter. Gehört mit 5.4 zusammen.
+#     5.4    Die ersten drei Grammatiken: Rust, Dart und Markdown. Gehört mit 5.3 zusammen.
 #
 #   Wartet auf eine Entscheidung von Ralph:
 #     9.43   jj converge: ob Zanshin den Befehl überhaupt anbietet.
