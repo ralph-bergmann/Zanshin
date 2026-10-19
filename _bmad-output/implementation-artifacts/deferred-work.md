@@ -1052,9 +1052,10 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **A hunk selection's staleness under constant snapshots.** Medium.
   - Every verb snapshots @ first (9.26), so an editor that autosaves changes @ between selecting hunks and running the composer. If staleness were judged by @'s commit id, commits would keep failing.
   - **Follow-up:** 9.50 judges staleness by the left side, the revision's parent tree (Claude's proposal); confirm it in 9.50's spec.
-- ~~**The combined description must be known before squash runs.**~~ — RESOLVED 2026-10-19 (spec-9-15-squash-split-partial-file, commit 96a3b35, I1): `Repo::squash_plan` / `zanshin_squash_plan` / `RepoHandle.squashPlan` return the text the CLI's editor holds, saved unchanged, from the same `prepare_squash` the verb runs; the oracle's `squash_plan_as_message` passes it back as `-m` against the CLI's editor. Medium.
+- **The combined description must be known before squash runs.** Medium.
   - The CLI decides it inside the command and opens an editor (`cli/src/commands/squash.rs:363-396`); the GUI has to ask first (10.25, 10.27).
   - **Follow-up:** 9.15's plan phase returns the combined text when needed (its note); 9.31's `diff` source can carry the flag.
+  - **2026-10-19, Story 9.15:** `Repo::squash_plan` / `zanshin_squash_plan` / `RepoHandle.squashPlan` return the text the CLI's editor holds, saved unchanged, from the same `prepare_squash` the verb runs; the oracle's `squash_plan_as_message` passes it back as `-m` against the CLI's editor (commit 96a3b35); left: 9.31's `diff` source carries the flag.
 - **10.8's and 10.9's `handle.dart` citations are stale.** Low.
   - 10.8 cites `handle.dart:690` for `show`; 10.9 cites :228, :242, :257, :271, :284, :861 and :891. The file is `packages/zanshin_core/lib/src/worker/handle.dart`: describe :344, newChange :358, edit :373, abandon :387, undo :407, show :813, bookmarkCreate :986, bookmarkDelete :1016.
   - **Follow-up:** re-point them when each story is refined.
