@@ -1960,6 +1960,118 @@ impl Repo {
         })
     }
 
+    /// Moves changes from one or more revisions into another (Story 9.15) — the CLI's
+    /// `jj squash`, paths only.
+    ///
+    /// Source and destination resolve as in the CLI (`cli/src/commands/squash.rs` @ v0.46.0):
+    ///
+    /// - neither `from` nor `into` — `revision` (or `@`) into its ONE parent; a merge or the
+    ///   root commit refuses ("Cannot squash merge commits without a specified destination");
+    /// - `from` and/or `into` — the `from` revisions (empty: `@`) into `into` (`None`: `@`). The
+    ///   destination is silently dropped from the sources, so squashing `@` into `@` changes
+    ///   nothing and writes no operation (the CLI's "Nothing changed.").
+    ///
+    /// `paths` are repo-relative PREFIXES (an empty list moves everything; `""` is the root), as
+    /// for [`Repo::restore`]; an explicit path no selected source tree holds warns
+    /// `jj.paths_unmatched`. A source whose changes ALL moved is abandoned unless
+    /// `keep_emptied`; an abandoned `@` gets a new, empty `@` on the destination
+    /// (`MutationResult::new_change_ids`), and the abandoned sources are reported in
+    /// `MutationResult::abandoned_change_ids`.
+    ///
+    /// The description: `message` (the CLI's `-m`, paragraphs joined like the CLI's), else the
+    /// destination's (`use_destination_message`), else the one non-empty description of the
+    /// abandoned sources and the destination. When two or more are non-empty the CLI opens its
+    /// editor; WITHOUT `message` this verb writes what that editor holds when it is saved
+    /// unchanged — call [`Repo::squash_plan`] first to show it to the user, and pass the edited
+    /// text back as `message`. Trailers (`templates.commit_trailers`) are not added. The
+    /// operation is `squash commits into <destination commit hex>`, the destination's id BEFORE
+    /// the squash.
+    ///
+    /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `revision` combined with `from`/`into`, `message`
+    ///   combined with `use_destination_message`, a merge or root `revision` without
+    ///   `from`/`into`, or a `paths` entry that is not a valid repo path.
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision`, a `from` entry or `into` is
+    ///   malformed, carried by no VISIBLE commit, or divergent.
+    /// - [`crate::MutateError::Immutable`] — a source or the destination is inside the repo's
+    ///   effective immutable set (the root commit included).
+    /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn squash(&mut self, options: &crate::SquashOptions) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::squash_split::squash(repo.workspace_mut(), ctx, options))
+    }
+
+    /// The description [`Repo::squash`] would have to ask for (Story 9.15): the squash with the
+    /// same `options`, prepared to the point where the CLI opens its editor, and dropped.
+    ///
+    /// `SquashPlan::combined_description` is the text the CLI's editor holds, saved unchanged —
+    /// exactly what `squash` writes without `message` — when the abandoned sources and the
+    /// destination carry two or more non-empty descriptions and neither `message` nor
+    /// `use_destination_message` is set; `None` otherwise. Refuses exactly as `squash` refuses
+    /// and warns as it warns (`jj.paths_unmatched`).
+    ///
+    /// Writes NO operation of its own — only the pre-verb snapshot's, like every read.
+    ///
+    /// # Errors
+    ///
+    /// As [`Repo::squash`], minus the finish's [`crate::MutateError::NotAGitRepo`].
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn squash_plan(&mut self, options: &crate::SquashOptions) -> Result<crate::SquashPlan, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::squash_split::squash_plan(repo.workspace(), ctx, options))
+    }
+
+    /// Splits a revision in two (Story 9.15) — the CLI's `jj split`, paths only.
+    ///
+    /// `revision` (or `@`) is split into the changes to `paths` — repo-relative PREFIXES as for
+    /// [`Repo::restore`], AT LEAST ONE (the CLI's no-paths default is its interactive diff
+    /// editor, so an empty list refuses) — and the rest:
+    ///
+    /// - plain: the SELECTED commit keeps the target's change id and parents, the REMAINING
+    ///   commit (a new change id) becomes its child;
+    /// - `parallel`: both on the target's parents, and the target's children get both as
+    ///   parents;
+    /// - `onto` / `insert_after` / `insert_before` (the CLI's `-o`/`-A`/`-B`): the selected
+    ///   changes become a NEW change at that location; the remaining commit keeps the target's
+    ///   change id and place.
+    ///
+    /// Bookmarks on the target move to the remaining commit under the CLI's default
+    /// `split.legacy-bookmark-behavior = true` and stay on the selected commit when it is
+    /// `false` (with `-o`/`-A`/`-B` they follow the remaining commit). `@` — of every workspace
+    /// whose `@` was the target — ends on the remaining commit. Descendants are rebased.
+    ///
+    /// `message` (the CLI's `-m`) describes the selected commit; the remaining one keeps the
+    /// original description. WITHOUT `message` the CLI opens its editor on both; this verb
+    /// writes what it holds when saved unchanged: the original description on both.
+    ///
+    /// Selecting every change warns `jj.split_all_selected`, selecting none
+    /// `jj.split_none_selected` (after a `jj.paths_unmatched` when the paths match nothing);
+    /// the split runs either way. The operation is `split commit <target commit hex>`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `paths` is empty or holds an invalid repo path,
+    ///   `parallel` is combined with a location, `onto` with `insert_after`/`insert_before`, the
+    ///   location resolves no parent, or it would create a loop.
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` or a location entry is malformed,
+    ///   carried by no VISIBLE commit, or divergent.
+    /// - [`crate::MutateError::Immutable`] — the target, or a child the location would
+    ///   rewrite, is inside the repo's effective immutable set.
+    /// - [`crate::MutateError::Config`] — `split.legacy-bookmark-behavior` is not a boolean, or
+    ///   the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn split(&mut self, options: &crate::SplitOptions) -> Result<crate::SplitResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::squash_split::split(repo.workspace_mut(), ctx, options))
+    }
+
     /// Starts tracking the working-copy paths matching `paths` (Story 9.22) — the CLI's
     /// `jj file track [--include-ignored] <paths>`.
     ///

@@ -159,7 +159,9 @@ use crate::Repo;
 /// snapshot options `file track`/`file untrack` build; jj-lib's own `config/misc.toml` has
 /// neither, so without them the keys would be missing, not defaulted); `git.colocate` is
 /// verbatim from `cli/src/config/misc.toml:27-28` (Story 9.23 — `workspace add`'s default Git
-/// worktree decision; jj-lib has no default for it either).
+/// worktree decision; jj-lib has no default for it either); `split.legacy-bookmark-behavior` is
+/// verbatim from `cli/src/config/misc.toml:64-68` (Story 9.15 — where `split` leaves the target's
+/// bookmarks; jj-lib has no default for it either).
 ///
 /// # WHY: a config layer, not a Rust table
 ///
@@ -189,6 +191,12 @@ auto-update-stale = false
 
 [git]
 colocate = true
+
+# TODO: https://github.com/jj-vcs/jj/issues/3419 - Remove when fully deprecated.
+# The behavior when this flag is set to false is experimental and may be changed
+# in the future.
+[split]
+legacy-bookmark-behavior = true
 
 [revset-aliases]
 # trunk() can be overridden as '<bookmark>@<remote>'.
@@ -1343,6 +1351,21 @@ pub(crate) fn git_colocate(config: &StackedConfig) -> Result<bool, ConfigError> 
     config.get("git.colocate").map_err(|e| value_error(&e))
 }
 
+/// Reads the effective `split.legacy-bookmark-behavior` (Story 9.15) — the CLI's
+/// `tx.settings().get_bool("split.legacy-bookmark-behavior")` in `jj split`
+/// (`cli/src/commands/split.rs:502` @ v0.46.0), read only for a split WITHOUT `-o`/`-A`/`-B`.
+/// Its default `true` is [`BUILTIN_CONFIG_TOML`]'s (the CLI's `config/misc.toml:67-68`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a boolean (the key is named), or is missing from
+///   every layer (impossible while the builtin layer is present).
+pub(crate) fn split_legacy_bookmark_behavior(config: &StackedConfig) -> Result<bool, ConfigError> {
+    config
+        .get("split.legacy-bookmark-behavior")
+        .map_err(|e| value_error(&e))
+}
+
 /// Reads the effective `snapshot.max-new-file-size` out of a loaded stack (Story 9.22).
 ///
 /// Mirrors `snapshot_options_with_start_tracking_matcher` (`cli/src/cli_util.rs:1618-1623` @
@@ -1664,8 +1687,9 @@ mod tests {
         add_secure_layer, create_repo_config_file, env_base_layer, env_overrides_layer, fingerprint_with,
         fix_up_layers, fix_up_secure_config, git_import_options, is_valid_config_id, load_repo_config_file, load_with,
         platform_config_dir, remove_remote_from_repo_config, rename_remote_in_repo_config, secure_config_path,
-        set_trunk_alias, settings_from, snapshot_auto_track, snapshot_max_new_file_size, stamp, system_config_paths,
-        user_config_paths, user_email, ConfigEnv, SecureLayer, WorkspacePaths, BUILTIN_CONFIG_TOML,
+        set_trunk_alias, settings_from, snapshot_auto_track, snapshot_max_new_file_size,
+        split_legacy_bookmark_behavior, stamp, system_config_paths, user_config_paths, user_email, ConfigEnv,
+        SecureLayer, WorkspacePaths, BUILTIN_CONFIG_TOML,
     };
     use jj_lib::config::{ConfigFile, ConfigLayer, ConfigSource, StackedConfig};
     use std::collections::HashMap;
@@ -1792,6 +1816,19 @@ mod tests {
         let track = stack_with("snapshot.auto-track = 1");
         let super::ConfigError::Load { reason } = snapshot_auto_track(&track).expect_err("not a string");
         assert!(reason.contains("snapshot.auto-track"), "{reason}");
+    }
+
+    /// Story 9.15: `split.legacy-bookmark-behavior` defaults to the CLI's `true`, a user's
+    /// `false` wins, and a wrong type refuses naming the key.
+    #[test]
+    fn split_legacy_bookmark_behavior_defaults_true_and_reads_the_user_layer() {
+        let config = load_with(&bare_env(), None).expect("the bare stack loads");
+        assert!(split_legacy_bookmark_behavior(&config).expect("builtin bool"));
+        let off = stack_with("split.legacy-bookmark-behavior = false");
+        assert!(!split_legacy_bookmark_behavior(&off).expect("user bool"));
+        let wrong = stack_with("split.legacy-bookmark-behavior = \"yes\"");
+        let super::ConfigError::Load { reason } = split_legacy_bookmark_behavior(&wrong).expect_err("not a bool");
+        assert!(reason.contains("split.legacy-bookmark-behavior"), "{reason}");
     }
 
     // ── Platform config dir ───────────────────────────────────────────────────

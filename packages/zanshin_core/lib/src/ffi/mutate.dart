@@ -181,18 +181,20 @@ final class MutationResult {
 
   /// Change ids of genuinely new changes minted by this mutation. Empty for a
   /// rewrite ([MutationResult] of `describe`) or a pointer move (`edit`); empty
-  /// for `abandon` unless `@` itself was among the abandoned ids; always empty
-  /// for `undo`, `git_fetch` and `git_import` (jj-lib's import stats have no
-  /// minted-change concept, and a replacement `@` is reported through
+  /// for `abandon` — and `squash` — unless `@` itself was abandoned (then the
+  /// replacement `@`); for `split` the one part with a new change id; always
+  /// empty for `undo`, `git_fetch` and `git_import` (jj-lib's import stats have
+  /// no minted-change concept, and a replacement `@` is reported through
   /// [workingCopyChangeId]).
   final List<String> newChangeIds;
 
   /// The change ids `abandon`'s caller passed in, echoed verbatim. Always empty
-  /// for every other mutation EXCEPT `git_fetch`, which has no second result
-  /// struct and so reports jj-lib's OWN abandonments here: the commits the
-  /// import dropped because they became unreachable in git (what
-  /// `git.abandon-unreachable-commits` governs). Empty there too when that key
-  /// is off, or when the fetch made nothing unreachable. `git_import` keeps its
+  /// for every other mutation EXCEPT `git_fetch` and `squash`, which have no
+  /// second result struct and so report jj-lib's OWN abandonments here: for
+  /// `git_fetch` the commits the import dropped because they became unreachable
+  /// in git (what `git.abandon-unreachable-commits` governs) — empty when that
+  /// key is off, or when the fetch made nothing unreachable; for `squash` the
+  /// sources it abandoned (Story 9.15). `git_import` keeps its
   /// abandonments in `GitImportResult.abandonedChangeIds` instead.
   final List<String> abandonedChangeIds;
 

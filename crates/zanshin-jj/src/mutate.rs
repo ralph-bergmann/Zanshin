@@ -58,8 +58,9 @@ pub struct MutationResult {
     /// gives, and there is deliberately no separate `no_op` flag.
     pub new_op_id: crate::OperationId,
     /// Change ids of genuinely NEW changes minted by this mutation: [`new_change`]'s
-    /// created commit, or the replacement `@` jj-lib auto-creates when [`abandon`]
-    /// abandons `@` itself. A rewrite ([`describe`]) or a pointer move ([`edit`]) never
+    /// created commit, or the replacement `@` jj-lib auto-creates when [`abandon`] — or
+    /// [`crate::Repo::squash`] — abandons `@` itself, or the one commit of
+    /// [`crate::Repo::split`] that gets a new change id (Story 9.15). A rewrite ([`describe`]) or a pointer move ([`edit`]) never
     /// mints a new change id, so this is empty for those. Empty for [`abandon`] unless
     /// `@` itself was among the abandoned ids. Always empty for [`crate::op_log::undo`]
     /// (it restores state, it doesn't mint anything) and for
@@ -77,11 +78,13 @@ pub struct MutationResult {
     /// outcome — which ancestors absorbed hunks and whether the source survived — lives
     /// in [`AbsorbResult`]'s fields.
     ///
-    /// [`crate::Repo::git_fetch`] is the ONE verb where this is not a caller echo: it has
-    /// no second result struct, so it reports jj-lib's own abandonments here — the commits
-    /// the import dropped because they became unreachable in git
-    /// (`git.abandon-unreachable-commits`). Empty when that key is `false`, or when the
-    /// fetch made nothing unreachable.
+    /// [`crate::Repo::git_fetch`] and [`crate::Repo::squash`] are the verbs where this is not
+    /// a caller echo: neither has a second result struct, so each reports jj-lib's own
+    /// abandonments here. For `git_fetch` those are the commits the import dropped because they
+    /// became unreachable in git (`git.abandon-unreachable-commits`) — empty when that key is
+    /// `false`, or when the fetch made nothing unreachable. For `squash` (Story 9.15) they are
+    /// the sources it abandoned — every source whose changes all moved, unless
+    /// `keep_emptied`.
     pub abandoned_change_ids: Vec<ChangeId>,
     /// Change id of the working-copy commit (`@`) after this mutation — whether or not
     /// this mutation is what moved it.
@@ -441,7 +444,7 @@ pub(crate) fn res(e: ResolveError, id: Option<&ChangeId>) -> MutateError {
 ///
 /// - [`MutateError::InvalidInput`] — an entry is not a valid repo path (a leading or
 ///   trailing `/`, or a `//`).
-fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, MutateError> {
+pub(crate) fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, MutateError> {
     crate::op_support::build_matcher(paths).map_err(|reason| MutateError::InvalidInput { reason })
 }
 
@@ -452,7 +455,7 @@ fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, MutateError> {
 ///
 /// - [`MutateError::InvalidInput`] — an entry is not a valid repo path.
 /// - [`MutateError::Backend`] — a tree read failed.
-fn warn_unmatched(
+pub(crate) fn warn_unmatched(
     workspace: &Workspace,
     sink: &mut Warnings,
     paths: &[String],
@@ -464,7 +467,7 @@ fn warn_unmatched(
 
 /// Wraps [`crate::op_support::resolve_or_wc`] in this module's error type: `id`, or — when
 /// it is `None` — the workspace's `@` (the CLI's `RevisionArg::AT` default).
-fn resolve_or_wc(
+pub(crate) fn resolve_or_wc(
     repo: &MutableRepo,
     workspace_name: &WorkspaceName,
     id: Option<&ChangeId>,
@@ -474,7 +477,7 @@ fn resolve_or_wc(
 
 /// Wraps [`crate::op_support::resolve_commit`] in this module's error type: a malformed,
 /// absent, only-hidden or DIVERGENT id is a `ChangeNotFound` refusal, never a guess.
-fn resolve_commit(repo: &MutableRepo, id: &ChangeId) -> Result<Commit, MutateError> {
+pub(crate) fn resolve_commit(repo: &MutableRepo, id: &ChangeId) -> Result<Commit, MutateError> {
     crate::op_support::resolve_commit(repo, id).map_err(|e| res(e, Some(id)))
 }
 
@@ -492,7 +495,7 @@ fn resolve_commit(repo: &MutableRepo, id: &ChangeId) -> Result<Commit, MutateErr
 ///
 /// Returns the RESOLVED set so a caller that also feeds it to
 /// `rebase_descendants_with_options` does not resolve twice.
-fn guard_rewritable(
+pub(crate) fn guard_rewritable(
     tx: &Transaction,
     immutable: &Arc<UserRevsetExpression>,
     commit_ids: &[jj_lib::backend::CommitId],

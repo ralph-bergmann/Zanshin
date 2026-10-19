@@ -14,6 +14,8 @@ use jj_lib::workspace::Workspace;
 use zanshin_jj::ConfigScope;
 use zanshin_jj::ConfigTarget;
 use zanshin_jj::SparseInheritance;
+use zanshin_jj::SplitOptions;
+use zanshin_jj::SquashOptions;
 
 use crate::compare::config_outcome;
 use crate::compare::zanshin_outcome;
@@ -221,6 +223,42 @@ fn update_stale(repo: &mut zanshin_jj::Repo, _: &Path, _: &State) -> Outcome {
 
 /// A non-colocated repo, where `workspace add` creates no Git worktree by default.
 const NO_COLOCATE: &[&str] = &["git", "init", "--no-colocate"];
+
+/// `ui.editor = "true"` on both sides (Story 9.15): where the CLI opens its editor, `true` saves
+/// the buffer unchanged — what Zanshin writes without `-m`. Zanshin does not read the key. Quoted:
+/// `config set` parses a bare `true` as a TOML boolean, which `ui.editor` refuses.
+const EDITOR: &[Step] = &[Step::Jj(&["config", "set", "--repo", "ui.editor", "\"true\""])];
+
+/// `C` holds a second file, `c2.txt`, so a path selects PART of it (Story 9.15).
+const C2: &[Step] = &[Step::Write("c2.txt", "c2\n"), Step::Jj(&["util", "snapshot"])];
+
+/// [`C2`] plus [`EDITOR`].
+const C2_EDITOR: &[Step] = &[
+    Step::Write("c2.txt", "c2\n"),
+    Step::Jj(&["util", "snapshot"]),
+    Step::Jj(&["config", "set", "--repo", "ui.editor", "\"true\""]),
+];
+
+/// `Repo::squash` with `options`.
+fn squash_outcome(repo: &mut zanshin_jj::Repo, options: &SquashOptions) -> Outcome {
+    let result = repo.squash(options);
+    zanshin_outcome(repo, &result)
+}
+
+/// `Repo::split` with `options`.
+fn split_outcome(repo: &mut zanshin_jj::Repo, options: &SplitOptions) -> Outcome {
+    let result = repo.split(options);
+    zanshin_outcome(repo, &result)
+}
+
+/// The split options every split scenario starts from: `-m first` over `paths`.
+fn split_first(paths: &[&str]) -> SplitOptions {
+    SplitOptions {
+        paths: paths.iter().map(|p| (*p).to_owned()).collect(),
+        message: Some(vec!["first".to_owned()]),
+        ..SplitOptions::default()
+    }
+}
 
 /// The scenario table (Story 9.47's initial set).
 #[allow(clippy::too_many_lines)] // WHY: one flat table reads better than 24 helper fns
@@ -602,6 +640,275 @@ pub fn scenarios() -> Vec<Scenario> {
                     zanshin_outcome(repo, &result)
                 },
                 |_| args(&["util", "snapshot"]),
+            )
+        },
+        // ── Story 9.15: squash ───────────────────────────────────────────────
+        Scenario {
+            setup: EDITOR,
+            ..simple(
+                "squash_wc_into_parent",
+                |repo, _, _| squash_outcome(repo, &SquashOptions::default()),
+                |_| args(&["squash"]),
+            )
+        },
+        Scenario {
+            setup: EDITOR,
+            ..simple(
+                "squash_revision",
+                |repo, _, s| {
+                    let options = SquashOptions {
+                        revision: Some(s.change("B")),
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |s| vec!["squash".to_owned(), "-r".to_owned(), s.change_arg("B")],
+            )
+        },
+        Scenario {
+            setup: &[Step::Jj(&["new", "-m", "M", "@-", "@--"])],
+            ..simple(
+                "squash_merge_refused",
+                |repo, _, _| squash_outcome(repo, &SquashOptions::default()),
+                |_| args(&["squash"]),
+            )
+        },
+        Scenario {
+            setup: EDITOR,
+            ..simple(
+                "squash_from_into",
+                |repo, _, s| {
+                    let options = SquashOptions {
+                        from: vec![s.change("C")],
+                        into: Some(s.change("A")),
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |s| {
+                    vec![
+                        "squash".to_owned(),
+                        "--from".to_owned(),
+                        s.change_arg("C"),
+                        "--into".to_owned(),
+                        s.change_arg("A"),
+                    ]
+                },
+            )
+        },
+        simple(
+            "squash_into_wc_noop",
+            |repo, _, s| {
+                let options = SquashOptions {
+                    into: Some(s.change("@")),
+                    ..SquashOptions::default()
+                };
+                squash_outcome(repo, &options)
+            },
+            |_| args(&["squash", "--into", "@"]),
+        ),
+        Scenario {
+            setup: C2,
+            ..simple(
+                "squash_path_with_revision",
+                |repo, _, s| {
+                    let options = SquashOptions {
+                        revision: Some(s.change("C")),
+                        paths: vec!["c.txt".to_owned()],
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |s| {
+                    vec![
+                        "squash".to_owned(),
+                        "-r".to_owned(),
+                        s.change_arg("C"),
+                        "c.txt".to_owned(),
+                    ]
+                },
+            )
+        },
+        Scenario {
+            setup: EDITOR,
+            ..simple(
+                "squash_keep_emptied",
+                |repo, _, _| {
+                    let options = SquashOptions {
+                        keep_emptied: true,
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |_| args(&["squash", "-k"]),
+            )
+        },
+        simple(
+            "squash_use_destination_message",
+            |repo, _, _| {
+                let options = SquashOptions {
+                    use_destination_message: true,
+                    ..SquashOptions::default()
+                };
+                squash_outcome(repo, &options)
+            },
+            |_| args(&["squash", "-u"]),
+        ),
+        simple(
+            "squash_message",
+            |repo, _, _| {
+                let options = SquashOptions {
+                    message: Some(vec!["T".to_owned(), "U".to_owned()]),
+                    ..SquashOptions::default()
+                };
+                squash_outcome(repo, &options)
+            },
+            |_| args(&["squash", "-m", "T", "-m", "U"]),
+        ),
+        Scenario {
+            // The plan's text passed back as `-m` against the CLI's editor saved unchanged.
+            setup: EDITOR,
+            ..simple(
+                "squash_plan_as_message",
+                |repo, _, _| {
+                    let plan = repo.squash_plan(&SquashOptions::default()).expect("plan");
+                    let _ = repo.take_warnings();
+                    let options = SquashOptions {
+                        message: plan.combined_description.map(|text| vec![text]),
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |_| args(&["squash"]),
+            )
+        },
+        // ── Story 9.15: split ────────────────────────────────────────────────
+        Scenario {
+            setup: C2,
+            ..simple(
+                "split_paths_message",
+                |repo, _, _| split_outcome(repo, &split_first(&["c.txt"])),
+                |_| args(&["split", "-m", "first", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: C2_EDITOR,
+            ..simple(
+                "split_paths_editor",
+                |repo, _, _| {
+                    let options = SplitOptions {
+                        message: None,
+                        ..split_first(&["c.txt"])
+                    };
+                    split_outcome(repo, &options)
+                },
+                |_| args(&["split", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: C2,
+            ..simple(
+                "split_all_selected",
+                |repo, _, _| split_outcome(repo, &split_first(&["c.txt", "c2.txt"])),
+                |_| args(&["split", "-m", "first", "c.txt", "c2.txt"]),
+            )
+        },
+        Scenario {
+            setup: C2,
+            ..simple(
+                "split_none_selected",
+                |repo, _, _| split_outcome(repo, &split_first(&["nope.txt"])),
+                |_| args(&["split", "-m", "first", "nope.txt"]),
+            )
+        },
+        Scenario {
+            setup: &[
+                Step::Write("c2.txt", "c2\n"),
+                Step::Jj(&["util", "snapshot"]),
+                Step::Jj(&["new", "-m", "D"]),
+            ],
+            ..simple(
+                "split_parallel",
+                |repo, _, s| {
+                    let options = SplitOptions {
+                        revision: Some(s.change("C")),
+                        parallel: true,
+                        ..split_first(&["c.txt"])
+                    };
+                    split_outcome(repo, &options)
+                },
+                |s| {
+                    let mut argv = args(&["split", "-m", "first", "--parallel", "-r"]);
+                    argv.extend([s.change_arg("C"), "c.txt".to_owned()]);
+                    argv
+                },
+            )
+        },
+        Scenario {
+            setup: C2,
+            ..simple(
+                "split_insert_after",
+                |repo, _, s| {
+                    let options = SplitOptions {
+                        insert_after: Some(vec![s.change("A")]),
+                        ..split_first(&["c.txt"])
+                    };
+                    split_outcome(repo, &options)
+                },
+                |s| {
+                    let mut argv = args(&["split", "-m", "first", "-A"]);
+                    argv.extend([s.change_arg("A"), "c.txt".to_owned()]);
+                    argv
+                },
+            )
+        },
+        Scenario {
+            setup: C2,
+            ..simple(
+                "split_insert_before",
+                |repo, _, s| {
+                    let options = SplitOptions {
+                        insert_before: Some(vec![s.change("B")]),
+                        ..split_first(&["c.txt"])
+                    };
+                    split_outcome(repo, &options)
+                },
+                |s| {
+                    let mut argv = args(&["split", "-m", "first", "-B"]);
+                    argv.extend([s.change_arg("B"), "c.txt".to_owned()]);
+                    argv
+                },
+            )
+        },
+        Scenario {
+            setup: C2,
+            ..simple(
+                "split_onto",
+                |repo, _, s| {
+                    let options = SplitOptions {
+                        onto: Some(vec![s.change("A")]),
+                        ..split_first(&["c.txt"])
+                    };
+                    split_outcome(repo, &options)
+                },
+                |s| {
+                    let mut argv = args(&["split", "-m", "first", "-o"]);
+                    argv.extend([s.change_arg("A"), "c.txt".to_owned()]);
+                    argv
+                },
+            )
+        },
+        Scenario {
+            setup: &[
+                Step::Write("c2.txt", "c2\n"),
+                Step::Jj(&["util", "snapshot"]),
+                Step::Jj(&["bookmark", "create", "c-mark"]),
+                Step::Jj(&["config", "set", "--repo", "split.legacy-bookmark-behavior", "false"]),
+            ],
+            ..simple(
+                "split_legacy_bookmarks_off",
+                |repo, _, _| split_outcome(repo, &split_first(&["c.txt"])),
+                |_| args(&["split", "-m", "first", "c.txt"]),
             )
         },
     ]

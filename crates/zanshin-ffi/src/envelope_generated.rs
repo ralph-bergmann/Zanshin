@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 31;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 33;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 32] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 34] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -56,6 +56,8 @@ pub mod zanshin {
             RequestKind::CommitContents,
             RequestKind::GraphTopology,
             RequestKind::WorkspaceAdd,
+            RequestKind::Squash,
+            RequestKind::Split,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -69,7 +71,11 @@ pub mod zanshin {
         /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
         /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
         /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-        /// named as parents. For the other 29 tables the variant name plus `Request` IS the table name.
+        /// named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
+        /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
+        /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
+        /// squash, never a different verb. For the other 30 tables the variant name plus `Request` IS
+        /// the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
         /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -114,9 +120,11 @@ pub mod zanshin {
             pub const CommitContents: Self = Self(29);
             pub const GraphTopology: Self = Self(30);
             pub const WorkspaceAdd: Self = Self(31);
+            pub const Squash: Self = Self(32);
+            pub const Split: Self = Self(33);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 31;
+            pub const ENUM_MAX: u8 = 33;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -150,6 +158,8 @@ pub mod zanshin {
                 Self::CommitContents,
                 Self::GraphTopology,
                 Self::WorkspaceAdd,
+                Self::Squash,
+                Self::Split,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -186,6 +196,8 @@ pub mod zanshin {
                     Self::CommitContents => Some("CommitContents"),
                     Self::GraphTopology => Some("GraphTopology"),
                     Self::WorkspaceAdd => Some("WorkspaceAdd"),
+                    Self::Squash => Some("Squash"),
+                    Self::Split => Some("Split"),
                     _ => None,
                 }
             }
@@ -1727,13 +1739,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 38;
+        pub const ENUM_MAX_PAYLOAD: u8 = 40;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 39] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 41] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -1773,6 +1785,8 @@ pub mod zanshin {
             Payload::CommitContents,
             Payload::WorkspaceAddResult,
             Payload::StaleRecovery,
+            Payload::SquashPlan,
+            Payload::SplitResult,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -1819,9 +1833,11 @@ pub mod zanshin {
             pub const CommitContents: Self = Self(36);
             pub const WorkspaceAddResult: Self = Self(37);
             pub const StaleRecovery: Self = Self(38);
+            pub const SquashPlan: Self = Self(39);
+            pub const SplitResult: Self = Self(40);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 38;
+            pub const ENUM_MAX: u8 = 40;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -1862,6 +1878,8 @@ pub mod zanshin {
                 Self::CommitContents,
                 Self::WorkspaceAddResult,
                 Self::StaleRecovery,
+                Self::SquashPlan,
+                Self::SplitResult,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -1905,6 +1923,8 @@ pub mod zanshin {
                     Self::CommitContents => Some("CommitContents"),
                     Self::WorkspaceAddResult => Some("WorkspaceAddResult"),
                     Self::StaleRecovery => Some("StaleRecovery"),
+                    Self::SquashPlan => Some("SquashPlan"),
+                    Self::SplitResult => Some("SplitResult"),
                     _ => None,
                 }
             }
@@ -2645,6 +2665,595 @@ pub mod zanshin {
                 ds.field("from", &self.from());
                 ds.field("into", &self.into());
                 ds.field("paths", &self.paths());
+                ds.finish()
+            }
+        }
+        pub enum SquashRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_squash` AND `zanshin_squash_plan` (Story 9.15) — the CLI's `jj squash`
+        /// flags, one field each; change ids are jj reverse-hex.
+        ///
+        ///   revision           absent → with from/into absent too, `@` into its one parent; may NOT be
+        ///                      combined with from/into (clap's conflicts_with)
+        ///   from               absent/empty → with `into` present, `@`
+        ///   into               absent → with `from` non-empty, `@`
+        ///   paths              repo-relative PREFIXES; empty/absent = every path
+        ///   message            the CLI's repeatable `-m`; ABSENT = no `-m` (the editor case writes the
+        ///                      buffer saved unchanged), present-empty = `-m` given with no paragraph
+        ///   use_destination_message, keep_emptied   the CLI's `-u` / `-k`
+        pub struct SquashRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for SquashRequest<'a> {
+            type Inner = SquashRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> SquashRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 8;
+            pub const VT_INTO: ::flatbuffers::VOffsetT = 10;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 14;
+            pub const VT_USE_DESTINATION_MESSAGE: ::flatbuffers::VOffsetT = 16;
+            pub const VT_KEEP_EMPTIED: ::flatbuffers::VOffsetT = 18;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                SquashRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SquashRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SquashRequest<'bldr>> {
+                let mut builder = SquashRequestBuilder::new(_fbb);
+                if let Some(x) = args.message {
+                    builder.add_message(x);
+                }
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.into {
+                    builder.add_into(x);
+                }
+                if let Some(x) = args.from {
+                    builder.add_from(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.add_keep_emptied(args.keep_emptied);
+                builder.add_use_destination_message(args.use_destination_message);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(SquashRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SquashRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn from(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SquashRequest::VT_FROM, None)
+                }
+            }
+            #[inline]
+            pub fn into(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SquashRequest::VT_INTO, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SquashRequest::VT_PATHS, None)
+                }
+            }
+            #[inline]
+            pub fn message(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SquashRequest::VT_MESSAGE, None)
+                }
+            }
+            #[inline]
+            pub fn use_destination_message(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(SquashRequest::VT_USE_DESTINATION_MESSAGE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn keep_emptied(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(SquashRequest::VT_KEEP_EMPTIED, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for SquashRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("from", Self::VT_FROM, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("into", Self::VT_INTO, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("message", Self::VT_MESSAGE, false)?
+     .visit_field::<bool>("use_destination_message", Self::VT_USE_DESTINATION_MESSAGE, false)?
+     .visit_field::<bool>("keep_emptied", Self::VT_KEEP_EMPTIED, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct SquashRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub from:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub into: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub message:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub use_destination_message: bool,
+            pub keep_emptied: bool,
+        }
+        impl<'a> Default for SquashRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SquashRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revision: None,
+                    from: None,
+                    into: None,
+                    paths: None,
+                    message: None,
+                    use_destination_message: false,
+                    keep_emptied: false,
+                }
+            }
+        }
+
+        pub struct SquashRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SquashRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(SquashRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SquashRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_from(
+                &mut self,
+                from: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SquashRequest::VT_FROM, from);
+            }
+            #[inline]
+            pub fn add_into(&mut self, into: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SquashRequest::VT_INTO, into);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SquashRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn add_message(
+                &mut self,
+                message: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SquashRequest::VT_MESSAGE, message);
+            }
+            #[inline]
+            pub fn add_use_destination_message(&mut self, use_destination_message: bool) {
+                self.fbb_.push_slot::<bool>(
+                    SquashRequest::VT_USE_DESTINATION_MESSAGE,
+                    use_destination_message,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_keep_emptied(&mut self, keep_emptied: bool) {
+                self.fbb_
+                    .push_slot::<bool>(SquashRequest::VT_KEEP_EMPTIED, keep_emptied, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SquashRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SquashRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SquashRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for SquashRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("SquashRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revision", &self.revision());
+                ds.field("from", &self.from());
+                ds.field("into", &self.into());
+                ds.field("paths", &self.paths());
+                ds.field("message", &self.message());
+                ds.field("use_destination_message", &self.use_destination_message());
+                ds.field("keep_emptied", &self.keep_emptied());
+                ds.finish()
+            }
+        }
+        pub enum SplitRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_split` (Story 9.15) — the CLI's `jj split` flags, one field each;
+        /// change ids are jj reverse-hex.
+        ///
+        ///   revision           absent → `@` (the CLI's default)
+        ///   paths              repo-relative PREFIXES, at least one (no paths = the CLI's interactive
+        ///                      diff editor, refused as `jj.invalid_input`)
+        ///   message            the CLI's `-m` for the SELECTED commit; ABSENT = no `-m` (both commits
+        ///                      keep the original description)
+        ///   parallel           `--parallel`; may NOT be combined with a location
+        ///   onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`: ABSENT = the flag not
+        ///                      given, present-EMPTY = given with no revision (refused: no parent)
+        pub struct SplitRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for SplitRequest<'a> {
+            type Inner = SplitRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> SplitRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_PARALLEL: ::flatbuffers::VOffsetT = 12;
+            pub const VT_ONTO: ::flatbuffers::VOffsetT = 14;
+            pub const VT_INSERT_AFTER: ::flatbuffers::VOffsetT = 16;
+            pub const VT_INSERT_BEFORE: ::flatbuffers::VOffsetT = 18;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                SplitRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SplitRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SplitRequest<'bldr>> {
+                let mut builder = SplitRequestBuilder::new(_fbb);
+                if let Some(x) = args.insert_before {
+                    builder.add_insert_before(x);
+                }
+                if let Some(x) = args.insert_after {
+                    builder.add_insert_after(x);
+                }
+                if let Some(x) = args.onto {
+                    builder.add_onto(x);
+                }
+                if let Some(x) = args.message {
+                    builder.add_message(x);
+                }
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.add_parallel(args.parallel);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(SplitRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SplitRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SplitRequest::VT_PATHS, None)
+                }
+            }
+            #[inline]
+            pub fn message(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SplitRequest::VT_MESSAGE, None)
+                }
+            }
+            #[inline]
+            pub fn parallel(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(SplitRequest::VT_PARALLEL, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn onto(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SplitRequest::VT_ONTO, None)
+                }
+            }
+            #[inline]
+            pub fn insert_after(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SplitRequest::VT_INSERT_AFTER, None)
+                }
+            }
+            #[inline]
+            pub fn insert_before(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SplitRequest::VT_INSERT_BEFORE, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for SplitRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("message", Self::VT_MESSAGE, false)?
+     .visit_field::<bool>("parallel", Self::VT_PARALLEL, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("onto", Self::VT_ONTO, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_after", Self::VT_INSERT_AFTER, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_before", Self::VT_INSERT_BEFORE, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct SplitRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub message:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub parallel: bool,
+            pub onto:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub insert_after:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub insert_before:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for SplitRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SplitRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revision: None,
+                    paths: None,
+                    message: None,
+                    parallel: false,
+                    onto: None,
+                    insert_after: None,
+                    insert_before: None,
+                }
+            }
+        }
+
+        pub struct SplitRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SplitRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(SplitRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SplitRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SplitRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn add_message(
+                &mut self,
+                message: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SplitRequest::VT_MESSAGE, message);
+            }
+            #[inline]
+            pub fn add_parallel(&mut self, parallel: bool) {
+                self.fbb_.push_slot::<bool>(SplitRequest::VT_PARALLEL, parallel, false);
+            }
+            #[inline]
+            pub fn add_onto(
+                &mut self,
+                onto: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SplitRequest::VT_ONTO, onto);
+            }
+            #[inline]
+            pub fn add_insert_after(
+                &mut self,
+                insert_after: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SplitRequest::VT_INSERT_AFTER, insert_after);
+            }
+            #[inline]
+            pub fn add_insert_before(
+                &mut self,
+                insert_before: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SplitRequest::VT_INSERT_BEFORE, insert_before);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SplitRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SplitRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SplitRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for SplitRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("SplitRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revision", &self.revision());
+                ds.field("paths", &self.paths());
+                ds.field("message", &self.message());
+                ds.field("parallel", &self.parallel());
+                ds.field("onto", &self.onto());
+                ds.field("insert_after", &self.insert_after());
+                ds.field("insert_before", &self.insert_before());
                 ds.finish()
             }
         }
@@ -12435,6 +13044,294 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum SquashPlanOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of a successful `zanshin_squash_plan` (Story 9.15): the description `zanshin_squash`
+        /// would have to ask for. `combined_description` is the text the CLI's editor holds, saved
+        /// unchanged — exactly what `zanshin_squash` writes without `message` — when the abandoned
+        /// sources and the destination carry two or more non-empty descriptions and neither `message`
+        /// nor `use_destination_message` is set; ABSENT otherwise (nothing to ask) — null-for-absence.
+        pub struct SquashPlan<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for SquashPlan<'a> {
+            type Inner = SquashPlan<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> SquashPlan<'a> {
+            pub const VT_COMBINED_DESCRIPTION: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                SquashPlan { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SquashPlanArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SquashPlan<'bldr>> {
+                let mut builder = SquashPlanBuilder::new(_fbb);
+                if let Some(x) = args.combined_description {
+                    builder.add_combined_description(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn combined_description(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SquashPlan::VT_COMBINED_DESCRIPTION, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for SquashPlan<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "combined_description",
+                        Self::VT_COMBINED_DESCRIPTION,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct SquashPlanArgs<'a> {
+            pub combined_description: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for SquashPlanArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SquashPlanArgs {
+                    combined_description: None,
+                }
+            }
+        }
+
+        pub struct SquashPlanBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SquashPlanBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_combined_description(&mut self, combined_description: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SquashPlan::VT_COMBINED_DESCRIPTION,
+                    combined_description,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SquashPlanBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SquashPlanBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SquashPlan<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for SquashPlan<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("SquashPlan");
+                ds.field("combined_description", &self.combined_description());
+                ds.finish()
+            }
+        }
+        pub enum SplitResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of a successful `zanshin_split` (Story 9.15).
+        ///
+        /// `mutation` is NESTED rather than flattened so the op-id / working-copy contract has one
+        /// definition; its `new_change_ids` holds the one commit that got a NEW change id (the remaining
+        /// commit for a plain or parallel split, the selected one for `-o`/`-A`/`-B`).
+        /// `selected_change_id` holds the selected changes, `remaining_change_id` the rest; `@` ends on
+        /// the remaining commit when the target was `@`.
+        pub struct SplitResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for SplitResult<'a> {
+            type Inner = SplitResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> SplitResult<'a> {
+            pub const VT_MUTATION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SELECTED_CHANGE_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REMAINING_CHANGE_ID: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                SplitResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SplitResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SplitResult<'bldr>> {
+                let mut builder = SplitResultBuilder::new(_fbb);
+                if let Some(x) = args.remaining_change_id {
+                    builder.add_remaining_change_id(x);
+                }
+                if let Some(x) = args.selected_change_id {
+                    builder.add_selected_change_id(x);
+                }
+                if let Some(x) = args.mutation {
+                    builder.add_mutation(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn mutation(&self) -> Option<MutationResult<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<MutationResult>>(SplitResult::VT_MUTATION, None)
+                }
+            }
+            #[inline]
+            pub fn selected_change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SplitResult::VT_SELECTED_CHANGE_ID, None)
+                }
+            }
+            #[inline]
+            pub fn remaining_change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SplitResult::VT_REMAINING_CHANGE_ID, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for SplitResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<MutationResult>>(
+                        "mutation",
+                        Self::VT_MUTATION,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "selected_change_id",
+                        Self::VT_SELECTED_CHANGE_ID,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "remaining_change_id",
+                        Self::VT_REMAINING_CHANGE_ID,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct SplitResultArgs<'a> {
+            pub mutation: Option<::flatbuffers::WIPOffset<MutationResult<'a>>>,
+            pub selected_change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub remaining_change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for SplitResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SplitResultArgs {
+                    mutation: None,
+                    selected_change_id: None,
+                    remaining_change_id: None,
+                }
+            }
+        }
+
+        pub struct SplitResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SplitResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_mutation(&mut self, mutation: ::flatbuffers::WIPOffset<MutationResult<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<MutationResult>>(SplitResult::VT_MUTATION, mutation);
+            }
+            #[inline]
+            pub fn add_selected_change_id(&mut self, selected_change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SplitResult::VT_SELECTED_CHANGE_ID,
+                    selected_change_id,
+                );
+            }
+            #[inline]
+            pub fn add_remaining_change_id(&mut self, remaining_change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SplitResult::VT_REMAINING_CHANGE_ID,
+                    remaining_change_id,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SplitResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SplitResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SplitResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for SplitResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("SplitResult");
+                ds.field("mutation", &self.mutation());
+                ds.field("selected_change_id", &self.selected_change_id());
+                ds.field("remaining_change_id", &self.remaining_change_id());
+                ds.finish()
+            }
+        }
         pub enum FileEntryOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -20327,6 +21224,36 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_squash_plan(&self) -> Option<SquashPlan<'a>> {
+                if self.data_type() == Payload::SquashPlan {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { SquashPlan::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_split_result(&self) -> Option<SplitResult<'a>> {
+                if self.data_type() == Payload::SplitResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { SplitResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -20378,6 +21305,8 @@ pub mod zanshin {
           Payload::CommitContents => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<CommitContents>>("Payload::CommitContents", pos),
           Payload::WorkspaceAddResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<WorkspaceAddResult>>("Payload::WorkspaceAddResult", pos),
           Payload::StaleRecovery => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<StaleRecovery>>("Payload::StaleRecovery", pos),
+          Payload::SquashPlan => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<SquashPlan>>("Payload::SquashPlan", pos),
+          Payload::SplitResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<SplitResult>>("Payload::SplitResult", pos),
           _ => Ok(()),
         }
      })?
@@ -20735,6 +21664,20 @@ pub mod zanshin {
                     }
                     Payload::StaleRecovery => {
                         if let Some(x) = self.data_as_stale_recovery() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::SquashPlan => {
+                        if let Some(x) = self.data_as_squash_plan() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::SplitResult => {
+                        if let Some(x) = self.data_as_split_result() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

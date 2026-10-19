@@ -14,10 +14,11 @@
 //!
 //! - **§1 Rewritability guard** — `cli_util.rs:2002` `check_rewritable` /
 //!   `:2011` `check_rewritable_expr` / `:1118` `resolve_immutable_expression`.
-//! - **§2 Insert-location resolution** — `cli_util.rs:3551` `compute_commit_location` /
-//!   `:3641` `ensure_no_commit_loop`.
-//! - **§3 Description combination and trailers** — `description_util.rs:299`
-//!   `try_combine_messages` / `:392` `add_trailers_with_template`.
+//! - **§2 Insert-location resolution** — `cli_util.rs:3644` `compute_commit_location` /
+//!   `:3734` `ensure_no_commit_loop` @ v0.46.0.
+//! - **§3 Descriptions** — `description_util.rs:356` `try_combine_messages`, `:374`
+//!   `combine_messages_for_editing`, `:164` `cleanup_description_lines`, `:421`
+//!   `join_message_paragraphs` and `:449` `add_trailers_with_template` @ v0.46.0.
 //! - **§4 Selected-tree plumbing** — `cli_util.rs:3494` `DiffSelector`, whose
 //!   `NonInteractive` arm is jj-lib's `restore_tree`.
 //! - **§6 Transaction opening** — `cli_util.rs:2883` `start_repo_transaction`, the CLI's single
@@ -28,9 +29,11 @@
 //! (`lib.rs`, FR-JJ-16). §1 is wired into `describe`/`edit`/`abandon` and both
 //! Story 9.3 content ops; §4's [`SelectedTree::from_paths`] is `restore`'s primitive; §6 is
 //! wired into every transaction this crate opens, so every Zanshin operation records
-//! `op_metadata.workspace_name` the way a CLI-written one does (Epic 9 follow-up L). §2,
-//! §3 and §4's GUI-selected-tree arm ship tested-but-unwired because their consumers
-//! (squash/split/rebase/duplicate/revert) are Tier C verbs that land in later stories.
+//! `op_metadata.workspace_name` the way a CLI-written one does (Epic 9 follow-up L). Story
+//! 9.15 wired §2 (`split -o/-A/-B`), §3's description ports and §4's
+//! [`SelectedTree::into_commit_selection`] into `squash`/`split`. Still tested-but-unwired:
+//! [`apply_trailers`] (the `templates.commit_trailers` gap) and §4's GUI-selected-tree arm
+//! [`SelectedTree::from_tree_id`] (Story 9.50 decides its contract).
 //!
 //! The CLI's two `panic!`s in `compute_commit_location` become
 //! [`MutateError::InvalidInput`]: a library must not abort the process on a caller-reachable
@@ -151,16 +154,16 @@ pub(crate) fn check_rewritable(
 
 // ── §2 Insert-location resolution ─────────────────────────────────────────────────
 //
-// WHY `allow(dead_code)` from here on: §2-§4 exist for the Tier C verbs (squash, split,
-// rebase, duplicate, revert) that land in later stories, so nothing in the crate calls
-// them yet. They are exercised by this module's own `#[cfg(test)]` tests — which is also
-// why `expect(dead_code)` would be wrong: in the test build the lint does not fire, and an
-// unfulfilled expectation is itself a warning. Drop each attribute when its first real
-// caller arrives.
+// WHY the remaining `allow(dead_code)`s below: an item whose consumer has not landed yet is
+// exercised only by this module's own `#[cfg(test)]` tests — which is also why
+// `expect(dead_code)` would be wrong: in the test build the lint does not fire, and an
+// unfulfilled expectation is itself a warning. Each attribute is dropped when its first real
+// caller arrives (Story 9.15 dropped §2's, `try_combine_messages`' and
+// `into_commit_selection`'s).
 
 /// Computes the `(new_parents, new_children)` a commit should be placed between.
 ///
-/// Ports `cli_util.rs:3551` `compute_commit_location` over ALREADY-RESOLVED commit ids:
+/// Ports `cli_util.rs:3644` `compute_commit_location` @ v0.46.0 over ALREADY-RESOLVED commit ids:
 /// callers own their own revset parsing (`RevisionArg` is a CLI concept), which keeps this
 /// layer free of parse concerns and directly unit-testable. `destination` is the `--onto`
 /// form and is mutually exclusive with `insert_after` (`-A`) / `insert_before` (`-B`).
@@ -195,7 +198,6 @@ pub(crate) fn check_rewritable(
 ///   parent/child cycle, or an empty resolved parent set.
 /// - [`MutateError::Immutable`] — a resulting child commit is immutable.
 /// - [`MutateError::Backend`] — an underlying jj-lib evaluation or backend failure.
-#[allow(dead_code)]
 pub(crate) fn compute_commit_location(
     repo: &dyn jj_lib::repo::Repo,
     immutable: &Arc<ResolvedRevsetExpression>,
@@ -267,9 +269,8 @@ pub(crate) fn compute_commit_location(
 
 /// Refuses a location whose children would also be ancestors of its parents.
 ///
-/// Ports `cli_util.rs:3641` `ensure_no_commit_loop`, message included (the 12-hex-digit
-/// short form comes from jj-lib's `Display`, which pads/truncates the full hex).
-#[allow(dead_code)]
+/// Ports `cli_util.rs:3734` `ensure_no_commit_loop` @ v0.46.0, message included (the
+/// 12-hex-digit short form comes from jj-lib's `Display`, which pads/truncates the full hex).
 fn ensure_no_commit_loop(
     repo: &dyn jj_lib::repo::Repo,
     children: &Arc<ResolvedRevsetExpression>,
@@ -293,14 +294,15 @@ fn ensure_no_commit_loop(
 
 /// Combines the descriptions of the commits feeding a squash-like verb.
 ///
-/// Ports `description_util.rs:299` `try_combine_messages` over plain strings (the CLI takes
-/// `Commit`s only to read `description()`): if at most one of `sources ++ [destination]` is
-/// non-empty, that one wins; `None` means two or more are non-empty.
+/// Ports `description_util.rs:356` `try_combine_messages` @ v0.46.0 over plain strings (the
+/// CLI takes `Commit`s only to read `description()`): if at most one of
+/// `sources ++ [destination]` is non-empty, that one wins; `None` means two or more are
+/// non-empty.
 ///
 /// `None` is a RESULT, not a gap. The CLI's fallback for the ambiguous case is
 /// `combine_messages_for_editing` — a `JJ: `-commented `$EDITOR` buffer, precisely the
-/// terminal UX ADR-0003 replaces. The backend classifies; the GUI decides.
-#[allow(dead_code)]
+/// terminal UX ADR-0003 replaces. [`combined_editor_text`] is what that buffer becomes when the
+/// editor saves it unchanged; `squash_plan` hands it to the GUI first (Story 9.15).
 pub(crate) fn try_combine_messages(sources: &[&str], destination: &str) -> Option<String> {
     let mut non_empty = sources
         .iter()
@@ -312,6 +314,87 @@ pub(crate) fn try_combine_messages(sources: &[&str], destination: &str) -> Optio
         (Some(only), None) => Some(only.to_owned()),
         (Some(_), Some(_)) => None,
     }
+}
+
+/// The `$EDITOR` buffer a squash-like verb opens for its combined description — ports
+/// `description_util.rs:374-415` `combine_messages_for_editing` @ v0.46.0.
+///
+/// The destination's description under a `JJ: Description from the destination commit:`
+/// header (when there is a destination), then every source's under its own `JJ: Description
+/// from source commit:` header — EMPTY descriptions included, as the CLI includes them "so the
+/// user doesn't have to wonder why they only see 2 descriptions when they combined 3 commits".
+///
+/// The CLI's trailing `JJ: Trailers not found in the squashed commits:` block is not ported:
+/// it renders `templates.commit_trailers`, the ledgered trailer gap every describing verb
+/// shares.
+pub(crate) fn combine_messages_for_editing(sources: &[&str], destination: Option<&str>) -> String {
+    let mut combined = String::new();
+    if let Some(destination) = destination {
+        combined.push_str("JJ: Description from the destination commit:\n");
+        combined.push_str(destination);
+    }
+    for source in sources {
+        combined.push_str("\nJJ: Description from source commit:\n");
+        combined.push_str(source);
+    }
+    combined
+}
+
+/// What the CLI keeps of an edited description — ports `description_util.rs:164-183`
+/// `cleanup_description_lines` @ v0.46.0.
+///
+/// Reading stops at the first line starting with `JJ: ignore-rest`; every other line starting
+/// with `JJ:` is dropped; the rest is joined with `\n`, its leading and trailing newlines are
+/// trimmed, and a non-empty result ends in exactly one `\n` (`text_util::complete_newline`).
+pub(crate) fn cleanup_description_lines<I>(lines: I) -> String
+where
+    I: IntoIterator,
+    I::Item: AsRef<str>,
+{
+    let mut description = String::new();
+    for line in lines {
+        let line = line.as_ref();
+        if line.starts_with("JJ: ignore-rest") {
+            break;
+        }
+        if !line.starts_with("JJ:") {
+            description.push_str(line);
+            description.push('\n');
+        }
+    }
+    complete_newline(description.trim_matches('\n'))
+}
+
+/// The combined description a squash writes when the CLI would open its editor and the user
+/// saves the buffer UNCHANGED (Story 9.15): [`cleanup_description_lines`] over
+/// [`combine_messages_for_editing`].
+///
+/// The CLI's buffer also holds an intro line, the change id and a diff summary — all `JJ:`
+/// lines, which the cleanup drops — so the result depends on the descriptions alone. Example:
+/// destination `"B\n"`, abandoned source `"C\n"` → `"B\n\nC\n"`.
+pub(crate) fn combined_editor_text(sources: &[&str], destination: Option<&str>) -> String {
+    cleanup_description_lines(combine_messages_for_editing(sources, destination).lines())
+}
+
+/// A description from the CLI's repeatable `-m` — ports `description_util.rs:421-428`
+/// `join_message_paragraphs` @ v0.46.0: each paragraph newline-terminated
+/// (`complete_newline`), a blank line between two.
+pub(crate) fn join_message_paragraphs(paragraphs: &[String]) -> String {
+    paragraphs
+        .iter()
+        .map(|p| complete_newline(p.as_str()))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// `cli/src/text_util.rs:27-33` `complete_newline` @ v0.46.0: a non-empty text gets a final
+/// `\n` when it has none.
+fn complete_newline(text: &str) -> String {
+    let mut text = text.to_owned();
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text
 }
 
 /// Appends `new_trailers` to `description`'s last paragraph, skipping duplicates.
@@ -419,13 +502,14 @@ impl SelectedTree {
     ///
     /// - [`MutateError::InvalidInput`] — `tree_id_hex` is not valid hex.
     /// - [`MutateError::Backend`] — no such tree in the store, or a backend read failure.
-    // WHY `allow(dead_code)`: Story 9.3 wired `from_paths` (restore) but NOT this arm —
-    // its first caller is the GUI-supplied-tree side of squash/split (Story 9.15/9.17).
-    // Only this item and `into_commit_selection` are still unused, so the attribute moved
-    // here from the struct/impl rather than being deleted: a blanket allow that no longer
-    // shields anything would let a genuinely dead item pass unnoticed. `expect(dead_code)`
-    // would be wrong — the lint does not fire in the test build, where the module's own
-    // `#[cfg(test)]` tests call it, and an unfulfilled expectation is itself a warning.
+    // WHY `allow(dead_code)`: Story 9.3 wired `from_paths` (restore) and Story 9.15
+    // `into_commit_selection` (squash/split, paths arm only), but NOT this arm — the tree arm
+    // of squash/split/diffedit (its contract, `left` and its staleness refusal) is Story
+    // 9.50's to decide. It is the only item of this impl still unused, so the attribute sits
+    // here rather than on the struct/impl: a blanket allow that no longer shields anything
+    // would let a genuinely dead item pass unnoticed. `expect(dead_code)` would be wrong — the
+    // lint does not fire in the test build, where the module's own `#[cfg(test)]` tests call
+    // it, and an unfulfilled expectation is itself a warning.
     #[allow(dead_code)]
     pub(crate) fn from_tree_id(store: &Arc<Store>, tree_id_hex: &str) -> Result<Self, MutateError> {
         let tree_id = TreeId::try_from_hex(tree_id_hex).ok_or_else(|| MutateError::InvalidInput {
@@ -446,9 +530,6 @@ impl SelectedTree {
 
     /// Assembles jj-lib's `CommitWithSelection`, the input of `rewrite::squash_commits`
     /// and friends.
-    // WHY `allow(dead_code)`: see `from_tree_id` — `squash_commits`' first caller is
-    // Story 9.15/9.17, so nothing in the crate consumes a `CommitWithSelection` yet.
-    #[allow(dead_code)]
     pub(crate) fn into_commit_selection(self, commit: Commit, parent_tree: MergedTree) -> CommitWithSelection {
         CommitWithSelection {
             commit,
@@ -722,8 +803,9 @@ mod tests {
     use test_helpers::{extract_fixture, set_tag};
 
     use super::{
-        apply_trailers, check_rewritable, compute_commit_location, immutable_user_expression, resolve_immutable,
-        try_combine_messages, SelectedTree,
+        apply_trailers, check_rewritable, cleanup_description_lines, combine_messages_for_editing,
+        combined_editor_text, compute_commit_location, immutable_user_expression, join_message_paragraphs,
+        resolve_immutable, try_combine_messages, SelectedTree,
     };
     use crate::{MutateError, Repo};
 
@@ -1060,6 +1142,52 @@ mod tests {
     fn try_combine_messages_returns_none_when_ambiguous() {
         assert_eq!(try_combine_messages(&["a", "b"], ""), None);
         assert_eq!(try_combine_messages(&["a"], "dest"), None);
+    }
+
+    /// The CLI's editor buffer: the destination first, every source under its own header —
+    /// an EMPTY source description included (`description_util.rs:374-385` @ v0.46.0).
+    #[test]
+    fn combine_messages_for_editing_lists_every_description_under_its_header() {
+        assert_eq!(
+            combine_messages_for_editing(&["C\n", ""], Some("B\n")),
+            "JJ: Description from the destination commit:\nB\n\nJJ: Description from source commit:\nC\n\n\
+             JJ: Description from source commit:\n"
+        );
+        assert_eq!(
+            combine_messages_for_editing(&["C\n"], None),
+            "\nJJ: Description from source commit:\nC\n"
+        );
+    }
+
+    /// `JJ:` lines are dropped, `JJ: ignore-rest` ends the text, leading and trailing newlines
+    /// are trimmed and a non-empty result ends in exactly one `\n`.
+    #[test]
+    fn cleanup_description_lines_follows_the_cli_rules() {
+        let clean = |text: &str| cleanup_description_lines(text.lines());
+        assert_eq!(clean("JJ: intro\n\nsubject\nJJ: Change ID: x\n\n\n"), "subject\n");
+        assert_eq!(clean("a\nJJ: ignore-rest\nb\n"), "a\n");
+        assert_eq!(clean("a\nJJ: ignore-rest trailing words\nb\n"), "a\n");
+        assert_eq!(clean("\n\nbody\n\nmore"), "body\n\nmore\n");
+        assert_eq!(clean("JJ: only comments\n"), "");
+        assert_eq!(clean(""), "");
+        assert_eq!(clean("not JJ: a comment\n"), "not JJ: a comment\n");
+    }
+
+    /// Spec example (Story 9.15): destination `"B\n"`, abandoned source `"C\n"` → `"B\n\nC\n"`;
+    /// an empty source adds nothing but its (dropped) header.
+    #[test]
+    fn combined_editor_text_is_the_buffer_saved_unchanged() {
+        assert_eq!(combined_editor_text(&["C\n"], Some("B\n")), "B\n\nC\n");
+        assert_eq!(combined_editor_text(&["C\n", "", "D"], Some("B\n")), "B\n\nC\n\n\nD\n");
+        // A description without its final newline runs straight into the next header.
+        assert_eq!(combined_editor_text(&["C", "D\n"], None), "C\nD\n");
+    }
+
+    #[test]
+    fn join_message_paragraphs_matches_the_cli() {
+        assert_eq!(join_message_paragraphs(&["T".to_owned(), "U\n".to_owned()]), "T\n\nU\n");
+        assert_eq!(join_message_paragraphs(&[]), "");
+        assert_eq!(join_message_paragraphs(&[String::new()]), "");
     }
 
     fn trailer(key: &str, value: &str) -> Trailer {

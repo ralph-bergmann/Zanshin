@@ -39,7 +39,7 @@ use jj_lib::rewrite::merge_commit_trees;
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, be, cfg, flatten_chain, rev, FinishCtx, MutateError, MutationResult};
-use crate::op_support::start_repo_transaction;
+use crate::op_support::{join_message_paragraphs, start_repo_transaction};
 use crate::snapshot::{lock_git_import_export, VerbContext};
 use crate::stale::CheckoutStats;
 use crate::warning::WarningKind;
@@ -92,22 +92,6 @@ fn in_current_directory_warning(destination: &str, name: &WorkspaceName) -> Stri
         r#"Workspace created inside current directory. If this was unintentional, delete the "{destination}" directory and run `jj workspace forget {name}` to remove it."#,
         name = name.as_symbol()
     )
-}
-
-/// The CLI's `join_message_paragraphs` (`cli/src/description_util.rs:421-428` @ v0.46.0): each
-/// paragraph newline-terminated (`complete_newline`), a blank line between two.
-fn join_message_paragraphs(paragraphs: &[String]) -> String {
-    paragraphs
-        .iter()
-        .map(|p| {
-            let mut p = p.clone();
-            if !p.is_empty() && !p.ends_with('\n') {
-                p.push('\n');
-            }
-            p
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 /// The destination and the new workspace's name — the CLI's `command.cwd().join(destination)`
@@ -304,9 +288,7 @@ fn resolve_some_revsets(
 mod tests {
     use std::path::Path;
 
-    use super::{
-        destination_and_name, in_current_directory_warning, join_message_paragraphs, AddArgs, SparseInheritance,
-    };
+    use super::{destination_and_name, in_current_directory_warning, AddArgs, SparseInheritance};
     use crate::MutateError;
 
     fn args<'a>(destination: &'a str, name: Option<&'a str>) -> AddArgs<'a> {
@@ -318,14 +300,6 @@ mod tests {
             colocate: None,
             sparse: SparseInheritance::default(),
         }
-    }
-
-    #[test]
-    fn paragraphs_join_like_the_cli() {
-        let paragraphs = ["T".to_owned(), "U\n".to_owned()];
-        assert_eq!(join_message_paragraphs(&paragraphs), "T\n\nU\n");
-        assert_eq!(join_message_paragraphs(&[]), "");
-        assert_eq!(join_message_paragraphs(&[String::new()]), "");
     }
 
     #[test]
@@ -347,6 +321,20 @@ mod tests {
         assert!(matches!(
             destination_and_name(Path::new("/r"), &args("x/..", None)),
             Err(MutateError::InvalidInput { .. })
+        ));
+    }
+
+    /// The default name is the destination's final component, which must be UTF-8: an empty
+    /// destination names the workspace after the current root's own last component.
+    #[cfg(unix)]
+    #[test]
+    fn a_non_utf8_final_component_refuses() {
+        use std::os::unix::ffi::OsStrExt as _;
+
+        let root = Path::new(std::ffi::OsStr::from_bytes(b"/r/\xff"));
+        assert!(matches!(
+            destination_and_name(root, &args("", None)),
+            Err(MutateError::InvalidInput { reason }) if reason == "Destination path is not valid UTF-8"
         ));
     }
 

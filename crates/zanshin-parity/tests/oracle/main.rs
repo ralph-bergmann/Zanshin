@@ -71,6 +71,25 @@ parity!(
     update_stale_dirty,
     update_stale_colocated,
     auto_update_stale_snapshot,
+    squash_wc_into_parent,
+    squash_revision,
+    squash_merge_refused,
+    squash_from_into,
+    squash_into_wc_noop,
+    squash_path_with_revision,
+    squash_keep_emptied,
+    squash_use_destination_message,
+    squash_message,
+    squash_plan_as_message,
+    split_paths_message,
+    split_paths_editor,
+    split_all_selected,
+    split_none_selected,
+    split_parallel,
+    split_insert_after,
+    split_insert_before,
+    split_onto,
+    split_legacy_bookmarks_off,
 );
 
 /// Every scenario id the table and the init list define.
@@ -85,7 +104,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 36);
+    assert_eq!(SCENARIO_IDS.len(), 55);
 }
 
 #[test]

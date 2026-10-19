@@ -152,6 +152,14 @@ abstract final class ZanshinWarningCode {
   /// workspace was created inside the current one (Story 9.23).
   static const workspaceInCurrentDirectory = 'jj.workspace_in_current_directory';
 
+  /// `split` selected every change of the target, so the remaining commit is
+  /// empty; the split still ran (Story 9.15).
+  static const splitAllSelected = 'jj.split_all_selected';
+
+  /// `split` selected no change of the target, so the selected commit is
+  /// empty; the split still ran (Story 9.15).
+  static const splitNoneSelected = 'jj.split_none_selected';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -192,6 +200,8 @@ abstract final class ZanshinWarningCode {
     colocatedInGitWorktree,
     workspacePathInaccessible,
     workspaceInCurrentDirectory,
+    splitAllSelected,
+    splitNoneSelected,
     loginShellUnresolved,
   ];
 }

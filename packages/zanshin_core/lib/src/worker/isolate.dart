@@ -40,6 +40,7 @@ import '../ffi/remotes.dart' as repo_ffi_remotes;
 import '../ffi/repo.dart' as repo_ffi;
 import '../ffi/repo_detect.dart' as repo_ffi_detect;
 import '../ffi/request_bytes.dart';
+import '../ffi/squash_split.dart' as repo_ffi_squash_split;
 import '../ffi/status.dart' as repo_ffi_status;
 import '../ffi/warning.dart';
 import '../ffi/workspace.dart' as repo_ffi_workspace;
@@ -1046,6 +1047,151 @@ class ZanshinWorker {
       ),
     );
     return repo_ffi_mutate.decodeAbsorbResultEnvelopeInternal(bytes);
+  }
+
+  /// Move changes from one or more revisions into another, in the repo
+  /// identified by [handleId] (Story 9.15) — the CLI's `jj squash`, paths only.
+  ///
+  /// [revision] (`-r`), [from] (`--from`), [into] (`--into`), [paths],
+  /// [message] (`-m`; `null` = no `-m`), [useDestinationMessage] (`-u`) and
+  /// [keepEmptied] (`-k`) cross unchanged. Without [message], where the CLI
+  /// opens its editor, the combined text [squashPlan] returns is written.
+  ///
+  /// Sends a [SquashCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if an argument contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`). Completes
+  /// with a [StateError] after [close]; the close-guard [StateError] is
+  /// delivered synchronously by [RepoHandle.squash].
+  Future<repo_ffi_mutate.MutationResult> squash(
+    int handleId, {
+    String? revision,
+    List<String> from = const [],
+    String? into,
+    List<String> paths = const [],
+    List<String>? message,
+    bool useDestinationMessage = false,
+    bool keepEmptied = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    _rejectSquashNuls(revision, from, into, paths, message);
+    final Uint8List bytes = await send(
+      SquashCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        revision: revision,
+        from: from,
+        into: into,
+        paths: paths,
+        message: message,
+        useDestinationMessage: useDestinationMessage,
+        keepEmptied: keepEmptied,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// The description [squash] with the same arguments would have to ask for,
+  /// in the repo identified by [handleId] (Story 9.15). Writes no operation of
+  /// its own.
+  ///
+  /// Sends a [SquashPlanCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<SquashPlan>` bytes.
+  ///
+  /// Throws as [squash]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.squashPlan].
+  Future<repo_ffi_squash_split.SquashPlan> squashPlan(
+    int handleId, {
+    String? revision,
+    List<String> from = const [],
+    String? into,
+    List<String> paths = const [],
+    List<String>? message,
+    bool useDestinationMessage = false,
+    bool keepEmptied = false,
+  }) async {
+    _rejectSquashNuls(revision, from, into, paths, message);
+    final Uint8List bytes = await send(
+      SquashPlanCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        revision: revision,
+        from: from,
+        into: into,
+        paths: paths,
+        message: message,
+        useDestinationMessage: useDestinationMessage,
+        keepEmptied: keepEmptied,
+      ),
+    );
+    return repo_ffi_squash_split.decodeSquashPlanEnvelopeInternal(bytes);
+  }
+
+  /// Split a revision in two, in the repo identified by [handleId] (Story
+  /// 9.15) — the CLI's `jj split`, paths only.
+  ///
+  /// [revision] (`-r`, `null` = `@`), [paths] (at least one), [message] (`-m`
+  /// for the selected commit), [parallel] and the [onto] / [insertAfter] /
+  /// [insertBefore] locations (`null` = the flag not given) cross unchanged.
+  ///
+  /// Sends a [SplitCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<SplitResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if an argument contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`). Completes
+  /// with a [StateError] after [close]; the close-guard [StateError] is
+  /// delivered synchronously by [RepoHandle.split].
+  Future<repo_ffi_squash_split.SplitResult> split(
+    int handleId, {
+    required List<String> paths,
+    String? revision,
+    List<String>? message,
+    bool parallel = false,
+    List<String>? onto,
+    List<String>? insertAfter,
+    List<String>? insertBefore,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNul(revision, 'revision');
+    rejectInteriorNuls(paths, 'paths');
+    rejectInteriorNuls(message ?? const [], 'message');
+    rejectInteriorNuls(onto ?? const [], 'onto');
+    rejectInteriorNuls(insertAfter ?? const [], 'insertAfter');
+    rejectInteriorNuls(insertBefore ?? const [], 'insertBefore');
+    final Uint8List bytes = await send(
+      SplitCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        revision: revision,
+        paths: paths,
+        message: message,
+        parallel: parallel,
+        onto: onto,
+        insertAfter: insertAfter,
+        insertBefore: insertBefore,
+      ),
+    );
+    return repo_ffi_squash_split.decodeSplitResultEnvelopeInternal(bytes);
+  }
+
+  /// The calling-side interior-NUL guard of [squash] and [squashPlan].
+  static void _rejectSquashNuls(
+    String? revision,
+    List<String> from,
+    String? into,
+    List<String> paths,
+    List<String>? message,
+  ) {
+    rejectInteriorNul(revision, 'revision');
+    rejectInteriorNuls(from, 'from');
+    rejectInteriorNul(into, 'into');
+    rejectInteriorNuls(paths, 'paths');
+    rejectInteriorNuls(message ?? const [], 'message');
   }
 
   /// List the entries of a revision's tree in the repo identified by [handleId]
@@ -2251,6 +2397,93 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinAbsorb(raw, from: from, into: into, paths: paths);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case SquashCommand(
+          :final int handleId,
+          :final String? revision,
+          :final List<String> from,
+          :final String? into,
+          :final List<String> paths,
+          :final List<String>? message,
+          :final bool useDestinationMessage,
+          :final bool keepEmptied,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: SquashCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_squash_split.zanshinSquash(
+              raw,
+              revision: revision,
+              from: from,
+              into: into,
+              paths: paths,
+              message: message,
+              useDestinationMessage: useDestinationMessage,
+              keepEmptied: keepEmptied,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case SquashPlanCommand(
+          :final int handleId,
+          :final String? revision,
+          :final List<String> from,
+          :final String? into,
+          :final List<String> paths,
+          :final List<String>? message,
+          :final bool useDestinationMessage,
+          :final bool keepEmptied,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: SquashPlanCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_squash_split.zanshinSquashPlan(
+              raw,
+              revision: revision,
+              from: from,
+              into: into,
+              paths: paths,
+              message: message,
+              useDestinationMessage: useDestinationMessage,
+              keepEmptied: keepEmptied,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case SplitCommand(
+          :final int handleId,
+          :final String? revision,
+          :final List<String> paths,
+          :final List<String>? message,
+          :final bool parallel,
+          :final List<String>? onto,
+          :final List<String>? insertAfter,
+          :final List<String>? insertBefore,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: SplitCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_squash_split.zanshinSplit(
+              raw,
+              revision: revision,
+              paths: paths,
+              message: message,
+              parallel: parallel,
+              onto: onto,
+              insertAfter: insertAfter,
+              insertBefore: insertBefore,
+            );
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

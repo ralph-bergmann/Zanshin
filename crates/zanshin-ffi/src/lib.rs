@@ -50,6 +50,7 @@ pub mod op_log;
 pub mod remotes;
 pub mod repo;
 pub mod snapshot;
+pub mod squash_split;
 pub mod status;
 pub mod tracing_init;
 pub mod watcher;

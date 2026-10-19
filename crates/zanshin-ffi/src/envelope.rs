@@ -279,6 +279,10 @@ pub const JJ_WORKSPACE_PATH_INACCESSIBLE: &str = "jj.workspace_path_inaccessible
 /// Warning: `zanshin_workspace_add` created the workspace inside the current one (a destination
 /// without a path separator).
 pub const JJ_WORKSPACE_IN_CURRENT_DIRECTORY: &str = "jj.workspace_in_current_directory";
+/// Warning: `zanshin_split` selected every change, so the remaining commit is empty (Story 9.15).
+pub const JJ_SPLIT_ALL_SELECTED: &str = "jj.split_all_selected";
+/// Warning: `zanshin_split` selected no change, so the selected commit is empty (Story 9.15).
+pub const JJ_SPLIT_NONE_SELECTED: &str = "jj.split_none_selected";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -318,6 +322,8 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::ColocatedInGitWorktree => JJ_COLOCATED_IN_GIT_WORKTREE,
         K::WorkspacePathInaccessible => JJ_WORKSPACE_PATH_INACCESSIBLE,
         K::WorkspaceInCurrentDirectory => JJ_WORKSPACE_IN_CURRENT_DIRECTORY,
+        K::SplitAllSelected => JJ_SPLIT_ALL_SELECTED,
+        K::SplitNoneSelected => JJ_SPLIT_NONE_SELECTED,
     }
 }
 
@@ -688,6 +694,44 @@ pub fn ok_absorb_result(r: &zanshin_jj::AbsorbResult, report: &CallReport) -> Ve
         Some(absorb_result.as_union_value()),
         report,
     )
+}
+
+/// Build a success `Envelope` with a `SquashPlan` payload and return the finished buffer
+/// (Story 9.15).
+///
+/// `combined_description` is written only when present: null-for-absence is the wire form of
+/// "nothing to ask".
+#[must_use]
+pub fn ok_squash_plan(r: &zanshin_jj::SquashPlan, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(256);
+    let combined = r.combined_description.as_deref().map(|text| b.create_string(text));
+    let plan = fbs::SquashPlan::create(
+        &mut b,
+        &fbs::SquashPlanArgs {
+            combined_description: combined,
+        },
+    );
+    finish_envelope(b, fbs::Payload::SquashPlan, Some(plan.as_union_value()), report)
+}
+
+/// Build a success `Envelope` with a `SplitResult` payload and return the finished buffer
+/// (Story 9.15). The nested `MutationResult` is built first through [`build_mutation_result`],
+/// then the two change-id strings — every child completed before the `SplitResult` table opens.
+#[must_use]
+pub fn ok_split_result(r: &zanshin_jj::SplitResult, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(512);
+    let mutation = build_mutation_result(&mut b, &r.mutation);
+    let selected = b.create_string(&r.selected_change_id.0);
+    let remaining = b.create_string(&r.remaining_change_id.0);
+    let split = fbs::SplitResult::create(
+        &mut b,
+        &fbs::SplitResultArgs {
+            mutation: Some(mutation),
+            selected_change_id: Some(selected),
+            remaining_change_id: Some(remaining),
+        },
+    );
+    finish_envelope(b, fbs::Payload::SplitResult, Some(split.as_union_value()), report)
 }
 
 /// Build a success `Envelope` with a `Diagnostics` payload and return the finished buffer.
@@ -1111,6 +1155,8 @@ mod tests {
                 K::ColocatedInGitWorktree => "jj.colocated_in_git_worktree",
                 K::WorkspacePathInaccessible => "jj.workspace_path_inaccessible",
                 K::WorkspaceInCurrentDirectory => "jj.workspace_in_current_directory",
+                K::SplitAllSelected => "jj.split_all_selected",
+                K::SplitNoneSelected => "jj.split_none_selected",
             }
         }
         let kinds = [
@@ -1146,6 +1192,8 @@ mod tests {
             K::ColocatedInGitWorktree,
             K::WorkspacePathInaccessible,
             K::WorkspaceInCurrentDirectory,
+            K::SplitAllSelected,
+            K::SplitNoneSelected,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");
@@ -1220,6 +1268,47 @@ mod tests {
         assert!(ar.source_change_id().is_none());
         assert!(ar.rewritten_change_ids().is_some_and(|v| v.is_empty()));
         assert!(ar.skipped_paths().is_some_and(|v| v.is_empty()));
+    }
+
+    /// Story 9.15: the plan's text is written when present and ABSENT (never `""`) when there is
+    /// nothing to ask.
+    #[test]
+    fn ok_squash_plan_writes_the_text_or_leaves_it_absent() {
+        let present = zanshin_jj::SquashPlan {
+            combined_description: Some("B\n\nC\n".to_owned()),
+        };
+        let buf = ok_squash_plan(&present, &CallReport::default());
+        let env = verified_envelope(&buf);
+        assert_eq!(env.data_type(), fbs::Payload::SquashPlan);
+        let plan = env.data_as_squash_plan().expect("SquashPlan payload");
+        assert_eq!(plan.combined_description(), Some("B\n\nC\n"));
+
+        let absent = zanshin_jj::SquashPlan {
+            combined_description: None,
+        };
+        let buf = ok_squash_plan(&absent, &CallReport::default());
+        let env = verified_envelope(&buf);
+        assert!(env
+            .data_as_squash_plan()
+            .expect("SquashPlan payload")
+            .combined_description()
+            .is_none());
+    }
+
+    #[test]
+    fn ok_split_result_nests_the_mutation_and_names_both_parts() {
+        let r = zanshin_jj::SplitResult {
+            mutation: sample_mutation_result(),
+            selected_change_id: zanshin_jj::ChangeId("selected".to_owned()),
+            remaining_change_id: zanshin_jj::ChangeId("remaining".to_owned()),
+        };
+        let buf = ok_split_result(&r, &CallReport::default());
+        let env = verified_envelope(&buf);
+        assert_eq!(env.data_type(), fbs::Payload::SplitResult);
+        let split = env.data_as_split_result().expect("SplitResult payload");
+        assert_eq!(split.mutation().and_then(|m| m.new_op_id()), Some("op99"));
+        assert_eq!(split.selected_change_id(), Some("selected"));
+        assert_eq!(split.remaining_change_id(), Some("remaining"));
     }
 
     #[test]

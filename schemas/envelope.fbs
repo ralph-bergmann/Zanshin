@@ -59,7 +59,11 @@ table FfiError {
 /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 /// `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-/// named as parents. For the other 29 tables the variant name plus `Request` IS the table name.
+/// named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
+/// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
+/// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
+/// squash, never a different verb. For the other 30 tables the variant name plus `Request` IS
+/// the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 /// producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -99,7 +103,9 @@ enum RequestKind : ubyte {
   EnvironmentAdopt,
   CommitContents,
   GraphTopology,
-  WorkspaceAdd
+  WorkspaceAdd,
+  Squash,
+  Split
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -143,6 +149,50 @@ table AbsorbRequest {
   from: string;
   into: string;
   paths: [string];
+}
+
+/// Arguments of `zanshin_squash` AND `zanshin_squash_plan` (Story 9.15) — the CLI's `jj squash`
+/// flags, one field each; change ids are jj reverse-hex.
+///
+///   revision           absent → with from/into absent too, `@` into its one parent; may NOT be
+///                      combined with from/into (clap's conflicts_with)
+///   from               absent/empty → with `into` present, `@`
+///   into               absent → with `from` non-empty, `@`
+///   paths              repo-relative PREFIXES; empty/absent = every path
+///   message            the CLI's repeatable `-m`; ABSENT = no `-m` (the editor case writes the
+///                      buffer saved unchanged), present-empty = `-m` given with no paragraph
+///   use_destination_message, keep_emptied   the CLI's `-u` / `-k`
+table SquashRequest {
+  kind: RequestKind;
+  revision: string;
+  from: [string];
+  into: string;
+  paths: [string];
+  message: [string];
+  use_destination_message: bool;
+  keep_emptied: bool;
+}
+
+/// Arguments of `zanshin_split` (Story 9.15) — the CLI's `jj split` flags, one field each;
+/// change ids are jj reverse-hex.
+///
+///   revision           absent → `@` (the CLI's default)
+///   paths              repo-relative PREFIXES, at least one (no paths = the CLI's interactive
+///                      diff editor, refused as `jj.invalid_input`)
+///   message            the CLI's `-m` for the SELECTED commit; ABSENT = no `-m` (both commits
+///                      keep the original description)
+///   parallel           `--parallel`; may NOT be combined with a location
+///   onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`: ABSENT = the flag not
+///                      given, present-EMPTY = given with no revision (refused: no parent)
+table SplitRequest {
+  kind: RequestKind;
+  revision: string;
+  paths: [string];
+  message: [string];
+  parallel: bool;
+  onto: [string];
+  insert_after: [string];
+  insert_before: [string];
 }
 
 /// Arguments of `zanshin_file_list` (Story 9.4, FR-JJ-17).
@@ -602,6 +652,8 @@ table GraphTopologyRequest {
 //   Story 9-36 : — (`zanshin_environment_adopt` answers ok with no payload and no warnings)
 //   Story 4-10 : CommitContents ✓
 //   Story 4-12 : GraphTopology ✓ (GraphSlice's Payload slot 11)
+//   Story 9-15 : SquashPlan ✓, SplitResult ✓ (zanshin_squash reuses MutationResult;
+//                SplitResult nests it)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -950,6 +1002,28 @@ table AbsorbResult {
   source_change_id: string;         // absent when the source was abandoned or nothing moved
   num_rebased: uint;
   skipped_paths: [SkippedPath];
+}
+
+/// Outcome of a successful `zanshin_squash_plan` (Story 9.15): the description `zanshin_squash`
+/// would have to ask for. `combined_description` is the text the CLI's editor holds, saved
+/// unchanged — exactly what `zanshin_squash` writes without `message` — when the abandoned
+/// sources and the destination carry two or more non-empty descriptions and neither `message`
+/// nor `use_destination_message` is set; ABSENT otherwise (nothing to ask) — null-for-absence.
+table SquashPlan {
+  combined_description: string;
+}
+
+/// Outcome of a successful `zanshin_split` (Story 9.15).
+///
+/// `mutation` is NESTED rather than flattened so the op-id / working-copy contract has one
+/// definition; its `new_change_ids` holds the one commit that got a NEW change id (the remaining
+/// commit for a plain or parallel split, the selected one for `-o`/`-A`/`-B`).
+/// `selected_change_id` holds the selected changes, `remaining_change_id` the rest; `@` ends on
+/// the remaining commit when the target was `@`.
+table SplitResult {
+  mutation: MutationResult;
+  selected_change_id: string;
+  remaining_change_id: string;
 }
 
 /// What a tree entry IS (Story 9.4) — the CLI's `TreeEntry.file_type` keyword
@@ -1530,6 +1604,8 @@ union Payload {
   CommitContents,
   WorkspaceAddResult,
   StaleRecovery,
+  SquashPlan,
+  SplitResult,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

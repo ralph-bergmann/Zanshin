@@ -113,6 +113,13 @@ pub enum WarningKind {
     /// created INSIDE the current one, perhaps where only a name was meant
     /// (`cli/src/commands/workspace/add.rs:184-191` @ v0.46.0; Story 9.23).
     WorkspaceInCurrentDirectory,
+    /// `split` selected EVERY change of the target, so the remaining commit will be empty
+    /// (`cli/src/commands/split.rs:585-589` @ v0.46.0; Story 9.15). The split still runs.
+    SplitAllSelected,
+    /// `split` selected NO change of the target, so the selected commit will be empty
+    /// (`cli/src/commands/split.rs:590-594` @ v0.46.0; Story 9.15). The split still runs; when
+    /// the target itself is empty both hold and only [`WarningKind::SplitAllSelected`] warns.
+    SplitNoneSelected,
 }
 
 /// One warning a call produced (Story 9.32).

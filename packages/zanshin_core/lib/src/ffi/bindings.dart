@@ -2069,6 +2069,144 @@ external ffi.Pointer<ZanshinBuf> zanshin_snapshot(
   int handle,
 );
 
+/// Split a revision in two, in the repo identified by `handle` — the CLI's `jj split`, paths only
+/// (Story 9.15).
+///
+/// The arguments cross as a `SplitRequest` `FlatBuffers` request buffer, one field per CLI flag:
+/// `revision` (absent: `@`), `paths` (repo-relative PREFIXES, at least one — no paths is the CLI's
+/// interactive diff editor), `message` (the CLI's `-m` for the SELECTED commit; ABSENT: both keep
+/// the original description), `parallel`, and the `onto` / `insert_after` / `insert_before`
+/// locations (ABSENT = the flag not given). Plain and parallel splits keep the target's change id
+/// on the selected commit; with a location the selected changes become a NEW change there and
+/// the remaining commit keeps the target's change id. Bookmarks follow
+/// `split.legacy-bookmark-behavior`; `@` ends on the remaining commit. The operation is
+/// `split commit <target hex>`. The working copy is snapshotted first (Story 9.26).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `SplitResult` payload on success; selecting
+/// every change warns `jj.split_all_selected`, selecting none `jj.split_none_selected`.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `SplitRequest` buffer, or its `kind` is
+/// not `Split`.
+/// - `jj.invalid_input` — `paths` is empty or holds an invalid repo path, `parallel` is combined
+/// with a location, `onto` with `insert_after`/`insert_before`, the location resolves no parent,
+/// or it would create a loop; detail in `context`.
+/// - `jj.change_not_found` — `revision` or a location entry is malformed, carried by no VISIBLE
+/// commit, or divergent; the id in `context`.
+/// - `jj.immutable` — the target, or a child the location would rewrite, is immutable.
+/// - `jj.config_error` — `split.legacy-bookmark-behavior` is not a boolean, or the config or its
+/// `immutable_heads()` alias does not read or resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.SplitRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration
+/// of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_split(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Move changes from one or more revisions into another, in the repo identified by `handle` —
+/// the CLI's `jj squash`, paths only (Story 9.15).
+///
+/// The arguments cross as a `SquashRequest` `FlatBuffers` request buffer, one field per CLI flag:
+/// `revision` (absent with `from`/`into` absent too: `@` into its one parent), `from` (empty with
+/// `into` present: `@`), `into` (absent with `from` present: `@`), `paths` (repo-relative
+/// PREFIXES, empty = every path), `message` (the CLI's `-m`; ABSENT = no `-m`),
+/// `use_destination_message` (`-u`) and `keep_emptied` (`-k`). Without `message`, where the CLI
+/// opens its editor (two or more non-empty descriptions among the abandoned sources and the
+/// destination), the combined text the editor holds is written as if saved unchanged — preview it
+/// with `zanshin_squash_plan` first. The operation is `squash commits into <destination hex>`;
+/// squashing `@` into `@` writes NO operation and `MutationResult.new_op_id` carries the PRE-CALL
+/// head. The working copy is snapshotted first (Story 9.26).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success: an
+/// abandoned `@`'s replacement in `new_change_ids`, the abandoned sources in
+/// `abandoned_change_ids`. An explicit path no selected source holds warns `jj.paths_unmatched`.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `SquashRequest` buffer, or its `kind`
+/// is not `Squash`.
+/// - `jj.invalid_input` — `revision` combined with `from`/`into`, `message` with
+/// `use_destination_message`, a merge or the root commit as the revision ("Cannot squash merge
+/// commits without a specified destination"), or a `paths` entry that is not a valid repo path;
+/// detail in `context`.
+/// - `jj.change_not_found` — `revision`, a `from` entry or `into` is malformed, carried by no
+/// VISIBLE commit, or divergent; the id in `context`.
+/// - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
+/// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.SquashRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration
+/// of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_squash(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Preview the description `zanshin_squash` would have to ask for, in the repo identified by
+/// `handle` (Story 9.15): the squash with the same `SquashRequest`, prepared up to where the CLI
+/// opens its editor, and dropped.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `SquashPlan` payload on success:
+/// `combined_description` is the text the CLI's editor holds, saved unchanged — exactly what
+/// `zanshin_squash` writes without `message` — and ABSENT when there is nothing to ask. Refuses
+/// and warns exactly as `zanshin_squash`. Writes NO operation of its own, only the pre-verb
+/// snapshot's.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `SquashRequest` buffer, or its `kind`
+/// is not `Squash`.
+/// - `jj.invalid_input` — as `zanshin_squash`: conflicting flags, a merge or root revision, an
+/// invalid path; detail in `context`.
+/// - `jj.change_not_found` — `revision`, a `from` entry or `into` does not resolve; the id in
+/// `context`.
+/// - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
+/// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.SquashRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration
+/// of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_squash_plan(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// Read the working-copy status of the repo identified by `handle`.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `Status` payload on success.
@@ -2426,7 +2564,7 @@ const int ENUM_MAX_GRAPH_EDGE_KIND = 2;
 
 const int ENUM_MAX_REPO_KIND = 3;
 
-const int ENUM_MAX_REQUEST_KIND = 31;
+const int ENUM_MAX_REQUEST_KIND = 33;
 
 const int ENUM_MAX_REVISION_REF = 2;
 
@@ -2493,8 +2631,6 @@ const int FileEntry_VT_CONFLICT_SIDE_COUNT = 10;
 const int FileEntry_VT_EXECUTABLE = 8;
 
 const int FileEntry_VT_FILE_TYPE = 6;
-
-const int FileListRequest_VT_REVISION = 6;
 
 const int FileList_VT_ENTRIES = 4;
 
@@ -2680,6 +2816,28 @@ const int SnapshotStats_VT_INVALID_UTF8_PATHS = 6;
 
 const int SnapshotStats_VT_UNTRACKED = 4;
 
+const int SplitRequest_VT_INSERT_AFTER = 16;
+
+const int SplitRequest_VT_INSERT_BEFORE = 18;
+
+const int SplitRequest_VT_ONTO = 14;
+
+const int SplitRequest_VT_PARALLEL = 12;
+
+const int SplitResult_VT_REMAINING_CHANGE_ID = 8;
+
+const int SplitResult_VT_SELECTED_CHANGE_ID = 6;
+
+const int SquashPlan_VT_COMBINED_DESCRIPTION = 4;
+
+const int SquashRequest_VT_KEEP_EMPTIED = 18;
+
+const int SquashRequest_VT_MESSAGE = 14;
+
+const int SquashRequest_VT_REVISION = 6;
+
+const int SquashRequest_VT_USE_DESTINATION_MESSAGE = 16;
+
 const int StaleRecovery_VT_CHECKOUT = 8;
 
 const int StaleRecovery_VT_GIT_HEAD_RESET_OP_ID = 10;
@@ -2709,8 +2867,6 @@ const int TrackResult_VT_SNAPSHOT_STATS = 8;
 const int UntrackResult_VT_UNMATCHED_PATHS = 8;
 
 const int UntrackedPath_VT_REASON_TYPE = 6;
-
-const int WatcherEvent_VT_MESSAGE = 10;
 
 const int WorkspaceAddRequest_VT_COLOCATE = 14;
 

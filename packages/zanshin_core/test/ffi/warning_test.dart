@@ -407,9 +407,11 @@ void main() {
         'jj.colocated_in_git_worktree',
         'jj.workspace_path_inaccessible',
         'jj.workspace_in_current_directory',
+        'jj.split_all_selected',
+        'jj.split_none_selected',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(33), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(35), reason: 'no code is registered twice');
     });
   });
 

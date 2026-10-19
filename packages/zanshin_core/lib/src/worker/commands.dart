@@ -1229,6 +1229,141 @@ final class ConfigGcDeleteCommand extends WorkerCommand {
   final List<String> configDirs;
 }
 
+/// Move changes from one or more revisions into another, in the repo
+/// identified by [handleId] (Story 9.15) — the CLI's `jj squash`, paths only.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinSquash(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class SquashCommand extends WorkerCommand implements HandleScopedCommand {
+  const SquashCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revision,
+    required this.from,
+    required this.into,
+    required this.paths,
+    required this.message,
+    required this.useDestinationMessage,
+    required this.keepEmptied,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `-r`, a change id; `null` = `@` into its parent (with [from]/[into] unset).
+  final String? revision;
+
+  /// `--from` change ids; empty = `@` (with [into] set).
+  final List<String> from;
+
+  /// `--into` change id; `null` = `@` (with [from] set).
+  final String? into;
+
+  /// Repo-relative paths interpreted as PREFIXES; empty = all paths.
+  final List<String> paths;
+
+  /// The repeatable `-m`; `null` = no `-m`.
+  final List<String>? message;
+
+  /// `-u`.
+  final bool useDestinationMessage;
+
+  /// `-k`.
+  final bool keepEmptied;
+}
+
+/// Preview the description a [SquashCommand] with the same arguments would
+/// have to ask for, in the repo identified by [handleId] (Story 9.15).
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinSquashPlan(raw, …)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<SquashPlan>` bytes.
+final class SquashPlanCommand extends WorkerCommand implements HandleScopedCommand {
+  const SquashPlanCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revision,
+    required this.from,
+    required this.into,
+    required this.paths,
+    required this.message,
+    required this.useDestinationMessage,
+    required this.keepEmptied,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// As [SquashCommand.revision].
+  final String? revision;
+
+  /// As [SquashCommand.from].
+  final List<String> from;
+
+  /// As [SquashCommand.into].
+  final String? into;
+
+  /// As [SquashCommand.paths].
+  final List<String> paths;
+
+  /// As [SquashCommand.message].
+  final List<String>? message;
+
+  /// As [SquashCommand.useDestinationMessage].
+  final bool useDestinationMessage;
+
+  /// As [SquashCommand.keepEmptied].
+  final bool keepEmptied;
+}
+
+/// Split a revision in two, in the repo identified by [handleId] (Story 9.15)
+/// — the CLI's `jj split`, paths only.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinSplit(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<SplitResult>` bytes.
+final class SplitCommand extends WorkerCommand implements HandleScopedCommand {
+  const SplitCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revision,
+    required this.paths,
+    required this.message,
+    required this.parallel,
+    required this.onto,
+    required this.insertAfter,
+    required this.insertBefore,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `-r`, a change id; `null` = `@`.
+  final String? revision;
+
+  /// Repo-relative paths interpreted as PREFIXES; at least one.
+  final List<String> paths;
+
+  /// `-m` for the selected commit; `null` = no `-m`.
+  final List<String>? message;
+
+  /// `--parallel`.
+  final bool parallel;
+
+  /// `-o` change ids; `null` = the flag not given.
+  final List<String>? onto;
+
+  /// `-A` change ids; `null` = the flag not given.
+  final List<String>? insertAfter;
+
+  /// `-B` change ids; `null` = the flag not given.
+  final List<String>? insertBefore;
+}
+
 /// Request a graceful worker shutdown (Story 3.6).
 ///
 /// The worker closes every repo left in its handle table (joining each

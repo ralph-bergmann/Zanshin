@@ -9,7 +9,7 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (61 types; the AC-1 table's 30 plus the
+// --- Type-path aliases: one alias per public type (82 types; the AC-1 table's 30 plus the
 // --- types later stories added — CommitMeta/CommitRef (4.8), ConfigError/LogDefaults (4.9),
 // --- MutationResult/MutateError (6.1), ProgressEvent (6.4a), Tag/TagKind/WorkingCopy/
 // --- ViewError (9.2), AbsorbResult/SkippedPath (9.3), FileEntry/FileType/ShownFile/
@@ -17,8 +17,9 @@
 // --- GitRefUpdateKind/GitExportResult/GitExportFailure (9.5), ShowEntry/EvologEntry/
 // --- InterdiffView/CommitViewError (9.6), WorkspaceEntry/WorkspaceError (9.7)). Story 9.8
 // --- adds NO public type — both bookmark mutations reuse MutationResult/MutateError — so the
-// --- count moved only when follow-up F turned `interdiff`'s bare Vec into InterdiffView
-// --- ---------------------------------------------------------------------------
+// --- count moved only when follow-up F turned `interdiff`'s bare Vec into InterdiffView.
+// --- Later stories name their types in their own section below, the last being
+// --- SquashOptions/SquashPlan/SplitOptions/SplitResult (9.15) ---------------------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -1072,6 +1073,73 @@ fn workspace_add_update_stale_surface_resolves() {
         ) -> Result<zanshin_jj::WorkspaceAddResult, zanshin_jj::MutateError>;
 }
 
+// squash / split (Story 9.15)
+type _SquashOptions = zanshin_jj::SquashOptions;
+type _SquashPlan = zanshin_jj::SquashPlan;
+type _SplitOptions = zanshin_jj::SplitOptions;
+type _SplitResult = zanshin_jj::SplitResult;
+
+/// The Story 9.15 surface: the four new types named field by field (the CLI's `jj squash` /
+/// `jj split` flags, one field each) and the three `Repo` methods as `fn` pointers.
+#[test]
+fn squash_split_surface_resolves() {
+    let id = |s: &str| zanshin_jj::ChangeId(s.to_owned());
+    let squash = zanshin_jj::SquashOptions {
+        revision: Some(id("r")),
+        from: vec![id("f")],
+        into: Some(id("i")),
+        paths: vec!["p".to_owned()],
+        message: Some(vec!["m".to_owned()]),
+        use_destination_message: false,
+        keep_emptied: true,
+    };
+    assert_eq!(squash.clone(), squash);
+    assert_eq!(zanshin_jj::SquashOptions::default().message, None);
+    let plan = zanshin_jj::SquashPlan {
+        combined_description: Some("B\n\nC\n".to_owned()),
+    };
+    assert_eq!(plan.combined_description.as_deref(), Some("B\n\nC\n"));
+    let split = zanshin_jj::SplitOptions {
+        revision: None,
+        paths: vec!["p".to_owned()],
+        message: None,
+        parallel: true,
+        onto: None,
+        insert_after: Some(Vec::new()),
+        insert_before: Some(vec![id("b")]),
+    };
+    assert_eq!(split.clone(), split);
+    let result = zanshin_jj::SplitResult {
+        mutation: zanshin_jj::MutationResult {
+            new_op_id: zanshin_jj::OperationId("o".to_owned()),
+            new_change_ids: vec![id("n")],
+            abandoned_change_ids: Vec::new(),
+            working_copy_change_id: id("w"),
+            finish: None,
+        },
+        selected_change_id: id("s"),
+        remaining_change_id: id("n"),
+    };
+    assert_eq!(result.selected_change_id, id("s"));
+    assert_eq!(result.remaining_change_id, result.mutation.new_change_ids[0]);
+
+    _ = zanshin_jj::Repo::squash
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::SquashOptions,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::squash_plan
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::SquashOptions,
+        ) -> Result<zanshin_jj::SquashPlan, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::split
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::SplitOptions,
+        ) -> Result<zanshin_jj::SplitResult, zanshin_jj::MutateError>;
+}
+
 // snapshot precondition (Story 9.26)
 type _Precondition = zanshin_jj::Precondition;
 type _PreconditionError = zanshin_jj::PreconditionError;
@@ -1309,6 +1377,8 @@ fn story_9_32_warning_surface_resolves() {
         K::ColocatedInGitWorktree,
         K::WorkspacePathInaccessible,
         K::WorkspaceInCurrentDirectory,
+        K::SplitAllSelected,
+        K::SplitNoneSelected,
     ];
     for kind in every {
         match kind {
@@ -1343,10 +1413,12 @@ fn story_9_32_warning_surface_resolves() {
             | K::UndoWorkspaceRemoval
             | K::ColocatedInGitWorktree
             | K::WorkspacePathInaccessible
-            | K::WorkspaceInCurrentDirectory => {}
+            | K::WorkspaceInCurrentDirectory
+            | K::SplitAllSelected
+            | K::SplitNoneSelected => {}
         }
     }
-    assert_eq!(every.len(), 32);
+    assert_eq!(every.len(), 34);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

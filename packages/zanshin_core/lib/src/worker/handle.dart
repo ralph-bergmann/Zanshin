@@ -14,6 +14,7 @@ import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/precondition.dart' show Precondition;
 import '../ffi/remotes.dart' show Remote;
+import '../ffi/squash_split.dart' show SplitResult, SquashPlan;
 import '../ffi/status.dart' show WorkingCopyStatus;
 import '../ffi/warning.dart' show WarnedList, ZanshinWarning;
 import '../ffi/workspace.dart'
@@ -509,6 +510,130 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.absorb(_handleId, from: from, into: into, paths: paths);
+  }
+
+  /// Move changes from one or more revisions into another (Story 9.15) — the
+  /// CLI's `jj squash`, paths only.
+  ///
+  /// Neither [from] nor [into]: [revision] (`null` = `@`) into its ONE parent;
+  /// a merge or the root commit refuses. Otherwise the [from] change ids
+  /// (empty = `@`) into [into] (`null` = `@`); the destination is silently
+  /// dropped from the sources, so squashing `@` into `@` writes nothing (the
+  /// result's `newOpId` is the pre-call head). [paths] are repo-relative
+  /// PREFIXES (empty = everything). A source whose changes all moved is
+  /// abandoned unless [keepEmptied] (`-k`); the abandoned sources are the
+  /// result's `abandonedChangeIds`, an abandoned `@`'s replacement its
+  /// `newChangeIds`.
+  ///
+  /// The description: [message] (the CLI's `-m`), else the destination's
+  /// ([useDestinationMessage], `-u`), else the one non-empty description of
+  /// the abandoned sources and the destination. When two or more are non-empty
+  /// the CLI asks in its editor — ask the user first with [squashPlan] and pass
+  /// the edited text as [message]; without one, the combined text the plan
+  /// returns is written.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
+  /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> squash({
+    String? revision,
+    List<String> from = const [],
+    String? into,
+    List<String> paths = const [],
+    List<String>? message,
+    bool useDestinationMessage = false,
+    bool keepEmptied = false,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.squash(
+      _handleId,
+      revision: revision,
+      from: from,
+      into: into,
+      paths: paths,
+      message: message,
+      useDestinationMessage: useDestinationMessage,
+      keepEmptied: keepEmptied,
+    );
+  }
+
+  /// The description [squash] with the same arguments would have to ask for
+  /// (Story 9.15): `SquashPlan.combinedDescription` is the text the CLI's
+  /// editor holds — what [squash] writes without [message] — and `null` when
+  /// there is nothing to ask. Refuses and warns exactly as [squash]; writes no
+  /// operation of its own.
+  ///
+  /// Throws as [squash].
+  Future<SquashPlan> squashPlan({
+    String? revision,
+    List<String> from = const [],
+    String? into,
+    List<String> paths = const [],
+    List<String>? message,
+    bool useDestinationMessage = false,
+    bool keepEmptied = false,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.squashPlan(
+      _handleId,
+      revision: revision,
+      from: from,
+      into: into,
+      paths: paths,
+      message: message,
+      useDestinationMessage: useDestinationMessage,
+      keepEmptied: keepEmptied,
+    );
+  }
+
+  /// Split a revision in two (Story 9.15) — the CLI's `jj split`, paths only.
+  ///
+  /// [revision] (`null` = `@`) is split into the changes to [paths] —
+  /// repo-relative PREFIXES, at least one (no paths is the CLI's interactive
+  /// diff editor, refused as `jj.invalid_input`) — and the rest. Plain: the
+  /// selected commit keeps the change id, the remaining one becomes its child;
+  /// [parallel]: both on the target's parents; [onto] / [insertAfter] /
+  /// [insertBefore] (`-o` / `-A` / `-B`, `null` = not given): the selected
+  /// changes become a NEW change there and the remaining commit keeps the
+  /// change id. `@` ends on the remaining commit.
+  ///
+  /// [message] (`-m`) describes the selected commit; without it both keep the
+  /// original description. Selecting everything warns `jj.split_all_selected`,
+  /// nothing `jj.split_none_selected`; the split runs either way.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
+  /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<SplitResult> split({
+    required List<String> paths,
+    String? revision,
+    List<String>? message,
+    bool parallel = false,
+    List<String>? onto,
+    List<String>? insertAfter,
+    List<String>? insertBefore,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.split(
+      _handleId,
+      revision: revision,
+      paths: paths,
+      message: message,
+      parallel: parallel,
+      onto: onto,
+      insertAfter: insertAfter,
+      insertBefore: insertBefore,
+    );
   }
 
   /// List the entries of a revision's tree (Story 9.4) — the CLI's

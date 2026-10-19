@@ -18,7 +18,11 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
 ///  `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so it carries the
 ///  two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-///  named as parents. For the other 29 tables the variant name plus `Request` IS the table name.
+///  named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
+///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
+///  very squash its caller is about to run, so a mis-routed buffer runs or previews the same
+///  squash, never a different verb. For the other 30 tables the variant name plus `Request` IS
+///  the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
 ///  producer that never sets `kind` is byte-identical to a pre-tag buffer, decodes as
@@ -58,7 +62,9 @@ enum RequestKind {
   EnvironmentAdopt(28),
   CommitContents(29),
   GraphTopology(30),
-  WorkspaceAdd(31);
+  WorkspaceAdd(31),
+  Squash(32),
+  Split(33);
 
   final int value;
   const RequestKind(this.value);
@@ -129,6 +135,10 @@ enum RequestKind {
         return RequestKind.GraphTopology;
       case 31:
         return RequestKind.WorkspaceAdd;
+      case 32:
+        return RequestKind.Squash;
+      case 33:
+        return RequestKind.Split;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -137,7 +147,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 31;
+  static const int maxValue = 33;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -837,7 +847,9 @@ enum PayloadTypeId {
   ConfigGcResult(35),
   CommitContents(36),
   WorkspaceAddResult(37),
-  StaleRecovery(38);
+  StaleRecovery(38),
+  SquashPlan(39),
+  SplitResult(40);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -922,6 +934,10 @@ enum PayloadTypeId {
         return PayloadTypeId.WorkspaceAddResult;
       case 38:
         return PayloadTypeId.StaleRecovery;
+      case 39:
+        return PayloadTypeId.SquashPlan;
+      case 40:
+        return PayloadTypeId.SplitResult;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -930,7 +946,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 38;
+  static const int maxValue = 40;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -1352,6 +1368,328 @@ class AbsorbRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(1, fromOffset);
     fbBuilder.addOffset(2, intoOffset);
     fbBuilder.addOffset(3, pathsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_squash` AND `zanshin_squash_plan` (Story 9.15) — the CLI's `jj squash`
+///  flags, one field each; change ids are jj reverse-hex.
+///
+///    revision           absent → with from/into absent too, `@` into its one parent; may NOT be
+///                       combined with from/into (clap's conflicts_with)
+///    from               absent/empty → with `into` present, `@`
+///    into               absent → with `from` non-empty, `@`
+///    paths              repo-relative PREFIXES; empty/absent = every path
+///    message            the CLI's repeatable `-m`; ABSENT = no `-m` (the editor case writes the
+///                       buffer saved unchanged), present-empty = `-m` given with no paragraph
+///    use_destination_message, keep_emptied   the CLI's `-u` / `-k`
+class SquashRequest {
+  SquashRequest._(this._bc, this._bcOffset);
+  factory SquashRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<SquashRequest> reader = _SquashRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get from => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  String? get into => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 12);
+  List<String>? get message => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 14);
+  bool get useDestinationMessage => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
+  bool get keepEmptied => const fb.BoolReader().vTableGet(_bc, _bcOffset, 18, false);
+
+  @override
+  String toString() {
+    return 'SquashRequest{kind: ${kind}, revision: ${revision}, from: ${from}, into: ${into}, paths: ${paths}, message: ${message}, useDestinationMessage: ${useDestinationMessage}, keepEmptied: ${keepEmptied}}';
+  }
+}
+
+class _SquashRequestReader extends fb.TableReader<SquashRequest> {
+  const _SquashRequestReader();
+
+  @override
+  SquashRequest createObject(fb.BufferContext bc, int offset) => SquashRequest._(bc, offset);
+}
+
+class SquashRequestBuilder {
+  SquashRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(8);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFromOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addIntoOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addMessageOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int addUseDestinationMessage(bool? useDestinationMessage) {
+    fbBuilder.addBool(6, useDestinationMessage);
+    return fbBuilder.offset;
+  }
+
+  int addKeepEmptied(bool? keepEmptied) {
+    fbBuilder.addBool(7, keepEmptied);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class SquashRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _revision;
+  final List<String>? _from;
+  final String? _into;
+  final List<String>? _paths;
+  final List<String>? _message;
+  final bool? _useDestinationMessage;
+  final bool? _keepEmptied;
+
+  SquashRequestObjectBuilder({
+    RequestKind? kind,
+    String? revision,
+    List<String>? from,
+    String? into,
+    List<String>? paths,
+    List<String>? message,
+    bool? useDestinationMessage,
+    bool? keepEmptied,
+  }) : _kind = kind,
+       _revision = revision,
+       _from = from,
+       _into = into,
+       _paths = paths,
+       _message = message,
+       _useDestinationMessage = useDestinationMessage,
+       _keepEmptied = keepEmptied;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    final int? fromOffset = _from == null ? null : fbBuilder.writeList(_from!.map(fbBuilder.writeString).toList());
+    final int? intoOffset = _into == null ? null : fbBuilder.writeString(_into!);
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    final int? messageOffset = _message == null
+        ? null
+        : fbBuilder.writeList(_message!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(8);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionOffset);
+    fbBuilder.addOffset(2, fromOffset);
+    fbBuilder.addOffset(3, intoOffset);
+    fbBuilder.addOffset(4, pathsOffset);
+    fbBuilder.addOffset(5, messageOffset);
+    fbBuilder.addBool(6, _useDestinationMessage);
+    fbBuilder.addBool(7, _keepEmptied);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_split` (Story 9.15) — the CLI's `jj split` flags, one field each;
+///  change ids are jj reverse-hex.
+///
+///    revision           absent → `@` (the CLI's default)
+///    paths              repo-relative PREFIXES, at least one (no paths = the CLI's interactive
+///                       diff editor, refused as `jj.invalid_input`)
+///    message            the CLI's `-m` for the SELECTED commit; ABSENT = no `-m` (both commits
+///                       keep the original description)
+///    parallel           `--parallel`; may NOT be combined with a location
+///    onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`: ABSENT = the flag not
+///                       given, present-EMPTY = given with no revision (refused: no parent)
+class SplitRequest {
+  SplitRequest._(this._bc, this._bcOffset);
+  factory SplitRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<SplitRequest> reader = _SplitRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get message => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  bool get parallel => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  List<String>? get onto => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 14);
+  List<String>? get insertAfter => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 16);
+  List<String>? get insertBefore =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 18);
+
+  @override
+  String toString() {
+    return 'SplitRequest{kind: ${kind}, revision: ${revision}, paths: ${paths}, message: ${message}, parallel: ${parallel}, onto: ${onto}, insertAfter: ${insertAfter}, insertBefore: ${insertBefore}}';
+  }
+}
+
+class _SplitRequestReader extends fb.TableReader<SplitRequest> {
+  const _SplitRequestReader();
+
+  @override
+  SplitRequest createObject(fb.BufferContext bc, int offset) => SplitRequest._(bc, offset);
+}
+
+class SplitRequestBuilder {
+  SplitRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(8);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addMessageOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addParallel(bool? parallel) {
+    fbBuilder.addBool(4, parallel);
+    return fbBuilder.offset;
+  }
+
+  int addOntoOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int addInsertAfterOffset(int? offset) {
+    fbBuilder.addOffset(6, offset);
+    return fbBuilder.offset;
+  }
+
+  int addInsertBeforeOffset(int? offset) {
+    fbBuilder.addOffset(7, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class SplitRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _revision;
+  final List<String>? _paths;
+  final List<String>? _message;
+  final bool? _parallel;
+  final List<String>? _onto;
+  final List<String>? _insertAfter;
+  final List<String>? _insertBefore;
+
+  SplitRequestObjectBuilder({
+    RequestKind? kind,
+    String? revision,
+    List<String>? paths,
+    List<String>? message,
+    bool? parallel,
+    List<String>? onto,
+    List<String>? insertAfter,
+    List<String>? insertBefore,
+  }) : _kind = kind,
+       _revision = revision,
+       _paths = paths,
+       _message = message,
+       _parallel = parallel,
+       _onto = onto,
+       _insertAfter = insertAfter,
+       _insertBefore = insertBefore;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    final int? messageOffset = _message == null
+        ? null
+        : fbBuilder.writeList(_message!.map(fbBuilder.writeString).toList());
+    final int? ontoOffset = _onto == null ? null : fbBuilder.writeList(_onto!.map(fbBuilder.writeString).toList());
+    final int? insertAfterOffset = _insertAfter == null
+        ? null
+        : fbBuilder.writeList(_insertAfter!.map(fbBuilder.writeString).toList());
+    final int? insertBeforeOffset = _insertBefore == null
+        ? null
+        : fbBuilder.writeList(_insertBefore!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(8);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionOffset);
+    fbBuilder.addOffset(2, pathsOffset);
+    fbBuilder.addOffset(3, messageOffset);
+    fbBuilder.addBool(4, _parallel);
+    fbBuilder.addOffset(5, ontoOffset);
+    fbBuilder.addOffset(6, insertAfterOffset);
+    fbBuilder.addOffset(7, insertBeforeOffset);
     return fbBuilder.endTable();
   }
 
@@ -7183,6 +7521,184 @@ class AbsorbResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  Outcome of a successful `zanshin_squash_plan` (Story 9.15): the description `zanshin_squash`
+///  would have to ask for. `combined_description` is the text the CLI's editor holds, saved
+///  unchanged — exactly what `zanshin_squash` writes without `message` — when the abandoned
+///  sources and the destination carry two or more non-empty descriptions and neither `message`
+///  nor `use_destination_message` is set; ABSENT otherwise (nothing to ask) — null-for-absence.
+class SquashPlan {
+  SquashPlan._(this._bc, this._bcOffset);
+  factory SquashPlan(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<SquashPlan> reader = _SquashPlanReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get combinedDescription => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'SquashPlan{combinedDescription: ${combinedDescription}}';
+  }
+}
+
+class _SquashPlanReader extends fb.TableReader<SquashPlan> {
+  const _SquashPlanReader();
+
+  @override
+  SquashPlan createObject(fb.BufferContext bc, int offset) => SquashPlan._(bc, offset);
+}
+
+class SquashPlanBuilder {
+  SquashPlanBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addCombinedDescriptionOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class SquashPlanObjectBuilder extends fb.ObjectBuilder {
+  final String? _combinedDescription;
+
+  SquashPlanObjectBuilder({
+    String? combinedDescription,
+  }) : _combinedDescription = combinedDescription;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? combinedDescriptionOffset = _combinedDescription == null
+        ? null
+        : fbBuilder.writeString(_combinedDescription!);
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, combinedDescriptionOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Outcome of a successful `zanshin_split` (Story 9.15).
+///
+///  `mutation` is NESTED rather than flattened so the op-id / working-copy contract has one
+///  definition; its `new_change_ids` holds the one commit that got a NEW change id (the remaining
+///  commit for a plain or parallel split, the selected one for `-o`/`-A`/`-B`).
+///  `selected_change_id` holds the selected changes, `remaining_change_id` the rest; `@` ends on
+///  the remaining commit when the target was `@`.
+class SplitResult {
+  SplitResult._(this._bc, this._bcOffset);
+  factory SplitResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<SplitResult> reader = _SplitResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  MutationResult? get mutation => MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  String? get selectedChangeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get remainingChangeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'SplitResult{mutation: ${mutation}, selectedChangeId: ${selectedChangeId}, remainingChangeId: ${remainingChangeId}}';
+  }
+}
+
+class _SplitResultReader extends fb.TableReader<SplitResult> {
+  const _SplitResultReader();
+
+  @override
+  SplitResult createObject(fb.BufferContext bc, int offset) => SplitResult._(bc, offset);
+}
+
+class SplitResultBuilder {
+  SplitResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addMutationOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSelectedChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemainingChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class SplitResultObjectBuilder extends fb.ObjectBuilder {
+  final MutationResultObjectBuilder? _mutation;
+  final String? _selectedChangeId;
+  final String? _remainingChangeId;
+
+  SplitResultObjectBuilder({
+    MutationResultObjectBuilder? mutation,
+    String? selectedChangeId,
+    String? remainingChangeId,
+  }) : _mutation = mutation,
+       _selectedChangeId = selectedChangeId,
+       _remainingChangeId = remainingChangeId;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? mutationOffset = _mutation?.getOrCreateOffset(fbBuilder);
+    final int? selectedChangeIdOffset = _selectedChangeId == null ? null : fbBuilder.writeString(_selectedChangeId!);
+    final int? remainingChangeIdOffset = _remainingChangeId == null ? null : fbBuilder.writeString(_remainingChangeId!);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, mutationOffset);
+    fbBuilder.addOffset(1, selectedChangeIdOffset);
+    fbBuilder.addOffset(2, remainingChangeIdOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  One entry of a revision's tree (Story 9.4), modelled on the CLI's `TreeEntry` keywords.
 ///
 ///  The CLI's `conflict` keyword (`!value.is_resolved()`) has no field of its own: it is
@@ -11695,6 +12211,10 @@ class Envelope {
         return WorkspaceAddResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 38:
         return StaleRecovery.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 39:
+        return SquashPlan.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 40:
+        return SplitResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }
