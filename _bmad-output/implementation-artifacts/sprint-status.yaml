@@ -29,15 +29,16 @@
 
 # Nächster Schritt laut Story-Reihenfolge von Epic 11:
 #
-#   11.12 (Window-Fundament) ist fertig (2026-10-19): nach 11.4, vor 11.7, 11.13 und 10.22;
-#   11.13 (Menüleiste) nach 11.12, 10.9 und 10.23, vor 11.7, 11.8 und 10.16;
-#   11.7 (Settings-Fenster) nach 11.12 und 11.13;
+#   Keine Epic-11-Story ist frei: alle offenen warten auf Epic 10 (10.9 und 10.23).
+#   Davor in Epic 10: 10.9 nach 10.3 und 10.5, 10.23 nach 10.9.
+#
+#   11.13 (Menüleiste) nach 10.9 und 10.23, vor 11.7, 11.8 und 10.16;
+#   11.7 (Settings-Fenster) nach 11.13;
 #   11.8 (Sync) nach 11.13, 10.23 und 9.20;
 #   11.9 (Undo Timeline) nach 10.9 und 10.23;
 #   11.10 (Mock-UI entfernen) zuletzt, für main4 auch nach 10.1.
 #
-#   11.5 und 11.6 liefen vor 11.12 und 11.13: ihre Fenster-Teile (All Projects…, Projects beim
-#   Start und nach dem Schließen, der rote Knopf) hat 11.12 nachgeliefert; ⌘W und ⇧⌘O warten auf 11.13.
+#   11.5 und 11.6 liefen vor 11.13: ⌘W und ⇧⌘O warten auf 11.13.
 
 generated: 2026-05-15
 last_updated: 2026-10-19
