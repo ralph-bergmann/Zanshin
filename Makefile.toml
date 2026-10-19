@@ -154,7 +154,7 @@ cwd = "app"
 # else from ~/.config/flutter/<name> (flutter_tools base/config.dart `_configPath`), and it and the
 # flutter_tester processes share one environment, so the pinned dir first gets a fresh copy of the
 # developer's flutter config files (copied from, never written to).
-env ={ JJ_CONFIG = "", GIT_CONFIG_GLOBAL = "", JJ_USER = "Zanshin", JJ_EMAIL = "zanshin@localhost", JJ_OP_HOSTNAME = "localhost", JJ_OP_USERNAME = "zanshin", ZANSHIN_LOG_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-logs" }
+env = { JJ_CONFIG = "", GIT_CONFIG_GLOBAL = "", JJ_USER = "Zanshin", JJ_EMAIL = "zanshin@localhost", JJ_OP_HOSTNAME = "localhost", JJ_OP_USERNAME = "zanshin", ZANSHIN_LOG_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/test-logs" }
 
 [tasks.test-dart-analyze]
 private = true

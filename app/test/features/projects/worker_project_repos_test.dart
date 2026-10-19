@@ -417,8 +417,12 @@ void main() {
     /// through repo-scope `remotes.origin.auto-track-bookmarks` (zanshin_core's test/worker/bookmarks_test.dart recipe);
     /// the git remote-tracking ref is imported by the next verb's precondition.
     Future<(ProjectRepo, Future<String> Function(List<String>))> trackedMain(String name) async {
-      // The repo-scope write lands in jj's secure store under XDG_CONFIG_HOME: never the developer's ~/.config/jj.
-      Platform.environment['XDG_CONFIG_HOME'] ?? fail('XDG_CONFIG_HOME is not pinned — run via cargo make');
+      // The repo-scope write lands in jj's secure store under XDG_CONFIG_HOME, so it must be the gate's throwaway dir
+      // (Makefile.toml test-flutter), never the developer's own config.
+      final String? xdg = Platform.environment['XDG_CONFIG_HOME'];
+      if (xdg == null || !xdg.endsWith('/target/test-xdg-config')) {
+        fail('XDG_CONFIG_HOME is not pinned to target/test-xdg-config — run via cargo make');
+      }
       final path = '${temp.resolveSymbolicLinksSync()}/$name';
       await Directory(path).create();
       await gitWithCommit(path);
@@ -450,7 +454,7 @@ void main() {
 
     /// Moves the local `main` to the commit [rev] names on the git side (imported by the next verb as the local bookmark, while
     /// `main@origin` stays at A) and starts a new @ on it. A tracked import would resync an unmoved local `main`, so the
-    /// local side moves. Git HEAD follows `main` after `convert`, so the import also moves @ onto [commit] with the old
+    /// local side moves. Git HEAD follows `main` after `convert`, so the import also moves @ onto [rev] with the old
     /// files still on disk; the new change checks out that commit's tree, which leaves @ empty with `main` on its
     /// ancestry.
     Future<void> moveLocalMain(ProjectRepo repo, Future<String> Function(List<String>) git, String rev) async {
