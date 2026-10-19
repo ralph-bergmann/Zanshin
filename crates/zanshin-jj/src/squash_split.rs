@@ -355,29 +355,31 @@ pub(crate) fn squash(
     } = plan_squash(&tx, workspace, ctx, options)?;
     let mut abandoned_change_ids = Vec::new();
     let mut wc_abandoned = false;
-    if let Some(decision) = squashed {
-        let rewritten = pollster::block_on(squash_commits(
+    // The plan applies `squash_commits`' own rule, so a planned squash always yields a builder.
+    let rewritten = match squashed {
+        Some(decision) => pollster::block_on(squash_commits(
             tx.repo_mut(),
             &selections,
             &destination,
             options.keep_emptied,
         ))
-        .map_err(be)?;
-        if let Some(SquashedCommit { commit_builder, .. }) = rewritten {
-            let mut builder = commit_builder.detach();
-            builder.set_description(decision.description);
-            pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
-            // `squash.rs:413`; also what clears the abandonments before `tx.commit`.
-            pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
-            wc_abandoned = old_wc_id
-                .as_ref()
-                .is_some_and(|id| decision.abandoned.iter().any(|c| c.id() == id));
-            abandoned_change_ids = decision
-                .abandoned
-                .iter()
-                .map(|c| ChangeId(c.change_id().reverse_hex()))
-                .collect();
-        }
+        .map_err(be)?
+        .map(|SquashedCommit { commit_builder, .. }| (commit_builder.detach(), decision)),
+        None => None,
+    };
+    if let Some((mut builder, decision)) = rewritten {
+        builder.set_description(decision.description);
+        pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
+        // `squash.rs:413`; also what clears the abandonments before `tx.commit`.
+        pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
+        wc_abandoned = old_wc_id
+            .as_ref()
+            .is_some_and(|id| decision.abandoned.iter().any(|c| c.id() == id));
+        abandoned_change_ids = decision
+            .abandoned
+            .iter()
+            .map(|c| ChangeId(c.change_id().reverse_hex()))
+            .collect();
     }
     // `WorkspaceCommandTransaction::finish`'s "Nothing changed." guard (`cli_util.rs:2852`).
     if !tx.repo().has_changes() {
