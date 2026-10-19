@@ -1528,3 +1528,15 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **The "editor saved unchanged" rule of `squash` and `split` ignores user templates.** Medium.
   - The CLI's editor buffer is `templates.draft_commit_description`, whose default body is `coalesce(description, default_commit_description, "\n")` (`cli/src/description_util.rs` `description_template` @ v0.46.0); with `template-aliases.default_commit_description` set, `jj split <paths>` without `-m` on an undescribed revision writes that text, while Zanshin writes `""` (`crates/zanshin-jj/src/squash_split.rs` `split_builders`; `op_support.rs` `combined_editor_text`). Zanshin renders no jj templates anywhere (the same root as the ledgered `templates.commit_trailers` gap).
   - **Follow-up:** render `draft_commit_description` / `default_commit_description` once a template story exists, then add an oracle scenario with a custom `default_commit_description`.
+
+## Surfaced in Story 9.49 (bmad-build-auto, 2026-10-19)
+
+- **The GUI-tree arm of `commit` waits for Story 9.50.** Medium.
+  - A tree from `select_tree` plus `left`, and its staleness refusal, are 9.50's to decide ("The verbs that take a tree id (9.15, 9.49) take `left` as well, and refuse the same way", epics.md Story 9.50 item 3); 9.49 ships the everything / paths arms only, and `SelectedTree::from_tree_id` (`crates/zanshin-jj/src/op_support.rs`) stays unwired.
+  - **Follow-up:** 9.50 adds the tree arm to `crates/zanshin-jj/src/commit.rs`' selection, next to squash/split's.
+- **`commit` does not apply `templates.commit_trailers` either.** Medium.
+  - With a non-empty description the CLI renders the trailers template (`cli/src/commands/commit.rs:144-153` @ v0.46.0); Zanshin writes the `-m` text alone. Same root as the 2026-10-08 entry "`describe` and `new` never apply `templates.commit_trailers`" (Zanshin renders no jj templates); the oracle ledgers it like `describe_commit_trailers` (`crates/zanshin-parity/tests/oracle/ledger.rs`).
+  - **Follow-up:** the template story that closes the 2026-10-08 entry covers `commit` too; drop the commit ledger entry then.
+- **`jj new` advances bookmarks under `experimental-advance-branches`, Zanshin's `new_change` does not.** Low.
+  - `cli/src/commands/new.rs:197-202` collects advanceable bookmarks from the single parent's parents and `:280-281` moves them to that parent (only without `-A`/`-B`); `crates/zanshin-jj/src/mutate.rs` `new_change` has no advance step, and epics.md Story 9.48 covers only "no bookmark advances when `-A` or `-B` is given". Off by default (`enabled-branches = []`).
+  - **Follow-up:** 9.48 (or a small story) reuses the advance helpers 9.49 adds in `crates/zanshin-jj/src/commit.rs`, with oracle scenarios mirroring `test_advance_bookmarks.rs`' `jj new` cases.
