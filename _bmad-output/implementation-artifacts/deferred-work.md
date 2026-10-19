@@ -1052,7 +1052,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **A hunk selection's staleness under constant snapshots.** Medium.
   - Every verb snapshots @ first (9.26), so an editor that autosaves changes @ between selecting hunks and running the composer. If staleness were judged by @'s commit id, commits would keep failing.
   - **Follow-up:** 9.50 judges staleness by the left side, the revision's parent tree (Claude's proposal); confirm it in 9.50's spec.
-- **The combined description must be known before squash runs.** Medium.
+- ~~**The combined description must be known before squash runs.**~~ — RESOLVED 2026-10-19 (spec-9-15-squash-split-partial-file, commit 96a3b35, I1): `Repo::squash_plan` / `zanshin_squash_plan` / `RepoHandle.squashPlan` return the text the CLI's editor holds, saved unchanged, from the same `prepare_squash` the verb runs; the oracle's `squash_plan_as_message` passes it back as `-m` against the CLI's editor. Medium.
   - The CLI decides it inside the command and opens an editor (`cli/src/commands/squash.rs:363-396`); the GUI has to ask first (10.25, 10.27).
   - **Follow-up:** 9.15's plan phase returns the combined text when needed (its note); 9.31's `diff` source can carry the flag.
 - **10.8's and 10.9's `handle.dart` citations are stale.** Low.
@@ -1506,3 +1506,21 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **When the auto-update-stale recovery's trailing snapshot fails, the partial report's `was_snapshot_taken` is measured against the recovered operation, not the one `run` loaded, so it can read `false` although the recovery wrote operations.** Low.
   - `snapshot::run` returns `stale::recover`'s error as is (`crates/zanshin-jj/src/snapshot.rs:429-437`); the flag was last set by `snapshot_locked` inside `trailing_snapshot` (`crates/zanshin-jj/src/stale.rs:362`), whose baseline is the recovered repo — against `run`'s doc ("whether the head moved off the operation loaded here"). Pre-existing since 9.23, untested; the CLI computes no `changed` on an error path, so it is a Zanshin-only report fact.
   - **Follow-up:** on a recovery error, `run` re-reads the op heads against its own loaded op id (read-only, as `snapshot_locked`'s error arm now does), with a witness that fails the trailing snapshot.
+
+## Surfaced in Story 9.15 (bmad-build-auto, 2026-10-19)
+
+- **The tree arm of `squash` and `split` waits for Story 9.50.** Medium.
+  - A GUI-selected tree plus `left`, its staleness refusal, and split's interactive default with no paths (`cli/src/commands/split.rs:218` @ v0.46.0) are 9.50's to decide ("The verbs that take a tree id (9.15, 9.49) take `left` as well, and refuse the same way. This story decides the refusal code", epics.md Story 9.50 item 3). 9.15 ships the paths arm only and refuses a split without paths (`jj.invalid_input`); `SelectedTree::from_tree_id` (`crates/zanshin-jj/src/op_support.rs`) stays unwired, its WHY naming 9.50.
+  - **Follow-up:** 9.50 adds the tree arm to `crates/zanshin-jj/src/squash_split.rs`' selection (`prepare_squash` / `prepare_split`).
+- **`jj squash -o/-A/-B` is not ported.** Low.
+  - Experimental at v0.46.0: the squashed changes go into a NEW commit at that location (`squash.rs:113-146`, `:274-326`). No design row needs it — the drops "Into a new change after/before" are `split -A/-B` — and epics.md Story 9.15 lists only `-r`, `--from/--into`, `-m/-u/-k` for squash.
+  - **Follow-up:** port it into `crates/zanshin-jj/src/squash_split.rs` if a design asks for it.
+- **`SquashRequest` carries one `RequestKind` for two wrappers.** Low; per the spec, a record.
+  - `zanshin_squash` and `zanshin_squash_plan` both accept `RequestKind::Squash`, unlike `ChangeIdList`'s two kinds: a mis-routed buffer can only run or preview the SAME squash (`schemas/envelope.fbs`, `docs/ffi-abi.md` § The `RequestKind` tag).
+  - **Follow-up:** a `SquashPlan` kind if Ralph wants every wrapper strictly per-kind.
+- **`squash` reports its abandonments in `MutationResult`.** Decision taken in the implementation; low risk.
+  - The abandoned sources ride `abandoned_change_ids` (as `git_fetch` reports jj-lib's own abandonments there) and the replacement of an abandoned `@` rides `new_change_ids` (as for `abandon`); `split` names its one new change id there too. The field docs (Rust and Dart) say so.
+  - **Follow-up:** none unless 10.9's toast needs another shape.
+- **`split` without `-m` cleans both descriptions as a saved editor buffer would.** Decision taken in the implementation; low risk.
+  - The CLI's `edit_multiple_descriptions` runs `cleanup_description_lines` over each block, so a description lacking its final newline gains one and `JJ:` lines in it are dropped; Zanshin applies the same cleanup (`split_builders`). Common descriptions are unchanged; the oracle's `split_paths_editor` matches the CLI.
+  - **Follow-up:** none.
