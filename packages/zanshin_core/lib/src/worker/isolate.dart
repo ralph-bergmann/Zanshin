@@ -11,6 +11,7 @@ import 'package:meta/meta.dart';
 import '../ffi/bookmark_ops.dart' as repo_ffi_bookmark_ops;
 import '../ffi/bookmarks.dart' as repo_ffi_bookmarks;
 import '../ffi/change.dart' as repo_ffi_change;
+import '../ffi/commit.dart' as repo_ffi_commit;
 import '../ffi/commit_contents.dart' as repo_ffi_commit_contents;
 import '../ffi/commit_views.dart' as repo_ffi_commit_views;
 import '../ffi/config.dart' as repo_ffi_config;
@@ -1177,6 +1178,35 @@ class ZanshinWorker {
       ),
     );
     return repo_ffi_squash_split.decodeSplitResultEnvelopeInternal(bytes);
+  }
+
+  /// Commit the working-copy commit, in the repo identified by [handleId]
+  /// (Story 9.49) — the CLI's `jj commit -m <message> [paths]`.
+  ///
+  /// [message] (`-m`, required) and [paths] (PREFIXES, empty = every change)
+  /// cross unchanged.
+  ///
+  /// Sends a [CommitCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if an argument contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.no_working_copy`, `jj.invalid_input`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.commit].
+  Future<repo_ffi_mutate.MutationResult> commit(
+    int handleId, {
+    required List<String> message,
+    List<String> paths = const [],
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(paths, 'paths');
+    rejectInteriorNuls(message, 'message');
+    final Uint8List bytes = await send(
+      CommitCommand(commandId: _correlator.allocateId(), handleId: handleId, paths: paths, message: message),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
   /// The calling-side interior-NUL guard of [squash] and [squashPlan].
@@ -2484,6 +2514,17 @@ void _workerEntry(_WorkerInit init) {
               insertAfter: insertAfter,
               insertBefore: insertBefore,
             );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case CommitCommand(:final int handleId, :final List<String> paths, :final List<String> message):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: CommitCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_commit.zanshinCommit(raw, message: message, paths: paths);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

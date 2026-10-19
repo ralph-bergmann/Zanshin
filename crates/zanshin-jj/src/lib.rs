@@ -30,6 +30,7 @@
 pub(crate) mod bookmark_ops;
 pub(crate) mod bookmarks;
 pub(crate) mod change;
+pub(crate) mod commit;
 pub(crate) mod commit_content;
 pub(crate) mod commit_meta;
 pub(crate) mod commit_views;
@@ -61,6 +62,7 @@ pub(crate) mod workspace_add;
 
 pub use bookmarks::{Bookmark, BookmarkError, BookmarkKind};
 pub use change::{Change, ChangeError, CommitId, ConflictState, Signature, Timestamp, Timestamps};
+pub use commit::CommitOptions;
 pub use commit_content::{CommitContent, CommitContentError};
 pub use commit_meta::{CommitMeta, CommitRef};
 pub use commit_views::{CommitViewError, EvologEntry, InterdiffView, RevisionRef, ShowEntry};

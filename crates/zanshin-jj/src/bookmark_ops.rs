@@ -123,7 +123,7 @@ fn describe_pattern_parse_error(e: &RevsetParseError) -> String {
 /// A bare word is a GLOB, not an exact name (`jj_lib::revset`'s `expect_string_expression`
 /// lowers an identifier or quoted string to `StringPattern::glob`) — though a glob without
 /// metacharacters IS exact, which is what [`StringExpression::exact_strings`] then reports.
-fn union_expression(patterns: &[String]) -> Result<StringExpression, MutateError> {
+pub(crate) fn union_expression(patterns: &[String]) -> Result<StringExpression, MutateError> {
     // The CLI prints this sink's DIAGNOSTICS through `print_parse_diagnostics`
     // (`revset_util.rs:317-337`), a `ui.warning_*` site. Dropped here because jj-lib 0.44
     // emits no diagnostic for string patterns, so the sink always stays empty (the "Not

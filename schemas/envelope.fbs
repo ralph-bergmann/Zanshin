@@ -62,7 +62,7 @@ table FfiError {
 /// named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-/// squash, never a different verb. For the other 30 tables the variant name plus `Request` IS
+/// squash, never a different verb. For the other 31 tables the variant name plus `Request` IS
 /// the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -105,7 +105,8 @@ enum RequestKind : ubyte {
   GraphTopology,
   WorkspaceAdd,
   Squash,
-  Split
+  Split,
+  Commit
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -193,6 +194,17 @@ table SplitRequest {
   onto: [string];
   insert_after: [string];
   insert_before: [string];
+}
+
+/// Arguments of `zanshin_commit` (Story 9.49) — the CLI's `jj commit -m <message> [paths]`.
+///
+///   paths              repo-relative PREFIXES of the changes the committed `@` keeps;
+///                      empty/absent = every change (the CLI's "describe + new")
+///   message            the CLI's repeatable `-m`, required: empty/absent = `-m ""`
+table CommitRequest {
+  kind: RequestKind;
+  paths: [string];
+  message: [string];
 }
 
 /// Arguments of `zanshin_file_list` (Story 9.4, FR-JJ-17).

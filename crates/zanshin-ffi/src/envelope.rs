@@ -283,6 +283,9 @@ pub const JJ_WORKSPACE_IN_CURRENT_DIRECTORY: &str = "jj.workspace_in_current_dir
 pub const JJ_SPLIT_ALL_SELECTED: &str = "jj.split_all_selected";
 /// Warning: `zanshin_split` selected no change, so the selected commit is empty (Story 9.15).
 pub const JJ_SPLIT_NONE_SELECTED: &str = "jj.split_none_selected";
+/// Warning: `zanshin_commit`'s paths select no change of `@`, so the committed `@` is empty
+/// (Story 9.49).
+pub const JJ_COMMIT_PATHS_UNMATCHED: &str = "jj.commit_paths_unmatched";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -324,6 +327,7 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::WorkspaceInCurrentDirectory => JJ_WORKSPACE_IN_CURRENT_DIRECTORY,
         K::SplitAllSelected => JJ_SPLIT_ALL_SELECTED,
         K::SplitNoneSelected => JJ_SPLIT_NONE_SELECTED,
+        K::CommitPathsUnmatched => JJ_COMMIT_PATHS_UNMATCHED,
     }
 }
 
@@ -1157,6 +1161,7 @@ mod tests {
                 K::WorkspaceInCurrentDirectory => "jj.workspace_in_current_directory",
                 K::SplitAllSelected => "jj.split_all_selected",
                 K::SplitNoneSelected => "jj.split_none_selected",
+                K::CommitPathsUnmatched => "jj.commit_paths_unmatched",
             }
         }
         let kinds = [
@@ -1194,6 +1199,7 @@ mod tests {
             K::WorkspaceInCurrentDirectory,
             K::SplitAllSelected,
             K::SplitNoneSelected,
+            K::CommitPathsUnmatched,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");

@@ -308,6 +308,51 @@ external ffi.Pointer<ZanshinBuf> zanshin_change(
   ffi.Pointer<ffi.Char> change_id,
 );
 
+/// Commit the working-copy commit, in the repo identified by `handle` — the CLI's
+/// `jj commit -m <message> [paths]` (Story 9.49).
+///
+/// The arguments cross as a `CommitRequest` `FlatBuffers` request buffer: `paths` (repo-relative
+/// PREFIXES of the changes the committed `@` keeps; empty = every change) and `message` (the
+/// CLI's repeatable `-m`; empty = `-m ""`). The selection starts from `@`'s PARENT tree. `@` is
+/// rewritten in place (same change id) with the selected changes and the description — its
+/// bookmarks follow it and its descendants are rebased onto it — and a NEW `@` on top of it holds
+/// the old `@`'s full tree, for every workspace whose `@` was the old `@`. Bookmarks on `@`'s
+/// parents that `experimental-advance-branches` selects move to the committed `@`. The operation
+/// is `commit <old @ commit hex>`. The working copy is snapshotted first (Story 9.26).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success; the new `@`
+/// is `new_change_ids`' one entry. `paths` that select no change of `@` warn
+/// `jj.commit_paths_unmatched` and still commit.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `CommitRequest` buffer, or its `kind` is
+/// not `Commit`.
+/// - `jj.no_working_copy` — this workspace has no working-copy commit.
+/// - `jj.invalid_input` — a `paths` entry is not a valid repo path, or an
+/// `experimental-advance-branches` pattern does not parse; detail in `context`.
+/// - `jj.config_error` — an `experimental-advance-branches` list is not a list of strings, or the
+/// config does not read.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.CommitRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration
+/// of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_commit(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// Return the object half of each requested commit — author, committer timestamp, FULL
 /// description, conflict, empty — read at the PINNED operation `operation_id`, in request order
 /// (Story 4.10).
@@ -2564,7 +2609,7 @@ const int ENUM_MAX_GRAPH_EDGE_KIND = 2;
 
 const int ENUM_MAX_REPO_KIND = 3;
 
-const int ENUM_MAX_REQUEST_KIND = 33;
+const int ENUM_MAX_REQUEST_KIND = 34;
 
 const int ENUM_MAX_REVISION_REF = 2;
 

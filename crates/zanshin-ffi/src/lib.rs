@@ -32,6 +32,7 @@ pub use envelope::*;
 pub mod bookmark_ops;
 pub mod bookmarks;
 pub mod change;
+pub mod commit;
 pub mod commit_contents;
 pub mod commit_views;
 pub mod config;

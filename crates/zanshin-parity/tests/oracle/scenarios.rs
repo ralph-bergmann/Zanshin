@@ -11,6 +11,7 @@ use std::path::Path;
 use jj_lib::backend::CommitId;
 use jj_lib::repo::Repo as _;
 use jj_lib::workspace::Workspace;
+use zanshin_jj::CommitOptions;
 use zanshin_jj::ConfigScope;
 use zanshin_jj::ConfigTarget;
 use zanshin_jj::SparseInheritance;
@@ -267,6 +268,43 @@ fn split_first(paths: &[&str]) -> SplitOptions {
         ..SplitOptions::default()
     }
 }
+
+/// `Repo::commit` with `paths` and `message`.
+fn commit_outcome(repo: &mut zanshin_jj::Repo, paths: &[&str], message: &[&str]) -> Outcome {
+    let options = CommitOptions {
+        paths: paths.iter().map(|p| (*p).to_owned()).collect(),
+        message: message.iter().map(|m| (*m).to_owned()).collect(),
+    };
+    let result = repo.commit(&options);
+    zanshin_outcome(repo, &result)
+}
+
+/// `experimental-advance-branches.enabled-branches = ["*"]` in the repo config (Story 9.49).
+const ADVANCE_ALL: &[Step] = &[Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "experimental-advance-branches.enabled-branches",
+    "[\"*\"]",
+])];
+
+/// [`ADVANCE_ALL`] minus `b-mark` (Story 9.49).
+const ADVANCE_ALL_BUT_B_MARK: &[Step] = &[
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "experimental-advance-branches.enabled-branches",
+        "[\"*\"]",
+    ]),
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "experimental-advance-branches.disabled-branches",
+        "[\"b-mark\"]",
+    ]),
+];
 
 /// The scenario table (Story 9.47's initial set).
 #[allow(clippy::too_many_lines)] // WHY: one flat table reads better than 24 helper fns
@@ -1021,6 +1059,105 @@ pub fn scenarios() -> Vec<Scenario> {
                 "split_parallel_bookmark_legacy_off",
                 |repo, _, _| split_outcome(repo, &split_parallel()),
                 |_| args(&["split", "-m", "first", "--parallel", "c.txt"]),
+            )
+        },
+        // ── Story 9.49: commit ───────────────────────────────────────────────
+        simple(
+            "commit_everything",
+            |repo, _, _| commit_outcome(repo, &[], &["first"]),
+            |_| args(&["commit", "-m", "first"]),
+        ),
+        Scenario {
+            files: &[("x.txt", "x\n"), ("y.txt", "y\n"), ("z.txt", "z\n")],
+            ..simple(
+                "commit_two_of_three_paths",
+                |repo, _, _| commit_outcome(repo, &["x.txt", "y.txt"], &["first"]),
+                |_| args(&["commit", "-m", "first", "x.txt", "y.txt"]),
+            )
+        },
+        Scenario {
+            setup: &[Step::Jj(&["new"])],
+            ..simple(
+                "commit_empty_wc_empty_message",
+                |repo, _, _| commit_outcome(repo, &[], &[""]),
+                |_| args(&["commit", "-m", ""]),
+            )
+        },
+        simple(
+            "commit_unmatched_path",
+            |repo, _, _| commit_outcome(repo, &["nope.txt"], &["first"]),
+            |_| args(&["commit", "-m", "first", "nope.txt"]),
+        ),
+        simple(
+            "commit_unchanged_path",
+            |repo, _, _| commit_outcome(repo, &["a.txt"], &["first"]),
+            |_| args(&["commit", "-m", "first", "a.txt"]),
+        ),
+        Scenario {
+            setup: &[Step::Jj(&["bookmark", "create", "c-mark"])],
+            ..simple(
+                "commit_bookmark_on_wc",
+                |repo, _, _| commit_outcome(repo, &[], &["first"]),
+                |_| args(&["commit", "-m", "first"]),
+            )
+        },
+        Scenario {
+            setup: ADVANCE_ALL,
+            ..simple(
+                "commit_advance_bookmarks",
+                |repo, _, _| commit_outcome(repo, &[], &["first"]),
+                |_| args(&["commit", "-m", "first"]),
+            )
+        },
+        Scenario {
+            setup: ADVANCE_ALL_BUT_B_MARK,
+            ..simple(
+                "commit_advance_bookmarks_disabled",
+                |repo, _, _| commit_outcome(repo, &[], &["first"]),
+                |_| args(&["commit", "-m", "first"]),
+            )
+        },
+        Scenario {
+            // A described child, so `edit @-` keeps it.
+            setup: &[Step::Jj(&["new", "-m", "D"]), Step::Jj(&["edit", "@-"])],
+            ..simple(
+                "commit_wc_with_child",
+                |repo, _, _| commit_outcome(repo, &[], &["first"]),
+                |_| args(&["commit", "-m", "first"]),
+            )
+        },
+        Scenario {
+            init: NO_COLOCATE,
+            setup: &[
+                Step::Jj(&["workspace", "add", "../ws2"]),
+                Step::JjAt("../ws2", &["edit", "default@"]),
+            ],
+            ..simple(
+                "commit_two_workspaces_on_wc",
+                |repo, _, _| commit_outcome(repo, &[], &["first"]),
+                |_| args(&["commit", "-m", "first"]),
+            )
+        },
+        Scenario {
+            setup: &[Step::Jj(&["workspace", "forget"])],
+            ..simple(
+                "commit_without_working_copy",
+                |repo, _, _| commit_outcome(repo, &[], &["first"]),
+                |_| args(&["commit", "-m", "first"]),
+            )
+        },
+        Scenario {
+            setup: &[Step::Jj(&[
+                "config",
+                "set",
+                "--repo",
+                "templates.commit_trailers",
+                "format_signed_off_by_trailer(self)",
+            ])],
+            ..simple(
+                "commit_trailers",
+                |repo, _, _| commit_outcome(repo, &[], &["T"]),
+                |_| args(&["commit", "-m", "T"]),
             )
         },
     ]

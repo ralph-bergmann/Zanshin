@@ -117,6 +117,14 @@ pub const LEDGER: &[Expected] = &[
         cli: r#"A="A\n"  B="B\n"  T="T\n\nSigned-off-by: Zanshin <zanshin@localhost>\n""#,
     },
     Expected {
+        scenario: "commit_trailers",
+        aspect: "descriptions",
+        reason: "templates.commit_trailers is never applied (commit.rs:144-153 @ v0.46.0 adds them to a non-empty -m)",
+        reference: "deferred-work.md \"Surfaced 2026-10-08 while analysing 'fork jj instead of re-porting the CLI'\"; Story 9.49",
+        zanshin: r#"A="A\n"  B="B\n"  T="T\n"  (empty)="""#,
+        cli: r#"A="A\n"  B="B\n"  T="T\n\nSigned-off-by: Zanshin <zanshin@localhost>\n"  (empty)="""#,
+    },
+    Expected {
         scenario: "new_conflicting_merge",
         aspect: "warnings",
         reason: "the CLI's \"There are unresolved conflicts\" status line has no Zanshin warning code",

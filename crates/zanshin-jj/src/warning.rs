@@ -120,6 +120,10 @@ pub enum WarningKind {
     /// (`cli/src/commands/split.rs:590-594` @ v0.46.0; Story 9.15). The split still runs; when
     /// the target itself is empty both hold and only [`WarningKind::SplitAllSelected`] warns.
     SplitNoneSelected,
+    /// `commit` with paths that select NO change of `@` — the selected tree is `@`'s parent tree
+    /// (`cli/src/commands/commit.rs:128-134` @ v0.46.0; Story 9.49). The commit still runs: the
+    /// committed `@` is empty and the new `@` holds every change.
+    CommitPathsUnmatched,
 }
 
 /// One warning a call produced (Story 9.32).

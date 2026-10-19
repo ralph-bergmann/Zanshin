@@ -1364,6 +1364,26 @@ final class SplitCommand extends WorkerCommand implements HandleScopedCommand {
   final List<String>? insertBefore;
 }
 
+/// Commit the working-copy commit, in the repo identified by [handleId] (Story
+/// 9.49) — the CLI's `jj commit -m <message> [paths]`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinCommit(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class CommitCommand extends WorkerCommand implements HandleScopedCommand {
+  const CommitCommand({required super.commandId, required this.handleId, required this.paths, required this.message});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// Repo-relative paths interpreted as PREFIXES; empty = every change.
+  final List<String> paths;
+
+  /// `-m`, required; empty = `-m ""`.
+  final List<String> message;
+}
+
 /// Request a graceful worker shutdown (Story 3.6).
 ///
 /// The worker closes every repo left in its handle table (joining each

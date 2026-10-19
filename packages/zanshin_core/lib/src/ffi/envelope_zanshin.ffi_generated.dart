@@ -21,7 +21,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 ///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 ///  very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-///  squash, never a different verb. For the other 30 tables the variant name plus `Request` IS
+///  squash, never a different verb. For the other 31 tables the variant name plus `Request` IS
 ///  the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -64,7 +64,8 @@ enum RequestKind {
   GraphTopology(30),
   WorkspaceAdd(31),
   Squash(32),
-  Split(33);
+  Split(33),
+  Commit(34);
 
   final int value;
   const RequestKind(this.value);
@@ -139,6 +140,8 @@ enum RequestKind {
         return RequestKind.Squash;
       case 33:
         return RequestKind.Split;
+      case 34:
+        return RequestKind.Commit;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -147,7 +150,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 33;
+  static const int maxValue = 34;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -1690,6 +1693,105 @@ class SplitRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(5, ontoOffset);
     fbBuilder.addOffset(6, insertAfterOffset);
     fbBuilder.addOffset(7, insertBeforeOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_commit` (Story 9.49) — the CLI's `jj commit -m <message> [paths]`.
+///
+///    paths              repo-relative PREFIXES of the changes the committed `@` keeps;
+///                       empty/absent = every change (the CLI's "describe + new")
+///    message            the CLI's repeatable `-m`, required: empty/absent = `-m ""`
+class CommitRequest {
+  CommitRequest._(this._bc, this._bcOffset);
+  factory CommitRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<CommitRequest> reader = _CommitRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get message => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'CommitRequest{kind: ${kind}, paths: ${paths}, message: ${message}}';
+  }
+}
+
+class _CommitRequestReader extends fb.TableReader<CommitRequest> {
+  const _CommitRequestReader();
+
+  @override
+  CommitRequest createObject(fb.BufferContext bc, int offset) => CommitRequest._(bc, offset);
+}
+
+class CommitRequestBuilder {
+  CommitRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addMessageOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class CommitRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _paths;
+  final List<String>? _message;
+
+  CommitRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? paths,
+    List<String>? message,
+  }) : _kind = kind,
+       _paths = paths,
+       _message = message;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    final int? messageOffset = _message == null
+        ? null
+        : fbBuilder.writeList(_message!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, pathsOffset);
+    fbBuilder.addOffset(2, messageOffset);
     return fbBuilder.endTable();
   }
 

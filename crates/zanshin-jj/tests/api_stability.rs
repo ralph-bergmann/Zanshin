@@ -1140,6 +1140,27 @@ fn squash_split_surface_resolves() {
         ) -> Result<zanshin_jj::SplitResult, zanshin_jj::MutateError>;
 }
 
+// commit (Story 9.49)
+type _CommitOptions = zanshin_jj::CommitOptions;
+
+/// The Story 9.49 surface: `CommitOptions` named field by field (the CLI's `jj commit -m [paths]`)
+/// and `Repo::commit` as a `fn` pointer.
+#[test]
+fn commit_surface_resolves() {
+    let options = zanshin_jj::CommitOptions {
+        paths: vec!["p".to_owned()],
+        message: vec!["m".to_owned()],
+    };
+    assert_eq!(options.clone(), options);
+    let default = zanshin_jj::CommitOptions::default();
+    assert!(default.paths.is_empty() && default.message.is_empty());
+    _ = zanshin_jj::Repo::commit
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::CommitOptions,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+}
+
 // snapshot precondition (Story 9.26)
 type _Precondition = zanshin_jj::Precondition;
 type _PreconditionError = zanshin_jj::PreconditionError;
@@ -1379,6 +1400,7 @@ fn story_9_32_warning_surface_resolves() {
         K::WorkspaceInCurrentDirectory,
         K::SplitAllSelected,
         K::SplitNoneSelected,
+        K::CommitPathsUnmatched,
     ];
     for kind in every {
         match kind {
@@ -1415,10 +1437,11 @@ fn story_9_32_warning_surface_resolves() {
             | K::WorkspacePathInaccessible
             | K::WorkspaceInCurrentDirectory
             | K::SplitAllSelected
-            | K::SplitNoneSelected => {}
+            | K::SplitNoneSelected
+            | K::CommitPathsUnmatched => {}
         }
     }
-    assert_eq!(every.len(), 34);
+    assert_eq!(every.len(), 35);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

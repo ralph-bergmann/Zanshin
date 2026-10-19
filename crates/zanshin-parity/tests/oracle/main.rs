@@ -95,6 +95,18 @@ parity!(
     squash_from_into_path,
     split_parallel_bookmark,
     split_parallel_bookmark_legacy_off,
+    commit_everything,
+    commit_two_of_three_paths,
+    commit_empty_wc_empty_message,
+    commit_unmatched_path,
+    commit_unchanged_path,
+    commit_bookmark_on_wc,
+    commit_advance_bookmarks,
+    commit_advance_bookmarks_disabled,
+    commit_wc_with_child,
+    commit_two_workspaces_on_wc,
+    commit_without_working_copy,
+    commit_trailers,
 );
 
 /// Every scenario id the table and the init list define.
@@ -109,7 +121,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 60);
+    assert_eq!(SCENARIO_IDS.len(), 72);
 }
 
 #[test]

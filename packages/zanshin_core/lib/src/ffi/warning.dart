@@ -160,6 +160,10 @@ abstract final class ZanshinWarningCode {
   /// empty; the split still ran (Story 9.15).
   static const splitNoneSelected = 'jj.split_none_selected';
 
+  /// `commit`'s paths select no change of `@`, so the committed `@` is empty
+  /// and the new `@` holds every change; the commit still ran (Story 9.49).
+  static const commitPathsUnmatched = 'jj.commit_paths_unmatched';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -202,6 +206,7 @@ abstract final class ZanshinWarningCode {
     workspaceInCurrentDirectory,
     splitAllSelected,
     splitNoneSelected,
+    commitPathsUnmatched,
     loginShellUnresolved,
   ];
 }

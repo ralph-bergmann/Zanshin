@@ -409,9 +409,10 @@ void main() {
         'jj.workspace_in_current_directory',
         'jj.split_all_selected',
         'jj.split_none_selected',
+        'jj.commit_paths_unmatched',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(35), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(36), reason: 'no code is registered twice');
     });
   });
 

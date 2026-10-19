@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 33;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 34;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 34] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 35] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -58,6 +58,7 @@ pub mod zanshin {
             RequestKind::WorkspaceAdd,
             RequestKind::Squash,
             RequestKind::Split,
+            RequestKind::Commit,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -74,7 +75,7 @@ pub mod zanshin {
         /// named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
         /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
         /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-        /// squash, never a different verb. For the other 30 tables the variant name plus `Request` IS
+        /// squash, never a different verb. For the other 31 tables the variant name plus `Request` IS
         /// the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -122,9 +123,10 @@ pub mod zanshin {
             pub const WorkspaceAdd: Self = Self(31);
             pub const Squash: Self = Self(32);
             pub const Split: Self = Self(33);
+            pub const Commit: Self = Self(34);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 33;
+            pub const ENUM_MAX: u8 = 34;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -160,6 +162,7 @@ pub mod zanshin {
                 Self::WorkspaceAdd,
                 Self::Squash,
                 Self::Split,
+                Self::Commit,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -198,6 +201,7 @@ pub mod zanshin {
                     Self::WorkspaceAdd => Some("WorkspaceAdd"),
                     Self::Squash => Some("Squash"),
                     Self::Split => Some("Split"),
+                    Self::Commit => Some("Commit"),
                     _ => None,
                 }
             }
@@ -3254,6 +3258,170 @@ pub mod zanshin {
                 ds.field("onto", &self.onto());
                 ds.field("insert_after", &self.insert_after());
                 ds.field("insert_before", &self.insert_before());
+                ds.finish()
+            }
+        }
+        pub enum CommitRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_commit` (Story 9.49) — the CLI's `jj commit -m <message> [paths]`.
+        ///
+        ///   paths              repo-relative PREFIXES of the changes the committed `@` keeps;
+        ///                      empty/absent = every change (the CLI's "describe + new")
+        ///   message            the CLI's repeatable `-m`, required: empty/absent = `-m ""`
+        pub struct CommitRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for CommitRequest<'a> {
+            type Inner = CommitRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> CommitRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                CommitRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args CommitRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<CommitRequest<'bldr>> {
+                let mut builder = CommitRequestBuilder::new(_fbb);
+                if let Some(x) = args.message {
+                    builder.add_message(x);
+                }
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(CommitRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(CommitRequest::VT_PATHS, None)
+                }
+            }
+            #[inline]
+            pub fn message(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(CommitRequest::VT_MESSAGE, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for CommitRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("message", Self::VT_MESSAGE, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct CommitRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub message:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for CommitRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                CommitRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    paths: None,
+                    message: None,
+                }
+            }
+        }
+
+        pub struct CommitRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> CommitRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(CommitRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(CommitRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn add_message(
+                &mut self,
+                message: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(CommitRequest::VT_MESSAGE, message);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> CommitRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                CommitRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<CommitRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for CommitRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("CommitRequest");
+                ds.field("kind", &self.kind());
+                ds.field("paths", &self.paths());
+                ds.field("message", &self.message());
                 ds.finish()
             }
         }

@@ -161,7 +161,10 @@ use crate::Repo;
 /// verbatim from `cli/src/config/misc.toml:27-28` (Story 9.23 — `workspace add`'s default Git
 /// worktree decision; jj-lib has no default for it either); `split.legacy-bookmark-behavior` is
 /// verbatim from `cli/src/config/misc.toml:64-68` (Story 9.15 — where `split` leaves the target's
-/// bookmarks; jj-lib has no default for it either).
+/// bookmarks; jj-lib has no default for it either); the `[experimental-advance-branches]` table
+/// (`enabled-branches = []`, `disabled-branches = []`) is verbatim from
+/// `cli/src/config/misc.toml:20-22` (Story 9.49 — the bookmarks `commit` advances; an empty
+/// `enabled-branches` is the feature off, and jj-lib has no default for either key).
 ///
 /// # WHY: a config layer, not a Rust table
 ///
@@ -191,6 +194,10 @@ auto-update-stale = false
 
 [git]
 colocate = true
+
+[experimental-advance-branches]
+enabled-branches = []
+disabled-branches = []
 
 # TODO: https://github.com/jj-vcs/jj/issues/3419 - Remove when fully deprecated.
 # The behavior when this flag is set to false is experimental and may be changed
@@ -1366,6 +1373,25 @@ pub(crate) fn split_legacy_bookmark_behavior(config: &StackedConfig) -> Result<b
         .map_err(|e| value_error(&e))
 }
 
+/// Reads the effective `experimental-advance-branches.enabled-branches` and `.disabled-branches`
+/// (Story 9.49), in that order — the two `settings.get::<Vec<String>>` of the CLI's
+/// `load_advance_bookmarks_matcher` (`cli/src/cli_util.rs:921-940` @ v0.46.0). Their defaults,
+/// both empty, are [`BUILTIN_CONFIG_TOML`]'s (the CLI's `config/misc.toml:20-22`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — a value is not a list of strings (the key is named), or is missing
+///   from every layer (impossible while the builtin layer is present).
+pub(crate) fn advance_branches(config: &StackedConfig) -> Result<(Vec<String>, Vec<String>), ConfigError> {
+    let enabled = config
+        .get("experimental-advance-branches.enabled-branches")
+        .map_err(|e| value_error(&e))?;
+    let disabled = config
+        .get("experimental-advance-branches.disabled-branches")
+        .map_err(|e| value_error(&e))?;
+    Ok((enabled, disabled))
+}
+
 /// Reads the effective `snapshot.max-new-file-size` out of a loaded stack (Story 9.22).
 ///
 /// Mirrors `snapshot_options_with_start_tracking_matcher` (`cli/src/cli_util.rs:1618-1623` @
@@ -1829,6 +1855,34 @@ mod tests {
         let wrong = stack_with("split.legacy-bookmark-behavior = \"yes\"");
         let super::ConfigError::Load { reason } = split_legacy_bookmark_behavior(&wrong).expect_err("not a bool");
         assert!(reason.contains("split.legacy-bookmark-behavior"), "{reason}");
+    }
+
+    /// Story 9.49: both advance lists default to the CLI's `[]`, a user's list wins, and a
+    /// wrong type refuses naming the key.
+    #[test]
+    fn advance_branches_default_empty_and_read_the_user_layer() {
+        let config = load_with(&bare_env(), None).expect("the bare stack loads");
+        assert_eq!(
+            super::advance_branches(&config).expect("builtin lists"),
+            (vec![], vec![])
+        );
+        let set = stack_with("experimental-advance-branches.enabled-branches = [\"*\"]\nexperimental-advance-branches.disabled-branches = [\"main\"]");
+        assert_eq!(
+            super::advance_branches(&set).expect("user lists"),
+            (vec!["*".to_owned()], vec!["main".to_owned()])
+        );
+        let wrong = stack_with("experimental-advance-branches.enabled-branches = \"*\"");
+        let super::ConfigError::Load { reason } = super::advance_branches(&wrong).expect_err("not a list");
+        assert!(
+            reason.contains("experimental-advance-branches.enabled-branches"),
+            "{reason}"
+        );
+        let wrong = stack_with("experimental-advance-branches.disabled-branches = 1");
+        let super::ConfigError::Load { reason } = super::advance_branches(&wrong).expect_err("not a list");
+        assert!(
+            reason.contains("experimental-advance-branches.disabled-branches"),
+            "{reason}"
+        );
     }
 
     // ── Platform config dir ───────────────────────────────────────────────────

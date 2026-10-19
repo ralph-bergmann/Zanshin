@@ -2074,6 +2074,44 @@ impl Repo {
         self.with_verb(|repo, ctx| crate::squash_split::split(repo.workspace_mut(), ctx, options))
     }
 
+    /// Commits the working-copy commit (Story 9.49) — the CLI's `jj commit -m <message>
+    /// [paths]`: `@` keeps the selected changes and gets the description, and a new `@` holds the
+    /// rest.
+    ///
+    /// The selection starts from `@`'s PARENT tree: the changes `@` makes to `paths` —
+    /// repo-relative PREFIXES as for [`Repo::restore`]; empty is every change (the CLI's
+    /// "describe + new"), `""` the root. `@` is rewritten in place (same change id) with the
+    /// selected tree and `message` — the CLI's `-m` paragraphs, joined as it joins them; an empty
+    /// list is `-m ""` — so bookmarks on the old `@` follow it and its descendants are rebased
+    /// onto it. A NEW commit on top of it gets the old `@`'s full tree, and every workspace whose
+    /// `@` was the old `@` edits it.
+    ///
+    /// Local bookmarks on the old `@`'s parents that `experimental-advance-branches` selects
+    /// (`enabled-branches` minus `disabled-branches`, name patterns; the default, an empty
+    /// `enabled-branches`, selects none) move to the committed `@`; no other bookmark moves.
+    ///
+    /// When `paths` is non-empty and selects no change of `@`, the call warns
+    /// `jj.commit_paths_unmatched` ("The given paths do not match any file: …") and still commits:
+    /// the committed `@` is empty and the new `@` holds every change. There is no rewritability
+    /// guard, as in the CLI. The operation is `commit <old @ commit hex>`; `new_change_ids` names
+    /// the new `@`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::NoWorkingCopy`] — this workspace has no working-copy commit (the
+    ///   CLI's "This command requires a working copy").
+    /// - [`crate::MutateError::InvalidInput`] — a path is not a valid repo path, or an
+    ///   `experimental-advance-branches` pattern does not parse.
+    /// - [`crate::MutateError::Config`] — an `experimental-advance-branches` list is not a list
+    ///   of strings, or the config could not be read.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn commit(&mut self, options: &crate::CommitOptions) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::commit::commit(repo.workspace_mut(), ctx, options))
+    }
+
     /// Starts tracking the working-copy paths matching `paths` (Story 9.22) — the CLI's
     /// `jj file track [--include-ignored] <paths>`.
     ///

@@ -636,6 +636,34 @@ final class RepoHandle {
     );
   }
 
+  /// Commit the working-copy commit (Story 9.49) — the CLI's
+  /// `jj commit -m <message> [paths]`.
+  ///
+  /// The selection starts from `@`'s PARENT tree: the changes `@` makes to
+  /// [paths] — repo-relative PREFIXES; empty is every change (the CLI's
+  /// "describe + new"). `@` is rewritten in place (same change id) with the
+  /// selected changes and [message] (the repeatable `-m`; an empty list is
+  /// `-m ""`), so its bookmarks follow it and its descendants are rebased onto
+  /// it; a NEW `@` on top of it holds the old `@`'s full tree, for every
+  /// workspace whose `@` was the old `@`. Bookmarks on `@`'s parents that
+  /// `experimental-advance-branches` selects move to the committed `@`. The new
+  /// `@` is `MutationResult.newChangeIds`' one entry.
+  ///
+  /// [paths] that select no change of `@` warn `jj.commit_paths_unmatched`; the
+  /// commit runs anyway.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
+  /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.no_working_copy`, `jj.invalid_input`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> commit({required List<String> message, List<String> paths = const []}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.commit(_handleId, message: message, paths: paths);
+  }
+
   /// List the entries of a revision's tree (Story 9.4) — the CLI's
   /// `jj file list`.
   ///

@@ -2,8 +2,8 @@
 title: 'Story 9.49: `commit` — `[-m] [paths]` (the GUI-tree arm waits for 9.50)'
 type: 'feature'
 created: '2026-10-19'
-status: 'ready-for-dev'
-baseline_revision: '83dafae3cb26a8f07f763856b04c7f4d8a3184bf'
+status: 'in-progress'
+baseline_revision: 'a23d5a4363ce148defda70e10b92307c594d8602'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
