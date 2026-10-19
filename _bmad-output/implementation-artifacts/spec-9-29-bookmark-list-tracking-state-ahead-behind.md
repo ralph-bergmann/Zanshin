@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/test/features/projects/worker_project_repos_test.dart
     severity: medium
+    resolved: >-
+      2026-10-19 — fixed (spec-9-29-closing-real-worker-tracking-read, commit 54d6049): test-flutter pins XDG_CONFIG_HOME to target/test-xdg-config (seeded with flutter's settings/tool_state); three real-worker read() tests end diverged / ahead / behind.
   - summary: >-
       A never-pushed tracked bookmark (the CLI's "(not created yet)" remote row) reads as a clean dot, not "ahead of remote".
     evidence: |-

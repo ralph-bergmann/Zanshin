@@ -1569,7 +1569,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in Story 9.29 (bmad-build-auto, 2026-10-19)
 
-- **No app-level real-worker test reads a diverged, ahead or behind project through `_WorkerProjectRepo.read()`.** Medium.
+- ~~**No app-level real-worker test reads a diverged, ahead or behind project through `_WorkerProjectRepo.read()`.**~~ — RESOLVED 2026-10-19 (spec-9-29-closing-real-worker-tracking-read, commit 54d6049): `test-flutter` pins `XDG_CONFIG_HOME` (seeded with flutter's own settings) and three real-worker `read()` tests end `diverged` / `ahead` / `behind`. Medium.
   - A tracked non-`git` remote needs a fetch, a clone or `remotes.<name>.auto-track-bookmarks`: fetch/clone spawn a git child the Dart VM reaps (zanshin_core `mutate_test.dart` `gitFetch` note), and jj 0.46 keeps repo-scope config in the secure store under `$XDG_CONFIG_HOME`, which `test-flutter` deliberately does not pin (`Makefile.toml:138-140`). Covered instead by the pure `statusFrom`/`trackingStatusOf` tests (`app/test/features/projects/worker_project_repos_test.dart`) and zanshin_core's real-cdylib rewrite test.
   - **Follow-up:** pin `XDG_CONFIG_HOME` for the app suite without breaking flutter's own settings (e.g. seed the pinned dir with the flutter config), then add a real `read()` test that ends `diverged` / `ahead` / `behind`.
 - **A never-pushed tracked bookmark (the CLI's `(not created yet)` remote row) reads as a clean dot, not "ahead of remote".** Low.
