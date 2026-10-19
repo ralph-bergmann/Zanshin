@@ -2,14 +2,22 @@
 title: 'Story 9.48 — `jj new --insert-after` / `--insert-before` (`new -A` / `-B` parity), parents deduplicated'
 type: 'feature'
 created: '2026-10-19'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: 'b75d513a58602725f6e6199f1a85395dcbf7c57d'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-9-context.md'
 warnings: ['multiple-goals', 'oversized']
-deferred: []
+deferred:
+  - summary: >-
+      `app/test/features/projects/projects_window_test.dart` fails intermittently under the full gate's load: `_Rig.settle` gives real settings-file IO at most 100 x 5 ms.
+    evidence: |-
+      Two of three `cargo make test` runs in this story failed in that file on different tests ("Add directory ...", "drops one jj folder ...", "keys ↩ opens a project ..."); the file passes alone and the third gate run was green. Pre-existing; this story touched no app code.
+    location: >-
+      app/test/features/projects/projects_window_test.dart:147-153
+    severity: low
 ---
 
 <intent-contract>
@@ -99,7 +107,41 @@ History BASE = root → A → B (`b-mark`) → C = `@`, as in the oracle.
 
 ## Spec Change Log
 
+- 2026-10-19 (implementation): the I/O matrix's Loop row names A's hex, but the pinned CLI names C — `jj new -A C -B A` on BASE prints `Refusing to create a loop: commit <C 12 hex> …` (checked against `target/debug/jj` from `crates/zanshin-parity`): `ensure_no_commit_loop` reports the FIRST commit jj-lib streams from `A::C`, i.e. the head of the range. Zanshin's unchanged `op_support::ensure_no_commit_loop` does the same, so the witness (`tests/new_insert.rs` `a_loop_is_refused_with_the_cli_text`) pins C's hex; the `<intent-contract>` block is left as written.
+
 ## Review Triage Log
+
+### 2026-10-19 — Review pass
+- verdicts: 28 findings — high 0, medium 0, low 22, false 2, maybe-false 4
+- findings:
+  - `[low]` `[patch]` (verification-gap) the in-loop parent dedup of the child rebase is never exercised by a merge child — patched: `new_insert.rs` `insert_after_collapses_a_merge_child_onto_the_new_change` (M = merge(B, S), `-A B -A S` → M on `[N]`, N on `[B, S]`).
+  - `[low]` `[reject]` (verification-gap, other) regenerated `zanshin_ffi.h` / `bindings.dart` lost `SplitRequest_VT_INSERT_AFTER/_BEFORE` — real, but cbindgen keeps one `<Table>_VT_<NAME>` per bare name (pre-existing: one of 39 `VT_KIND`s survives); nothing references these constants and the fix is cbindgen configuration, not a correction.
+  - `[false]` `[reject]` (intent 1) process outputs missing (Auto Run Result, commit hash, deferral mirror) — a mid-run state; finalize writes them, and no item was deferred.
+  - `[low]` `[reject]` (intent 2) I1 tested only at the Rust layer — FFI and Dart pass the lists through unchanged; `zanshin-jj` and the oracle (`new_duplicate_parents`) witness the dedup.
+  - `[low]` `[patch]` (intent 3) no `-B` no-advance witness — patched: `insert_before_advances_no_bookmark`.
+  - `[low]` `[reject]` (intent 4) the FFI `jj.immutable` test uses `-B root()`, not an immutable child — `map_mutate_err`'s `Immutable` arm is code-agnostic; the immutable child is witnessed in `zanshin-jj` and oracle `new_insert_after_immutable_child`.
+  - `[false]` `[reject]` (intent 5) positional parents skip `compute_commit_location` — with no children the CLI does no rewritability or loop check, and a change id never resolves to an empty set, so the result is identical.
+  - `[maybe-false]` `[reject]` (intent 6) `-A`/`-B` resolve the immutable set even when there is no child, where the CLI's `compute_commit_location` only checks with children — probing the pinned CLI with an unresolvable `immutable_heads()` alias gave state-dependent results (one `new -A @` succeeded, a later one refused with `Config error: Invalid revset-aliases.immutable_heads()`), so the CLI also hits the alias elsewhere; settling it needs the CLI's other immutable reads traced; if true only low (a broken config).
+  - `[low]` `[reject]` (intent 7) the I/O matrix's Loop row names A's hex where the CLI (and the code) name C — the fix edits this build's spec; recorded in the Spec Change Log and the Auto Run Result.
+  - `[low]` `[reject]` (intent 8) the dropped `SplitRequest_VT_INSERT_*` constants — same as the verification-gap other finding.
+  - `[maybe-false]` `[reject]` (edge 1) immutable alias resolved for a childless `-A` — same as intent 6.
+  - `[low]` `[patch]` (edge 2) Dart guards `insertAfter`/`insertBefore` against interior NULs but not `parents` — patched: `rejectInteriorNuls(parents, 'parents')` in `ffi/mutate.dart` and `worker/isolate.dart`, docs and tests name all three lists.
+  - `[maybe-false]` `[reject]` (edge 3, claim) `plan_new`'s ordering claim vs the CLI's lazy immutable check — same as intent 6.
+  - `[low]` `[reject]` (edge 4, claim) the all-empty refusal text changed — no caller matches it (searched `crates`, `packages`, `docs`); the new text names the three-list shape the refusal is about.
+  - `[maybe-false]` `[reject]` (blind 1) `-A <head>` may refuse where the CLI succeeds — same as intent 6.
+  - `[low]` `[reject]` (blind 2) the spec keeps a known-wrong Loop row — same as intent 7 (fix edits the spec).
+  - `[low]` `[patch]` (blind 3) `No revisions found to use as parent` listed as a `new_change` refusal although unreachable for `new` — patched: dropped from `plan_new`, `Repo::new_change`, `zanshin_new_change` (codegen rerun) and the `jj.invalid_input` row; `plan_new`'s doc says why it cannot occur.
+  - `[low]` `[patch]` (blind 4) `docs/rust-error-codes.md` `jj.config_error` row had no Story 9.48 clause — patched: `-A`/`-B` + unresolvable `immutable_heads()` clause; the Story 9.49 sentence now says "and no `-A`/`-B`".
+  - `[low]` `[patch]` (blind 5) the `MutateError::Config` doc contradicted itself — patched: rewritten to name what raises it.
+  - `[low]` `[patch]` (blind 6) no test that `-A`/`-B` never read the advance config — patched: `insert_never_reads_the_advance_config` (`-A B` under `["glob:["]` succeeds).
+  - `[low]` `[patch]` (blind 7) several CLI shapes untested — patched the two the shared code does not already cover: several `-A` targets with a merge child (above) and a transitive descendant (`insert_after_rebases_the_descendants_of_a_child`); several/duplicate `-B` targets rejected — `compute_commit_location`'s unit test `compute_commit_location_before_only_keeps_parent_order_and_dedups` and the shared `resolve_ordered` (witnessed by duplicate `-A`) cover them.
+  - `[low]` `[reject]` (blind 8) nothing checks the files on disk after an insert — the checkout is the shared `edit` + finish path of every verb, unchanged here and witnessed by the existing `new_change`/`edit` tests.
+  - `[low]` `[patch]` (blind 9) `-B @` with an empty undescribed `@` uncovered — patched: oracle scenario `new_insert_before_empty_wc` (matches the CLI); the empty `abandoned_change_ids` is rejected as the shared contract (`edit` reports a discarded `@` the same way, `mutate.rs` `edit`).
+  - `[low]` `[reject]` (blind 10) three same-typed slices invite a swap — the shape is the one the story prescribes (`Repo::new_change(parents, insert_after, insert_before)`); changing it edits the spec.
+  - `[low]` `[patch]` (blind 11) Dart `parents` not NUL-guarded — same root cause as edge 2, patched there.
+  - `[low]` `[patch]` (blind 12) every Abandon request carried two empty insert vectors — patched: `_withChangeIdListBytes` takes nullable lists defaulting to null.
+  - `[low]` `[reject]` (blind 13) the dropped `SplitRequest_VT_INSERT_*` constants — same as the verification-gap other finding.
+  - `[low]` `[patch]` (blind 14) the root-refusal tests did not check the named commit — patched: `zanshin-jj` asserts the root's full hex, the FFI test asserts `context == "0" × 40`.
 
 ## Design Notes
 
@@ -114,5 +156,49 @@ History BASE = root → A → B (`b-mark`) → C = `@`, as in the oracle.
 **Commands:**
 - `cargo test -p zanshin-jj --test new_insert --test mutate --test commit` and `cargo test -p zanshin-jj --lib` -- expected: green.
 - `cargo test -p zanshin-ffi` -- expected: green.
-- `cargo test -p zanshin-parity --test oracle` -- expected: 96 scenario tests + the meta tests pass, no ledger change.
+- `cargo test -p zanshin-parity --test oracle` -- expected: 97 scenario tests + the meta tests pass (96 planned, +1 from the review), no ledger change.
 - `cargo make test` (repo root, unpiped, synchronous, long timeout; PATH with `~/development/sdks/flutter/bin` and `~/development/sdks/cargo/bin`, `CARGO_HOME=~/development/sdks/cargo`, `RUSTUP_HOME` unset) -- expected: exit 0; coverage held or raised.
+
+## Auto Run Result
+
+Status: done (2026-10-19). Blocking condition: none. Spec commit b75d513a58602725f6e6199f1a85395dcbf7c57d; code commit 99d8017b76ad43b8363322dadf234cfbab41bb39 (implementation plus the review patches); this spec's finalisation, `deferred-work.md` and `sprint-status.yaml` in the commit after it.
+
+**Items handed to this run.**
+- **I1. `new_change` does not deduplicate its parents — fixed** (commit `99d8017b76ad43b8363322dadf234cfbab41bb39`). Verified first: `new_change` pushed every resolved parent and matched `[parent]` on the raw list, so `[c, c]` became a duplicate-parent merge without the advance. Now every list resolves through `op_support::resolve_ordered` (in order, duplicates dropped — the CLI's `IndexSet`), so `[c, c]` is one parent and the bookmarks advance like `jj new c c`; witnessed by `tests/new_insert.rs` `duplicate_parents_are_one_parent_and_advance` and oracle `new_duplicate_parents`.
+
+**Summary.** `Repo::new_change(parents, insert_after, insert_before)` is the CLI's `jj new [parents] | -A … | -B …` at v0.46.0: `plan_new` (writes nothing; the fn 9.31's `new` row is meant to call) checks the shape (parents + an insert list, or nothing at all → `jj.invalid_input`), resolves the lists in order without duplicates and, for `-A`/`-B` only, resolves the immutable set and runs Story 9.1's `compute_commit_location(…, "new commit")` (immutable child → `jj.immutable`, loop → `jj.invalid_input` with the CLI text). The new commit sits on the merged parent tree, each child gets the new commit in place of any of its parents that are the new commit's parents plus the new commit (ordered, deduplicated), descendants follow, `@` moves to it, op `new empty commit`; the bookmark advance runs only without `-A`/`-B` and with one parent. The surface follows: `ChangeIdList` gains `insert_after`/`insert_before` (appended; only `zanshin_new_change` reads them), Dart `newChange(parents, {insertAfter, insertBefore})`, `docs/ffi-abi.md`, `docs/rust-error-codes.md`.
+
+**Files changed:**
+- `crates/zanshin-jj/src/mutate.rs` — `NewLocation`, `plan_new`, `new_change` with the child rebase; `MutateError::Config` doc.
+- `crates/zanshin-jj/src/op_support.rs`, `squash_split.rs` — `resolve_ordered` moved to `op_support` (`pub(crate)`), shared by split and new.
+- `crates/zanshin-jj/src/repo.rs` — `Repo::new_change` three-list signature and doc.
+- `crates/zanshin-jj/tests/new_insert.rs` (new, 18 tests) — the I/O matrix plus the review's witnesses.
+- `schemas/envelope.fbs` + regenerated `envelope_generated.rs`, `envelope_zanshin.ffi_generated.dart`, `zanshin_ffi.h`, `bindings.dart` — the two appended lists.
+- `crates/zanshin-ffi/src/repo.rs` — `read_new_change_args`, `zanshin_new_change` doc; `crates/zanshin-ffi/tests/repo_write_ffi.rs` — `-A` round trip, `-B root()` refusal.
+- `packages/zanshin_core` (`ffi/mutate.dart`, `worker/commands.dart`, `worker/isolate.dart`, `worker/handle.dart`, tests) — the named parameters end to end, NUL guards on all three lists.
+- ~50 existing `new_change(` call sites in `crates/*/tests` — `, &[], &[]`; FFI tests' `ChangeIdListArgs` gained `..Default::default()`.
+- `crates/zanshin-parity/tests/oracle/{scenarios,main}.rs` — 8 scenarios (89 → 97): `new_insert_after_two_children`, `new_insert_before`, `new_insert_after_and_before`, `new_insert_after_immutable_child`, `new_insert_after_no_advance`, `new_insert_loop`, `new_duplicate_parents`, `new_insert_before_empty_wc`.
+- `docs/ffi-abi.md`, `docs/rust-error-codes.md` — rows and clauses.
+- Tracking: this spec; `deferred-work.md` ("Surfaced in Story 9.48": 1 item); `sprint-status.yaml` (9-48 done).
+
+**Spec correction (outside the run's power to edit).** The I/O matrix's Loop row names A's hex; the pinned CLI names C (`jj new -A C -B A` prints `Refusing to create a loop: commit <C> …`, re-checked by the orchestrator against `target/debug/jj`): `ensure_no_commit_loop` reports the first commit of `A::C`, the head. Code and test follow the CLI, as the contract's "the CLI is the spec / refusals verbatim" rules require; the row is wrong, not the code.
+
+**Review findings.** 28 findings (high 0, medium 0, low 22, false 2, maybe-false 4).
+- **Patched, 12 rows (all low):** merge-child dedup and transitive-descendant witnesses; `-B` no-advance and "`-A`/`-B` never read the advance config" witnesses; the `-B root` tests assert the root's hex; Dart NUL guard on `parents` (two rows); Abandon requests no longer carry the two empty vectors; the unreachable `No revisions found to use as parent` dropped from `new_change`'s error lists; the `jj.config_error` row and the `MutateError::Config` doc; oracle `new_insert_before_empty_wc`. The implementation subagent applied them on re-engagement.
+- **Deferred:** none from the review. One gate observation deferred (frontmatter `deferred:`, mirrored): `projects_window_test.dart` is flaky under the gate's load.
+- **Rejected, low:** the cbindgen-dropped `SplitRequest_VT_INSERT_*` constants (three rows; unused, pre-existing cbindgen naming), I1 tested only in Rust, the FFI immutable test via root, the Loop row (two rows; fixing it edits the spec), the changed all-empty text (no caller matches), files on disk, three same-typed slices (the story's prescribed shape).
+- **Rejected, maybe-false (4 rows, one root):** a childless `-A` under an unresolvable `immutable_heads()` alias refuses with `jj.config_error`; the pinned CLI also refused in a probe but succeeded in another state, so its exact rule is unsettled — only low if true (a broken config).
+- **False, 2:** the missing Auto Run Result (mid-run), the structural parents path (no observable effect).
+
+**Follow-up review recommendation:** false — first pass, patched counts by verdict: high 0, medium 0, low 12.
+
+**Verification:**
+- Implementation run: `cargo make test` exit 0 before the review patches.
+- Orchestrator: `cargo test -p zanshin-jj --test new_insert --test mutate --test commit` green, `cargo test -p zanshin-parity --test oracle` 105 passed (before the review's +1); after the patches the implementer ran clippy, `new_insert` 18/18, `repo_write_ffi` 39/39, `ffi_abi_doc_sync` 15/15, the `new_insert*` oracle scenarios, `dart analyze`/`format` and the two Dart test files. Full `cargo make test` (repo root, unpiped to a log, synchronous polling): run 1 and 2 failed only in `app/test/features/projects/projects_window_test.dart` (different tests each time; the file passes alone — deferred); run 3 exit 0, coverage held at 99.44 % (16454/16546), extern-fn coverage OK, `coverage-baseline.txt` unchanged.
+- Matrix audit: every row is covered by a passing `tests/new_insert.rs` test (-A two children, -B, -A + -B, -A head, no advance, duplicate parents, duplicate -A, immutable child, -B root, loop (C's hex, see above), positional + -A, all empty, unknown id) and the matching oracle scenarios ran green.
+
+**Residual risks:**
+- The Loop row in the intent contract still names A's hex.
+- A childless `-A`/`-B` under a broken `immutable_heads()` alias refuses; the CLI's behaviour there is state-dependent (unsettled).
+- `zanshin_ffi.h` / `bindings.dart` no longer carry `SplitRequest_VT_INSERT_AFTER/_BEFORE` (cbindgen keeps one constant per bare name; unused).
+- `templates.new_description` and trailers stay unported for `new` (Story 9.46 / the 9.47 ledger), as before.

@@ -1552,3 +1552,9 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **`new_change` does not deduplicate its parents.** Low.
   - `new_change(&[c, c])` writes a commit with the same parent twice and so skips the one-parent bookmark advance; the CLI resolves `jj new c c` through an `IndexSet` (`cli/src/cli_util.rs:1861-1870` @ v0.46.0) into one parent and advances (`new.rs:194-204`). The duplicate-parent merge predates this run (`crates/zanshin-jj/src/mutate.rs` `new_change`).
   - **Follow-up:** dedup `parents` in order before the merge/advance decision (Story 9.48 touches the same resolution), with a test for `[c, c]`.
+
+## Surfaced in Story 9.48 (bmad-build-auto, 2026-10-19)
+
+- **`projects_window_test.dart` fails intermittently under the full gate's load.** Low.
+  - `_Rig.settle` (`app/test/features/projects/projects_window_test.dart:147-153`) gives real settings-file IO at most 100 × 5 ms; two of three `cargo make test` runs in this story failed there on different tests ("Add directory …", "drops one jj folder …", "keys ↩ opens a project …"), the file passes alone and the third gate run was green. Pre-existing; the story touched no app code.
+  - **Follow-up:** wait on the IO completing (or raise the budget) instead of a fixed 500 ms poll.
