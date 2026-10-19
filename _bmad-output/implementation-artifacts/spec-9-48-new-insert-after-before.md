@@ -18,6 +18,8 @@ deferred:
     location: >-
       app/test/features/projects/projects_window_test.dart:147-153
     severity: low
+    resolved: >-
+      2026-10-19 — fixed (spec-9-48-closing-projects-window-settle-budget, commit 1cbf841): _Rig.settle polls until its condition holds or 10 s of real time pass, and its failure names the real wait.
 ---
 
 <intent-contract>

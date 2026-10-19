@@ -1555,7 +1555,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in Story 9.48 (bmad-build-auto, 2026-10-19)
 
-- **`projects_window_test.dart` fails intermittently under the full gate's load.** Low.
+- ~~**`projects_window_test.dart` fails intermittently under the full gate's load.**~~ — RESOLVED 2026-10-19 (spec-9-48-closing-projects-window-settle-budget, commit 1cbf841): `_Rig.settle` polls until its condition holds or 10 s of real time pass. Low.
   - `_Rig.settle` (`app/test/features/projects/projects_window_test.dart:147-153`) gives real settings-file IO at most 100 × 5 ms; two of three `cargo make test` runs in this story failed there on different tests ("Add directory …", "drops one jj folder …", "keys ↩ opens a project …"), the file passes alone and the third gate run was green. Pre-existing; the story touched no app code.
   - **Follow-up:** wait on the IO completing (or raise the budget) instead of a fixed 500 ms poll.
 
