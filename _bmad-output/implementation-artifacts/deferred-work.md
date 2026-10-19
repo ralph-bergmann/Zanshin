@@ -1500,3 +1500,9 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **No verb reports "There are unresolved conflicts at these paths" after a checkout onto a conflicted `@`.** Low; pre-existing across every verb, newly visible in 9.23's stale recovery (surfaced by the 9.23 review).
   - The CLI's `print_updated_working_copy_stats` (`cli_util.rs:2297-2331` @ v0.46.0) warns when the new `@` has conflicts; `mutate::finish_transaction` and `stale::recover_at` emit only `jj.checkout_files_skipped`, and there is no warning kind for it. The GUI can read `@`'s conflict state from the graph.
   - **Follow-up:** Ralph decides whether a `jj.unresolved_conflicts` warning (with the paths) joins the 9.32 warning codes for every checkout.
+
+## Surfaced in the closing run of Story 9.23 (bmad-build-auto, 2026-10-19)
+
+- **When the auto-update-stale recovery's trailing snapshot fails, the partial report's `was_snapshot_taken` is measured against the recovered operation, not the one `run` loaded, so it can read `false` although the recovery wrote operations.** Low.
+  - `snapshot::run` returns `stale::recover`'s error as is (`crates/zanshin-jj/src/snapshot.rs:429-437`); the flag was last set by `snapshot_locked` inside `trailing_snapshot` (`crates/zanshin-jj/src/stale.rs:362`), whose baseline is the recovered repo — against `run`'s doc ("whether the head moved off the operation loaded here"). Pre-existing since 9.23, untested; the CLI computes no `changed` on an error path, so it is a Zanshin-only report fact.
+  - **Follow-up:** on a recovery error, `run` re-reads the op heads against its own loaded op id (read-only, as `snapshot_locked`'s error arm now does), with a witness that fails the trailing snapshot.
