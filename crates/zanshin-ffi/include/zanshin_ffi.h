@@ -2183,12 +2183,17 @@ ZanshinBuf *zanshin_repo_init(const uint8_t *data,
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `RepoCloneRequest`, its `kind` is not
  *   `RepoClone`, or `object_hash` is out of range.
- * - `jj.invalid_input` — `source` or `destination` is absent, both colocation flags are set, or a
- *   `branches` / `tags` pattern does not parse.
+ * - `jj.invalid_input` — `source` or `destination` is absent, both colocation flags are set, a
+ *   `branches` / `tags` pattern does not parse, or `remote_name` is refused at `add git remote`
+ *   (reserved `git`, a slash, a name Git rejects; jj-lib's reason in `context`).
  * - `jj.destination_not_empty` — the destination is a file or a non-empty directory; refused
  *   before anything is created. The destination in `context`.
- * - `jj.jj_lib_error` — the destination cannot be created, or the creation, the remote, the
- *   fetch (an unreachable source), the import or the checkout failed; detail in `context`.
+ * - `jj.network_error` — the fetch's or the default-branch query's `git` subprocess failed (an
+ *   unreachable source, an authentication failure, `git` not runnable); git's message in
+ *   `context`.
+ * - `jj.jj_lib_error` — the destination cannot be created, or the creation, registering the
+ *   remote (e.g. an unparseable source URL), the import or the checkout failed; detail in
+ *   `context`.
  * - `jj.config_error` — the effective jj config cannot be read, or a key the clone reads is
  *   malformed (`git.colocate`, `git.object-hash`, the import options, `remotes.<name>.*`,
  *   `git.track-default-bookmark-on-clone`), or the presets cannot be written. `context` names the

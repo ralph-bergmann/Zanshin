@@ -20,8 +20,8 @@ use zanshin_ffi::{
         zanshin_repo_clone, zanshin_repo_close, zanshin_repo_convert, zanshin_repo_detect, zanshin_repo_init,
         zanshin_repo_open,
     },
-    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_DETECT_FAILED, JJ_JJ_LIB_ERROR, JJ_NOT_A_GIT_REPO,
-    JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_DETECT_FAILED, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
+    JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
 };
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
@@ -295,17 +295,89 @@ fn repo_clone_from_local_git_source_returns_repo_handle() {
     assert!(parse_envelope(&cb).ok());
 }
 
+/// Story 9.20 closing run: an unreachable source fails in the fetch's `git` subprocess — the same
+/// `jj.network_error` `zanshin_git_fetch` reports — with git's message in `context`, and the
+/// clean-up removes the `.jj` the clone created.
 #[test]
-fn repo_clone_with_invalid_url_returns_jj_lib_error() {
+fn repo_clone_from_an_unreachable_source_returns_network_error() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    let url = cstr("not-a-real-url://nope");
-    let target = cstr(tmp.path().to_str().expect("path must be UTF-8"));
+    let url = cstr(&format!("file://{}", tmp.path().join("missing").display()));
+    let dst = tmp.path().join("dst");
+    let target = cstr(dst.to_str().expect("path must be UTF-8"));
     let token = unsafe { repo_clone(&url, &target) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
     assert!(!env.ok());
-    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_JJ_LIB_ERROR));
+    let error = env.error().expect("an error envelope");
+    assert_eq!(error.code(), Some(JJ_NETWORK_ERROR));
+    assert!(
+        error.context().is_some_and(|c| !c.is_empty()),
+        "git's message in context"
+    );
+    assert!(!dst.join(".jj").exists(), "the clean-up removes .jj");
+    assert!(!dst.exists(), "and the destination the clone created");
+}
+
+/// Story 9.20 closing run: a remote name jj refuses (the reserved `git`) is `jj.invalid_input`
+/// with jj-lib's reason in `context`, refused inside the clean-up scope at `add git remote`.
+#[test]
+fn repo_clone_with_an_invalid_remote_name_returns_invalid_input() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    let dst = tmp.path().join("dst");
+    let mut b = flatbuffers::FlatBufferBuilder::new();
+    let source = b.create_string("file:///nowhere");
+    let destination = b.create_string(dst.to_str().expect("UTF-8"));
+    let remote_name = b.create_string("git");
+    let req = fbs::RepoCloneRequest::create(
+        &mut b,
+        &fbs::RepoCloneRequestArgs {
+            kind: fbs::RequestKind::RepoClone,
+            source: Some(source),
+            destination: Some(destination),
+            remote_name: Some(remote_name),
+            no_colocate: true,
+            ..Default::default()
+        },
+    );
+    b.finish(req, None);
+    let bytes = b.finished_data();
+    // SAFETY: `bytes` is a live, caller-owned request buffer for the duration of the call.
+    let token = unsafe { zanshin_repo_clone(bytes.as_ptr(), bytes.len()) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok());
+    let error = env.error().expect("an error envelope");
+    assert_eq!(error.code(), Some(zanshin_ffi::JJ_INVALID_INPUT));
+    assert!(
+        error.context().is_some_and(|c| c.contains("reserved")),
+        "jj-lib's reason in context: {:?}",
+        error.context()
+    );
+    assert!(!dst.exists(), "the clean-up removes the destination the clone created");
+}
+
+/// A destination that cannot be created stays `jj.jj_lib_error` — the CLI's "Failed to create
+/// <destination>" (Story 9.20 closing run: only network and remote-name failures are typed).
+#[test]
+fn repo_clone_into_an_uncreatable_destination_returns_jj_lib_error() {
+    pin_env();
+    let url = cstr("file:///nowhere");
+    let target = cstr("/nonexistent/zanshin-ffi-test-abc123");
+    let token = unsafe { repo_clone(&url, &target) };
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok());
+    let error = env.error().expect("an error envelope");
+    assert_eq!(error.code(), Some(JJ_JJ_LIB_ERROR));
+    assert!(
+        error
+            .context()
+            .is_some_and(|c| c.starts_with("Failed to create /nonexistent/zanshin-ffi-test-abc123: ")),
+        "{:?}",
+        error.context()
+    );
 }
 
 #[test]

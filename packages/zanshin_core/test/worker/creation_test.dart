@@ -103,6 +103,22 @@ void main() {
       expect(Directory('${tempDir.path}/.jj').existsSync(), isFalse, reason: 'nothing was sent');
     });
 
+    // Story 9.20 closing run: a remote name jj refuses is typed `jj.invalid_input`.
+    // It is refused at `add git remote` — after the internal workspace is created
+    // (gix, no git child) and before any git runs — so the clean-up removes the
+    // destination the clone created. A network failure needs a git child, which
+    // the Dart VM reaps (see above): it is witnessed in Rust only.
+    test('clone_with_the_reserved_remote_name_is_invalid_input', () async {
+      final destination = '${tempDir.path}/dst';
+
+      await expectLater(
+        worker.cloneRepo(source: 'file:///nowhere', destination: destination, remoteName: 'git', noColocate: true),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+      expect(Directory('$destination/.jj').existsSync(), isFalse, reason: 'the clean-up removed .jj');
+      expect(Directory(destination).existsSync(), isFalse, reason: 'and the destination the clone created');
+    });
+
     // Story 9.20: `jj git init`'s two colocation flags reach the Rust verb.
     test('init_colocate_creates_a_git_dir_and_no_colocate_does_not', () async {
       final colocated = '${tempDir.resolveSymbolicLinksSync()}/colocated';

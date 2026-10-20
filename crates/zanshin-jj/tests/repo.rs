@@ -201,8 +201,11 @@ fn repo_init_with_native_backend_then_open_returns_ok() {
 
 // ── AC-13: clone error path (mandatory, no network) ──────────────────────────
 
+/// An unknown URL scheme parses for gix (`add git remote` succeeds) and fails in the fetch's `git`
+/// subprocess ("remote helper 'not-a-real-url' aborted session"), so it is a network error
+/// (Story 9.20 closing run — observed, not assumed).
 #[test]
-fn repo_clone_with_invalid_url_returns_clone_failed() {
+fn repo_clone_with_unknown_url_scheme_returns_network_error() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
     let result = Repo::clone(
@@ -216,13 +219,13 @@ fn repo_clone_with_invalid_url_returns_clone_failed() {
     )
     .result;
     assert!(
-        matches!(result, Err(RepoError::CloneFailed { .. })),
-        "expected CloneFailed for invalid URL, got: {result:?}"
+        matches!(result, Err(RepoError::NetworkError { ref reason }) if reason.contains("not-a-real-url")),
+        "expected NetworkError for an unknown URL scheme, got: {result:?}"
     );
 }
 
 #[test]
-fn repo_clone_failure_leaves_no_partial_workspace() {
+fn repo_clone_network_failure_leaves_no_partial_workspace() {
     pin_env();
     let target_tmp = TempDir::new().expect("target tempdir");
     let result = Repo::clone(
@@ -236,8 +239,8 @@ fn repo_clone_failure_leaves_no_partial_workspace() {
     )
     .result;
     assert!(
-        matches!(result, Err(RepoError::CloneFailed { .. })),
-        "expected CloneFailed, got {result:?}"
+        matches!(result, Err(RepoError::NetworkError { .. })),
+        "expected NetworkError, got {result:?}"
     );
     // D1: a failed clone must roll back the partial `.jj/` it created, so a retry
     // into the same directory starts clean.

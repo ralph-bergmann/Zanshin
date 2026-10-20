@@ -59,6 +59,13 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
                 context: Some(reason),
             }
         }
+        // Story 9.20 closing run: the clone's `git` subprocess failed — the same
+        // `jj.network_error` `zanshin_git_fetch` reports for the same jj-lib failure.
+        RepoError::NetworkError { reason } => FfiErrorObj {
+            report: None,
+            code: JJ_NETWORK_ERROR.to_owned(),
+            context: Some(reason),
+        },
         RepoError::ConvertFailed { reason } => FfiErrorObj {
             report: None,
             code: JJ_CONVERT_FAILED.to_owned(),
@@ -741,12 +748,17 @@ pub unsafe extern "C" fn zanshin_repo_init(data: *const u8, len: usize) -> *mut 
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `RepoCloneRequest`, its `kind` is not
 ///   `RepoClone`, or `object_hash` is out of range.
-/// - `jj.invalid_input` — `source` or `destination` is absent, both colocation flags are set, or a
-///   `branches` / `tags` pattern does not parse.
+/// - `jj.invalid_input` — `source` or `destination` is absent, both colocation flags are set, a
+///   `branches` / `tags` pattern does not parse, or `remote_name` is refused at `add git remote`
+///   (reserved `git`, a slash, a name Git rejects; jj-lib's reason in `context`).
 /// - `jj.destination_not_empty` — the destination is a file or a non-empty directory; refused
 ///   before anything is created. The destination in `context`.
-/// - `jj.jj_lib_error` — the destination cannot be created, or the creation, the remote, the
-///   fetch (an unreachable source), the import or the checkout failed; detail in `context`.
+/// - `jj.network_error` — the fetch's or the default-branch query's `git` subprocess failed (an
+///   unreachable source, an authentication failure, `git` not runnable); git's message in
+///   `context`.
+/// - `jj.jj_lib_error` — the destination cannot be created, or the creation, registering the
+///   remote (e.g. an unparseable source URL), the import or the checkout failed; detail in
+///   `context`.
 /// - `jj.config_error` — the effective jj config cannot be read, or a key the clone reads is
 ///   malformed (`git.colocate`, `git.object-hash`, the import options, `remotes.<name>.*`,
 ///   `git.track-default-bookmark-on-clone`), or the presets cannot be written. `context` names the
@@ -1456,6 +1468,15 @@ mod tests {
             reason: "bad url".into(),
         });
         assert_eq!(e.code, JJ_JJ_LIB_ERROR);
+    }
+
+    #[test]
+    fn map_repo_err_network_error_maps_to_jj_network_error() {
+        let e = map_repo_err(RepoError::NetworkError {
+            reason: "Could not find repository at '/nowhere'".into(),
+        });
+        assert_eq!(e.code, JJ_NETWORK_ERROR);
+        assert_eq!(e.context.unwrap(), "Could not find repository at '/nowhere'");
     }
 
     #[test]

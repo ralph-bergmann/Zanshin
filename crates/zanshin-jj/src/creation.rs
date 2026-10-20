@@ -25,7 +25,9 @@ use std::sync::Arc;
 use jj_lib::config::StackedConfig;
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::file_util;
-use jj_lib::git::{expand_fetch_refspecs, GitFetch, GitFetchRefExpression, GitImportOptions};
+use jj_lib::git::{
+    expand_fetch_refspecs, GitFetch, GitFetchError, GitFetchRefExpression, GitImportOptions, GitRemoteManagementError,
+};
 use jj_lib::ref_name::{RefName, RefNameBuf, RemoteName, RemoteNameBuf};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::rewrite::RebaseOptions;
@@ -259,6 +261,24 @@ fn clone_failed(reason: impl Into<String>) -> RepoError {
     RepoError::CloneFailed { reason: reason.into() }
 }
 
+/// A failure of the clone's `git` subprocess (`git fetch`, `git remote show`) is a network error,
+/// as in `git_fetch`; any other fetch failure is a clone failure.
+fn fetch_error(e: GitFetchError) -> RepoError {
+    match e {
+        GitFetchError::Subprocess(_) => RepoError::NetworkError { reason: e.to_string() },
+        other => clone_failed(other.to_string()),
+    }
+}
+
+/// A remote name jj refuses (reserved `git`, a slash, a name Git rejects) is invalid input, as in
+/// `git remote add`; any other `add_remote` failure is a clone failure.
+fn add_remote_error(e: GitRemoteManagementError) -> RepoError {
+    match e {
+        GitRemoteManagementError::RemoteName(_) => RepoError::InvalidInput { reason: e.to_string() },
+        other => clone_failed(other.to_string()),
+    }
+}
+
 /// What the clone's own parameters resolved to before anything is created inside the destination.
 struct ClonePlan<'a> {
     remote: RemoteNameBuf,
@@ -475,7 +495,7 @@ fn configure_remote(
     sink: &mut Warnings,
 ) -> Result<(), RepoError> {
     let mut tx = start_repo_transaction(&cloned.repo, cloned.workspace.workspace_name());
-    jj_lib::git::add_remote(tx.repo_mut(), remote, source, None).map_err(|e| clone_failed(e.to_string()))?;
+    jj_lib::git::add_remote(tx.repo_mut(), remote, source, None).map_err(add_remote_error)?;
     finish(cloned, tx, &format!("add git remote {}", remote.as_symbol()), sink)?;
 
     let workspace = Workspace::load(
@@ -534,11 +554,9 @@ fn fetch_new_remote(
         };
         fetcher
             .fetch(remote, refspecs, &mut callback, plan.options.depth)
-            .map_err(|e| clone_failed(e.to_string()))?;
+            .map_err(fetch_error)?;
         let import_stats = pollster::block_on(fetcher.import_refs()).map_err(|e| clone_failed(e.to_string()))?;
-        let default_branch = fetcher
-            .get_default_branch(remote)
-            .map_err(|e| clone_failed(e.to_string()))?;
+        let default_branch = fetcher.get_default_branch(remote).map_err(fetch_error)?;
         (default_branch, import_stats)
     };
 
@@ -611,7 +629,8 @@ fn check_out_working_branch(
 mod tests {
     use std::path::Path;
 
-    use super::clean_up;
+    use super::{add_remote_error, clean_up, fetch_error};
+    use crate::RepoError;
 
     /// The CLI's `clean_up_dirs` (`clone.rs:262-284` @ v0.46.0): `.jj` and — colocated — `.git`
     /// removed (an absent one counts as removed), the destination removed iff the clone created
@@ -657,5 +676,28 @@ mod tests {
         );
         assert!(jj.join("held").exists(), "a failed removal leaves the entry in place");
         assert!(Path::new(&held).is_dir(), "and the destination with it");
+    }
+
+    /// Only the classes the closing run types leave `CloneFailed`: a refused remote name is
+    /// `InvalidInput` and a `git` subprocess failure `NetworkError` (both witnessed through a real
+    /// clone in `tests/clone_init.rs`); every other jj-lib failure stays a clone failure with
+    /// jj-lib's message. `GitSubprocessError` is not nameable outside jj-lib, so the network arm
+    /// has no unit test here.
+    #[test]
+    fn only_remote_names_and_git_subprocess_failures_leave_clone_failed() {
+        use jj_lib::git::{GitFetchError, GitRemoteManagementError, GitRemoteNameError};
+
+        assert!(matches!(
+            add_remote_error(GitRemoteManagementError::RemoteName(GitRemoteNameError::ReservedForLocalGitRepo)),
+            RepoError::InvalidInput { reason } if reason.contains("reserved")
+        ));
+        assert!(matches!(
+            add_remote_error(GitRemoteManagementError::InternalGitError("boom".into())),
+            RepoError::CloneFailed { reason } if reason == "Unexpected Git error when managing remotes"
+        ));
+        assert!(matches!(
+            fetch_error(GitFetchError::NoSuchRemote("origin".into())),
+            RepoError::CloneFailed { reason } if reason == "No git remote named 'origin'"
+        ));
     }
 }

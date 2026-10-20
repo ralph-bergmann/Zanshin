@@ -29,10 +29,18 @@ pub enum RepoError {
         /// Human-readable failure reason from jj-lib.
         reason: String,
     },
-    /// jj workspace clone failed (init, remote registration, fetch, or import).
+    /// jj workspace clone failed (init, remote registration, import, or checkout).
     #[error("clone failed: {reason}")]
     CloneFailed {
         /// Human-readable failure reason from jj-lib.
+        reason: String,
+    },
+    /// [`Repo::clone`]'s `git` subprocess failed (Story 9.20 closing run) — the fetch or the
+    /// default-branch query could not reach, authenticate against or talk to the source:
+    /// network, authentication or transport, or `git` could not be run.
+    #[error("network error: {reason}")]
+    NetworkError {
+        /// Human-readable failure reason from jj-lib (git's own message).
         reason: String,
     },
     /// [`Repo::clone`]'s destination is a file or a non-empty directory (Story 9.20) — the CLI's
@@ -51,7 +59,7 @@ pub enum RepoError {
         path: PathBuf,
     },
     /// The arguments are structurally invalid (Story 9.20): a clone pattern that does not
-    /// parse, or a Git-only flag for the native backend.
+    /// parse, a clone remote name jj refuses, or a Git-only flag for the native backend.
     #[error("invalid input: {reason}")]
     InvalidInput {
         /// Human-readable reason, the CLI's text where it has one.
@@ -2491,13 +2499,16 @@ impl Repo {
     ///
     /// In [`CreationOutcome::result`]:
     /// - [`RepoError::DestinationNotEmpty`] — the destination is a file or a non-empty directory.
-    /// - [`RepoError::InvalidInput`] — a `-b` / `-t` pattern does not parse.
+    /// - [`RepoError::InvalidInput`] — a `-b` / `-t` pattern does not parse, or the remote name is
+    ///   refused (reserved `git`, a slash, or a name Git rejects) at `add git remote`.
     /// - [`RepoError::Config`] — the start-up or the new workspace's config cannot be read, or a
     ///   key the clone reads (`git.colocate`, `git.object-hash`, `git.*` import options,
     ///   `remotes.<name>.*`, `git.track-default-bookmark-on-clone`) is malformed; or the presets
     ///   could not be written.
-    /// - [`RepoError::CloneFailed`] — creating the destination, the jj-lib creation, the remote
-    ///   (an invalid name), the fetch (an unreachable source), the import or the checkout failed.
+    /// - [`RepoError::NetworkError`] — the fetch's or the default-branch query's `git` subprocess
+    ///   failed (an unreachable source, an authentication failure, `git` not runnable).
+    /// - [`RepoError::CloneFailed`] — creating the destination, the jj-lib creation, registering
+    ///   the remote (e.g. an unparseable source URL), the import or the checkout failed.
     #[must_use = "the outcome carries the result and the warnings"]
     pub fn clone(options: &crate::CloneOptions, progress: &crate::ProgressFn) -> CreationOutcome {
         crate::creation::clone(options, progress)

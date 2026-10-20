@@ -77,6 +77,8 @@ deferred: []
 
 ## Spec Change Log
 
+- 2026-10-20 (implementation): the open question of `crates/zanshin-jj/tests/repo.rs`'s `not-a-real-url://nope` source is answered by running it — gix `remote_at` accepts the URL (`add git remote` succeeds) and the fetch's `git` subprocess fails ("fatal: remote helper 'not-a-real-url' aborted session"), so it is `RepoError::NetworkError`. The two tests are renamed `repo_clone_with_unknown_url_scheme_returns_network_error` and `repo_clone_network_failure_leaves_no_partial_workspace`. The FFI wire test `repo_clone_with_invalid_url_returns_jj_lib_error` is replaced by one test per class (`…_from_an_unreachable_source_returns_network_error`, `…_with_an_invalid_remote_name_returns_invalid_input`) plus `…_into_an_uncreatable_destination_returns_jj_lib_error` for the matrix's unchanged row on the wire.
+
 ## Review Triage Log
 
 ## Design Notes

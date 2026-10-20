@@ -268,10 +268,11 @@ fn a_file_destination_is_refused() {
     );
 }
 
-/// A failing fetch (no such source) removes `.jj` and `.git` and the destination the clone
-/// created — and keeps a pre-existing (empty) destination.
+/// A failing fetch (no such source) is a network error — the `git` subprocess could not reach the
+/// source, the same class `git_fetch` reports — and removes `.jj` and `.git` and the destination
+/// the clone created, while keeping a pre-existing (empty) destination (Story 9.20 closing run).
 #[test]
-fn a_failing_fetch_cleans_up_what_the_clone_created() {
+fn a_failing_fetch_is_a_network_error_and_cleans_up_what_the_clone_created() {
     let parent = TempDir::new().unwrap();
     let created = parent.path().join("created");
     let outcome = clone(&CloneOptions {
@@ -280,7 +281,7 @@ fn a_failing_fetch_cleans_up_what_the_clone_created() {
         ..Default::default()
     });
     assert!(
-        matches!(outcome.result, Err(RepoError::CloneFailed { .. })),
+        matches!(outcome.result, Err(RepoError::NetworkError { ref reason }) if !reason.is_empty()),
         "{:?}",
         outcome.result
     );
@@ -293,7 +294,7 @@ fn a_failing_fetch_cleans_up_what_the_clone_created() {
         ..Default::default()
     });
     assert!(
-        matches!(outcome.result, Err(RepoError::CloneFailed { .. })),
+        matches!(outcome.result, Err(RepoError::NetworkError { .. })),
         "{:?}",
         outcome.result
     );
@@ -305,25 +306,28 @@ fn a_failing_fetch_cleans_up_what_the_clone_created() {
     );
 }
 
-/// An invalid remote name fails inside the clean-up scope, at `add git remote`.
+/// An invalid remote name (the reserved `git`, a slash) is invalid input with jj-lib's reason,
+/// refused inside the clean-up scope at `add git remote` (Story 9.20 closing run).
 #[test]
-fn an_invalid_remote_name_fails_and_cleans_up() {
+fn an_invalid_remote_name_is_invalid_input_and_cleans_up() {
     let src = TempDir::new().unwrap();
     source_repo(src.path());
     let parent = TempDir::new().unwrap();
-    let dst = parent.path().join("dst");
-    let outcome = clone(&CloneOptions {
-        source: file_url(src.path()),
-        destination: dst.clone(),
-        remote_name: Some("git".to_owned()),
-        ..Default::default()
-    });
-    assert!(
-        matches!(outcome.result, Err(RepoError::CloneFailed { .. })),
-        "{:?}",
-        outcome.result
-    );
-    assert!(!dst.exists());
+    for (name, expected) in [("git", "reserved"), ("a/b", "slashes")] {
+        let dst = parent.path().join("dst");
+        let outcome = clone(&CloneOptions {
+            source: file_url(src.path()),
+            destination: dst.clone(),
+            remote_name: Some(name.to_owned()),
+            ..Default::default()
+        });
+        assert!(
+            matches!(outcome.result, Err(RepoError::InvalidInput { ref reason }) if reason.contains(expected)),
+            "{name}: {:?}",
+            outcome.result
+        );
+        assert!(!dst.exists(), "{name}: the destination the clone created is removed");
+    }
 }
 
 /// A `-b` pattern that does not parse is refused (the destination was already created, as in the
@@ -744,7 +748,7 @@ fn a_failing_fetch_keeps_the_identity_warning_of_the_finished_add_remote() {
                 ..Default::default()
             });
             assert!(
-                matches!(outcome.result, Err(RepoError::CloneFailed { .. })),
+                matches!(outcome.result, Err(RepoError::NetworkError { .. })),
                 "{:?}",
                 outcome.result
             );

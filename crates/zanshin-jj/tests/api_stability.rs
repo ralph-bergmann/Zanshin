@@ -1538,6 +1538,8 @@ fn story_9_20_push_clone_init_resolves() {
     _ = zanshin_jj::RepoError::DestinationNotEmpty { path: PathBuf::new() };
     _ = zanshin_jj::RepoError::GitRepoExists { path: PathBuf::new() };
     _ = zanshin_jj::RepoError::InvalidInput { reason: String::new() };
+    // Story 9.20 closing run: the clone's `git` subprocess failure is typed.
+    _ = zanshin_jj::RepoError::NetworkError { reason: String::new() };
     _ = zanshin_jj::MutateError::PushRefRefused { message: String::new() };
     _ = zanshin_jj::MutateError::PushCommitRejected { message: String::new() };
     _ = zanshin_jj::Repo::git_push
