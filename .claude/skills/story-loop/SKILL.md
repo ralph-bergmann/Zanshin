@@ -6,7 +6,7 @@ argument-hint: "<story-id> [<story-id> …]"
 
 # Story loop
 
-You orchestrate; `story-builder` subagents implement. Each story gets one story run and **at most one closing run** that works off the deferrals the story run left behind. Open ledger items that name a story travel into that story's run as **inbound items**: build-auto never reads the ledger, so the story-run prompt is their only way in. You edit only bookkeeping (spec frontmatter, `deferred-work.md`), never code, and judge ledger items by their text — the story and closing runs verify them against the code.
+You orchestrate; `story-builder` subagents implement. Each story gets one story run and **at most one closing run** that works off the deferrals the story run left behind. A run whose spec ends with `followup_review_recommended: true` gets **follow-up review passes** until that flag is `false` (at most two per spec). Open ledger items that name a story travel into that story's run as **inbound items**: build-auto never reads the ledger, so the story-run prompt is their only way in. You edit only bookkeeping (spec frontmatter, `deferred-work.md`), never code, and judge ledger items by their text — the story and closing runs verify them against the code.
 
 Paths: specs, `deferred-work.md` ("the ledger") and `sprint-status.yaml` live in `_bmad-output/implementation-artifacts/`. "The spec" = the story run's spec/plan file (newer build-auto calls it a plan and ends with `built` instead of `done`).
 
@@ -34,6 +34,7 @@ From here on, never ask Ralph anything; collect questions for the final report.
    - not done, or missing from the Auto Run Result → leave the bullet open; its reason goes into the final report.
 
    Commit right away (`--no-gpg-sign`, the Co-Authored-By line from `.claude/agents/story-builder.md`, message `chore(ledger): close items handed to Story <id>`) — build-auto halts on a dirty tree.
+4a. **Follow-up review** — only when the spec's frontmatter has `followup_review_recommended: true`. It runs after step 4 because a review pass rewrites `## Auto Run Result`, which step 4 reads. Dispatch `story-builder` with the follow-up prompt below; build-auto routes a `done` / `built` spec to a fresh review pass, which sets the flag again (on a follow-up pass `true` only if it patched a `high`). Check the result as in step 3 (status back at `done` / `built`, clean tree). Repeat while the flag is `true`, at most two passes per spec; still `true` after the second → the named risk goes into the final report. Deferrals a pass adds are collected in step 5 like the story run's.
 5. **Collect** the spec's `deferred:` items without a `resolved:` field, each together with its ledger bullet (match by subject, title or body) under `## Surfaced in Story <id> (bmad-build-auto, …)`. Skip an item whose ledger bullet is already struck, and an inbound item the run deferred again (step 4 handled it). Add a missing bullet in the ledger-bullet shape below.
 6. **Sort** each item into the first bucket that fits, in this order, reading its spec entry and its ledger bullet together (a condition in either one counts):
    - **record** — the ledger calls it a record, or its Follow-up is "none" in substance. No action.
@@ -56,11 +57,12 @@ From here on, never ask Ralph anything; collect questions for the final report.
    - deferred by the closing run → leave origin item and ledger bullet open; it goes to Ralph.
 
    Commit as in step 4, message `chore(ledger): close Story <id> deferrals`.
+8a. **Follow-up review of the closing run** — as step 4a, for the closing run's spec, after step 8 (same reason: a pass rewrites `## Auto Run Result`). Deferrals these passes add get no closing run; they go to Ralph.
 9. Next story.
 
 ## Ledger-bullet shape
 
-Under a heading `## Surfaced in <Story <id> | the closing run of Story <id>> (bmad-build-auto, <date>)`. If that section already exists, add to it; otherwise `<date>` is today:
+Under a heading `## Surfaced in <Story <id> | the closing run of Story <id> | the follow-up review of Story <id>> (bmad-build-auto, <date>)`. If that section already exists, add to it; otherwise `<date>` is today:
 
 ```markdown
 - **<one-sentence summary>.** <High|Medium|Low>.
@@ -70,7 +72,7 @@ Under a heading `## Surfaced in <Story <id> | the closing run of Story <id>> (bm
 
 ## Prompts
 
-Never put a spec's path into a closing-run prompt or an inbound item: build-auto would treat it as the plan to resume and start a follow-up review of the finished story instead. Quote the items in full instead, rewriting self-references ("this spec", "this story") and spec paths as "Story <id>'s spec" / "Story <id>".
+Never put a spec's path into a closing-run prompt or an inbound item: build-auto would treat it as the plan to resume and start a follow-up review of the finished story instead. The follow-up prompt is the one place where that is wanted. Quote the items in full instead, rewriting self-references ("this spec", "this story") and spec paths as "Story <id>'s spec" / "Story <id>".
 
 **Story run** — the block from `Also part of` to `or not done (why).` goes in only when step 1 found inbound items:
 
@@ -121,6 +123,18 @@ _bmad-output/implementation-artifacts/deferred-work.md, in the same commit as th
 <the ledger-bullet shape above, with the heading for the closing run of Story <id>>
 ```
 
+**Follow-up review:**
+
+```text
+<the spec's absolute path>
+
+Follow-up review pass of Story <id>'s finished spec (or: of the closing run of Story <id>).
+
+Extra rule for this run: mirror every item you add to the spec's `deferred:` list into
+_bmad-output/implementation-artifacts/deferred-work.md, in the same commit as the spec, in this shape:
+<the ledger-bullet shape above, with the heading for the follow-up review of Story <id>>
+```
+
 ## Final report
 
-One block per story: final status and commits; inbound items counted as fixed / rejected / partly done / not done; deferred items counted as fixed / rejected / record / covered (with the story) / handed on (with the story) / for Ralph; `followup_review_recommended: true` if set — the loop runs no follow-up review pass. Then one list of everything waiting for Ralph across all stories — the for-Ralph items with their reasons and ledger sections, the inbound bullets step 1 left out, inbound items not done for a reason Ralph must settle, manual checks of handed-on items, closing-run deferrals, and blocked conditions — merging items that ask Ralph for the same action.
+One block per story: final status and commits; inbound items counted as fixed / rejected / partly done / not done; deferred items counted as fixed / rejected / record / covered (with the story) / handed on (with the story) / for Ralph; follow-up review passes run (per spec) and their patched counts; a `followup_review_recommended: true` still set after the second pass, with its named risk. Then one list of everything waiting for Ralph across all stories — the for-Ralph items with their reasons and ledger sections, the inbound bullets step 1 left out, inbound items not done for a reason Ralph must settle, manual checks of handed-on items, closing-run deferrals, and blocked conditions — merging items that ask Ralph for the same action.
