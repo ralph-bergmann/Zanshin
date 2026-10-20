@@ -3,7 +3,7 @@ title: 'Story 9.20 closing run — clone failures typed on the wire (`jj.network
 type: 'bugfix'
 created: '2026-10-20'
 baseline_revision: '20002837d99404db5e646e8b2bdeb8aeb66372dd'
-status: 'in-progress'
+status: 'in-review'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:

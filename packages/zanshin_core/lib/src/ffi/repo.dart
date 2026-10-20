@@ -90,8 +90,8 @@ Uint8List zanshinRepoInit(
 /// `--object-hash`. Progress rides the event sink as `operation: "clone"`,
 /// tagged with the session id the new handle gets.
 ///
-/// Errors: `jj.invalid_input`, `jj.destination_not_empty`, `jj.jj_lib_error`,
-/// `jj.config_error`, `ffi.invalid_argument`.
+/// Errors: `jj.invalid_input`, `jj.destination_not_empty`, `jj.network_error`,
+/// `jj.jj_lib_error`, `jj.config_error`, `ffi.invalid_argument`.
 Uint8List zanshinRepoClone({
   required String source,
   required String destination,

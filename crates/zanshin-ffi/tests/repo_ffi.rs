@@ -20,8 +20,8 @@ use zanshin_ffi::{
         zanshin_repo_clone, zanshin_repo_close, zanshin_repo_convert, zanshin_repo_detect, zanshin_repo_init,
         zanshin_repo_open,
     },
-    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_DETECT_FAILED, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
-    JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO, JJ_DETECT_FAILED, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR,
+    JJ_NETWORK_ERROR, JJ_NOT_A_GIT_REPO, JJ_PATH_NOT_FOUND, JJ_REPO_NOT_FOUND,
 };
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
@@ -349,7 +349,7 @@ fn repo_clone_with_an_invalid_remote_name_returns_invalid_input() {
     let env = parse_envelope(&bytes);
     assert!(!env.ok());
     let error = env.error().expect("an error envelope");
-    assert_eq!(error.code(), Some(zanshin_ffi::JJ_INVALID_INPUT));
+    assert_eq!(error.code(), Some(JJ_INVALID_INPUT));
     assert!(
         error.context().is_some_and(|c| c.contains("reserved")),
         "jj-lib's reason in context: {:?}",

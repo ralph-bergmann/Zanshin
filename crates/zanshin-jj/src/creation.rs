@@ -265,7 +265,9 @@ fn clone_failed(reason: impl Into<String>) -> RepoError {
 /// as in `git_fetch`; any other fetch failure is a clone failure.
 fn fetch_error(e: GitFetchError) -> RepoError {
     match e {
-        GitFetchError::Subprocess(_) => RepoError::NetworkError { reason: e.to_string() },
+        GitFetchError::Subprocess(_) => RepoError::NetworkError {
+            reason: mutate::flatten_chain(&e),
+        },
         other => clone_failed(other.to_string()),
     }
 }

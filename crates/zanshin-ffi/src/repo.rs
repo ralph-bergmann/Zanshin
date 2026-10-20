@@ -754,11 +754,11 @@ pub unsafe extern "C" fn zanshin_repo_init(data: *const u8, len: usize) -> *mut 
 /// - `jj.destination_not_empty` — the destination is a file or a non-empty directory; refused
 ///   before anything is created. The destination in `context`.
 /// - `jj.network_error` — the fetch's or the default-branch query's `git` subprocess failed (an
-///   unreachable source, an authentication failure, `git` not runnable); git's message in
-///   `context`.
+///   unreachable source, an authentication failure, `git` not runnable); the git failure (jj-lib's
+///   message with its cause) in `context`.
 /// - `jj.jj_lib_error` — the destination cannot be created, or the creation, registering the
-///   remote (e.g. an unparseable source URL), the import or the checkout failed; detail in
-///   `context`.
+///   remote (e.g. an unparseable source URL), another fetch failure (e.g. rejected ref updates),
+///   the import or the checkout failed; detail in `context`.
 /// - `jj.config_error` — the effective jj config cannot be read, or a key the clone reads is
 ///   malformed (`git.colocate`, `git.object-hash`, the import options, `remotes.<name>.*`,
 ///   `git.track-default-bookmark-on-clone`), or the presets cannot be written. `context` names the

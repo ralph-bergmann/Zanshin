@@ -478,7 +478,7 @@ or no `# Errors` block.
 |--------|------|---------------|-----------------|-------------|-------|
 | `zanshin_repo_open` | `(const char *path)` | — | `RepoHandle` | `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4a (+9.37) |
 | `zanshin_repo_init` | `(const uint8_t *data, uintptr_t len)` | `RepoInitRequest` | `RepoHandle` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.jj_lib_error`, `jj.git_repo_exists`, `jj.already_jj_repo`, `jj.convert_failed`, `jj.config_error`, `watcher.io_error` | 3.4a (+9.33, 9.20) |
-| `zanshin_repo_clone` | `(const uint8_t *data, uintptr_t len)` | `RepoCloneRequest` | `RepoHandle` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.destination_not_empty`, `jj.network_error`, `jj.jj_lib_error`, `jj.config_error`, `watcher.io_error` | 3.4a (+9.33, 9.20; `Progress`: 9.20) |
+| `zanshin_repo_clone` | `(const uint8_t *data, uintptr_t len)` | `RepoCloneRequest` | `RepoHandle` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.destination_not_empty`, `jj.network_error`, `jj.jj_lib_error`, `jj.config_error`, `watcher.io_error` | 3.4a (+9.33, 9.20, 9.20 closing run; `Progress`: 9.20) |
 | `zanshin_repo_convert` | `(const char *path)` | — | `RepoHandle` | `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4c (+9.33) |
 | `zanshin_repo_detect` | `(const char *path)` | — | `RepoDetect` | `jj.detect_failed`, `ffi.null_pointer`, `ffi.utf8_error` | 3.4c |
 | `zanshin_repo_close` | `(uint64_t handle)` | — | — (no-payload success) | `ffi.invalid_handle` | 3.4a |

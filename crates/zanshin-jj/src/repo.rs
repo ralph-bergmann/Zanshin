@@ -29,7 +29,8 @@ pub enum RepoError {
         /// Human-readable failure reason from jj-lib.
         reason: String,
     },
-    /// jj workspace clone failed (init, remote registration, import, or checkout).
+    /// jj workspace clone failed (init, remote registration, a fetch failure other than the `git`
+    /// subprocess's — e.g. rejected ref updates —, import, or checkout).
     #[error("clone failed: {reason}")]
     CloneFailed {
         /// Human-readable failure reason from jj-lib.
@@ -40,7 +41,7 @@ pub enum RepoError {
     /// network, authentication or transport, or `git` could not be run.
     #[error("network error: {reason}")]
     NetworkError {
-        /// Human-readable failure reason from jj-lib (git's own message).
+        /// The git failure (jj-lib's message with its cause).
         reason: String,
     },
     /// [`Repo::clone`]'s destination is a file or a non-empty directory (Story 9.20) — the CLI's
@@ -2506,9 +2507,11 @@ impl Repo {
     ///   `remotes.<name>.*`, `git.track-default-bookmark-on-clone`) is malformed; or the presets
     ///   could not be written.
     /// - [`RepoError::NetworkError`] — the fetch's or the default-branch query's `git` subprocess
-    ///   failed (an unreachable source, an authentication failure, `git` not runnable).
+    ///   failed (an unreachable source, an authentication failure, `git` not runnable); the reason
+    ///   is the git failure (jj-lib's message with its cause).
     /// - [`RepoError::CloneFailed`] — creating the destination, the jj-lib creation, registering
-    ///   the remote (e.g. an unparseable source URL), the import or the checkout failed.
+    ///   the remote (e.g. an unparseable source URL), another fetch failure (e.g. rejected ref
+    ///   updates), the import or the checkout failed.
     #[must_use = "the outcome carries the result and the warnings"]
     pub fn clone(options: &crate::CloneOptions, progress: &crate::ProgressFn) -> CreationOutcome {
         crate::creation::clone(options, progress)

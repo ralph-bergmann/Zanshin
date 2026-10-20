@@ -306,6 +306,28 @@ fn a_failing_fetch_is_a_network_error_and_cleans_up_what_the_clone_created() {
     );
 }
 
+/// An empty `-b` list (tags not given) makes both fetch expressions `none()`, so jj-lib's `fetch`
+/// returns without running git (no refspecs remain) and the default-branch query (`git remote
+/// show`) is the first git call: its failure is a network error too, and the clean-up removes the
+/// destination the clone created (Story 9.20 closing run).
+#[test]
+fn a_failing_default_branch_query_is_a_network_error_and_cleans_up() {
+    let parent = TempDir::new().unwrap();
+    let created = parent.path().join("created");
+    let outcome = clone(&CloneOptions {
+        source: format!("file://{}", parent.path().join("missing").display()),
+        destination: created.clone(),
+        branches: Some(vec![]),
+        ..Default::default()
+    });
+    assert!(
+        matches!(outcome.result, Err(RepoError::NetworkError { ref reason }) if !reason.is_empty()),
+        "{:?}",
+        outcome.result
+    );
+    assert!(!created.exists(), "the destination the clone created is removed");
+}
+
 /// An invalid remote name (the reserved `git`, a slash) is invalid input with jj-lib's reason,
 /// refused inside the clean-up scope at `add git remote` (Story 9.20 closing run).
 #[test]
