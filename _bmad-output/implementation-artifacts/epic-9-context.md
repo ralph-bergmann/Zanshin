@@ -4,7 +4,7 @@
 
 ## Goal
 
-Build the jj CLI's operation set as typed verb-level calls in `zanshin-jj` — beyond Epic 6's minimal write set — each a whole transaction composed Rust-side over jj-lib and exposed through `zanshin-ffi` (MCP optional), and close the CLI-parity gaps around them (config stack, implicit snapshot/Git import, warnings, no-op gate, undo/redo, pin bumps), guarded by a parity oracle. A user must be able to alternate between the jj CLI and Zanshin on one repo without noticing; the floating client (Epics 10/11) is the main consumer. Stories are backlog-granular; ACs/specs are written when scheduled.
+Build the jj CLI's operation set as typed verb-level calls in `zanshin-jj` — beyond Epic 6's minimal write set — each a whole transaction composed Rust-side over jj-lib and exposed through `zanshin-ffi` (MCP optional), and close the CLI-parity gaps around them (config stack, implicit snapshot/Git import, warnings, no-op gate, undo/redo, templates, pin bumps), guarded by a differential parity oracle. A user must be able to alternate between the jj CLI and Zanshin on one repo without noticing; the floating client (Epics 10/11) is the main consumer. Stories are backlog-granular; ACs/specs are written when scheduled.
 
 ## Stories
 
@@ -60,37 +60,43 @@ Build the jj CLI's operation set as typed verb-level calls in `zanshin-jj` — b
 - Story 9.48: `new -A` / `-B`
 - Story 9.49: `commit`
 - Story 9.50: Hunk selection → selected tree
+- Story 9.51: jj templates (`commit_trailers`, `draft_commit_description`, `git_push_bookmark`)
+- Story 9.52: Network verbs on a helper thread — progress + Cancel
+- Story 9.53: Parity clean-up after the 2026-10-19 loop
 
 ## Requirements & Constraints
 
 - **Spec = the CLI's observable behavior at v0.46.0** (`git -C ../jj show v0.46.0:<path>`; re-read even where a story cites v0.44.0): verbs, preconditions, refusals and their order, defaults, op descriptions byte-identical, every on-disk effect. Terminal UX (TUI, editor, pager, prompts) is replaced.
-- **Pass parameters through:** CLI/config defaults are editable pre-fills; where the CLI prompts, return candidates. Absence is `null`.
-- jj only via jj-lib in `zanshin-jj`; production code never shells out to `jj` or parses its text.
+- **Pass parameters through:** CLI/config defaults are editable pre-fills, never hidden Zanshin defaults; where the CLI prompts, return candidates or a plan. Absence is `null`.
+- jj only via jj-lib in `zanshin-jj`; production code never shells out to `jj` or parses its text (only the oracle's tests run the pinned `jj`).
 - A no-change verb writes no operation and returns the pre-call head op id.
-- Refusals reuse `<domain>.<reason>` codes (`docs/rust-error-codes.md`), CLI text verbatim. CLI warnings → `warnings: [{code, message}]` on ok and error envelopes; status lines are typed facts; hints only as verb data the UI shows verbatim.
-- **Done per verb:** `.fbs` edited in place → `zanshin-jj` → `extern "C"` + committed codegen → `WorkerCommand`/`RepoHandle` in `packages/zanshin_core` → optional MCP; `docs/ffi-abi.md`; a real-cdylib `zanshin_core` test per extern fn; 9.47 oracle scenarios for mutating verbs; `cargo make test` green incl. coverage ratchet (new files ≥ 80 %).
-- Never regenerate fixtures (no remote bookmarks — build in-test); pin `JJ_USER`/`JJ_EMAIL`/`JJ_OP_*`/`XDG_CONFIG_HOME` via the env guards.
+- Refusals reuse `<domain>.<reason>` codes (`docs/rust-error-codes.md`), CLI text verbatim. CLI warnings → `warnings: [{code, message}]` on ok and error envelopes; status lines ("Nothing changed.") are typed facts. Hints are not warnings: a hint the UI shows verbatim travels as that verb's plan/result data.
+- **Done per verb:** `.fbs` edited in place → `zanshin-jj` → `extern "C"` + committed codegen → `WorkerCommand`/`RepoHandle` in `packages/zanshin_core` → optional MCP; `docs/ffi-abi.md`; a real-cdylib `zanshin_core` test per extern fn; 9.47 oracle scenarios for mutating verbs (they are the verb's acceptance criteria); `cargo make test` green incl. coverage ratchet (new files ≥ 80 %).
+- Never regenerate fixtures (no remote bookmarks — build in-test); pin `JJ_USER`/`JJ_EMAIL`/`JJ_OP_*`/`XDG_CONFIG_HOME` via the env guards; tests never touch `~/.config/jj`.
 
 ## Technical Decisions
 
-- **Verb granularity is forced:** borrowed handles and locks keep each transaction Rust-side; only ids, blobs and opaque handles cross FFI (FlatBuffers `Envelope`, no JSON).
-- **`op_support.rs`** ports CLI-only orchestration: rewritability guard, `-o`/`-A`/`-B` location + loop check, message combination, `SelectedTree`. Real algorithm ports: `revert`, `split`, `parallelize`, headless `arrange`.
-- **Precondition = CLI start-up:** colocated → import HEAD → snapshot → import refs under jj's git import/export lock, each op only on change; not for the CLI's no-snapshot commands or creation paths.
-- **Settings = the CLI's full config stack**, resolved per verb's CLI command name; no hardcoded identity, no `.gitconfig`. Config writes share one `ConfigFile` helper, no operation. Login-shell env passed as an explicit map.
-- **One pure `plan_*` fn per verb**, shared with `drop_actions` (advisory; the verb's refusal wins); plans report what the CLI would ask (e.g. combined description).
+- **Verb granularity is forced:** borrowed handles and locks keep each transaction Rust-side; only ids, blobs and opaque handles cross FFI (FlatBuffers `Envelope`, no JSON). Every jj call on a repo stays serialized.
+- **`op_support.rs`** ports CLI-only orchestration: rewritability guard, `-o`/`-A`/`-B` location + loop check, message combination/trailers, `SelectedTree`. Real algorithm ports: `revert`, `split`, `parallelize`, headless `arrange`.
+- **Precondition = CLI start-up:** colocated → import HEAD → snapshot → import refs under jj's git import/export lock, each op only on change; not for the CLI's no-snapshot commands or creation paths. A stale working copy refuses every snapshotting call until `update-stale` (or `snapshot.auto-update-stale`) recovers it.
+- **Settings = the CLI's full config stack**, resolved per verb's CLI command name; no hardcoded identity, no `.gitconfig`. Config writes share one `ConfigFile` helper and write no operation. Login-shell env passed as an explicit map, never `set_var`.
+- **One pure `plan_*` fn per verb**, shared with `drop_actions` (advisory; the verb's refusal wins); plans report what the CLI would ask (combined description, push dry-run per remote/ref).
 - **Interactive verbs** take a GUI tree from `select_tree` (9.50) plus `left`; stale selections refuse.
+- **Templates (9.51):** proposed to reuse jj-cli's own template engine as a library, gated by a spike; if the context cannot be built, Ralph decides.
+- **Network verbs (9.52):** run off the worker isolate's thread so progress streams live; Cancel kills git's process group, refusing with a new code (e.g. `jj.cancelled`), with the CLI's failure-path clean-up.
 - **Oracle** (`crates/zanshin-parity`): stock `jj-cli` pinned with `jj-lib`, compares repo state via jj-lib; ledger fails on UNEXPECTED/CHANGED/STALE. Reads, codes, network and interactive verbs need hand audit.
 
 ## UX & Interaction Patterns
 
-- Drop menu: rebase forms, squash, merge `new`, `duplicate`, `bookmark move`; refused/no-op rows hidden.
+- Drop menu: rebase forms (`-s`/`-r` onto, `-r -A`/`-B`), squash, merge `new`, `duplicate`, `bookmark move` (with explicit `--allow-backwards`); refused/no-op rows hidden.
 - Composer runs `commit`/`split`/`squash -r`; push sheet uses a dry-run plan per remote and ref.
-- Undo is off when the current op's parent is root; `update-stale` offers no Undo. Timers and debouncing are UI-side.
+- Undo is off when the current op's parent is root; ⌘Z undoes only Zanshin's own latest op; `update-stale` offers no Undo. Timers and debouncing are UI-side.
 
 ## Cross-Story Dependencies
 
 - 9.1 blocks Tier C, 9.9, 9.31, 9.48; Tier A → B → C.
 - 9.22 + 9.27 → 9.26 → 9.34; 9.27 → 9.28; 9.26–9.28 → 9.41.
-- 9.32 → 9.33, 9.35; 9.36/9.37/9.39 emit warnings through it.
+- 9.32 → 9.33, 9.35; 9.36/9.37/9.39/9.53 emit warnings through it.
 - 9.50 → tree arms of 9.15/9.17/9.49; 9.31 shares `plan_*` fns with the verbs it previews.
 - 9.21's `redo` reuses 9.39's walk; 9.40's gate covers new verbs; 9.30 shares 9.5's import-options helper.
+- 9.51 depends on 9.15/9.20/9.23/9.49 and removes their oracle ledger entries; 9.52 builds on 6.4a/9.20 (and 9.30 if first).
