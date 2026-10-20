@@ -1614,3 +1614,4 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **`jj git push --all` to several remotes fails and records nothing when one remote has nothing to push, although the other remotes already received their refs (CLI parity, pinned by the oracle).** Low.
   - `crates/zanshin-parity/tests/oracle/git_scenarios.rs:604` `push_all_one_remote_left_empty`: the CLI (and Zanshin, `crates/zanshin-jj/src/push.rs` `push_remotes`) runs `git push` at the empty remote with no refspecs, git fails, the command exits 1 and the operation is not written, so Undo cannot reach the first remote's refs.
   - **Follow-up:** Story 11.8's push sheet decides whether to warn before such a push or to push remote by remote; the verb keeps the CLI's behaviour.
+  - **2026-10-20, Ralph:** the verb keeps the CLI's behaviour (decided); the sheet's handling stays with 11.8.
