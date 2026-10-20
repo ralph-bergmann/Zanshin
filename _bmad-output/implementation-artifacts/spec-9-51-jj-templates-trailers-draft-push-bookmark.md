@@ -2,8 +2,8 @@
 title: 'Story 9.51: jj templates — `commit_trailers`, `draft_commit_description`, `git_push_bookmark`'
 type: 'feature'
 created: '2026-10-20'
-status: 'ready-for-dev'
-baseline_revision: 'f546983f6c8035ec7a651276b15f3a82bf3b4150'
+status: 'in-progress'
+baseline_revision: '455b34d1472e2daf05ca9e6f90ba80247afaea92'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -16,6 +16,20 @@ deferred:
       cli/src/cli_util.rs `WorkspaceCommandEnvironment::new` loads `load_template_aliases` (:3518) and `reload_revset_expressions` → `load_short_prefixes_expression` (:1084, :1115-1136) @ v0.46.0 for every workspace command; Story 9.51 builds its template environment lazily (crates/zanshin-jj/src/template.rs). docs/rust-error-codes.md :179 recorded the template-aliases load as "not ported".
     location: >-
       crates/zanshin-jj/src/template.rs; crates/zanshin-jj/src/snapshot.rs CommandEnv::load
+    severity: low
+  - summary: >-
+      A `jj.template_diagnostic` carries the CLI's context line, the diagnostic and its source chain, but not the CLI's template-position rendering (the `-->` span over the template text) — the same deviation `jj.short_prefixes_failed` documents.
+    evidence: |-
+      cli/src/command_error.rs `print_parse_diagnostics` renders each `TemplateParseError` with its pest span @ v0.46.0; crates/zanshin-jj/src/warning.rs `parse_diagnostics` writes `error_chain_lines` only.
+    location: >-
+      crates/zanshin-jj/src/template.rs Templates::parse_commit; crates/zanshin-jj/src/warning.rs parse_diagnostics
+    severity: low
+  - summary: >-
+      The template function `config("<name>")` reads the repo's settings, which hold Zanshin's stack — jj-lib's defaults, Zanshin's builtin layer and the jj-cli template defaults — not every jj-cli default, so `config("ui.color")` (and any other key only jj-cli's `misc.toml` / `colors.toml` / … define) renders empty where the CLI renders its default.
+    evidence: |-
+      cli/src/template_builder.rs `config` function (:2645-2676) reads `language.settings()` @ v0.46.0; crates/zanshin-jj/src/config.rs `template_defaults_layer` copies only `[template-aliases]`, `[diff.color-words]`, `[diff.git]` and four `templates.*` keys.
+    location: >-
+      crates/zanshin-jj/src/config.rs template_defaults_layer
     severity: low
 ---
 
@@ -133,6 +147,10 @@ CLI anchors at `jj-cli-0.46.0/src` (registry); jj-lib in vendored `jj-lib-0.46.0
 - Given the end of the run, then `git status --porcelain` is clean and every commit ends with the required co-author trailer and was made with `--no-gpg-sign`.
 
 ## Spec Change Log
+
+- **2026-10-20, implementation — the jj-cli default layer also takes `[diff.color-words]` and `[diff.git]`.** The template engine reads them off the repo's settings whenever a template calls `diff.git()` / `diff.color_words()` (`commit_templater.rs:2490`, `:2534` @ v0.46.0, `UnifiedDiffOptions` / `ColorWordsDiffOptions::from_settings`); without them such a template — e.g. the CLI's own `builtin_draft_commit_description_with_diff` — refused with "Failed to parse template: Failed to load diff settings" where the CLI renders it. They ride the same `ConfigSource::Default` layer as the aliases and the four `templates.*` keys (`config.rs` `TEMPLATE_TABLES`); still no other `[templates]` key is copied.
+- **2026-10-20, implementation — the "broken template / workspace add" matrix row follows the CLI, not "op head unchanged".** `add.rs:257-265` adds the trailers after `Workspace::init_workspace_with_existing_repo`, so the CLI refuses with jj-lib's `add workspace '<name>'` operation (and the directory) already written; Zanshin refuses at the same step, before the initial working-copy commit's transaction (`tests/templates.rs` `a_broken_trailers_template_refuses_workspace_add_before_its_transaction`). Every other verb of that row refuses with the op head unchanged.
+- **2026-10-20, implementation — the template `RevsetParseContext` also carries the effective `[fileset-aliases]`.** The CLI's `revset_parse_context` (`cli_util.rs:1048-1070`) passes the loaded fileset aliases; Zanshin's own revset parses pass an empty map, the template one passes the loaded table (its warnings record once per call, as the start-up environment's).
 
 ## Review Triage Log
 
