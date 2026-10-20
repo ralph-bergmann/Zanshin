@@ -1505,14 +1505,14 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - ~~**`snapshot_locked`'s error arm still reloads the head with jj-lib's `load_at_head`, so a reconcile written there carries no workspace name.**~~ — RESOLVED 2026-10-19 (spec-9-23-closing-snapshot-error-arm-head-reload, commit bbeb79a): the error arm only reads the op heads and writes nothing, like the CLI; the in-verb `load_at_head` calls stay with 9.46. Low; pre-existing (surfaced by the 9.23 review).
   - 9.23 moved `snapshot::run`, the stale recovery and `workspace add` onto the CLI-style `snapshot::load_head` (`resolve_operation`, `cli_util.rs:800-829` @ v0.46.0); the reload in `snapshot_locked`'s failure path (`crates/zanshin-jj/src/snapshot.rs`) and the in-verb `load_at_head` calls were left as they were. Only observable when divergent op heads exist at that moment.
   - **Follow-up:** switch the remaining head loads to `snapshot::load_head` in 9.46's v0.44 → v0.46 audit, with a reconcile-op witness per site.
-- **No verb reports "There are unresolved conflicts at these paths" after a checkout onto a conflicted `@`.** Low; pre-existing across every verb, newly visible in 9.23's stale recovery (surfaced by the 9.23 review).
+- ~~**No verb reports "There are unresolved conflicts at these paths" after a checkout onto a conflicted `@`.**~~ — RESOLVED 2026-10-20 (spec-9-53-parity-cleanup-after-2026-10-19-loop, commit 56f5868): `jj.unresolved_conflicts` with the CLI's path lines from `mutate::finish_transaction` (only when `@` moved) and `stale::recover_at`; the oracle's `new_conflicting_merge` warnings entry is gone, `edit_conflicted_merge` added. Low; pre-existing across every verb, newly visible in 9.23's stale recovery (surfaced by the 9.23 review).
   - The CLI's `print_updated_working_copy_stats` (`cli_util.rs:2297-2331` @ v0.46.0) warns when the new `@` has conflicts; `mutate::finish_transaction` and `stale::recover_at` emit only `jj.checkout_files_skipped`, and there is no warning kind for it. The GUI can read `@`'s conflict state from the graph.
   - **Follow-up:** Ralph decides whether a `jj.unresolved_conflicts` warning (with the paths) joins the 9.32 warning codes for every checkout.
   - **2026-10-20, Ralph:** yes, a `jj.unresolved_conflicts` warning code → **Story 9.53** item 1.
 
 ## Surfaced in the closing run of Story 9.23 (bmad-build-auto, 2026-10-19)
 
-- **When the auto-update-stale recovery's trailing snapshot fails, the partial report's `was_snapshot_taken` is measured against the recovered operation, not the one `run` loaded, so it can read `false` although the recovery wrote operations.** Low.
+- ~~**When the auto-update-stale recovery's trailing snapshot fails, the partial report's `was_snapshot_taken` is measured against the recovered operation, not the one `run` loaded, so it can read `false` although the recovery wrote operations.**~~ — RESOLVED 2026-10-20 (spec-9-53-parity-cleanup-after-2026-10-19-loop, commit 56f5868): on any recovery error `run` re-reads the op heads against its loaded op (helper shared with `snapshot_locked`); witness `a_recovery_failing_after_its_reset_reports_that_it_wrote` (a malformed `remotes.<name>.auto-track-bookmarks` — a wrong-typed `git.*` key already fails the Git backend's load). Low.
   - `snapshot::run` returns `stale::recover`'s error as is (`crates/zanshin-jj/src/snapshot.rs:429-437`); the flag was last set by `snapshot_locked` inside `trailing_snapshot` (`crates/zanshin-jj/src/stale.rs:362`), whose baseline is the recovered repo — against `run`'s doc ("whether the head moved off the operation loaded here"). Pre-existing since 9.23, untested; the CLI computes no `changed` on an error path, so it is a Zanshin-only report fact.
   - **Follow-up:** on a recovery error, `run` re-reads the op heads against its own loaded op id (read-only, as `snapshot_locked`'s error arm now does), with a witness that fails the trailing snapshot.
   - **2026-10-20, Ralph:** fix → **Story 9.53** item 3.
@@ -1557,7 +1557,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in the closing run of Story 9.49 (bmad-build-auto, 2026-10-19)
 
-- **`file show` with one path and `file annotate` do not resolve `.`/`..` like the CLI.** Low.
+- ~~**`file show` with one path and `file annotate` do not resolve `.`/`..` like the CLI.**~~ — RESOLVED 2026-10-20 (spec-9-53-parity-cleanup-after-2026-10-19-loop, commit 56f5868): `file.rs`'s `parse_path` goes through `op_support::parse_prefixes`. Low.
   - Both parse their path with `file.rs`'s own `parse_path` (`RepoPathBuf::from_internal_string`, `crates/zanshin-jj/src/file.rs:254-258`, used at `:485` and `:545`), so `./x` and `a/../x` are looked up literally and refused as `jj.path_not_found`, and `../x` is refused as `jj.path_not_found` where the CLI resolves the first two and refuses the last with "Path is not in the repo" (`parse_file_path`, jj-lib 0.46.0 `ui_path.rs:156-169`). The closing run fixed the shared prefix matcher only.
   - **Follow-up:** route `parse_path` through the same resolution as `op_support::parse_prefixes`, with a test per form.
   - **2026-10-20, Ralph:** fix → **Story 9.53** item 4.
@@ -1573,7 +1573,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in the closing run of Story 9.48 (bmad-build-auto, 2026-10-19)
 
-- **Two sibling test helpers still wait a fixed number of polls on real settings-file IO.** Low.
+- ~~**Two sibling test helpers still wait a fixed number of polls on real settings-file IO.**~~ — RESOLVED 2026-10-20 (spec-9-53-parity-cleanup-after-2026-10-19-loop, commit 56f5868): both poll until done or 10 s of real time (`Stopwatch`). Low.
   - `home_page_test.dart`'s `settle` (100 × 5 ms, `app/test/features/home/home_page_test.dart:99-105`) and `app_window_coordinator_test.dart`'s `until` (200 × 5 ms, `app/test/features/window/app_window_coordinator_test.dart:135-140`) wait on work that ends in fsync'd, chained `SettingsStore` writes, the pattern that flaked in `projects_window_test.dart`; neither has been seen failing. The closing run fixed only the projects-window helper (real-time budget, spec-9-48-closing-projects-window-settle-budget).
   - **Follow-up:** give both the same real-time `Stopwatch` budget if either flakes under the gate.
   - **2026-10-20, Ralph:** fix → **Story 9.53** item 5.
@@ -1583,7 +1583,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - ~~**No app-level real-worker test reads a diverged, ahead or behind project through `_WorkerProjectRepo.read()`.**~~ — RESOLVED 2026-10-19 (spec-9-29-closing-real-worker-tracking-read, commit 54d6049): `test-flutter` pins `XDG_CONFIG_HOME` (seeded with flutter's own settings) and three real-worker `read()` tests end `diverged` / `ahead` / `behind`. Medium.
   - A tracked non-`git` remote needs a fetch, a clone or `remotes.<name>.auto-track-bookmarks`: fetch/clone spawn a git child the Dart VM reaps (zanshin_core `mutate_test.dart` `gitFetch` note), and jj 0.46 keeps repo-scope config in the secure store under `$XDG_CONFIG_HOME`, which `test-flutter` deliberately does not pin (`Makefile.toml:138-140`). Covered instead by the pure `statusFrom`/`trackingStatusOf` tests (`app/test/features/projects/worker_project_repos_test.dart`) and zanshin_core's real-cdylib rewrite test.
   - **Follow-up:** pin `XDG_CONFIG_HOME` for the app suite without breaking flutter's own settings (e.g. seed the pinned dir with the flutter config), then add a real `read()` test that ends `diverged` / `ahead` / `behind`.
-- **A never-pushed tracked bookmark (the CLI's `(not created yet)` remote row) reads as a clean dot, not "ahead of remote".** Low.
+- ~~**A never-pushed tracked bookmark (the CLI's `(not created yet)` remote row) reads as a clean dot, not "ahead of remote".**~~ — RESOLVED 2026-10-20 (spec-9-53-parity-cleanup-after-2026-10-19-loop, commit 56f5868): `trackingStatusOf` counts a tracked non-`git` row with no target as local-ahead. Low.
   - The dot follows design question (a)'s "from 9.29's distances"; the CLI prints no distance for an absent remote target (`format_commit_ref`, `cli/src/config/templates.toml` @ v0.46.0), so `trackingStatusOf` (`app/lib/src/features/projects/project_repos.dart`) returns null.
   - **Follow-up:** Ralph decides; if it should read ahead, count a tracked remote row with a null target next to a present local bookmark as local-ahead.
   - **2026-10-20, Ralph:** yes, it reads ahead → **Story 9.53** item 2.
