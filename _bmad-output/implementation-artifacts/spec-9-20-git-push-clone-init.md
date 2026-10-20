@@ -38,6 +38,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/creation.rs, crates/zanshin-ffi/src/repo.rs map_repo_err
     severity: medium
+    resolved: >-
+      2026-10-20 — fixed (spec-9-20-closing-typed-clone-failures, commit 24ce688): a failing git child in the clone is jj.network_error, a refused remote name jj.invalid_input; the rest stays jj.jj_lib_error.
 ---
 
 <intent-contract>
