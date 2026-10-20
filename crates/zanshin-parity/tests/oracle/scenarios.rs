@@ -264,6 +264,20 @@ const BROKEN_TEMPLATE_ALIASES: &[Step] = &[Step::Jj(&["config", "set", "--repo",
 /// start-up environment of every workspace command.
 const BROKEN_SHORT_PREFIXES: &[Step] = &[Step::Jj(&["config", "set", "--repo", "revsets.short-prefixes", "("])];
 
+/// A `[template-aliases]` entry whose declaration does not parse (Story 9.51 closing run) — warned
+/// about, once, at the start-up environment of every workspace command.
+const BAD_TEMPLATE_ALIAS_ENTRY: &[Step] = &[Step::Jj(&["config", "set", "--repo", "template-aliases.'x('", "'1'"])];
+
+/// A `revsets.short-prefixes` with a parse diagnostic (`diff_contains` is deprecated; Story 9.51
+/// closing run) — warned about, once, at the start-up environment of every workspace command.
+const DIAGNOSED_SHORT_PREFIXES: &[Step] = &[Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "revsets.short-prefixes",
+    "diff_contains(\"x\")",
+])];
+
 /// `templates.new_description = '"N"'` — a template string literal (Story 9.51).
 const NEW_DESCRIPTION_STEP: Step = Step::Jj(&["config", "set", "--repo", "templates.new_description", "'\"N\"'"]);
 
@@ -1926,6 +1940,28 @@ pub fn scenarios() -> Vec<Scenario> {
             setup: BROKEN_SHORT_PREFIXES,
             ..simple(
                 "abandon_broken_short_prefixes",
+                |repo, _, s| {
+                    let result = repo.abandon(&[s.change("@")]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["abandon"]),
+            )
+        },
+        Scenario {
+            setup: BAD_TEMPLATE_ALIAS_ENTRY,
+            ..simple(
+                "abandon_bad_template_alias_entry",
+                |repo, _, s| {
+                    let result = repo.abandon(&[s.change("@")]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["abandon"]),
+            )
+        },
+        Scenario {
+            setup: DIAGNOSED_SHORT_PREFIXES,
+            ..simple(
+                "abandon_diagnosed_short_prefixes",
                 |repo, _, s| {
                     let result = repo.abandon(&[s.change("@")]);
                     zanshin_outcome(repo, &result)

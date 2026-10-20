@@ -810,7 +810,12 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::RevsetError::ParseError`] — any expression is syntactically invalid.
+    /// - [`crate::RevsetError::Precondition`] — the pre-verb snapshot failed, its start-up
+    ///   environment included: a broken `[template-aliases]` table, or an effective
+    ///   `revsets.short-prefixes` that is not a string or does not parse, refuses here.
+    /// - [`crate::RevsetError::ParseError`] — any expression is syntactically invalid; for
+    ///   `short_prefixes` only an override that differs from the effective text (the effective
+    ///   one refuses earlier, at start-up).
     /// - [`crate::RevsetError::ResolutionError`] — a symbol in `revset` or `prioritize`
     ///   cannot be resolved. An unresolvable `short_prefixes` is NOT an error: like the
     ///   CLI, it warns and degrades to full-index prefix lengths.
@@ -854,9 +859,13 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::RevsetError::Precondition`] — the pre-verb snapshot failed.
+    /// - [`crate::RevsetError::Precondition`] — the pre-verb snapshot failed, its start-up
+    ///   environment included: a broken `[template-aliases]` table, or an effective
+    ///   `revsets.short-prefixes` that is not a string or does not parse, refuses here.
     /// - [`crate::RevsetError::ParseError`] — any expression, an anchor included, is
-    ///   syntactically invalid; raised before the repo is loaded.
+    ///   syntactically invalid; raised before the repo is loaded. For `short_prefixes` only an
+    ///   override that differs from the effective text (the effective one refuses earlier, at
+    ///   start-up).
     /// - [`crate::RevsetError::ResolutionError`] — a symbol in `revset`, `prioritize` or an
     ///   anchor cannot be resolved. An unresolvable `short_prefixes` only warns and degrades.
     /// - [`crate::RevsetError::Config`] — the repo's effective jj config is malformed or

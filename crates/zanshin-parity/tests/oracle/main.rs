@@ -192,6 +192,8 @@ parity!(
     push_change_broken_template,
     abandon_broken_template_aliases,
     abandon_broken_short_prefixes,
+    abandon_bad_template_alias_entry,
+    abandon_diagnosed_short_prefixes,
 );
 
 /// Every scenario id the table and the creation list define.
@@ -206,7 +208,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 156);
+    assert_eq!(SCENARIO_IDS.len(), 158);
 }
 
 #[test]

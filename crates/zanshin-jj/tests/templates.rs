@@ -536,3 +536,76 @@ fn the_graph_walk_with_the_effective_short_prefixes_warns_once() {
         "{warnings:?}"
     );
 }
+
+/// A graph walk passed a short-prefixes override that differs from the effective text warns on
+/// its own — the start-up parse of the effective text does not swallow it.
+#[test]
+fn the_graph_walk_with_a_different_short_prefixes_override_warns() {
+    let mut fx = base(&[]);
+    let flow = fx
+        .repo
+        .walk_graph(
+            "all()",
+            zanshin_jj::DEFAULT_GRAPH_PRIORITIZE,
+            DIAGNOSED_SHORT_PREFIXES,
+            |_| std::ops::ControlFlow::Continue(()),
+        )
+        .expect("graph");
+    assert_eq!(flow, std::ops::ControlFlow::Continue(()));
+    let warnings = fx.repo.take_warnings();
+    assert_eq!(
+        warnings_of(
+            &warnings,
+            WarningKind::RevsetDiagnostic,
+            "In `revsets.short-prefixes`\n"
+        ),
+        1,
+        "{warnings:?}"
+    );
+}
+
+/// The start-up environment warns in the CLI's order (`cli_util.rs:962-990` @ v0.46.0): the
+/// `[revset-aliases]` table, then the `[template-aliases]` table, then the `immutable_heads()`
+/// parse.
+#[test]
+fn the_start_up_warnings_come_in_the_clis_order() {
+    let mut fx = base(&[
+        ("revset-aliases.'y('", "'1'"),
+        ("template-aliases.'x('", "'1'"),
+        (
+            "revset-aliases.'immutable_heads()'",
+            "'diff_contains(\"zzz\") & none()'",
+        ),
+    ]);
+    let at = fx.c.clone();
+    fx.repo.abandon(&[at]).expect("abandon");
+    let warnings = fx.repo.take_warnings();
+    let position = |kind: WarningKind, prefix: &str| {
+        warnings
+            .iter()
+            .position(|w| w.kind == kind && w.message.starts_with(prefix))
+            .unwrap_or_else(|| panic!("no {prefix:?} in {warnings:?}"))
+    };
+    let revset = position(WarningKind::ConfigAliasInvalid, "Failed to load `revset-aliases.y(`: ");
+    let template = position(
+        WarningKind::ConfigAliasInvalid,
+        "Failed to load `template-aliases.x(`: ",
+    );
+    let immutable = position(WarningKind::RevsetDiagnostic, "In `revset-aliases.immutable_heads()`\n");
+    assert!(revset < template && template < immutable, "{warnings:?}");
+}
+
+/// The `[template-aliases]` table loads before the `immutable_heads()` parse, so its fault wins.
+#[test]
+fn a_broken_template_alias_table_refuses_before_immutable_heads() {
+    let mut fx = base(&[("revset-aliases.'immutable_heads()'", "'('"), ("template-aliases", "1")]);
+    fx.assert_start_up_refusal(|reason| reason.ends_with("template-aliases: Expected a table, but is integer"));
+}
+
+/// With `revsets.short-prefixes` unset, the start-up parse falls back to `revsets.log` — and
+/// refuses when that does not parse.
+#[test]
+fn an_unparsable_revsets_log_fallback_refuses_every_verb() {
+    let mut fx = base(&[("revsets.log", "'('")]);
+    fx.assert_start_up_refusal(|reason| reason.starts_with("Invalid `revsets.short-prefixes`: "));
+}
