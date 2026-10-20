@@ -2,14 +2,39 @@
 title: 'Story 9.55 — One integration-test binary per crate'
 type: 'chore'
 created: '2026-10-20'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: 'bb62aca89958acbe2b86fda8fadfcc1bb427084d'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-9-context.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The three places that state the new test-environment rule disagree on who must pin:
+      CLAUDE.md says every test that does not use `own_process!` calls `pin_test_env()`, while
+      project-context.md and both `tests/it/main.rs` docs say only tests that read the environment
+      through jj.
+    evidence: |-
+      CLAUDE.md test-placement paragraph ("every other test pins it with test_helpers::pin_test_env()")
+      vs _bmad-output/project-context.md Test layout and crates/zanshin-{jj,ffi}/tests/it/main.rs
+      ("called first by every test that reads the environment through jj"); detect, find_repo_root,
+      api_stability and ffi_abi_doc_sync do not pin. Written by this story; the fix edits an
+      agent-context file, so it is deferred rather than patched.
+    location: >-
+      CLAUDE.md (Test placement paragraph)
+    severity: low
+  - summary: >-
+      The `.claude/skills/story-loop/SKILL.md` gate-rule sentence this story amended reads
+      ambiguously ("`zanshin-jj`/`zanshin-ffi` have one, `--test it <module>::`").
+    evidence: |-
+      .claude/skills/story-loop/SKILL.md:79 — the edit (outside the spec's file list) means "each of
+      the two crates has a single integration-test target `it`, filtered by module path", but does
+      not say so. Agent-context file, so deferred rather than patched.
+    location: >-
+      .claude/skills/story-loop/SKILL.md:79
+    severity: low
 ---
 
 <intent-contract>
@@ -73,6 +98,7 @@ deferred: []
 
 **Execution:**
 - Baseline (before any edit, at HEAD) -- record per crate `cargo test -p zanshin-jj --tests -- --list` / `-p zanshin-ffi` totals (count lines ending `: test`), `du -sh target target/debug/deps target/llvm-cov-target`, the number of zanshin-jj/zanshin-ffi integration-test executables in `target/debug/deps`, and the wall time of one `cargo make test-full` run after `cargo clean -p zanshin-jj -p zanshin-ffi` plus the same with `--target-dir target/llvm-cov-target` (identical procedure after the change, so stale per-file binaries do not inflate either side) -- the witnesses need before/after numbers.
+  - **DONE by the parent session at `bb62aca`, 2026-10-21 — do not redo:** `--list` totals zanshin-jj **1180** (lib 273 + integration 907), zanshin-ffi **479** (lib 186 + integration 293). After both `cargo clean -p` calls: `cargo make test-full` green in **1034 s**; then `target` 16G, `target/debug/deps` 5.3G (4 executables — the gate builds no debug test binaries), `target/llvm-cov-target` 9.3G (94 executables under `deps`). Then `cargo test -p zanshin-jj -p zanshin-ffi --no-run`: `target/debug/deps` 11G, 89 executables totalling 6.3 GB.
 - `crates/test-helpers/src/lib.rs` -- `pin_test_env() -> &'static Path`; new own-process helper (function + `#[macro_export]` macro, see Design Notes); rewrite the pin docs -- the ONE env lock and the child mechanism.
 - `crates/zanshin-jj/tests/it/main.rs`, `crates/zanshin-ffi/tests/it/main.rs` (new) + `git mv` of every file -- `//!` doc stating the layout and the env rule, `mod` per file alphabetically -- one binary per crate.
 - Shared-pin modules (Code Map list) -- swap the module guard for `pin_test_env()`; keep each module's `pin_env()` wrapper only where it returns the XDG path the tests use -- one pin per process.
@@ -92,6 +118,40 @@ deferred: []
 
 ## Review Triage Log
 
+### 2026-10-21 — Review pass
+- verdicts: 30 findings — high 0, medium 0, low 25, false 4, maybe-false 1
+- findings:
+  - `[low]` `[patch]` blind 1: `workspace_test.dart` line-wrapped `crates/zanshin-ffi/tests/` + `workspace_ffi.rs` missed by the rewrite — rewrapped to `tests/it/workspace_ffi.rs`.
+  - `[low]` `[patch]` blind 2: `zanshin-ffi/src/repo.rs` inline guard comment "mirrors tests/it/repo_ffi.rs / watcher.rs" points at deleted guards, and `pin_test_env`'s doc claimed "every test process" — comment reworded; doc narrowed to zanshin-jj's inline tests + the two `it` binaries (the ffi lib guard is a separate process, unchanged).
+  - `[low]` `[patch]` blind 3: duplicate `ENV_GUARD`s in own-process modules (`events_ffi`, `clone_config`, `config_user_layer`) with a false "mirrors" comment — comment corrected; the guards stay as the spec directs (they run only in the one-test child).
+  - `[low]` `[patch]` blind 4: `events_ffi` module doc / `TEST_GUARD` / poison comments still describe a binary shared by every test — wording corrected, guards kept (spec: module helpers unchanged).
+  - `[low]` `[patch]` blind 5: garbled dangling fragment in `repo_write_ffi.rs` sink comment — rewritten as one sentence.
+  - `[low]` `[reject]` blind 6: `clone_init` keeps its own child mechanism with hard-coded `clone_init::` prefixes — the spec keeps it deliberately (prefix only); migrating means restructuring five tests' config-file plumbing, and a module rename fails the parent loudly ("0 passed"), never silently.
+  - `[low]` `[patch]` blind 7: `zanshin-ffi/tests/it/main.rs` doc says every sink owner uses `own_process!`, but `push_ffi`'s two session-filtered sink tests stay in the parent — the exception is now stated.
+  - `[low]` `[reject]` blind 8: an `own_process!` literal naming an existing sibling test would run the sibling and skip the caller's body — needs a copy-paste mistake within one of 15 files; the fix (deriving the name from a nested fn's `type_name`) changes the macro's interface; not worth the complexity now.
+  - `[low]` `[reject]` blind 9: helper has no timeout, discards child output on success, and no test of a failing child — a hung in-process test hangs libtest the same way; a failing child exits non-zero and hits the same assertion the "0 passed" test covers; a should_panic witness of child failure is not constructible (the child's should_panic would pass).
+  - `[low]` `[reject]` blind 10: a new module that forgets `pin_test_env()` passes by accident when another module pinned first — before the change, a forgotten pin silently read the developer's config every run, so nothing is lost; enforcement would need a new mechanism.
+  - `[low]` `[reject]` blind 11: `file_track_untrack` writes `$XDG/git/ignore` (`*.xdgignored`) into the shared XDG mid-run — the spec's chosen design; the pattern is unique and no other test creates such a file; 3 green full gates.
+  - `[low]` `[reject]` blind 12: `environment_ffi`'s two refusal tests are wrapped although they read no environment — the spec wraps every test of the file; a regression that installed on refusal would otherwise poison the shared process; cost is two process starts.
+  - `[low]` `[defer]` blind 13: CLAUDE.md vs project-context.md / `main.rs` disagree on who must pin — agent-context file edit, deferred (frontmatter + deferred-work.md).
+  - `[low]` `[patch]` blind 14: coverage of child-run bodies undocumented — one sentence added to `docs/coverage.md` (cargo-llvm-cov's `%p` profiles); coverage held over 3 full gates confirms it.
+  - `[low]` `[defer]` blind 15: `.claude/skills/story-loop/SKILL.md` sentence ambiguous — agent-context file, deferred.
+  - `[low]` `[reject]` edge 1: no timeout on the child run — same as blind 9.
+  - `[low]` `[reject]` edge 2: `own_process!` in an `#[ignore]` test run with `--ignored` would run 0 tests in the child — no such test exists (the only ignored test, `revset_large_fixture_fully_materialized`, has no prologue); a loud failure, not a silent pass.
+  - `[low]` `[reject]` edge 3: `own_process!` in a `#[should_panic]` test flips the outcome — no such test exists; it would fail loudly in the parent.
+  - `[low]` `[reject]` edge 4: shared XDG git ignore written lazily — same as blind 11.
+  - `[maybe-false]` `[reject]` edge 5: 39 `file_track_untrack` tests now read the real `$HOME` (only the one test that needs it pins one) — would need a system git config with a `~/`-relative `core.excludesFile` on the machine to matter; every other module already ran with the real `$HOME`; if true, low.
+  - `[low]` `[reject]` edge 6: `clone_init`'s `set_var`/`remove_var` in `with_user_config` sit behind its own child mechanism, not `own_process!`, so the grep AC fails as worded — the spec itself keeps that mechanism (Code Map: prefix only); the effect is child-only; the only fix is editing this spec's AC or an out-of-spec refactor.
+  - `[low]` `[patch]` edge 7: `push_ffi` sink tests in the parent contradict `main.rs`'s rule — same entry as blind 7.
+  - `[low]` `[patch]` edge 8: zanshin-ffi lib's own inline env guard vs "ONE lock" doc — same entry as blind 2.
+  - `[low]` `[patch]` edge 9: `workspace_test.dart` stale path — same entry as blind 1.
+  - `[low]` `[reject]` intent 1: no restore-under-a-mutex as the epic's wording suggests; children instead — deliberate and documented (Design Notes "Why children, not a lock"): a restoring mutex cannot protect concurrent readers, and `adopt_environment` is write-once.
+  - `[false]` `[reject]` intent 2: non-env process globals not audited — the planning audit covered them: cancel `REGISTRY` uses disjoint token ranges, tracing `INIT` is never called by tests, `CLI_DEFAULTS` is static; the FFI sink and `ADOPTED` are the two that mattered and both moved to children.
+  - `[false]` `[reject]` intent 3: `gate_plan.rs` / coverage tooling changed only in comments — `gate_plan` rules are crate prefixes (`crates/zanshin-jj/`, `crates/zanshin-ffi/`) that already cover `tests/it/`, and the coverage ignore regex `/tests/` matches `tests/it/`; nothing names a test target.
+  - `[false]` `[reject]` intent 4: witnesses absent — recorded under Auto Run Result (counts, sizes, gate times, 3 green runs); not part of a code diff.
+  - `[low]` `[reject]` intent 5: starting environments changed (identity-only modules now get the shared XDG; `HOME` pinned for one test only) — sanctioned by the spec; assertions unchanged; all green.
+  - `[false]` `[reject]` intent 6: `test-helpers` / `zanshin-parity` not merged — the epic says "only if it pays"; parity's `driver_pins_env` needs its own process.
+
 ## Design Notes
 
 **Why children, not a lock.** A mutex around `set_var` does not protect readers: every other test reads the environment through jj (config, identity, XDG secure config) at arbitrary times, so a test that points `JJ_CONFIG` at a broken file breaks concurrent tests even if it restores afterwards, and `adopt_environment` cannot be undone. Re-running such a test as the only test of a child process of the SAME binary is exactly the isolation it had as its own binary, costs a process start instead of a link, and keeps one binary. The process environment then has exactly one writer: `pin_test_env`'s `LazyLock` — the story's "one shared lock".
@@ -107,8 +167,38 @@ Full libtest name = `module_path!()` minus its first segment (`it::config_cmd` �
 
 ## Verification
 
+The parent session runs the three `cargo make test-full` runs and the after-measurement (same procedure as the baseline task); the implementer runs the targeted `cargo test` commands, `cargo make test-clippy`/`test-fmt`, and leaves the tree uncommitted.
+
 **Commands:**
 - `cargo test -p zanshin-jj --tests -- --list` and `cargo test -p zanshin-ffi --tests -- --list` -- expected: baseline counts.
 - `cargo test -p zanshin-jj --test it` and `cargo test -p zanshin-ffi --test it` -- expected: green.
 - `cargo make test-full` three times in a row (repo root, unpiped, synchronous, long timeout; PATH with `~/development/sdks/flutter/bin` and `~/development/sdks/cargo/bin`, `CARGO_HOME=~/development/sdks/cargo`; if coverage reports a missing `llvm-profdata`, rerun `RUSTUP_HOME=$HOME/.rustup cargo make --allow-private coverage` then `cargo make --allow-private gate-stamp`) -- expected: exit 0 each time; coverage held or raised.
 - `ls target/debug/deps | grep -E '^it-'` and `du -sh target target/debug/deps target/llvm-cov-target` -- expected: two `it-<hash>` executables; sizes recorded.
+
+## Auto Run Result
+
+Status: done (2026-10-21). Blocking condition: none. Commits: spec + recompiled Epic 9 context bb62aca89958acbe2b86fda8fadfcc1bb427084d; code + review patches dba535ac45b59c3b33ac7c47c8aac15509d46516; plus the finalisation commit of this spec, deferred-work.md and sprint-status.yaml.
+
+**Summary.** `zanshin-jj` and `zanshin-ffi` each build ONE integration-test binary, `tests/it/main.rs`, with every former `tests/<name>.rs` as module `<name>` (`git mv`, 56 + 29 files). `test_helpers::pin_test_env()` (now returning the pinned `$XDG_CONFIG_HOME`) is the one writer of the process environment and replaces 59 per-file `ENV_GUARD`s. Tests that changed the environment per test, adopted a login-shell environment (`ADOPTED` OnceLock), pinned different variables (`config_cmd`, `snapshot_watchman`, `file_track_untrack`'s `$HOME` test) or own the FFI event sink (`events_ffi`, two `repo_write_ffi` fetch tests) start with the new `test_helpers::own_process!("<fn>")` and run alone in a child process of the same binary (`reran_in_own_process`, marker `ZANSHIN_TEST_OWN_PROCESS`). `clone_init`/`network_cancel` re-run filters gained the module prefix. Docs, src doc comments, Dart test comments, Makefile/lcov-union comments, CLAUDE.md and project-context.md name `tests/it/`.
+
+**Witnesses (before at `bb62aca` / after at `dba535a`).**
+- `cargo test -p <crate> --tests -- --list`: zanshin-jj 1180 / 1180 (lib 273 + integration 907 / `it` 907); zanshin-ffi 479 / 479 (lib 186 + integration 293 / `it` 293).
+- `cargo make test-full` after `cargo clean -p zanshin-jj -p zanshin-ffi` (both target dirs): 1034 s before; 843 s after; then two more consecutive green runs 782 s and 770 s (3 in a row green). A patched-comments `cargo make test` afterwards: green, 766 s. `coverage-baseline.txt` unchanged (held, not lowered, no auto-raise).
+- `target/llvm-cov-target`: 94 test executables, 9.3G before → 13 test executables (0.64 GB) after; 3.6G once the stale per-file binaries of the deleted targets were removed (cargo clean -p cannot see targets that no longer exist; 5275 stale files in both `deps` dirs deleted by hand).
+- `target/debug/deps` after `cargo test -p zanshin-jj -p zanshin-ffi --no-run`: 89 executables, 6.3 GB, dir 11G before → 11 executables, 0.75 GB, dir 5.8G after. `target` 16G (post-gate) before → 12G after.
+
+**Files changed:**
+- `crates/test-helpers/src/lib.rs` — `pin_test_env() -> &'static Path`, `OWN_PROCESS_VAR`, `reran_in_own_process`, `own_process!`, two inline tests (child runs the body; a wrong name fails with "0 passed").
+- `crates/zanshin-{jj,ffi}/tests/it/main.rs` (new) + all moved test files — module list; shared pin; own-process prologues; prefixed filters; comment paths.
+- `crates/zanshin-jj/src/*.rs`, `crates/zanshin-ffi/src/repo.rs` — doc comments naming test paths only.
+- `docs/coverage.md`, `docs/ffi-abi.md`, `docs/rust-error-codes.md`, `Makefile.toml` (comments), `crates/xtask/src/tasks/lcov_union.rs` (doc), `packages/zanshin_core/test/**` (comments), `CLAUDE.md`, `_bmad-output/project-context.md`, `.claude/skills/story-loop/SKILL.md` (one sentence, outside the spec's list).
+
+**Review findings.** 30 findings (high 0, medium 0, low 25, false 4, maybe-false 1).
+- **Patched, 6 entries (all low):** stale wrapped Dart path (blind 1, edge 9); "mirrors" comments + `pin_test_env` "every test process" overclaim (blind 2, blind 3, edge 8); `events_ffi` docs/poison comments (blind 4); garbled `repo_write_ffi` comment (blind 5); `main.rs` push_ffi sink exception (blind 7, edge 7); `docs/coverage.md` child-coverage sentence (blind 14). Comment/doc edits only.
+- **Deferred, 2 (low, agent-context files):** CLAUDE.md vs project-context.md/`main.rs` wording on who must pin (blind 13); ambiguous SKILL.md sentence (blind 15). Mirrored in deferred-work.md "Surfaced in Story 9.55".
+- **Rejected:** blind 6 / edge 6 (clone_init's own child mechanism kept by the spec; AC wording); blind 8 (sibling-name copy-paste); blind 9 / edge 1 (no timeout, output, failing-child test); blind 10 (forgotten pin); blind 11 / edge 4 (shared XDG git ignore); blind 12 (refusal tests wrapped); edge 2 (`--ignored`); edge 3 (`should_panic`); edge 5 (maybe-false, real `$HOME`); intent 1 (children instead of restore — documented design); intent 5 (sanctioned precondition changes). False: intent 2, 3, 4, 6. Reasons in the triage log.
+- **Follow-up review recommended:** false (no high patched; 0 medium).
+
+**Verification.** `--list` counts above; `cargo test -p zanshin-jj -p zanshin-ffi -p test-helpers` green (implementer); `cargo test -p test-helpers --lib` 2 passed; three consecutive `cargo make test-full` green; final `cargo make test` green after the comment patches. Matrix audit: own-process parent/child rows — every prologued test plus `own_process_runs_the_body_in_a_child_of_the_pinned_environment`; wrong name — `a_name_that_is_not_the_callers_fails_the_parent`; re-run filters — `clone_init`'s five config tests and `network_cancel::a_readable_process_spawned_after_the_cancel_is_killed_by_its_token`; mid-run module touch — the whole merged suite green three times.
+
+**Residual risks.** An `own_process!` literal that names an existing sibling test would silently skip the caller's body (rejected, low). Stale per-file test binaries from before this change stay in other checkouts' `target/` until `gate-sweep` or a manual clean removes them. All modules now share one `$XDG_CONFIG_HOME` store (repo configs keyed by random id).

@@ -1659,3 +1659,12 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - ~~**`bookmark create` does not auto-track the new bookmark on remotes matched by `remotes.<name>.auto-track-bookmarks` / `auto-track-created-bookmarks`, as the CLI does.** Medium.~~ — **RESOLVED 2026-10-20** (closing run, spec-9-54-closing-bookmark-create-auto-track; commits 182cf65 fix, 04f08ca review patches): `bookmark_ops::create` ports `create.rs:88-111` @ v0.46.0 (matchers from `config::remote_auto_track_bookmarks_for_new_bookmarks`, the union of both fields per remote, name-ordered; a broken value refuses as `jj.config_error` after the guards), new warning `jj.bookmark_auto_track_existing`; oracle `bookmark_create_auto_track_created` / `_existing` / `_broken` / `_union`; real-worker tests of the dot's push-target rule in `app/test/features/projects/worker_project_repos_test.dart`.
   - (as found) CLI `cli/src/commands/bookmark/create.rs:88-111` @ v0.46.0 tracks it on every matching remote that has a remote view (warning "Auto-tracking bookmark that exists on the remote: …"); `crates/zanshin-jj/src/bookmark_ops.rs:23-26` said "No auto-tracking on create" (deferred to Story 9.11). Pre-existing since Story 9.8; found while triaging Story 9.54's review.
   - **Follow-up:** done — the port, the typed warning, the oracle scenarios and the real-worker dot test all landed in the commits above.
+
+## Surfaced in Story 9.55 (bmad-build-auto, 2026-10-21)
+
+- **The three statements of the new test-environment rule disagree on who must call `pin_test_env()`.** Low.
+  - CLAUDE.md's test-placement paragraph says every test that does not use `own_process!` pins; `_bmad-output/project-context.md` (Test layout) and `crates/zanshin-{jj,ffi}/tests/it/main.rs` say only tests that read the environment through jj (`detect`, `find_repo_root`, `api_stability`, `ffi_abi_doc_sync` do not pin). Deferred because the fix edits an agent-context file.
+  - **Follow-up:** pick one wording (the `main.rs` one matches the code) and use it in CLAUDE.md and project-context.md.
+- **The `.claude/skills/story-loop/SKILL.md` gate-rule sentence Story 9.55 amended reads ambiguously.** Low.
+  - `.claude/skills/story-loop/SKILL.md:79` — "`zanshin-jj`/`zanshin-ffi` have one, `--test it <module>::`" means that each crate has a single integration-test target `it`, filtered by module path. Agent-context file, so deferred.
+  - **Follow-up:** reword the sentence to say that plainly.
