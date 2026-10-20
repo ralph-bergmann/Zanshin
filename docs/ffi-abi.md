@@ -922,8 +922,8 @@ cancellable and never answers `jj.cancelled`.
 attaches it and ends it when it returns. `zanshin_network_cancel(token)` sets the token's flag; it
 is idempotent, callable from any thread, and a no-op for `0`, an unknown or a finished token. A
 token cancelled before its call starts (a call queued behind another call on its handle) makes the
-call start cancelled. A clone uses a live (registered, not finished) token as the new session's id, so its `Progress`
-events are routable before it returns (*Payload schemas* above).
+call start cancelled. A clone uses a live (registered, not finished) token as the new session's
+id, so its `Progress` events are routable before it returns (*Payload schemas* above).
 
 **Checkpoints.** A cancelled token refuses at its verb's next checkpoint:
 
@@ -944,8 +944,8 @@ argument) answers exactly as it does without a cancel.
 processes among the DESCENDANTS of its own process and signals them: SIGTERM first (git removes its
 lock and temp files, as on the CLI's Ctrl-C), SIGKILL for any still alive 2 s after the cancel. Each
 one is stopped (SIGSTOP) before its children are listed and continued (SIGCONT) after the signal,
-so a child it forks during the scan cannot escape as the orphan of a killed parent. The polling runs
-only while the call is attached, so a git spawned after the cancel is caught too.
+so a child it forks during the scan cannot escape as the orphan of a killed parent. The polling keeps
+running until the call ends, so a git spawned after the cancel is caught too.
 Which descendants are the call's: every git of a call that carries a token runs with
 `ZANSHIN_CANCEL_TOKEN=<token>` in its environment (added to jj-lib's `GitSubprocessOptions`, which
 git's helpers inherit), and a process whose environment carries that exact pair is the call's,
@@ -961,10 +961,11 @@ and the checkpoints refuse, nothing more.
 
 **Outcomes.** A cancelled fetch or clone answers `jj.cancelled` (context `Cancelled`); a
 cancelled push answers its ok `GitPushResult` with `failure.kind = Cancelled` (message
-`Cancelled`), `recorded = false`, and the per-remote rows saying which remotes already got their
-refs (`PushRemote.finished`, `PushRef.status`) — the push failure model of Story 9.20 keeps a
-push's outcome data. A cancel that arrives after the last checkpoint and after the git work changes
-nothing.
+`Cancelled`), `recorded = false`, and the per-remote rows saying which remotes' git push completed
+(`PushRemote.finished`, `PushRef.status`) — the push failure model of Story 9.20 keeps a push's
+outcome data. A remote whose git push the cancel killed is not `finished`, though the remote may
+already have accepted some of its refs, as after any failed git push. A cancel that arrives after
+the last checkpoint and after the git work changes nothing.
 
 **Dart.** The worker owns the tokens: each fetch, push and clone runs on a short-lived helper
 isolate (`Isolate.run`) with a token the worker allocates (`zanshin_network_token`, on the worker),
@@ -1484,7 +1485,7 @@ Warnings: `jj.push_remotes_unmatched`, `jj.push_bookmarks_unmatched`, `jj.push_t
 `zanshin_repo_init` (`RepoInitRequest`: `path`, `backend`, `colocate` / `no_colocate`,
 `object_hash`) and `zanshin_repo_clone` (`RepoCloneRequest`: `source`, `destination`,
 `remote_name`, `colocate` / `no_colocate`, `depth` — 0 = absent —, `branches` / `tags` — ABSENT =
-the flag not given —, `object_hash`, and since Story 9.52 `cancel_token`) take request buffers since Story 9.20 and follow `jj git init`
-/ `jj git clone` step for step: the destination rules, colocation by `git.colocate`, the clone's
+the flag not given —, `object_hash`, and since Story 9.52 `cancel_token`) take request buffers
+since Story 9.20 and follow `jj git init` / `jj git clone` step for step: the destination rules, colocation by `git.colocate`, the clone's
 three operations and repo presets, its clean-up scope. Both colocation flags set is
 `jj.invalid_input`.

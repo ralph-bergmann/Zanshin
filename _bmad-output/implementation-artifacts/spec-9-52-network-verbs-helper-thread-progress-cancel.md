@@ -5,7 +5,7 @@ created: '2026-10-20'
 status: 'done'
 baseline_revision: '31e4bcab50485082491452ffbbff9b7a0c376286'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/docs/ffi-abi.md'
@@ -294,6 +294,41 @@ deferred:
   - `[low]` `[reject]` I7 (intent): the kill path is macOS-only. Zanshin is a macOS app; elsewhere the checkpoints still refuse.
   - `[false]` `[reject]` I8 (intent): the Auto Run Result and deferred-work bookkeeping are missing. They are written at finalize in this run.
 
+### 2026-10-20 — Review pass (follow-up)
+- verdicts: 31 findings — high 0, medium 3, low 20, false 8, maybe-false 0
+- findings:
+  - `[low]` `[reject]` B1 (blind): a fetch/push runs alongside other handles (and path-addressed handle-free calls) of the same repository — carried: calls on different handles of the same repo overlap; jj's op log reconciles concurrent operations and the epic scopes the wait to the same handle (row B6, first pass).
+  - `[low]` `[reject]` B2 (blind): `KILL_GRACE` is measured from the cancel, so a git first seen more than 2 s after it gets SIGKILL ~50 ms after its SIGTERM, and `terminated` is never pruned (a recycled pid). After a cancel every verb refuses at its checkpoint or fails its git step, so no git of the call spawns seconds later; pid reuse is the first pass's E12; per-pid timing adds state.
+  - `[false]` `[reject]` B3 (blind): the fetch's post-git checkpoint drops refs git already wrote — carried: "records no import" is the intent and the CLI's interrupted-fetch state (row B7, first pass).
+  - `[low]` `[patch]` B4 (blind): a cancelled push leaves stale tracking with no hint, and a remote whose killed git push may already have accepted refs is reported not `finished` while the docs said the rows show "which remotes got their refs". The stale-tracking part is carried (row B8, first pass: 9.20's stopped-push path). Action: `docs/ffi-abi.md` § Outcomes now says the rows show whose git push completed and that a killed remote may have accepted some refs, as after any failed git push.
+  - `[false]` `[reject]` B5 (blind): the between-remotes checkpoint is untested and two test docs contradict each other. The checkpoint is one statement in the per-remote loop, exercised by `a_push_cancelled_before_it_starts_runs_no_git_push`; the two docs describe a cancel during the last git push that kills it (cancelled) versus one that kills nothing (finishes normally) — both what "no checkpoint after the last remote" implies.
+  - `[medium]` `[patch]` B6 (blind): the environment-pair match is never exercised against a real process; every real kill goes through `/bin/sh` and the `--git-dir` fallback, yet a Homebrew git depends on the pair alone. Action: `network_cancel.rs` `a_readable_process_spawned_after_the_cancel_is_killed_by_its_token` spawns this (locally built, environment-readable) test binary carrying the pair, with no git dir watched, and asserts SIGTERM.
+  - `[low]` `[reject]` B7 (blind): shutdown waits unbounded when a kill does not land, and helper isolates outlive the killed worker — carried: the 5 s backstop kill predates this story (row B9, first pass).
+  - `[low]` `[reject]` B8 (blind): a panic or process exit between SIGSTOP and SIGCONT leaves git stopped. Nothing in that span panics (signals and `tracing::debug!`); an exiting app orphans the process group, which the kernel sends SIGHUP and SIGCONT; a drop guard adds machinery.
+  - `[low]` `[reject]` B9 (blind): the walk allocates an ARG_MAX buffer per descendant — carried (row B11, first pass).
+  - `[false]` `[reject]` B10 (blind): `zanshinNetworkToken` returning 0 fails silently — carried: no path to 0 (row E10, first pass).
+  - `[false]` `[reject]` B11 (blind): the app ignores `progress`/`cancel()` with no deferral recorded. The spec's Never gives that UI to Story 11.8, and the Auto Run Result records it as 11.8 item 10.
+  - `[low]` `[patch]` B12 (blind): garbled `zanshin_network_cancel` sentence, unwrapped long lines, and a non-sequitur in § Kill scope. Action: the sentence reads "…carries the pair, or — when its environment is hidden — when its arguments hold `--git-dir`…" (`repo.rs`, regenerated header and `bindings.dart`); long lines wrapped in `cancel.rs` and `ffi-abi.md`; § Kill scope says the polling keeps running until the call ends.
+  - `[false]` `[reject]` B13 (blind): the Dart clone-cancel test may get a handle when a fast clone beats the cancel. The `NetworkCancelCommand` is queued on the same port right behind the clone and is handled as soon as the clone arm awaits `Isolate.run`, before the helper runs; and any git failure after the cancel maps to `jj.cancelled`.
+  - `[low]` `[reject]` E1 (edge): a second `attach` of one live token — carried (rows B3/E3, first pass).
+  - `[low]` `[reject]` E2 (edge): a helper that ignores SIGTERM is reparented once git dies and escapes SIGKILL. git's helpers (`git-remote-*`, `ssh`, `git-upload-pack`) exit on SIGTERM; tracking pids beyond our descendants adds state.
+  - `[low]` `[reject]` E3 (edge): the poller signals with a git-dir snapshot taken before the guard dropped, so the next call's git on that dir could be hit. The next call's git must spawn within one poll iteration (tens of ms) after the drop — through the reply, a new `Isolate.run` and a repo load; the re-check is an added guard.
+  - `[low]` `[reject]` E4 (edge): a token stays registered when request parsing fails — carried (rows B4/E4/E5, first pass).
+  - `[low]` `[reject]` E5 (edge): a helper throw before the FFI call (NUL in an argument) leaves the token's Rust entry. API misuse only, a few bytes; ending it needs a new extern (public surface).
+  - `[false]` `[reject]` E6 (edge): a 0 token maps `sessionToId[0]` — carried: no path to 0 (row E10, first pass).
+  - `[low]` `[reject]` E7 (edge): `_cancelledWhileQueued` keeps the id of a queued fetch whose handle a close ahead of it invalidated. One int per such case, and command ids are unique, so nothing behaves differently.
+  - `[low]` `[reject]` E8 (edge): unlistened `progress` buffers — carried (row B13's buffering part, first pass).
+  - `[low]` `[reject]` E9 (edge, claim): the registry holds a bool, not an attached count — carried (row E15, first pass).
+  - `[low]` `[patch]` V1 (verification gap): no test pins that a non-zero but finished token gets a fresh session id. Action: `push_ffi.rs` `a_clone_with_a_finished_token_gets_a_fresh_session_id` clones twice with one token; the second session id differs.
+  - `[medium]` `[defer]` V2 (verification gap): the worker's successful-clone reply never runs in Dart — carried (row V5, first pass; deferred item 2).
+  - `[low]` `[reject]` V3 (verification gap, other): the `_cancelledWhileQueued` leak — as E7.
+  - `[medium]` `[defer]` I1 (intent): stock git is attributed by `--git-dir`, not the token pair — carried (row I1, first pass; deferred item 1).
+  - `[false]` `[reject]` I2 (intent): no test shows git removing its lock files after SIGTERM. That is git's own behavior; Zanshin's contract is SIGTERM first, which the kill tests assert.
+  - `[low]` `[patch]` I3 (intent): `push_remotes` maps any `push_refs` error to the cancel while cancelled, not only subprocess errors. Action: only `GitPushError::Subprocess` maps to `Cancelled`; `NoSuchRemote` / `RemoteName` / `UnexpectedBackend` pass through.
+  - `[low]` `[reject]` I4 (intent): the mid-clone, between-remotes and too-late rows are witnessed at the Rust `Repo` surface, not the Dart one, and a too-late fetch (cancel during `import_refs`) at none. The Dart clone rows are blocked by the deferred reaping limit; timing a cancel into `import_refs` needs a production hook.
+  - `[low]` `[patch]` I5 (intent): no test shows a git spawned after the cancel is caught. Action: covered by B6's new test, whose child spawns after the cancel while the guard is attached.
+  - `[false]` `[reject]` I6 (intent): additions outside the intent (`NetworkOperation`, `NetworkCancelCommand`, the announcement, SIGSTOP). Each is in the spec's Tasks or Change Log, and the intent's matrix names "the operation's `progress` while `result` is still pending".
+
 ## Design Notes
 
 **Helper isolate, not a Rust thread** (the story leaves the choice open). The Rust handle is an unlocked `&mut RepoSession` under AD-2. A Rust helper thread would either need a Mutex in every handle access or would have to move the session's ownership out and back. A Dart helper isolate keeps the invariant "one isolate touches a handle at a time": the worker simply does not touch H until the helper returns. The `@Native` bindings work in any isolate of the group, and the worker-owned listener receives dispatches from any thread. The worker and main isolates each have one message queue, so events posted during the call are forwarded before the result. That ordering is the observable fix for I1.
@@ -387,3 +422,46 @@ Status: done (code commit `910179b09a2997b37f88631edfe68500d526e2cd`).
 - The Dart clone-cancel test relies on the cancel landing before the first checkpoint.
 - `project-context.md`'s "never `Isolate.run` for repeated work" rule now has a per-network-call exception that the rule text does not mention.
 - Calls on different handles of the same repo now overlap during a network verb.
+
+### Follow-up review pass (2026-10-20)
+
+Status: done. A fresh four-layer review of the change since `31e4bcab50485082491452ffbbff9b7a0c376286`; the small fixes were applied in this run.
+
+**Summary.**
+- A cancelled push now maps only a git subprocess failure to `PushFailureKind.cancelled`; other `push_refs` errors pass through, as the spec requires.
+- Two new tests:
+  - a real, environment-readable process spawned after the cancel is killed by its token pair alone;
+  - a finished token gets a fresh session id when it is passed to a clone again.
+- Doc corrections: the `zanshin_network_cancel` sentence, § Kill scope, § Outcomes on a killed remote, and the long lines.
+
+**Files changed.**
+- `crates/zanshin-jj/src/push.rs`: only `GitPushError::Subprocess` maps to the cancel.
+- `crates/zanshin-jj/src/cancel.rs`: the module doc is rewrapped.
+- `crates/zanshin-jj/tests/network_cancel.rs`: adds `a_readable_process_spawned_after_the_cancel_is_killed_by_its_token`, plus its `sleeper_child` helper.
+- `crates/zanshin-ffi/tests/push_ffi.rs`: adds `a_clone_with_a_finished_token_gets_a_fresh_session_id`.
+- `crates/zanshin-ffi/src/repo.rs`, `include/zanshin_ffi.h` and `packages/zanshin_core/lib/src/ffi/bindings.dart` (the last two regenerated): the `zanshin_network_cancel` doc sentence.
+- `docs/ffi-abi.md`: § Kill scope, § Outcomes and line wrapping.
+
+**Review** (31 findings: high 0, medium 3, low 20, false 8).
+- **Patched** (6 entries: medium 1, low 5):
+  - the environment-pair kill on a real process (B6);
+  - a git spawned after the cancel (I5);
+  - the push error mapping (I3);
+  - the finished-token clone test (V1);
+  - the killed-remote wording (B4);
+  - doc readability (B12).
+- **Deferred:** none new. V2 and I1 are carried from the first pass and are already deferred items 2 and 1, so nothing was added to `deferred-work.md`.
+- **Rejected:** each with its reason in the Review Triage Log.
+  - Carried from the first pass: cross-handle overlap; refs not imported; stale tracking; the shutdown backstop; poller allocation; token 0; double attach; parse-refusal leaks; progress buffering.
+  - New and negligible: KILL_GRACE measured from the cancel; panic safety between stop and continue; a helper that ignores SIGTERM; the stale git-dir snapshot; the Dart throw before the FFI leaking a token; the queued-cancel id leak.
+  - False: the between-remotes checkpoint (it is one loop statement); the Dart clone-cancel race (the cancel is queued right behind the clone); the UI deferral (it belongs to 11.8); git's lock-file clean-up; the spec-sanctioned additions.
+
+**Follow-up review recommended: false.** This was a follow-up pass and patched no `high`; patched counts are medium 1 and low 5.
+
+**Verification.**
+- `cargo make codegen` regenerated the header and `bindings.dart` doc comments.
+- `cargo test -p zanshin-jj --test network_cancel`: 11 passed.
+- `cargo test -p zanshin-ffi --test push_ffi`: 9 passed.
+- `cargo make test`, change-aware, 11 of 27 steps: exit 0 in 915 s. Clippy pedantic, fmt, cargo doc, flutter/dart analyze and format, hygiene, and coverage all passed. Coverage held at 99.09% and extern coverage is OK; the baseline did not change.
+
+**Residual risks.** Unchanged from the first pass: the `--git-dir` attribution rule waits on Ralph (deferred item 1), and no Dart test witnesses a successful worker clone (deferred item 2).

@@ -1852,12 +1852,15 @@ fn push_remotes(
             Err(e) => {
                 let failure = push_error(&e);
                 pushed.results.insert(plan.remote.clone(), Err(failure.message.clone()));
-                // A git push that failed after the cancel killed it is the cancel.
-                pushed.failure = Some(if crate::cancel::is_cancelled(cancel) {
-                    cancelled()
-                } else {
-                    failure
-                });
+                // A git push that failed after the cancel killed it is the cancel; every other
+                // error passes through unchanged.
+                pushed.failure = Some(
+                    if matches!(e, GitPushError::Subprocess(_)) && crate::cancel::is_cancelled(cancel) {
+                        cancelled()
+                    } else {
+                        failure
+                    },
+                );
                 return Ok(pushed);
             }
         }

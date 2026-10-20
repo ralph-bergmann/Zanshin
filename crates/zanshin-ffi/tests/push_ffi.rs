@@ -388,6 +388,29 @@ fn a_clone_with_a_token_uses_it_as_its_session_id() {
     close(handle.handle());
 }
 
+/// Story 9.52: a finished token is no live token, so a clone passing it again gets a fresh
+/// session id instead of colliding with the session that already took it.
+#[test]
+fn a_clone_with_a_finished_token_gets_a_fresh_session_id() {
+    test_helpers::pin_test_env();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let (src, _bare) = remote(tmp.path());
+    let token = zanshin_network_token();
+    let mut session_ids = Vec::new();
+    for target in ["first", "second"] {
+        let request = clone_request(&src, &tmp.path().join(target), token);
+        let bytes = unsafe { read_and_free(zanshin_repo_clone(request.as_ptr(), request.len())) };
+        let env = envelope(&bytes);
+        assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+        let handle = env.data_as_repo_handle().expect("RepoHandle");
+        session_ids.push(handle.session_id());
+        close(handle.handle());
+    }
+    assert_eq!(session_ids[0], token, "the live token is the first clone's session id");
+    assert_ne!(session_ids[1], token, "the finished token is not reused");
+    assert_ne!(session_ids[1], 0);
+}
+
 /// Story 9.52: a clone whose token was cancelled before it ran refuses as `jj.cancelled` and
 /// removes the folder it created.
 #[test]

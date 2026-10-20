@@ -12,9 +12,10 @@
 //! temp files, as on the CLI's Ctrl-C), SIGKILL for any still alive [`KILL_GRACE`] after the
 //! cancel. Each one is stopped (SIGSTOP) before its children are listed and continued after the
 //! signal, so no child it forks mid-scan escapes as an orphan of a killed parent. Polling keeps
-//! running until the verb ends, so a git spawned after the cancel is caught too. The verb itself refuses at its next checkpoint ([`CancelGuard::checkpoint`]); a killed git
-//! is indistinguishable from any other failure in jj-lib, so the flag
-//! ([`CancelGuard::is_cancelled`]) is what tells a cancel apart.
+//! running until the verb ends, so a git spawned after the cancel is caught too. The verb itself
+//! refuses at its next checkpoint ([`CancelGuard::checkpoint`]); a killed git is
+//! indistinguishable from any other failure in jj-lib, so the flag ([`CancelGuard::is_cancelled`])
+//! is what tells a cancel apart.
 //!
 //! Which descendants are the verb's: a process whose environment carries the exact pair, and
 //! every descendant of such a process. macOS hides the environment of Apple's platform binaries

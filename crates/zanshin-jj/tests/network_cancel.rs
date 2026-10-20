@@ -427,3 +427,55 @@ fn the_token_rides_gits_environment_only_for_a_call_that_carries_one() {
     let without = fs::read_to_string(w.marker("env")).expect("the wrapper ran");
     assert!(!without.contains("ZANSHIN_CANCEL_TOKEN"), "{without}");
 }
+
+/// Set in the environment of the child process
+/// `a_readable_process_spawned_after_the_cancel_is_killed_by_its_token` spawns.
+const SLEEPER_VAR: &str = "ZANSHIN_TEST_SLEEPER";
+
+/// Not a witness of its own: run as that child (this test binary with [`SLEEPER_VAR`] set), it
+/// sleeps 30 s; in a normal run it returns at once.
+#[test]
+fn sleeper_child() {
+    if std::env::var_os(SLEEPER_VAR).is_some() {
+        thread::sleep(Duration::from_secs(30));
+    }
+}
+
+/// The token pair alone marks a process whose environment is readable — a locally built binary,
+/// not one of Apple's platform binaries (e.g. Homebrew's git) — and a process spawned after the
+/// cancel, while its verb is attached, is caught too. The guard watches no git dir, so only the
+/// pair can match.
+#[cfg(target_os = "macos")]
+#[test]
+fn a_readable_process_spawned_after_the_cancel_is_killed_by_its_token() {
+    use std::os::unix::process::ExitStatusExt as _;
+
+    let id = token();
+    let guard = cancel::attach(id).expect("attaches");
+    cancel::cancel(id);
+    let (name, value) = guard.env_pair();
+    let mut child = Command::new(std::env::current_exe().expect("the test binary"))
+        .args(["--exact", "sleeper_child", "--test-threads=1"])
+        .env(SLEEPER_VAR, "1")
+        .env(name, value)
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .expect("the test binary spawns");
+    let deadline = Instant::now() + KILLED_WITHIN;
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("try_wait") {
+            break Some(status);
+        }
+        if Instant::now() >= deadline {
+            break None;
+        }
+        thread::sleep(Duration::from_millis(20));
+    };
+    drop(guard);
+    let Some(status) = status else {
+        child.kill().expect("kill");
+        child.wait().expect("wait");
+        panic!("the process carrying the token was not killed");
+    };
+    assert_eq!(status.signal(), Some(libc::SIGTERM));
+}

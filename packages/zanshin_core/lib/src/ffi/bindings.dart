@@ -1707,10 +1707,11 @@ external void zanshin_logging_init();
 /// or clone, `GitPushResult.failure.kind = Cancelled` for a push). While the call runs, the
 /// call's `git` processes among this process's descendants — and their descendants, git's
 /// helpers — get SIGTERM, and SIGKILL if still alive 2 s after the cancel. A process is the
-/// call's when its environment carries `ZANSHIN_CANCEL_TOKEN=<token>`; when its environment is
-/// hidden (Apple's platform binaries, e.g. `/usr/bin/git`), when its arguments hold
+/// call's when its environment carries `ZANSHIN_CANCEL_TOKEN=<token>`, or — when its environment
+/// is hidden (Apple's platform binaries, e.g. `/usr/bin/git`) — when its arguments hold
 /// `--git-dir <dir>` for the call's repository and exactly one live call watches that dir. A git
-/// without a token on that dir (a concurrent `workspace add` worktree) is not told apart. Idempotent; a finished, unknown or `0` token is a no-op. Callable from any thread.
+/// without a token on that dir (a concurrent `workspace add` worktree) is not told apart.
+/// Idempotent; a finished, unknown or `0` token is a no-op. Callable from any thread.
 ///
 /// Infallible and `catch_unwind`-wrapped, like `zanshin_log`.
 @ffi.Native<ffi.Void Function(ffi.Uint64)>()
