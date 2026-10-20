@@ -194,6 +194,13 @@ parity!(
     abandon_broken_short_prefixes,
     abandon_bad_template_alias_entry,
     abandon_diagnosed_short_prefixes,
+    squash_plan_edited_trailer_deleted,
+    squash_plan_edited_unchanged,
+    split_edited_trailer_deleted,
+    split_edited_unchanged,
+    new_description_config_ui_color,
+    workspace_add_bad_template_alias,
+    workspace_add_diagnosed_short_prefixes,
 );
 
 /// Every scenario id the table and the creation list define.
@@ -208,7 +215,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 158);
+    assert_eq!(SCENARIO_IDS.len(), 165);
 }
 
 #[test]

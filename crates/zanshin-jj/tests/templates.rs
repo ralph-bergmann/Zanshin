@@ -609,3 +609,214 @@ fn an_unparsable_revsets_log_fallback_refuses_every_verb() {
     let mut fx = base(&[("revsets.log", "'('")]);
     fx.assert_start_up_refusal(|reason| reason.starts_with("Invalid `revsets.short-prefixes`: "));
 }
+
+// ── Edited editor text (Story 9.54) ──────────────────────────────────────────────
+//
+// The GUI passes the user's edit of the editor text back as an edited description — the CLI's
+// `--editor` whose editor saves exactly that text: written cleaned up, with NO trailers added.
+
+/// `squash` with an edited description, nothing else set.
+fn squash_edited(text: &str) -> SquashOptions {
+    SquashOptions {
+        edited_description: Some(text.to_owned()),
+        ..SquashOptions::default()
+    }
+}
+
+/// The plan text with its trailer line deleted comes back without a trailer.
+#[test]
+fn squash_with_the_plan_text_minus_its_trailer_writes_no_trailer() {
+    let mut fx = base(&[TRAILERS]);
+    let plan = fx.repo.squash_plan(&SquashOptions::default()).expect("plan");
+    let text = plan.combined_description.expect("the editor case");
+    let edited: String = text
+        .lines()
+        .filter(|line| !line.starts_with("Signed-off-by"))
+        .flat_map(|line| [line, "\n"])
+        .collect();
+    fx.repo.squash(&squash_edited(&edited)).expect("squash");
+    let b = fx.b.clone();
+    assert_eq!(fx.description(&b), "B\n\nC\n");
+}
+
+/// The plan text passed back unchanged keeps exactly one trailer (`-m` would add a second).
+#[test]
+fn squash_with_the_unchanged_plan_text_keeps_exactly_one_trailer() {
+    let mut fx = base(&[TRAILERS]);
+    let plan = fx.repo.squash_plan(&SquashOptions::default()).expect("plan");
+    let text = plan.combined_description.expect("the editor case");
+    fx.repo.squash(&squash_edited(&text)).expect("squash");
+    let b = fx.b.clone();
+    assert_eq!(fx.description(&b), format!("B\n\nC\n\n{SOB}\n"));
+}
+
+/// The single arm — one non-empty description, or `-u` — writes the edited text cleaned up.
+#[test]
+fn squash_single_arm_with_an_edited_text_writes_it_cleaned_up() {
+    let mut fx = base(&[TRAILERS]);
+    let at = fx.c.clone();
+    fx.repo.describe(at, "").expect("describe");
+    fx.repo.squash(&squash_edited("\nE\nJJ: dropped\n\n")).expect("squash");
+    let b = fx.b.clone();
+    assert_eq!(fx.description(&b), "E\n");
+
+    let mut fx = base(&[TRAILERS]);
+    let options = SquashOptions {
+        use_destination_message: true,
+        ..squash_edited("E")
+    };
+    fx.repo.squash(&options).expect("-u with an edited text");
+    let b = fx.b.clone();
+    assert_eq!(fx.description(&b), "E\n");
+}
+
+/// Nothing squashed: no description is written and no operation either (the CLI opens no editor).
+#[test]
+fn squash_of_nothing_ignores_the_edited_text() {
+    let mut fx = base(&[TRAILERS]);
+    let c = fx.c.clone();
+    let before = fx.head_op();
+    fx.repo
+        .squash(&SquashOptions {
+            from: vec![c.clone()],
+            into: Some(c),
+            ..squash_edited("E")
+        })
+        .expect("squash");
+    assert_eq!(fx.head_op(), before);
+}
+
+/// The edited text runs the editor's render: a draft template that does not parse refuses.
+#[test]
+fn squash_with_an_edited_text_still_renders_the_draft_template() {
+    let mut fx = base(&[("templates.draft_commit_description", "nope(")]);
+    let at = fx.c.clone();
+    fx.repo.describe(at, "").expect("describe");
+    fx.assert_config_refusal("Failed to parse template: Syntax error", |repo| {
+        repo.squash(&squash_edited("E")).map(drop)
+    });
+}
+
+/// `squash_plan` ignores the edited text.
+#[test]
+fn squash_plan_ignores_the_edited_text() {
+    let mut fx = base(&[TRAILERS]);
+    let plan = fx.repo.squash_plan(&squash_edited("E")).expect("plan");
+    assert_eq!(
+        plan.combined_description.as_deref(),
+        Some(format!("B\n\nC\n\n{SOB}\n").as_str())
+    );
+}
+
+/// Both split texts are written cleaned up, no trailers.
+#[test]
+fn split_with_both_edited_texts_writes_them_without_trailers() {
+    let mut fx = base(&[TRAILERS]);
+    let result = fx
+        .repo
+        .split(&SplitOptions {
+            edited_selected_description: Some("S".to_owned()),
+            edited_remaining_description: Some("\nR\nJJ: dropped\n".to_owned()),
+            ..split_c(None)
+        })
+        .expect("split");
+    assert_eq!(fx.description(&result.selected_change_id), "S\n");
+    assert_eq!(fx.description(&result.remaining_change_id), "R\n");
+}
+
+/// The edited texts passed back unchanged keep exactly the one trailer each.
+#[test]
+fn split_with_the_unchanged_editor_texts_keeps_one_trailer_each() {
+    let mut fx = base(&[TRAILERS]);
+    let result = fx
+        .repo
+        .split(&SplitOptions {
+            edited_selected_description: Some(sob("C")),
+            edited_remaining_description: Some(sob("C")),
+            ..split_c(None)
+        })
+        .expect("split");
+    assert_eq!(fx.description(&result.selected_change_id), sob("C"));
+    assert_eq!(fx.description(&result.remaining_change_id), sob("C"));
+}
+
+/// `-m` with an edited text refuses on `squash`, `squash_plan` and `split`; one split text alone too.
+#[test]
+fn an_edited_text_conflicts_with_message_and_split_needs_both() {
+    let mut fx = base(&[TRAILERS]);
+    let with_message = SquashOptions {
+        message: Some(vec!["m".to_owned()]),
+        ..squash_edited("E")
+    };
+    let invalid = |err: MutateError, text: &str| {
+        assert!(
+            matches!(&err, MutateError::InvalidInput { reason } if reason == text),
+            "{err:?}"
+        );
+    };
+    let before = fx.head_op();
+    let conflict = "--message cannot be used with an edited description";
+    invalid(fx.repo.squash(&with_message).expect_err("refused"), conflict);
+    invalid(fx.repo.squash_plan(&with_message).expect_err("refused"), conflict);
+    let split_message = SplitOptions {
+        edited_selected_description: Some("S".to_owned()),
+        edited_remaining_description: Some("R".to_owned()),
+        ..split_c(Some("m"))
+    };
+    invalid(fx.repo.split(&split_message).expect_err("refused"), conflict);
+    let only_one = "an edited split needs both descriptions: the selected and the remaining";
+    for (selected, remaining) in [(Some("S"), None), (None, Some("R"))] {
+        let options = SplitOptions {
+            edited_selected_description: selected.map(ToOwned::to_owned),
+            edited_remaining_description: remaining.map(ToOwned::to_owned),
+            ..split_c(None)
+        };
+        invalid(fx.repo.split(&options).expect_err("refused"), only_one);
+    }
+    assert_eq!(fx.head_op(), before, "a refusal writes no operation");
+}
+
+// ── jj-cli's defaults in `config()` (Story 9.54) ────────────────────────────────────
+
+/// A template's `config("ui.color")` renders jj-cli's default — as a TOML value, as the CLI
+/// renders it.
+#[test]
+fn a_template_reads_a_jj_cli_default_through_config() {
+    let mut fx = base(&[("templates.new_description", "'config(\"ui.color\")'")]);
+    let parent = fx.c.clone();
+    fx.repo
+        .new_change(std::slice::from_ref(&parent), &[], &[])
+        .expect("new");
+    assert_eq!(fx.wc().description(), "\"auto\"\n");
+    assert_eq!(
+        zanshin_jj::config_get(Some(&fx.root), "ui.color").result.expect("get"),
+        "auto"
+    );
+}
+
+// ── workspace add's own start-up environment (Story 9.54) ────────────────────────────
+
+/// The new workspace's start-up environment reports its load warnings a second time, as the
+/// CLI's `for_workable_repo` prints them again.
+#[test]
+fn workspace_add_reports_the_start_up_warnings_twice() {
+    for (entry, kind, prefix) in [
+        (
+            ("template-aliases.'x('", "'1'".to_owned()),
+            WarningKind::ConfigAliasInvalid,
+            "Failed to load `template-aliases.x(`: ",
+        ),
+        (
+            ("revsets.short-prefixes", format!("'{DIAGNOSED_SHORT_PREFIXES}'")),
+            WarningKind::RevsetDiagnostic,
+            "In `revsets.short-prefixes`\n",
+        ),
+    ] {
+        let mut fx = base(&[(entry.0, entry.1.as_str())]);
+        fx.repo
+            .workspace_add("../ws2", None, &[], &[], None, SparseInheritance::Copy)
+            .expect("workspace add");
+        let warnings = fx.repo.take_warnings();
+        assert_eq!(warnings_of(&warnings, kind, prefix), 2, "{warnings:?}");
+    }
+}

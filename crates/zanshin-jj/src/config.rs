@@ -5,8 +5,8 @@
 //!
 //! [`load`] rebuilds, per operation, the `StackedConfig` the jj CLI would have at v0.44.0
 //! for this workspace, in the CLI's own order (`cli/src/config.rs:713-730`): jj-lib's
-//! defaults plus Zanshin's builtin default layer ([`BUILTIN_CONFIG_TOML`]) and jj-cli's template
-//! defaults ([`template_defaults_layer`], Story 9.51), the system
+//! defaults, jj-cli's own default layers ([`CLI_DEFAULTS`], Story 9.54) and Zanshin's builtin
+//! default layer ([`BUILTIN_CONFIG_TOML`]), the system
 //! config (`/etc/jj`), the `EnvBase` layer, the user config (`JJ_CONFIG` or platform
 //! discovery), the repo layer, the workspace layer, the `EnvOverrides` layer, finally flattened
 //! through `jj_lib::config::resolve`. Nothing is cached — config files change externally and
@@ -172,7 +172,11 @@ use crate::Repo;
 /// and clone's object hash, push's commit checks and signing, clone's tracked default bookmark)
 /// — and `revsets.git-push` from `cli/src/config/revsets.toml:8` (push's default targets); jj-lib
 /// has a default for none of them. The template defaults are NOT here: they are taken from jj-cli
-/// itself ([`template_defaults_layer`], Story 9.51).
+/// itself ([`CLI_DEFAULTS`], Stories 9.51 and 9.54).
+///
+/// Since Story 9.54 every jj-cli default layer sits BELOW this one, so each key here repeats a
+/// jj-cli default with the same value — except `revsets.log`, whose value here wins over the
+/// CLI's `builtin_log()`. The layer stays as the record of which defaults Zanshin's verbs read.
 ///
 /// # WHY: a config layer, not a Rust table
 ///
@@ -184,8 +188,10 @@ use crate::Repo;
 /// the arity semantics wrong.
 ///
 /// The CLI's other `[revsets]` keys (`arrange`, `converge`, `fix`, `run`, `sign`,
-/// `op-diff-changes-in`, `simplify-parents`, `bookmark-advance-*`) are deliberately NOT copied — no Zanshin verb
-/// consumes them, and an unread default is a lie about what we honour.
+/// `op-diff-changes-in`, `simplify-parents`, `bookmark-advance-*`) are not copied here — no Zanshin
+/// verb consumes them; they reach the stack with the rest of jj-cli's defaults ([`CLI_DEFAULTS`]),
+/// so `config get` / `config list --include-defaults` and a template's `config()` see them as the
+/// CLI does (Ralph, 2026-10-20: the defaults the CLI shows are the defaults Zanshin shows).
 const BUILTIN_CONFIG_TOML: &str = r#"
 [revsets]
 git-push = "remote_bookmarks(remote=exact:remote)..@"
@@ -245,63 +251,22 @@ trunk() | tags() | untracked_remote_bookmarks() | untracked_remote_tags()
 'hidden()' = '~visible()'
 "#;
 
-/// [`template_defaults_layer`], built on first use and shared by every config load.
-static TEMPLATE_DEFAULTS: LazyLock<Arc<ConfigLayer>> = LazyLock::new(|| Arc::new(template_defaults_layer()));
-
-/// The `templates.*` keys Zanshin renders (Story 9.51) — the only ones [`template_defaults_layer`]
-/// takes from jj-cli's defaults.
-const TEMPLATE_KEYS: [&str; 4] = [
-    "commit_trailers",
-    "draft_commit_description",
-    "git_push_bookmark",
-    "new_description",
-];
-
-/// The jj-cli default TABLES [`template_defaults_layer`] takes whole: the template aliases, and the
-/// two diff tables the template engine itself reads off the repo's settings when a template calls
-/// `diff.git()` / `diff.color_words()` (`commit_templater.rs:2490`, `:2534` @ v0.46.0 —
-/// `UnifiedDiffOptions` / `ColorWordsDiffOptions::from_settings`); without them such a template
-/// would refuse with "Failed to load diff settings" where the CLI renders it.
-const TEMPLATE_TABLES: [[&str; 2]; 3] = [["template-aliases", ""], ["diff", "color-words"], ["diff", "git"]];
-
-/// The template defaults, taken from jj-cli's own default layers
-/// (`jj_cli::config::default_config_layers`, `cli/src/config.rs:860-878` @ v0.46.0) into one
-/// [`ConfigSource::Default`] layer that sits right after [`BUILTIN_CONFIG_TOML`] (Story 9.51): the
-/// [`TEMPLATE_TABLES`] (the whole `[template-aliases]` table and the diff options the template
-/// engine reads) and the four `templates.*` keys the verbs render ([`TEMPLATE_KEYS`]). Verbatim by
-/// construction, so they move with the pin; no other `[templates]` key is taken — an unread
-/// default is a lie about what we honour.
+/// jj-cli's own default layers (`jj_cli::config::default_config_layers`, `cli/src/config.rs:860-879`
+/// @ v0.46.0) — colors, hints, merge tools, misc, revsets, templates and the platform layer, each a
+/// [`ConfigSource::Default`] layer, verbatim by construction so they move with the pin (Stories
+/// 9.51, 9.54). [`load_raw`] puts them right after jj-lib's defaults and BELOW
+/// [`BUILTIN_CONFIG_TOML`]: the template engine reads its aliases, `templates.*` keys and diff
+/// options from them, and a template's `config("<name>")`, `config get` and `config list
+/// --include-defaults` see every CLI default (`config("ui.color")` renders `auto`).
 ///
-/// Every entry is copied as it is (an alias as a plain string or a table with a `definition` key),
-/// so [`crate::revset::build_aliases_map`] reads the CLI's alias table exactly as the CLI's alias
-/// loader does.
-///
-/// Built once per process ([`TEMPLATE_DEFAULTS`]): the result is static, and every config load
-/// would otherwise re-parse all of jj-cli's default TOML.
-fn template_defaults_layer() -> ConfigLayer {
-    let mut layer = ConfigLayer::empty(ConfigSource::Default);
-    for cli_layer in jj_cli::config::default_config_layers() {
-        for [table, sub] in TEMPLATE_TABLES {
-            let path: &[&str] = if sub.is_empty() { &[table] } else { &[table, sub] };
-            if let Ok(Some(entries)) = cli_layer.look_up_table(path) {
-                for (key, item) in entries.iter() {
-                    let target = if sub.is_empty() {
-                        &mut layer.data[table]
-                    } else {
-                        &mut layer.data[table][sub]
-                    };
-                    target[key] = item.clone();
-                }
-            }
-        }
-        for key in TEMPLATE_KEYS {
-            if let Ok(Some(jj_lib::config::ConfigItem::Value(value))) = cli_layer.look_up_item(["templates", key]) {
-                layer.data["templates"][key] = jj_lib::config::ConfigItem::Value(value.clone());
-            }
-        }
-    }
-    layer
-}
+/// Built once per process: the result is static, and every config load would otherwise re-parse
+/// all of jj-cli's default TOML.
+static CLI_DEFAULTS: LazyLock<Vec<Arc<ConfigLayer>>> = LazyLock::new(|| {
+    jj_cli::config::default_config_layers()
+        .into_iter()
+        .map(Arc::new)
+        .collect()
+});
 
 /// Length of a `config-id` in ASCII hex characters (`jj_lib::secure_config`'s
 /// `CONFIG_ID_BYTES * 2` at v0.42.0).
@@ -938,10 +903,12 @@ pub(crate) fn load_raw(
     fix_ups: Option<&mut Vec<crate::Warning>>,
 ) -> Result<StackedConfig, ConfigError> {
     let mut config = StackedConfig::with_defaults();
+    for layer in CLI_DEFAULTS.iter() {
+        config.add_layer(Arc::clone(layer));
+    }
     let builtin = ConfigLayer::parse(ConfigSource::Default, BUILTIN_CONFIG_TOML)
         .map_err(|e| ConfigError::Load { reason: describe(&e) })?;
     config.add_layer(builtin);
-    config.add_layer(Arc::clone(&TEMPLATE_DEFAULTS));
 
     add_path_layers(
         &mut config,
@@ -1503,7 +1470,7 @@ pub(crate) fn revsets_git_push(config: &StackedConfig) -> Result<String, ConfigE
 
 /// Reads the effective `templates.git_push_bookmark` TEXT (Story 9.20) — the CLI's `get_string`
 /// in `jj git push --change` (`push.rs:1323` @ v0.46.0). Its default is jj-cli's own
-/// ([`template_defaults_layer`], the CLI's `config/templates.toml:30`).
+/// ([`CLI_DEFAULTS`], the CLI's `config/templates.toml:30`).
 ///
 /// # Errors
 ///
@@ -1514,7 +1481,7 @@ pub(crate) fn templates_git_push_bookmark(config: &StackedConfig) -> Result<Stri
 
 /// Reads the effective `templates.commit_trailers` TEXT (Story 9.51) — the CLI's `get_string` in
 /// `parse_trailers_template` (`description_util.rs:437` @ v0.46.0). Its default `''` (no trailers)
-/// is jj-cli's own ([`template_defaults_layer`]).
+/// is jj-cli's own ([`CLI_DEFAULTS`]).
 ///
 /// # Errors
 ///
@@ -1525,7 +1492,7 @@ pub(crate) fn templates_commit_trailers(config: &StackedConfig) -> Result<String
 
 /// Reads the effective `templates.draft_commit_description` TEXT (Story 9.51) — the CLI's
 /// `get_string` in `description_template` (`description_util.rs:502` @ v0.46.0). Its default
-/// `builtin_draft_commit_description` is jj-cli's own ([`template_defaults_layer`]).
+/// `builtin_draft_commit_description` is jj-cli's own ([`CLI_DEFAULTS`]).
 ///
 /// # Errors
 ///
@@ -1538,7 +1505,7 @@ pub(crate) fn templates_draft_commit_description(config: &StackedConfig) -> Resu
 
 /// Reads the effective `templates.new_description` TEXT (Story 9.51) — the CLI's `get_string` in
 /// `jj new` without `-m` (`new.rs:218` @ v0.46.0). Its default `''` (no description) is jj-cli's
-/// own ([`template_defaults_layer`]).
+/// own ([`CLI_DEFAULTS`]).
 ///
 /// # Errors
 ///
@@ -2039,8 +2006,8 @@ mod tests {
         fix_up_layers, fix_up_secure_config, git_import_options, is_valid_config_id, load_repo_config_file, load_with,
         platform_config_dir, remove_remote_from_repo_config, rename_remote_in_repo_config, secure_config_path,
         set_trunk_alias, settings_from, snapshot_auto_track, snapshot_max_new_file_size,
-        split_legacy_bookmark_behavior, stamp, system_config_paths, template_defaults_layer, user_config_paths,
-        user_email, ConfigEnv, SecureLayer, WorkspacePaths, BUILTIN_CONFIG_TOML, TEMPLATE_KEYS,
+        split_legacy_bookmark_behavior, stamp, system_config_paths, user_config_paths, user_email, ConfigEnv,
+        SecureLayer, WorkspacePaths, BUILTIN_CONFIG_TOML, CLI_DEFAULTS,
     };
     use jj_lib::config::{ConfigFile, ConfigLayer, ConfigSource, StackedConfig};
     use std::collections::HashMap;
@@ -2090,17 +2057,34 @@ mod tests {
         assert!(layer.is_ok(), "the builtin layer must parse: {layer:?}");
     }
 
-    /// Story 9.51: the template defaults come from jj-cli — the alias table (the draft template
-    /// and its `default_commit_description` included), the diff options the engine reads, and
-    /// exactly the four keys the verbs render, with jj-cli's values.
+    /// Stories 9.51 and 9.54: every jj-cli default layer is in the stack, below Zanshin's builtin
+    /// layer — the template aliases (the draft template included), the `templates.*` keys, the
+    /// diff options the engine reads and the keys no verb reads (`ui.color`), with jj-cli's
+    /// values; `revsets.log` keeps Zanshin's.
     #[test]
-    fn the_template_defaults_layer_holds_jj_clis_aliases_and_four_keys() {
-        let layer = template_defaults_layer();
-        assert_eq!(layer.source, ConfigSource::Default);
-        let aliases = layer
-            .look_up_table("template-aliases")
-            .expect("a table")
-            .expect("present");
+    fn every_jj_cli_default_layer_sits_below_the_builtin_layer() {
+        assert_eq!(CLI_DEFAULTS.len(), jj_cli::config::default_config_layers().len());
+        assert!(CLI_DEFAULTS.iter().all(|layer| layer.source == ConfigSource::Default));
+        let config = load_with(&bare_env(), None).expect("loads");
+        let layers = config.layers();
+        let builtin = layers
+            .iter()
+            .position(|layer| {
+                layer
+                    .look_up_item(["revsets", "log"])
+                    .ok()
+                    .flatten()
+                    .and_then(|i| i.as_str())
+                    == Some("present(@) | ancestors(immutable_heads().., 2) | trunk()")
+            })
+            .expect("the builtin layer");
+        let cli = layers
+            .iter()
+            .position(|layer| layer.look_up_table("template-aliases").ok().flatten().is_some())
+            .expect("a jj-cli layer");
+        assert!(cli < builtin, "jj-cli's defaults sit below Zanshin's builtin layer");
+
+        let aliases = config.get_table("template-aliases").expect("a table");
         assert!(aliases.contains_key("builtin_draft_commit_description"));
         assert_eq!(
             aliases
@@ -2109,24 +2093,19 @@ mod tests {
             Some("\"\"")
         );
         assert!(aliases.contains_key("format_signed_off_by_trailer(commit)"));
-        let templates = layer.look_up_table("templates").expect("a table").expect("present");
-        let mut keys: Vec<&str> = templates.iter().map(|(key, _)| key).collect();
-        keys.sort_unstable();
-        assert_eq!(keys, TEMPLATE_KEYS);
+        assert_eq!(config.get::<i64>("diff.git.context").expect("an integer"), 3);
+        assert!(config.get::<i64>("diff.color-words.max-inline-alternation").is_ok());
+        assert_eq!(config.get::<String>("ui.color").expect("a string"), "auto");
         assert_eq!(
-            layer
-                .look_up_item(["diff", "git", "context"])
-                .ok()
-                .flatten()
-                .and_then(jj_lib::config::ConfigItem::as_integer),
-            Some(3)
+            config
+                .get::<String>("templates.duplicate_description")
+                .expect("a string"),
+            "description"
         );
-        assert!(layer
-            .look_up_item(["diff", "color-words", "max-inline-alternation"])
-            .ok()
-            .flatten()
-            .is_some());
-        let config = load_with(&bare_env(), None).expect("loads");
+        assert_eq!(
+            config.get::<String>("revsets.log").expect("a string"),
+            "present(@) | ancestors(immutable_heads().., 2) | trunk()"
+        );
         assert_eq!(super::templates_commit_trailers(&config).expect("string"), "");
         assert_eq!(super::templates_new_description(&config).expect("string"), "");
         assert_eq!(

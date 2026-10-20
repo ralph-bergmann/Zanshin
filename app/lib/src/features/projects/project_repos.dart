@@ -95,22 +95,26 @@ ProjectStatus statusOf({required ConflictState conflict, required bool hasFileCh
 }
 
 /// The open project's dot as `ProjectRepo.read` composes it: [statusOf] over @'s conflict state and file changes
-/// and, only when neither decides the dot, [trackingStatusOf] over [headRefs] and the list [bookmarks] reads — so a
-/// conflicted or dirty @ never pays for the bookmark distances, and a failed bookmark read cannot discard its state.
+/// and, only when neither decides the dot, [trackingStatusOf] over [headRefs], the list [bookmarks] reads and the
+/// remotes [pushRemotes] reads — so a conflicted or dirty @ never pays for the bookmark distances or the push remotes,
+/// and a failed read cannot discard its state.
 Future<ProjectStatus> statusFrom({
   required ConflictState conflict,
   required bool hasFileChanges,
   required Iterable<TopologyRef> headRefs,
   required Future<Iterable<Bookmark>> Function() bookmarks,
+  required Future<Iterable<String>> Function() pushRemotes,
 }) async {
   final ProjectStatus local = statusOf(conflict: conflict, hasFileChanges: hasFileChanges);
   if (local != ProjectStatus.clean) {
     return local;
   }
+  final Iterable<Bookmark> rows = await bookmarks();
+  final Set<String> targets = (await pushRemotes()).toSet();
   return statusOf(
     conflict: conflict,
     hasFileChanges: hasFileChanges,
-    tracking: trackingStatusOf(headRefs, await bookmarks()),
+    tracking: trackingStatusOf(headRefs, rows, pushRemotes: targets),
   );
 }
 
@@ -120,10 +124,15 @@ const _ignoredRemote = 'git';
 
 /// The dot's sync state (Story 9.29) from the refs of `heads(::@ & bookmarks())` and the bookmark list: over the
 /// tracked remote rows of those local bookmarks (remote `git` excluded), [ProjectStatus.ahead] when the local side has
-/// commits a remote lacks (a remote row's `behind`, or a row with no target — the CLI's `(not created yet)`, a
-/// bookmark never pushed there; Story 9.53), [ProjectStatus.behind] when a remote has commits the local side lacks
-/// (its `ahead`), [ProjectStatus.diverged] when both hold, null when neither does.
-ProjectStatus? trackingStatusOf(Iterable<TopologyRef> headRefs, Iterable<Bookmark> bookmarks) {
+/// commits a remote lacks (a remote row's `behind`, or — for a remote in [pushRemotes] only, the remotes a bare
+/// `jj git push` pushes to (`RepoHandle.gitPushRemotes`, Story 9.54) — a row with no target: the CLI's
+/// `(not created yet)`, a bookmark never pushed there; Story 9.53), [ProjectStatus.behind] when a remote has commits
+/// the local side lacks (its `ahead`), [ProjectStatus.diverged] when both hold, null when neither does.
+ProjectStatus? trackingStatusOf(
+  Iterable<TopologyRef> headRefs,
+  Iterable<Bookmark> bookmarks, {
+  required Set<String> pushRemotes,
+}) {
   final names = <String>{
     for (final ref in headRefs)
       if (ref.kind == TopologyRefKind.bookmark && ref.remote == null) ref.name,
@@ -133,7 +142,7 @@ ProjectStatus? trackingStatusOf(Iterable<TopologyRef> headRefs, Iterable<Bookmar
   for (final bookmark in bookmarks) {
     if (bookmark.kind case RemoteBookmark(tracked: true, :final remoteName, :final ahead, :final behind)
         when remoteName != _ignoredRemote && names.contains(bookmark.name)) {
-      localAhead |= bookmark.target == null || (behind?.lower ?? 0) > 0;
+      localAhead |= (bookmark.target == null && pushRemotes.contains(remoteName)) || (behind?.lower ?? 0) > 0;
       localBehind |= (ahead?.lower ?? 0) > 0;
     }
   }

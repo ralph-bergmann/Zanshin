@@ -387,3 +387,85 @@ fn malformed_null_and_mis_routed_buffers_are_refused_before_the_handle() {
         );
     }
 }
+
+/// A `SquashRequest` with an edited description, and `message` when given (Story 9.54).
+fn edited_squash_request(edited: &str, message: Option<&[&str]>) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let edited = b.create_string(edited);
+    let message = strings(&mut b, message);
+    let req = fbs::SquashRequest::create(
+        &mut b,
+        &fbs::SquashRequestArgs {
+            kind: fbs::RequestKind::Squash,
+            message,
+            edited_description: Some(edited),
+            ..fbs::SquashRequestArgs::default()
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// A `SplitRequest` of `@` by `c.txt` with the edited descriptions given (Story 9.54).
+fn edited_split_request(selected: Option<&str>, remaining: Option<&str>) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let paths = strings(&mut b, Some(&["c.txt"]));
+    let selected = selected.map(|s| b.create_string(s));
+    let remaining = remaining.map(|s| b.create_string(s));
+    let req = fbs::SplitRequest::create(
+        &mut b,
+        &fbs::SplitRequestArgs {
+            kind: fbs::RequestKind::Split,
+            paths,
+            edited_selected_description: selected,
+            edited_remaining_description: remaining,
+            ..fbs::SplitRequestArgs::default()
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// Story 9.54: the edited squash description crosses and is written cleaned up.
+#[test]
+fn an_edited_squash_description_is_written_cleaned_up() {
+    let fx = base();
+    let req = edited_squash_request("\nE\nJJ: dropped\n", None);
+    // SAFETY: `fx.handle` is open; `req` is a live buffer for the call.
+    let bytes = unsafe { read_and_free(zanshin_squash(fx.handle, req.as_ptr(), req.len())) };
+    assert!(parse_envelope(&bytes).ok(), "{:?}", error_code(&bytes));
+    assert_eq!(description_of(&fx.root, &fx.b), "E\n");
+}
+
+/// Story 9.54: `message` with an edited text refuses on both squash wrappers.
+#[test]
+fn an_edited_squash_description_with_a_message_is_refused() {
+    let fx = base();
+    let req = edited_squash_request("E", Some(&["m"]));
+    for call in [zanshin_squash, zanshin_squash_plan] {
+        // SAFETY: as above.
+        let bytes = unsafe { read_and_free(call(fx.handle, req.as_ptr(), req.len())) };
+        assert_eq!(error_code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
+    }
+}
+
+/// Story 9.54: both edited split descriptions cross; one alone is refused.
+#[test]
+fn edited_split_descriptions_cross_and_need_each_other() {
+    let fx = base();
+    let req = edited_split_request(Some("S"), None);
+    // SAFETY: as above.
+    let bytes = unsafe { read_and_free(zanshin_split(fx.handle, req.as_ptr(), req.len())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
+
+    let req = edited_split_request(Some("S"), Some("R"));
+    // SAFETY: as above.
+    let bytes = unsafe { read_and_free(zanshin_split(fx.handle, req.as_ptr(), req.len())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", error_code(&bytes));
+    let result = env.data_as_split_result().expect("SplitResult payload");
+    let selected = result.selected_change_id().expect("selected").to_owned();
+    let remaining = result.remaining_change_id().expect("remaining").to_owned();
+    assert_eq!(description_of(&fx.root, &selected), "S\n");
+    assert_eq!(description_of(&fx.root, &remaining), "R\n");
+}

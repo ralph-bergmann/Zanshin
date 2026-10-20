@@ -21,6 +21,11 @@ import 'warning.dart';
 /// exactly like `zanshinBookmarks`.
 Uint8List zanshinRemotes(int rawHandle) => readToken(zanshin_remotes(rawHandle));
 
+/// Call `zanshin_git_push_remotes` with the raw `u64` handle and return the
+/// FlatBuffers `Envelope` bytes (Story 9.54): the remotes `jj git push`
+/// without `--remote` would push to. Handle-only, like [zanshinRemotes].
+Uint8List zanshinGitPushRemotes(int rawHandle) => readToken(zanshin_git_push_remotes(rawHandle));
+
 // ── Dart models ───────────────────────────────────────────────────────────────
 
 /// One configured git remote (FR-JJ-9).
@@ -85,3 +90,30 @@ Remote _mapRemote(fbs.Remote r) => Remote(
   // absent/present distinction this field exists to carry.
   pushUrl: r.pushUrl,
 );
+
+/// Decode a `GitPushRemotes` `Envelope` buffer into the remote names, in
+/// remote-name order, carrying the call's warnings (Story 9.54).
+///
+/// Exposed for decode-contract tests with synthetic buffers; production calls
+/// go through `ZanshinWorker.gitPushRemotes`.
+@visibleForTesting
+WarnedList<String> decodeGitPushRemotesEnvelope(Uint8List bytes) => decodeGitPushRemotesEnvelopeInternal(bytes);
+
+/// Internal decoder used by production code in `isolate.dart`.
+WarnedList<String> decodeGitPushRemotesEnvelopeInternal(Uint8List bytes) {
+  final env = fbs.Envelope(bytes);
+  if (!env.ok) {
+    throw decodeEnvelopeErrorInternal(env);
+  }
+  final Object? payload = env.data;
+  if (payload is! fbs.GitPushRemotes) {
+    throw ZanshinFfiException('ffi.unknown', 'expected GitPushRemotes payload, got ${env.dataType}');
+  }
+  // Rust always writes the vector, an empty one included — an absent one is a
+  // malformed buffer, not "no remotes".
+  final List<String>? names = payload.names;
+  if (names == null) {
+    throw const ZanshinFfiException('ffi.unknown', 'GitPushRemotes payload is missing its names');
+  }
+  return WarnedList(names, decodeEnvelopeWarningsInternal(env));
+}

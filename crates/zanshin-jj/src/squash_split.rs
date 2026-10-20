@@ -21,11 +21,19 @@
 //! [`squashed_description`]) on a transaction it drops, so plan and verb cannot disagree, and the
 //! plan writes no operation.
 //!
+//! **An edited text = the CLI's `--editor` whose editor saved exactly that text** (Story 9.54).
+//! The GUI sends the user's edit back as `SquashOptions::edited_description` (or split's two
+//! edited texts), never as `-m` — which would add `templates.commit_trailers` again. The
+//! description step runs as it does with the editor (trailers, the draft template, their refusals
+//! and diagnostics), then the edited text is written cleaned up as the CLI cleans a saved buffer,
+//! with no trailers added. `-m` together with an edited text refuses.
+//!
 //! Divergences, all deliberate:
 //!
-//! - no interactive/tree arm, no `--tool`, no `--editor`: the tree arm (a GUI-selected tree and
-//!   its `left`) is Story 9.50's; a `split` with NO paths — the CLI's diff-editor default —
-//!   refuses [`MutateError::InvalidInput`];
+//! - no interactive/tree arm, no `--tool`, no `--editor` flag (the edited text above is the
+//!   editor's result): the tree arm (a GUI-selected tree and its `left`) is Story 9.50's; a
+//!   `split` with NO paths — the CLI's diff-editor default — refuses
+//!   [`MutateError::InvalidInput`];
 //! - no `squash -o`/`-A`/`-B` (experimental at v0.46.0: the squashed changes go into a NEW
 //!   commit there);
 //! - no hints, and not squash's "is being interpreted as a fileset expression" warning, which is
@@ -57,8 +65,8 @@ use crate::mutate::{
     resolve_or_wc, warn_unmatched, MutateError, MutationResult,
 };
 use crate::op_support::{
-    combine_messages_for_editing, compute_commit_location, join_message_paragraphs, resolve_ordered,
-    start_repo_transaction, try_combine_messages, SelectedTree,
+    cleanup_description_lines, combine_messages_for_editing, compute_commit_location, join_message_paragraphs,
+    resolve_ordered, start_repo_transaction, try_combine_messages, SelectedTree,
 };
 use crate::snapshot::VerbContext;
 use crate::template::{write_hidden, Templates};
@@ -87,6 +95,14 @@ pub struct SquashOptions {
     pub use_destination_message: bool,
     /// `-k/--keep-emptied`: a source whose changes all moved is kept (empty), not abandoned.
     pub keep_emptied: bool,
+    /// The text the user edited the squashed description to — the CLI's `--editor` with an
+    /// editor that saves exactly this text (Story 9.54). Given (and something is squashed), the
+    /// description step runs as it does with the editor (trailers added, the draft template
+    /// rendered, its refusals and diagnostics), then this text — cleaned up as the CLI cleans a
+    /// saved buffer — is written, with NO trailers added. `None` is no editor. Conflicts with
+    /// `message`; allowed with `use_destination_message` (the CLI allows `-u --editor`).
+    /// [`crate::Repo::squash_plan`] ignores it.
+    pub edited_description: Option<String>,
 }
 
 /// What [`crate::Repo::squash`] would write as the squashed revision's description when it
@@ -129,6 +145,16 @@ pub struct SplitOptions {
     /// `-B/--insert-before`, repeatable: put the selected changes into a NEW commit inserted
     /// before these revisions. `None` / `Some(vec![])` as for `onto`.
     pub insert_before: Option<Vec<ChangeId>>,
+    /// The text the user edited the SELECTED commit's description to — the CLI's bulk editor
+    /// saving exactly this section (Story 9.54). Given together with
+    /// `edited_remaining_description`, the editor path runs as it does without `-m` (trailers
+    /// added, the draft template rendered on both, its refusals and diagnostics), then each commit
+    /// gets its edited text, cleaned up as the CLI cleans a saved section, with NO trailers added.
+    /// Both or neither; conflicts with `message`.
+    pub edited_selected_description: Option<String>,
+    /// The text the user edited the REMAINING commit's description to — see
+    /// `edited_selected_description`.
+    pub edited_remaining_description: Option<String>,
 }
 
 /// What [`crate::Repo::split`] did (Story 9.15).
@@ -145,6 +171,11 @@ pub struct SplitResult {
     /// the target's own otherwise. `@` ends on this commit when the target was `@`.
     pub remaining_change_id: ChangeId,
 }
+
+/// The refusal of `message` together with an edited description (Story 9.54) — the CLI's
+/// `--editor` does not conflict with `-m`, but an edited text is the saved buffer that replaces
+/// whatever `-m` would have written.
+const EDITED_WITH_MESSAGE: &str = "--message cannot be used with an edited description";
 
 // ── squash ───────────────────────────────────────────────────────────────────────
 
@@ -211,6 +242,11 @@ pub(crate) fn plan_squash(
     if options.message.is_some() && options.use_destination_message {
         return Err(MutateError::InvalidInput {
             reason: "--message cannot be used with --use-destination-message".to_owned(),
+        });
+    }
+    if options.message.is_some() && options.edited_description.is_some() {
+        return Err(MutateError::InvalidInput {
+            reason: EDITED_WITH_MESSAGE.to_owned(),
         });
     }
 
@@ -357,8 +393,8 @@ pub(crate) fn squash(
             &templates,
             tx.repo(),
             &mut builder,
-            &destination,
-            &decision,
+            (&destination, &decision),
+            options.edited_description.as_deref(),
             &mut ctx.warnings,
         )?;
         builder.set_description(description);
@@ -430,8 +466,8 @@ pub(crate) fn squash_plan(
         &templates,
         tx.repo(),
         &mut builder,
-        &destination,
-        &decision,
+        (&destination, &decision),
+        None,
         &mut ctx.warnings,
     )?;
     Ok(SquashPlan {
@@ -448,6 +484,11 @@ pub(crate) fn squash_plan(
 /// commits" block set on `builder`, a hidden write, and the editor's text saved unchanged
 /// ([`Templates::editor_text`]: `templates.draft_commit_description` rendered and cleaned up).
 ///
+/// With `edited` (Story 9.54) it runs as the CLI's `--editor` runs: the single arm adds the
+/// trailers even to an empty text, sets them, writes hidden and renders the draft; the combine arm
+/// renders as above — and in both the rendered text is discarded for `edited`, cleaned up as the
+/// CLI cleans the saved buffer (`edit_description`, `description_util.rs:193-204`), no trailers.
+///
 /// # Errors
 ///
 /// - [`MutateError::Config`] — a template does not parse or render (see [`Templates`]).
@@ -456,8 +497,8 @@ fn squashed_description(
     templates: &Templates<'_>,
     repo: &dyn jj_lib::repo::Repo,
     builder: &mut DetachedCommitBuilder,
-    destination: &Commit,
-    decision: &SquashDecision,
+    (destination, decision): (&Commit, &SquashDecision),
+    edited: Option<&str>,
     sink: &mut Warnings,
 ) -> Result<(String, bool), MutateError> {
     // Only the ABANDONED sources' descriptions count — a source that keeps its commit keeps its
@@ -469,11 +510,18 @@ fn squashed_description(
         SquashedDescription::Combine => try_combine_messages(&abandoned, destination.description()),
     };
     if let Some(description) = single {
-        if description.is_empty() {
+        if description.is_empty() && edited.is_none() {
             return Ok((description, false));
         }
         builder.set_description(description);
-        return Ok((templates.add_trailers(repo, builder, sink)?, false));
+        let with_trailers = templates.add_trailers(repo, builder, sink)?;
+        let Some(edited) = edited else {
+            return Ok((with_trailers, false));
+        };
+        builder.set_description(with_trailers);
+        let temp = write_hidden(builder)?;
+        templates.editor_text(repo, &temp, sink)?;
+        return Ok((cleanup_description_lines(edited.lines()), false));
     }
     let mut squashed = abandoned.clone();
     squashed.push(destination.description());
@@ -485,7 +533,9 @@ fn squashed_description(
         &missing,
     ));
     let temp = write_hidden(builder)?;
-    Ok((templates.editor_text(repo, &temp, sink)?, true))
+    let saved_unchanged = templates.editor_text(repo, &temp, sink)?;
+    let description = edited.map_or(saved_unchanged, |edited| cleanup_description_lines(edited.lines()));
+    Ok((description, true))
 }
 
 // ── split ────────────────────────────────────────────────────────────────────────
@@ -513,6 +563,20 @@ pub(crate) fn prepare_split(
     ctx: &mut VerbContext,
     options: &SplitOptions,
 ) -> Result<PreparedSplit, MutateError> {
+    let edited = [
+        &options.edited_selected_description,
+        &options.edited_remaining_description,
+    ];
+    if options.message.is_some() && edited.iter().any(|text| text.is_some()) {
+        return Err(MutateError::InvalidInput {
+            reason: EDITED_WITH_MESSAGE.to_owned(),
+        });
+    }
+    if edited[0].is_some() != edited[1].is_some() {
+        return Err(MutateError::InvalidInput {
+            reason: "an edited split needs both descriptions: the selected and the remaining".to_owned(),
+        });
+    }
     let use_move_flags = options.onto.is_some() || options.insert_after.is_some() || options.insert_before.is_some();
     if options.parallel && use_move_flags {
         return Err(MutateError::InvalidInput {
@@ -698,7 +762,8 @@ fn split_builders(
 /// trailers if still empty and is written hidden, the second is put on it (on the target's parents
 /// in parallel), gets the trailers and is written hidden, and each then holds what the editor
 /// keeps when saved unchanged — `templates.draft_commit_description` rendered on its temp commit
-/// and cleaned up ([`Templates::editor_text`]).
+/// and cleaned up ([`Templates::editor_text`]). With the two edited texts (Story 9.54) that path
+/// runs unchanged, then each commit gets its edited text cleaned up, no trailers.
 ///
 /// # Errors
 ///
@@ -734,6 +799,14 @@ fn describe_split(
     let second_temp = write_hidden(second)?;
     first.set_description(templates.editor_text(repo, &first_temp, sink)?);
     second.set_description(templates.editor_text(repo, &second_temp, sink)?);
+    // Story 9.54: the bulk editor saved the user's two sections (`parse_bulk_edit_message`).
+    if let (Some(selected), Some(remaining)) = (
+        &options.edited_selected_description,
+        &options.edited_remaining_description,
+    ) {
+        first.set_description(cleanup_description_lines(selected.lines()));
+        second.set_description(cleanup_description_lines(remaining.lines()));
+    }
     Ok(())
 }
 

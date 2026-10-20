@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-//! `zanshin_remotes` — remote-list read FFI wrapper (Story 3.4b, remotes slice).
+//! `zanshin_remotes` — remote-list read FFI wrapper (Story 3.4b, remotes slice) — and
+//! `zanshin_git_push_remotes`, the default push remotes (Story 9.54).
 //!
-//! Calls `zanshin_jj::Repo::list_remotes()` and serialises the result into a
+//! `zanshin_remotes` calls `zanshin_jj::Repo::list_remotes()` and serialises the result into a
 //! `FlatBuffers` `Envelope` carrying a `Remotes` payload. The handle is borrowed
 //! (not consumed). Both `url` and `push_url` cross the wire verbatim (no credential
 //! scrubbing); `push_url` is ABSENT when the remote pushes to its fetch URL.
+//! `zanshin_git_push_remotes` calls `zanshin_jj::Repo::git_push_remotes()` into a
+//! `GitPushRemotes` payload.
 
 use flatbuffers::FlatBufferBuilder;
 use tracing::debug;
@@ -17,6 +20,7 @@ use crate::envelope::{
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
+use crate::repo::map_mutate_err;
 
 fn map_remotes_err(e: RemoteError) -> FfiErrorObj {
     match e {
@@ -92,12 +96,61 @@ pub unsafe extern "C" fn zanshin_remotes(handle: u64) -> *mut ZanshinBuf {
     vec_into_token(buf)
 }
 
+/// Serialise the default push remotes into a finished `Envelope<GitPushRemotes>` buffer.
+fn push_remotes_to_envelope(names: &[String], report: &crate::envelope::CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(256);
+    let offsets: Vec<_> = names.iter().map(|name| b.create_string(name)).collect();
+    let names = b.create_vector(&offsets);
+    let payload = fbs::GitPushRemotes::create(&mut b, &fbs::GitPushRemotesArgs { names: Some(names) });
+    finish_envelope(b, fbs::Payload::GitPushRemotes, Some(payload.as_union_value()), report)
+}
+
+/// The remotes `jj git push` without `--remote` would push to, in the repo identified by `handle`
+/// (Story 9.54) — the CLI's default-remote resolution, shared with `zanshin_git_push`: the remotes
+/// `git.push` names (a name, a list or a pattern), else the single remote, else `origin`, each
+/// only when it exists, in remote-name order.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `GitPushRemotes` payload on success — EMPTY when
+/// none matches (the push itself refuses then) and on a non-Git backend. An exact `git.push` name
+/// no remote carries warns `jj.push_remotes_unmatched`, as the push does. Writes NO operation of
+/// its own, only the pre-verb snapshot's.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.config_error` — the git.push setting is neither a string nor a list of strings, or the
+///   pre-verb snapshot (Story 9.26) found the effective jj config unreadable; the key in
+///   `context`.
+/// - `jj.invalid_input` — a git.push pattern does not parse; detail in `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
+/// `0` is detected and returned as `ffi.invalid_handle`.
+/// A stale non-zero handle is undefined behaviour; the Dart worker's Model-A
+/// handle table (Story 3.9) makes a stale handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_git_push_remotes(handle: u64) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_git_push_remotes", handle);
+    let buf = catch(|| {
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let names = session.repo.git_push_remotes();
+        precondition_envelope(&mut session.repo, names, map_mutate_err, |v, p| {
+            push_remotes_to_envelope(v, p)
+        })
+    });
+    vec_into_token(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use flatbuffers::root;
     use zanshin_jj::{Remote, RemoteError};
 
-    use super::{map_remotes_err, remotes_to_envelope};
+    use super::{map_remotes_err, push_remotes_to_envelope, remotes_to_envelope};
     use crate::envelope::JJ_JJ_LIB_ERROR;
     use crate::fbs;
 
@@ -156,6 +209,17 @@ mod tests {
         assert_eq!(env.data_type(), fbs::Payload::Remotes);
         let payload = env.data_as_remotes().expect("expected Remotes payload");
         assert_eq!(payload.remotes().map_or(0, |r| r.len()), 0);
+    }
+
+    #[test]
+    fn push_remotes_to_envelope_roundtrips_in_order() {
+        let names = ["origin".to_owned(), "fork".to_owned()];
+        let buf = push_remotes_to_envelope(&names, &crate::envelope::CallReport::default());
+        let env = root::<fbs::Envelope>(&buf).expect("Verifier failed");
+        assert!(env.ok());
+        let payload = env.data_as_git_push_remotes().expect("expected GitPushRemotes payload");
+        let got: Vec<&str> = payload.names().expect("names").iter().collect();
+        assert_eq!(got, ["origin", "fork"]);
     }
 
     #[test]

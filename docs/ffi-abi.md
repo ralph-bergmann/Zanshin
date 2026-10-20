@@ -37,7 +37,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 70
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 71
 exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -218,7 +218,7 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Thirty-five of the 70 exported symbols take their arguments as a **FlatBuffers
+Thirty-five of the 71 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
 strings. Twenty-five use the handle-scoped three-parameter shape:
 
@@ -420,7 +420,9 @@ unrefused — a buffer meant as `parents` abandoning those commits instead. Only
 `NewChange` reads the table's `insert_after` / `insert_before` (Story 9.48).
 `SquashRequest` is the one deliberate exception: both of its wrappers accept the
 single kind `Squash`, because a mis-routed buffer can only run or preview the SAME
-squash — never a different verb.
+squash — never a different verb. Its `edited_description` (Story 9.54) is read by both:
+`zanshin_squash` writes it, `zanshin_squash_plan` only refuses it together with `message`
+and otherwise ignores it.
 
 `Unspecified = 0` is FlatBuffers' default for an absent field, so a buffer built
 by a producer that never sets `kind` is **byte-identical to a pre-tag buffer**,
@@ -462,7 +464,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **70** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **71** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -502,6 +504,7 @@ or no `# Errors` block.
 | `zanshin_file_search` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileSearchRequest` | `FileSearch` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.4 |
 | `zanshin_bookmarks` | `(uint64_t handle)` | — | `Bookmarks` (rows + tracking facts, see § `Bookmarks` payload) | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b, 9.29 |
 | `zanshin_remotes` | `(uint64_t handle)` | — | `Remotes` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
+| `zanshin_git_push_remotes` | `(uint64_t handle)` | — | `GitPushRemotes` (the default push remotes; empty when none matches or on a non-Git backend) | `ffi.invalid_handle`, `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.54 |
 | `zanshin_workspace_list` | `(uint64_t handle)` | — | `WorkspaceList` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.7 |
 | `zanshin_workspace_root` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceRootRequest` | `WorkspaceRoot` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.workspace_not_found`, `jj.workspace_no_recorded_path`, `jj.jj_lib_error` | 9.7 |
 | `zanshin_workspace_add` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceAddRequest` | `WorkspaceAddResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.workspace_exists`, `jj.destination_not_empty`, `jj.git_worktree_failed`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.jj_lib_error` | 9.23 |
@@ -512,9 +515,9 @@ or no `# Errors` block.
 | `zanshin_abandon` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |
 | `zanshin_restore` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `RestoreRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.3 |
 | `zanshin_absorb` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `AbsorbRequest` | `AbsorbResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.3 |
-| `zanshin_squash` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SquashRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 |
-| `zanshin_squash_plan` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SquashRequest` | `SquashPlan` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 |
-| `zanshin_split` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SplitRequest` | `SplitResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 |
+| `zanshin_squash` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SquashRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54) |
+| `zanshin_squash_plan` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SquashRequest` | `SquashPlan` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54) |
+| `zanshin_split` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SplitRequest` | `SplitResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54) |
 | `zanshin_commit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.no_working_copy`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.49 |
 | `zanshin_undo` | `(uint64_t handle, bool allow_cross_workspace)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.undo_cross_workspace`, `jj.nothing_to_undo`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (+9.39) |
 | `zanshin_bookmark_create` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkCreateRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.8 |
@@ -1453,6 +1456,36 @@ as the listing; a failing distance revset is `jj.jj_lib_error`. Dart: `Bookmark.
 `String?`, `conflicted`/`synced` sit on `Bookmark`, `tracked`/`ahead`/`behind` on `RemoteBookmark`,
 and `RefDistance.upper` is null when `has_upper` is false
 (`packages/zanshin_core/lib/src/ffi/bookmarks.dart`).
+
+---
+
+## Edited editor text and `GitPushRemotes` (Story 9.54)
+
+**Edited editor text.** `SquashRequest.edited_description` and `SplitRequest`'s
+`edited_selected_description` / `edited_remaining_description` (appended at the end of both
+tables) carry the user's edit of the text `zanshin_squash_plan` returns, or of split's two editor
+texts. Each is the CLI's `--editor` whose editor saves exactly that text: the description step
+runs as with the editor (`templates.commit_trailers` added, `templates.draft_commit_description`
+rendered — their refusals and warnings included), then the edited text is written through
+`cleanup_description_lines` (`JJ:` lines and blank edges dropped), with NO trailers added — `-m`
+would add them again. Refusals, `jj.invalid_input`: `message` together with an edited text
+("--message cannot be used with an edited description"; `zanshin_squash_plan` too, which otherwise
+ignores the field) and, for split, one edited text without the other ("an edited split needs both
+descriptions: the selected and the remaining"). A squash that moves nothing writes no description
+(the CLI opens no editor). Dart: `RepoHandle.squash(editedDescription:)` and
+`RepoHandle.split(editedSelectedDescription:, editedRemainingDescription:)`, interior-NUL guarded
+on the calling side.
+
+**`GitPushRemotes`.** `zanshin_git_push_remotes(handle)` answers `GitPushRemotes { names }`: the
+remotes `jj git push` without `--remote` would push to, in remote-name order — `git.push` (a
+name, a list or a pattern), else the single remote, else `origin`, each only when it exists
+(`push.rs:294-323`, `get_default_push_remotes` `:1107-1130` @ v0.46.0, shared with
+`zanshin_git_push`). Empty when none matches (the push itself refuses then) and on a non-Git
+backend; an exact `git.push` name no remote carries warns `jj.push_remotes_unmatched`. Dart:
+`RepoHandle.gitPushRemotes()` → `WarnedList<String>`; an absent `names` vector is
+`ffi.unknown`. The app's project dot counts a tracked remote row with no target as "ahead" only
+for these remotes (`trackingStatusOf`'s `pushRemotes`); the distances count for every tracked
+remote.
 
 ---
 

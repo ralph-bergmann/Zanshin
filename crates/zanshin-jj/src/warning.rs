@@ -134,9 +134,10 @@ pub enum WarningKind {
     /// (`cli/src/commands/commit.rs:128-134` @ v0.46.0; Story 9.49). The commit still runs: the
     /// committed `@` is empty and the new `@` holds every change.
     CommitPathsUnmatched,
-    /// `git push --remote` with exact names that match no git remote
+    /// `git push --remote` (or `git.push`) with exact names that match no git remote
     /// (`cli/src/commands/git/push.rs:313-318` @ v0.46.0; Story 9.20). The push goes on with the
-    /// remotes that did match.
+    /// remotes that did match; [`crate::Repo::git_push_remotes`] warns it for `git.push` as the
+    /// push does (Story 9.54).
     PushRemotesUnmatched,
     /// `git push -b` with exact names that match no bookmark to push (`push.rs:1383-1388`).
     PushBookmarksUnmatched,
@@ -211,8 +212,9 @@ pub(crate) enum Load {
     /// (Story 9.51).
     TemplateAliases,
     /// The `revsets.short-prefixes` parse (its diagnostics) — the start-up environment's, which
-    /// `workspace add`'s re-parse for the new workspace and the graph walk's parse of the same
-    /// text repeat silently.
+    /// the graph walk's parse of the same text repeats silently. `workspace add` reports it a
+    /// second time for the new workspace, from that workspace's own start-up environment in a
+    /// collector of its own (as the CLI's `for_workable_repo` prints it again; Story 9.54).
     ShortPrefixes,
 }
 

@@ -1117,7 +1117,8 @@ enum PayloadTypeId {
   StaleRecovery(38),
   SquashPlan(39),
   SplitResult(40),
-  GitPushResult(41);
+  GitPushResult(41),
+  GitPushRemotes(42);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -1208,6 +1209,8 @@ enum PayloadTypeId {
         return PayloadTypeId.SplitResult;
       case 41:
         return PayloadTypeId.GitPushResult;
+      case 42:
+        return PayloadTypeId.GitPushRemotes;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -1216,7 +1219,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 41;
+  static const int maxValue = 42;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -1692,6 +1695,14 @@ class AbsorbRequestObjectBuilder extends fb.ObjectBuilder {
 ///    message            the CLI's repeatable `-m`; ABSENT = no `-m` (the editor case writes the
 ///                       buffer saved unchanged), present-empty = `-m` given with no paragraph
 ///    use_destination_message, keep_emptied   the CLI's `-u` / `-k`
+///    edited_description the text the user edited the squashed description to (Story 9.54) — the
+///                       CLI's `--editor` whose editor saves exactly this text: the description
+///                       step runs as with the editor (trailers, the draft template, their refusals
+///                       and warnings), then this text is written cleaned up like a saved buffer,
+///                       with NO trailers added. ABSENT = no editor. With `message` refused
+///                       (`jj.invalid_input`, "--message cannot be used with an edited
+///                       description"; `zanshin_squash_plan` too); `zanshin_squash_plan` otherwise
+///                       ignores it.
 class SquashRequest {
   SquashRequest._(this._bc, this._bcOffset);
   factory SquashRequest(List<int> bytes) {
@@ -1712,10 +1723,11 @@ class SquashRequest {
   List<String>? get message => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 14);
   bool get useDestinationMessage => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
   bool get keepEmptied => const fb.BoolReader().vTableGet(_bc, _bcOffset, 18, false);
+  String? get editedDescription => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 20);
 
   @override
   String toString() {
-    return 'SquashRequest{kind: ${kind}, revision: ${revision}, from: ${from}, into: ${into}, paths: ${paths}, message: ${message}, useDestinationMessage: ${useDestinationMessage}, keepEmptied: ${keepEmptied}}';
+    return 'SquashRequest{kind: ${kind}, revision: ${revision}, from: ${from}, into: ${into}, paths: ${paths}, message: ${message}, useDestinationMessage: ${useDestinationMessage}, keepEmptied: ${keepEmptied}, editedDescription: ${editedDescription}}';
   }
 }
 
@@ -1732,7 +1744,7 @@ class SquashRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(8);
+    fbBuilder.startTable(9);
   }
 
   int addKind(RequestKind? kind) {
@@ -1775,6 +1787,11 @@ class SquashRequestBuilder {
     return fbBuilder.offset;
   }
 
+  int addEditedDescriptionOffset(int? offset) {
+    fbBuilder.addOffset(8, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -1789,6 +1806,7 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _message;
   final bool? _useDestinationMessage;
   final bool? _keepEmptied;
+  final String? _editedDescription;
 
   SquashRequestObjectBuilder({
     RequestKind? kind,
@@ -1799,6 +1817,7 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
     List<String>? message,
     bool? useDestinationMessage,
     bool? keepEmptied,
+    String? editedDescription,
   }) : _kind = kind,
        _revision = revision,
        _from = from,
@@ -1806,7 +1825,8 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
        _paths = paths,
        _message = message,
        _useDestinationMessage = useDestinationMessage,
-       _keepEmptied = keepEmptied;
+       _keepEmptied = keepEmptied,
+       _editedDescription = editedDescription;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -1818,7 +1838,8 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
     final int? messageOffset = _message == null
         ? null
         : fbBuilder.writeList(_message!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(8);
+    final int? editedDescriptionOffset = _editedDescription == null ? null : fbBuilder.writeString(_editedDescription!);
+    fbBuilder.startTable(9);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, revisionOffset);
     fbBuilder.addOffset(2, fromOffset);
@@ -1827,6 +1848,7 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(5, messageOffset);
     fbBuilder.addBool(6, _useDestinationMessage);
     fbBuilder.addBool(7, _keepEmptied);
+    fbBuilder.addOffset(8, editedDescriptionOffset);
     return fbBuilder.endTable();
   }
 
@@ -1853,6 +1875,14 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
 ///    parallel           `--parallel`; may NOT be combined with a location
 ///    onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`: ABSENT = the flag not
 ///                       given, present-EMPTY = given with no revision (refused: no parent)
+///    edited_selected_description, edited_remaining_description   the texts the user edited the
+///                       two descriptions to (Story 9.54) — the CLI's bulk editor saving exactly
+///                       these two sections: the no-`message` editor path runs unchanged, then each
+///                       commit gets its text cleaned up like a saved section, with NO trailers
+///                       added. Both or neither (one alone: `jj.invalid_input`, "an edited split
+///                       needs both descriptions: the selected and the remaining"); with `message`
+///                       refused (`jj.invalid_input`, "--message cannot be used with an edited
+///                       description").
 class SplitRequest {
   SplitRequest._(this._bc, this._bcOffset);
   factory SplitRequest(List<int> bytes) {
@@ -1874,10 +1904,12 @@ class SplitRequest {
   List<String>? get insertAfter => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 16);
   List<String>? get insertBefore =>
       const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 18);
+  String? get editedSelectedDescription => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 20);
+  String? get editedRemainingDescription => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 22);
 
   @override
   String toString() {
-    return 'SplitRequest{kind: ${kind}, revision: ${revision}, paths: ${paths}, message: ${message}, parallel: ${parallel}, onto: ${onto}, insertAfter: ${insertAfter}, insertBefore: ${insertBefore}}';
+    return 'SplitRequest{kind: ${kind}, revision: ${revision}, paths: ${paths}, message: ${message}, parallel: ${parallel}, onto: ${onto}, insertAfter: ${insertAfter}, insertBefore: ${insertBefore}, editedSelectedDescription: ${editedSelectedDescription}, editedRemainingDescription: ${editedRemainingDescription}}';
   }
 }
 
@@ -1894,7 +1926,7 @@ class SplitRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(8);
+    fbBuilder.startTable(10);
   }
 
   int addKind(RequestKind? kind) {
@@ -1937,6 +1969,16 @@ class SplitRequestBuilder {
     return fbBuilder.offset;
   }
 
+  int addEditedSelectedDescriptionOffset(int? offset) {
+    fbBuilder.addOffset(8, offset);
+    return fbBuilder.offset;
+  }
+
+  int addEditedRemainingDescriptionOffset(int? offset) {
+    fbBuilder.addOffset(9, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -1951,6 +1993,8 @@ class SplitRequestObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _onto;
   final List<String>? _insertAfter;
   final List<String>? _insertBefore;
+  final String? _editedSelectedDescription;
+  final String? _editedRemainingDescription;
 
   SplitRequestObjectBuilder({
     RequestKind? kind,
@@ -1961,6 +2005,8 @@ class SplitRequestObjectBuilder extends fb.ObjectBuilder {
     List<String>? onto,
     List<String>? insertAfter,
     List<String>? insertBefore,
+    String? editedSelectedDescription,
+    String? editedRemainingDescription,
   }) : _kind = kind,
        _revision = revision,
        _paths = paths,
@@ -1968,7 +2014,9 @@ class SplitRequestObjectBuilder extends fb.ObjectBuilder {
        _parallel = parallel,
        _onto = onto,
        _insertAfter = insertAfter,
-       _insertBefore = insertBefore;
+       _insertBefore = insertBefore,
+       _editedSelectedDescription = editedSelectedDescription,
+       _editedRemainingDescription = editedRemainingDescription;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -1985,7 +2033,13 @@ class SplitRequestObjectBuilder extends fb.ObjectBuilder {
     final int? insertBeforeOffset = _insertBefore == null
         ? null
         : fbBuilder.writeList(_insertBefore!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(8);
+    final int? editedSelectedDescriptionOffset = _editedSelectedDescription == null
+        ? null
+        : fbBuilder.writeString(_editedSelectedDescription!);
+    final int? editedRemainingDescriptionOffset = _editedRemainingDescription == null
+        ? null
+        : fbBuilder.writeString(_editedRemainingDescription!);
+    fbBuilder.startTable(10);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, revisionOffset);
     fbBuilder.addOffset(2, pathsOffset);
@@ -1994,6 +2048,8 @@ class SplitRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(5, ontoOffset);
     fbBuilder.addOffset(6, insertAfterOffset);
     fbBuilder.addOffset(7, insertBeforeOffset);
+    fbBuilder.addOffset(8, editedSelectedDescriptionOffset);
+    fbBuilder.addOffset(9, editedRemainingDescriptionOffset);
     return fbBuilder.endTable();
   }
 
@@ -7236,6 +7292,81 @@ class RemotesObjectBuilder extends fb.ObjectBuilder {
         : fbBuilder.writeList(_remotes!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
     fbBuilder.startTable(1);
     fbBuilder.addOffset(0, remotesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_git_push_remotes`' answer (Story 9.54): the remotes `jj git push` without `--remote`
+///  would push to, in remote-name order — `git.push` (a name, a list or a pattern), else the
+///  single remote, else `origin`, each only when it exists. Empty when none matches and on a
+///  non-Git backend.
+class GitPushRemotes {
+  GitPushRemotes._(this._bc, this._bcOffset);
+  factory GitPushRemotes(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitPushRemotes> reader = _GitPushRemotesReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'GitPushRemotes{names: ${names}}';
+  }
+}
+
+class _GitPushRemotesReader extends fb.TableReader<GitPushRemotes> {
+  const _GitPushRemotesReader();
+
+  @override
+  GitPushRemotes createObject(fb.BufferContext bc, int offset) => GitPushRemotes._(bc, offset);
+}
+
+class GitPushRemotesBuilder {
+  GitPushRemotesBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addNamesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitPushRemotesObjectBuilder extends fb.ObjectBuilder {
+  final List<String>? _names;
+
+  GitPushRemotesObjectBuilder({
+    List<String>? names,
+  }) : _names = names;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, namesOffset);
     return fbBuilder.endTable();
   }
 
@@ -14372,6 +14503,8 @@ class Envelope {
         return SplitResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 41:
         return GitPushResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 42:
+        return GitPushRemotes.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

@@ -294,6 +294,24 @@ final class RepoHandle {
     return _worker.remotes(_handleId);
   }
 
+  /// Read the remotes `jj git push` without `--remote` would push to (Story
+  /// 9.54) — the CLI's default-remote resolution: the remotes `git.push` names
+  /// (a name, a list or a pattern), else the single remote, else `origin`,
+  /// each only when it exists, in remote-name order. Empty when none matches
+  /// and on a non-Git backend; an exact `git.push` name no remote carries warns
+  /// `jj.push_remotes_unmatched`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
+  Future<WarnedList<String>> gitPushRemotes() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.gitPushRemotes(_handleId);
+  }
+
   /// Read the effective `jj log` defaults for this repository (Story 4.9) —
   /// what the user's own `jj` CLI would apply after their config overrides.
   ///
@@ -634,8 +652,11 @@ final class RepoHandle {
   /// ([useDestinationMessage], `-u`), else the one non-empty description of
   /// the abandoned sources and the destination. When two or more are non-empty
   /// the CLI asks in its editor — ask the user first with [squashPlan] and pass
-  /// the edited text as [message]; without one, the combined text the plan
-  /// returns is written.
+  /// the edited text as [editedDescription] (Story 9.54), NOT as [message],
+  /// which would add `templates.commit_trailers` again; without either, the
+  /// combined text the plan returns is written. [editedDescription] is the
+  /// CLI's `--editor` saving exactly that text: written cleaned up, with no
+  /// trailers added; with [message] it is refused (`jj.invalid_input`).
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
@@ -650,6 +671,7 @@ final class RepoHandle {
     List<String>? message,
     bool useDestinationMessage = false,
     bool keepEmptied = false,
+    String? editedDescription,
   }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -663,6 +685,7 @@ final class RepoHandle {
       message: message,
       useDestinationMessage: useDestinationMessage,
       keepEmptied: keepEmptied,
+      editedDescription: editedDescription,
     );
   }
 
@@ -709,7 +732,11 @@ final class RepoHandle {
   /// change id. `@` ends on the remaining commit.
   ///
   /// [message] (`-m`) describes the selected commit; without it both keep the
-  /// original description. Selecting everything warns `jj.split_all_selected`,
+  /// original description. [editedSelectedDescription] and
+  /// [editedRemainingDescription] (Story 9.54, both or neither) are the user's
+  /// edits of the two editor texts — written cleaned up, with no trailers
+  /// added; one alone, or either with [message], is refused
+  /// (`jj.invalid_input`). Selecting everything warns `jj.split_all_selected`,
   /// nothing `jj.split_none_selected`; the split runs either way.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
@@ -725,6 +752,8 @@ final class RepoHandle {
     List<String>? onto,
     List<String>? insertAfter,
     List<String>? insertBefore,
+    String? editedSelectedDescription,
+    String? editedRemainingDescription,
   }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -738,6 +767,8 @@ final class RepoHandle {
       onto: onto,
       insertAfter: insertAfter,
       insertBefore: insertBefore,
+      editedSelectedDescription: editedSelectedDescription,
+      editedRemainingDescription: editedRemainingDescription,
     );
   }
 

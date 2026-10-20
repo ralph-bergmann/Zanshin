@@ -34,7 +34,7 @@ const REGISTRY_PATH: &str = "docs/rust-error-codes.md";
 /// green. Same reasoning as the expected-file-count assertion in `Makefile.toml`'s
 /// `test-cargo-hygiene`. Bumping it is a deliberate edit that rides with the doc's own
 /// prose counts.
-const EXPECTED_EXPORTS: usize = 70;
+const EXPECTED_EXPORTS: usize = 71;
 
 /// The workspace root, derived from this crate's manifest directory.
 ///

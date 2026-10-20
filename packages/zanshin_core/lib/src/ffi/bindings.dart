@@ -1307,6 +1307,37 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_push(
   int len,
 );
 
+/// The remotes `jj git push` without `--remote` would push to, in the repo identified by `handle`
+/// (Story 9.54) — the CLI's default-remote resolution, shared with `zanshin_git_push`: the remotes
+/// `git.push` names (a name, a list or a pattern), else the single remote, else `origin`, each
+/// only when it exists, in remote-name order.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `GitPushRemotes` payload on success — EMPTY when
+/// none matches (the push itself refuses then) and on a non-Git backend. An exact `git.push` name
+/// no remote carries warns `jj.push_remotes_unmatched`, as the push does. Writes NO operation of
+/// its own, only the pre-verb snapshot's.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.config_error` — the git.push setting is neither a string nor a list of strings, or the
+/// pre-verb snapshot (Story 9.26) found the effective jj config unreadable; the key in
+/// `context`.
+/// - `jj.invalid_input` — a git.push pattern does not parse; detail in `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
+/// `0` is detected and returned as `ffi.invalid_handle`.
+/// A stale non-zero handle is undefined behaviour; the Dart worker's Model-A
+/// handle table (Story 3.9) makes a stale handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_git_push_remotes(
+  int handle,
+);
+
 /// Register a new git remote in the repo referenced by `handle` — the CLI's
 /// `jj git remote add`.
 ///
@@ -2287,8 +2318,11 @@ external ffi.Pointer<ZanshinBuf> zanshin_snapshot(
 /// The arguments cross as a `SplitRequest` `FlatBuffers` request buffer, one field per CLI flag:
 /// `revision` (absent: `@`), `paths` (repo-relative PREFIXES, at least one — no paths is the CLI's
 /// interactive diff editor), `message` (the CLI's `-m` for the SELECTED commit; ABSENT: both keep
-/// the original description), `parallel`, and the `onto` / `insert_after` / `insert_before`
-/// locations (ABSENT = the flag not given). Plain and parallel splits keep the target's change id
+/// the original description), `parallel`, the `onto` / `insert_after` / `insert_before`
+/// locations (ABSENT = the flag not given), and `edited_selected_description` /
+/// `edited_remaining_description` (Story 9.54, both or neither: the CLI's bulk editor saving
+/// exactly these two sections — the editor path runs, then each is written cleaned up, NO trailers
+/// added). Plain and parallel splits keep the target's change id
 /// on the selected commit; with a location the selected changes become a NEW change there and
 /// the remaining commit keeps the target's change id. Bookmarks follow
 /// `split.legacy-bookmark-behavior`; `@` ends on the remaining commit. The operation is
@@ -2302,9 +2336,11 @@ external ffi.Pointer<ZanshinBuf> zanshin_snapshot(
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `SplitRequest` buffer, or its `kind` is
 /// not `Split`.
-/// - `jj.invalid_input` — `paths` is empty or holds an invalid repo path, `parallel` is combined
-/// with a location, `onto` with `insert_after`/`insert_before`, the location resolves no parent,
-/// or it would create a loop; detail in `context`.
+/// - `jj.invalid_input` — `message` with an edited description ("--message cannot be used with an
+/// edited description"), only one edited description ("an edited split needs both descriptions:
+/// the selected and the remaining"), `paths` is empty or holds an invalid repo path, `parallel`
+/// is combined with a location, `onto` with `insert_after`/`insert_before`, the location resolves
+/// no parent, or it would create a loop; detail in `context`.
 /// - `jj.change_not_found` — `revision` or a location entry is malformed, carried by no VISIBLE
 /// commit, or divergent; the id in `context`.
 /// - `jj.immutable` — the target, or a child the location would rewrite, is immutable.
@@ -2341,7 +2377,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_split(
 /// `use_destination_message` (`-u`) and `keep_emptied` (`-k`). Without `message`, where the CLI
 /// opens its editor (two or more non-empty descriptions among the abandoned sources and the
 /// destination), the combined text the editor holds is written as if saved unchanged — preview it
-/// with `zanshin_squash_plan` first. The operation is `squash commits into <destination hex>`;
+/// with `zanshin_squash_plan` first, and send the user's edit back as `edited_description` (Story
+/// 9.54; the CLI's `--editor` saving exactly that text: written cleaned up, NO trailers added). The operation is `squash commits into <destination hex>`;
 /// squashing `@` into `@` writes NO operation and `MutationResult.new_op_id` carries the PRE-CALL
 /// head. The working copy is snapshotted first (Story 9.26).
 ///
@@ -2355,9 +2392,10 @@ external ffi.Pointer<ZanshinBuf> zanshin_split(
 /// - `ffi.invalid_argument` — `data` does not verify as a `SquashRequest` buffer, or its `kind`
 /// is not `Squash`.
 /// - `jj.invalid_input` — `revision` combined with `from`/`into`, `message` with
-/// `use_destination_message`, a merge or the root commit as the revision ("Cannot squash merge
-/// commits without a specified destination"), or a `paths` entry that is not a valid repo path;
-/// detail in `context`.
+/// `use_destination_message`, `message` with `edited_description` ("--message cannot be used
+/// with an edited description"), a merge or the root commit as the revision ("Cannot squash
+/// merge commits without a specified destination"), or a `paths` entry that is not a valid repo
+/// path; detail in `context`.
 /// - `jj.change_not_found` — `revision`, a `from` entry or `into` is malformed, carried by no
 /// VISIBLE commit, or divergent; the id in `context`.
 /// - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
@@ -2390,7 +2428,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_squash(
 /// Returns a `FlatBuffers` `Envelope` carrying a `SquashPlan` payload on success:
 /// `combined_description` is the text the CLI's editor holds, saved unchanged — exactly what
 /// `zanshin_squash` writes without `message` — and ABSENT when there is nothing to ask. Refuses
-/// and warns exactly as `zanshin_squash`. Writes NO operation of its own, only the pre-verb
+/// and warns exactly as `zanshin_squash` (`message` with `edited_description` included); it
+/// otherwise ignores `edited_description`. Writes NO operation of its own, only the pre-verb
 /// snapshot's.
 ///
 /// # Errors
@@ -3157,6 +3196,10 @@ const int SnapshotStats_VT_INVALID_UTF8_PATHS = 6;
 
 const int SnapshotStats_VT_UNTRACKED = 4;
 
+const int SplitRequest_VT_EDITED_REMAINING_DESCRIPTION = 22;
+
+const int SplitRequest_VT_EDITED_SELECTED_DESCRIPTION = 20;
+
 const int SplitRequest_VT_ONTO = 14;
 
 const int SplitRequest_VT_PARALLEL = 12;
@@ -3166,6 +3209,8 @@ const int SplitResult_VT_REMAINING_CHANGE_ID = 8;
 const int SplitResult_VT_SELECTED_CHANGE_ID = 6;
 
 const int SquashPlan_VT_COMBINED_DESCRIPTION = 4;
+
+const int SquashRequest_VT_EDITED_DESCRIPTION = 20;
 
 const int SquashRequest_VT_KEEP_EMPTIED = 18;
 

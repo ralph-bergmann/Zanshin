@@ -151,35 +151,13 @@ impl<'c> Templates<'c> {
         startup: &'c TemplateStartup,
         workspace: &Workspace,
     ) -> Self {
-        Self::at(
-            config,
-            immutable,
-            &startup.aliases,
-            startup.short_prefixes.clone(),
-            workspace.workspace_name(),
-            workspace.workspace_root(),
-        )
-    }
-
-    /// [`Templates::new`] for a workspace given by its name and root, with its own short-prefixes
-    /// expression — `workspace add` renders for the NEW workspace (`add.rs:222` @ v0.46.0: the
-    /// new workspace's transaction), whose `@` the expression names ([`load_short_prefixes`] for
-    /// that workspace).
-    pub(crate) fn at(
-        config: &'c StackedConfig,
-        immutable: &'c Arc<UserRevsetExpression>,
-        aliases: &'c TemplateAliasesMap,
-        short_prefixes: Option<Arc<UserRevsetExpression>>,
-        workspace_name: &WorkspaceName,
-        workspace_root: &Path,
-    ) -> Self {
         Self {
             config,
             immutable,
-            aliases,
-            short_prefixes,
-            workspace_name: workspace_name.to_owned(),
-            workspace_root: workspace_root.to_owned(),
+            aliases: &startup.aliases,
+            short_prefixes: startup.short_prefixes.clone(),
+            workspace_name: workspace.workspace_name().to_owned(),
+            workspace_root: workspace.workspace_root().to_owned(),
             env: OnceCell::new(),
         }
     }

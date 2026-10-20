@@ -173,6 +173,14 @@ table AbsorbRequest {
 ///   message            the CLI's repeatable `-m`; ABSENT = no `-m` (the editor case writes the
 ///                      buffer saved unchanged), present-empty = `-m` given with no paragraph
 ///   use_destination_message, keep_emptied   the CLI's `-u` / `-k`
+///   edited_description the text the user edited the squashed description to (Story 9.54) — the
+///                      CLI's `--editor` whose editor saves exactly this text: the description
+///                      step runs as with the editor (trailers, the draft template, their refusals
+///                      and warnings), then this text is written cleaned up like a saved buffer,
+///                      with NO trailers added. ABSENT = no editor. With `message` refused
+///                      (`jj.invalid_input`, "--message cannot be used with an edited
+///                      description"; `zanshin_squash_plan` too); `zanshin_squash_plan` otherwise
+///                      ignores it.
 table SquashRequest {
   kind: RequestKind;
   revision: string;
@@ -182,6 +190,7 @@ table SquashRequest {
   message: [string];
   use_destination_message: bool;
   keep_emptied: bool;
+  edited_description: string;
 }
 
 /// Arguments of `zanshin_split` (Story 9.15) — the CLI's `jj split` flags, one field each;
@@ -198,6 +207,14 @@ table SquashRequest {
 ///   parallel           `--parallel`; may NOT be combined with a location
 ///   onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`: ABSENT = the flag not
 ///                      given, present-EMPTY = given with no revision (refused: no parent)
+///   edited_selected_description, edited_remaining_description   the texts the user edited the
+///                      two descriptions to (Story 9.54) — the CLI's bulk editor saving exactly
+///                      these two sections: the no-`message` editor path runs unchanged, then each
+///                      commit gets its text cleaned up like a saved section, with NO trailers
+///                      added. Both or neither (one alone: `jj.invalid_input`, "an edited split
+///                      needs both descriptions: the selected and the remaining"); with `message`
+///                      refused (`jj.invalid_input`, "--message cannot be used with an edited
+///                      description").
 table SplitRequest {
   kind: RequestKind;
   revision: string;
@@ -207,6 +224,8 @@ table SplitRequest {
   onto: [string];
   insert_after: [string];
   insert_before: [string];
+  edited_selected_description: string;
+  edited_remaining_description: string;
 }
 
 /// Arguments of `zanshin_commit` (Story 9.49) — the CLI's `jj commit -m <message> [paths]`.
@@ -921,6 +940,14 @@ table Remote {
 /// The remote list: configured git remotes, sorted by name.
 table Remotes {
   remotes: [Remote];
+}
+
+/// `zanshin_git_push_remotes`' answer (Story 9.54): the remotes `jj git push` without `--remote`
+/// would push to, in remote-name order — `git.push` (a name, a list or a pattern), else the
+/// single remote, else `origin`, each only when it exists. Empty when none matches and on a
+/// non-Git backend.
+table GitPushRemotes {
+  names: [string];
 }
 
 /// Classification of a path from detect_repo (FR-JJ-17).
@@ -1868,6 +1895,7 @@ union Payload {
   SquashPlan,
   SplitResult,
   GitPushResult,
+  GitPushRemotes,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

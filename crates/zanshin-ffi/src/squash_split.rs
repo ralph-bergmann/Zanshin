@@ -41,7 +41,8 @@ fn change_ids(v: Option<Vector<'_, ForwardsUOffset<&str>>>) -> Option<Vec<Change
 }
 
 /// Parse a `SquashRequest` buffer into owned [`SquashOptions`]. `message` stays `None` when the
-/// vector is ABSENT (no `-m`); `from` and `paths` treat absence as empty.
+/// vector is ABSENT (no `-m`), `edited_description` when the string is absent (no editor); `from`
+/// and `paths` treat absence as empty.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -64,11 +65,13 @@ fn read_squash_request(data: *const u8, len: usize) -> Result<SquashOptions, Ffi
         message: strings(req.message()),
         use_destination_message: req.use_destination_message(),
         keep_emptied: req.keep_emptied(),
+        edited_description: req.edited_description().map(ToOwned::to_owned),
     })
 }
 
 /// Parse a `SplitRequest` buffer into owned [`SplitOptions`]. `message` and the three location
-/// vectors stay `None` when ABSENT (the flag not given); a present EMPTY vector is a value.
+/// vectors stay `None` when ABSENT (the flag not given); a present EMPTY vector is a value. The two
+/// edited descriptions stay `None` when absent.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -89,6 +92,8 @@ fn read_split_request(data: *const u8, len: usize) -> Result<SplitOptions, FfiEr
         onto: change_ids(req.onto()),
         insert_after: change_ids(req.insert_after()),
         insert_before: change_ids(req.insert_before()),
+        edited_selected_description: req.edited_selected_description().map(ToOwned::to_owned),
+        edited_remaining_description: req.edited_remaining_description().map(ToOwned::to_owned),
     })
 }
 
@@ -104,7 +109,8 @@ fn read_split_request(data: *const u8, len: usize) -> Result<SplitOptions, FfiEr
 /// `use_destination_message` (`-u`) and `keep_emptied` (`-k`). Without `message`, where the CLI
 /// opens its editor (two or more non-empty descriptions among the abandoned sources and the
 /// destination), the combined text the editor holds is written as if saved unchanged — preview it
-/// with `zanshin_squash_plan` first. The operation is `squash commits into <destination hex>`;
+/// with `zanshin_squash_plan` first, and send the user's edit back as `edited_description` (Story
+/// 9.54; the CLI's `--editor` saving exactly that text: written cleaned up, NO trailers added). The operation is `squash commits into <destination hex>`;
 /// squashing `@` into `@` writes NO operation and `MutationResult.new_op_id` carries the PRE-CALL
 /// head. The working copy is snapshotted first (Story 9.26).
 ///
@@ -118,9 +124,10 @@ fn read_split_request(data: *const u8, len: usize) -> Result<SplitOptions, FfiEr
 /// - `ffi.invalid_argument` — `data` does not verify as a `SquashRequest` buffer, or its `kind`
 ///   is not `Squash`.
 /// - `jj.invalid_input` — `revision` combined with `from`/`into`, `message` with
-///   `use_destination_message`, a merge or the root commit as the revision ("Cannot squash merge
-///   commits without a specified destination"), or a `paths` entry that is not a valid repo path;
-///   detail in `context`.
+///   `use_destination_message`, `message` with `edited_description` ("--message cannot be used
+///   with an edited description"), a merge or the root commit as the revision ("Cannot squash
+///   merge commits without a specified destination"), or a `paths` entry that is not a valid repo
+///   path; detail in `context`.
 /// - `jj.change_not_found` — `revision`, a `from` entry or `into` is malformed, carried by no
 ///   VISIBLE commit, or divergent; the id in `context`.
 /// - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
@@ -159,7 +166,8 @@ pub unsafe extern "C" fn zanshin_squash(handle: u64, data: *const u8, len: usize
 /// Returns a `FlatBuffers` `Envelope` carrying a `SquashPlan` payload on success:
 /// `combined_description` is the text the CLI's editor holds, saved unchanged — exactly what
 /// `zanshin_squash` writes without `message` — and ABSENT when there is nothing to ask. Refuses
-/// and warns exactly as `zanshin_squash`. Writes NO operation of its own, only the pre-verb
+/// and warns exactly as `zanshin_squash` (`message` with `edited_description` included); it
+/// otherwise ignores `edited_description`. Writes NO operation of its own, only the pre-verb
 /// snapshot's.
 ///
 /// # Errors
@@ -206,8 +214,11 @@ pub unsafe extern "C" fn zanshin_squash_plan(handle: u64, data: *const u8, len: 
 /// The arguments cross as a `SplitRequest` `FlatBuffers` request buffer, one field per CLI flag:
 /// `revision` (absent: `@`), `paths` (repo-relative PREFIXES, at least one — no paths is the CLI's
 /// interactive diff editor), `message` (the CLI's `-m` for the SELECTED commit; ABSENT: both keep
-/// the original description), `parallel`, and the `onto` / `insert_after` / `insert_before`
-/// locations (ABSENT = the flag not given). Plain and parallel splits keep the target's change id
+/// the original description), `parallel`, the `onto` / `insert_after` / `insert_before`
+/// locations (ABSENT = the flag not given), and `edited_selected_description` /
+/// `edited_remaining_description` (Story 9.54, both or neither: the CLI's bulk editor saving
+/// exactly these two sections — the editor path runs, then each is written cleaned up, NO trailers
+/// added). Plain and parallel splits keep the target's change id
 /// on the selected commit; with a location the selected changes become a NEW change there and
 /// the remaining commit keeps the target's change id. Bookmarks follow
 /// `split.legacy-bookmark-behavior`; `@` ends on the remaining commit. The operation is
@@ -221,9 +232,11 @@ pub unsafe extern "C" fn zanshin_squash_plan(handle: u64, data: *const u8, len: 
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `SplitRequest` buffer, or its `kind` is
 ///   not `Split`.
-/// - `jj.invalid_input` — `paths` is empty or holds an invalid repo path, `parallel` is combined
-///   with a location, `onto` with `insert_after`/`insert_before`, the location resolves no parent,
-///   or it would create a loop; detail in `context`.
+/// - `jj.invalid_input` — `message` with an edited description ("--message cannot be used with an
+///   edited description"), only one edited description ("an edited split needs both descriptions:
+///   the selected and the remaining"), `paths` is empty or holds an invalid repo path, `parallel`
+///   is combined with a location, `onto` with `insert_after`/`insert_before`, the location resolves
+///   no parent, or it would create a loop; detail in `context`.
 /// - `jj.change_not_found` — `revision` or a location entry is malformed, carried by no VISIBLE
 ///   commit, or divergent; the id in `context`.
 /// - `jj.immutable` — the target, or a child the location would rewrite, is immutable.
@@ -334,6 +347,50 @@ mod tests {
         assert_eq!(options.insert_before, Some(vec![zanshin_jj::ChangeId("b".to_owned())]));
         assert_eq!(options.message, None);
         assert!(options.parallel && options.revision.is_none());
+        assert!(options.edited_selected_description.is_none() && options.edited_remaining_description.is_none());
+    }
+
+    /// Story 9.54: the edited descriptions cross as given; absent is `None`.
+    #[test]
+    fn the_readers_carry_the_edited_descriptions() {
+        assert_eq!(
+            read_squash_request(squash_request(None).as_ptr(), squash_request(None).len())
+                .expect("valid")
+                .edited_description,
+            None
+        );
+        let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+        let edited = b.create_string("E\n");
+        let req = fbs::SquashRequest::create(
+            &mut b,
+            &fbs::SquashRequestArgs {
+                kind: fbs::RequestKind::Squash,
+                edited_description: Some(edited),
+                ..fbs::SquashRequestArgs::default()
+            },
+        );
+        b.finish(req, None);
+        let bytes = b.finished_data().to_vec();
+        let options = read_squash_request(bytes.as_ptr(), bytes.len()).expect("valid");
+        assert_eq!(options.edited_description.as_deref(), Some("E\n"));
+
+        let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+        let selected = b.create_string("S");
+        let remaining = b.create_string("R");
+        let req = fbs::SplitRequest::create(
+            &mut b,
+            &fbs::SplitRequestArgs {
+                kind: fbs::RequestKind::Split,
+                edited_selected_description: Some(selected),
+                edited_remaining_description: Some(remaining),
+                ..fbs::SplitRequestArgs::default()
+            },
+        );
+        b.finish(req, None);
+        let bytes = b.finished_data().to_vec();
+        let options = read_split_request(bytes.as_ptr(), bytes.len()).expect("valid");
+        assert_eq!(options.edited_selected_description.as_deref(), Some("S"));
+        assert_eq!(options.edited_remaining_description.as_deref(), Some("R"));
     }
 
     /// A buffer built for the other verb is refused before anything is read.

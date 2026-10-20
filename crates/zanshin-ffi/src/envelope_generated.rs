@@ -2343,13 +2343,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 41;
+        pub const ENUM_MAX_PAYLOAD: u8 = 42;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 42] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 43] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -2392,6 +2392,7 @@ pub mod zanshin {
             Payload::SquashPlan,
             Payload::SplitResult,
             Payload::GitPushResult,
+            Payload::GitPushRemotes,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -2441,9 +2442,10 @@ pub mod zanshin {
             pub const SquashPlan: Self = Self(39);
             pub const SplitResult: Self = Self(40);
             pub const GitPushResult: Self = Self(41);
+            pub const GitPushRemotes: Self = Self(42);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 41;
+            pub const ENUM_MAX: u8 = 42;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -2487,6 +2489,7 @@ pub mod zanshin {
                 Self::SquashPlan,
                 Self::SplitResult,
                 Self::GitPushResult,
+                Self::GitPushRemotes,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -2533,6 +2536,7 @@ pub mod zanshin {
                     Self::SquashPlan => Some("SquashPlan"),
                     Self::SplitResult => Some("SplitResult"),
                     Self::GitPushResult => Some("GitPushResult"),
+                    Self::GitPushRemotes => Some("GitPushRemotes"),
                     _ => None,
                 }
             }
@@ -3354,6 +3358,14 @@ pub mod zanshin {
         ///   message            the CLI's repeatable `-m`; ABSENT = no `-m` (the editor case writes the
         ///                      buffer saved unchanged), present-empty = `-m` given with no paragraph
         ///   use_destination_message, keep_emptied   the CLI's `-u` / `-k`
+        ///   edited_description the text the user edited the squashed description to (Story 9.54) — the
+        ///                      CLI's `--editor` whose editor saves exactly this text: the description
+        ///                      step runs as with the editor (trailers, the draft template, their refusals
+        ///                      and warnings), then this text is written cleaned up like a saved buffer,
+        ///                      with NO trailers added. ABSENT = no editor. With `message` refused
+        ///                      (`jj.invalid_input`, "--message cannot be used with an edited
+        ///                      description"; `zanshin_squash_plan` too); `zanshin_squash_plan` otherwise
+        ///                      ignores it.
         pub struct SquashRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -3377,6 +3389,7 @@ pub mod zanshin {
             pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 14;
             pub const VT_USE_DESTINATION_MESSAGE: ::flatbuffers::VOffsetT = 16;
             pub const VT_KEEP_EMPTIED: ::flatbuffers::VOffsetT = 18;
+            pub const VT_EDITED_DESCRIPTION: ::flatbuffers::VOffsetT = 20;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -3388,6 +3401,9 @@ pub mod zanshin {
                 args: &'args SquashRequestArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<SquashRequest<'bldr>> {
                 let mut builder = SquashRequestBuilder::new(_fbb);
+                if let Some(x) = args.edited_description {
+                    builder.add_edited_description(x);
+                }
                 if let Some(x) = args.message {
                     builder.add_message(x);
                 }
@@ -3495,6 +3511,16 @@ pub mod zanshin {
                         .unwrap()
                 }
             }
+            #[inline]
+            pub fn edited_description(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SquashRequest::VT_EDITED_DESCRIPTION, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for SquashRequest<'_> {
@@ -3512,6 +3538,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("message", Self::VT_MESSAGE, false)?
      .visit_field::<bool>("use_destination_message", Self::VT_USE_DESTINATION_MESSAGE, false)?
      .visit_field::<bool>("keep_emptied", Self::VT_KEEP_EMPTIED, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("edited_description", Self::VT_EDITED_DESCRIPTION, false)?
      .finish();
                 Ok(())
             }
@@ -3528,6 +3555,7 @@ pub mod zanshin {
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub use_destination_message: bool,
             pub keep_emptied: bool,
+            pub edited_description: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for SquashRequestArgs<'a> {
             #[inline]
@@ -3541,6 +3569,7 @@ pub mod zanshin {
                     message: None,
                     use_destination_message: false,
                     keep_emptied: false,
+                    edited_description: None,
                 }
             }
         }
@@ -3603,6 +3632,13 @@ pub mod zanshin {
                     .push_slot::<bool>(SquashRequest::VT_KEEP_EMPTIED, keep_emptied, false);
             }
             #[inline]
+            pub fn add_edited_description(&mut self, edited_description: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SquashRequest::VT_EDITED_DESCRIPTION,
+                    edited_description,
+                );
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SquashRequestBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 SquashRequestBuilder {
@@ -3628,6 +3664,7 @@ pub mod zanshin {
                 ds.field("message", &self.message());
                 ds.field("use_destination_message", &self.use_destination_message());
                 ds.field("keep_emptied", &self.keep_emptied());
+                ds.field("edited_description", &self.edited_description());
                 ds.finish()
             }
         }
@@ -3648,6 +3685,14 @@ pub mod zanshin {
         ///   parallel           `--parallel`; may NOT be combined with a location
         ///   onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`: ABSENT = the flag not
         ///                      given, present-EMPTY = given with no revision (refused: no parent)
+        ///   edited_selected_description, edited_remaining_description   the texts the user edited the
+        ///                      two descriptions to (Story 9.54) — the CLI's bulk editor saving exactly
+        ///                      these two sections: the no-`message` editor path runs unchanged, then each
+        ///                      commit gets its text cleaned up like a saved section, with NO trailers
+        ///                      added. Both or neither (one alone: `jj.invalid_input`, "an edited split
+        ///                      needs both descriptions: the selected and the remaining"); with `message`
+        ///                      refused (`jj.invalid_input`, "--message cannot be used with an edited
+        ///                      description").
         pub struct SplitRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -3671,6 +3716,8 @@ pub mod zanshin {
             pub const VT_ONTO: ::flatbuffers::VOffsetT = 14;
             pub const VT_INSERT_AFTER: ::flatbuffers::VOffsetT = 16;
             pub const VT_INSERT_BEFORE: ::flatbuffers::VOffsetT = 18;
+            pub const VT_EDITED_SELECTED_DESCRIPTION: ::flatbuffers::VOffsetT = 20;
+            pub const VT_EDITED_REMAINING_DESCRIPTION: ::flatbuffers::VOffsetT = 22;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -3682,6 +3729,12 @@ pub mod zanshin {
                 args: &'args SplitRequestArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<SplitRequest<'bldr>> {
                 let mut builder = SplitRequestBuilder::new(_fbb);
+                if let Some(x) = args.edited_remaining_description {
+                    builder.add_edited_remaining_description(x);
+                }
+                if let Some(x) = args.edited_selected_description {
+                    builder.add_edited_selected_description(x);
+                }
                 if let Some(x) = args.insert_before {
                     builder.add_insert_before(x);
                 }
@@ -3788,6 +3841,28 @@ pub mod zanshin {
                     >>(SplitRequest::VT_INSERT_BEFORE, None)
                 }
             }
+            #[inline]
+            pub fn edited_selected_description(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SplitRequest::VT_EDITED_SELECTED_DESCRIPTION, None)
+                }
+            }
+            #[inline]
+            pub fn edited_remaining_description(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        SplitRequest::VT_EDITED_REMAINING_DESCRIPTION,
+                        None,
+                    )
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for SplitRequest<'_> {
@@ -3805,6 +3880,8 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("onto", Self::VT_ONTO, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_after", Self::VT_INSERT_AFTER, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_before", Self::VT_INSERT_BEFORE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("edited_selected_description", Self::VT_EDITED_SELECTED_DESCRIPTION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("edited_remaining_description", Self::VT_EDITED_REMAINING_DESCRIPTION, false)?
      .finish();
                 Ok(())
             }
@@ -3823,6 +3900,8 @@ pub mod zanshin {
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub insert_before:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub edited_selected_description: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub edited_remaining_description: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for SplitRequestArgs<'a> {
             #[inline]
@@ -3836,6 +3915,8 @@ pub mod zanshin {
                     onto: None,
                     insert_after: None,
                     insert_before: None,
+                    edited_selected_description: None,
+                    edited_remaining_description: None,
                 }
             }
         }
@@ -3904,6 +3985,26 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(SplitRequest::VT_INSERT_BEFORE, insert_before);
             }
             #[inline]
+            pub fn add_edited_selected_description(
+                &mut self,
+                edited_selected_description: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SplitRequest::VT_EDITED_SELECTED_DESCRIPTION,
+                    edited_selected_description,
+                );
+            }
+            #[inline]
+            pub fn add_edited_remaining_description(
+                &mut self,
+                edited_remaining_description: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SplitRequest::VT_EDITED_REMAINING_DESCRIPTION,
+                    edited_remaining_description,
+                );
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SplitRequestBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 SplitRequestBuilder {
@@ -3929,6 +4030,8 @@ pub mod zanshin {
                 ds.field("onto", &self.onto());
                 ds.field("insert_after", &self.insert_after());
                 ds.field("insert_before", &self.insert_before());
+                ds.field("edited_selected_description", &self.edited_selected_description());
+                ds.field("edited_remaining_description", &self.edited_remaining_description());
                 ds.finish()
             }
         }
@@ -12714,6 +12817,117 @@ pub mod zanshin {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("Remotes");
                 ds.field("remotes", &self.remotes());
+                ds.finish()
+            }
+        }
+        pub enum GitPushRemotesOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_git_push_remotes`' answer (Story 9.54): the remotes `jj git push` without `--remote`
+        /// would push to, in remote-name order — `git.push` (a name, a list or a pattern), else the
+        /// single remote, else `origin`, each only when it exists. Empty when none matches and on a
+        /// non-Git backend.
+        pub struct GitPushRemotes<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitPushRemotes<'a> {
+            type Inner = GitPushRemotes<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitPushRemotes<'a> {
+            pub const VT_NAMES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitPushRemotes { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitPushRemotesArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitPushRemotes<'bldr>> {
+                let mut builder = GitPushRemotesBuilder::new(_fbb);
+                if let Some(x) = args.names {
+                    builder.add_names(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn names(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitPushRemotes::VT_NAMES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitPushRemotes<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("names", Self::VT_NAMES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct GitPushRemotesArgs<'a> {
+            pub names:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for GitPushRemotesArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitPushRemotesArgs { names: None }
+            }
+        }
+
+        pub struct GitPushRemotesBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitPushRemotesBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_names(
+                &mut self,
+                names: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitPushRemotes::VT_NAMES, names);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitPushRemotesBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitPushRemotesBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitPushRemotes<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitPushRemotes<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitPushRemotes");
+                ds.field("names", &self.names());
                 ds.finish()
             }
         }
@@ -25142,6 +25356,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_git_push_remotes(&self) -> Option<GitPushRemotes<'a>> {
+                if self.data_type() == Payload::GitPushRemotes {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { GitPushRemotes::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -25196,6 +25425,7 @@ pub mod zanshin {
           Payload::SquashPlan => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<SquashPlan>>("Payload::SquashPlan", pos),
           Payload::SplitResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<SplitResult>>("Payload::SplitResult", pos),
           Payload::GitPushResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitPushResult>>("Payload::GitPushResult", pos),
+          Payload::GitPushRemotes => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitPushRemotes>>("Payload::GitPushRemotes", pos),
           _ => Ok(()),
         }
      })?
@@ -25574,6 +25804,13 @@ pub mod zanshin {
                     }
                     Payload::GitPushResult => {
                         if let Some(x) = self.data_as_git_push_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::GitPushRemotes => {
+                        if let Some(x) = self.data_as_git_push_remotes() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

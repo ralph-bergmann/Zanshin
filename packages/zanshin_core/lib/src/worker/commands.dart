@@ -165,6 +165,20 @@ final class RemotesCommand extends WorkerCommand implements HandleScopedCommand 
   final int handleId;
 }
 
+/// Read the remotes `jj git push` without `--remote` would push to, for the
+/// repo identified by [handleId] (Story 9.54).
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshin_git_push_remotes(handle)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<GitPushRemotes>` bytes.
+final class GitPushRemotesCommand extends WorkerCommand implements HandleScopedCommand {
+  const GitPushRemotesCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+}
+
 /// Read the effective `jj log` defaults for the repo identified by [handleId]
 /// (Story 4.9).
 ///
@@ -1376,6 +1390,7 @@ final class SquashCommand extends WorkerCommand implements HandleScopedCommand {
     required this.message,
     required this.useDestinationMessage,
     required this.keepEmptied,
+    this.editedDescription,
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
@@ -1402,6 +1417,10 @@ final class SquashCommand extends WorkerCommand implements HandleScopedCommand {
 
   /// `-k`.
   final bool keepEmptied;
+
+  /// The user's edit of the editor text (Story 9.54) — the CLI's `--editor`
+  /// saving exactly this text, written without trailers; `null` = no editor.
+  final String? editedDescription;
 }
 
 /// Preview the description a [SquashCommand] with the same arguments would
@@ -1466,6 +1485,8 @@ final class SplitCommand extends WorkerCommand implements HandleScopedCommand {
     required this.onto,
     required this.insertAfter,
     required this.insertBefore,
+    this.editedSelectedDescription,
+    this.editedRemainingDescription,
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
@@ -1492,6 +1513,13 @@ final class SplitCommand extends WorkerCommand implements HandleScopedCommand {
 
   /// `-B` change ids; `null` = the flag not given.
   final List<String>? insertBefore;
+
+  /// The user's edit of the selected commit's editor text (Story 9.54); both
+  /// or neither with [editedRemainingDescription]; `null` = no editor.
+  final String? editedSelectedDescription;
+
+  /// The user's edit of the remaining commit's editor text (Story 9.54).
+  final String? editedRemainingDescription;
 }
 
 /// Commit the working-copy commit, in the repo identified by [handleId] (Story

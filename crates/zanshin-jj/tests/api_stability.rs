@@ -1094,6 +1094,7 @@ fn squash_split_surface_resolves() {
         message: Some(vec!["m".to_owned()]),
         use_destination_message: false,
         keep_emptied: true,
+        edited_description: Some("e".to_owned()),
     };
     assert_eq!(squash.clone(), squash);
     assert_eq!(zanshin_jj::SquashOptions::default().message, None);
@@ -1109,6 +1110,8 @@ fn squash_split_surface_resolves() {
         onto: None,
         insert_after: Some(Vec::new()),
         insert_before: Some(vec![id("b")]),
+        edited_selected_description: Some("s".to_owned()),
+        edited_remaining_description: Some("r".to_owned()),
     };
     assert_eq!(split.clone(), split);
     let result = zanshin_jj::SplitResult {
@@ -1552,6 +1555,8 @@ fn story_9_20_push_clone_init_resolves() {
     _ = zanshin_jj::RepoError::NetworkError { reason: String::new() };
     _ = zanshin_jj::MutateError::PushRefRefused { message: String::new() };
     _ = zanshin_jj::MutateError::PushCommitRejected { message: String::new() };
+    // Story 9.54: the default push remotes, for the GUI's "ahead" rule.
+    _ = zanshin_jj::Repo::git_push_remotes as fn(&mut zanshin_jj::Repo) -> Result<Vec<String>, zanshin_jj::MutateError>;
     _ = zanshin_jj::Repo::git_push
         as fn(
             &mut zanshin_jj::Repo,

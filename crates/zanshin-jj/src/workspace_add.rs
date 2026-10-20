@@ -17,14 +17,18 @@
 //!    a colocated current workspace);
 //! 5. jj-lib's `Workspace::init_workspace_with_existing_repo` — the `.jj/repo` FILE, the working
 //!    copy, the store entry and jj-lib's own `add workspace '<name>'` operation; the
-//!    no-separator warning;
+//!    no-separator warning; then the NEW workspace's start-up environment (`for_workable_repo`,
+//!    `add.rs:193`, Story 9.54) — its alias, `immutable_heads()` and short-prefixes warnings are
+//!    reported a second time, as the CLI prints them again, and a fault refuses as the current
+//!    workspace's would;
 //! 6. a colocated NEW workspace's `.jj/.gitignore`; the sparse patterns (copied, full or empty);
 //! 7. one transaction on the NEW workspace: the new `@` on the old `@`'s parents or on the
 //!    `revisions`' union (evaluated in the OLD workspace's context), a non-empty `-m` with
-//!    `templates.commit_trailers` added (rendered for the NEW workspace, Story 9.51 — a template
-//!    fault refuses here, after steps 3-6, exactly where the CLI refuses), committed as `create initial
-//!    working-copy commit in workspace <name>` through the CLI's `finish_transaction`, which
-//!    checks the new `@` out into the destination and, colocated, resets its Git HEAD.
+//!    `templates.commit_trailers` added (rendered with the NEW workspace's environment, Stories
+//!    9.51 and 9.54 — a template fault refuses here, after steps 3-6, exactly where the CLI
+//!    refuses), committed as `create initial working-copy commit in workspace <name>` through the
+//!    CLI's `finish_transaction` with the new environment's immutable set, which checks the new
+//!    `@` out into the destination and, colocated, resets its Git HEAD.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -44,10 +48,10 @@ use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, be, cfg, flatten_chain, rev, FinishCtx, MutateError, MutationResult};
 use crate::op_support::{join_message_paragraphs, start_repo_transaction};
-use crate::snapshot::{lock_git_import_export, VerbContext};
+use crate::snapshot::{lock_git_import_export, CommandEnv, VerbContext};
 use crate::stale::CheckoutStats;
 use crate::template::Templates;
-use crate::warning::WarningKind;
+use crate::warning::{WarningKind, Warnings};
 use crate::{ChangeId, Repo};
 
 /// How the new workspace's sparse patterns are set — the CLI's `--sparse-patterns`
@@ -174,6 +178,13 @@ pub(crate) fn add(
             in_current_directory_warning(args.destination, &name),
         );
     }
+    // `for_workable_repo` (`add.rs:193`): the new workspace's own start-up environment, built
+    // with the command's config into a collector of its own — so its load warnings repeat, as
+    // the CLI prints them again (`creation.rs`'s `workable_env`).
+    let mut own = Warnings::default();
+    let new_env = CommandEnv::load(&new_workspace, &ctx.config, &mut own);
+    ctx.warnings.extend(own.take());
+    let new_env = new_env.map_err(MutateError::from)?;
 
     let new_colocated = crate::wc_ops::is_colocated_git_workspace(&new_workspace).map_err(|e| be(flatten_chain(&e)))?;
     crate::convert::maybe_add_gitignore(new_workspace.workspace_root(), new_colocated)
@@ -199,7 +210,7 @@ pub(crate) fn add(
     let parent_ids = parents.iter().map(|c| c.id().clone()).collect();
     let mut builder = tx.repo_mut().new_commit(parent_ids, tree).detach();
     builder.set_description(join_message_paragraphs(args.message_paragraphs));
-    add_trailers_for(ctx, &tx, &mut builder, (&name, new_workspace.workspace_root()))?;
+    add_trailers_for(ctx, &new_env, &tx, &mut builder, &new_workspace)?;
     let new_wc_commit = pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
     pollster::block_on(tx.repo_mut().edit(name.clone(), &new_wc_commit)).map_err(be)?;
     // `edit` abandons the discardable initial working-copy commit jj-lib created; `tx.finish`'s
@@ -212,7 +223,7 @@ pub(crate) fn add(
         tx,
         &format!("create initial working-copy commit in workspace {}", name.as_symbol()),
         &FinishCtx {
-            immutable: &ctx.immutable,
+            immutable: &new_env.immutable,
             colocated: new_colocated,
             _lock: &lock,
         },
@@ -233,35 +244,25 @@ pub(crate) fn add(
 }
 
 /// `add.rs:257-265` @ v0.46.0: a non-empty `-m` gets `templates.commit_trailers`, rendered for the
-/// NEW workspace — with that workspace's own `revsets.short-prefixes` parse (`for_workable_repo`,
-/// `add.rs:193`: its `@` names the new workspace; the diagnostics stay the start-up's, recorded
-/// once per call).
+/// NEW workspace with its own start-up environment `env` (`for_workable_repo`, `add.rs:193`): its
+/// immutable set, template aliases and short-prefixes expression, whose `@` names the new
+/// workspace.
 ///
 /// # Errors
 ///
-/// - [`MutateError::Config`] — the short-prefixes text does not load, or see
-///   [`Templates::add_trailers`].
+/// - [`MutateError::Config`] — see [`Templates::add_trailers`].
 /// - [`MutateError::Backend`] — the hidden write failed.
 fn add_trailers_for(
     ctx: &mut VerbContext,
+    env: &CommandEnv,
     tx: &Transaction,
     builder: &mut DetachedCommitBuilder,
-    (name, root): (&WorkspaceName, &Path),
+    workspace: &Workspace,
 ) -> Result<(), MutateError> {
     if builder.description().is_empty() {
         return Ok(());
     }
-    let revset = crate::revset::revset_config(&ctx.config, &mut ctx.warnings).map_err(cfg)?;
-    let short_prefixes =
-        crate::template::load_short_prefixes((root, name), &revset, &ctx.config, &mut ctx.warnings).map_err(cfg)?;
-    let templates = Templates::at(
-        &ctx.config,
-        &ctx.immutable,
-        &ctx.template_startup.aliases,
-        short_prefixes,
-        name,
-        root,
-    );
+    let templates = Templates::new(&ctx.config, &env.immutable, &env.template_startup, workspace);
     let description = templates.add_trailers(tx.repo(), builder, &mut ctx.warnings)?;
     builder.set_description(description);
     Ok(())

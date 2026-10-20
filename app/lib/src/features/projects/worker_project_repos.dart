@@ -110,6 +110,11 @@ class _WorkerProjectRepo implements ProjectRepo {
           _logWarnings('bookmarks', bookmarks.warnings);
           return bookmarks;
         },
+        pushRemotes: () async {
+          final WarnedList<String> remotes = await handle.gitPushRemotes();
+          _logWarnings('git push remotes', remotes.warnings);
+          return remotes;
+        },
       );
       return ProjectReading(status: status, bookmark: bookmarkLabel(heads.refs));
     } on ZanshinFfiException catch (error) {

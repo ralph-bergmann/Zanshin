@@ -571,6 +571,27 @@ impl Repo {
         self.with_verb(|repo, _ctx| crate::remotes::list_remotes(repo.workspace()))
     }
 
+    /// The remotes `jj git push` WITHOUT `--remote` would push to (Story 9.54), in remote-name
+    /// order — the CLI's default-remote resolution (`push.rs:294-323`, `get_default_push_remotes`
+    /// `:1107-1130` @ v0.46.0), shared with [`Repo::git_push`]: the remotes `git.push` names (a
+    /// name, a list or a pattern), else the single remote, else `origin` — each kept only when it
+    /// exists. An exact `git.push` name no remote carries warns `jj.push_remotes_unmatched`, as the
+    /// push does. No match is `Ok(vec![])` (the push itself refuses "No git remotes to push to"),
+    /// and so is a non-Git (native) backend.
+    ///
+    /// For the GUI's "ahead" rule: only a push target's missing remote bookmark makes a bookmark
+    /// ahead. Writes NO operation of its own — only the pre-verb snapshot's, like every read.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::Config`] — `git.push` is neither a string nor a list of strings.
+    /// - [`crate::MutateError::InvalidInput`] — a `git.push` pattern does not parse.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn git_push_remotes(&mut self) -> Result<Vec<String>, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::push::git_push_remotes(repo.workspace(), &ctx.config, &mut ctx.warnings))
+    }
+
     /// Returns the effective `jj log` defaults of this repo (Story 4.9): the values the
     /// user's own `jj` CLI would apply for `revsets.log`, `revsets.log-graph-prioritize`,
     /// `revsets.short-prefixes` and `ui.log-synthetic-elided-nodes`.
@@ -1872,7 +1893,11 @@ impl Repo {
     /// jj-lib's `add workspace '<name>'`, then `create initial working-copy commit in workspace
     /// <name>`, whose finish checks the new `@` out into the destination (and, colocated, resets
     /// the new worktree's Git HEAD and index). A destination given without a path separator
-    /// warns `jj.workspace_in_current_directory`.
+    /// warns `jj.workspace_in_current_directory`. Right after the workspace is created, its own
+    /// start-up environment is built as the CLI's `for_workable_repo` builds it (Story 9.54): its
+    /// alias, `immutable_heads()` and short-prefixes warnings are reported a SECOND time, as the
+    /// CLI prints them again, and the trailers and the finish use its immutable set, aliases and
+    /// short-prefixes expression.
     ///
     /// # Errors
     ///
@@ -1886,7 +1911,8 @@ impl Repo {
     ///   backend, or `git` failed); the created directory stays, as in the CLI.
     /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`]
     ///   — a `revisions` entry; the workspace exists by then.
-    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed, or the new
+    ///   workspace's start-up environment does not load (the workspace exists by then).
     /// - [`crate::MutateError::Config`] — `git.colocate` or `git.executable-path` is wrong-typed,
     ///   or the immutable set does not resolve; or (a non-empty `message_paragraphs`, Story 9.51)
     ///   a `templates.commit_trailers` that does not parse or render (the CLI's texts, see
@@ -2161,17 +2187,25 @@ impl Repo {
     /// unchanged — the combined descriptions, with the trailers `templates.commit_trailers` adds
     /// that none of them carries, rendered through `templates.draft_commit_description` and
     /// cleaned of its `JJ:` lines (Story 9.51) — call [`Repo::squash_plan`] first to show it to
-    /// the user, and pass the edited text back as `message`. Any other non-empty description gets
+    /// the user, and pass the edited text back as `edited_description` (Story 9.54), NOT as
+    /// `message`, which would add the trailers again. Any other non-empty description gets
     /// `templates.commit_trailers` added. The operation is `squash commits into <destination
     /// commit hex>`, the destination's id BEFORE the squash.
+    ///
+    /// `edited_description` is the CLI's `--editor` whose editor saves exactly that text: when
+    /// something is squashed, the description step runs as with the editor (trailers added — in
+    /// the single case even to an empty text — and `templates.draft_commit_description` rendered,
+    /// with their refusals and warnings), then the edited text is written, cleaned of `JJ:` lines
+    /// and blank edges like a saved buffer, with NO trailers added.
     ///
     /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
     ///
     /// # Errors
     ///
     /// - [`crate::MutateError::InvalidInput`] — `revision` combined with `from`/`into`, `message`
-    ///   combined with `use_destination_message`, a merge or root `revision` without
-    ///   `from`/`into`, or a `paths` entry that is not a valid repo path.
+    ///   combined with `use_destination_message`, `message` combined with `edited_description`
+    ///   ("--message cannot be used with an edited description"), a merge or root `revision`
+    ///   without `from`/`into`, or a `paths` entry that is not a valid repo path.
     /// - [`crate::MutateError::ChangeNotFound`] — `revision`, a `from` entry or `into` is
     ///   malformed, carried by no VISIBLE commit, or divergent.
     /// - [`crate::MutateError::Immutable`] — a source or the destination is inside the repo's
@@ -2197,7 +2231,8 @@ impl Repo {
     /// exactly what `squash` writes without `message` — when the abandoned sources and the
     /// destination carry two or more non-empty descriptions and neither `message` nor
     /// `use_destination_message` is set; `None` otherwise. Refuses exactly as `squash` refuses
-    /// and warns as it warns (`jj.paths_unmatched`).
+    /// (`message` with `edited_description` included) and warns as it warns
+    /// (`jj.paths_unmatched`); `edited_description` is otherwise ignored.
     ///
     /// Writes NO operation of its own — only the pre-verb snapshot's, like every read.
     ///
@@ -2237,15 +2272,23 @@ impl Repo {
     /// lines — by default the original description (with trailers) on both, or
     /// `template-aliases.default_commit_description` for an undescribed target.
     ///
+    /// `edited_selected_description` and `edited_remaining_description` (Story 9.54, both or
+    /// neither) are the CLI's bulk editor saving exactly those two sections: the editor path above
+    /// runs unchanged (its refusals and warnings included), then each commit gets its edited text,
+    /// cleaned of `JJ:` lines and blank edges like a saved section, with NO trailers added.
+    ///
     /// Selecting every change warns `jj.split_all_selected`, selecting none
     /// `jj.split_none_selected` (after a `jj.paths_unmatched` when the paths match nothing);
     /// the split runs either way. The operation is `split commit <target commit hex>`.
     ///
     /// # Errors
     ///
-    /// - [`crate::MutateError::InvalidInput`] — `paths` is empty or holds an invalid repo path,
-    ///   `parallel` is combined with a location, `onto` with `insert_after`/`insert_before`, the
-    ///   location resolves no parent, or it would create a loop.
+    /// - [`crate::MutateError::InvalidInput`] — `message` combined with an edited description
+    ///   ("--message cannot be used with an edited description"), only one of the two edited
+    ///   descriptions given ("an edited split needs both descriptions: the selected and the
+    ///   remaining"), `paths` is empty or holds an invalid repo path, `parallel` is combined with
+    ///   a location, `onto` with `insert_after`/`insert_before`, the location resolves no parent,
+    ///   or it would create a loop.
     /// - [`crate::MutateError::ChangeNotFound`] — `revision` or a location entry is malformed,
     ///   carried by no VISIBLE commit, or divergent.
     /// - [`crate::MutateError::Immutable`] — the target, or a child the location would

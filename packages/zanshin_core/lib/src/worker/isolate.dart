@@ -938,6 +938,26 @@ class ZanshinWorker {
     return repo_ffi_remotes.decodeRemotesEnvelopeInternal(bytes);
   }
 
+  /// Read the remotes `jj git push` without `--remote` would push to, for the
+  /// repo identified by [handleId] (Story 9.54): `git.push`, else the single
+  /// remote, else `origin` — each only when it exists, in remote-name order.
+  /// Empty when none matches and on a non-Git backend.
+  ///
+  /// Sends a [GitPushRemotesCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<GitPushRemotes>` bytes.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`). Completes with a [StateError] after [close]; the
+  /// close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.gitPushRemotes].
+  Future<WarnedList<String>> gitPushRemotes(int handleId) async {
+    final Uint8List bytes = await send(
+      GitPushRemotesCommand(commandId: _correlator.allocateId(), handleId: handleId),
+    );
+    return repo_ffi_remotes.decodeGitPushRemotesEnvelopeInternal(bytes);
+  }
+
   /// Read the effective `jj log` defaults for the repo identified by [handleId]
   /// (Story 4.9).
   ///
@@ -1285,7 +1305,9 @@ class ZanshinWorker {
   /// [revision] (`-r`), [from] (`--from`), [into] (`--into`), [paths],
   /// [message] (`-m`; `null` = no `-m`), [useDestinationMessage] (`-u`) and
   /// [keepEmptied] (`-k`) cross unchanged. Without [message], where the CLI
-  /// opens its editor, the combined text [squashPlan] returns is written.
+  /// opens its editor, the combined text [squashPlan] returns is written —
+  /// or [editedDescription] (Story 9.54), the user's edit of it, written
+  /// without trailers (with [message]: `jj.invalid_input`).
   ///
   /// Sends a [SquashCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<MutationResult>` bytes.
@@ -1305,9 +1327,11 @@ class ZanshinWorker {
     List<String>? message,
     bool useDestinationMessage = false,
     bool keepEmptied = false,
+    String? editedDescription,
   }) async {
     // See [bookmarkCreate] for why this guard is on the calling side.
     _rejectSquashNuls(revision, from, into, paths, message);
+    rejectInteriorNul(editedDescription, 'editedDescription');
     final Uint8List bytes = await send(
       SquashCommand(
         commandId: _correlator.allocateId(),
@@ -1319,6 +1343,7 @@ class ZanshinWorker {
         message: message,
         useDestinationMessage: useDestinationMessage,
         keepEmptied: keepEmptied,
+        editedDescription: editedDescription,
       ),
     );
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
@@ -1365,7 +1390,10 @@ class ZanshinWorker {
   ///
   /// [revision] (`-r`, `null` = `@`), [paths] (at least one), [message] (`-m`
   /// for the selected commit), [parallel] and the [onto] / [insertAfter] /
-  /// [insertBefore] locations (`null` = the flag not given) cross unchanged.
+  /// [insertBefore] locations (`null` = the flag not given) cross unchanged,
+  /// and so do [editedSelectedDescription] / [editedRemainingDescription]
+  /// (Story 9.54, both or neither: the user's edits of the two editor texts,
+  /// written without trailers).
   ///
   /// Sends a [SplitCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<SplitResult>` bytes.
@@ -1385,6 +1413,8 @@ class ZanshinWorker {
     List<String>? onto,
     List<String>? insertAfter,
     List<String>? insertBefore,
+    String? editedSelectedDescription,
+    String? editedRemainingDescription,
   }) async {
     // See [bookmarkCreate] for why this guard is on the calling side.
     rejectInteriorNul(revision, 'revision');
@@ -1393,6 +1423,8 @@ class ZanshinWorker {
     rejectInteriorNuls(onto ?? const [], 'onto');
     rejectInteriorNuls(insertAfter ?? const [], 'insertAfter');
     rejectInteriorNuls(insertBefore ?? const [], 'insertBefore');
+    rejectInteriorNul(editedSelectedDescription, 'editedSelectedDescription');
+    rejectInteriorNul(editedRemainingDescription, 'editedRemainingDescription');
     final Uint8List bytes = await send(
       SplitCommand(
         commandId: _correlator.allocateId(),
@@ -1404,6 +1436,8 @@ class ZanshinWorker {
         onto: onto,
         insertAfter: insertAfter,
         insertBefore: insertBefore,
+        editedSelectedDescription: editedSelectedDescription,
+        editedRemainingDescription: editedRemainingDescription,
       ),
     );
     return repo_ffi_squash_split.decodeSplitResultEnvelopeInternal(bytes);
@@ -2570,6 +2604,17 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
+        case GitPushRemotesCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitPushRemotesCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_remotes.zanshinGitPushRemotes(raw);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
         case LogDefaultsCommand(:final int handleId):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -2752,6 +2797,7 @@ void _workerEntry(_WorkerInit init) {
           :final List<String>? message,
           :final bool useDestinationMessage,
           :final bool keepEmptied,
+          :final String? editedDescription,
         ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -2768,6 +2814,7 @@ void _workerEntry(_WorkerInit init) {
               message: message,
               useDestinationMessage: useDestinationMessage,
               keepEmptied: keepEmptied,
+              editedDescription: editedDescription,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }
@@ -2810,6 +2857,8 @@ void _workerEntry(_WorkerInit init) {
           :final List<String>? onto,
           :final List<String>? insertAfter,
           :final List<String>? insertBefore,
+          :final String? editedSelectedDescription,
+          :final String? editedRemainingDescription,
         ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -2826,6 +2875,8 @@ void _workerEntry(_WorkerInit init) {
               onto: onto,
               insertAfter: insertAfter,
               insertBefore: insertBefore,
+              editedSelectedDescription: editedSelectedDescription,
+              editedRemainingDescription: editedRemainingDescription,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }

@@ -305,6 +305,41 @@ const CUSTOM_DRAFT_EDITOR: &[Step] = &[
     EDITOR_STEP,
 ];
 
+/// `ui.editor` = a script deleting every `Signed-off-by` line of the buffer (Story 9.54) — the
+/// CLI's editor run by a user who deletes the trailer; the bulk editor's `JJ: describe` headers
+/// stay, so no hidden-commit hash need be known.
+const DELETE_TRAILER_EDITOR_STEP: Step = Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "ui.editor",
+    r#"["sh", "-c", "grep -v Signed-off-by \"$1\" > \"$1.t\"; mv \"$1.t\" \"$1\"", "sh", "$path"]"#,
+]);
+
+/// [`TRAILERS_STEP`] plus [`DELETE_TRAILER_EDITOR_STEP`].
+const TRAILERS_DELETE_TRAILER_EDITOR: &[Step] = &[TRAILERS_STEP, DELETE_TRAILER_EDITOR_STEP];
+
+/// [`C2_TRAILERS`] plus [`DELETE_TRAILER_EDITOR_STEP`].
+const C2_DELETE_TRAILER_EDITOR_TRAILERS: &[Step] = &[
+    Step::Write("c2.txt", "c2\n"),
+    Step::Jj(&["util", "snapshot"]),
+    DELETE_TRAILER_EDITOR_STEP,
+    TRAILERS_STEP,
+];
+
+/// The pinned identity's `format_signed_off_by_trailer(self)` (`test_helpers::TEST_ENV`).
+const SOB: &str = "Signed-off-by: Zanshin <zanshin@localhost>";
+
+/// `templates.new_description = 'config("ui.color")'` (Story 9.54) — a jj-cli default no verb
+/// reads, rendered through a template's `config()`.
+const NEW_DESCRIPTION_CONFIG_UI_COLOR: &[Step] = &[Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "templates.new_description",
+    "'config(\"ui.color\")'",
+])];
+
 /// [`C2`] plus [`TRAILERS_STEP`].
 const C2_TRAILERS: &[Step] = &[
     Step::Write("c2.txt", "c2\n"),
@@ -373,6 +408,30 @@ const BROKEN_DRAFT_EDITOR: &[Step] = &[
 fn squash_outcome(repo: &mut zanshin_jj::Repo, options: &SquashOptions) -> Outcome {
     let result = repo.squash(options);
     zanshin_outcome(repo, &result)
+}
+
+/// `squash_plan`'s text through `edit`, sent back as the edited description (Story 9.54).
+fn squash_plan_edited(repo: &mut zanshin_jj::Repo, edit: fn(&str) -> String) -> Outcome {
+    let plan = repo.squash_plan(&SquashOptions::default()).expect("plan");
+    let _ = repo.take_warnings();
+    // WHY `expect`: without the plan's text the scenario would not test the round trip.
+    let text = plan.combined_description.expect("the plan names the editor text");
+    let options = SquashOptions {
+        edited_description: Some(edit(&text)),
+        ..SquashOptions::default()
+    };
+    squash_outcome(repo, &options)
+}
+
+/// `split c.txt` with both edited descriptions set to `text` (Story 9.54).
+fn split_edited(repo: &mut zanshin_jj::Repo, text: &str) -> Outcome {
+    let options = SplitOptions {
+        message: None,
+        edited_selected_description: Some(text.to_owned()),
+        edited_remaining_description: Some(text.to_owned()),
+        ..split_first(&["c.txt"])
+    };
+    split_outcome(repo, &options)
 }
 
 /// `Repo::split` with `options`.
@@ -1967,6 +2026,79 @@ pub fn scenarios() -> Vec<Scenario> {
                     zanshin_outcome(repo, &result)
                 },
                 |_| args(&["abandon"]),
+            )
+        },
+        // ── Story 9.54: the edited editor text, `config()`, workspace add's environment ──
+        Scenario {
+            // The plan's text minus its trailer line against the CLI's editor deleting it.
+            setup: TRAILERS_DELETE_TRAILER_EDITOR,
+            ..simple(
+                "squash_plan_edited_trailer_deleted",
+                |repo, _, _| {
+                    squash_plan_edited(repo, |text| {
+                        text.lines()
+                            .filter(|line| !line.starts_with("Signed-off-by"))
+                            .flat_map(|line| [line, "\n"])
+                            .collect()
+                    })
+                },
+                |_| args(&["squash"]),
+            )
+        },
+        Scenario {
+            // The plan's text unchanged against the CLI's editor saved unchanged: ONE trailer.
+            setup: TRAILERS_EDITOR,
+            ..simple(
+                "squash_plan_edited_unchanged",
+                |repo, _, _| squash_plan_edited(repo, ToOwned::to_owned),
+                |_| args(&["squash"]),
+            )
+        },
+        Scenario {
+            setup: C2_DELETE_TRAILER_EDITOR_TRAILERS,
+            ..simple(
+                "split_edited_trailer_deleted",
+                |repo, _, _| split_edited(repo, "C\n"),
+                |_| args(&["split", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: C2_EDITOR_TRAILERS,
+            ..simple(
+                "split_edited_unchanged",
+                |repo, _, _| split_edited(repo, &format!("C\n\n{SOB}\n")),
+                |_| args(&["split", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: NEW_DESCRIPTION_CONFIG_UI_COLOR,
+            ..simple(
+                "new_description_config_ui_color",
+                |repo, _, s| {
+                    let result = repo.new_change(&[s.change("@")], &[], &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["new"]),
+            )
+        },
+        Scenario {
+            init: NO_COLOCATE,
+            setup: BAD_TEMPLATE_ALIAS_ENTRY,
+            extra: Some(ws2_read_back),
+            ..simple(
+                "workspace_add_bad_template_alias",
+                |repo, _, _| add_outcome(repo, None, &[], &[], None, SparseInheritance::Copy),
+                |_| args(&["workspace", "add", "../ws2"]),
+            )
+        },
+        Scenario {
+            init: NO_COLOCATE,
+            setup: DIAGNOSED_SHORT_PREFIXES,
+            extra: Some(ws2_read_back),
+            ..simple(
+                "workspace_add_diagnosed_short_prefixes",
+                |repo, _, _| add_outcome(repo, None, &[], &[], None, SparseInheritance::Copy),
+                |_| args(&["workspace", "add", "../ws2"]),
             )
         },
     ]

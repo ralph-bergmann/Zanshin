@@ -137,6 +137,9 @@ void main() {
       expect(() => zanshinSplit(0, paths: const ['p'], onto: const [nul]), throwsArgumentError);
       expect(() => zanshinSplit(0, paths: const ['p'], insertAfter: const [nul]), throwsArgumentError);
       expect(() => zanshinSplit(0, paths: const ['p'], insertBefore: const [nul]), throwsArgumentError);
+      expect(() => zanshinSquash(0, editedDescription: nul), throwsArgumentError);
+      expect(() => zanshinSplit(0, paths: const ['p'], editedSelectedDescription: nul), throwsArgumentError);
+      expect(() => zanshinSplit(0, paths: const ['p'], editedRemainingDescription: nul), throwsArgumentError);
     });
   });
 }

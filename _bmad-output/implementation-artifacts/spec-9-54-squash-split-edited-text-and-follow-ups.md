@@ -2,7 +2,8 @@
 title: 'Story 9.54 — Edited editor text for squash/split, and three follow-ups of 9.51–9.53'
 type: 'feature'
 created: '2026-10-20'
-status: 'ready-for-dev'
+status: 'in-progress'
+baseline_revision: '942338fd777e6480e81b071b59908a5bcf939919'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:

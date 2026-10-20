@@ -42,6 +42,13 @@ Bookmark _remote(String name, {required int ahead, required int behind, String r
   synced: ahead == 0 && behind == 0,
 );
 
+/// [trackingStatusOf] with `origin` as the only push target unless [pushRemotes] says otherwise (Story 9.54).
+ProjectStatus? _tracking(
+  Iterable<TopologyRef> headRefs,
+  Iterable<Bookmark> bookmarks, {
+  Set<String> pushRemotes = const {'origin'},
+}) => trackingStatusOf(headRefs, bookmarks, pushRemotes: pushRemotes);
+
 void main() {
   group('helpers', () {
     test('the dot: conflict before dirty before clean', () {
@@ -70,19 +77,19 @@ void main() {
       final heads = <TopologyRef>[_ref('main'), _ref('main', remote: 'origin')];
 
       test('no remote rows, or only synced ones: none', () {
-        expect(trackingStatusOf(heads, <Bookmark>[_local('main')]), isNull);
-        expect(trackingStatusOf(heads, <Bookmark>[_local('main'), _remote('main', ahead: 0, behind: 0)]), isNull);
+        expect(_tracking(heads, <Bookmark>[_local('main')]), isNull);
+        expect(_tracking(heads, <Bookmark>[_local('main'), _remote('main', ahead: 0, behind: 0)]), isNull);
       });
 
       test("a remote row's behind is the local side ahead; its ahead is the local side behind", () {
-        expect(trackingStatusOf(heads, <Bookmark>[_remote('main', ahead: 0, behind: 2)]), ProjectStatus.ahead);
-        expect(trackingStatusOf(heads, <Bookmark>[_remote('main', ahead: 3, behind: 0)]), ProjectStatus.behind);
+        expect(_tracking(heads, <Bookmark>[_remote('main', ahead: 0, behind: 2)]), ProjectStatus.ahead);
+        expect(_tracking(heads, <Bookmark>[_remote('main', ahead: 3, behind: 0)]), ProjectStatus.behind);
       });
 
       test('both on one row, or split across two rows: diverged', () {
-        expect(trackingStatusOf(heads, <Bookmark>[_remote('main', ahead: 1, behind: 1)]), ProjectStatus.diverged);
+        expect(_tracking(heads, <Bookmark>[_remote('main', ahead: 1, behind: 1)]), ProjectStatus.diverged);
         expect(
-          trackingStatusOf(heads, <Bookmark>[
+          _tracking(heads, <Bookmark>[
             _remote('main', ahead: 1, behind: 0),
             _remote('main', remote: 'upstream', ahead: 0, behind: 1),
           ]),
@@ -90,7 +97,7 @@ void main() {
         );
         final twoNames = <TopologyRef>[_ref('main'), _ref('next')];
         expect(
-          trackingStatusOf(twoNames, <Bookmark>[
+          _tracking(twoNames, <Bookmark>[
             _remote('main', ahead: 1, behind: 0),
             _remote('next', ahead: 0, behind: 2),
           ]),
@@ -106,7 +113,7 @@ void main() {
           behind: RefDistance(lower: 0, upper: 0),
         );
         expect(
-          trackingStatusOf(heads, const <Bookmark>[
+          _tracking(heads, const <Bookmark>[
             Bookmark(name: 'main', target: 'k', kind: atLeastTen, conflicted: false, synced: false),
           ]),
           ProjectStatus.behind,
@@ -114,11 +121,11 @@ void main() {
       });
 
       test('the git remote, untracked rows and targeted rows without distances never count', () {
-        expect(trackingStatusOf(heads, <Bookmark>[_remote('main', remote: 'git', ahead: 1, behind: 1)]), isNull);
-        expect(trackingStatusOf(heads, <Bookmark>[_notCreatedYet('main', remote: 'git')]), isNull);
-        expect(trackingStatusOf(heads, <Bookmark>[_notCreatedYet('main', tracked: false)]), isNull);
+        expect(_tracking(heads, <Bookmark>[_remote('main', remote: 'git', ahead: 1, behind: 1)]), isNull);
+        expect(_tracking(heads, <Bookmark>[_notCreatedYet('main', remote: 'git')]), isNull);
+        expect(_tracking(heads, <Bookmark>[_notCreatedYet('main', tracked: false)]), isNull);
         expect(
-          trackingStatusOf(heads, const <Bookmark>[
+          _tracking(heads, const <Bookmark>[
             Bookmark(
               name: 'main',
               target: 'k',
@@ -138,29 +145,50 @@ void main() {
         );
       });
 
-      test('a tracked remote the bookmark was never pushed to reads ahead (Story 9.53)', () {
-        expect(trackingStatusOf(heads, <Bookmark>[_notCreatedYet('main', remote: 'upstream')]), ProjectStatus.ahead);
+      test('a push-target remote the bookmark was never pushed to reads ahead (Stories 9.53, 9.54)', () {
+        expect(_tracking(heads, <Bookmark>[_notCreatedYet('main')]), ProjectStatus.ahead);
         expect(
-          trackingStatusOf(heads, <Bookmark>[
-            _notCreatedYet('main', remote: 'upstream'),
+          _tracking(heads, <Bookmark>[_notCreatedYet('main', remote: 'upstream')], pushRemotes: {'upstream'}),
+          ProjectStatus.ahead,
+        );
+        expect(
+          _tracking(heads, <Bookmark>[
+            _notCreatedYet('main'),
             _remote('main', ahead: 1, behind: 0),
           ]),
           ProjectStatus.diverged,
         );
-        expect(trackingStatusOf(heads, <Bookmark>[_notCreatedYet('other')]), isNull);
+        expect(_tracking(heads, <Bookmark>[_notCreatedYet('other')]), isNull);
+      });
+
+      test('a remote that is no push target never reads ahead for a missing bookmark (Story 9.54)', () {
+        expect(_tracking(heads, <Bookmark>[_notCreatedYet('main', remote: 'upstream')]), isNull);
+        expect(_tracking(heads, <Bookmark>[_notCreatedYet('main')], pushRemotes: const {}), isNull);
+        expect(
+          _tracking(heads, <Bookmark>[
+            _notCreatedYet('main', remote: 'upstream'),
+            _remote('main', ahead: 1, behind: 0),
+          ]),
+          ProjectStatus.behind,
+        );
+        expect(
+          _tracking(heads, <Bookmark>[_remote('main', remote: 'upstream', ahead: 0, behind: 2)]),
+          ProjectStatus.ahead,
+          reason: 'the distances count for every tracked remote',
+        );
       });
 
       test('only local bookmark names on the heads count: remote-only refs and other names are ignored', () {
         expect(
-          trackingStatusOf(
+          _tracking(
             <TopologyRef>[_ref('main', remote: 'origin')],
             <Bookmark>[_remote('main', ahead: 1, behind: 1)],
           ),
           isNull,
         );
-        expect(trackingStatusOf(heads, <Bookmark>[_remote('other', ahead: 1, behind: 1)]), isNull);
+        expect(_tracking(heads, <Bookmark>[_remote('other', ahead: 1, behind: 1)]), isNull);
         expect(
-          trackingStatusOf(
+          _tracking(
             <TopologyRef>[_ref('main', kind: TopologyRefKind.tag)],
             <Bookmark>[
               _remote('main', ahead: 1, behind: 1),
@@ -173,11 +201,12 @@ void main() {
 
     group('statusFrom: what read() composes', () {
       final heads = <TopologyRef>[_ref('main')];
-      Future<ProjectStatus> clean(List<Bookmark> rows) => statusFrom(
+      Future<ProjectStatus> clean(List<Bookmark> rows, {List<String> pushRemotes = const ['origin']}) => statusFrom(
         conflict: ConflictState.clean,
         hasFileChanges: false,
         headRefs: heads,
         bookmarks: () async => rows,
+        pushRemotes: () async => pushRemotes,
       );
 
       test('a clean @ takes the tracking state of its bookmarks, else clean', () async {
@@ -188,19 +217,33 @@ void main() {
         expect(await clean(<Bookmark>[_local('main'), _notCreatedYet('main')]), ProjectStatus.ahead);
       });
 
-      test('a conflicted or dirty @ never reads the bookmarks', () async {
+      test('only a push target makes a missing remote bookmark ahead (Story 9.54)', () async {
+        final rows = <Bookmark>[_local('main'), _notCreatedYet('main', remote: 'upstream')];
+        expect(await clean(rows), ProjectStatus.clean);
+        expect(await clean(rows, pushRemotes: const ['upstream']), ProjectStatus.ahead);
+      });
+
+      test('a conflicted or dirty @ never reads the bookmarks or the push remotes', () async {
         Future<Iterable<Bookmark>> unread() => fail('bookmarks must not be read');
+        Future<Iterable<String>> unreadRemotes() => fail('push remotes must not be read');
         expect(
           await statusFrom(
             conflict: ConflictState.conflicted,
             hasFileChanges: false,
             headRefs: heads,
             bookmarks: unread,
+            pushRemotes: unreadRemotes,
           ),
           ProjectStatus.conflict,
         );
         expect(
-          await statusFrom(conflict: ConflictState.clean, hasFileChanges: true, headRefs: heads, bookmarks: unread),
+          await statusFrom(
+            conflict: ConflictState.clean,
+            hasFileChanges: true,
+            headRefs: heads,
+            bookmarks: unread,
+            pushRemotes: unreadRemotes,
+          ),
           ProjectStatus.dirty,
         );
       });

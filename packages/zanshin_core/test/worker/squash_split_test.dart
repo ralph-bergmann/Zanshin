@@ -190,7 +190,39 @@ void main() {
       expect((await repo.getChange(result.remainingChangeId)).description, 'C\n');
     });
 
+    test('the_edited_squash_description_crosses_and_is_written_cleaned_up', () async {
+      await repo.squash(editedDescription: '\nE\nJJ: dropped\n');
+      expect((await repo.getChange(ids[1])).description, 'E\n');
+    });
+
+    test('both_edited_split_descriptions_cross_the_buffer', () async {
+      final SplitResult result = await repo.split(
+        paths: const ['c.txt'],
+        editedSelectedDescription: 'S',
+        editedRemainingDescription: 'R',
+      );
+      expect((await repo.getChange(result.selectedChangeId)).description, 'S\n');
+      expect((await repo.getChange(result.remainingChangeId)).description, 'R\n');
+    });
+
+    test('edited_descriptions_refuse_with_a_message_or_alone', () async {
+      final Matcher invalidInput = throwsA(
+        isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input'),
+      );
+      await expectLater(repo.squash(message: const ['m'], editedDescription: 'E'), invalidInput);
+      await expectLater(repo.split(paths: const ['c.txt'], editedSelectedDescription: 'S'), invalidInput);
+    });
+
     test('interior_nuls_are_refused_on_the_calling_side', () async {
+      await expectLater(repo.squash(editedDescription: 'a\u0000b'), throwsArgumentError);
+      await expectLater(
+        repo.split(paths: const ['c.txt'], editedSelectedDescription: 'a\u0000b', editedRemainingDescription: 'R'),
+        throwsArgumentError,
+      );
+      await expectLater(
+        repo.split(paths: const ['c.txt'], editedSelectedDescription: 'S', editedRemainingDescription: 'a\u0000b'),
+        throwsArgumentError,
+      );
       await expectLater(repo.squash(paths: const ['a\u0000b']), throwsArgumentError);
       await expectLater(repo.squashPlan(message: const ['a\u0000b']), throwsArgumentError);
       await expectLater(repo.split(paths: const ['c.txt'], insertBefore: const ['a\u0000b']), throwsArgumentError);

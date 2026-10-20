@@ -120,4 +120,44 @@ void main() {
       );
     });
   });
+
+  group('decodeGitPushRemotesEnvelope decode contract (Story 9.54)', () {
+    Uint8List pushRemotes(List<String>? names) => fbs.EnvelopeObjectBuilder(
+      ok: true,
+      dataType: fbs.PayloadTypeId.GitPushRemotes,
+      data: fbs.GitPushRemotesObjectBuilder(names: names),
+    ).toBytes();
+
+    test('decodes the names in order, an empty list included', () {
+      expect(decodeGitPushRemotesEnvelope(pushRemotes(['origin', 'fork'])), ['origin', 'fork']);
+      expect(decodeGitPushRemotesEnvelope(pushRemotes([])), isEmpty);
+    });
+
+    test('an absent names vector is refused, not defaulted', () {
+      expect(
+        () => decodeGitPushRemotesEnvelope(pushRemotes(null)),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')),
+      );
+    });
+
+    test('throws on an error envelope and ffi.unknown on a wrong payload', () {
+      final Uint8List error = fbs.EnvelopeObjectBuilder(
+        ok: false,
+        error: fbs.FfiErrorObjectBuilder(code: 'jj.config_error', context: 'git.push'),
+      ).toBytes();
+      expect(
+        () => decodeGitPushRemotesEnvelope(error),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.config_error')),
+      );
+      final Uint8List wrong = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.RepoHandle,
+        data: fbs.RepoHandleObjectBuilder(handle: 0),
+      ).toBytes();
+      expect(
+        () => decodeGitPushRemotesEnvelope(wrong),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')),
+      );
+    });
+  });
 }

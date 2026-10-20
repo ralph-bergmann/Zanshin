@@ -22,7 +22,8 @@ import 'warning.dart';
 
 /// The `SquashRequest` both `zanshin_squash` and `zanshin_squash_plan` read —
 /// one field per `jj squash` flag. A `null` [message] stays ABSENT on the wire
-/// (no `-m`).
+/// (no `-m`), and so does a `null` [editedDescription] (no editor; only
+/// `zanshinSquash` sends one).
 Uint8List _squashRequest({
   required String? revision,
   required List<String> from,
@@ -31,12 +32,14 @@ Uint8List _squashRequest({
   required List<String>? message,
   required bool useDestinationMessage,
   required bool keepEmptied,
+  String? editedDescription,
 }) {
   rejectInteriorNul(revision, 'revision');
   rejectInteriorNuls(from, 'from');
   rejectInteriorNul(into, 'into');
   rejectInteriorNuls(paths, 'paths');
   rejectInteriorNuls(message ?? const [], 'message');
+  rejectInteriorNul(editedDescription, 'editedDescription');
   return fbs.SquashRequestObjectBuilder(
     kind: fbs.RequestKind.Squash,
     revision: revision,
@@ -46,6 +49,7 @@ Uint8List _squashRequest({
     message: message,
     useDestinationMessage: useDestinationMessage,
     keepEmptied: keepEmptied,
+    editedDescription: editedDescription,
   ).toBytes();
 }
 
@@ -62,6 +66,10 @@ Uint8List _squashRequest({
 /// `-m` — `null` is no `-m`, where the CLI's editor case writes the buffer
 /// saved unchanged (ask with [zanshinSquashPlan] first).
 /// [useDestinationMessage] is `-u`, [keepEmptied] is `-k`.
+/// [editedDescription] (Story 9.54) is the user's edit of the editor text —
+/// the CLI's `--editor` saving exactly that text: written cleaned up, with NO
+/// `templates.commit_trailers` added; with [message] it is refused
+/// (`jj.invalid_input`).
 Uint8List zanshinSquash(
   int rawHandle, {
   String? revision,
@@ -71,6 +79,7 @@ Uint8List zanshinSquash(
   List<String>? message,
   bool useDestinationMessage = false,
   bool keepEmptied = false,
+  String? editedDescription,
 }) {
   final Uint8List request = _squashRequest(
     revision: revision,
@@ -80,6 +89,7 @@ Uint8List zanshinSquash(
     message: message,
     useDestinationMessage: useDestinationMessage,
     keepEmptied: keepEmptied,
+    editedDescription: editedDescription,
   );
   return callWithRequest(request, (ptr, len) => zanshin_squash(rawHandle, ptr, len));
 }
@@ -120,6 +130,11 @@ Uint8List zanshinSquashPlan(
 /// description). [parallel] is `--parallel`; [onto] / [insertAfter] /
 /// [insertBefore] are `-o` / `-A` / `-B` — `null` is the flag not given, an
 /// empty list the flag given with no revision.
+/// [editedSelectedDescription] and [editedRemainingDescription] (Story 9.54,
+/// both or neither) are the user's edits of the two editor texts — the CLI's
+/// bulk editor saving exactly those sections: each written cleaned up, with NO
+/// trailers added. One alone, or either with [message], is refused
+/// (`jj.invalid_input`).
 Uint8List zanshinSplit(
   int rawHandle, {
   required List<String> paths,
@@ -129,6 +144,8 @@ Uint8List zanshinSplit(
   List<String>? onto,
   List<String>? insertAfter,
   List<String>? insertBefore,
+  String? editedSelectedDescription,
+  String? editedRemainingDescription,
 }) {
   rejectInteriorNul(revision, 'revision');
   rejectInteriorNuls(paths, 'paths');
@@ -136,6 +153,8 @@ Uint8List zanshinSplit(
   rejectInteriorNuls(onto ?? const [], 'onto');
   rejectInteriorNuls(insertAfter ?? const [], 'insertAfter');
   rejectInteriorNuls(insertBefore ?? const [], 'insertBefore');
+  rejectInteriorNul(editedSelectedDescription, 'editedSelectedDescription');
+  rejectInteriorNul(editedRemainingDescription, 'editedRemainingDescription');
   final Uint8List request = fbs.SplitRequestObjectBuilder(
     kind: fbs.RequestKind.Split,
     revision: revision,
@@ -145,6 +164,8 @@ Uint8List zanshinSplit(
     onto: onto,
     insertAfter: insertAfter,
     insertBefore: insertBefore,
+    editedSelectedDescription: editedSelectedDescription,
+    editedRemainingDescription: editedRemainingDescription,
   ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_split(rawHandle, ptr, len));
 }
