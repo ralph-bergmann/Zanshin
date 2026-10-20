@@ -36,6 +36,7 @@ use jj_lib::str_util::StringExpression;
 use jj_lib::transaction::Transaction;
 use jj_lib::workspace::{Workspace, WorkspaceInitError};
 
+use crate::cancel::CancelGuard;
 use crate::op_support::start_repo_transaction;
 use crate::remotes::ProgressCallback;
 use crate::repo::{creation_error, CreationOutcome};
@@ -248,9 +249,9 @@ fn add_gitignore(workspace: &Workspace, other: impl Fn(String) -> RepoError) -> 
 // ── clone ─────────────────────────────────────────────────────────────────────────
 
 /// [`crate::Repo::clone`]'s body: the CLI's `cmd_git_clone`.
-pub(crate) fn clone(options: &CloneOptions, progress: &ProgressFn) -> CreationOutcome {
+pub(crate) fn clone(options: &CloneOptions, progress: &ProgressFn, cancel: Option<&CancelGuard>) -> CreationOutcome {
     let mut sink = Warnings::default();
-    let result = clone_steps(options, progress, &mut sink);
+    let result = clone_steps(options, (progress, cancel), &mut sink);
     CreationOutcome {
         result,
         precondition: None,
@@ -264,9 +265,11 @@ fn clone_failed(reason: impl Into<String>) -> RepoError {
 }
 
 /// A failure of the clone's `git` subprocess (`git fetch`, `git remote show`) is a network error,
-/// as in `git_fetch`; any other fetch failure is a clone failure.
-fn fetch_error(e: GitFetchError) -> RepoError {
+/// as in `git_fetch` — or the cancel, when it failed after `cancel`'s token was cancelled (Story
+/// 9.52); any other fetch failure is a clone failure.
+fn fetch_error(e: GitFetchError, cancel: Option<&CancelGuard>) -> RepoError {
     match e {
+        GitFetchError::Subprocess(_) if crate::cancel::is_cancelled(cancel) => RepoError::Cancelled,
         GitFetchError::Subprocess(_) => RepoError::NetworkError {
             reason: mutate::flatten_chain(&e),
         },
@@ -292,9 +295,14 @@ struct ClonePlan<'a> {
     tags: Option<StringExpression>,
     options: &'a CloneOptions,
     progress: &'a ProgressFn,
+    cancel: Option<&'a CancelGuard>,
 }
 
-fn clone_steps(options: &CloneOptions, progress: &ProgressFn, sink: &mut Warnings) -> Result<Repo, RepoError> {
+fn clone_steps(
+    options: &CloneOptions,
+    (progress, cancel): (&ProgressFn, Option<&CancelGuard>),
+    sink: &mut Warnings,
+) -> Result<Repo, RepoError> {
     let startup = config::check_startup_stack()?;
     let remote: RemoteNameBuf = options.remote_name.as_deref().unwrap_or("origin").into();
     let destination = &options.destination;
@@ -336,6 +344,7 @@ fn clone_steps(options: &CloneOptions, progress: &ProgressFn, sink: &mut Warning
         tags,
         options,
         progress,
+        cancel,
     };
     let (mut cloned, working) = match clone_into_workspace(&plan, &root, sink) {
         Ok(done) => done,
@@ -531,7 +540,7 @@ fn fetch_new_remote(
     sink: &mut Warnings,
 ) -> Result<Option<(RefNameBuf, bool)>, RepoError> {
     let config = config::load_for_workspace(&cloned.workspace)?;
-    let subprocess_options = crate::environment::git_subprocess_options(&cloned.settings)
+    let subprocess_options = crate::environment::git_subprocess_options(&cloned.settings, plan.cancel)
         .map_err(|e| RepoError::from(config::value_error(&e)))?;
     let import_options = GitImportOptions {
         // "There may be a large number of new commits": never record synthetic predecessors.
@@ -549,6 +558,7 @@ fn fetch_new_remote(
 
     let mut tx = start_repo_transaction(&cloned.repo, cloned.workspace.workspace_name());
     let (default_branch, import_stats) = {
+        crate::cancel::watch_store(plan.cancel, tx.repo().store());
         let mut fetcher = GitFetch::new(tx.repo_mut(), subprocess_options, &import_options)
             .map_err(|e| clone_failed(e.to_string()))?;
         let refspecs = expand_fetch_refspecs(remote, ref_expr).map_err(|e| clone_failed(e.to_string()))?;
@@ -556,11 +566,17 @@ fn fetch_new_remote(
             operation: "clone",
             progress: plan.progress,
         };
+        // Story 9.52's checkpoints, before and after the git work: inside the clean-up scope, so a
+        // cancelled clone removes what it created.
+        crate::cancel::checkpoint(plan.cancel)?;
         fetcher
             .fetch(remote, refspecs, &mut callback, plan.options.depth)
-            .map_err(fetch_error)?;
+            .map_err(|e| fetch_error(e, plan.cancel))?;
         let import_stats = pollster::block_on(fetcher.import_refs()).map_err(|e| clone_failed(e.to_string()))?;
-        let default_branch = fetcher.get_default_branch(remote).map_err(fetch_error)?;
+        let default_branch = fetcher
+            .get_default_branch(remote)
+            .map_err(|e| fetch_error(e, plan.cancel))?;
+        crate::cancel::checkpoint(plan.cancel)?;
         (default_branch, import_stats)
     };
 
@@ -700,8 +716,17 @@ mod tests {
             RepoError::CloneFailed { reason } if reason == "Unexpected Git error when managing remotes"
         ));
         assert!(matches!(
-            fetch_error(GitFetchError::NoSuchRemote("origin".into())),
+            fetch_error(GitFetchError::NoSuchRemote("origin".into()), None),
             RepoError::CloneFailed { reason } if reason == "No git remote named 'origin'"
+        ));
+        // A cancel turns only a git failure into the cancel; any other failure passes through.
+        let token = u64::MAX - 1;
+        crate::cancel::register(token);
+        let guard = crate::cancel::attach(token).expect("attaches");
+        crate::cancel::cancel(token);
+        assert!(matches!(
+            fetch_error(GitFetchError::NoSuchRemote("origin".into()), Some(&guard)),
+            RepoError::CloneFailed { .. }
         ));
     }
 }

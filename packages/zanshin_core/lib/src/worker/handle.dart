@@ -24,6 +24,7 @@ import '../graph_layout/graph_grid_view.dart' show GraphGridView;
 import '../graph_layout/layout_request.dart'
     show LaneOrder, LayoutContractException, LayoutMode, defaultLaneOrder, defaultLayoutBudget, defaultLayoutMode;
 import 'isolate.dart';
+import 'network_operation.dart';
 import 'responses.dart';
 
 /// Main-isolate wrapper around an open jj repository (Model A, Story 3.9).
@@ -456,10 +457,15 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`,
-  /// `jj.network_error`, `jj.jj_lib_error`). A workspace with no git backend is
+  /// `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error`). A workspace with no git backend is
   /// `jj.not_a_git_repo` — not `jj.remote_not_found`, which now means only
   /// "no remote of that name".
-  Future<MutationResult> gitFetch(String remoteName) {
+  ///
+  /// Returns a [NetworkOperation] (Story 9.52): the fetch runs on a helper
+  /// isolate, so its `progress` arrives while `result` is pending, and
+  /// `cancel()` stops it (`jj.cancelled`, nothing written). Later calls on
+  /// this handle — [close] included — wait for it; other repos do not.
+  NetworkOperation<MutationResult> gitFetch(String remoteName) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
@@ -495,7 +501,13 @@ final class RepoHandle {
   /// `jj.push_ref_refused`, `jj.push_commit_rejected`, `jj.revset_parse_error`,
   /// `jj.revset_resolution_error`, `jj.config_error`, `jj.not_a_git_repo`,
   /// `jj.stale_working_copy`, `jj.jj_lib_error`).
-  Future<GitPushResult> gitPush({
+  ///
+  /// Returns a [NetworkOperation] (Story 9.52): the push runs on a helper
+  /// isolate, and `cancel()` stops it before the next remote — reported as
+  /// data, `failure.kind == PushFailureKind.cancelled`, nothing recorded, the
+  /// per-remote rows saying which remotes already got their refs. Later calls
+  /// on this handle wait for it.
+  NetworkOperation<GitPushResult> gitPush({
     List<String>? remotes,
     List<String> bookmarks = const [],
     List<String> tags = const [],

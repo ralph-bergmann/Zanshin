@@ -22,6 +22,11 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 whoami = { workspace = true }  # WHY: `config.rs`'s EnvBase layer + resolution-context hostname, exactly as the CLI's `ConfigEnv::from_environment`
 
+# WHY macOS-only: the descendant walk and environment read in `cancel.rs` are libproc / sysctl
+# calls; elsewhere a cancel sets the flag and the checkpoints only (Story 9.52).
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = { workspace = true }
+
 [dev-dependencies]
 # WHY the `testing` feature, DEV-only: `jj_lib::secret_backend::SecretBackend` is gated
 # behind it, and it is the ONLY thing in jj-lib that raises

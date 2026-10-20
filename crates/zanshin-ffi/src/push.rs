@@ -33,14 +33,15 @@ pub(crate) fn strings(v: Option<Vector<'_, ForwardsUOffset<&str>>>) -> Option<Ve
     v.map(|v| v.iter().map(ToOwned::to_owned).collect())
 }
 
-/// Parse a `GitPushRequest` buffer into owned [`GitPushArgs`]. `remotes` stays `None` when ABSENT
-/// (`--remote` not given); every other vector treats absence as not given.
+/// Parse a `GitPushRequest` buffer into owned [`GitPushArgs`] and its `cancel_token` (Story 9.52,
+/// `0` = none). `remotes` stays `None` when ABSENT (`--remote` not given); every other vector
+/// treats absence as not given.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `GitPushRequest`, or its `kind` is not
 ///   `GitPush`.
-fn read_push_request(data: *const u8, len: usize) -> Result<GitPushArgs, FfiErrorObj> {
+fn read_push_request(data: *const u8, len: usize) -> Result<(GitPushArgs, u64), FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only — the same discipline as `repo.rs`'s
     // readers: the slice is a local binding and only OWNED values leave this function.
@@ -48,7 +49,7 @@ fn read_push_request(data: *const u8, len: usize) -> Result<GitPushArgs, FfiErro
     let req = flatbuffers::root_with_opts::<fbs::GitPushRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
     expect_request_kind(req.kind(), fbs::RequestKind::GitPush)?;
-    Ok(GitPushArgs {
+    let args = GitPushArgs {
         remotes: strings(req.remotes()),
         bookmarks: strings(req.bookmarks()).unwrap_or_default(),
         tags: strings(req.tags()).unwrap_or_default(),
@@ -63,7 +64,8 @@ fn read_push_request(data: *const u8, len: usize) -> Result<GitPushArgs, FfiErro
         named: strings(req.named()).unwrap_or_default(),
         dry_run: req.dry_run(),
         options: strings(req.options()).unwrap_or_default(),
-    })
+    };
+    Ok((args, req.cancel_token()))
 }
 
 // ── Payload builder ──────────────────────────────────────────────────────────────
@@ -99,6 +101,7 @@ fn failure_kind_of(kind: PushFailureKind) -> fbs::PushFailureKind {
         PushFailureKind::CommitRejected => fbs::PushFailureKind::CommitRejected,
         PushFailureKind::SomeRefsFailed => fbs::PushFailureKind::SomeRefsFailed,
         PushFailureKind::PushError => fbs::PushFailureKind::PushError,
+        PushFailureKind::Cancelled => fbs::PushFailureKind::Cancelled,
     }
 }
 
@@ -288,9 +291,14 @@ pub fn ok_git_push_result(outcome: &GitPushOutcome, report: &CallReport) -> Vec<
 /// `operation = "push"`, tagged with the session's `session_id` (push progress arrives mostly as
 /// sideband text, so there may be none).
 ///
+/// `cancel_token` (Story 9.52) is `0` (not cancellable) or a token from `zanshin_network_token`;
+/// `zanshin_network_cancel` stops the push before the next remote's git push (and kills a running
+/// one). Once every remote's git push has run, the push finishes normally.
+///
 /// Returns a `FlatBuffers` `Envelope` carrying a `GitPushResult` payload on success — also when the
 /// push failed after it started (`GitPushResult.failure`: a lease failure, a remote rejection, an
-/// unreachable remote; `recorded` says whether Undo applies).
+/// unreachable remote, a cancel — kind `Cancelled`, nothing recorded, the per-remote data saying
+/// which remotes already got their refs; `recorded` says whether Undo applies).
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -322,7 +330,8 @@ pub fn ok_git_push_result(outcome: &GitPushOutcome, report: &CallReport) -> Vec<
 pub unsafe extern "C" fn zanshin_git_push(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_git_push", handle);
     let buf = catch(|| {
-        let args = read_push_request(data, len)?;
+        let (args, cancel_token) = read_push_request(data, len)?;
+        let cancel = zanshin_jj::cancel::attach(cancel_token);
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
         let session_id = session.session_id;
@@ -334,7 +343,7 @@ pub unsafe extern "C" fn zanshin_git_push(handle: u64, data: *const u8, len: usi
                 &e.message,
             ));
         };
-        let result = session.repo.git_push(&args, &progress);
+        let result = session.repo.git_push(&args, &progress, cancel.as_ref());
         precondition_envelope(&mut session.repo, result, map_mutate_err, ok_git_push_result)
     });
     vec_into_token(buf)
@@ -463,6 +472,7 @@ mod tests {
             (PushFailureKind::CommitRejected, fbs::PushFailureKind::CommitRejected),
             (PushFailureKind::SomeRefsFailed, fbs::PushFailureKind::SomeRefsFailed),
             (PushFailureKind::PushError, fbs::PushFailureKind::PushError),
+            (PushFailureKind::Cancelled, fbs::PushFailureKind::Cancelled),
         ] {
             assert_eq!(failure_kind_of(kind), wire);
         }
@@ -500,6 +510,7 @@ mod tests {
                     named: Some(named),
                     dry_run: on("dry_run"),
                     options: Some(options),
+                    cancel_token: 42,
                 },
             );
             b.finish(req, None);
@@ -507,7 +518,9 @@ mod tests {
         }
         let read = |flag| {
             let bytes = request(flag);
-            read_push_request(bytes.as_ptr(), bytes.len()).expect("valid request")
+            let (args, cancel_token) = read_push_request(bytes.as_ptr(), bytes.len()).expect("valid request");
+            assert_eq!(cancel_token, 42);
+            args
         };
         let lists = GitPushArgs {
             remotes: Some(vec!["r".to_owned()]),

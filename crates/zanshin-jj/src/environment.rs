@@ -103,12 +103,22 @@ fn var_os_in(store: &OnceLock<EnvMap>, name: &str) -> Option<OsString> {
 /// LAST and never clears the inherited environment, so the adopted `PATH` also selects which
 /// `git` runs.
 ///
+/// A verb that carries a cancel token (Story 9.52) adds its [`crate::cancel::CancelGuard::env_pair`]
+/// to the map, so every git it spawns — and git's helpers, which inherit it — can be found and
+/// killed by a cancel; a call without a token adds nothing.
+///
 /// # Errors
 ///
 /// `git.executable-path` does not read (`GitSubprocessOptions::from_settings`).
-pub(crate) fn git_subprocess_options(settings: &UserSettings) -> Result<GitSubprocessOptions, ConfigGetError> {
+pub(crate) fn git_subprocess_options(
+    settings: &UserSettings,
+    cancel: Option<&crate::cancel::CancelGuard>,
+) -> Result<GitSubprocessOptions, ConfigGetError> {
     let mut options = GitSubprocessOptions::from_settings(settings)?;
     options.environment = git_environment(ADOPTED.get());
+    options
+        .environment
+        .extend(cancel.map(crate::cancel::CancelGuard::env_pair));
     Ok(options)
 }
 

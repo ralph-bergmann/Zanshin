@@ -44,6 +44,7 @@ jj-lib = { version = "=0.46.0", features = ["watchman"] }  # WHY: pre-1.0 exact-
 # `["watchman", "git"]`). Bump it together with `jj-lib` at every pin bump (project-context.md
 # § zanshin-jj, "Pin bump").
 jj-cli = "=0.46.0"
+libc = "=0.2.186"  # WHY: `zanshin-jj/src/cancel.rs` (Story 9.52) walks our descendant processes (`proc_listchildpids`), reads their environment (`sysctl(KERN_PROCARGS2)`) and signals them (`kill`) to cancel a network verb — jj-lib spawns git with no cancel hook. Exact-pinned to the version already in Cargo.lock as a transitive (deny.toml forbids wildcards)
 notify-debouncer-full = "=0.7.0"  # WHY: watcher core; re-exports notify — no separate notify dep needed; pre-1.0 exact-pin (AD-5)
 pollster = "0.3"
 rand_chacha = "=0.10.0"  # WHY: `SecureConfig::load_config` takes a `&mut ChaCha20Rng` by concrete type — the single call site is `zanshin-jj/src/config.rs::SecureLayer::create_path`. It also re-exports `rand_core`, which is where `SeedableRng::from_seed` lives, so no separate `rand`/`rand_core` dependency is needed (and `rand` is deliberately NOT added: `rand::make_rng()` panics). Exact-pinned to the version already in Cargo.lock as a jj-lib transitive

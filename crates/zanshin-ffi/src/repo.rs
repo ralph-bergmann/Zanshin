@@ -25,12 +25,13 @@ use crate::envelope::{
     catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, missing_field,
     ok_absorb_result, ok_empty, ok_mutation_result, ok_repo_handle, precondition_envelope, reject_null_request,
     session_from_handle, CallReport, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO,
-    JJ_BOOKMARK_EXISTS, JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND, JJ_CONCURRENT_WORKING_COPY,
-    JJ_CONFIG_ERROR, JJ_CONVERT_FAILED, JJ_DESTINATION_NOT_EMPTY, JJ_DETECT_FAILED, JJ_GIT_REPO_EXISTS,
-    JJ_GIT_WORKTREE_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_UNDO,
-    JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY, JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED, JJ_PUSH_COMMIT_REJECTED,
-    JJ_PUSH_REF_REFUSED, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND,
-    JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, JJ_UNDO_CROSS_WORKSPACE, JJ_WORKSPACE_EXISTS, WATCHER_IO_ERROR,
+    JJ_BOOKMARK_EXISTS, JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CANCELLED, JJ_CHANGE_NOT_FOUND,
+    JJ_CONCURRENT_WORKING_COPY, JJ_CONFIG_ERROR, JJ_CONVERT_FAILED, JJ_DESTINATION_NOT_EMPTY, JJ_DETECT_FAILED,
+    JJ_GIT_REPO_EXISTS, JJ_GIT_WORKTREE_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
+    JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY, JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED,
+    JJ_PUSH_COMMIT_REJECTED, JJ_PUSH_REF_REFUSED, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND,
+    JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, JJ_UNDO_CROSS_WORKSPACE, JJ_WORKSPACE_EXISTS,
+    WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -65,6 +66,12 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
             report: None,
             code: JJ_NETWORK_ERROR.to_owned(),
             context: Some(reason),
+        },
+        // Story 9.52: the clone's cancel token was cancelled.
+        RepoError::Cancelled => FfiErrorObj {
+            report: None,
+            code: JJ_CANCELLED.to_owned(),
+            context: Some("Cancelled".to_owned()),
         },
         RepoError::ConvertFailed { reason } => FfiErrorObj {
             report: None,
@@ -148,6 +155,7 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         }
         MutateError::RemoteNotFound { name } => (JJ_REMOTE_NOT_FOUND, Some(name)),
         MutateError::NetworkError { reason } => (JJ_NETWORK_ERROR, Some(reason)),
+        MutateError::Cancelled => (JJ_CANCELLED, Some("Cancelled".to_owned())),
         MutateError::RemoteExists { name } => (JJ_REMOTE_EXISTS, Some(name)),
         MutateError::RemoteNonstandardConfig { name } => (JJ_REMOTE_NONSTANDARD_CONFIG, Some(name)),
         // No `context`: this variant names no path and no remote — the fault is the whole
@@ -384,22 +392,23 @@ fn read_init_request(data: *const u8, len: usize) -> Result<InitOptions, FfiErro
     })
 }
 
-/// Parse a `RepoCloneRequest` buffer into owned [`CloneOptions`] (Story 9.20). ABSENT
-/// `branches` / `tags` are the flags not given; a present-empty one is a value.
+/// Parse a `RepoCloneRequest` buffer into owned [`CloneOptions`] (Story 9.20) and its
+/// `cancel_token` (Story 9.52, `0` = none). ABSENT `branches` / `tags` are the flags not given; a
+/// present-empty one is a value.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `RepoCloneRequest`, its `kind` is not
 ///   `RepoClone`, or `object_hash` is out of range.
 /// - `jj.invalid_input` — `source` or `destination` is absent, or both colocation flags are set.
-fn read_clone_request(data: *const u8, len: usize) -> Result<CloneOptions, FfiErrorObj> {
+fn read_clone_request(data: *const u8, len: usize) -> Result<(CloneOptions, u64), FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };
     let req = flatbuffers::root_with_opts::<fbs::RepoCloneRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
     expect_request_kind(req.kind(), fbs::RequestKind::RepoClone)?;
-    Ok(CloneOptions {
+    let options = CloneOptions {
         source: req.source().ok_or_else(|| missing_field("source"))?.to_owned(),
         destination: req.destination().ok_or_else(|| missing_field("destination"))?.into(),
         remote_name: req.remote_name().map(ToOwned::to_owned),
@@ -408,7 +417,8 @@ fn read_clone_request(data: *const u8, len: usize) -> Result<CloneOptions, FfiEr
         branches: crate::push::strings(req.branches()),
         tags: crate::push::strings(req.tags()),
         object_hash: object_hash(req.object_hash())?,
-    })
+    };
+    Ok((options, req.cancel_token()))
 }
 
 fn map_detect_err(e: &DetectError) -> FfiErrorObj {
@@ -533,9 +543,48 @@ fn spawn_dispatch_thread(session_id: u64, rx: Receiver<WatcherEvent>) -> std::io
 /// stale queued event could be misattributed to the NEW session (rawToId ABA, 3-6 review; fixed
 /// 2026-07-04). A monotonic counter can never collide with a later session. A clone allocates its
 /// id BEFORE it runs (Story 9.20), so its progress events carry the id its handle will get.
+/// Network cancel tokens come from the same counter (Story 9.52), so a clone can use its token
+/// as its session id.
 fn next_session_id() -> u64 {
     static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
     NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Allocate a cancel token for one network call — `zanshin_git_fetch`, `zanshin_git_push` or
+/// `zanshin_repo_clone` (Story 9.52).
+///
+/// The token is a fresh id from the session-id space (never `0`, never reused, never a live
+/// session's id), registered until the call it is passed to ends; `zanshin_network_cancel`
+/// cancels it. A clone uses its token as the new session's id, so the caller can route the
+/// clone's progress before the clone returns. A token that is never passed to a call stays
+/// registered (a few bytes) until the process ends.
+///
+/// Infallible: returns `0` (no token) only if the allocation panicked.
+#[no_mangle]
+pub extern "C" fn zanshin_network_token() -> u64 {
+    std::panic::catch_unwind(|| {
+        let token = next_session_id();
+        zanshin_jj::cancel::register(token);
+        token
+    })
+    .unwrap_or(0)
+}
+
+/// Cancel the network call running — or about to run — under `token` (Story 9.52).
+///
+/// The token's flag is set; the call refuses at its next checkpoint (`jj.cancelled` for a fetch
+/// or clone, `GitPushResult.failure.kind = Cancelled` for a push). While the call runs, the
+/// call's `git` processes among this process's descendants — and their descendants, git's
+/// helpers — get SIGTERM, and SIGKILL if still alive 2 s after the cancel. A process is the
+/// call's when its environment carries `ZANSHIN_CANCEL_TOKEN=<token>`; when its environment is
+/// hidden (Apple's platform binaries, e.g. `/usr/bin/git`), when its arguments hold
+/// `--git-dir <dir>` for the call's repository and exactly one live call watches that dir. A git
+/// without a token on that dir (a concurrent `workspace add` worktree) is not told apart. Idempotent; a finished, unknown or `0` token is a no-op. Callable from any thread.
+///
+/// Infallible and `catch_unwind`-wrapped, like `zanshin_log`.
+#[no_mangle]
+pub extern "C" fn zanshin_network_cancel(token: u64) {
+    let _ = std::panic::catch_unwind(|| zanshin_jj::cancel::cancel(token));
 }
 
 /// Construct a [`RepoSession`] for `repo`, arm its filesystem watcher, and spawn the per-session
@@ -736,7 +785,9 @@ pub unsafe extern "C" fn zanshin_repo_init(data: *const u8, len: usize) -> *mut 
 ///
 /// Progress is dispatched over the process-global event sink as `Progress` events with
 /// `operation = "clone"`, tagged with the session id the new handle gets (allocated before the
-/// clone runs), exactly like `zanshin_git_fetch`'s.
+/// clone runs), exactly like `zanshin_git_fetch`'s. With a live `cancel_token` (Story 9.52, a
+/// token from `zanshin_network_token`) that id IS the token, so the caller can route the progress
+/// before the clone returns; `zanshin_network_cancel` cancels the clone.
 ///
 /// A failure inside the clone's clean-up scope (creating the workspace, adding the remote, the
 /// fetch) removes `.jj` (and `.git` when colocated), then the destination iff the call created it;
@@ -756,6 +807,9 @@ pub unsafe extern "C" fn zanshin_repo_init(data: *const u8, len: usize) -> *mut 
 /// - `jj.network_error` — the fetch's or the default-branch query's `git` subprocess failed (an
 ///   unreachable source, an authentication failure, `git` not runnable); the git failure (jj-lib's
 ///   message with its cause) in `context`.
+/// - `jj.cancelled` — `cancel_token` was cancelled (`zanshin_network_cancel`, Story 9.52) before
+///   or after the fetch's git work, or git failed after the cancel killed it; inside the clean-up
+///   scope, so what the clone created is removed. `context` is "Cancelled". Never without a token.
 /// - `jj.jj_lib_error` — the destination cannot be created, or the creation, registering the
 ///   remote (e.g. an unparseable source URL), another fetch failure (e.g. rejected ref updates),
 ///   the import or the checkout failed; detail in `context`.
@@ -785,8 +839,15 @@ pub unsafe extern "C" fn zanshin_repo_init(data: *const u8, len: usize) -> *mut 
 pub unsafe extern "C" fn zanshin_repo_clone(data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_repo_clone");
     let buf = catch(|| {
-        let options = read_clone_request(data, len)?;
-        let session_id = next_session_id();
+        let (options, cancel_token) = read_clone_request(data, len)?;
+        let cancel = zanshin_jj::cancel::attach(cancel_token);
+        // Story 9.52: a live token is the new session's id, so the caller can route the clone's
+        // progress before it returns; an unknown or finished one could collide, so it is not.
+        let session_id = if cancel.is_some() {
+            cancel_token
+        } else {
+            next_session_id()
+        };
         let progress = move |e: zanshin_jj::ProgressEvent| {
             events::dispatch(events::progress_to_envelope(
                 session_id,
@@ -795,7 +856,7 @@ pub unsafe extern "C" fn zanshin_repo_clone(data: *const u8, len: usize) -> *mut
                 &e.message,
             ));
         };
-        creation_envelope_for(Repo::clone(&options, &progress), session_id)
+        creation_envelope_for(Repo::clone(&options, &progress, cancel.as_ref()), session_id)
     });
     vec_into_token(buf)
 }
@@ -1235,6 +1296,10 @@ pub unsafe extern "C" fn zanshin_undo(handle: u64, allow_cross_workspace: bool) 
 /// separate per-op registry; the caller correlates by `session_id`, exactly like a
 /// `WatcherEvent`.
 ///
+/// `cancel_token` (Story 9.52) is `0` (not cancellable) or a token from
+/// `zanshin_network_token`; `zanshin_network_cancel` cancels the fetch, and the token ends with
+/// this call.
+///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
 /// Its `abandoned_change_ids` carries the commits the import abandoned because they
 /// became unreachable in git (what `git.abandon-unreachable-commits` governs) — jj-lib's
@@ -1253,6 +1318,9 @@ pub unsafe extern "C" fn zanshin_undo(handle: u64, allow_cross_workspace: bool) 
 ///   `git.abandon-unreachable-commits`/`git.record-synthetic-predecessors` has a
 ///   non-boolean value; both are read per call rather than hardcoded.
 /// - `jj.network_error` — the underlying `git` subprocess failed; detail in `context`.
+/// - `jj.cancelled` — `cancel_token` was cancelled (`zanshin_network_cancel`, Story 9.52) before
+///   the git work, after it but before the import, or git failed after the cancel killed it; no
+///   operation is committed. `context` is "Cancelled". Never without a token.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — any other underlying jj-lib failure; detail in `context`.
@@ -1268,9 +1336,15 @@ pub unsafe extern "C" fn zanshin_undo(handle: u64, allow_cross_workspace: bool) 
 /// returns — AR-P-5 inbound rule). Rust only borrows it for the duration of the call.
 /// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
 #[no_mangle]
-pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, remote_name: *const c_char) -> *mut ZanshinBuf {
+pub unsafe extern "C" fn zanshin_git_fetch(
+    handle: u64,
+    remote_name: *const c_char,
+    cancel_token: u64,
+) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_git_fetch", handle);
     let buf = catch(|| {
+        // Attached first, so a refusal below still ends the token.
+        let cancel = zanshin_jj::cancel::attach(cancel_token);
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
         // SAFETY: remote_name is a caller-owned NUL-terminated C string (Dart allocates + frees).
@@ -1286,7 +1360,7 @@ pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, remote_name: *const c_ch
                 &e.message,
             ));
         };
-        let result = session.repo.git_fetch(&remote_name, &progress);
+        let result = session.repo.git_fetch(&remote_name, &progress, cancel.as_ref());
         precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
@@ -1908,11 +1982,13 @@ mod tests {
                 branches: Some(branches),
                 tags: Some(tags),
                 object_hash: fbs::ObjectHash::Sha1,
+                cancel_token: 9,
             },
         );
         b.finish(req, None);
         let bytes = b.finished_data();
-        let clone = read_clone_request(bytes.as_ptr(), bytes.len()).expect("valid clone request");
+        let (clone, cancel_token) = read_clone_request(bytes.as_ptr(), bytes.len()).expect("valid clone request");
+        assert_eq!(cancel_token, 9);
         assert_eq!(clone.source, "file:///src");
         assert_eq!(clone.destination, std::path::PathBuf::from("/x/dest"));
         assert_eq!(clone.remote_name.as_deref(), Some("up"));

@@ -3,8 +3,9 @@
 //! Story 9.20: `zanshin_git_push` on the wire — the `GitPushRequest` reader (absent vs
 //! present-empty, a malformed buffer, a wrong kind, null pointers), the zero handle, a refusal
 //! envelope, a `GitPushResult` after a real push to a local bare remote — and
-//! `zanshin_repo_clone`'s progress events carrying the new handle's session id. No network: the
-//! remotes are local bare repositories.
+//! `zanshin_repo_clone`'s progress events carrying the new handle's session id. Story 9.52 adds
+//! the cancel tokens: a clone whose token is its session id, a cancelled clone and a cancelled
+//! push. No network: the remotes are local bare repositories.
 
 use std::ffi::CString;
 use std::fs;
@@ -19,8 +20,10 @@ use zanshin_ffi::events::{zanshin_events_register, zanshin_events_unregister};
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::push::zanshin_git_push;
-use zanshin_ffi::repo::{zanshin_repo_clone, zanshin_repo_close, zanshin_repo_open};
-use zanshin_ffi::{FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_INVALID_INPUT};
+use zanshin_ffi::repo::{
+    zanshin_network_cancel, zanshin_network_token, zanshin_repo_clone, zanshin_repo_close, zanshin_repo_open,
+};
+use zanshin_ffi::{FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CANCELLED, JJ_INVALID_INPUT};
 
 /// Reads the envelope a token carries and frees it.
 unsafe fn read_and_free(token: *mut ZanshinBuf) -> Vec<u8> {
@@ -117,6 +120,7 @@ fn pushable(parent: &Path, bare: &Path) -> PathBuf {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     )
     .result
     .expect("clone");
@@ -313,4 +317,127 @@ fn clone_progress_carries_the_new_handles_session_id() {
         assert_eq!(event.operation(), Some("clone"));
     }
     close(raw);
+}
+
+/// A `RepoCloneRequest` of `src` into `target`, not colocated, under `cancel_token`.
+fn clone_request(src: &Path, target: &Path, cancel_token: u64) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::new();
+    let source = b.create_string(&format!("file://{}", src.display()));
+    let destination = b.create_string(target.to_str().unwrap());
+    let req = fbs::RepoCloneRequest::create(
+        &mut b,
+        &fbs::RepoCloneRequestArgs {
+            kind: fbs::RequestKind::RepoClone,
+            source: Some(source),
+            destination: Some(destination),
+            no_colocate: true,
+            cancel_token,
+            ..Default::default()
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// Story 9.52: tokens are fresh non-zero ids; cancelling `0`, an unknown or a finished token is a
+/// no-op.
+#[test]
+fn network_tokens_are_fresh_and_cancelling_an_unknown_one_is_a_no_op() {
+    let first = zanshin_network_token();
+    let second = zanshin_network_token();
+    assert!(first != 0 && second > first);
+    zanshin_network_cancel(0);
+    zanshin_network_cancel(u64::MAX);
+    zanshin_network_cancel(first);
+    zanshin_network_cancel(first);
+}
+
+/// Story 9.52: a clone with a token uses it as the new session's id, so its progress events —
+/// dispatched while the clone runs — carry the token.
+#[test]
+fn a_clone_with_a_token_uses_it_as_its_session_id() {
+    test_helpers::pin_test_env();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let (src, _bare) = remote(tmp.path());
+    let token = zanshin_network_token();
+    let request = clone_request(&src, &tmp.path().join("cloned"), token);
+    let _sink_guard = SINK_GUARD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    received().clear();
+    zanshin_events_register(Some(sink));
+    let bytes = unsafe { read_and_free(zanshin_repo_clone(request.as_ptr(), request.len())) };
+    let env = envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let handle = env.data_as_repo_handle().expect("RepoHandle");
+    assert_eq!(handle.session_id(), token);
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut progress = 0;
+    while progress == 0 && Instant::now() < deadline {
+        for raw in std::mem::take(&mut *received()) {
+            if envelope(&raw)
+                .data_as_progress()
+                .is_some_and(|p| p.session_id() == token)
+            {
+                progress += 1;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    zanshin_events_unregister();
+    assert!(progress > 0, "the clone's progress carries its token");
+    close(handle.handle());
+}
+
+/// Story 9.52: a clone whose token was cancelled before it ran refuses as `jj.cancelled` and
+/// removes the folder it created.
+#[test]
+fn a_cancelled_clone_refuses_as_cancelled() {
+    test_helpers::pin_test_env();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let (src, _bare) = remote(tmp.path());
+    let target = tmp.path().join("cancelled");
+    let token = zanshin_network_token();
+    zanshin_network_cancel(token);
+    let request = clone_request(&src, &target, token);
+    let bytes = unsafe { read_and_free(zanshin_repo_clone(request.as_ptr(), request.len())) };
+    let env = envelope(&bytes);
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_CANCELLED));
+    assert_eq!(env.error().and_then(|e| e.context()), Some("Cancelled"));
+    assert!(!target.exists(), "the clone's clean-up removed what it created");
+}
+
+/// Story 9.52: a push whose token was cancelled before it ran reports the cancel as data —
+/// `failure.kind = Cancelled`, nothing recorded, no remote finished.
+#[test]
+fn a_cancelled_push_reports_the_cancel_as_data() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let (_src, bare) = remote(tmp.path());
+    let root = pushable(tmp.path(), &bare);
+    let (handle, _) = open(&root);
+    let token = zanshin_network_token();
+    zanshin_network_cancel(token);
+    let request = {
+        let mut b = FlatBufferBuilder::new();
+        let req = fbs::GitPushRequest::create(
+            &mut b,
+            &fbs::GitPushRequestArgs {
+                kind: fbs::RequestKind::GitPush,
+                cancel_token: token,
+                ..Default::default()
+            },
+        );
+        b.finish(req, None);
+        b.finished_data().to_vec()
+    };
+    let bytes = push(handle, &request);
+    let env = envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let result = env.data_as_git_push_result().expect("GitPushResult");
+    let failure = result.failure().expect("failed");
+    assert_eq!(failure.kind(), fbs::PushFailureKind::Cancelled);
+    assert_eq!(failure.message(), Some("Cancelled"));
+    assert!(!result.recorded());
+    assert!(!result.remotes().expect("remotes").get(0).finished());
+    close(handle);
 }

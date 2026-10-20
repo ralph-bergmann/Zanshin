@@ -161,6 +161,12 @@ pub const JJ_GIT_WORKTREE_FAILED: &str = "jj.git_worktree_failed";
 /// `repo.rs::zanshin_repo_clone` when its fetch's `git` subprocess fails (Story 9.20 closing run,
 /// `map_repo_err`). (`zanshin_git_push` reports such a failure as data — `GitPushResult.failure`.)
 pub const JJ_NETWORK_ERROR: &str = "jj.network_error";
+/// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` and `repo.rs::zanshin_repo_clone` when the
+/// call's cancel token was cancelled through `zanshin_network_cancel` (Story 9.52): the verb
+/// refused at a checkpoint, or its `git` failed after the cancel killed it. `context` is
+/// "Cancelled". A call without a token never emits it; `zanshin_git_push` reports a cancel as
+/// data (`GitPushResult.failure.kind = Cancelled`).
+pub const JJ_CANCELLED: &str = "jj.cancelled";
 /// AR-P-4: emitted by `repo.rs` when a filesystem I/O error (e.g. EACCES, ENOTDIR) prevented repo-kind classification.
 pub const JJ_DETECT_FAILED: &str = "jj.detect_failed";
 /// AR-P-4: emitted by `repo.rs` when the path is already a jj workspace (`.jj/` present); convert skipped.

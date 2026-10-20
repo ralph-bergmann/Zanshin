@@ -440,6 +440,7 @@ fn api_surface_resolves() {
             &mut zanshin_jj::Repo,
             &str,
             &zanshin_jj::ProgressFn,
+            Option<&zanshin_jj::cancel::CancelGuard>,
         ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
     // Story 4.9: the variant `zanshin-ffi::map_topology_err` matches on — pin its shape.
     _ = zanshin_jj::RevsetError::Config(zanshin_jj::ConfigError::Load { reason: String::new() });
@@ -1499,7 +1500,11 @@ fn story_9_33_creation_outcome_resolves() {
     // Story 9.20: init and clone take their CLI parameters as option structs.
     _ = zanshin_jj::Repo::init as fn(&zanshin_jj::InitOptions) -> zanshin_jj::CreationOutcome;
     _ = zanshin_jj::Repo::clone
-        as fn(&zanshin_jj::CloneOptions, &zanshin_jj::ProgressFn) -> zanshin_jj::CreationOutcome;
+        as fn(
+            &zanshin_jj::CloneOptions,
+            &zanshin_jj::ProgressFn,
+            Option<&zanshin_jj::cancel::CancelGuard>,
+        ) -> zanshin_jj::CreationOutcome;
     _ = zanshin_jj::convert_colocated as fn(&Path) -> zanshin_jj::CreationOutcome;
     _ = zanshin_jj::convert_import as fn(&Path, &Path) -> zanshin_jj::CreationOutcome;
     // Story 9.37: open reports its start-up secure-config fix-up in the same shape.
@@ -1550,6 +1555,7 @@ fn story_9_20_push_clone_init_resolves() {
             &mut zanshin_jj::Repo,
             &zanshin_jj::GitPushArgs,
             &zanshin_jj::ProgressFn,
+            Option<&zanshin_jj::cancel::CancelGuard>,
         ) -> Result<zanshin_jj::GitPushOutcome, zanshin_jj::MutateError>;
     let _ = zanshin_jj::GitPushArgs {
         remotes: Some(Vec::new()),
@@ -1622,12 +1628,14 @@ fn story_9_20_push_outcome_resolves() {
         zanshin_jj::PushFailureKind::CommitRejected,
         zanshin_jj::PushFailureKind::SomeRefsFailed,
         zanshin_jj::PushFailureKind::PushError,
+        zanshin_jj::PushFailureKind::Cancelled,
     ] {
         match kind {
             zanshin_jj::PushFailureKind::RefRefused
             | zanshin_jj::PushFailureKind::CommitRejected
             | zanshin_jj::PushFailureKind::SomeRefsFailed
-            | zanshin_jj::PushFailureKind::PushError => {}
+            | zanshin_jj::PushFailureKind::PushError
+            | zanshin_jj::PushFailureKind::Cancelled => {}
         }
     }
     let _ = zanshin_jj::GitPushOutcome {
@@ -1661,4 +1669,21 @@ fn story_9_20_push_outcome_resolves() {
             hint: None,
         }),
     };
+}
+
+/// Story 9.52: the cancel tokens of the network verbs — every public item named by its path.
+#[test]
+fn story_9_52_cancel_tokens_resolve() {
+    _ = zanshin_jj::cancel::register as fn(u64);
+    _ = zanshin_jj::cancel::attach as fn(u64) -> Option<zanshin_jj::cancel::CancelGuard>;
+    _ = zanshin_jj::cancel::cancel as fn(u64);
+    _ = zanshin_jj::cancel::CancelGuard::is_cancelled as fn(&zanshin_jj::cancel::CancelGuard) -> bool;
+    _ = zanshin_jj::cancel::CancelGuard::checkpoint
+        as fn(&zanshin_jj::cancel::CancelGuard) -> Result<(), zanshin_jj::cancel::Cancelled>;
+    _ = zanshin_jj::cancel::CancelGuard::env_pair
+        as fn(&zanshin_jj::cancel::CancelGuard) -> (std::ffi::OsString, std::ffi::OsString);
+    assert_eq!(zanshin_jj::cancel::CANCEL_TOKEN_VAR, "ZANSHIN_CANCEL_TOKEN");
+    _ = zanshin_jj::MutateError::Cancelled;
+    _ = zanshin_jj::RepoError::Cancelled;
+    _ = zanshin_jj::PushFailureKind::Cancelled;
 }

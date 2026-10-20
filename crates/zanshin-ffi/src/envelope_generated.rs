@@ -1712,24 +1712,27 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PUSH_FAILURE_KIND: u8 = 3;
+        pub const ENUM_MAX_PUSH_FAILURE_KIND: u8 = 4;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PUSH_FAILURE_KIND: [PushFailureKind; 4] = [
+        pub const ENUM_VALUES_PUSH_FAILURE_KIND: [PushFailureKind; 5] = [
             PushFailureKind::RefRefused,
             PushFailureKind::CommitRejected,
             PushFailureKind::SomeRefsFailed,
             PushFailureKind::PushError,
+            PushFailureKind::Cancelled,
         ];
 
         /// Why a push failed after its planning phase: a dry run's explicit `RefRefused` /
         /// `CommitRejected` (the real run's error codes), `SomeRefsFailed` (the CLI's "Failed to push
         /// some bookmarks", possibly recorded), `PushError` (the push stopped at a remote, nothing
         /// recorded; or a step after the push loop failed, and `recorded` says whether the operation
-        /// was written).
+        /// was written), `Cancelled` (Story 9.52: the push's cancel token was cancelled — it stopped
+        /// before the next remote; nothing recorded, `PushRemote.finished` says which remotes got their
+        /// refs). Member order IS the wire value — APPEND only.
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
         pub struct PushFailureKind(pub u8);
@@ -1739,14 +1742,16 @@ pub mod zanshin {
             pub const CommitRejected: Self = Self(1);
             pub const SomeRefsFailed: Self = Self(2);
             pub const PushError: Self = Self(3);
+            pub const Cancelled: Self = Self(4);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 3;
+            pub const ENUM_MAX: u8 = 4;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::RefRefused,
                 Self::CommitRejected,
                 Self::SomeRefsFailed,
                 Self::PushError,
+                Self::Cancelled,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -1755,6 +1760,7 @@ pub mod zanshin {
                     Self::CommitRejected => Some("CommitRejected"),
                     Self::SomeRefsFailed => Some("SomeRefsFailed"),
                     Self::PushError => Some("PushError"),
+                    Self::Cancelled => Some("Cancelled"),
                     _ => None,
                 }
             }
@@ -4103,6 +4109,9 @@ pub mod zanshin {
         ///   allow_empty_description / allow_private / allow_conflicts   the three `--allow-*`
         ///   dry_run            `--dry-run`: the plan, nothing pushed or written
         ///   options            `-o/--option`: git push options
+        ///   cancel_token       Story 9.52: a token from `zanshin_network_token` that
+        ///                      `zanshin_network_cancel` cancels (the push stops before the next remote,
+        ///                      `GitPushResult.failure.kind = Cancelled`); 0 = not cancellable
         pub struct GitPushRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -4133,6 +4142,7 @@ pub mod zanshin {
             pub const VT_NAMED: ::flatbuffers::VOffsetT = 28;
             pub const VT_DRY_RUN: ::flatbuffers::VOffsetT = 30;
             pub const VT_OPTIONS: ::flatbuffers::VOffsetT = 32;
+            pub const VT_CANCEL_TOKEN: ::flatbuffers::VOffsetT = 34;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -4144,6 +4154,7 @@ pub mod zanshin {
                 args: &'args GitPushRequestArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<GitPushRequest<'bldr>> {
                 let mut builder = GitPushRequestBuilder::new(_fbb);
+                builder.add_cancel_token(args.cancel_token);
                 if let Some(x) = args.options {
                     builder.add_options(x);
                 }
@@ -4325,6 +4336,13 @@ pub mod zanshin {
                     >>(GitPushRequest::VT_OPTIONS, None)
                 }
             }
+            #[inline]
+            pub fn cancel_token(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(GitPushRequest::VT_CANCEL_TOKEN, Some(0)).unwrap() }
+            }
         }
 
         impl ::flatbuffers::Verifiable for GitPushRequest<'_> {
@@ -4349,6 +4367,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("named", Self::VT_NAMED, false)?
      .visit_field::<bool>("dry_run", Self::VT_DRY_RUN, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("options", Self::VT_OPTIONS, false)?
+     .visit_field::<u64>("cancel_token", Self::VT_CANCEL_TOKEN, false)?
      .finish();
                 Ok(())
             }
@@ -4376,6 +4395,7 @@ pub mod zanshin {
             pub dry_run: bool,
             pub options:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub cancel_token: u64,
         }
         impl<'a> Default for GitPushRequestArgs<'a> {
             #[inline]
@@ -4396,6 +4416,7 @@ pub mod zanshin {
                     named: None,
                     dry_run: false,
                     options: None,
+                    cancel_token: 0,
                 }
             }
         }
@@ -4501,6 +4522,11 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitPushRequest::VT_OPTIONS, options);
             }
             #[inline]
+            pub fn add_cancel_token(&mut self, cancel_token: u64) {
+                self.fbb_
+                    .push_slot::<u64>(GitPushRequest::VT_CANCEL_TOKEN, cancel_token, 0);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitPushRequestBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 GitPushRequestBuilder {
@@ -4533,6 +4559,7 @@ pub mod zanshin {
                 ds.field("named", &self.named());
                 ds.field("dry_run", &self.dry_run());
                 ds.field("options", &self.options());
+                ds.field("cancel_token", &self.cancel_token());
                 ds.finish()
             }
         }
@@ -4550,6 +4577,10 @@ pub mod zanshin {
         ///   branches / tags    `-b` / `-t` patterns; ABSENT = the flag not given, present-empty = given
         ///                      with nothing (fetches none of that kind)
         ///   object_hash        `--object-hash`
+        ///   cancel_token       Story 9.52: a token from `zanshin_network_token` that
+        ///                      `zanshin_network_cancel` cancels (`jj.cancelled`); a live token is
+        ///                      also the new session's id, so its progress is routable before the clone
+        ///                      returns; 0 = not cancellable
         pub struct RepoCloneRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -4575,6 +4606,7 @@ pub mod zanshin {
             pub const VT_BRANCHES: ::flatbuffers::VOffsetT = 18;
             pub const VT_TAGS: ::flatbuffers::VOffsetT = 20;
             pub const VT_OBJECT_HASH: ::flatbuffers::VOffsetT = 22;
+            pub const VT_CANCEL_TOKEN: ::flatbuffers::VOffsetT = 24;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -4586,6 +4618,7 @@ pub mod zanshin {
                 args: &'args RepoCloneRequestArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<RepoCloneRequest<'bldr>> {
                 let mut builder = RepoCloneRequestBuilder::new(_fbb);
+                builder.add_cancel_token(args.cancel_token);
                 if let Some(x) = args.tags {
                     builder.add_tags(x);
                 }
@@ -4712,6 +4745,17 @@ pub mod zanshin {
                         .unwrap()
                 }
             }
+            #[inline]
+            pub fn cancel_token(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(RepoCloneRequest::VT_CANCEL_TOKEN, Some(0))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for RepoCloneRequest<'_> {
@@ -4731,6 +4775,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("branches", Self::VT_BRANCHES, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("tags", Self::VT_TAGS, false)?
      .visit_field::<ObjectHash>("object_hash", Self::VT_OBJECT_HASH, false)?
+     .visit_field::<u64>("cancel_token", Self::VT_CANCEL_TOKEN, false)?
      .finish();
                 Ok(())
             }
@@ -4748,6 +4793,7 @@ pub mod zanshin {
             pub tags:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub object_hash: ObjectHash,
+            pub cancel_token: u64,
         }
         impl<'a> Default for RepoCloneRequestArgs<'a> {
             #[inline]
@@ -4763,6 +4809,7 @@ pub mod zanshin {
                     branches: None,
                     tags: None,
                     object_hash: ObjectHash::Unspecified,
+                    cancel_token: 0,
                 }
             }
         }
@@ -4831,6 +4878,11 @@ pub mod zanshin {
                 );
             }
             #[inline]
+            pub fn add_cancel_token(&mut self, cancel_token: u64) {
+                self.fbb_
+                    .push_slot::<u64>(RepoCloneRequest::VT_CANCEL_TOKEN, cancel_token, 0);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RepoCloneRequestBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 RepoCloneRequestBuilder {
@@ -4858,6 +4910,7 @@ pub mod zanshin {
                 ds.field("branches", &self.branches());
                 ds.field("tags", &self.tags());
                 ds.field("object_hash", &self.object_hash());
+                ds.field("cancel_token", &self.cancel_token());
                 ds.finish()
             }
         }

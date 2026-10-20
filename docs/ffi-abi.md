@@ -24,11 +24,12 @@ one exception — its envelope is read through the `FfiBuffer` view and copied o
 `TransferableTypedData`, so it crosses the isolate boundary with ONE copy instead of the
 two every other envelope costs; see § GraphTopology payload below.)*
 
-**Infallible functions return plain types — no envelope.** There are eight:
-`zanshin_ffi_version` (a `char *` the caller frees via `zanshin_string_free`) and
-the seven `void`-returning ones — `zanshin_string_free`, `zanshin_buffer_free`,
-`zanshin_buffer_free_token`, `zanshin_log`, `zanshin_logging_init`,
-`zanshin_events_register`, `zanshin_events_unregister`.
+**Infallible functions return plain types — no envelope.** There are ten:
+`zanshin_ffi_version` (a `char *` the caller frees via `zanshin_string_free`),
+`zanshin_network_token` (a `uint64_t`, Story 9.52) and the eight `void`-returning
+ones — `zanshin_string_free`, `zanshin_buffer_free`, `zanshin_buffer_free_token`,
+`zanshin_log`, `zanshin_logging_init`, `zanshin_events_register`,
+`zanshin_events_unregister`, `zanshin_network_cancel` (Story 9.52).
 
 The converse does **not** hold: returning an envelope does not make a function
 fallible. `zanshin_diagnostics` returns a `ZanshinBuf *` token and is infallible
@@ -36,8 +37,8 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — nine of the 67
-exported symbols, these eight plus `zanshin_diagnostics`.
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 70
+exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
 points at, and the token struct itself. It skips the payload when `ptr` is null
@@ -213,7 +214,7 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Thirty-five of the 67 exported symbols take their arguments as a **FlatBuffers
+Thirty-five of the 70 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
 strings. Twenty-five use the handle-scoped three-parameter shape:
 
@@ -457,7 +458,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **68** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **70** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -478,7 +479,7 @@ or no `# Errors` block.
 |--------|------|---------------|-----------------|-------------|-------|
 | `zanshin_repo_open` | `(const char *path)` | — | `RepoHandle` | `jj.path_not_found`, `jj.repo_not_found`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4a (+9.37) |
 | `zanshin_repo_init` | `(const uint8_t *data, uintptr_t len)` | `RepoInitRequest` | `RepoHandle` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.jj_lib_error`, `jj.git_repo_exists`, `jj.already_jj_repo`, `jj.convert_failed`, `jj.config_error`, `watcher.io_error` | 3.4a (+9.33, 9.20) |
-| `zanshin_repo_clone` | `(const uint8_t *data, uintptr_t len)` | `RepoCloneRequest` | `RepoHandle` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.destination_not_empty`, `jj.network_error`, `jj.jj_lib_error`, `jj.config_error`, `watcher.io_error` | 3.4a (+9.33, 9.20, 9.20 closing run; `Progress`: 9.20) |
+| `zanshin_repo_clone` | `(const uint8_t *data, uintptr_t len)` | `RepoCloneRequest` (+ `cancel_token`, see § Cancel) | `RepoHandle` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.destination_not_empty`, `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error`, `jj.config_error`, `watcher.io_error` | 3.4a (+9.33, 9.20, 9.20 closing run, 9.52; `Progress`: 9.20) |
 | `zanshin_repo_convert` | `(const char *path)` | — | `RepoHandle` | `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4c (+9.33) |
 | `zanshin_repo_detect` | `(const char *path)` | — | `RepoDetect` | `jj.detect_failed`, `ffi.null_pointer`, `ffi.utf8_error` | 3.4c |
 | `zanshin_repo_close` | `(uint64_t handle)` | — | — (no-payload success) | `ffi.invalid_handle` | 3.4a |
@@ -517,8 +518,8 @@ or no `# Errors` block.
 | `zanshin_file_track` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileTrackRequest` | `TrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_file_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileUntrackRequest` | `UntrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.path_not_ignored`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_snapshot` | `(uint64_t handle)` | — | — (no-payload success; the report is `Envelope.precondition`) | `ffi.invalid_handle`, `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error` | 9.26 |
-| `zanshin_git_fetch` | `(uint64_t handle, const char *remote_name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.network_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (domain side + `Progress`: 6.4a) |
-| `zanshin_git_push` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitPushRequest` | `GitPushResult` (see § `GitPushResult` payload) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.push_ref_refused`, `jj.push_commit_rejected`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.20 (+`Progress`) |
+| `zanshin_git_fetch` | `(uint64_t handle, const char *remote_name, uint64_t cancel_token)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.network_error`, `jj.cancelled`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (domain side + `Progress`: 6.4a; `cancel_token`: 9.52) |
+| `zanshin_git_push` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitPushRequest` (+ `cancel_token`, see § Cancel) | `GitPushResult` (see § `GitPushResult` payload; a cancel is `failure.kind = Cancelled`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.push_ref_refused`, `jj.push_commit_rejected`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.20 (+`Progress`) |
 | `zanshin_git_import` | `(uint64_t handle)` | — | `GitImportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_export` | `(uint64_t handle)` | — | `GitExportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_remote_add` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitRemoteAddRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.remote_exists`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
@@ -535,6 +536,8 @@ or no `# Errors` block.
 | `zanshin_config_gc_list` | `(const uint8_t *data, uintptr_t len)` | `ConfigGcListRequest` | `ConfigGcList` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.config_path_not_found` | 9.28 |
 | `zanshin_config_gc_delete` | `(const uint8_t *data, uintptr_t len)` | `ConfigGcDeleteRequest` | `ConfigGcResult` | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.config_path_not_found` | 9.28 |
 | `zanshin_environment_adopt` | `(const uint8_t *data, uintptr_t len)` | `EnvironmentAdoptRequest` | — (no-payload success, no warnings) | `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input` | 9.36 |
+| `zanshin_network_token` | `(void)` → `uint64_t` | — | — | — | 9.52 |
+| `zanshin_network_cancel` | `(uint64_t token)` → `void` | — | — | — | 9.52 |
 | `zanshin_ffi_version` | `(void)` → `char *` | — | — | — | 3.2 |
 | `zanshin_diagnostics` | `(void)` | — | `Diagnostics` | — (infallible; see *Token contract*) | 3.8 (+11.6) |
 | `zanshin_log` | `(int32_t level, const char *target, const char *message)` → `void` | — | — | — | 3.3 |
@@ -833,7 +836,7 @@ WatcherEvent {
 }
 
 Progress {
-  session_id:  uint64          // same correlation id; first real producer is Story 6-4a
+  session_id:  uint64          // same correlation id (a clone's: its cancel token, Story 9.52)
   operation:   string          // "fetch" (6-4a), "clone" or "push" (Story 9.20)
   progress:    float           // ∈ [0, 1]
   message:     string
@@ -844,9 +847,18 @@ Story 9.20 adds two producers. `zanshin_git_push` tags its events with the sessi
 `zanshin_git_fetch`; a push's progress arrives mostly as git sideband text, which Zanshin does not
 forward, so a push may report none. `zanshin_repo_clone` has no session yet while it runs: it
 allocates the session id BEFORE the clone and tags its events with it, so they carry the id the
-returned `RepoHandle.session_id` names. The worker can only map that id once the handle is
-registered — today the events reach the main isolate after the command returned anyway (the
-worker runs the call synchronously; live delivery is a recorded deferral), so the mapping holds.
+returned `RepoHandle.session_id` names.
+
+**Live delivery (Story 9.52).** `events::dispatch` runs on the calling thread, which for the three
+network verbs is no longer the worker's: the worker hands each fetch, push and clone to a
+short-lived helper isolate (`Isolate.run`) and keeps serving, so the worker-owned
+`NativeCallable.listener` receives the events while the call runs and forwards them to main
+before the call's reply (one message queue per isolate). A clone is passed a non-zero
+`cancel_token` (see *Cancel* below), which IS its session id: the worker maps that id to the handle
+id it reserves for the clone BEFORE the helper starts, and announces the pair to main on the event
+port, so the clone's progress is routed live under the handle id the clone will get (the mapping
+is dropped again if the clone fails). In Dart each call's events are also its
+`NetworkOperation.progress`.
 
 `WatchError` is a **degraded-watch signal, not a failed call** — it never
 carries the `watcher.io_error` code string (single-emission-point rule).
@@ -892,7 +904,77 @@ from Story 6-4a during the 3-10 code review (Ralph, 2026-07-04); Story 6-4a's
   previously-unused (Story 3.9) event `SendPort`.
 - `ZanshinWorker.close()` is now `Future<void>`: it sends a `ShutdownCommand`
   the worker uses to run the shutdown ordering above, then awaits an ack
-  (bounded timeout) before killing the isolate as a backstop.
+  (bounded timeout) before killing the isolate as a backstop. Since Story 9.52
+  the worker first cancels every running network call and runs the ordering
+  only once no helper isolate still uses a session (see *Cancel* below).
+
+---
+
+## Cancel (Story 9.52)
+
+The three network verbs — `zanshin_git_fetch`, `zanshin_git_push`, `zanshin_repo_clone` — take a
+**cancel token**: `zanshin_git_fetch`'s third argument, the `cancel_token` field of
+`GitPushRequest` / `RepoCloneRequest`. `0` (the absent-field default) is no token: the call is not
+cancellable and never answers `jj.cancelled`.
+
+**Token lifetime.** `zanshin_network_token()` returns a fresh id from the session-id counter
+(never `0`, never reused, never a live session's id) and registers it; the call it is passed to
+attaches it and ends it when it returns. `zanshin_network_cancel(token)` sets the token's flag; it
+is idempotent, callable from any thread, and a no-op for `0`, an unknown or a finished token. A
+token cancelled before its call starts (a call queued behind another call on its handle) makes the
+call start cancelled. A clone uses a live (registered, not finished) token as the new session's id, so its `Progress`
+events are routable before it returns (*Payload schemas* above).
+
+**Checkpoints.** A cancelled token refuses at its verb's next checkpoint:
+
+- fetch: before git's fetch, and after it but before the import — a cancelled fetch imports
+  nothing and writes no operation;
+- clone: before and after the fetch's git work (the fetch and the default-branch query), inside
+  the clone's clean-up scope, so what the clone created is removed (a pre-existing empty
+  destination stays) — `jj.clone_cleanup_failed` warns as for any failure there;
+- push: before each remote's git push. There is no checkpoint after the last remote: once every
+  remote's git push has run, the push finishes normally.
+
+A `git` failure while the token is cancelled is the cancel too (a killed git is indistinguishable
+from any other failure in jj-lib); every other error passes through unchanged — a refusal raised
+before the call reaches a checkpoint (no git backend, a malformed config key, a refused push
+argument) answers exactly as it does without a cancel.
+
+**Kill scope.** While a cancelled token's call runs, Zanshin polls every ~50 ms for the call's git
+processes among the DESCENDANTS of its own process and signals them: SIGTERM first (git removes its
+lock and temp files, as on the CLI's Ctrl-C), SIGKILL for any still alive 2 s after the cancel. Each
+one is stopped (SIGSTOP) before its children are listed and continued (SIGCONT) after the signal,
+so a child it forks during the scan cannot escape as the orphan of a killed parent. The polling runs
+only while the call is attached, so a git spawned after the cancel is caught too.
+Which descendants are the call's: every git of a call that carries a token runs with
+`ZANSHIN_CANCEL_TOKEN=<token>` in its environment (added to jj-lib's `GitSubprocessOptions`, which
+git's helpers inherit), and a process whose environment carries that exact pair is the call's,
+with its descendants. macOS hides the environment of Apple's platform binaries from other processes
+(`sysctl(KERN_PROCARGS2)` stops after the arguments) — `/usr/bin/git`, the Command Line Tools' git
+and its helpers, `/bin/sh`, `ssh` — so for a process whose environment is hidden its arguments
+decide instead: jj-lib runs every git as `git … --git-dir <dir> …`, and the call names its
+repository's git dir — used only when exactly one live call watches that dir (two calls on two
+handles of one repository give that dir no fallback; the environment match still applies). No
+other process is signalled. Residual: a git without a token on that dir — a concurrent `workspace
+add`'s worktree git — is not told apart from the call's. Elsewhere than macOS a cancel sets the flag
+and the checkpoints refuse, nothing more.
+
+**Outcomes.** A cancelled fetch or clone answers `jj.cancelled` (context `Cancelled`); a
+cancelled push answers its ok `GitPushResult` with `failure.kind = Cancelled` (message
+`Cancelled`), `recorded = false`, and the per-remote rows saying which remotes already got their
+refs (`PushRemote.finished`, `PushRef.status`) — the push failure model of Story 9.20 keeps a
+push's outcome data. A cancel that arrives after the last checkpoint and after the git work changes
+nothing.
+
+**Dart.** The worker owns the tokens: each fetch, push and clone runs on a short-lived helper
+isolate (`Isolate.run`) with a token the worker allocates (`zanshin_network_token`, on the worker),
+and every call on the same handle — `closeRepo` included — waits for it in arrival order, so the
+helper is the only isolate touching the raw session (AD-2; Rust adds no handle locking). Calls on
+other handles, handle-free commands and events do not wait. `ZanshinWorker.gitFetch` / `gitPush` /
+`cloneRepo` and `RepoHandle.gitFetch` / `gitPush` return a `NetworkOperation<T>`: `result` (the
+verb's payload and refusals as before), `progress` (this call's `ProgressEvent`s, closing with
+`result`) and `cancel()` (a `NetworkCancelCommand`; a no-op after `result` completed or after the
+worker closed). A helper isolate that throws answers `internal.dispatch_error`.
 
 ---
 
@@ -1390,18 +1472,19 @@ envelope:
 | `signing` | `PushSigning { updated_signatures, rebased_descendants }` when sign-on-push signed; ABSENT otherwise. |
 | `nothing_changed` / `dry_run` / `recorded` | The CLI's "Nothing changed."; a plan; the operation was written (only when every ref succeeded or one was exported — "Undo works"). |
 | `description` / `new_op_id` | The operation's description (a dry run's: the one the real push writes; ABSENT when nothing changed) and the head after the call. |
-| `failure` | `PushFailure { kind, message, hint }`: `RefRefused` / `CommitRejected` (a dry run's explicit refusal), `SomeRefsFailed` ("Failed to push some bookmarks", possibly recorded), `PushError` (stopped at a remote; nothing recorded). ABSENT on full success. |
+| `failure` | `PushFailure { kind, message, hint }`: `RefRefused` / `CommitRejected` (a dry run's explicit refusal), `SomeRefsFailed` ("Failed to push some bookmarks", possibly recorded), `PushError` (stopped at a remote; nothing recorded), `Cancelled` (Story 9.52: the push's cancel token was cancelled — it stopped before the next remote, nothing recorded; see § Cancel). ABSENT on full success. |
 
 Warnings: `jj.push_remotes_unmatched`, `jj.push_bookmarks_unmatched`, `jj.push_tags_unmatched`,
 `jj.push_revset_empty`, `jj.push_revisions_empty`, `jj.push_ref_skipped`, `jj.push_commit_skipped`,
 `jj.push_signing_skipped_immutable`, `jj.push_refs_moved_on_remote`, `jj.push_remote_rejected`,
 `jj.push_bookmarks_not_updated_locally`, plus the finish's. Dart: `RepoHandle.gitPush(...)` →
-`GitPushResult` (`packages/zanshin_core/lib/src/ffi/push.dart`).
+`NetworkOperation<GitPushResult>` (Story 9.52; `GitPushResult` in
+`packages/zanshin_core/lib/src/ffi/push.dart`).
 
 `zanshin_repo_init` (`RepoInitRequest`: `path`, `backend`, `colocate` / `no_colocate`,
 `object_hash`) and `zanshin_repo_clone` (`RepoCloneRequest`: `source`, `destination`,
 `remote_name`, `colocate` / `no_colocate`, `depth` — 0 = absent —, `branches` / `tags` — ABSENT =
-the flag not given —, `object_hash`) take request buffers since Story 9.20 and follow `jj git init`
+the flag not given —, `object_hash`, and since Story 9.52 `cancel_token`) take request buffers since Story 9.20 and follow `jj git init`
 / `jj git clone` step for step: the destination rules, colocation by `git.colocate`, the clone's
 three operations and repo presets, its clean-up scope. Both colocation flags set is
 `jj.invalid_input`.

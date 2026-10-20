@@ -96,6 +96,7 @@ fn clone_reads_abandon_unreachable_commits_from_the_user_config_layer() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     )
     .result;
     assert!(
@@ -123,6 +124,7 @@ fn clone_reads_abandon_unreachable_commits_from_the_user_config_layer() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     )
     .result;
     // Since Story 9.27 the clone runs WITH this stack, so jj-lib's git backend already reads the

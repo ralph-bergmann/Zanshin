@@ -254,6 +254,8 @@ impl GitSubprocessCallback for ProgressCallback<'_> {
 ///   against the transaction's base repo (same fault class `crate::git::git_import` reports).
 /// - [`MutateError::NetworkError`] — the underlying `git` subprocess failed (network,
 ///   auth, or transport error). No operation is committed.
+/// - [`MutateError::Cancelled`] — `cancel`'s token was cancelled before or right after the git
+///   work, or git failed after the cancel (Story 9.52). No operation is committed.
 /// - [`MutateError::Backend`] — any other underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn git_fetch(
@@ -262,6 +264,7 @@ pub(crate) fn git_fetch(
     remote_name: &str,
     ctx: &mut VerbContext,
     progress: &ProgressFn,
+    cancel: Option<&crate::cancel::CancelGuard>,
 ) -> Result<MutationResult, MutateError> {
     let remote_buf: RemoteNameBuf = remote_name.into();
     let remote: &RemoteName = &remote_buf;
@@ -270,7 +273,7 @@ pub(crate) fn git_fetch(
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
     let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
 
-    let subprocess_options = crate::environment::git_subprocess_options(settings).map_err(mutate::be)?;
+    let subprocess_options = crate::environment::git_subprocess_options(settings, cancel).map_err(mutate::be)?;
 
     // WHY: `GitFetch::new`'s error type IS `UnexpectedGitBackendError` (jj-lib 0.44.0
     // `git.rs:3032-3047`) — `get_git_backend` is its only fallible step — so the blanket
@@ -279,6 +282,7 @@ pub(crate) fn git_fetch(
     // `fetch()`, as `GitFetchError::NoSuchRemote` below. The explicit parameter type is the
     // GUARD for that premise: a jj-lib bump that widens the error surface stops compiling
     // here instead of silently reporting unrelated faults as `jj.not_a_git_repo`.
+    crate::cancel::watch_store(cancel, tx.repo().store());
     let mut fetcher = GitFetch::new(tx.repo_mut(), subprocess_options, &import_options)
         .map_err(|_e: UnexpectedGitBackendError| MutateError::NotAGitRepo)?;
 
@@ -303,17 +307,22 @@ pub(crate) fn git_fetch(
     // `fetch_tags_override`, so the 0.42 call's second `None` is the one that went away — the
     // remaining one is `depth`, unchanged.
     let depth = None;
+    // Story 9.52's checkpoints: before the git work, and after it but before the import, so a
+    // cancelled fetch records nothing. A git that failed after the cancel killed it is the cancel.
+    crate::cancel::checkpoint(cancel)?;
     fetcher
         .fetch(remote, refspecs, &mut callback, depth)
         .map_err(|e| match e {
             GitFetchError::NoSuchRemote(_) => MutateError::RemoteNotFound {
                 name: remote_name.to_owned(),
             },
+            GitFetchError::Subprocess(_) if crate::cancel::is_cancelled(cancel) => MutateError::Cancelled,
             GitFetchError::Subprocess(sub) => MutateError::NetworkError {
                 reason: sub.to_string(),
             },
             other => mutate::be(other),
         })?;
+    crate::cancel::checkpoint(cancel)?;
 
     let stats = pollster::block_on(fetcher.import_refs()).map_err(mutate::be)?;
     // `print_git_import_stats`, right after the import (`fetch.rs:247-248`, Story 9.32). The

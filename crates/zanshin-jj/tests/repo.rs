@@ -116,6 +116,7 @@ fn repo_clone_into_an_uncreatable_destination_returns_clone_failed() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     )
     .result;
     match result {
@@ -216,6 +217,7 @@ fn repo_clone_with_unknown_url_scheme_returns_network_error() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     )
     .result;
     assert!(
@@ -236,6 +238,7 @@ fn repo_clone_network_failure_leaves_no_partial_workspace() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     )
     .result;
     assert!(
@@ -277,6 +280,7 @@ fn a_clone_into_an_existing_jj_workspace_fails_and_keeps_it() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     );
 
     assert!(
@@ -309,6 +313,7 @@ fn a_clone_over_a_dangling_jj_symlink_fails_and_keeps_the_link() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     );
 
     assert!(
@@ -350,6 +355,7 @@ fn repo_clone_from_local_git_source_returns_ok() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     )
     .result;
     assert!(result.is_ok(), "clone from local file:// failed: {result:?}");
@@ -451,6 +457,7 @@ fn a_repo_cloned_through_a_symlinked_path_resolves_its_own_root() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     )
     .result
     .expect("clone from local file://");

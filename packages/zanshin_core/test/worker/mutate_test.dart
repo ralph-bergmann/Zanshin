@@ -238,7 +238,7 @@ void main() {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
 
       await expectLater(
-        handle.gitFetch('nonexistent'),
+        handle.gitFetch('nonexistent').result,
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.remote_not_found')),
       );
 
@@ -378,7 +378,7 @@ void main() {
       await handle.close();
 
       await expectLater(
-        worker.gitFetch(handleId, 'origin'),
+        worker.gitFetch(handleId, 'origin').result,
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
       );
     });

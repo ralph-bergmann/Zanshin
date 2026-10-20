@@ -26,13 +26,14 @@ use zanshin_ffi::events::{zanshin_events_register, zanshin_events_unregister};
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::repo::{
-    zanshin_abandon, zanshin_absorb, zanshin_describe, zanshin_edit, zanshin_git_fetch, zanshin_new_change,
-    zanshin_repo_close, zanshin_repo_open, zanshin_restore, zanshin_undo,
+    zanshin_abandon, zanshin_absorb, zanshin_describe, zanshin_edit, zanshin_git_fetch, zanshin_network_cancel,
+    zanshin_network_token, zanshin_new_change, zanshin_repo_close, zanshin_repo_open, zanshin_restore, zanshin_undo,
 };
 use zanshin_ffi::status::zanshin_status;
 use zanshin_ffi::{
-    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR, JJ_IMMUTABLE,
-    JJ_INVALID_INPUT, JJ_NOTHING_TO_UNDO, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, JJ_UNDO_CROSS_WORKSPACE,
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CANCELLED, JJ_CHANGE_NOT_FOUND, JJ_CONFIG_ERROR,
+    JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_NOTHING_TO_UNDO, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
+    JJ_UNDO_CROSS_WORKSPACE,
 };
 use zanshin_jj::{resolve_revset, ChangeId, Repo};
 
@@ -829,7 +830,7 @@ fn git_fetch_happy_path_reports_progress_and_returns_mutation_result() {
     zanshin_events_register(Some(test_sink));
 
     let remote_cstr = cstr("origin");
-    let token = unsafe { zanshin_git_fetch(handle, remote_cstr.as_ptr()) };
+    let token = unsafe { zanshin_git_fetch(handle, remote_cstr.as_ptr(), 0) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
 
@@ -879,6 +880,53 @@ fn git_fetch_happy_path_reports_progress_and_returns_mutation_result() {
     close_handle(handle);
 }
 
+/// Story 9.52: a fetch under a live token is a normal fetch; under a token cancelled before it
+/// ran it refuses as `jj.cancelled` and writes no operation.
+#[test]
+fn git_fetch_with_a_cancel_token() {
+    pin_env();
+    // The fetch dispatches progress to the process-global sink: serialized with the test that
+    // registers one and asserts every event is its own.
+    let _test_guard = TEST_GUARD.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let src = tempfile::TempDir::new().unwrap();
+    init_git_repo_with_commit(src.path());
+    let parent = tempfile::TempDir::new().unwrap();
+    let bare = git_bare_clone(src.path(), parent.path());
+    let dst = tempfile::TempDir::new().unwrap();
+    let dst_cstr = cstr(dst.path().to_str().unwrap());
+    let init_bytes = unsafe { read_and_free(repo_init(&dst_cstr, 1)) };
+    let init_env = parse_envelope(&init_bytes);
+    assert!(init_env.ok(), "init (git backend) must succeed");
+    close_handle(init_env.data_as_repo_handle().expect("RepoHandle").handle());
+    register_remote(dst.path(), "origin", &bare.to_string_lossy());
+    let (handle, _) = open_handle(dst.path());
+    let remote_cstr = cstr("origin");
+
+    let live = zanshin_network_token();
+    let bytes = unsafe { read_and_free(zanshin_git_fetch(handle, remote_cstr.as_ptr(), live)) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let head = env
+        .data_as_mutation_result()
+        .and_then(|r| r.new_op_id())
+        .map(ToOwned::to_owned);
+
+    let cancelled = zanshin_network_token();
+    zanshin_network_cancel(cancelled);
+    let bytes = unsafe { read_and_free(zanshin_git_fetch(handle, remote_cstr.as_ptr(), cancelled)) };
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok());
+    assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_CANCELLED));
+    assert_eq!(env.error().and_then(|e| e.context()), Some("Cancelled"));
+    let ops = Repo::open(dst.path()).expect("open").op_log(Some(1)).expect("op log");
+    assert_eq!(
+        Some(ops[0].id.0.clone()),
+        head,
+        "the cancelled fetch wrote no operation"
+    );
+    close_handle(handle);
+}
+
 #[test]
 fn git_fetch_nonexistent_remote_returns_jj_remote_not_found() {
     pin_env();
@@ -894,7 +942,7 @@ fn git_fetch_nonexistent_remote_returns_jj_remote_not_found() {
         .handle();
 
     let remote_cstr = cstr("nonexistent");
-    let token = unsafe { zanshin_git_fetch(handle, remote_cstr.as_ptr()) };
+    let token = unsafe { zanshin_git_fetch(handle, remote_cstr.as_ptr(), 0) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
 
@@ -927,7 +975,7 @@ fn git_fetch_on_native_backend_returns_jj_not_a_git_repo() {
         .handle();
 
     let remote_cstr = cstr("origin");
-    let token = unsafe { zanshin_git_fetch(handle, remote_cstr.as_ptr()) };
+    let token = unsafe { zanshin_git_fetch(handle, remote_cstr.as_ptr(), 0) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
 
@@ -1428,7 +1476,7 @@ fn git_fetch_null_remote_name_returns_ffi_null_pointer() {
         .expect("RepoHandle must be present")
         .handle();
 
-    let token = unsafe { zanshin_git_fetch(handle, std::ptr::null()) };
+    let token = unsafe { zanshin_git_fetch(handle, std::ptr::null(), 0) };
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
 
@@ -1552,7 +1600,7 @@ fn every_wrapper_zero_handle_returns_ffi_invalid_handle() {
     let undo_bytes = unsafe { read_and_free(undo_token) };
     assert_invalid_handle(&undo_bytes);
 
-    let git_fetch_token = unsafe { zanshin_git_fetch(0, remote_cstr.as_ptr()) };
+    let git_fetch_token = unsafe { zanshin_git_fetch(0, remote_cstr.as_ptr(), 0) };
     let git_fetch_bytes = unsafe { read_and_free(git_fetch_token) };
     assert_invalid_handle(&git_fetch_bytes);
 

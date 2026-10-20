@@ -79,7 +79,7 @@ fn init(path: PathBuf, colocate: Option<bool>) -> zanshin_jj::CreationOutcome {
 }
 
 fn clone(options: &zanshin_jj::CloneOptions) -> zanshin_jj::CreationOutcome {
-    zanshin_jj::Repo::clone(options, &|_: ProgressEvent| {})
+    zanshin_jj::Repo::clone(options, &|_: ProgressEvent| {}, None)
 }
 
 /// `jj git clone <dir>/<source> <dir>/dest` with the rest of `options`.
@@ -243,7 +243,7 @@ fn push_read_back(root: &Path) -> String {
 /// `Repo::git_push` with `args`; a push that failed once the network was involved (failure as
 /// data) is a refusal, as the CLI's non-zero exit.
 fn push_outcome(repo: &mut zanshin_jj::Repo, args: &GitPushArgs) -> Outcome {
-    let result = repo.git_push(args, &|_: ProgressEvent| {});
+    let result = repo.git_push(args, &|_: ProgressEvent| {}, None);
     Outcome {
         refused: result.as_ref().map_or(true, |outcome| outcome.failure.is_some()),
         warnings: repo.take_warnings().len(),

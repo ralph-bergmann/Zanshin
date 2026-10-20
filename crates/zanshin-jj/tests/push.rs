@@ -80,6 +80,7 @@ fn world() -> World {
             ..Default::default()
         },
         &|_: ProgressEvent| {},
+        None,
     )
     .result
     .expect("clone the remote");
@@ -148,7 +149,7 @@ impl World {
     }
 
     fn push(&mut self, args: &GitPushArgs) -> Result<GitPushOutcome, MutateError> {
-        self.repo.git_push(args, &|_: ProgressEvent| {})
+        self.repo.git_push(args, &|_: ProgressEvent| {}, None)
     }
 
     fn head_op(&mut self) -> String {

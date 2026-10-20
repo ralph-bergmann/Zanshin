@@ -67,7 +67,7 @@ fn file_url(dir: &Path) -> String {
 
 fn clone(options: &CloneOptions) -> CreationOutcome {
     test_helpers::pin_test_env();
-    Repo::clone(options, &|_: ProgressEvent| {})
+    Repo::clone(options, &|_: ProgressEvent| {}, None)
 }
 
 fn init(options: &InitOptions) -> CreationOutcome {
@@ -134,6 +134,7 @@ fn a_default_clone_creates_the_destination_and_writes_the_cli_operations() {
             ..Default::default()
         },
         &move |event| sink.lock().unwrap().push(event),
+        None,
     );
     let mut repo = outcome.result.expect("clone succeeds");
     assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);

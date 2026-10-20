@@ -113,17 +113,20 @@ Uint8List zanshinAbandon(int rawHandle, List<String> changeIds) => _withChangeId
 Uint8List zanshinUndo(int rawHandle, {bool allowCrossWorkspace = false}) =>
     readToken(zanshin_undo(rawHandle, allowCrossWorkspace));
 
-/// Call `zanshin_git_fetch` with the raw `u64` handle and [remoteName], and
-/// return the FlatBuffers `Envelope` bytes.
+/// Call `zanshin_git_fetch` with the raw `u64` handle, [remoteName] and
+/// [cancelToken], and return the FlatBuffers `Envelope` bytes.
 ///
 /// Progress rides the same process-global event sink `WatcherEvent` already
 /// uses (Story 3.6), tagged with the handle's `session_id` — register a
 /// `zanshin_events_register` sink and demux by `session_id` to observe it.
-Uint8List zanshinGitFetch(int rawHandle, String remoteName) {
+/// [cancelToken] (Story 9.52) is `0` (not cancellable) or a token from
+/// `zanshinNetworkToken`; `zanshinNetworkCancel` cancels the fetch
+/// (`jj.cancelled`).
+Uint8List zanshinGitFetch(int rawHandle, String remoteName, {int cancelToken = 0}) {
   rejectInteriorNul(remoteName, 'remoteName');
   final ffi.Pointer<Utf8> p = remoteName.toNativeUtf8();
   try {
-    return readToken(zanshin_git_fetch(rawHandle, p.cast()));
+    return readToken(zanshin_git_fetch(rawHandle, p.cast(), cancelToken));
   } finally {
     calloc.free(p); // outer: free the C string we allocated
   }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:collection';
 import 'dart:developer' as developer;
 import 'dart:isolate';
 import 'dart:typed_data';
@@ -55,6 +56,7 @@ import 'commands.dart';
 import 'correlation.dart';
 import 'events.dart';
 import 'handle.dart';
+import 'network_operation.dart';
 import 'responses.dart';
 
 final _log = Logger('zanshin.worker');
@@ -285,6 +287,10 @@ class ZanshinWorker {
   }
 
   void _onEvent(dynamic msg) {
+    if (msg is _NetworkHandleAnnouncement) {
+      _announcedHandles[msg.commandId] = msg.handleId;
+      return;
+    }
     if (msg is! RepoEvent) {
       _log.warning('ZanshinWorker: unexpected event type');
       return;
@@ -361,6 +367,55 @@ class ZanshinWorker {
   /// Broadcast: subscribe any number of times. Completes when the worker
   /// isolate shuts down (graceful [close] or unexpected death).
   Stream<RepoEvent> get events => _eventsController.stream;
+
+  // The handle id of a STARTED network call, by its command id (Story 9.52) —
+  // what its NetworkOperation's progress filters on; absent while it is queued.
+  final Map<int, int> _announcedHandles = {};
+
+  /// Sends a network call's command through [start] and wraps it as a
+  /// [NetworkOperation] (Story 9.52): its `progress` is [events] filtered by
+  /// [operation] and the handle id [handleId] answers, subscribed BEFORE the
+  /// command goes out so no event is missed. A closed worker fails the result
+  /// with a [StateError], as every command's future does.
+  NetworkOperation<T> _networkOperation<T>({
+    required int commandId,
+    required String operation,
+    required int? Function() handleId,
+    required Future<T> Function() start,
+  }) {
+    final progress = StreamController<ProgressEvent>();
+    final StreamSubscription<RepoEvent> subscription = _eventsController.stream.listen((event) {
+      if (event is ProgressEvent && event.operation == operation && event.handleId == handleId()) {
+        progress.add(event);
+      }
+    });
+    final Future<T> result = Future.sync(start);
+    var done = false;
+    result.whenComplete(() {
+      done = true;
+      _announcedHandles.remove(commandId);
+      subscription.cancel().ignore();
+      progress.close().ignore();
+    }).ignore();
+    return NetworkOperation<T>(
+      result: result,
+      progress: progress.stream,
+      cancel: () => done ? Future<void>.value() : _cancelNetwork(commandId),
+    );
+  }
+
+  Future<void> _cancelNetwork(int targetCommandId) async {
+    if (_closed) {
+      return;
+    }
+    await _sendCommand(
+      NetworkCancelCommand(commandId: _correlator.allocateId(), targetCommandId: targetCommandId),
+    ).then<void>(
+      (_) {},
+      // The worker closed or died before it answered: nothing is left to cancel.
+      onError: (Object _) {},
+    );
+  }
 
   // ── Typed command API ─────────────────────────────────────────────────────
 
@@ -449,14 +504,22 @@ class ZanshinWorker {
   /// the start-up environment's (twice, as the CLI loads it twice),
   /// `jj.clone_branches_unmatched`, `jj.git_import_failed`, then
   /// `jj.identity_missing` once per operation when `user.name`/`user.email` is
-  /// empty. A refused clone throws [ZanshinFfiException] carrying the clone's
+  /// empty. A refused clone (`jj.invalid_input`, `jj.destination_not_empty`,
+  /// `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error`, `jj.config_error`,
+  /// `watcher.io_error`) throws [ZanshinFfiException] carrying the clone's
   /// warnings (Story 9.35) — including `jj.clone_cleanup_failed`, which only an
-  /// error envelope carries. Progress rides the event sink as
-  /// `operation: "clone"`.
+  /// error envelope carries. Progress rides [events] as
+  /// `operation: "clone"`, under the handle id the clone gets.
   ///
-  /// Throws [ArgumentError] if a string contains an interior NUL (U+0000) or
-  /// [depth] is not in `1..0xFFFFFFFF` (the wire's `uint32`).
-  Future<CreatedRepoHandle> cloneRepo({
+  /// Returns a [NetworkOperation] (Story 9.52): the clone runs on a helper
+  /// isolate, so its `progress` arrives while `result` is pending, and
+  /// `cancel()` stops it — `result` then throws `jj.cancelled`, and what the
+  /// clone created is removed (a pre-existing empty [destination] stays).
+  ///
+  /// Throws [ArgumentError] synchronously if a string contains an interior NUL
+  /// (U+0000) or [depth] is not in `1..0xFFFFFFFF` (the wire's `uint32`). After
+  /// [close] the `result` completes with a [StateError].
+  NetworkOperation<CreatedRepoHandle> cloneRepo({
     required String source,
     required String destination,
     String? remoteName,
@@ -466,7 +529,7 @@ class ZanshinWorker {
     List<String>? branches,
     List<String>? tags,
     repo_ffi.ObjectHash? objectHash,
-  }) async {
+  }) {
     // See [bookmarkCreate] for why this guard is on the calling side.
     rejectInteriorNul(source, 'source');
     rejectInteriorNul(destination, 'destination');
@@ -479,21 +542,26 @@ class ZanshinWorker {
     if (depth != null && depth > 0xFFFFFFFF) {
       throw ArgumentError.value(depth, 'depth', 'must fit in 32 bits');
     }
-    final WorkerResponse response = await _sendCommand(
-      CloneRepoCommand(
-        commandId: _correlator.allocateId(),
-        source: source,
-        destination: destination,
-        remoteName: remoteName,
-        colocate: colocate,
-        noColocate: noColocate,
-        depth: depth,
-        branches: branches,
-        tags: tags,
-        objectHash: objectHash,
-      ),
+    final int commandId = _correlator.allocateId();
+    return _networkOperation(
+      commandId: commandId,
+      operation: 'clone',
+      handleId: () => _announcedHandles[commandId],
+      start: () => _sendCommand(
+        CloneRepoCommand(
+          commandId: commandId,
+          source: source,
+          destination: destination,
+          remoteName: remoteName,
+          colocate: colocate,
+          noColocate: noColocate,
+          depth: depth,
+          branches: branches,
+          tags: tags,
+          objectHash: objectHash,
+        ),
+      ).then(_createdOrThrow),
     );
-    return _createdOrThrow(response);
   }
 
   /// A creation's reply: the [CreatedRepoHandle] with the report its ok
@@ -1055,15 +1123,27 @@ class ZanshinWorker {
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
   /// `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`,
-  /// `jj.network_error`, `jj.jj_lib_error`). A workspace with no git backend is
+  /// `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error`). A workspace with no git backend is
   /// `jj.not_a_git_repo`; `jj.remote_not_found` now means only "no remote of that
-  /// name". Completes with a [StateError] after [close]. The close-guard
-  /// [StateError] is delivered synchronously by [RepoHandle.gitFetch].
-  Future<repo_ffi_mutate.MutationResult> gitFetch(int handleId, String remoteName) async {
-    final Uint8List bytes = await send(
-      GitFetchCommand(commandId: _correlator.allocateId(), handleId: handleId, remoteName: remoteName),
+  /// name".
+  ///
+  /// Returns a [NetworkOperation] (Story 9.52): the fetch runs on a helper
+  /// isolate — later commands for [handleId] wait for it, other repos do not —
+  /// so its `progress` arrives while `result` is pending, and `cancel()` stops
+  /// it: `result` then throws `jj.cancelled` and no operation is written.
+  /// After [close] the `result` completes with a [StateError]; the
+  /// closed-handle [StateError] is thrown synchronously by
+  /// [RepoHandle.gitFetch].
+  NetworkOperation<repo_ffi_mutate.MutationResult> gitFetch(int handleId, String remoteName) {
+    final int commandId = _correlator.allocateId();
+    return _networkOperation(
+      commandId: commandId,
+      operation: 'fetch',
+      handleId: () => _announcedHandles[commandId],
+      start: () => send(
+        GitFetchCommand(commandId: commandId, handleId: handleId, remoteName: remoteName),
+      ).then(repo_ffi_mutate.decodeMutationResultEnvelopeInternal),
     );
-    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
   /// Push bookmarks and tags to git remotes, in the repo identified by
@@ -1073,8 +1153,14 @@ class ZanshinWorker {
   /// Sends a [GitPushCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<GitPushResult>` bytes.
   ///
-  /// Throws [ArgumentError] if an argument contains an interior NUL (U+0000).
-  Future<repo_ffi_push.GitPushResult> gitPush(
+  /// Returns a [NetworkOperation] (Story 9.52): the push runs on a helper
+  /// isolate — later commands for [handleId] wait for it — and `cancel()`
+  /// stops it before the next remote; the cancel is data
+  /// (`failure.kind == PushFailureKind.cancelled`, nothing recorded).
+  ///
+  /// Throws [ArgumentError] synchronously if an argument contains an interior
+  /// NUL (U+0000). After [close] the `result` completes with a [StateError].
+  NetworkOperation<repo_ffi_push.GitPushResult> gitPush(
     int handleId, {
     List<String>? remotes,
     List<String> bookmarks = const [],
@@ -1090,7 +1176,7 @@ class ZanshinWorker {
     List<String> named = const [],
     bool dryRun = false,
     List<String> options = const [],
-  }) async {
+  }) {
     // See [bookmarkCreate] for why this guard is on the calling side.
     rejectInteriorNuls(remotes ?? const [], 'remotes');
     rejectInteriorNuls(bookmarks, 'bookmarks');
@@ -1099,27 +1185,32 @@ class ZanshinWorker {
     rejectInteriorNuls(changes, 'changes');
     rejectInteriorNuls(named, 'named');
     rejectInteriorNuls(options, 'options');
-    final Uint8List bytes = await send(
-      GitPushCommand(
-        commandId: _correlator.allocateId(),
-        handleId: handleId,
-        remotes: remotes,
-        bookmarks: bookmarks,
-        tags: tags,
-        all: all,
-        tracked: tracked,
-        deleted: deleted,
-        allowEmptyDescription: allowEmptyDescription,
-        allowPrivate: allowPrivate,
-        allowConflicts: allowConflicts,
-        revisions: revisions,
-        changes: changes,
-        named: named,
-        dryRun: dryRun,
-        options: options,
-      ),
+    final int commandId = _correlator.allocateId();
+    return _networkOperation(
+      commandId: commandId,
+      operation: 'push',
+      handleId: () => _announcedHandles[commandId],
+      start: () => send(
+        GitPushCommand(
+          commandId: commandId,
+          handleId: handleId,
+          remotes: remotes,
+          bookmarks: bookmarks,
+          tags: tags,
+          all: all,
+          tracked: tracked,
+          deleted: deleted,
+          allowEmptyDescription: allowEmptyDescription,
+          allowPrivate: allowPrivate,
+          allowConflicts: allowConflicts,
+          revisions: revisions,
+          changes: changes,
+          named: named,
+          dryRun: dryRun,
+          options: options,
+        ),
+      ).then(repo_ffi_push.decodeGitPushResultEnvelopeInternal),
     );
-    return repo_ffi_push.decodeGitPushResultEnvelopeInternal(bytes);
   }
 
   /// Give the paths in [paths] the content they have in another commit, in the
@@ -2257,12 +2348,11 @@ void _workerEntry(_WorkerInit init) {
     scheduleMicrotask(() => throw StateError('throwAsyncErrorAfterHandshake test injection'));
   }
 
-  commandPort.listen((msg) {
-    if (msg is! WorkerCommand) {
-      log.warning('Worker: received unexpected message type');
-      return;
-    }
+  // Story 9.52: network calls run on helper isolates; the scheduler keeps every
+  // call on one handle serialized while this event loop keeps serving the rest.
+  late final _NetworkScheduler scheduler;
 
+  void dispatch(WorkerCommand msg) {
     final int commandId = msg.commandId;
 
     try {
@@ -2287,29 +2377,37 @@ void _workerEntry(_WorkerInit init) {
           );
           _replyRepoOp(bytes, commandId, handles, sessionToId, responseSP, log, () => nextHandleId++);
 
-        case CloneRepoCommand(
-          :final String source,
-          :final String destination,
-          :final String? remoteName,
-          :final bool colocate,
-          :final bool noColocate,
-          :final int? depth,
-          :final List<String>? branches,
-          :final List<String>? tags,
-          :final repo_ffi.ObjectHash? objectHash,
-        ):
-          final Uint8List bytes = repo_ffi.zanshinRepoClone(
-            source: source,
-            destination: destination,
-            remoteName: remoteName,
-            colocate: colocate,
-            noColocate: noColocate,
-            depth: depth,
-            branches: branches,
-            tags: tags,
-            objectHash: objectHash,
+        case final CloneRepoCommand clone:
+          // The handle id is reserved and the clone's session id (its token)
+          // mapped BEFORE the helper runs, so its progress reaches main live.
+          final int reserved = nextHandleId++;
+          scheduler.run(
+            commandId: commandId,
+            handleId: null,
+            call: (token) {
+              sessionToId[token] = reserved;
+              eventSP.send(_NetworkHandleAnnouncement(commandId, reserved));
+              return _cloneOnHelper(clone, token);
+            },
+            reply: (bytes, token) {
+              final env = fbs.Envelope(bytes);
+              if (env.ok && env.dataType == fbs.PayloadTypeId.RepoHandle) {
+                final rh = env.data as fbs.RepoHandle;
+                handles[reserved] = rh.handle;
+                sessionToId[rh.sessionId] = reserved;
+                log.fine('Worker: repo cloned session=${rh.sessionId} → handleId=$reserved');
+                responseSP.send((commandId, HandleResult(reserved, bytes)));
+              } else {
+                sessionToId.remove(token);
+                responseSP.send((commandId, BufferResult(bytes)));
+              }
+            },
+            fail: (e, token) {
+              sessionToId.remove(token);
+              log.warning('Worker: clone helper failed for command $commandId: $e');
+              responseSP.send((commandId, BufferResult(_dispatchErrorEnvelope(e))));
+            },
           );
-          _replyRepoOp(bytes, commandId, handles, sessionToId, responseSP, log, () => nextHandleId++);
 
         case CloseRepoCommand(:final int handleId):
           final int? raw = handles.remove(handleId);
@@ -2566,51 +2664,42 @@ void _workerEntry(_WorkerInit init) {
             final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
-            final Uint8List bytes = repo_ffi_mutate.zanshinGitFetch(raw, remoteName);
-            responseSP.send((commandId, BufferResult(bytes)));
+            scheduler.run(
+              commandId: commandId,
+              handleId: handleId,
+              call: (token) {
+                eventSP.send(_NetworkHandleAnnouncement(commandId, handleId));
+                return _fetchOnHelper(raw, remoteName, token);
+              },
+              reply: (bytes, _) => responseSP.send((commandId, BufferResult(bytes))),
+              fail: (e, _) {
+                log.warning('Worker: fetch helper failed for command $commandId: $e');
+                responseSP.send((commandId, BufferResult(_dispatchErrorEnvelope(e))));
+              },
+            );
           }
 
-        case GitPushCommand(
-          :final int handleId,
-          :final List<String>? remotes,
-          :final List<String> bookmarks,
-          :final List<String> tags,
-          :final bool all,
-          :final bool tracked,
-          :final bool deleted,
-          :final bool allowEmptyDescription,
-          :final bool allowPrivate,
-          :final bool allowConflicts,
-          :final List<String> revisions,
-          :final List<String> changes,
-          :final List<String> named,
-          :final bool dryRun,
-          :final List<String> options,
-        ):
+        case final GitPushCommand push:
+          final int handleId = push.handleId;
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: GitPushCommand for unknown handleId $handleId');
             final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
-            final Uint8List bytes = repo_ffi_push.zanshinGitPush(
-              raw,
-              remotes: remotes,
-              bookmarks: bookmarks,
-              tags: tags,
-              all: all,
-              tracked: tracked,
-              deleted: deleted,
-              allowEmptyDescription: allowEmptyDescription,
-              allowPrivate: allowPrivate,
-              allowConflicts: allowConflicts,
-              revisions: revisions,
-              changes: changes,
-              named: named,
-              dryRun: dryRun,
-              options: options,
+            scheduler.run(
+              commandId: commandId,
+              handleId: handleId,
+              call: (token) {
+                eventSP.send(_NetworkHandleAnnouncement(commandId, handleId));
+                return _pushOnHelper(raw, push, token);
+              },
+              reply: (bytes, _) => responseSP.send((commandId, BufferResult(bytes))),
+              fail: (e, _) {
+                log.warning('Worker: push helper failed for command $commandId: $e');
+                responseSP.send((commandId, BufferResult(_dispatchErrorEnvelope(e))));
+              },
             );
-            responseSP.send((commandId, BufferResult(bytes)));
           }
 
         case RestoreCommand(
@@ -3130,36 +3219,245 @@ void _workerEntry(_WorkerInit init) {
           final Uint8List bytes = repo_ffi_config.zanshinConfigGcDelete(configDirs);
           responseSP.send((commandId, BufferResult(bytes)));
 
-        case ShutdownCommand():
-          // Close every repo left open: each join()s its Rust dispatch thread
-          // (AC 8) before the loop below unregisters the sink. Best-effort —
-          // an individual close failure must not abort the shutdown.
-          for (final int raw in handles.values) {
-            try {
-              repo_ffi.zanshinRepoClose(raw);
-            } catch (e) {
-              log.warning('Worker: zanshinRepoClose failed during shutdown: $e');
-            }
-          }
-          handles.clear();
-          sessionToId.clear();
-          closeEventSink();
+        case NetworkCancelCommand(:final int targetCommandId):
+          scheduler.cancel(targetCommandId);
           responseSP.send((commandId, BufferResult(fbs.EnvelopeObjectBuilder(ok: true).toBytes())));
-          commandPort.close();
+
+        case ShutdownCommand():
+          // Story 9.52: every network call is cancelled first, and the repos
+          // are closed only once no helper isolate still uses a session.
+          scheduler.shutDown(() {
+            // Close every repo left open: each join()s its Rust dispatch thread
+            // (AC 8) before the loop below unregisters the sink. Best-effort —
+            // an individual close failure must not abort the shutdown.
+            for (final int raw in handles.values) {
+              try {
+                repo_ffi.zanshinRepoClose(raw);
+              } catch (e) {
+                log.warning('Worker: zanshinRepoClose failed during shutdown: $e');
+              }
+            }
+            handles.clear();
+            sessionToId.clear();
+            closeEventSink();
+            responseSP.send((commandId, BufferResult(fbs.EnvelopeObjectBuilder(ok: true).toBytes())));
+            commandPort.close();
+          });
       }
     } catch (e, st) {
       log.warning('Worker: dispatch error for command $commandId: $e\n$st');
-      final Uint8List errorBytes = fbs.EnvelopeObjectBuilder(
-        ok: false,
-        error: fbs.FfiErrorObjectBuilder(
-          code: 'internal.dispatch_error',
-          context: '$e',
-        ),
-      ).toBytes();
-      responseSP.send((commandId, BufferResult(errorBytes)));
+      responseSP.send((commandId, BufferResult(_dispatchErrorEnvelope(e))));
     }
+  }
+
+  scheduler = _NetworkScheduler(dispatch, (commandId, e) {
+    log.warning('Worker: answering network command $commandId failed: $e');
+    responseSP.send((commandId, BufferResult(_dispatchErrorEnvelope(e))));
+  });
+  commandPort.listen((msg) {
+    if (msg is! WorkerCommand) {
+      log.warning('Worker: received unexpected message type');
+      return;
+    }
+    scheduler.accept(msg);
   });
 }
+
+/// The `internal.dispatch_error` envelope the worker answers a command with
+/// when its arm threw — on this isolate or on a network call's helper isolate.
+Uint8List _dispatchErrorEnvelope(Object e) => fbs.EnvelopeObjectBuilder(
+  ok: false,
+  error: fbs.FfiErrorObjectBuilder(code: 'internal.dispatch_error', context: '$e'),
+).toBytes();
+
+/// Sent on the event port when a network call actually starts (Story 9.52): the
+/// handle id of command [commandId] — for a clone the one the worker reserved —
+/// so main forwards the call's progress, and only from then on (a call queued
+/// behind another on its handle must not take that call's events). Not a
+/// [RepoEvent] — main consumes it.
+final class _NetworkHandleAnnouncement {
+  const _NetworkHandleAnnouncement(this.commandId, this.handleId);
+
+  final int commandId;
+  final int handleId;
+}
+
+/// The worker's serialization of network calls (Story 9.52).
+///
+/// A network call — fetch, push, clone — runs on a short-lived helper isolate
+/// ([Isolate.run]) so the worker's event loop keeps forwarding progress and
+/// serving other repos. While a fetch or push holds handle H, every
+/// [HandleScopedCommand] for H — [CloseRepoCommand] included — waits in
+/// arrival order and runs after it, so the helper is the only isolate that
+/// touches H's raw session (AD-2: Rust adds no handle locking). Calls on other
+/// handles, handle-free commands and events do not wait.
+///
+/// Each call carries a cancel token (`zanshin_network_token`, allocated when
+/// the call starts) that [cancel] cancels; a cancel of a queued call is
+/// remembered, so the call starts with a cancelled token. [shutDown] cancels
+/// every token and runs the shutdown once no call is in flight.
+final class _NetworkScheduler {
+  _NetworkScheduler(this._dispatch, this._answerError);
+
+  final void Function(WorkerCommand command) _dispatch;
+  final void Function(int commandId, Object error) _answerError;
+  final Set<int> _busy = {};
+  final Map<int, Queue<WorkerCommand>> _waiting = {};
+  final Map<int, int> _tokens = {};
+  final Set<int> _cancelledWhileQueued = {};
+  var _inFlight = 0;
+  var _shuttingDown = false;
+  void Function()? _whenIdle;
+
+  /// Runs [command] now, or queues it behind its handle's network call.
+  void accept(WorkerCommand command) {
+    if (command case HandleScopedCommand(:final int handleId) when _busy.contains(handleId)) {
+      _waiting.putIfAbsent(handleId, Queue.new).add(command);
+    } else {
+      _dispatch(command);
+    }
+  }
+
+  /// Starts the network call of [commandId]: allocates its token, holds
+  /// [handleId] (if any) and runs [call] — which must hand the FFI call to a
+  /// helper isolate — then hands its bytes to [reply], or its error to [fail],
+  /// and releases the handle.
+  void run({
+    required int commandId,
+    required int? handleId,
+    required Future<Uint8List> Function(int token) call,
+    required void Function(Uint8List bytes, int token) reply,
+    required void Function(Object error, int token) fail,
+  }) {
+    final int token = repo_ffi.zanshinNetworkToken();
+    _tokens[commandId] = token;
+    if (_cancelledWhileQueued.remove(commandId) || _shuttingDown) {
+      repo_ffi.zanshinNetworkCancel(token);
+    }
+    if (handleId != null) {
+      _busy.add(handleId);
+    }
+    _inFlight++;
+    Future<Uint8List> running;
+    try {
+      running = call(token);
+    } catch (e) {
+      running = Future.error(e);
+    }
+    // A throw while answering (a decode, say) still answers — `internal.dispatch_error` — and the
+    // handle is released below either way.
+    void answer(void Function() step) {
+      try {
+        step();
+      } catch (e) {
+        _answerError(commandId, e);
+      }
+    }
+
+    running
+        .then((bytes) => answer(() => reply(bytes, token)), onError: (Object e) => answer(() => fail(e, token)))
+        .whenComplete(() {
+          _tokens.remove(commandId);
+          _inFlight--;
+          if (handleId != null) {
+            _busy.remove(handleId);
+            _drain(handleId);
+          }
+          if (_inFlight == 0) {
+            final void Function()? idle = _whenIdle;
+            _whenIdle = null;
+            idle?.call();
+          }
+        })
+        .ignore();
+  }
+
+  void _drain(int handleId) {
+    final Queue<WorkerCommand>? queue = _waiting[handleId];
+    while (queue != null && queue.isNotEmpty && !_busy.contains(handleId)) {
+      _dispatch(queue.removeFirst());
+    }
+    if (queue != null && queue.isEmpty) {
+      _waiting.remove(handleId);
+    }
+  }
+
+  /// Cancels the network call of [targetCommandId]: its token if it runs, else
+  /// — when it waits in a queue — the token it will start with. Otherwise a
+  /// no-op (finished, unknown, or not a network call).
+  void cancel(int targetCommandId) {
+    final int? token = _tokens[targetCommandId];
+    if (token != null) {
+      repo_ffi.zanshinNetworkCancel(token);
+    } else if (_waiting.values.any(
+      (queue) => queue.any(
+        (command) => command.commandId == targetCommandId && (command is GitFetchCommand || command is GitPushCommand),
+      ),
+    )) {
+      _cancelledWhileQueued.add(targetCommandId);
+    }
+  }
+
+  /// Cancels every network call — running or still to start — and runs
+  /// [shutdown] once none is in flight, so no session is freed while a helper
+  /// still uses it.
+  void shutDown(void Function() shutdown) {
+    _shuttingDown = true;
+    _tokens.values.forEach(repo_ffi.zanshinNetworkCancel);
+    if (_inFlight == 0) {
+      shutdown();
+    } else {
+      _whenIdle = shutdown;
+    }
+  }
+}
+
+/// The helper-isolate half of a fetch (Story 9.52). Top-level, so the closure
+/// [Isolate.run] sends captures nothing but its arguments.
+Future<Uint8List> _fetchOnHelper(int raw, String remoteName, int token) => Isolate.run(
+  () => repo_ffi_mutate.zanshinGitFetch(raw, remoteName, cancelToken: token),
+  debugName: 'ZanshinNetwork',
+);
+
+/// The helper-isolate half of a push (Story 9.52); see [_fetchOnHelper].
+Future<Uint8List> _pushOnHelper(int raw, GitPushCommand c, int token) => Isolate.run(
+  () => repo_ffi_push.zanshinGitPush(
+    raw,
+    remotes: c.remotes,
+    bookmarks: c.bookmarks,
+    tags: c.tags,
+    all: c.all,
+    tracked: c.tracked,
+    deleted: c.deleted,
+    allowEmptyDescription: c.allowEmptyDescription,
+    allowPrivate: c.allowPrivate,
+    allowConflicts: c.allowConflicts,
+    revisions: c.revisions,
+    changes: c.changes,
+    named: c.named,
+    dryRun: c.dryRun,
+    options: c.options,
+    cancelToken: token,
+  ),
+  debugName: 'ZanshinNetwork',
+);
+
+/// The helper-isolate half of a clone (Story 9.52); see [_fetchOnHelper].
+Future<Uint8List> _cloneOnHelper(CloneRepoCommand c, int token) => Isolate.run(
+  () => repo_ffi.zanshinRepoClone(
+    source: c.source,
+    destination: c.destination,
+    remoteName: c.remoteName,
+    colocate: c.colocate,
+    noColocate: c.noColocate,
+    depth: c.depth,
+    branches: c.branches,
+    tags: c.tags,
+    objectHash: c.objectHash,
+    cancelToken: token,
+  ),
+  debugName: 'ZanshinNetwork',
+);
 
 /// The synthesized `ffi.invalid_handle` envelope every command arm replies with
 /// when [handleId] names no live handle.

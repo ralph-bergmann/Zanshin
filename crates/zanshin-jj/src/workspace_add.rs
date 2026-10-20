@@ -150,7 +150,7 @@ pub(crate) fn add(
         None => ctx.colocated && crate::config::git_colocate(&ctx.config).map_err(cfg)?,
     };
     if should_colocate {
-        let options = crate::environment::git_subprocess_options(repo.workspace().settings()).map_err(cfg)?;
+        let options = crate::environment::git_subprocess_options(repo.workspace().settings(), None).map_err(cfg)?;
         git::create_worktree(old_repo.store(), options, &destination)
             .map_err(|e| MutateError::GitWorktree(flatten_chain(&e)))?;
     }

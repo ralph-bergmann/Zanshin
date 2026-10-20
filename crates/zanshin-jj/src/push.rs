@@ -257,6 +257,10 @@ pub enum PushFailureKind {
     /// recorded. Also a step after the push loop that failed (the error's text);
     /// [`GitPushOutcome::recorded`] then says whether the operation was written.
     PushError,
+    /// The push's cancel token was cancelled (Story 9.52): the push stopped before the next
+    /// remote, or a git push failed after the cancel killed it. Earlier remotes may already have
+    /// their refs ([`PushRemote::finished`]); nothing is recorded.
+    Cancelled,
 }
 
 /// A push failure as data — the CLI's non-zero exit.
@@ -1699,6 +1703,7 @@ pub(crate) fn git_push(
     ctx: &mut VerbContext,
     args: &GitPushArgs,
     progress: &crate::ProgressFn,
+    cancel: Option<&crate::cancel::CancelGuard>,
 ) -> Result<GitPushOutcome, MutateError> {
     let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(be)?;
     let base_op = readonly.op_id().hex();
@@ -1735,7 +1740,7 @@ pub(crate) fn git_push(
     if crate::config::git_sign_on_push(&ctx.config).map_err(cfg)? {
         outcome.signing = sign_before_push(&mut tx, &ctx.immutable, &mut plan.remotes, &mut ctx.warnings)?;
     }
-    let pushed = push_remotes(&mut tx, &readonly, &plan.remotes, (args, progress), ctx)?;
+    let pushed = push_remotes(&mut tx, &readonly, &plan.remotes, (args, progress, cancel), ctx)?;
     outcome.hints.extend(pushed.hints);
     outcome.failure = pushed.failure.or_else(|| (!pushed.all_ok).then(some_refs_failed));
     // Refs are on the remotes now: a later error is data, not an `Err` (Story 9.20).
@@ -1802,10 +1807,10 @@ fn push_remotes(
     tx: &mut Transaction,
     readonly: &ReadonlyRepo,
     plans: &[RemotePlan],
-    (args, progress): (&GitPushArgs, &crate::ProgressFn),
+    (args, progress, cancel): (&GitPushArgs, &crate::ProgressFn, Option<&crate::cancel::CancelGuard>),
     ctx: &mut VerbContext,
 ) -> Result<Pushed, MutateError> {
-    let subprocess_options = crate::environment::git_subprocess_options(readonly.settings())
+    let subprocess_options = crate::environment::git_subprocess_options(readonly.settings(), cancel)
         .map_err(|e| cfg(crate::config::value_error(&e)))?;
     let options = GitPushOptions {
         remote_push_options: args.options.clone(),
@@ -1818,7 +1823,13 @@ fn push_remotes(
         failure: None,
     };
     let mut some_exported = false;
+    crate::cancel::watch_store(cancel, tx.repo().store());
     for plan in plans {
+        // Story 9.52's checkpoint: before each remote's git push — none after the last one.
+        if crate::cancel::checkpoint(cancel).is_err() {
+            pushed.failure = Some(cancelled());
+            return Ok(pushed);
+        }
         let mut callback = crate::remotes::ProgressCallback {
             operation: "push",
             progress,
@@ -1841,13 +1852,27 @@ fn push_remotes(
             Err(e) => {
                 let failure = push_error(&e);
                 pushed.results.insert(plan.remote.clone(), Err(failure.message.clone()));
-                pushed.failure = Some(failure);
+                // A git push that failed after the cancel killed it is the cancel.
+                pushed.failure = Some(if crate::cancel::is_cancelled(cancel) {
+                    cancelled()
+                } else {
+                    failure
+                });
                 return Ok(pushed);
             }
         }
     }
     pushed.recordable = pushed.all_ok || some_exported;
     Ok(pushed)
+}
+
+/// The push stopped by its cancel token (Story 9.52).
+fn cancelled() -> PushFailure {
+    PushFailure {
+        kind: PushFailureKind::Cancelled,
+        message: "Cancelled".to_owned(),
+        hint: None,
+    }
 }
 
 /// The CLI's "Failed to push some bookmarks" (`push.rs:657-661`).

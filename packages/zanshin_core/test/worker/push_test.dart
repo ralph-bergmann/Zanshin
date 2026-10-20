@@ -49,7 +49,7 @@ void main() {
 
     test('a push with no remote is the CLI refusal', () async {
       await expectLater(
-        repo.gitPush(remotes: const []),
+        repo.gitPush(remotes: const []).result,
         throwsA(
           isA<ZanshinFfiException>()
               .having((e) => e.code, 'code', 'jj.invalid_input')
@@ -60,7 +60,7 @@ void main() {
 
     test('conflicting modes are refused before anything runs', () async {
       await expectLater(
-        repo.gitPush(all: true, tracked: true),
+        repo.gitPush(all: true, tracked: true).result,
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
       );
     });
@@ -79,16 +79,18 @@ void main() {
     test('named, changes and allowEmptyDescription reach the plan', () async {
       await addRemote();
       // `@` is undescribed: without the override both explicit refs abort.
-      final GitPushResult refused = await repo.gitPush(named: const ['x=@'], changes: const ['@'], dryRun: true);
+      final GitPushResult refused = await repo.gitPush(named: const ['x=@'], changes: const ['@'], dryRun: true).result;
       expect(refused.failure?.kind, PushFailureKind.commitRejected);
       expect(refused.remotes.single.refs.map((r) => r.path), contains(PushPath.abort));
 
-      final GitPushResult plan = await repo.gitPush(
-        named: const ['x=@'],
-        changes: const ['@'],
-        allowEmptyDescription: true,
-        dryRun: true,
-      );
+      final GitPushResult plan = await repo
+          .gitPush(
+            named: const ['x=@'],
+            changes: const ['@'],
+            allowEmptyDescription: true,
+            dryRun: true,
+          )
+          .result;
 
       expect(plan.failure, isNull);
       final List<PushRef> refs = plan.remotes.single.refs;
@@ -106,8 +108,8 @@ void main() {
       await repo.describe(changeId: at, description: 'A\n');
       await repo.bookmarkCreate(const ['main']);
 
-      final GitPushResult plan = await repo.gitPush(revisions: const ['@'], dryRun: true);
-      final GitPushResult none = await repo.gitPush(revisions: const ['root()'], dryRun: true);
+      final GitPushResult plan = await repo.gitPush(revisions: const ['@'], dryRun: true).result;
+      final GitPushResult none = await repo.gitPush(revisions: const ['root()'], dryRun: true).result;
 
       // `-r` never creates a remote bookmark (`allow_new = false`): skipped, warned.
       final PushRef main = plan.remotes.single.refs.single;
@@ -126,7 +128,7 @@ void main() {
       await repo.describe(changeId: at, description: 'A\n');
       await repo.bookmarkCreate(const ['main']);
 
-      final GitPushResult plan = await repo.gitPush(bookmarks: const ['main'], dryRun: true);
+      final GitPushResult plan = await repo.gitPush(bookmarks: const ['main'], dryRun: true).result;
 
       expect(plan.dryRun, isTrue);
       expect(plan.recorded, isFalse);

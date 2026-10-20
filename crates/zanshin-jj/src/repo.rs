@@ -44,6 +44,11 @@ pub enum RepoError {
         /// The git failure (jj-lib's message with its cause).
         reason: String,
     },
+    /// [`Repo::clone`]'s cancel token was cancelled (Story 9.52): the clone refused at a
+    /// checkpoint, or its `git` failed after the cancel killed it. Inside the clean-up scope, so
+    /// what the clone created is removed.
+    #[error("cancelled")]
+    Cancelled,
     /// [`Repo::clone`]'s destination is a file or a non-empty directory (Story 9.20) — the CLI's
     /// "Destination path exists and is not an empty directory"; refused before anything is
     /// created.
@@ -1152,6 +1157,12 @@ impl Repo {
     /// an unexported ref, a remote that could not be reached — per remote and per ref, with the
     /// CLI's failure text in [`crate::GitPushOutcome::failure`] — on `Ok`.
     ///
+    /// A cancel of `cancel`'s token (Story 9.52) is data too: the push stops before the next
+    /// remote's git push, or when a git push fails after the cancel killed it, and reports
+    /// [`crate::PushFailureKind::Cancelled`] with nothing recorded; the per-remote data says
+    /// which remotes already got their refs. Once every remote's git push has run, the push
+    /// finishes normally.
+    ///
     /// # Warnings
     ///
     /// The CLI's `Warning:` lines on this path, in its order: `jj.push_remotes_unmatched`,
@@ -1183,8 +1194,9 @@ impl Repo {
         &mut self,
         args: &crate::GitPushArgs,
         progress: &crate::ProgressFn,
+        cancel: Option<&crate::cancel::CancelGuard>,
     ) -> Result<crate::GitPushOutcome, crate::MutateError> {
-        self.with_verb(|repo, ctx| crate::push::git_push(repo, ctx, args, progress))
+        self.with_verb(|repo, ctx| crate::push::git_push(repo, ctx, args, progress, cancel))
     }
 
     /// Fetches all branches and tags from `remote_name` and imports them (FR-JJ-13).
@@ -1224,17 +1236,21 @@ impl Repo {
     ///   workspace, whose pre-verb refs import reads them first — a malformed key above.
     /// - [`crate::MutateError::NetworkError`] — the underlying `git` subprocess
     ///   failed.
+    /// - [`crate::MutateError::Cancelled`] — `cancel`'s token was cancelled before the git work,
+    ///   after it but before the import, or git failed after the cancel (Story 9.52); no
+    ///   operation is committed. Without a token this never happens.
     /// - [`crate::MutateError::Backend`] — any other underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_fetch(
         &mut self,
         remote_name: &str,
         progress: &crate::ProgressFn,
+        cancel: Option<&crate::cancel::CancelGuard>,
     ) -> Result<crate::MutationResult, crate::MutateError> {
         // WHY the two fields rather than the accessors: disjoint field borrows, so the
         // workspace can be borrowed mutably next to the settings.
         self.with_verb(|repo, ctx| {
-            crate::remotes::git_fetch(&mut repo.workspace, &repo.settings, remote_name, ctx, progress)
+            crate::remotes::git_fetch(&mut repo.workspace, &repo.settings, remote_name, ctx, progress, cancel)
         })
     }
 
@@ -2513,12 +2529,18 @@ impl Repo {
     /// - [`RepoError::NetworkError`] — the fetch's or the default-branch query's `git` subprocess
     ///   failed (an unreachable source, an authentication failure, `git` not runnable); the reason
     ///   is the git failure (jj-lib's message with its cause).
+    /// - [`RepoError::Cancelled`] — `cancel`'s token was cancelled before or after the fetch's git
+    ///   work, or git failed after the cancel (Story 9.52); what the clone created is removed.
     /// - [`RepoError::CloneFailed`] — creating the destination, the jj-lib creation, registering
     ///   the remote (e.g. an unparseable source URL), another fetch failure (e.g. rejected ref
     ///   updates), the import or the checkout failed.
     #[must_use = "the outcome carries the result and the warnings"]
-    pub fn clone(options: &crate::CloneOptions, progress: &crate::ProgressFn) -> CreationOutcome {
-        crate::creation::clone(options, progress)
+    pub fn clone(
+        options: &crate::CloneOptions,
+        progress: &crate::ProgressFn,
+        cancel: Option<&crate::cancel::CancelGuard>,
+    ) -> CreationOutcome {
+        crate::creation::clone(options, progress, cancel)
     }
 }
 

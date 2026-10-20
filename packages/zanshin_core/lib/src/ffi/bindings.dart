@@ -1157,6 +1157,10 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_export(
 /// separate per-op registry; the caller correlates by `session_id`, exactly like a
 /// `WatcherEvent`.
 ///
+/// `cancel_token` (Story 9.52) is `0` (not cancellable) or a token from
+/// `zanshin_network_token`; `zanshin_network_cancel` cancels the fetch, and the token ends with
+/// this call.
+///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
 /// Its `abandoned_change_ids` carries the commits the import abandoned because they
 /// became unreachable in git (what `git.abandon-unreachable-commits` governs) — jj-lib's
@@ -1175,6 +1179,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_export(
 /// `git.abandon-unreachable-commits`/`git.record-synthetic-predecessors` has a
 /// non-boolean value; both are read per call rather than hardcoded.
 /// - `jj.network_error` — the underlying `git` subprocess failed; detail in `context`.
+/// - `jj.cancelled` — `cancel_token` was cancelled (`zanshin_network_cancel`, Story 9.52) before
+/// the git work, after it but before the import, or git failed after the cancel killed it; no
+/// operation is committed. `context` is "Cancelled". Never without a token.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 /// the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — any other underlying jj-lib failure; detail in `context`.
@@ -1189,10 +1196,11 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_export(
 /// allocates via `toNativeUtf8()` and frees with `calloc.free()` after this call
 /// returns — AR-P-5 inbound rule). Rust only borrows it for the duration of the call.
 /// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
-@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Char>)>()
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Char>, ffi.Uint64)>()
 external ffi.Pointer<ZanshinBuf> zanshin_git_fetch(
   int handle,
   ffi.Pointer<ffi.Char> remote_name,
+  int cancel_token,
 );
 
 /// Import the backing git repo's refs into jj's view, in the repo referenced by `handle` —
@@ -1250,9 +1258,14 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_import(
 /// `operation = "push"`, tagged with the session's `session_id` (push progress arrives mostly as
 /// sideband text, so there may be none).
 ///
+/// `cancel_token` (Story 9.52) is `0` (not cancellable) or a token from `zanshin_network_token`;
+/// `zanshin_network_cancel` stops the push before the next remote's git push (and kills a running
+/// one). Once every remote's git push has run, the push finishes normally.
+///
 /// Returns a `FlatBuffers` `Envelope` carrying a `GitPushResult` payload on success — also when the
 /// push failed after it started (`GitPushResult.failure`: a lease failure, a remote rejection, an
-/// unreachable remote; `recorded` says whether Undo applies).
+/// unreachable remote, a cancel — kind `Cancelled`, nothing recorded, the per-remote data saying
+/// which remotes already got their refs; `recorded` says whether Undo applies).
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -1688,6 +1701,36 @@ external ffi.Pointer<ZanshinBuf> zanshin_log_defaults(
 @ffi.Native<ffi.Void Function()>()
 external void zanshin_logging_init();
 
+/// Cancel the network call running — or about to run — under `token` (Story 9.52).
+///
+/// The token's flag is set; the call refuses at its next checkpoint (`jj.cancelled` for a fetch
+/// or clone, `GitPushResult.failure.kind = Cancelled` for a push). While the call runs, the
+/// call's `git` processes among this process's descendants — and their descendants, git's
+/// helpers — get SIGTERM, and SIGKILL if still alive 2 s after the cancel. A process is the
+/// call's when its environment carries `ZANSHIN_CANCEL_TOKEN=<token>`; when its environment is
+/// hidden (Apple's platform binaries, e.g. `/usr/bin/git`), when its arguments hold
+/// `--git-dir <dir>` for the call's repository and exactly one live call watches that dir. A git
+/// without a token on that dir (a concurrent `workspace add` worktree) is not told apart. Idempotent; a finished, unknown or `0` token is a no-op. Callable from any thread.
+///
+/// Infallible and `catch_unwind`-wrapped, like `zanshin_log`.
+@ffi.Native<ffi.Void Function(ffi.Uint64)>()
+external void zanshin_network_cancel(
+  int token,
+);
+
+/// Allocate a cancel token for one network call — `zanshin_git_fetch`, `zanshin_git_push` or
+/// `zanshin_repo_clone` (Story 9.52).
+///
+/// The token is a fresh id from the session-id space (never `0`, never reused, never a live
+/// session's id), registered until the call it is passed to ends; `zanshin_network_cancel`
+/// cancels it. A clone uses its token as the new session's id, so the caller can route the
+/// clone's progress before the clone returns. A token that is never passed to a call stays
+/// registered (a few bytes) until the process ends.
+///
+/// Infallible: returns `0` (no token) only if the allocation panicked.
+@ffi.Native<ffi.Uint64 Function()>()
+external int zanshin_network_token();
+
 /// Create a new, empty change in the repo referenced by `handle` and switch the working copy
 /// to it — the CLI's `jj new <parents>`, `jj new -A <insert_after>` and
 /// `jj new -B <insert_before>` (Story 9.48).
@@ -1817,7 +1860,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_remotes(
 ///
 /// Progress is dispatched over the process-global event sink as `Progress` events with
 /// `operation = "clone"`, tagged with the session id the new handle gets (allocated before the
-/// clone runs), exactly like `zanshin_git_fetch`'s.
+/// clone runs), exactly like `zanshin_git_fetch`'s. With a live `cancel_token` (Story 9.52, a
+/// token from `zanshin_network_token`) that id IS the token, so the caller can route the progress
+/// before the clone returns; `zanshin_network_cancel` cancels the clone.
 ///
 /// A failure inside the clone's clean-up scope (creating the workspace, adding the remote, the
 /// fetch) removes `.jj` (and `.git` when colocated), then the destination iff the call created it;
@@ -1837,6 +1882,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_remotes(
 /// - `jj.network_error` — the fetch's or the default-branch query's `git` subprocess failed (an
 /// unreachable source, an authentication failure, `git` not runnable); the git failure (jj-lib's
 /// message with its cause) in `context`.
+/// - `jj.cancelled` — `cancel_token` was cancelled (`zanshin_network_cancel`, Story 9.52) before
+/// or after the fetch's git work, or git failed after the cancel killed it; inside the clean-up
+/// scope, so what the clone created is removed. `context` is "Cancelled". Never without a token.
 /// - `jj.jj_lib_error` — the destination cannot be created, or the creation, registering the
 /// remote (e.g. an unparseable source URL), another fetch failure (e.g. rejected ref updates),
 /// the import or the checkout failed; detail in `context`.
@@ -2725,7 +2773,7 @@ const int ENUM_MAX_INIT_BACKEND = 1;
 
 const int ENUM_MAX_OBJECT_HASH = 2;
 
-const int ENUM_MAX_PUSH_FAILURE_KIND = 3;
+const int ENUM_MAX_PUSH_FAILURE_KIND = 4;
 
 const int ENUM_MAX_PUSH_PATH = 2;
 
@@ -2852,6 +2900,8 @@ const int GitPushRequest_VT_ALLOW_EMPTY_DESCRIPTION = 18;
 const int GitPushRequest_VT_ALLOW_PRIVATE = 20;
 
 const int GitPushRequest_VT_BOOKMARKS = 8;
+
+const int GitPushRequest_VT_CANCEL_TOKEN = 34;
 
 const int GitPushRequest_VT_CHANGES = 26;
 

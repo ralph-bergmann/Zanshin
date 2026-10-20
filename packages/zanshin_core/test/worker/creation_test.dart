@@ -87,7 +87,7 @@ void main() {
       File('${tempDir.path}/keep.txt').writeAsStringSync('mine');
 
       await expectLater(
-        worker.cloneRepo(source: 'file:///nowhere', destination: tempDir.path),
+        worker.cloneRepo(source: 'file:///nowhere', destination: tempDir.path).result,
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.destination_not_empty')),
       );
       expect(Directory('${tempDir.path}/.jj').existsSync(), isFalse, reason: 'nothing was created');
@@ -97,9 +97,10 @@ void main() {
     // Story 9.20: `depth` crosses as a uint32 — a value outside it is refused on the
     // calling side instead of wrapping on the wire.
     test('clone_refuses_a_depth_beyond_32_bits', () async {
-      await expectLater(
-        worker.cloneRepo(source: 'file:///nowhere', destination: tempDir.path, depth: 0x100000000),
+      expect(
+        () => worker.cloneRepo(source: 'file:///nowhere', destination: tempDir.path, depth: 0x100000000),
         throwsArgumentError,
+        reason: 'the guard throws synchronously',
       );
       expect(Directory('${tempDir.path}/.jj').existsSync(), isFalse, reason: 'nothing was sent');
     });
@@ -113,7 +114,9 @@ void main() {
       final destination = '${tempDir.path}/dst';
 
       await expectLater(
-        worker.cloneRepo(source: 'file:///nowhere', destination: destination, remoteName: 'git', noColocate: true),
+        worker
+            .cloneRepo(source: 'file:///nowhere', destination: destination, remoteName: 'git', noColocate: true)
+            .result,
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
       );
       expect(Directory('$destination/.jj').existsSync(), isFalse, reason: 'the clean-up removed .jj');
@@ -160,13 +163,15 @@ void main() {
         (null, const ['glob:[']),
       ]) {
         await expectLater(
-          worker.cloneRepo(
-            source: 'file:///nowhere',
-            destination: '${tempDir.path}/dst',
-            noColocate: true,
-            branches: branches,
-            tags: tags,
-          ),
+          worker
+              .cloneRepo(
+                source: 'file:///nowhere',
+                destination: '${tempDir.path}/dst',
+                noColocate: true,
+                branches: branches,
+                tags: tags,
+              )
+              .result,
           throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
         );
       }

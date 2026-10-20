@@ -477,8 +477,10 @@ final class UndoCommand extends WorkerCommand implements HandleScopedCommand {
 /// identified by [handleId] (Story 6.5). Never moves `@`.
 ///
 /// The worker looks up the raw handle in its Model-A table (read — never
-/// remove), calls `zanshinGitFetch(raw, remoteName)`, and replies with a
-/// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+/// remove), runs `zanshinGitFetch(raw, remoteName, cancelToken: …)` on a helper
+/// isolate (Story 9.52) while later commands for the same handle wait, and
+/// replies with a `BufferResult` carrying the FlatBuffers
+/// `Envelope<MutationResult>` bytes.
 /// Progress rides the same process-global event sink `WatcherEvent` already
 /// uses, tagged with the handle's `session_id`.
 final class GitFetchCommand extends WorkerCommand implements HandleScopedCommand {
@@ -501,8 +503,9 @@ final class GitFetchCommand extends WorkerCommand implements HandleScopedCommand
 /// through.
 ///
 /// The worker looks up the raw handle in its Model-A table (read — never
-/// remove), calls `zanshinGitPush(raw, …)`, and replies with a `BufferResult`
-/// carrying the FlatBuffers `Envelope<GitPushResult>` bytes.
+/// remove), runs `zanshinGitPush(raw, …)` on a helper isolate (Story 9.52)
+/// while later commands for the same handle wait, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<GitPushResult>` bytes.
 final class GitPushCommand extends WorkerCommand implements HandleScopedCommand {
   const GitPushCommand({
     required super.commandId,
@@ -1509,6 +1512,20 @@ final class CommitCommand extends WorkerCommand implements HandleScopedCommand {
 
   /// `-m`, required; empty = `-m ""`.
   final List<String> message;
+}
+
+/// Cancel the network call — fetch, push or clone — sent as command
+/// [targetCommandId] (Story 9.52).
+///
+/// The worker owns the cancel tokens: a running call's token is cancelled, a
+/// call still queued behind its handle starts with a cancelled token, and a
+/// finished or unknown target is a no-op. The worker acks with an ok envelope
+/// once it has processed the cancel.
+final class NetworkCancelCommand extends WorkerCommand {
+  const NetworkCancelCommand({required super.commandId, required this.targetCommandId});
+
+  /// The `commandId` of the network call to cancel.
+  final int targetCommandId;
 }
 
 /// Request a graceful worker shutdown (Story 3.6).

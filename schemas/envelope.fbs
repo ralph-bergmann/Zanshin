@@ -230,6 +230,9 @@ table CommitRequest {
 ///   allow_empty_description / allow_private / allow_conflicts   the three `--allow-*`
 ///   dry_run            `--dry-run`: the plan, nothing pushed or written
 ///   options            `-o/--option`: git push options
+///   cancel_token       Story 9.52: a token from `zanshin_network_token` that
+///                      `zanshin_network_cancel` cancels (the push stops before the next remote,
+///                      `GitPushResult.failure.kind = Cancelled`); 0 = not cancellable
 table GitPushRequest {
   kind: RequestKind;
   remotes: [string];
@@ -246,6 +249,7 @@ table GitPushRequest {
   named: [string];
   dry_run: bool;
   options: [string];
+  cancel_token: uint64;
 }
 
 /// The object hash of a new Git repository — the CLI's `--object-hash` (Story 9.20).
@@ -268,6 +272,10 @@ enum InitBackend : ubyte { Native, Git }
 ///   branches / tags    `-b` / `-t` patterns; ABSENT = the flag not given, present-empty = given
 ///                      with nothing (fetches none of that kind)
 ///   object_hash        `--object-hash`
+///   cancel_token       Story 9.52: a token from `zanshin_network_token` that
+///                      `zanshin_network_cancel` cancels (`jj.cancelled`); a live token is
+///                      also the new session's id, so its progress is routable before the clone
+///                      returns; 0 = not cancellable
 table RepoCloneRequest {
   kind: RequestKind;
   source: string;
@@ -279,6 +287,7 @@ table RepoCloneRequest {
   branches: [string];
   tags: [string];
   object_hash: ObjectHash;
+  cancel_token: uint64;
 }
 
 /// Arguments of `zanshin_repo_init` (Story 9.20) — the CLI's `jj git init`, passed through.
@@ -1176,8 +1185,10 @@ enum PushRefStatus : ubyte { NotReached, Pushed, LeaseRejected, RemoteRejected, 
 /// `CommitRejected` (the real run's error codes), `SomeRefsFailed` (the CLI's "Failed to push
 /// some bookmarks", possibly recorded), `PushError` (the push stopped at a remote, nothing
 /// recorded; or a step after the push loop failed, and `recorded` says whether the operation
-/// was written).
-enum PushFailureKind : ubyte { RefRefused, CommitRejected, SomeRefsFailed, PushError }
+/// was written), `Cancelled` (Story 9.52: the push's cancel token was cancelled — it stopped
+/// before the next remote; nothing recorded, `PushRemote.finished` says which remotes got their
+/// refs). Member order IS the wire value — APPEND only.
+enum PushFailureKind : ubyte { RefRefused, CommitRejected, SomeRefsFailed, PushError, Cancelled }
 
 /// The CLI's message and hint for a refused ref, verbatim. `hint` ABSENT where the CLI gives
 /// none.

@@ -27,7 +27,10 @@ import 'warning.dart';
 /// [allowPrivate] / [allowConflicts] the commit-check overrides; [revisions]
 /// is `-r`, [changes] `-c`, [named] `--named NAME=REVISION`; [dryRun] plans
 /// without pushing; [options] are `--option` push options. Progress rides the
-/// event sink as `operation: "push"`.
+/// event sink as `operation: "push"`. [cancelToken] (Story 9.52) is `0` (not
+/// cancellable) or a token from `zanshinNetworkToken`; a cancel stops the push
+/// before the next remote and is reported as data
+/// ([PushFailureKind.cancelled]).
 Uint8List zanshinGitPush(
   int rawHandle, {
   List<String>? remotes,
@@ -44,6 +47,7 @@ Uint8List zanshinGitPush(
   List<String> named = const [],
   bool dryRun = false,
   List<String> options = const [],
+  int cancelToken = 0,
 }) {
   rejectInteriorNuls(remotes ?? const [], 'remotes');
   rejectInteriorNuls(bookmarks, 'bookmarks');
@@ -68,6 +72,7 @@ Uint8List zanshinGitPush(
     named: named,
     dryRun: dryRun,
     options: options,
+    cancelToken: cancelToken,
   ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_git_push(rawHandle, ptr, len));
 }
@@ -131,6 +136,11 @@ enum PushFailureKind {
   /// loop failed, and [GitPushResult.recorded] says whether the operation was
   /// written.
   pushError,
+
+  /// The push's cancel was requested (Story 9.52): it stopped before the next
+  /// remote, nothing recorded; [PushRemote.finished] says which remotes
+  /// already got their refs.
+  cancelled,
 }
 
 /// A refusal of a ref, verbatim from the CLI.
@@ -458,6 +468,7 @@ PushFailureKind _failureKind(fbs.PushFailureKind kind) => switch (kind) {
   fbs.PushFailureKind.CommitRejected => PushFailureKind.commitRejected,
   fbs.PushFailureKind.SomeRefsFailed => PushFailureKind.someRefsFailed,
   fbs.PushFailureKind.PushError => PushFailureKind.pushError,
+  fbs.PushFailureKind.Cancelled => PushFailureKind.cancelled,
 };
 
 Never _missing(String field) => throw ZanshinFfiException('ffi.unknown', 'GitPushResult payload is missing its $field');

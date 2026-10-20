@@ -219,7 +219,7 @@ fn git_fetch_happy_path_imports_commits_and_reports_progress() {
     let progress_log = Arc::new(Mutex::new(Vec::<ProgressEvent>::new()));
     let progress_log_for_cb = Arc::clone(&progress_log);
     let cb = move |e: ProgressEvent| progress_log_for_cb.lock().expect("progress_log mutex").push(e);
-    let result = repo.git_fetch("origin", &cb).expect("git_fetch should succeed");
+    let result = repo.git_fetch("origin", &cb, None).expect("git_fetch should succeed");
     let events = progress_log.lock().expect("progress_log mutex").clone();
 
     assert!(!events.is_empty(), "expected at least one progress event");
@@ -294,7 +294,8 @@ fn git_fetch_honours_remote_auto_track_bookmarks() {
     write_repo_config(dst.path(), "[remotes.origin]\nauto-track-bookmarks = \"exact:main\"\n");
 
     let mut repo = Repo::open(dst.path()).unwrap();
-    repo.git_fetch("origin", &|_| {}).expect("git_fetch should succeed");
+    repo.git_fetch("origin", &|_| {}, None)
+        .expect("git_fetch should succeed");
 
     let bookmarks = repo.list_bookmarks().expect("list_bookmarks");
     let local = |name: &str| {
@@ -337,13 +338,15 @@ fn git_fetch_twice_with_no_new_commits_still_commits_fresh_op_each_time() {
     let no_op = |_: ProgressEvent| {};
 
     let before = repo.op_log(None).unwrap().len();
-    let first = repo.git_fetch("origin", &no_op).expect("first fetch");
+    let first = repo.git_fetch("origin", &no_op, None).expect("first fetch");
     let after_first = repo.op_log(None).unwrap();
     assert_eq!(after_first.len(), before + 1);
     assert_eq!(after_first[0].description, "fetch from git remote(s) origin");
 
     // Nothing changed on the remote between the two fetches.
-    let second = repo.git_fetch("origin", &no_op).expect("second fetch, nothing new");
+    let second = repo
+        .git_fetch("origin", &no_op, None)
+        .expect("second fetch, nothing new");
     let after_second = repo.op_log(None).unwrap();
     assert_eq!(
         after_second.len(),
@@ -380,7 +383,7 @@ fn git_fetch_nonexistent_remote_returns_remote_not_found() {
     let before = repo.op_log(None).unwrap().len();
 
     let no_op = |_: ProgressEvent| {};
-    let err = repo.git_fetch("nonexistent", &no_op).expect_err("no such remote");
+    let err = repo.git_fetch("nonexistent", &no_op, None).expect_err("no such remote");
     assert!(
         matches!(err, MutateError::RemoteNotFound { ref name } if name == "nonexistent"),
         "expected RemoteNotFound{{name: \"nonexistent\"}}, got {err:?}"
@@ -411,7 +414,7 @@ fn git_fetch_on_native_backend_returns_not_a_git_repo() {
     let mut repo = Repo::open(dst.path()).unwrap();
     let no_op = |_: ProgressEvent| {};
     let err = repo
-        .git_fetch("origin", &no_op)
+        .git_fetch("origin", &no_op, None)
         .expect_err("native backend has no git backend to fetch into");
     assert!(
         matches!(err, MutateError::NotAGitRepo),
@@ -458,7 +461,8 @@ fn prune_fixture() -> PruneFixture {
     let no_op = |_: ProgressEvent| {};
     let repo = {
         let mut repo = Repo::open(dst.path()).unwrap();
-        repo.git_fetch("origin", &no_op).expect("first fetch imports feature");
+        repo.git_fetch("origin", &no_op, None)
+            .expect("first fetch imports feature");
         repo
     };
 
@@ -497,7 +501,7 @@ fn git_fetch_honours_abandon_unreachable_commits_false() {
     write_repo_config(fx.dst.path(), "[git]\nabandon-unreachable-commits = false\n");
     let no_op = |_: ProgressEvent| {};
     let mut repo = Repo::open(fx.dst.path()).expect("reopen with the new repo config");
-    let result = repo.git_fetch("origin", &no_op).expect("second, pruning fetch");
+    let result = repo.git_fetch("origin", &no_op, None).expect("second, pruning fetch");
 
     assert_eq!(
         remote_bookmark_commit_hex(fx.dst.path(), "feature", "origin"),
@@ -536,7 +540,7 @@ fn git_fetch_with_the_default_config_abandons_unreachable_commits() {
     let no_op = |_: ProgressEvent| {};
     let mut repo = Repo::open(fx.dst.path()).expect("open with no repo config written");
     let result = repo
-        .git_fetch("origin", &no_op)
+        .git_fetch("origin", &no_op, None)
         .expect("the pruning fetch must return, not panic");
 
     assert_eq!(
@@ -597,14 +601,14 @@ fn git_fetch_with_a_non_boolean_config_value_refuses_as_config() {
 
     let mut repo = Repo::open(dst.path()).unwrap();
     let no_op = |_: ProgressEvent| {};
-    repo.git_fetch("origin", &no_op)
+    repo.git_fetch("origin", &no_op, None)
         .expect("the fixture's remote is real and reachable");
 
     let before = repo.op_log(None).unwrap();
 
     write_repo_config(dst.path(), "[git]\nabandon-unreachable-commits = \"yes\"\n");
     let err = repo
-        .git_fetch("origin", &no_op)
+        .git_fetch("origin", &no_op, None)
         .expect_err("a wrong-typed value must refuse");
 
     assert!(
@@ -702,7 +706,7 @@ fn amend_fixture() -> AmendFixture {
 
     let no_op = |_: ProgressEvent| {};
     let mut repo = Repo::open(dst.path()).unwrap();
-    repo.git_fetch("origin", &no_op)
+    repo.git_fetch("origin", &no_op, None)
         .expect("first fetch imports the pre-amend commit");
     assert_eq!(
         remote_bookmark_commit_hex(dst.path(), "main", "origin").as_deref(),
@@ -756,7 +760,7 @@ fn git_fetch_records_synthetic_predecessors_by_default() {
 
     let no_op = |_: ProgressEvent| {};
     let mut repo = Repo::open(fx.dst.path()).expect("open with no repo config written");
-    repo.git_fetch("origin", &no_op).expect("the force-push fetch");
+    repo.git_fetch("origin", &no_op, None).expect("the force-push fetch");
     assert_eq!(
         remote_bookmark_commit_hex(fx.dst.path(), "main", "origin").as_deref(),
         Some(new_commit.as_str()),
@@ -783,7 +787,7 @@ fn git_fetch_honours_record_synthetic_predecessors_false() {
     write_repo_config(fx.dst.path(), "[git]\nrecord-synthetic-predecessors = false\n");
     let no_op = |_: ProgressEvent| {};
     let mut repo = Repo::open(fx.dst.path()).expect("reopen with the new repo config");
-    repo.git_fetch("origin", &no_op).expect("the force-push fetch");
+    repo.git_fetch("origin", &no_op, None).expect("the force-push fetch");
     assert_eq!(
         remote_bookmark_commit_hex(fx.dst.path(), "main", "origin").as_deref(),
         Some(new_commit.as_str()),
@@ -820,7 +824,7 @@ fn git_fetch_reserved_remote_name_returns_backend_error() {
     // producing `GitFetchError::RemoteName` — which falls through `git_fetch`'s error
     // mapping to the generic `MutateError::Backend` arm (not `RemoteNotFound`).
     let err = repo
-        .git_fetch("git", &no_op)
+        .git_fetch("git", &no_op, None)
         .expect_err("\"git\" is a reserved remote name");
     assert!(matches!(err, MutateError::Backend(_)), "expected Backend, got {err:?}");
 }
@@ -849,7 +853,7 @@ fn git_fetch_unreachable_remote_returns_network_error() {
 
     let no_op = |_: ProgressEvent| {};
     let err = repo
-        .git_fetch("origin", &no_op)
+        .git_fetch("origin", &no_op, None)
         .expect_err("remote path does not exist");
     assert!(
         matches!(err, MutateError::NetworkError { .. }),

@@ -44,12 +44,15 @@ final class WatchErrorEvent extends RepoEvent {
   final String message;
 }
 
-/// Progress notification for a long-running operation (FR-FFI-8), e.g. `git
-/// fetch`. No producer exists yet — the first real one lands in Story 6-4a.
+/// Progress notification for a long-running operation (FR-FFI-8): a fetch
+/// (`"fetch"`), clone (`"clone"`) or push (`"push"`). Since Story 9.52 these
+/// network calls run on a helper isolate, so their progress arrives while the
+/// call is still running — on `ZanshinWorker.events` and on the call's
+/// `NetworkOperation.progress`.
 final class ProgressEvent extends RepoEvent {
   const ProgressEvent(super.handleId, this.operation, this.progress, this.message);
 
-  /// The operation name, e.g. `"fetch"`.
+  /// The operation name: `"fetch"`, `"clone"` or `"push"`.
   final String operation;
 
   /// Fractional completion in `[0, 1]`.

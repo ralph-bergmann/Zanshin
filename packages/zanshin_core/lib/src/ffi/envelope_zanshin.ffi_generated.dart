@@ -799,12 +799,15 @@ class _PushRefStatusReader extends fb.Reader<PushRefStatus> {
 ///  `CommitRejected` (the real run's error codes), `SomeRefsFailed` (the CLI's "Failed to push
 ///  some bookmarks", possibly recorded), `PushError` (the push stopped at a remote, nothing
 ///  recorded; or a step after the push loop failed, and `recorded` says whether the operation
-///  was written).
+///  was written), `Cancelled` (Story 9.52: the push's cancel token was cancelled — it stopped
+///  before the next remote; nothing recorded, `PushRemote.finished` says which remotes got their
+///  refs). Member order IS the wire value — APPEND only.
 enum PushFailureKind {
   RefRefused(0),
   CommitRejected(1),
   SomeRefsFailed(2),
-  PushError(3);
+  PushError(3),
+  Cancelled(4);
 
   final int value;
   const PushFailureKind(this.value);
@@ -819,6 +822,8 @@ enum PushFailureKind {
         return PushFailureKind.SomeRefsFailed;
       case 3:
         return PushFailureKind.PushError;
+      case 4:
+        return PushFailureKind.Cancelled;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -827,7 +832,7 @@ enum PushFailureKind {
   static PushFailureKind? _createOrNull(int? value) => value == null ? null : PushFailureKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 3;
+  static const int maxValue = 4;
   static const fb.Reader<PushFailureKind> reader = _PushFailureKindReader();
 }
 
@@ -2110,6 +2115,9 @@ class CommitRequestObjectBuilder extends fb.ObjectBuilder {
 ///    allow_empty_description / allow_private / allow_conflicts   the three `--allow-*`
 ///    dry_run            `--dry-run`: the plan, nothing pushed or written
 ///    options            `-o/--option`: git push options
+///    cancel_token       Story 9.52: a token from `zanshin_network_token` that
+///                       `zanshin_network_cancel` cancels (the push stops before the next remote,
+///                       `GitPushResult.failure.kind = Cancelled`); 0 = not cancellable
 class GitPushRequest {
   GitPushRequest._(this._bc, this._bcOffset);
   factory GitPushRequest(List<int> bytes) {
@@ -2137,10 +2145,11 @@ class GitPushRequest {
   List<String>? get named => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 28);
   bool get dryRun => const fb.BoolReader().vTableGet(_bc, _bcOffset, 30, false);
   List<String>? get options => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 32);
+  int get cancelToken => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 34, 0);
 
   @override
   String toString() {
-    return 'GitPushRequest{kind: ${kind}, remotes: ${remotes}, bookmarks: ${bookmarks}, tags: ${tags}, all: ${all}, tracked: ${tracked}, deleted: ${deleted}, allowEmptyDescription: ${allowEmptyDescription}, allowPrivate: ${allowPrivate}, allowConflicts: ${allowConflicts}, revisions: ${revisions}, changes: ${changes}, named: ${named}, dryRun: ${dryRun}, options: ${options}}';
+    return 'GitPushRequest{kind: ${kind}, remotes: ${remotes}, bookmarks: ${bookmarks}, tags: ${tags}, all: ${all}, tracked: ${tracked}, deleted: ${deleted}, allowEmptyDescription: ${allowEmptyDescription}, allowPrivate: ${allowPrivate}, allowConflicts: ${allowConflicts}, revisions: ${revisions}, changes: ${changes}, named: ${named}, dryRun: ${dryRun}, options: ${options}, cancelToken: ${cancelToken}}';
   }
 }
 
@@ -2157,7 +2166,7 @@ class GitPushRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(15);
+    fbBuilder.startTable(16);
   }
 
   int addKind(RequestKind? kind) {
@@ -2235,6 +2244,11 @@ class GitPushRequestBuilder {
     return fbBuilder.offset;
   }
 
+  int addCancelToken(int? cancelToken) {
+    fbBuilder.addUint64(15, cancelToken);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -2256,6 +2270,7 @@ class GitPushRequestObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _named;
   final bool? _dryRun;
   final List<String>? _options;
+  final int? _cancelToken;
 
   GitPushRequestObjectBuilder({
     RequestKind? kind,
@@ -2273,6 +2288,7 @@ class GitPushRequestObjectBuilder extends fb.ObjectBuilder {
     List<String>? named,
     bool? dryRun,
     List<String>? options,
+    int? cancelToken,
   }) : _kind = kind,
        _remotes = remotes,
        _bookmarks = bookmarks,
@@ -2287,7 +2303,8 @@ class GitPushRequestObjectBuilder extends fb.ObjectBuilder {
        _changes = changes,
        _named = named,
        _dryRun = dryRun,
-       _options = options;
+       _options = options,
+       _cancelToken = cancelToken;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -2309,7 +2326,7 @@ class GitPushRequestObjectBuilder extends fb.ObjectBuilder {
     final int? optionsOffset = _options == null
         ? null
         : fbBuilder.writeList(_options!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(15);
+    fbBuilder.startTable(16);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, remotesOffset);
     fbBuilder.addOffset(2, bookmarksOffset);
@@ -2325,6 +2342,7 @@ class GitPushRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(12, namedOffset);
     fbBuilder.addBool(13, _dryRun);
     fbBuilder.addOffset(14, optionsOffset);
+    fbBuilder.addUint64(15, _cancelToken);
     return fbBuilder.endTable();
   }
 
@@ -2348,6 +2366,10 @@ class GitPushRequestObjectBuilder extends fb.ObjectBuilder {
 ///    branches / tags    `-b` / `-t` patterns; ABSENT = the flag not given, present-empty = given
 ///                       with nothing (fetches none of that kind)
 ///    object_hash        `--object-hash`
+///    cancel_token       Story 9.52: a token from `zanshin_network_token` that
+///                       `zanshin_network_cancel` cancels (`jj.cancelled`); a live token is
+///                       also the new session's id, so its progress is routable before the clone
+///                       returns; 0 = not cancellable
 class RepoCloneRequest {
   RepoCloneRequest._(this._bc, this._bcOffset);
   factory RepoCloneRequest(List<int> bytes) {
@@ -2370,10 +2392,11 @@ class RepoCloneRequest {
   List<String>? get branches => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 18);
   List<String>? get tags => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 20);
   ObjectHash get objectHash => ObjectHash.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 22, 0));
+  int get cancelToken => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 24, 0);
 
   @override
   String toString() {
-    return 'RepoCloneRequest{kind: ${kind}, source: ${source}, destination: ${destination}, remoteName: ${remoteName}, colocate: ${colocate}, noColocate: ${noColocate}, depth: ${depth}, branches: ${branches}, tags: ${tags}, objectHash: ${objectHash}}';
+    return 'RepoCloneRequest{kind: ${kind}, source: ${source}, destination: ${destination}, remoteName: ${remoteName}, colocate: ${colocate}, noColocate: ${noColocate}, depth: ${depth}, branches: ${branches}, tags: ${tags}, objectHash: ${objectHash}, cancelToken: ${cancelToken}}';
   }
 }
 
@@ -2390,7 +2413,7 @@ class RepoCloneRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(10);
+    fbBuilder.startTable(11);
   }
 
   int addKind(RequestKind? kind) {
@@ -2443,6 +2466,11 @@ class RepoCloneRequestBuilder {
     return fbBuilder.offset;
   }
 
+  int addCancelToken(int? cancelToken) {
+    fbBuilder.addUint64(10, cancelToken);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -2459,6 +2487,7 @@ class RepoCloneRequestObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _branches;
   final List<String>? _tags;
   final ObjectHash? _objectHash;
+  final int? _cancelToken;
 
   RepoCloneRequestObjectBuilder({
     RequestKind? kind,
@@ -2471,6 +2500,7 @@ class RepoCloneRequestObjectBuilder extends fb.ObjectBuilder {
     List<String>? branches,
     List<String>? tags,
     ObjectHash? objectHash,
+    int? cancelToken,
   }) : _kind = kind,
        _source = source,
        _destination = destination,
@@ -2480,7 +2510,8 @@ class RepoCloneRequestObjectBuilder extends fb.ObjectBuilder {
        _depth = depth,
        _branches = branches,
        _tags = tags,
-       _objectHash = objectHash;
+       _objectHash = objectHash,
+       _cancelToken = cancelToken;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -2492,7 +2523,7 @@ class RepoCloneRequestObjectBuilder extends fb.ObjectBuilder {
         ? null
         : fbBuilder.writeList(_branches!.map(fbBuilder.writeString).toList());
     final int? tagsOffset = _tags == null ? null : fbBuilder.writeList(_tags!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(10);
+    fbBuilder.startTable(11);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, sourceOffset);
     fbBuilder.addOffset(2, destinationOffset);
@@ -2503,6 +2534,7 @@ class RepoCloneRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(7, branchesOffset);
     fbBuilder.addOffset(8, tagsOffset);
     fbBuilder.addUint8(9, _objectHash?.value);
+    fbBuilder.addUint64(10, _cancelToken);
     return fbBuilder.endTable();
   }
 

@@ -88,10 +88,12 @@ Uint8List zanshinRepoInit(
 /// history); [branches] / [tags] the `-b` / `-t` patterns (`null` = the flag
 /// not given, an empty list = given with nothing); [objectHash]
 /// `--object-hash`. Progress rides the event sink as `operation: "clone"`,
-/// tagged with the session id the new handle gets.
+/// tagged with the session id the new handle gets — which is [cancelToken]
+/// when it is a live token (Story 9.52: one from [zanshinNetworkToken] that
+/// [zanshinNetworkCancel] cancels).
 ///
 /// Errors: `jj.invalid_input`, `jj.destination_not_empty`, `jj.network_error`,
-/// `jj.jj_lib_error`, `jj.config_error`, `ffi.invalid_argument`.
+/// `jj.cancelled`, `jj.jj_lib_error`, `jj.config_error`, `ffi.invalid_argument`.
 Uint8List zanshinRepoClone({
   required String source,
   required String destination,
@@ -102,6 +104,7 @@ Uint8List zanshinRepoClone({
   List<String>? branches,
   List<String>? tags,
   ObjectHash? objectHash,
+  int cancelToken = 0,
 }) {
   rejectInteriorNul(source, 'source');
   rejectInteriorNul(destination, 'destination');
@@ -125,9 +128,19 @@ Uint8List zanshinRepoClone({
     branches: branches,
     tags: tags,
     objectHash: _objectHash(objectHash),
+    cancelToken: cancelToken,
   ).toBytes();
   return callWithRequest(request, zanshin_repo_clone);
 }
+
+/// Allocates a cancel token for one network call (Story 9.52) — a fresh,
+/// non-zero id from the session-id space, registered until the call it is
+/// passed to ends.
+int zanshinNetworkToken() => zanshin_network_token();
+
+/// Cancels the network call running — or about to run — under [token] (Story
+/// 9.52). Idempotent; a finished, unknown or `0` token is a no-op.
+void zanshinNetworkCancel(int token) => zanshin_network_cancel(token);
 
 /// Closes the repository identified by [rawHandle] (the raw `u64` pointer
 /// value).

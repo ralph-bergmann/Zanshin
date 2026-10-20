@@ -59,5 +59,6 @@ export 'src/worker/events.dart'
     show OpHeadsChangedEvent, ProgressEvent, RepoEvent, WatchErrorEvent, WorkingCopyHeartbeatEvent;
 export 'src/worker/handle.dart' show CreatedRepoHandle, OpenedRepoHandle, RepoHandle;
 export 'src/worker/isolate.dart' show ZanshinWorker;
+export 'src/worker/network_operation.dart' show NetworkOperation;
 export 'src/worker/responses.dart' show ZanshinFfiException;
 export 'src/worker/worker_module.dart' show WorkerModule;

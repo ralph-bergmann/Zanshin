@@ -200,6 +200,10 @@ pub enum MutateError {
         /// The underlying `git`/jj-lib failure message, forwarded verbatim.
         reason: String,
     },
+    /// The verb's cancel token was cancelled (Story 9.52): [`crate::Repo::git_fetch`] refused at
+    /// a checkpoint, or its `git` failed after the cancel killed it. No operation is committed.
+    #[error("cancelled")]
+    Cancelled,
     /// [`crate::Repo::git_remote_add`] was called with a name that already has a
     /// configured git remote, or [`crate::Repo::git_remote_rename`] with a NEW name that
     /// does (Story 9.5).

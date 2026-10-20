@@ -259,7 +259,7 @@ fn git_fetch_names_the_workspace() {
 
     let mut repo = Repo::open(tmp.path()).expect("reopen so the backend sees the remote");
     let noop = |_: zanshin_jj::ProgressEvent| {};
-    repo.git_fetch("origin", &noop).expect("git_fetch succeeds");
+    repo.git_fetch("origin", &noop, None).expect("git_fetch succeeds");
 
     let rows = recent_ops(tmp.path(), 1);
     assert_op_named(&rows, "fetch from git remote(s) origin", "default");
@@ -298,6 +298,7 @@ fn clone_names_the_workspace() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     )
     .result
     .expect("clone from local file://");
@@ -409,6 +410,6 @@ fn the_shared_funnel_undo_and_fetch_also_record_the_second_workspace() {
         .expect("git_remote_add succeeds");
     let mut repo = Repo::open(&second.path).expect("reopen so the backend sees the remote");
     let noop = |_: zanshin_jj::ProgressEvent| {};
-    repo.git_fetch("origin", &noop).expect("git_fetch succeeds");
+    repo.git_fetch("origin", &noop, None).expect("git_fetch succeeds");
     assert_eq!(head_op_workspace_name(&second.path).as_deref(), Some("second"));
 }

@@ -167,6 +167,7 @@ fn clone_warns_an_empty_identity_per_finish() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     );
     assert!(outcome.result.is_ok(), "{:?}", outcome.result);
     assert_eq!(
@@ -194,6 +195,7 @@ fn clone_of_an_empty_source_warns_the_identity_once() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     );
     assert!(outcome.result.is_ok(), "{:?}", outcome.result);
     assert_eq!(warnings(&outcome), [(WarningKind::IdentityMissing, IDENTITY)]);
@@ -270,6 +272,7 @@ fn clone_with_an_identity_reports_nothing() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     );
     assert!(outcome.result.is_ok(), "{:?}", outcome.result);
     assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
@@ -291,6 +294,7 @@ fn clone_into_a_non_empty_destination_is_refused() {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     );
     assert!(
         matches!(outcome.result, Err(RepoError::DestinationNotEmpty { .. })),
@@ -321,6 +325,7 @@ fn a_clone_failing_after_the_fetch_keeps_the_workspace(tmp: &Path, xdg: &Path) {
             ..Default::default()
         },
         &|_: zanshin_jj::ProgressEvent| {},
+        None,
     );
     set_env("XDG_CONFIG_HOME", Some(xdg.to_str().unwrap()));
     assert!(
