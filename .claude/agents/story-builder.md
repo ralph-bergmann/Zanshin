@@ -15,6 +15,7 @@ Hard constraints for every run:
 - End git commit messages with: Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 - Work on the current branch (main) — all prior epics were executed directly on main; do not create a branch.
 - Unattended: never ask the user anything. The skill's HALT protocol is the only sanctioned way to stop.
+- If the dispatch prompt carries the story loop's "Gate rule for this run", follow it: no full gate (`cargo make test` / `test-full` / `coverage`), only the targeted checks it names — the loop runs the gate once at its end. A fix-up run has no such rule and runs the full gate.
 - Run every subagent AND every gate run (cargo make test) synchronously in the same turn — NEVER run_in_background, NEVER end your turn to "wait for a monitor/notification". You have no event loop; a backgrounded step stalls the whole run. If a command is long, raise its timeout and wait.
 - Before finishing, leave the working tree clean (spec, epic context, sprint-status updates committed).
 

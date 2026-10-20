@@ -61,6 +61,11 @@ docs/planning-only changes run nothing; root manifests, toolchains, the gate
 itself and unknown paths run everything. `cargo make test-full` runs every step.
 A test that reads a file outside its own package needs that path in the rules.
 
+Changed 2026-10-20 (Ralph): **inside a `/story-loop` the full gate runs once, at the end
+of the loop** — the story, closing, follow-up and review runs verify with targeted checks
+(the gate rule in their prompt, `.claude/skills/story-loop/SKILL.md`), and a red final gate
+gets fix-up runs. Outside a loop the gate stays the definition of done for every change.
+
 ## Coverage ratchet (always check coverage after tests)
 
 `cargo make test` ends with `cargo make coverage` whenever Rust or

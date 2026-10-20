@@ -6,7 +6,7 @@ argument-hint: "<story-id> [<story-id> …]"
 
 # Story loop
 
-You orchestrate; `story-builder` subagents implement. Each story gets one story run and **at most one closing run** that works off the deferrals the story run left behind. A run whose spec ends with `followup_review_recommended: true` gets **follow-up review passes** until that flag is `false` (at most two per spec). Open ledger items that name a story travel into that story's run as **inbound items**: build-auto never reads the ledger, so the story-run prompt is their only way in. You edit only bookkeeping (spec frontmatter, `deferred-work.md`), never code, and judge ledger items by their text — the story and closing runs verify them against the code.
+You orchestrate; `story-builder` subagents implement. Each story gets one story run and **at most one closing run** that works off the deferrals the story run left behind. A run whose spec ends with `followup_review_recommended: true` gets **follow-up review passes** until that flag is `false` (at most two per spec). **The full quality gate runs once, at the end of the loop** (Ralph, 2026-10-20): every run inside the loop verifies with targeted checks only (the gate rule below), and a red final gate gets fix-up runs. Open ledger items that name a story travel into that story's run as **inbound items**: build-auto never reads the ledger, so the story-run prompt is their only way in. You edit only bookkeeping (spec frontmatter, `deferred-work.md`), never code, and judge ledger items by their text — the story and closing runs verify them against the code.
 
 Paths: specs, `deferred-work.md` ("the ledger") and `sprint-status.yaml` live in `_bmad-output/implementation-artifacts/`. "The spec" = the story run's spec/plan file (newer build-auto calls it a plan and ends with `built` instead of `done`).
 
@@ -23,7 +23,7 @@ From here on, never ask Ralph anything; collect questions for the final report.
 1. **Inbound items.** Search the ledger for open bullets (not struck), in any section, that name this story as the one to fix or settle them — by number (`11.3`, `Story 11.3`) or by its `sprint-status.yaml` key. Newer bullets say so in their Follow-up line; older ones have none, so read the whole bullet. Read every hit: a story named only as evidence or background (`epics.md Story 11.3 item 2`), or a longer number (`11.31`), is no inbound item. Leave out a bullet whose part for this story is only a decision for Ralph or a manual check (a running app, Ralph's real repo, hardware); it goes on Ralph's list. Number the rest I1, I2, …; when a bullet also names other stories, note which part is this story's.
 2. **Story run.** Dispatch `story-builder` (`run_in_background: false`) with the story-run prompt below.
 3. **Check the result** — the report is a claim, not proof. Take the spec path from the report, check the file exists, read its frontmatter `status` and run `git status --short`.
-   - `done` / `built` and clean tree → step 4. A red `cargo make test` in its verification notes goes into the final report; it does not stop the loop.
+   - `done` / `built` and clean tree → step 4. A red targeted check in its verification notes goes into the final report; it does not stop the loop (the final gate catches it).
    - No final report, or the spec is still `in-progress` / `in-review` (rate limit, cut-off) → dispatch a fresh `story-builder` whose whole intent is the spec's path; build-auto resumes it. At most two resumes, then treat it as blocked.
    - `blocked` → no closing run; its inbound items stay open, untouched. Continue with the next story unless that story builds on this one (its `sprint-status.yaml` comment or epics.md text names it); then stop the loop and go to the final report.
 4. **Close inbound items** — only when step 1 found some. The spec's `## Auto Run Result` lists each by its number:
@@ -60,6 +60,31 @@ From here on, never ask Ralph anything; collect questions for the final report.
 8a. **Follow-up review of the closing run** — as step 4a, for the closing run's spec, after step 8 (same reason: a pass rewrites `## Auto Run Result`). Deferrals these passes add get no closing run; they go to Ralph.
 9. Next story.
 
+## Loop end: the one full gate
+
+After the last story (also when the loop stopped early on a blocked story, as long as some run committed code):
+
+1. **Run `cargo make test`** from this session — in the background (a full run takes longer than one foreground command), waiting for it with a Monitor; never from a subagent. Log to the scratchpad. It runs every step the loop's changes need, ending with the coverage ratchet.
+   - `coverage` fails with "missing …/llvm-profdata" → rerun that step alone as `RUSTUP_HOME=$HOME/.rustup cargo make --allow-private coverage`, then `cargo make --allow-private gate-stamp` and `cargo make --allow-private gate-sweep`.
+2. **Green** → if `coverage-baseline.txt` changed (the ratchet raises it), commit it: `chore(coverage): raise the baseline after the story loop <ids>`. Done.
+3. **Red** → dispatch `story-builder` with the fix-up prompt below, quoting the failing steps and their error lines from the log (not the whole log). Check its result as in step 3 of "Per story", then rerun the gate (step 1). At most two fix-up runs; still red → stop, and the failures with the stories that likely caused them go to the top of Ralph's list.
+
+## Gate rule (goes into every prompt the loop sends, except the fix-up prompt)
+
+```text
+Gate rule for this run (Ralph, 2026-10-20): do NOT run the full quality gate — no `cargo make test`,
+`cargo make test-full` or `cargo make coverage`; the story loop runs it once after its last story. This
+overrides CLAUDE.md's "the quality gate is the definition of done" and build-auto's gate steps for this
+run. Verify with targeted checks instead, as far as the change reaches: `cargo test -p <crate>` (or
+`--test <name>`) for every touched crate and its dependents' affected tests, `cargo clippy -p <crate>
+--all-targets -- -D warnings`, `cargo fmt --all --check`, `cargo make codegen` when the FFI or the schema
+changed (commit what it generates), the parity oracle (`cargo test -p zanshin-parity --test oracle`) when a
+jj verb changed, and `flutter test` / `dart analyze` / `dart format --set-exit-if-changed` for each touched
+Dart package. Coverage is not measured here: still add the tests a new or changed line needs. Record every
+check you ran and its outcome under the spec's verification notes.
+```
+
+
 ## Ledger-bullet shape
 
 Under a heading `## Surfaced in <Story <id> | the closing run of Story <id> | the follow-up review of Story <id>> (bmad-build-auto, <date>)`. If that section already exists, add to it; otherwise `<date>` is today:
@@ -73,6 +98,8 @@ Under a heading `## Surfaced in <Story <id> | the closing run of Story <id> | th
 ## Prompts
 
 Never put a spec's path into a closing-run prompt or an inbound item: build-auto would treat it as the plan to resume and start a follow-up review of the finished story instead. The follow-up prompt is the one place where that is wanted. Quote the items in full instead, rewriting self-references ("this spec", "this story") and spec paths as "Story <id>'s spec" / "Story <id>".
+
+Every prompt below except the fix-up prompt ends with the gate rule above, verbatim.
 
 **Story run** — the block from `Also part of` to `or not done (why).` goes in only when step 1 found inbound items:
 
@@ -135,6 +162,23 @@ _bmad-output/implementation-artifacts/deferred-work.md, in the same commit as th
 <the ledger-bullet shape above, with the heading for the follow-up review of Story <id>>
 ```
 
+**Fix-up run** (after a red final gate; this run DOES run the full gate):
+
+```text
+Fix-up run after the story loop <ids>: make `cargo make test` green, nothing else. This is new work with its
+own spec; no story's finished spec is to be resumed or reviewed.
+
+Failing gate steps (from the loop's final `cargo make test`):
+1. <step name>: <the error lines, in full>
+   Likely from: Story <id> (<why>)
+2. …
+
+Fix each failure at its cause. A coverage regression is fixed by adding tests, never by lowering
+coverage-baseline.txt or adding an exclude_prefix. Change only what a failure needs. Finish with a green
+`cargo make test` (commit a raised coverage-baseline.txt with the fix). Under `## Auto Run Result`, list
+every failure by its number with what fixed it (commit hash), or why it is still red.
+```
+
 ## Final report
 
-One block per story: final status and commits; inbound items counted as fixed / rejected / partly done / not done; deferred items counted as fixed / rejected / record / covered (with the story) / handed on (with the story) / for Ralph; follow-up review passes run (per spec) and their patched counts; a `followup_review_recommended: true` still set after the second pass, with its named risk. Then one list of everything waiting for Ralph across all stories — the for-Ralph items with their reasons and ledger sections, the inbound bullets step 1 left out, inbound items not done for a reason Ralph must settle, manual checks of handed-on items, closing-run deferrals, and blocked conditions — merging items that ask Ralph for the same action.
+One block per story: final status and commits; inbound items counted as fixed / rejected / partly done / not done; deferred items counted as fixed / rejected / record / covered (with the story) / handed on (with the story) / for Ralph; follow-up review passes run (per spec) and their patched counts; a `followup_review_recommended: true` still set after the second pass, with its named risk. Then the final gate: green or red, its duration, the fix-up runs it needed and their commits, and a raised coverage baseline. Then one list of everything waiting for Ralph across all stories — the for-Ralph items with their reasons and ledger sections, the inbound bullets step 1 left out, inbound items not done for a reason Ralph must settle, manual checks of handed-on items, closing-run deferrals, and blocked conditions — merging items that ask Ralph for the same action.
