@@ -2,7 +2,7 @@
 title: 'Story 9.51: jj templates — `commit_trailers`, `draft_commit_description`, `git_push_bookmark`'
 type: 'feature'
 created: '2026-10-20'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '455b34d1472e2daf05ca9e6f90ba80247afaea92'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -31,6 +31,13 @@ deferred:
     location: >-
       crates/zanshin-jj/src/config.rs template_defaults_layer
     severity: low
+  - summary: >-
+      The GUI round trip "show `squash_plan`'s text, pass the edited text back as `message`" re-applies `templates.commit_trailers` (the `-m` arm), so with trailers configured a trailer the user deleted comes back, and an unchanged plan text whose last paragraph is no trailer block (destination trailered, source not) gains a second trailer — where the CLI's editor flow writes the edited text as is.
+    evidence: |-
+      crates/zanshin-jj/src/squash_split.rs `squashed_description` (Exact arm → `Templates::add_trailers`) and `squash_plan`; CLI squash.rs:358-400 @ v0.46.0 adds trailers to `-m` text but never to the text the editor returns. Example: B = "B\n\nSOB\n", C = "C\n": plan "B\n\nSOB\n\nC\n", round trip writes "B\n\nSOB\n\nC\n\nSOB\n", `squash` without message writes the plan text. Review of Story 9.51 (blind + edge layers).
+    location: >-
+      crates/zanshin-jj/src/squash_split.rs squashed_description; crates/zanshin-jj/src/repo.rs Repo::squash / squash_plan docs
+    severity: medium
 ---
 
 <intent-contract>
@@ -154,6 +161,43 @@ CLI anchors at `jj-cli-0.46.0/src` (registry); jj-lib in vendored `jj-lib-0.46.0
 
 ## Review Triage Log
 
+### 2026-10-20 — Review pass
+- verdicts: 33 findings — high 0, medium 3, low 22, false 8, maybe-false 0
+- findings:
+  - `[false]` `[reject]` (intent) no `## Auto Run Result`, spec `in-review` vs sprint-status `done` — the review ran mid-run; finalisation writes the section and sets `done`.
+  - `[low]` `[reject]` (intent) template refusals witnessed at zanshin-jj and in the oracle, not through FFI/Dart — `map_mutate_err`'s `Config` → `jj.config_error` arm is unit-tested (crates/zanshin-ffi/src/repo.rs); the sibling stories rejected the same gap for the same reason.
+  - `[false]` `[reject]` (intent) scope beyond I1–I4 (new_description, squash/split/workspace add trailers, diff tables, the warning code) — epics.md Story 9.51 items 1–6 require them; new_description is the allowed one-liner; the diff tables are logged in the Spec Change Log.
+  - `[false]` `[reject]` (intent) existing behaviour changed (squash_plan writes hidden objects, push error kind, workspace add op) — each is the intended CLI behaviour and documented in code and the Spec Change Log.
+  - `[false]` `[reject]` (intent) squash not oracle-checked with a custom `default_commit_description` — unreachable for Zanshin's squash: the alias is only read when the description is empty, and the combined editor text always carries its `JJ:` header lines; the single-description arm has no editor in Zanshin.
+  - `[low]` `[reject]` (intent) dry-run name equality not oracle-checked — the oracle compares repo state and a dry run writes none; `a_customised_push_bookmark_template_names_the_change_bookmark` (tests/push.rs) asserts the dry-run and push names.
+  - `[false]` `[reject]` (intent) `new` reaches trailers only via `new_description` — Zanshin's `new` has no `-m` by design; the CLI applies trailers only to a non-empty description, so this IS the CLI's rule.
+  - `[false]` `[reject]` (intent) three low deviations deferred rather than closed — recorded deferrals, not defects.
+  - `[false]` `[reject]` (intent) ledger self-test re-pointed — its fixture row was deleted by this story; the test checks the same property.
+  - `[medium]` `[patch]` (verification-gap) `squash -u` and the single-description `Combine` arm add trailers with no witness — added oracle scenarios (see Auto Run Result).
+  - `[low]` `[patch]` (verification-gap) split editor arm's "first still empty" trailer branch never runs — added an oracle scenario on an undescribed `@` with trailers.
+  - `[low]` `[patch]` (verification-gap) empty-message guards of `commit` and `workspace add` unwitnessed — added `commit -m ""` and `workspace add` without `-m` oracle scenarios with trailers.
+  - `[low]` `[patch]` (blind) `jj.config_error` docs of describe/new/commit/squash/squash_plan/split/workspace add FFI entry points omit template faults — clause added, codegen re-run.
+  - `[low]` `[patch]` (blind) `SplitOptions.message` doc and `SplitRequest.message` schema comment still say "both keep the original description" — rewritten, codegen re-run.
+  - `[low]` `[patch]` (blind) template parse refusals drop the CLI's source chain — grouped with the two edge rows below; the reason now carries the chain lines.
+  - `[medium]` `[defer]` (blind) the `squash_plan` → `message` round trip re-adds trailers (`-m` arm) — verified: with B = "B\n\nSOB\n" and an untrailered C, the plan text "B\n\nSOB\n\nC\n" passed back as `message` becomes "B\n\nSOB\n\nC\n\nSOB\n" while `squash` without `message` writes the plan text, and a trailer the user deletes in the GUI editor comes back. Every spec rule holds (squash_plan = the editor text; `-m` gets trailers, as the CLI's `-m`); the fix needs a public way to pass "edited editor text" apart from `-m` (a SquashOptions/FFI field) — an API decision for Ralph, deferred per the run's rule (spec `deferred:` item 4, mirrored).
+  - `[low]` `[patch]` (blind) the oracle never exercises the ported environment (id-prefix context, immutable set, working-copy keywords) — added `push -c` with `change_id.shortest()` + custom `revsets.short-prefixes`, and a describe trailer template using `immutable` / `current_working_copy`.
+  - `[low]` `[patch]` (blind) refusal coverage only for a broken commit_trailers and an empty push name — added both-sides-refuse scenarios for a broken `draft_commit_description` (squash) and a broken `git_push_bookmark` (push -c).
+  - `[low]` `[patch]` (blind) `squash -u` / `split --parallel` editor arm unwitnessed — same tests as the verification-gap rows (scenarios added, incl. `split --parallel` without `-m`).
+  - `[low]` `[reject]` (blind) the template `RevsetParseContext` uses `Local::now()` and `Some("git")` instead of `debug.commit-timestamp` / the store's ignored remote — the same choice as Zanshin's existing revset context (revset.rs); only a date pattern inside a template under a pinned debug timestamp, or a non-git backend, differs; the fix adds branching.
+  - `[low]` `[patch]` (blind) `template_defaults_layer` re-parses jj-cli's default TOML on every config load — built once (LazyLock) and cloned.
+  - `[low]` `[reject]` (blind) `config list --include-defaults` now shows the template defaults — intended and closer to the CLI (Design Notes); plain `config list` is unchanged.
+  - `[low]` `[reject]` (blind) `describe -m T` on an already-trailered "T\n\nSOB\n" writes an operation where the CLI writes none — the missing no-change gate is Story 9.40's (ledger row `describe_no_change`); trailers only add one more way to reach it.
+  - `[low]` `[reject]` (blind) workspace add renders with the old workspace's immutable set — differs only when `immutable_heads()` names a workspace-relative symbol such as `@`; the fix re-parses the start-up environment for the new workspace.
+  - `[low]` `[reject]` (blind) `squash_plan` now writes unreferenced objects to the store per call — required to render on the CLI's temp commit; the objects are unreachable and collected by `jj util gc`; no operation is written.
+  - `[low]` `[reject]` (blind) no end-to-end witness of `jj.template_diagnostic` — the only template diagnostic jj-cli 0.46 emits is "Failed to load short-prefixes index", which needs a corrupt index; the kind → code mapping is pinned in Rust, FFI and Dart.
+  - `[low]` `[reject]` (blind) oracle fixture constants duplicated (`EDITOR_STEP`, `C2_TRAILERS`) — Rust cannot concatenate const slices without a macro; cosmetic.
+  - `[low]` `[patch]` (edge) parse error inside an alias/parameter expansion reads only "In alias `x`" — same root as the blind chain row; fixed there with a unit test.
+  - `[medium]` `[defer]` (edge) squash_plan text passed back as message doubles trailers — same root as the blind round-trip row; deferred with it.
+  - `[low]` `[reject]` (edge) workspace add's immutable set parsed for the old workspace — same as the blind row; rejected there.
+  - `[low]` `[reject]` (edge) `debug.commit-timestamp` ignored by the template's date patterns — same as the blind revset-context row.
+  - `[false]` `[reject]` (edge, claim) AC "op head unchanged" vs workspace add's refusal after `add workspace` — the Spec Change Log records the CLI-faithful behaviour; the fix would be a spec edit.
+  - `[low]` `[patch]` (edge, claim) refusal context lacks the CLI's source chain — same root as the chain row; patched there (hints are presentation, not ported).
+
 ## Design Notes
 
 - **Spike (planning, 2026-10-20) — passed.** A throwaway test in `crates/zanshin-jj/tests` with `jj-cli` added to zanshin-jj built `CommitTemplateLanguage` from a `Workspace`, a `StackedConfig` (jj-cli default layers + user layer), an `Fs` path converter, a `RevsetParseContext`, an `IdPrefixContext` and `RevsetExpression::root()` as the immutable set, and rendered on the working-copy commit: `format_signed_off_by_trailer(self)` → `Signed-off-by: Test User <test@example.com>`; `builtin_draft_commit_description` with `default_commit_description = "custom default\n"` → `custom default\n\nJJ: Change ID: zpqtwmox\n`; `"push-" ++ change_id.short()` → `push-zpqtwmoxwrzw`; `nope(` → `Failed to parse template: Syntax error`. jj-cli's artifacts were already built for zanshin-parity, so the incremental build took 2 s; `mimalloc` is only jj-cli's `main.rs` allocator, not the lib's. Every input exists per call: `ctx.config`, `ctx.immutable` (`CommandEnv`), `revset_config`, the workspace. The spike was removed after planning.
@@ -170,3 +214,85 @@ CLI anchors at `jj-cli-0.46.0/src` (registry); jj-lib in vendored `jj-lib-0.46.0
 - `cargo test -p zanshin-parity --test oracle` -- expected: all pass, no trailers ledger rows.
 - `cargo make codegen` -- expected: regenerated files committed, no further diff.
 - `cargo make test` (unpiped, synchronous, long timeout) -- expected: exit 0.
+
+## Auto Run Result
+
+Status: done
+
+**Summary.** The planning spike passed: jj-cli 0.46.0's template engine (`CommitTemplateLanguage`, `template_builder::parse`, `TemplateRenderer`) builds from Zanshin's per-call environment, so `zanshin-jj` now links the jj-cli library for the template engine only. A new `template.rs` builds the CLI's template environment lazily per call: revset, fileset and `[template-aliases]` maps, an id-prefix context within `revsets.short-prefixes`, the immutable set, `ui.conflict-marker-style`, and the workspace name and root. It ports `parse_trailers_template`, `add_trailers(_with_template)`, `description_template` with the saved-unchanged cleanup, the trailer block of `combine_messages_for_editing`, `new_description` and the `git_push_bookmark` names. Where the templates apply:
+- `templates.commit_trailers` in `describe`, `new`, `commit`, `squash` (and `squash_plan`), `split` and `workspace add`, at the CLI's step and with its empty-description rules.
+- `templates.draft_commit_description` for the editor-saved-unchanged text of `squash`, `squash_plan` and `split` (`default_commit_description` is honoured).
+- `templates.new_description` for `new`.
+- `templates.git_push_bookmark` for `push --change`, in the dry run and the real push.
+
+The defaults are taken verbatim from `jj_cli::config::default_config_layers`, built once per process: `[template-aliases]`, `[diff.color-words]`, `[diff.git]` and the four `templates.*` keys. Template faults refuse as `jj.config_error` with the CLI's text and its cause chain. Template parse diagnostics arrive as a new warning, `jj.template_diagnostic`, in Rust, FFI and Dart.
+
+**Deferred-work items.**
+- **I1 (`describe` and `new` never apply `templates.commit_trailers`)** — fixed (74338d0). `describe` adds trailers to a non-empty description. `new` has no `-m` in Zanshin, so it renders `templates.new_description` and adds trailers when that is non-empty (the CLI's rule). The oracle scenarios `describe_commit_trailers`, `describe_empty_trailers`, `new_description` and `new_description_trailers` match the CLI, and the ledger row is gone. `squash`, `split` and `workspace add` apply trailers too (review witnesses in 732247b).
+- **I2 (the "editor saved unchanged" rule ignores user templates)** — fixed (74338d0). The text is `cleanup(render(templates.draft_commit_description, temp commit))`. Matching oracle scenarios: `split_editor_default_description` (a custom `default_commit_description`), `squash_custom_draft` and `squash_plan_custom_draft_as_message`.
+- **I3 (`commit` does not apply `templates.commit_trailers`)** — fixed (74338d0). A non-empty `-m` gets the trailers, and the oracle's `commit_trailers` ledger row is gone. `commit_empty_message_trailers` (732247b) witnesses the empty guard.
+- **I4 (`git push --change` refuses a customised `templates.git_push_bookmark`)** — fixed (74338d0). Names are rendered from the template, with the CLI's refusals for an empty or non-UTF-8 name. Matching oracle scenarios: `push_change_custom_template`, `push_change_empty_template`, `push_change_shortest_template` and `push_change_broken_template`.
+
+**Commits.**
+- 455b34d — spec, with its deferral mirrored.
+- 74338d0 — feature.
+- 17c96df — first planning-file update.
+- 732247b — review patches.
+- The finalisation commit of this spec, deferred-work.md and sprint-status.yaml.
+
+**Files changed.**
+- `crates/zanshin-jj/src/template.rs` (new): the template environment and the CLI's description and push-name rules.
+- `crates/zanshin-jj/src/{config,warning,revset,mutate,commit,workspace_add,squash_split,op_support,push,repo,lib}.rs`:
+  - the jj-cli defaults layer and the template-key accessors;
+  - `TemplateDiagnostic` and `Load::TemplateAliases`;
+  - the `RevsetConfig` accessors;
+  - the template steps in each verb;
+  - `combine_messages_for_editing` gains the CLI's trailer block, and `combined_editor_text` is removed;
+  - the push refusal is gone;
+  - docs.
+- `Cargo.toml` and `crates/zanshin-jj/Cargo.toml`: the jj-cli dependency, with WHY comments.
+- `crates/zanshin-ffi/src/{envelope,push,repo,commit,squash_split,workspace}.rs`, `schemas/envelope.fbs`, plus the regenerated `zanshin_ffi.h`, `envelope_generated.rs`, `bindings.dart` and `envelope_zanshin.ffi_generated.dart`: the warning code, and the `jj.config_error` and split docs.
+- `packages/zanshin_core/lib/src/ffi/warning.dart` and `test/ffi/warning_test.dart`: `ZanshinWarningCode.templateDiagnostic`.
+- Tests: `crates/zanshin-jj/tests/templates.rs` (new, 17 tests), `tests/push.rs` (custom-name and empty-name witnesses), `tests/api_stability.rs`, the inline unit tests in `template.rs` and `config.rs`.
+- Parity oracle: 24 new scenarios (130 → 154), with the two trailer ledger rows removed and no row added.
+- Docs and planning: `docs/rust-error-codes.md`, `_bmad-output/project-context.md` (the jj-cli dependency rule), `coverage-baseline.txt` (`template.rs` = 99.32), `sprint-status.yaml`, `deferred-work.md`.
+
+**Review.** 33 findings: high 0, medium 3, low 22, false 8.
+- **Patched (732247b), 1 medium and 9 low entries:**
+  - six trailer-branch witnesses (`squash -u`, the single-description squash, the undescribed split's editor arm, `split --parallel` without `-m`, `commit -m ""`, `workspace add` without `-m`);
+  - template-environment scenarios (`immutable` / `current_working_copy` in a trailer, `change_id.shortest(8)` within `revsets.short-prefixes`);
+  - refusal scenarios for a broken draft template and a broken push template;
+  - the `jj.config_error` FFI docs of every template-rendering entry point;
+  - the stale split `-m` docs (Rust and `envelope.fbs`);
+  - the parse refusal now keeps the cause chain (an alias case names the inner fault);
+  - the jj-cli defaults layer is built once.
+- **Deferred (medium, the spec's `deferred:` item 4, mirrored):** the `squash_plan` → `message` GUI round trip re-applies trailers, because the `-m` arm adds them. A trailer the user deleted comes back, and an unchanged plan can gain a second trailer when the destination is trailered and the source is not. The fix needs a public way to pass edited editor text apart from `-m`, which is an API decision for Ralph.
+- **Rejected,** each with its reason in the triage log:
+  - the revset context's timestamp and ignored remote (same as Zanshin's existing revset context; only a debug timestamp or a non-git backend differs);
+  - the `config list --include-defaults` growth (intended, and closer to the CLI);
+  - the describe no-change op (Story 9.40's gate);
+  - workspace add's old-workspace immutable set (only an `immutable_heads()` naming `@` differs);
+  - `squash_plan`'s unreferenced store objects (needed to render on the CLI's temp commit);
+  - no end-to-end `jj.template_diagnostic` witness (its only source needs a corrupt index);
+  - the fixture const duplication;
+  - FFI-level refusal tests (the mapping is unit-tested);
+  - the dry-run name in the oracle (witnessed in `tests/push.rs`);
+  - eight false findings (artifact state mid-run, intended scope, documented behaviour changes, the unreachable squash `default_commit_description` case, `new` without `-m`, the recorded deferrals, the re-pointed self-test, and an AC claim whose fix would edit the spec).
+
+**Follow-up review recommendation:** false. The pass patched one medium entry and no high one (patched counts: high 0, medium 1, low 9 entries).
+
+**Verification.**
+- `cargo test -p zanshin-jj --test templates --test push --test squash_split`: all 73 tests pass.
+- `cargo test -p zanshin-parity --test oracle`: 163 pass (154 scenarios plus the self-tests), with no trailer ledger rows and no new row.
+- `cargo make codegen`: no further diff.
+- `cargo make test` (unpiped, synchronous): exit 0 after the review patches (980 s, including the coverage ratchet and the extern-fn guard; baseline unchanged).
+- Matrix audit: every row has a passing test in `tests/templates.rs`, `tests/push.rs` or the oracle. The "broken template → push -c" part of that row is witnessed with a broken `git_push_bookmark` (`push_change_broken_template`), since push does not read `commit_trailers`. The workspace-add part refuses after jj-lib's `add workspace` operation, as the CLI does (Spec Change Log).
+
+**Residual risks.**
+- `zanshin-jj` (and so the shipped cdylib) now links jj-cli. The pin bump moves it together with jj-lib, and the defaults are copied programmatically, so a pin that renames a table or key would silently leave that part of the layer empty. The `config.rs` tests pin the draft alias and the four keys.
+- Four low deferrals are open:
+  - the lazy loading of the aliases and short-prefixes versus the CLI's start-up load;
+  - no span rendering for `jj.template_diagnostic`;
+  - `config()` inside a template sees only part of jj-cli's defaults;
+  - the medium `squash_plan` round trip above.
+- A disk-space incident during implementation: the implementer deleted `target/debug/incremental` (a regenerable cache) after "No space left on device".
