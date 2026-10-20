@@ -18,6 +18,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/workspace_add.rs add / add_trailers_for
     severity: low
+    resolved: >-
+      2026-10-20 — fixed (spec-9-54-squash-split-edited-text-and-follow-ups, commit 65bce23): workspace add builds the new workspace's start-up environment in its own collector; its warnings come twice like the CLI's and its immutable set renders the trailers.
 ---
 
 <intent-contract>

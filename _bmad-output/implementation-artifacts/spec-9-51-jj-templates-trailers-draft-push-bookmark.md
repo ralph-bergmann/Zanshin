@@ -33,6 +33,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/config.rs template_defaults_layer
     severity: low
+    resolved: >-
+      2026-10-20 — fixed (spec-9-54-squash-split-edited-text-and-follow-ups, commit 65bce23): every jj_cli::config::default_config_layers() layer sits below Zanshin's builtin layer; config("ui.color") renders the CLI's default.
   - summary: >-
       The GUI round trip "show `squash_plan`'s text, pass the edited text back as `message`" re-applies `templates.commit_trailers` (the `-m` arm), so with trailers configured a trailer the user deleted comes back, and an unchanged plan text whose last paragraph is no trailer block (destination trailered, source not) gains a second trailer — where the CLI's editor flow writes the edited text as is.
     evidence: |-
@@ -40,6 +42,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/squash_split.rs squashed_description; crates/zanshin-jj/src/repo.rs Repo::squash / squash_plan docs
     severity: medium
+    resolved: >-
+      2026-10-20 — fixed (spec-9-54-squash-split-edited-text-and-follow-ups, commit 65bce23): SquashOptions.edited_description / SplitOptions.edited_*_description write the edited text as a saved editor buffer, without trailers; 10.25 sends edits through them.
 ---
 
 <intent-contract>
