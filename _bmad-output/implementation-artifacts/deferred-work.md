@@ -927,6 +927,7 @@ _The bump absorbed the API churn inside `zanshin-jj` and ported the CLI behavior
 _The analysis and POC live on branch `poc/jj-cli-reuse` under `spikes/jj-cli-reuse/`. The differential parity oracle there (`poc/tests/parity_zanshin.rs`) runs the same operation through `zanshin-jj` and the stock jj CLI and compares repo state._
 
 - **`describe` and `new` never apply `templates.commit_trailers`** [`crates/zanshin-jj/src/op_support.rs::apply_trailers` (called only from its inline tests); CLI `cli/src/commands/describe.rs:153-161` and `new.rs:234` @ v0.46.0, already present @ v0.44.0] — with `templates.commit_trailers = 'format_signed_off_by_trailer(self)'`, `jj describe -m T` stores `T` + a blank line + `Signed-off-by: …`, while Zanshin stores `T`. This predates 0.46. Found by reading the code; the parity oracle confirmed it for `describe`. `new` is the same pattern but was not run through the oracle. The not-yet-ported `commit`, `squash`, `split` and `workspace add` apply trailers too (`add_trailers`). No story covers it. Severity medium: a silent divergence on shipped verbs.
+  - **2026-10-20, Ralph:** one story for every jj-template gap → **Story 9.51** (`9-51-jj-templates-trailers-draft-push-bookmark`).
 
 ## Surfaced 2026-10-14 while folding the floating client and its design system into Epics 10 and 11 (console session, Ralph)
 
@@ -1446,6 +1447,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
   - **2026-10-20, Story 9.20 (commit 9066268):** ~~the destination rules in the verb~~ — `cloneRepo` now applies the CLI's destination rules and clean-up scope itself; ~~progress over the bridge~~ — it reports progress (`operation: "clone"`, the new handle's session id), delivered after the call returns ("Surfaced in Story 9.20", live delivery). Left open: cancel (jj-lib 0.46.0 has no hook; Ralph decides the mechanism), removing `ProjectSession.clone`'s app-side destination port, and showing progress in the form.
   - `ZanshinWorker.cloneRepo({url, targetPath})` takes no progress or cancel and requires an existing target, accepting a non-empty one (`packages/zanshin_core/lib/src/worker/isolate.dart:421`; 9.20 backlog); the CLI's rules are `cli/src/commands/git/clone.rs:186-196`, `:259-270` @ v0.46.0; `ProjectSession.clone` ports them (`app/lib/src/features/projects/project_session.dart`).
   - **Follow-up:** 9.20 gives `cloneRepo` the CLI's destination rules, progress (6.4a's callback) and cancel; the session's port then goes and the form shows progress (`project_session.dart`, `projects_window.dart`).
+  - **2026-10-20, Ralph:** cancel = kill git's process group (git first gets a group of its own; jj-lib spawns it with a plain `Command::new`) → **Story 9.52**; removing `ProjectSession.clone`'s port and showing progress in the form → **Story 11.8** item 10.
 - **A successful clone is witnessed only on a fake port in the app: under `dart`/`flutter test` the VM reaps git's child, so jj-lib's fetch fails; whether the running app's clone works is unverified.** Medium.
   - `packages/zanshin_core/test/worker/creation_test.dart:63-90` (only the refusal runs); this file's "No Dart real-cdylib witness for a SUCCESSFUL clone" (the running app); Rust witnesses `crates/zanshin-ffi/tests/repo_ffi.rs:280`, `repo_write_ffi.rs:679-725`.
   - **Follow-up:** clone a `file://` bare repository from the running app (11.12's Projects window or the catalogue's Windows › Projects window over the real worker); if it fails with "Failed to wait for the git process", fix the child reaping for the app (`app/lib/src/features/projects/worker_project_repos.dart`, clone).
@@ -1491,10 +1493,10 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **The StaleNotice's "Update working copy" action, its no-Undo rule and the error toast with Retry (epics 9.23 items 3, 4 and 6) wait for Story 10.5, which builds the StaleNotice; Story 9.23 ships only the wire (`RepoHandle.workspaceUpdateStale` and its `StaleRecovery` result).** Low.
   - `app/lib` has only the shell's empty `staleNotice: Widget?` slot (`app/lib/src/features/shell/floating_shell.dart:75`) and a widgetbook placeholder (`app/widgetbook/folders/shell.dart:167-169`); `10-5-graph-view-model-repo-wiring` is backlog, and epics 9.23 item 6 says 10.5 owns the notice.
   - **Follow-up:** 10.5 adds the notice's quiet Zs Button with `jj workspace update-stale` in its tooltip, busy while it runs, then the `StaleRecovery` result; no Undo afterwards (item 3), Retry only on the failed action's error toast (item 4).
-- **The pre-verb snapshot's head load now reconciles divergent operations AS THE WORKSPACE, like the CLI.** Decision taken in the implementation; low risk.
+- ~~**The pre-verb snapshot's head load now reconciles divergent operations AS THE WORKSPACE, like the CLI.**~~ — RECORD 2026-10-20 (Ralph): kept for every verb (CLI parity), not narrowed to the recovery. Decision taken in the implementation; low risk.
   - The 9.23 oracle scenario `update_stale_dirty` showed jj-lib's `RepoLoader::load_at_head` writing `reconcile divergent operations` with no workspace name, where the CLI's `resolve_operation` (`cli_util.rs:800-829` @ v0.46.0) names the workspace. `snapshot::load_head` ports the CLI's path; the spec asks the recovery to use "the same head-load path `snapshot::run` uses", so `snapshot::run` uses it too — a parity fix for every verb that reconciles in its precondition. Other `load_at_head` calls (inside verbs, after the precondition) are unchanged.
   - **Follow-up:** none unless Ralph prefers the narrower change (recovery only).
-- **`RequestKind` gained only `WorkspaceAdd`, not the spec's `WorkspaceUpdateStale`.** Low; deviation from the spec text.
+- ~~**`RequestKind` gained only `WorkspaceAdd`, not the spec's `WorkspaceUpdateStale`.**~~ — RECORD 2026-10-20 (Ralph): no reserved tag (an unused tag would contradict the `.fbs` rule). Low; deviation from the spec text.
   - `zanshin_workspace_update_stale` is handle-only (the CLI verb takes no argument) and has no request table; the `.fbs` header's rule is "the variant name plus `Request` IS the table name", so an unused tag would contradict it.
   - **Follow-up:** add the variant if Ralph wants it reserved anyway.
 - **The update-stale "concurrent tree" refusal has no end-to-end witness.** Low.
@@ -1506,22 +1508,24 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **No verb reports "There are unresolved conflicts at these paths" after a checkout onto a conflicted `@`.** Low; pre-existing across every verb, newly visible in 9.23's stale recovery (surfaced by the 9.23 review).
   - The CLI's `print_updated_working_copy_stats` (`cli_util.rs:2297-2331` @ v0.46.0) warns when the new `@` has conflicts; `mutate::finish_transaction` and `stale::recover_at` emit only `jj.checkout_files_skipped`, and there is no warning kind for it. The GUI can read `@`'s conflict state from the graph.
   - **Follow-up:** Ralph decides whether a `jj.unresolved_conflicts` warning (with the paths) joins the 9.32 warning codes for every checkout.
+  - **2026-10-20, Ralph:** yes, a `jj.unresolved_conflicts` warning code → **Story 9.53** item 1.
 
 ## Surfaced in the closing run of Story 9.23 (bmad-build-auto, 2026-10-19)
 
 - **When the auto-update-stale recovery's trailing snapshot fails, the partial report's `was_snapshot_taken` is measured against the recovered operation, not the one `run` loaded, so it can read `false` although the recovery wrote operations.** Low.
   - `snapshot::run` returns `stale::recover`'s error as is (`crates/zanshin-jj/src/snapshot.rs:429-437`); the flag was last set by `snapshot_locked` inside `trailing_snapshot` (`crates/zanshin-jj/src/stale.rs:362`), whose baseline is the recovered repo — against `run`'s doc ("whether the head moved off the operation loaded here"). Pre-existing since 9.23, untested; the CLI computes no `changed` on an error path, so it is a Zanshin-only report fact.
   - **Follow-up:** on a recovery error, `run` re-reads the op heads against its own loaded op id (read-only, as `snapshot_locked`'s error arm now does), with a witness that fails the trailing snapshot.
+  - **2026-10-20, Ralph:** fix → **Story 9.53** item 3.
 
 ## Surfaced in Story 9.15 (bmad-build-auto, 2026-10-19)
 
 - **The tree arm of `squash` and `split` waits for Story 9.50.** Medium.
   - A GUI-selected tree plus `left`, its staleness refusal, and split's interactive default with no paths (`cli/src/commands/split.rs:218` @ v0.46.0) are 9.50's to decide ("The verbs that take a tree id (9.15, 9.49) take `left` as well, and refuse the same way. This story decides the refusal code", epics.md Story 9.50 item 3). 9.15 ships the paths arm only and refuses a split without paths (`jj.invalid_input`); `SelectedTree::from_tree_id` (`crates/zanshin-jj/src/op_support.rs`) stays unwired, its WHY naming 9.50.
   - **Follow-up:** 9.50 adds the tree arm to `crates/zanshin-jj/src/squash_split.rs`' selection (`plan_squash` / `prepare_split`).
-- **`jj squash -o/-A/-B` is not ported.** Low.
+- ~~**`jj squash -o/-A/-B` is not ported.**~~ — RECORD 2026-10-20 (Ralph): not ported until a design asks for it. Low.
   - Experimental at v0.46.0: the squashed changes go into a NEW commit at that location (`squash.rs:113-146`, `:274-326`). No design row needs it — the drops "Into a new change after/before" are `split -A/-B` — and epics.md Story 9.15 lists only `-r`, `--from/--into`, `-m/-u/-k` for squash.
   - **Follow-up:** port it into `crates/zanshin-jj/src/squash_split.rs` if a design asks for it.
-- **`SquashRequest` carries one `RequestKind` for two wrappers.** Low.
+- ~~**`SquashRequest` carries one `RequestKind` for two wrappers.**~~ — RECORD 2026-10-20 (Ralph): stays one kind; no `SquashPlan` tag. Low.
   - `zanshin_squash` and `zanshin_squash_plan` both accept `RequestKind::Squash`, unlike `ChangeIdList`'s two kinds: a mis-routed buffer can only run or preview the SAME squash (`schemas/envelope.fbs`, `docs/ffi-abi.md` § The `RequestKind` tag).
   - **Follow-up:** a `SquashPlan` kind if Ralph wants every wrapper strictly per-kind.
 - **`squash` reports its abandonments in `MutationResult`.** Low.
@@ -1533,6 +1537,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **The "editor saved unchanged" rule of `squash` and `split` ignores user templates.** Medium.
   - The CLI's editor buffer is `templates.draft_commit_description`, whose default body is `coalesce(description, default_commit_description, "\n")` (`cli/src/description_util.rs` `description_template` @ v0.46.0); with `template-aliases.default_commit_description` set, `jj split <paths>` without `-m` on an undescribed revision writes that text, while Zanshin writes `""` (`crates/zanshin-jj/src/squash_split.rs` `split_builders`; `op_support.rs` `combined_editor_text`). Zanshin renders no jj templates anywhere (the same root as the ledgered `templates.commit_trailers` gap).
   - **Follow-up:** render `draft_commit_description` / `default_commit_description` once a template story exists, then add an oracle scenario with a custom `default_commit_description`.
+  - **2026-10-20, Ralph:** → **Story 9.51** (jj templates).
 
 ## Surfaced in Story 9.49 (bmad-build-auto, 2026-10-19)
 
@@ -1542,6 +1547,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **`commit` does not apply `templates.commit_trailers` either.** Medium.
   - With a non-empty description the CLI renders the trailers template (`cli/src/commands/commit.rs:144-153` @ v0.46.0); Zanshin writes the `-m` text alone. Same root as the 2026-10-08 entry "`describe` and `new` never apply `templates.commit_trailers`" (Zanshin renders no jj templates); the oracle ledgers it like `describe_commit_trailers` (`crates/zanshin-parity/tests/oracle/ledger.rs`).
   - **Follow-up:** the template story that closes the 2026-10-08 entry covers `commit` too; drop the commit ledger entry then.
+  - **2026-10-20, Ralph:** → **Story 9.51** (jj templates).
 - ~~**`jj new` advances bookmarks under `experimental-advance-branches`, Zanshin's `new_change` does not.**~~ — RESOLVED 2026-10-19 (spec-9-49-closing-new-advance-escaping-paths, commit b605329): `new_change` advances the selected bookmarks for a single parent with commit.rs' helpers; the `-A`/`-B` rule stays with 9.48. Low.
   - `cli/src/commands/new.rs:197-202` collects advanceable bookmarks from the single parent's parents and `:280-281` moves them to that parent (only without `-A`/`-B`); `crates/zanshin-jj/src/mutate.rs` `new_change` has no advance step, and epics.md Story 9.48 covers only "no bookmark advances when `-A` or `-B` is given". Off by default (`enabled-branches = []`).
   - **Follow-up:** 9.48 (or a small story) reuses the advance helpers 9.49 adds in `crates/zanshin-jj/src/commit.rs`, with oracle scenarios mirroring `test_advance_bookmarks.rs`' `jj new` cases.
@@ -1554,6 +1560,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **`file show` with one path and `file annotate` do not resolve `.`/`..` like the CLI.** Low.
   - Both parse their path with `file.rs`'s own `parse_path` (`RepoPathBuf::from_internal_string`, `crates/zanshin-jj/src/file.rs:254-258`, used at `:485` and `:545`), so `./x` and `a/../x` are looked up literally and refused as `jj.path_not_found`, and `../x` is refused as `jj.path_not_found` where the CLI resolves the first two and refuses the last with "Path is not in the repo" (`parse_file_path`, jj-lib 0.46.0 `ui_path.rs:156-169`). The closing run fixed the shared prefix matcher only.
   - **Follow-up:** route `parse_path` through the same resolution as `op_support::parse_prefixes`, with a test per form.
+  - **2026-10-20, Ralph:** fix → **Story 9.53** item 4.
 - ~~**`new_change` does not deduplicate its parents.**~~ — RESOLVED 2026-10-19 (spec-9-48-new-insert-after-before, commit 99d8017): `plan_new` resolves each list in order and drops duplicates; `[c, c]` is one parent and advances (`duplicate_parents_are_one_parent_and_advance`, oracle `new_duplicate_parents`). Low.
   - `new_change(&[c, c])` writes a commit with the same parent twice and so skips the one-parent bookmark advance; the CLI resolves `jj new c c` through an `IndexSet` (`cli/src/cli_util.rs:1861-1870` @ v0.46.0) into one parent and advances (`new.rs:194-204`). The duplicate-parent merge predates this run (`crates/zanshin-jj/src/mutate.rs` `new_change`).
   - **Follow-up:** dedup `parents` in order before the merge/advance decision (Story 9.48 touches the same resolution), with a test for `[c, c]`.
@@ -1569,6 +1576,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **Two sibling test helpers still wait a fixed number of polls on real settings-file IO.** Low.
   - `home_page_test.dart`'s `settle` (100 × 5 ms, `app/test/features/home/home_page_test.dart:99-105`) and `app_window_coordinator_test.dart`'s `until` (200 × 5 ms, `app/test/features/window/app_window_coordinator_test.dart:135-140`) wait on work that ends in fsync'd, chained `SettingsStore` writes, the pattern that flaked in `projects_window_test.dart`; neither has been seen failing. The closing run fixed only the projects-window helper (real-time budget, spec-9-48-closing-projects-window-settle-budget).
   - **Follow-up:** give both the same real-time `Stopwatch` budget if either flakes under the gate.
+  - **2026-10-20, Ralph:** fix → **Story 9.53** item 5.
 
 ## Surfaced in Story 9.29 (bmad-build-auto, 2026-10-19)
 
@@ -1578,16 +1586,19 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **A never-pushed tracked bookmark (the CLI's `(not created yet)` remote row) reads as a clean dot, not "ahead of remote".** Low.
   - The dot follows design question (a)'s "from 9.29's distances"; the CLI prints no distance for an absent remote target (`format_commit_ref`, `cli/src/config/templates.toml` @ v0.46.0), so `trackingStatusOf` (`app/lib/src/features/projects/project_repos.dart`) returns null.
   - **Follow-up:** Ralph decides; if it should read ahead, count a tracked remote row with a null target next to a present local bookmark as local-ahead.
+  - **2026-10-20, Ralph:** yes, it reads ahead → **Story 9.53** item 2.
 
 ## Surfaced in Story 9.20 (bmad-build-auto, 2026-10-20)
 
 - **Clone (and push) progress reaches the main isolate only after the call has returned.** Medium.
   - The worker runs the FFI call synchronously and the `NativeCallable.listener` sink lives in the same worker isolate, so its messages queue until the command handler finishes (`packages/zanshin_core/lib/src/worker/isolate.dart` registerEventSink and the `GitFetchCommand` / `CloneRepoCommand` / `GitPushCommand` arms; pre-existing for 6.4a's fetch — the only progress test is Rust-side, drained after the call).
   - **Follow-up:** a worker-architecture decision (a helper isolate/thread for the blocking call, or the sink in another isolate).
+  - **2026-10-20, Ralph:** the three network verbs move to a helper thread → **Story 9.52** (`9-52-network-verbs-helper-thread-progress-cancel`).
 - Cancelling a clone (and a push) is I9's remainder ("Surfaced in Story 11.6", "Clone shows no progress and cannot be cancelled …"): jj-lib 0.46.0 exposes no hook (`jj-lib-0.46.0/src/git_subprocess.rs:803-829`, `:885-909`).
 - **`jj git push --change` with a customised `templates.git_push_bookmark` is refused.** Low.
   - Zanshin renders no jj templates, so only the builtin default `"push-" ++ change_id.short()` is ported (`push.rs:1322-1338` @ v0.46.0 renders it with `parse_commit_template`; same root as the ledgered `templates.commit_trailers` gap and 9.15's `default_commit_description` deferral; `crates/zanshin-jj/src/push.rs`, change-bookmark naming).
   - **Follow-up:** comes with a template port, if one is ever decided.
+  - **2026-10-20, Ralph:** → **Story 9.51** (jj templates).
 - ~~**Clone failures are untyped on the wire: every failure inside the clone (unreachable source, auth failure, invalid `--remote` name) is `RepoError::CloneFailed` → `jj.jj_lib_error`, so a GUI cannot tell a network/credential problem from an internal one without matching text.** Medium.~~ — RESOLVED 2026-10-20 (`spec-9-20-closing-typed-clone-failures.md`, commit 24ce688, review patches bd0c7bc): the clone's `git` subprocess failures (fetch and default-branch query, `GitFetchError::Subprocess`) are `RepoError::NetworkError` → `jj.network_error`, a refused remote name (`GitRemoteManagementError::RemoteName`) is `RepoError::InvalidInput` → `jj.invalid_input`; everything else stays `jj.jj_lib_error`.
   - `crates/zanshin-jj/src/creation.rs` `configure_remote` / `fetch_new_remote` map every error through `clone_failed`; pre-existing (clone mapped to `jj.jj_lib_error` before Story 9.20).
   - **Follow-up:** a typed network refusal for clone (e.g. map `GitFetchError::Subprocess` to `jj.network_error`, invalid remote names to `jj.invalid_input`).

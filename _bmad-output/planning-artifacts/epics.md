@@ -7046,7 +7046,7 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Scope (backend).**
 1. **Widen `Bookmark` in place** (`.fbs` → `zanshin-jj` → Dart; WIP, no `_v2`) to the CLI `CommitRef` facts: every row gets `conflicted` (target has >1 added id; `target` keeps the first added id — the removed/added target set is NOT widened here) and `synced`; **remote rows** additionally `tracked` and — only when tracked and the local target is present (`is_tracking_present`) — `ahead` / `behind`, each `{ lower, upper? }` with `upper` null-for-absence when jj-lib cannot bound it; **local rows** whose target is absent but which still have tracked remote refs are emitted with `target` absent (null-for-absence) instead of being dropped — the CLI's `(deleted)` row, the state `jj git push --deleted` acts on. Dart: `target` becomes nullable, `synced`/`conflicted` sit on `Bookmark`, `tracked`/`ahead`/`behind` on `RemoteBookmark`.
-2. **Emit the full row set, i.e. `--all-remotes`:** present local rows, deleted-with-tracked-remotes local rows, tracked remote rows (synced or not), **untracked remote rows** (`tracked: false`, no distances). Absent remote refs stay skipped as today. `@git` rows are emitted like any other remote and are NOT special-cased in the backend — hiding synced rows, excluding `git`, name/remote/revision filters and sort keys are 9.19's typed-filter work or a UI decision (backend exposes, UI decides; FR-JJ-17).
+2. **Emit the full row set, i.e. `--all-remotes`:** present local rows, deleted-with-tracked-remotes local rows, tracked remote rows (synced or not), **untracked remote rows** (`tracked: false`, no distances). ~~Absent remote refs stay skipped as today.~~ *(Changed 2026-10-20, Ralph: a tracked remote ref with an absent target is listed, as the CLI lists it under `--all-remotes` — `<name>@<remote> (not created yet)`, v0.44.0 and v0.46.0. Story 9.29 built it so.)* `@git` rows are emitted like any other remote and are NOT special-cased in the backend — hiding synced rows, excluding `git`, name/remote/revision filters and sort keys are 9.19's typed-filter work or a UI decision (backend exposes, UI decides; FR-JJ-17).
 3. **Computation exactly as the CLI's:** synced → `(0, Some(0))` without evaluating anything; otherwise one `walk_revs` range revset per direction per unsynced tracked pair, `count_estimate` carried as-is. Inside the same `load_at_head` scope as the listing (ADR-0002, stateless per call); cost is bounded by the number of unsynced pairs. No new error code — a revset evaluation failure is `BookmarkError::Backend` (`jj.jj_lib_error`, "also emitted" clause).
 4. **Surface** through the shipped chain: `.fbs` table `Bookmark` widened, `zanshin_bookmarks` signature unchanged, Dart `Bookmark`/`BookmarkKind` widened plus decode tests per new field (coverage attribution), `docs/ffi-abi.md` / `docs/rust-error-codes.md` clauses; MCP optional (7.3 lists bookmarks).
 5. **Tests** construct the states in-test with `test_helpers::{set_local_bookmark, set_remote_bookmark}` (the checked-in fixtures carry no remote bookmarks — never regenerate): synced (fast path, no revset evaluated), remote-ahead only, local-ahead only (`behind`), diverged after a local rewrite (**same change id, different commits — ahead 1 / behind 1**, the session's case), untracked remote (no distances), deleted local with a tracked remote, conflicted local, `@git` row in a colocated workspace. The inexact `upper: None` path need not be forced if no fixture can produce it — the field is carried, not computed, here.
@@ -7522,6 +7522,82 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 - Every new file reaches the coverage floor.
 
 **Related:** 5.1, 5.6, 9.1, 9.15, 9.17, 9.47, 9.49; 10.26, 10.27; ADR-0003.
+
+### Story 9.51: jj templates — `commit_trailers`, `draft_commit_description`, `git_push_bookmark` [M]
+*(Added 2026-10-20, Ralph — console session after the story loop of 2026-10-19. Four ledger entries share one root: Zanshin renders no jj templates. Ralph chose one story for all of them.)*
+
+**Motivation.** Every verb below writes what the CLI writes with the stock templates only. With a user template the CLI's result differs, silently:
+- `templates.commit_trailers`: `describe` (`cli/src/commands/describe.rs:153-161` @ v0.46.0), `new` (`new.rs:234`), `commit` (`commit.rs:144-153`), and `squash`, `split` and `workspace add` (`add_trailers`). Zanshin's `op_support::apply_trailers` is called only from its inline tests. deferred-work "Surfaced 2026-10-08 while analysing 'fork jj …'" ("`describe` and `new` never apply …") and "Surfaced in Story 9.49" ("`commit` does not apply `templates.commit_trailers` either").
+- `templates.draft_commit_description` with its default `coalesce(description, default_commit_description, "\n")` (`cli/src/description_util.rs` `description_template`): `squash` and `split` without `-m` write the untouched editor buffer (Story 9.15's rule), and `squash_plan` returns it. deferred-work "Surfaced in Story 9.15" ("The 'editor saved unchanged' rule … ignores user templates").
+- `templates.git_push_bookmark` (`push.rs:1322-1338`, default `"push-" ++ change_id.short()`): `git push --change` refuses a customised template today. deferred-work "Surfaced in Story 9.20".
+- The 9.47 oracle ledgers the gap (`describe_commit_trailers`, `commit_trailers` in `crates/zanshin-parity/tests/oracle/ledger.rs`).
+
+**Scope.**
+1. **One template renderer** for commit templates, with the CLI's language, functions, aliases (`template-aliases`) and errors. Claude's proposal: jj-cli's own engine as a library (`CommitTemplateLanguage`, `TemplateRenderer`; `jj-cli =0.46.0` is already a workspace dependency of `zanshin-parity`), so nothing of the language is re-ported. The story starts with a spike that proves the context it needs (repo, workspace name, path converter, revset and id-prefix context, immutable set) can be built from Zanshin's start-up environment (`snapshot::CommandEnv`); if it cannot, the story stops and Ralph decides between porting a subset and keeping the gap.
+2. **`commit_trailers`** in `describe`, `new`, `commit`, `squash`, `split` and `workspace add`, at the CLI's step and with its rule (only for a non-empty description where the CLI says so; trailers already present are not repeated — `add_trailers`).
+3. **`draft_commit_description`** for the "editor saved unchanged" rule of `squash` and `split` and for `squash_plan`'s combined text.
+4. **`git_push_bookmark`** for `git push --change`, in the dry-run plan and the push.
+5. **Errors.** A template that does not parse or fails to render refuses like the CLI (its message verbatim), as `jj.config_error` or a new registered code — this story decides; nothing is written before.
+6. **Oracle.** Scenarios with a custom `commit_trailers` (`format_signed_off_by_trailer(self)`), a custom `default_commit_description`, and a custom `git_push_bookmark`; the two ledger entries go.
+
+**Non-goals.** `templates.log`, `op_log` and the other display templates (the GUI draws its own rows); `templates.new_description` stays with 9.46 unless the renderer makes it a one-liner (then here); the editor.
+
+**Depends on.** 9.15, 9.20, 9.23, 9.49 (done).
+
+**Design status.** No UI.
+
+**Witnesses.** The oracle scenarios of item 6; a broken template refuses before any operation; the default templates leave every existing oracle scenario unchanged.
+
+**Related:** 9.15, 9.20, 9.23, 9.46, 9.47, 9.49; deferred-work entries above.
+
+### Story 9.52: Network verbs on a helper thread — live progress and Cancel for fetch, clone and push [M/bridge]
+*(Added 2026-10-20, Ralph — console session after the story loop of 2026-10-19. Ralph chose a helper thread for the blocking call and killing git's process group for Cancel.)*
+
+**Motivation.**
+- **Progress arrives late.** The worker runs `gitFetch`, `cloneRepo` and `gitPush` synchronously, and the `NativeCallable.listener` sink lives in the same worker isolate, so the progress messages queue until the call returns (`packages/zanshin_core/lib/src/worker/isolate.dart`, `registerEventSink` and the `GitFetchCommand` / `CloneRepoCommand` / `GitPushCommand` arms). deferred-work "Surfaced in Story 9.20" ("Clone (and push) progress reaches the main isolate only after the call has returned").
+- **No Cancel.** jj-lib 0.46.0 spawns git itself and offers no hook: the child is never returned, `wait_with_progress` blocks, and callback errors are dropped with `.ok()` (`jj-lib-0.46.0/src/git_subprocess.rs:103`, `:803-829`, `:885-909`). deferred-work "Surfaced in Story 11.6" ("Clone shows no progress and cannot be cancelled …", Story 9.20's remainder).
+
+**Scope.**
+1. **Helper thread.** The three network verbs run on a Rust helper thread (or a helper isolate — the story decides), so the worker isolate stays responsive and its event sink delivers `ProgressEvent`s while the call runs. Other calls on the same repo handle wait for it (every jj call stays serialized, research 2026-09-30); other repos and the worker's events do not.
+2. **Cancel.** A new extern cancels the running network verb of a handle (or a clone in flight).
+   - **Mechanism: kill git's process group** (Ralph's choice). jj-lib does not put git into a group of its own (`git_subprocess.rs:103`, plain `Command::new`), so the story first gives it one. Two ways, decided by a spike: a tiny exec wrapper set as `git.executable-path` for the call that calls `setpgid(0, 0)` and then execs the configured git; or finding git by the app's child list (libproc `proc_listchildpids`) and killing it with its descendants (`git-remote-*`, `ssh`). Everything else jj-lib does stays untouched.
+   - **Result.** jj-lib then sees a failed subprocess. A cancelled verb refuses with a new registered code (e.g. `jj.cancelled`), never `jj.network_error`.
+   - **Clean-up as the CLI's failure path:** a cancelled clone removes the folder it created (9.20's rule), a cancelled fetch or push records what jj-lib records for a failed one. Pushes may have reached a remote already; the result says which remotes got their refs (9.20's per-remote data).
+3. **Dart.** `RepoHandle.gitFetch` / `gitPush` and `ZanshinWorker.cloneRepo` return a cancellable operation (a token or `cancel()`), progress keeps the 6.4a `ProgressEvent` shape.
+
+**Non-goals.** The UI (11.8 shows progress and the clone form's Cancel; the Push sheet keeps Cancel inert while pushing); credential prompts; MCP.
+
+**Depends on.** 6.4a, 9.20, 9.30 if it lands first (the fetch arm then has its modes).
+
+**Design status.** No UI.
+
+**Witnesses.**
+- A `zanshin_core` test sees at least one `ProgressEvent` before the call's result (a slow `file://` source, or a scripted git through `git.executable-path`).
+- Cancel during a clone of a slow source refuses with the cancel code and leaves no folder the clone created; during a fetch it records no import.
+- A read on another repo answers while a fetch runs.
+- The Dart VM's child-reaping limit (deferred-work "No Dart real-cdylib witness for a SUCCESSFUL clone") is re-checked: if the helper thread lifts it, the Rust-only witnesses get Dart twins.
+
+**Related:** 6.4a, 9.20, 9.30, 11.8; deferred-work entries above.
+
+### Story 9.53: Parity clean-up after the 2026-10-19 story loop [M/bridge/UI]
+*(Added 2026-10-20, Ralph — console session after the story loop of 2026-10-19: five small findings Ralph decided to fix, including two product decisions.)*
+
+**Scope.**
+1. **`jj.unresolved_conflicts` warning** (Ralph: yes). After every checkout onto a conflicted @, warn as the CLI's `print_updated_working_copy_stats` does ("There are unresolved conflicts at these paths:", `cli/src/cli_util.rs:2297-2331` @ v0.46.0), with the paths. A new 9.32 warning code, emitted from `mutate::finish_transaction` and `stale::recover_at`. deferred-work "Surfaced in Story 9.23" ("No verb reports 'There are unresolved conflicts at these paths' …").
+2. **A never-pushed tracked bookmark reads "ahead of remote"** (Ralph: yes). `trackingStatusOf` (`app/lib/src/features/projects/project_repos.dart`) counts a tracked remote row with a null target (the CLI's `(not created yet)`) next to a present local bookmark as ahead. deferred-work "Surfaced in Story 9.29".
+3. **`was_snapshot_taken` after a failed automatic recovery.** When the auto-update-stale recovery fails in its last snapshot, the partial report measures against the recovered operation and can read false though the recovery wrote operations (`crates/zanshin-jj/src/snapshot.rs:429-437`, `stale.rs:362`). deferred-work "Surfaced in the closing run of Story 9.23".
+4. **`file show` (one path) and `file annotate` resolve paths like the CLI.** `file.rs`'s own `parse_path` (`RepoPathBuf::from_internal_string`, `crates/zanshin-jj/src/file.rs:254-258`, used at `:485` and `:545`) takes `./x` and `a/../x` literally; route it through `op_support::parse_prefixes`' resolution (`ui_path::parse_fs_path`), refusing a path outside the repo with the CLI's text. deferred-work "Surfaced in the closing run of Story 9.49".
+5. **Two tests with a fixed poll budget.** `app/test/features/home/home_page_test.dart:99-105` and `app/test/features/window/app_window_coordinator_test.dart:135-140` wait a fixed number of polls on settings-file writes, the pattern that made `projects_window_test.dart` flaky under the gate's load; give them the real-time budget its closing run introduced. deferred-work "Surfaced in the closing run of Story 9.48".
+
+**Non-goals.** Anything else from those ledger sections.
+
+**Depends on.** 9.23, 9.29, 9.49 (done).
+
+**Design status.** Item 2 changes the project dot's state only; the DS already has `--proj-ahead`.
+
+**Witnesses.** Per item: a conflicted @ after `edit` and after `workspace update-stale` warns with the paths (oracle scenario for `edit`); `statusFrom` reads ahead for a `(not created yet)` row; a failing last snapshot of the auto recovery yields a partial report measured against the operation before the recovery; `file show ./x` and `file annotate a/../x` answer, `../x` refuses with the CLI's text; the two tests pass with a 1.5 s delay injected locally (not committed).
+
+**Related:** 9.23, 9.29, 9.32, 9.48, 9.49.
 
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
@@ -12641,6 +12717,11 @@ Today the app stores one preference, the theme (`packages/zanshin_settings/lib/s
 >   - a network error on the second remote names it and says that the first remote got its refs;
 >   - Esc while pushing and a click beside the sheet do nothing;
 >   - the Fetch tooltip shows no shortcut; a stale working copy disables both buttons.
+
+> **Note 2026-10-20 (Ralph, console session after the story loop of 2026-10-19):** this story also finishes the clone form, because 9.20 moved the CLI's clone rules into the verb (deferred-work "Surfaced in Story 11.6": "Clone shows no progress and cannot be cancelled …").
+> - **Item 10 (new), clone form.** `ProjectSession.clone`'s app-side port of the destination rules goes: `cloneRepo` creates the folder, refuses a non-empty one with `jj.destination_not_empty` and removes a folder it created after a failure (9.20). The form shows the clone's `ProgressEvent`s (`operation: "clone"`) live, and offers Cancel once 9.52 lands (Claude's proposal). Files: `app/lib/src/features/projects/project_session.dart`, `projects_window.dart`.
+> - **Live progress.** Fetch, clone and push progress reaches Dart while the call runs only with 9.52 (helper thread for the network verbs); until then it arrives after the call returns. The Push sheet keeps Esc and Cancel inert while pushing (item 8), even after 9.52.
+> - **Depends on** adds 9.52 for live progress and the clone form's Cancel.
 
 **Motivation.** The ACTION group carries Fetch and Push next to New change (AF:174-178; FC:80-85). Both buttons are inert in the export (prototype defect 74).
 
