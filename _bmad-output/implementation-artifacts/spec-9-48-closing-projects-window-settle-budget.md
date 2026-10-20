@@ -17,6 +17,8 @@ deferred:
     location: >-
       app/test/features/home/home_page_test.dart:99; app/test/features/window/app_window_coordinator_test.dart:135
     severity: low
+    resolved: >-
+      2026-10-20 — fixed (spec-9-53-parity-cleanup-after-2026-10-19-loop, commit 56f5868): both helpers poll until done or 10 s of real time (Stopwatch).
 ---
 
 <intent-contract>

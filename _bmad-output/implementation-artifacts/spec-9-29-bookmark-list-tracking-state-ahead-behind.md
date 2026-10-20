@@ -27,6 +27,8 @@ deferred:
     location: >-
       app/lib/src/features/projects/project_repos.dart trackingStatusOf
     severity: low
+    resolved: >-
+      2026-10-20 — fixed (spec-9-53-parity-cleanup-after-2026-10-19-loop, commit 56f5868): trackingStatusOf counts a tracked non-git remote row without target as local-ahead (Ralph's decision 2026-10-20).
 ---
 
 <intent-contract>

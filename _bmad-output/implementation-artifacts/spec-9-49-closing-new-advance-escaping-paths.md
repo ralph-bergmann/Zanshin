@@ -18,6 +18,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/file.rs parse_path
     severity: low
+    resolved: >-
+      2026-10-20 — fixed (spec-9-53-parity-cleanup-after-2026-10-19-loop, commit 56f5868): file.rs parse_path goes through op_support::parse_prefixes; ./x and a/../x resolve, ../x refuses with the CLI's text.
   - summary: >-
       `new_change` does not deduplicate its parents, so `new_change(&[c, c])` writes a commit with the same parent twice and — since this run — skips the bookmark advance, where the CLI's `jj new c c` collapses to one parent and advances.
     evidence: |-

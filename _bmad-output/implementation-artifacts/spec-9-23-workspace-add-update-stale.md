@@ -33,6 +33,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/mutate.rs finish_transaction; crates/zanshin-jj/src/stale.rs recover_at
     severity: low
+    resolved: >-
+      2026-10-20 — fixed (spec-9-53-parity-cleanup-after-2026-10-19-loop, commit 56f5868): new jj.unresolved_conflicts warning after a checkout onto a conflicted @, from finish_transaction and stale::recover_at.
   - summary: >-
       About 50 in-verb head reloads still call jj-lib's load_at_head(), which writes an unnamed "reconcile divergent operations" when heads diverge between the pre-verb snapshot and the verb; the CLI names the workspace on every reconcile.
     evidence: |-

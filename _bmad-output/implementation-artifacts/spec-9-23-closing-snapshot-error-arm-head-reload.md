@@ -18,6 +18,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/snapshot.rs:429-437; crates/zanshin-jj/src/stale.rs:362
     severity: low
+    resolved: >-
+      2026-10-20 — fixed (spec-9-53-parity-cleanup-after-2026-10-19-loop, commit 56f5868): on a recovery error, snapshot::run re-reads the op heads against its own loaded op (read-only helper shared with snapshot_locked).
 ---
 
 <intent-contract>
