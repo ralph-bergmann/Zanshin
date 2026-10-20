@@ -83,7 +83,11 @@ against the committed `coverage-baseline.txt`:
 **Test placement.** Rust **unit tests** for a module's private items go **inline**
 (`#[cfg(test)] mod tests` at the bottom of that `src/` module) — they run and **do**
 count toward coverage. **Integration tests** (need a real repo fixture, or exercise
-only the public API) go in the crate's `tests/` directory. **Intentionally-uncovered,
+only the public API) go in the crate's `tests/` directory — in `zanshin-jj` and
+`zanshin-ffi` that is ONE binary, `tests/it/main.rs`, with one module per test file
+(`tests/it/<name>.rs`, declared in `main.rs`); a test that must change the process
+environment starts with `test_helpers::own_process!` (it then runs alone in a child
+process), every other test pins it with `test_helpers::pin_test_env()`. **Intentionally-uncovered,
 non-running scaffolding** (benchmarks, perf harnesses) goes in `benches/` (or `tests/`)
 and **never** inline in `src/`, where dead/ignored code drags per-file coverage.
 Moving a *running* unit test out of `src/` gains nothing for coverage — never do it to

@@ -85,7 +85,7 @@ void main() {
       // NOT assert isNotNull on the non-nullable String fields (vacuously true,
       // F20) nor hard-code identity strings — the independent jj-lib oracle
       // equality check lives in the Rust integration test
-      // (zanshin-jj/tests/op_log.rs::op_log_head_op_matches_oracle).
+      // (zanshin-jj/tests/it/op_log.rs::op_log_head_op_matches_oracle).
       final Operation head = all.first;
       expect(limited.first.user, equals(head.user), reason: 'user must be stable across calls');
       expect(limited.first.host, equals(head.host), reason: 'host must be stable across calls');

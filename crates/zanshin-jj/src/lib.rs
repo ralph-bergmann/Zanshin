@@ -24,7 +24,7 @@
 //! **Adding `pub use jj_lib::…` is forbidden** — doing so would leak an
 //! internal type into the public API and break the invariant (FR-JJ-16).
 //! The `test-jj-adapter-hygiene` gate in `Makefile.toml` enforces this
-//! mechanically; `crates/zanshin-jj/tests/api_stability.rs` asserts the
+//! mechanically; `crates/zanshin-jj/tests/it/api_stability.rs` asserts the
 //! complete surface structurally.
 
 pub(crate) mod bookmark_ops;

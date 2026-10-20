@@ -14,8 +14,8 @@
 // with EMPTY trees (the pre-verb snapshot of Story 9.26 could record on-disk
 // files, but these suites write none). Every content-carrying row
 // of the I/O matrix therefore lives in the Rust suites, which can build trees
-// directly: crates/zanshin-jj/tests/file_reads.rs (behaviour) and
-// crates/zanshin-ffi/tests/file_ffi.rs (payload bytes across the FFI). What these
+// directly: crates/zanshin-jj/tests/it/file_reads.rs (behaviour) and
+// crates/zanshin-ffi/tests/it/file_ffi.rs (payload bytes across the FFI). What these
 // tests own is the DART half of the chain - that every request field is built and
 // crosses the buffer, that the four envelopes decode, and that each error code
 // surfaces as a ZanshinFfiException.

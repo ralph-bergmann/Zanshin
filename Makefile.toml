@@ -697,7 +697,7 @@ description = "Unified cross-FFI + Rust coverage WITH the ratchet gate. Instrume
 # atexit writer never fires — but `dart test` exits cleanly, so the FFI-path coverage flushes
 # with NO explicit dump. The cdylib is --release while cargo's test bins are debug (different
 # function hashes), and a hand-rolled `-object` list misses the integration-test binaries
-# (revset-<hash>, *_ffi-<hash>) that carry most of the zanshin-jj coverage. So the two sides are
+# (one `it-<hash>` per crate, `tests/it/`) that carry most of the zanshin-jj coverage. So the two sides are
 # produced separately — the cdylib via raw llvm-cov export, the Rust side via cargo-llvm-cov
 # (which enumerates ALL test binaries) — and unioned at the source level by `cargo xtask lcov-union`.
 script_runner = "bash"
@@ -759,8 +759,8 @@ fi
     "$DYL" > "$COV/ffi.lcov"
 
 # 2) Rust-side coverage via cargo-llvm-cov, which enumerates ALL test binaries — including the
-#    integration tests named after their test file (revset-<hash>, change-<hash>, *_ffi-<hash>)
-#    that carry most of the zanshin-jj coverage and that a hand-rolled -object list would miss.
+#    integration-test binaries (one `it-<hash>` per crate, built from `tests/it/`) that carry
+#    most of the zanshin-jj coverage and that a hand-rolled -object list would miss.
 ( cd "$ROOT" \
   && ZANSHIN_LOG_DIR="$ROOT/target/test-logs" \
      cargo llvm-cov --workspace --lcov --output-path "$COV/cargo.lcov" \

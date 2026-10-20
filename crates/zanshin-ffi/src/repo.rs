@@ -1773,11 +1773,11 @@ mod tests {
     }
 
     // Pin JJ_CONFIG / GIT_CONFIG_GLOBAL so this module's real Repo::open call is
-    // hermetic (mirrors tests/repo_ffi.rs / tests/watcher.rs).
+    // hermetic.
     static ENV_GUARD: std::sync::LazyLock<()> = std::sync::LazyLock::new(|| {
         // SAFETY: set once via LazyLock::force before any repo is opened; the
         // single-init-before-use ordering is what makes this sound under
-        // cargo test's multi-threaded runner (mirrors tests/repo_ffi.rs).
+        // cargo test's multi-threaded runner.
         unsafe {
             std::env::set_var("JJ_CONFIG", "");
             std::env::set_var("GIT_CONFIG_GLOBAL", "");

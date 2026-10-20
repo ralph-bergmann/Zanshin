@@ -325,7 +325,12 @@ the `zanshin-graph` lane crate was removed)*
 
 **Test layout:**
 - Rust unit tests inline: `#[cfg(test)] mod tests { ... }` at bottom of the module
-  they test. Integration tests in each crate's `tests/` directory.
+  they test. Integration tests in each crate's `tests/` directory; `zanshin-jj` and
+  `zanshin-ffi` build ONE integration-test binary each (Story 9.55): `tests/it/main.rs`
+  plus one module per test file (`tests/it/<name>.rs`). The process environment there has
+  one writer, `test_helpers::pin_test_env()`; a test that needs a different environment (or
+  the FFI event sink) starts with `test_helpers::own_process!` and runs alone in a child
+  process of the binary.
 - Dart unit tests in `app/test/` mirroring `lib/src/` layout.
 - E2E tests in `app/integration_test/` — boot a real worker isolate and a real
   compiled cdylib. The isolate boundary is NEVER mocked.

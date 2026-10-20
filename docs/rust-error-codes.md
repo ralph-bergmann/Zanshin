@@ -205,6 +205,6 @@ A new **warning** code (§ Warning Codes) needs, in one change:
 1. A `zanshin_jj::WarningKind` variant whose rustdoc cites the CLI's `ui.warning_*` site @ the pinned tag.
 2. A `pub const` in `crates/zanshin-ffi/src/envelope.rs` and its arm in `warning_code()`.
 3. Its entry in `envelope.rs`'s literal-table test (`every_warning_kind_has_its_registered_code`).
-4. Its arm in `crates/zanshin-jj/tests/api_stability.rs`'s exhaustive `WarningKind` pin.
+4. Its arm in `crates/zanshin-jj/tests/it/api_stability.rs`'s exhaustive `WarningKind` pin.
 5. A `ZanshinWarningCode` constant (and its place in `ZanshinWarningCode.values`) in `packages/zanshin_core/lib/src/ffi/warning.dart`, plus the string in the Dart pin test (`test/ffi/warning_test.dart`).
 6. A row in § Warning Codes (CLI site, emitted by, data).

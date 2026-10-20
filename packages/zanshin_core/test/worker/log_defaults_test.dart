@@ -12,8 +12,8 @@
 // cannot change process env in-process. `JJ_CONFIG=""` DISABLES user-config
 // discovery, and a freshly-init'd repo has no repo/workspace config, so the
 // values asserted here are exactly the builtin defaults. Config OVERRIDES are
-// exercised Rust-side (crates/zanshin-jj/tests/config.rs,
-// crates/zanshin-ffi/tests/log_defaults_ffi.rs) and Dart-side against synthetic
+// exercised Rust-side (crates/zanshin-jj/tests/it/config.rs,
+// crates/zanshin-ffi/tests/it/log_defaults_ffi.rs) and Dart-side against synthetic
 // buffers (test/ffi/log_defaults_test.dart).
 
 import 'dart:io';

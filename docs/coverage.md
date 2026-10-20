@@ -106,7 +106,10 @@ won't fail you — deliberately, never by lowering the floor:
   file trip the floor. (This is exactly why the graph blueprint lives in
   `benches/` and not in `repo.rs`.)
 - **Test scaffolding → `tests/`.** Integration tests and test-only helpers under
-  `tests/` are excluded by the scope filter.
+  `tests/` (in `zanshin-jj` / `zanshin-ffi` one binary per crate, `tests/it/`, one
+  module per test file) are excluded by the scope filter. A test body behind
+  `test_helpers::own_process!` runs in a child process of its binary and still
+  counts, because cargo-llvm-cov names profiles per process (`%p`).
 - **Generated code** (`*_generated.rs`, `bindings.dart`, …) is excluded automatically.
 - **Production code that genuinely can't be unit-tested** (a thin binary `main.rs`
   entrypoint, FFI glue exercised only via integration): add a deliberate, reviewed

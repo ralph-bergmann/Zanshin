@@ -7,7 +7,7 @@
 //
 // `jj.identity_missing` has no witness here: Makefile.toml pins `JJ_USER` /
 // `JJ_EMAIL` (EnvOverrides), so no creation this suite runs has an empty
-// identity — it is witnessed in Rust (`crates/zanshin-jj/tests/creation_warnings.rs`).
+// identity — it is witnessed in Rust (`crates/zanshin-jj/tests/it/creation_warnings.rs`).
 //
 // JJ_CONFIG="" and XDG_CONFIG_HOME (a throwaway dir under target/) are pinned
 // externally by Makefile.toml.
@@ -80,7 +80,7 @@ void main() {
     // `Child::wait()` on it fails ("Failed to wait for the git process") inside any
     // `dart test` process — the Dart VM reaps its children (see `mutate_test.dart`'s
     // `gitFetch` note). The clone itself is witnessed in Rust
-    // (`crates/zanshin-jj/tests/clone_init.rs`, `crates/zanshin-ffi/tests/push_ffi.rs`);
+    // (`crates/zanshin-jj/tests/it/clone_init.rs`, `crates/zanshin-ffi/tests/it/push_ffi.rs`);
     // this covers the refusal arm of `cloneRepo`'s return path on a destination that
     // is not empty, which Story 9.20 refuses before anything — and any git — runs.
     test('clone_refusal_arrives_as_an_exception', () async {

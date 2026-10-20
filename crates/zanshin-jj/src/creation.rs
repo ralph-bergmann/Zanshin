@@ -698,7 +698,7 @@ mod tests {
 
     /// Only the classes the closing run types leave `CloneFailed`: a refused remote name is
     /// `InvalidInput` and a `git` subprocess failure `NetworkError` (both witnessed through a real
-    /// clone in `tests/clone_init.rs`); every other jj-lib failure stays a clone failure with
+    /// clone in `tests/it/clone_init.rs`); every other jj-lib failure stays a clone failure with
     /// jj-lib's message. `GitSubprocessError` is not nameable outside jj-lib, so the network arm
     /// has no unit test here.
     #[test]

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Arc, LazyLock};
 
 use jj_lib::backend::{CommitId, CopyId, TreeValue};
@@ -65,7 +66,7 @@ pub fn extract_fixture(name: &str) -> Result<FixtureHandle, Box<dyn std::error::
     Ok(FixtureHandle { _temp: temp, path })
 }
 
-/// The environment every test binary pins so no developer config leaks in: no user/system
+/// The environment every test process pins so no developer config leaks in: no user/system
 /// config (`JJ_CONFIG=""`), no global git config, and a fixed identity + operation metadata
 /// through jj's own `EnvOverrides` variables — the identity half of what jj's own test harness
 /// pins. That harness also fixes `JJ_TIMESTAMP`, `JJ_OP_TIMESTAMP`, `JJ_RANDOMNESS_SEED`,
@@ -82,7 +83,7 @@ pub const TEST_ENV: [(&str, &str); 6] = [
 ];
 
 /// A fresh temp dir that stays on disk (`TempDir::keep` — never deleted, not even when the
-/// process exits), for a test binary's `$XDG_CONFIG_HOME`
+/// process exits), for the test process's `$XDG_CONFIG_HOME`
 /// (Story 9.37): opening a repo and every precondition-running verb run the CLI's start-up
 /// secure-config fix-up, which MIGRATES a legacy `.jj/repo/config.toml` /
 /// `.jj/workspace-config.toml` into `$XDG_CONFIG_HOME/jj/{repos,workspaces}/<id>/` — without
@@ -95,26 +96,97 @@ pub fn leaked_xdg_config_home() -> PathBuf {
     TempDir::new().expect("xdg tempdir").keep()
 }
 
-/// Pins [`TEST_ENV`] into the process environment, once per test binary — plus a
-/// [`leaked_xdg_config_home`] as `$XDG_CONFIG_HOME`, so the secure config store is the test's.
+/// Pins [`TEST_ENV`] into the process environment, once per test process — plus a
+/// [`leaked_xdg_config_home`] as `$XDG_CONFIG_HOME`, so the secure config store is the test's —
+/// and returns that pinned `$XDG_CONFIG_HOME`.
 ///
-/// The one pin helper `zanshin-jj`'s INLINE test modules share, so the lib test binary never
-/// reads the developer's real config; integration-test binaries keep their own `ENV_GUARD`s.
+/// The ONE environment lock (Story 9.55) of `zanshin-jj`'s inline test modules and of both
+/// integration-test binaries (`zanshin-jj` and `zanshin-ffi`, `tests/it/`, one module per
+/// former test file): they share this `LazyLock`, and every test that reads the
+/// environment through jj calls it FIRST. After it, nothing in the process changes the
+/// environment: a test that needs a different one starts with [`own_process!`] and runs as the
+/// only test of a child process, which may change its own environment freely.
 ///
 /// # Panics
 /// Panics if the temp dir cannot be created.
-pub fn pin_test_env() {
-    static GUARD: LazyLock<()> = LazyLock::new(|| {
+// WHY: called for its side effect — most callers only pin and ignore the path; `#[must_use]`
+// would turn every such call into an unused-result warning.
+#[allow(clippy::must_use_candidate)]
+pub fn pin_test_env() -> &'static Path {
+    static XDG: LazyLock<PathBuf> = LazyLock::new(|| {
         let xdg = leaked_xdg_config_home();
         for (name, value) in TEST_ENV {
-            // SAFETY: test-only; runs once, before this binary's tests read the environment
-            // through jj (the same pattern every `ENV_GUARD` in the suite uses).
+            // SAFETY: test-only; runs once, and every test that reads the environment calls
+            // this first — the `LazyLock` blocks them until the initialiser returns.
             unsafe { std::env::set_var(name, value) };
         }
         // SAFETY: as above.
         unsafe { std::env::set_var("XDG_CONFIG_HOME", &xdg) };
+        xdg
     });
-    LazyLock::force(&GUARD);
+    &XDG
+}
+
+/// Set in a child process started by [`reran_in_own_process`]: the full libtest name of the one
+/// test that child runs.
+pub const OWN_PROCESS_VAR: &str = "ZANSHIN_TEST_OWN_PROCESS";
+
+/// Runs the calling test as the only test of a child process of the same test binary — the
+/// isolation a test binary of its own used to give (Story 9.55). Use it through
+/// [`own_process!`], as the test's first statement.
+///
+/// `module_path` is the caller's `module_path!()` and `test` its function name; the libtest name
+/// is `module_path` without its first segment (the binary's crate) plus `::test`. In the child
+/// ([`OWN_PROCESS_VAR`] equals that name) it returns `false` and the test body runs — and may
+/// change the process environment, which only that child sees. In the parent it pins the test
+/// environment (the child starts from it), re-runs the binary filtered to exactly that test,
+/// asserts the child passed exactly one test, and returns `true`: the caller returns at once.
+///
+/// # Panics
+/// Panics if the child cannot be started, fails, or did not run exactly one test (a `test` that
+/// is not the caller's libtest name runs none) — the message carries the child's output.
+#[must_use = "on `true` the caller must return: the child already ran the test"]
+pub fn reran_in_own_process(module_path: &str, test: &str) -> bool {
+    let name = match module_path.split_once("::") {
+        Some((_, module)) => format!("{module}::{test}"),
+        None => test.to_owned(),
+    };
+    if std::env::var_os(OWN_PROCESS_VAR).is_some_and(|marker| marker == name.as_str()) {
+        return false;
+    }
+    pin_test_env();
+    let out = Command::new(std::env::current_exe().expect("the test binary"))
+        .args([name.as_str(), "--exact", "--nocapture", "--test-threads=1"])
+        .env(OWN_PROCESS_VAR, &name)
+        .output()
+        .expect("the test binary re-runs");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && stdout.contains(" 1 passed"),
+        "child run of {name} failed:\n{stdout}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    true
+}
+
+/// Makes the calling test run as the only test of a child process of its test binary — see
+/// [`reran_in_own_process`]. The first statement of the test; the argument is the test's own
+/// function name:
+///
+/// ```no_run
+/// # #[allow(dead_code)]
+/// fn config_get_reads_the_user_layer() {
+///     test_helpers::own_process!("config_get_reads_the_user_layer");
+///     // … may change the process environment from here on …
+/// }
+/// ```
+#[macro_export]
+macro_rules! own_process {
+    ($test:literal) => {
+        if $crate::reran_in_own_process(module_path!(), $test) {
+            return;
+        }
+    };
 }
 
 /// `UserSettings` for tests that load a workspace through jj-lib directly: jj-lib's defaults
@@ -657,4 +729,27 @@ pub fn add_workspace(workspace_root: &Path, name: &str) -> (FixtureHandle, Strin
         .hex();
     let path = second.workspace_root().to_owned();
     (FixtureHandle { _temp: temp, path }, wc)
+}
+
+#[cfg(test)]
+mod tests {
+    /// The child runs the body: the marker names exactly this test, and the environment it
+    /// starts from is the pinned one.
+    #[test]
+    fn own_process_runs_the_body_in_a_child_of_the_pinned_environment() {
+        crate::own_process!("own_process_runs_the_body_in_a_child_of_the_pinned_environment");
+        assert_eq!(
+            std::env::var(crate::OWN_PROCESS_VAR).as_deref(),
+            Ok("tests::own_process_runs_the_body_in_a_child_of_the_pinned_environment")
+        );
+        assert_eq!(std::env::var("JJ_USER").as_deref(), Ok("Zanshin"));
+    }
+
+    /// A name that is not the caller's libtest name runs no test in the child, and the parent
+    /// fails instead of passing silently.
+    #[test]
+    #[should_panic(expected = "0 passed")]
+    fn a_name_that_is_not_the_callers_fails_the_parent() {
+        let _ = crate::reran_in_own_process(module_path!(), "no_such_test");
+    }
 }

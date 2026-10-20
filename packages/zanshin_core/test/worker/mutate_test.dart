@@ -194,7 +194,7 @@ void main() {
     test('undo_twice_goes_further_back_and_carries_allow_cross_workspace', () async {
       // Story 9.39: the undo stack — the 2nd undo goes further back instead of
       // redoing the 1st — and the CLI's `--allow-cross-workspace` reaches Rust
-      // (the refusal itself is pinned by crates/zanshin-ffi/tests/repo_write_ffi.rs).
+      // (the refusal itself is pinned by crates/zanshin-ffi/tests/it/repo_write_ffi.rs).
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       final String wc = (await handle.status()).workingCopyChangeId;
       await handle.describe(changeId: wc, description: 'A');
@@ -229,7 +229,7 @@ void main() {
     // this story's FFI wrapper: `zanshin_git_fetch`'s success path (including
     // progress-event dispatch and `session_id` correlation) is fully exercised —
     // and asserted — by the real subprocess in
-    // `crates/zanshin-ffi/tests/repo_write_ffi.rs::git_fetch_happy_path_reports_progress_and_returns_mutation_result`,
+    // `crates/zanshin-ffi/tests/it/repo_write_ffi.rs::git_fetch_happy_path_reports_progress_and_returns_mutation_result`,
     // which runs as a plain `cargo test` process (no Dart VM involved). This test
     // covers the (subprocess-spawn-free) error path instead, still a real
     // cdylib call into `zanshin_git_fetch` for the coverage ratchet's
@@ -252,7 +252,7 @@ void main() {
     // and `zanshin_absorb` in the coverage ratchet's extern-fn guard — and they assert the
     // no-op contract itself (a success carrying the PRE-CALL op-log head, not an error).
     // Building a multi-commit content scenario is Rust-side work; the behavioural rows live
-    // in crates/zanshin-jj/tests/content_ops.rs and crates/zanshin-ffi/tests/repo_write_ffi.rs.
+    // in crates/zanshin-jj/tests/it/content_ops.rs and crates/zanshin-ffi/tests/it/repo_write_ffi.rs.
     test('restore_with_no_arguments_is_a_no_op_and_returns_a_mutation_result', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       final WorkingCopyStatus status = await handle.status();

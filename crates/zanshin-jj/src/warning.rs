@@ -702,7 +702,7 @@ mod tests {
         assert!(sink.take().is_empty());
     }
 
-    /// The integration witness (`tests/snapshot_colocated.rs`, a held `.git/HEAD.lock`) can
+    /// The integration witness (`tests/it/snapshot_colocated.rs`, a held `.git/HEAD.lock`) can
     /// only produce the one error jj-lib raises there; this pins the message shapes it cannot
     /// vary — `print_error_sources`' single-cause and `Caused by:` chain forms.
     #[test]

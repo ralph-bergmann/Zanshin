@@ -13,7 +13,7 @@
 // its children (see `mutate_test.dart`'s `gitFetch` note). These tests stay on
 // the paths that spawn no git: a dry run (planning only) and the refusals
 // before the network. The push itself is witnessed in Rust
-// (crates/zanshin-jj/tests/push.rs, crates/zanshin-ffi/tests/push_ffi.rs) and
+// (crates/zanshin-jj/tests/it/push.rs, crates/zanshin-ffi/tests/it/push_ffi.rs) and
 // against the stock CLI by the parity oracle (crates/zanshin-parity).
 //
 // JJ_CONFIG / GIT_CONFIG_GLOBAL are pinned externally by [tasks.test-core]

@@ -14,7 +14,7 @@
 // What these tests own is the DART half of the chain — that every request field
 // is built and crosses the buffer, that the three envelopes decode, and that a
 // refusal surfaces as a ZanshinFfiException. The verbs' semantics are witnessed
-// by the Rust suites (crates/zanshin-jj/tests/squash_split.rs) and against the
+// by the Rust suites (crates/zanshin-jj/tests/it/squash_split.rs) and against the
 // stock CLI by the parity oracle (crates/zanshin-parity).
 //
 // JJ_CONFIG / GIT_CONFIG_GLOBAL are pinned externally by [tasks.test-core]

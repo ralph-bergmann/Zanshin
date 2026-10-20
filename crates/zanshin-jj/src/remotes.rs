@@ -423,7 +423,7 @@ mod tests {
     /// replaces — see the module doc comment). A real `git fetch` against a local
     /// bare remote never produces a line that reaches this specific hook (client-side
     /// lines from a local transport all carry jj-lib's "remote: " sideband prefix
-    /// instead, exercised by the integration tests in `tests/remotes_write.rs`), so
+    /// instead, exercised by the integration tests in `tests/it/remotes_write.rs`), so
     /// it is exercised directly here.
     #[test]
     fn progress_callback_local_sideband_is_a_no_op() {

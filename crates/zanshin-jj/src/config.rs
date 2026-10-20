@@ -3099,7 +3099,7 @@ mod tests {
     //
     // Unit-tested directly against tempfile paths: every row here is about the FILE, and a
     // real workspace would add nothing but cost. The rows that need a repo (the transaction
-    // ordering, the same-session read-back) live in `tests/git_remotes.rs`.
+    // ordering, the same-session read-back) live in `tests/it/git_remotes.rs`.
 
     /// Writes `body` to a fresh temp dir and returns `(dir, path)`.
     fn repo_config(body: &str) -> (tempfile::TempDir, PathBuf) {
@@ -3212,7 +3212,7 @@ fetch-bookmarks = \"main\"
     /// the file by loading an empty document into it, which is what the unconditional
     /// `save()` would otherwise do. That [`existing_repo_config_file`] resolves such a path
     /// for a real workspace with no repo-level file is pinned by
-    /// `tests/git_remotes.rs::without_a_repo_config_file_both_verbs_succeed_and_create_none`.
+    /// `tests/it/git_remotes.rs::without_a_repo_config_file_both_verbs_succeed_and_create_none`.
     #[test]
     fn an_absent_repo_config_is_a_no_op_for_both_writers() {
         let tmp = tempfile::tempdir().unwrap();
@@ -3336,7 +3336,7 @@ fetch-tags = \"none\"
     // Unit rows only: every assertion here is about the FILE and the `config-id` indirection,
     // which plain temp dirs reproduce exactly. The rows that need a real conversion (which
     // remote wins, what `trunk()` then evaluates to, the rollback) live in
-    // `tests/convert.rs` and `tests/convert_alias_write_failure.rs`.
+    // `tests/it/convert.rs` and `tests/it/convert_alias_write_failure.rs`.
 
     /// What `ConfigFile::load_or_empty` puts at the top of a file it had to invent.
     const FRESH_FILE_HEADER: &str = "#:schema https://docs.jj-vcs.dev/latest/config-schema.json\n\n";
@@ -3548,7 +3548,7 @@ fetch-bookmarks = \"main\"
     // ── The start-up secure-config fix-up (Story 9.37) ──────────────────────────
     //
     // The mechanism over explicit environments — no process env: order, refusals, the no-config-dir
-    // skip and the state-based kinds. The public-API rows live in `tests/secure_config_fixups.rs`.
+    // skip and the state-based kinds. The public-API rows live in `tests/it/secure_config_fixups.rs`.
 
     /// A workspace at `<tmp>/<name>` whose `.jj/repo` holds `repo_body` as the LEGACY repo config
     /// (and `.jj` `ws_body` as the legacy workspace config, when given); the env's `<config_dir>` is

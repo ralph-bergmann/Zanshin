@@ -65,7 +65,7 @@ void main() {
       );
 
       // Re-write the checkout file (same bytes) to trigger a modify event —
-      // mirrors crates/zanshin-ffi/tests/watcher.rs's heartbeat test.
+      // mirrors crates/zanshin-ffi/tests/it/watcher.rs's heartbeat test.
       final checkout = File('${tempDir.path}/.jj/working_copy/checkout');
       checkout.writeAsBytesSync(checkout.readAsBytesSync());
 

@@ -6,8 +6,8 @@
 // root-taking config command that then REFUSES, whose thrown
 // [ZanshinFfiException] still carries the notice. Drives the REAL Isolate.spawn
 // flow against the REAL compiled cdylib; the Rust witnesses are
-// crates/zanshin-jj/tests/secure_config_fixups.rs and
-// crates/zanshin-ffi/tests/secure_config_ffi.rs.
+// crates/zanshin-jj/tests/it/secure_config_fixups.rs and
+// crates/zanshin-ffi/tests/it/secure_config_ffi.rs.
 //
 // JJ_CONFIG="" and XDG_CONFIG_HOME (a throwaway dir under target/) are pinned
 // externally by Makefile.toml, so the migrated files land there — never in the

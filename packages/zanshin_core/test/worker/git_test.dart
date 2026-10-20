@@ -12,8 +12,8 @@
 // (mem:project-coverage-extern-fn-needs-zanshin-core-test).
 //
 // The behavioural rows live Rust-side, where a scenario can be built cheaply:
-// crates/zanshin-jj/tests/git_sync.rs, crates/zanshin-jj/tests/git_remotes.rs and
-// crates/zanshin-ffi/tests/git_ffi.rs. What is asserted here is the seam: a real
+// crates/zanshin-jj/tests/it/git_sync.rs, crates/zanshin-jj/tests/it/git_remotes.rs and
+// crates/zanshin-ffi/tests/it/git_ffi.rs. What is asserted here is the seam: a real
 // cdylib call, a decoded payload, and the three refusal shapes a UI must handle.
 //
 // JJ_CONFIG / GIT_CONFIG_GLOBAL are pinned externally by [tasks.test-flutter]

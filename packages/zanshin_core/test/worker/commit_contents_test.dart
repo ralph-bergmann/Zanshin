@@ -10,8 +10,8 @@
 // extern-fn guard (mem:project-coverage-extern-fn-needs-zanshin-core-test).
 //
 // The error ladder's every row and the pinned read's write-nothing contract live
-// in the Rust suites (crates/zanshin-jj/tests/commit_contents.rs,
-// crates/zanshin-ffi/tests/commit_contents_ffi.rs). What these tests own is the
+// in the Rust suites (crates/zanshin-jj/tests/it/commit_contents.rs,
+// crates/zanshin-ffi/tests/it/commit_contents_ffi.rs). What these tests own is the
 // DART half of the chain: the request fields are built and cross the buffer, the
 // payload decodes in request order, each jj error surfaces as a
 // ZanshinFfiException, and the calling-side guards fire.

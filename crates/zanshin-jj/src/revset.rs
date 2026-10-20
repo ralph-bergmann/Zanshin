@@ -432,7 +432,7 @@ fn parse_revset_in(
     //    `ui.revsets-use-glob-by-default = true` in `cli/src/config/misc.toml` at v0.42.0, so
     //    our hardcoded `false` had been diverging from the CLI that NFR-R-2 makes the semantic
     //    reference; 0.44 deleted the knob, leaving glob as the only — and CLI-correct — behavior.
-    //    Pinned by `revset_bare_pattern_arg_is_exact_not_substring` in tests/revset.rs.
+    //    Pinned by `revset_bare_pattern_arg_is_exact_not_substring` in tests/it/revset.rs.
     //
     // 2. Git-like symbols (e.g. `refs/heads/main`) are NO LONGER resolved to revisions; the
     //    bookmark/tag `<name>` or `<name>@<remote>` syntax replaces them. A revset that relied
@@ -442,7 +442,7 @@ fn parse_revset_in(
     //    (present at `jj-lib-0.42.0/src/revset.rs:982,991`, absent in 0.44). A revset using
     //    them is now a parse error. The underlying `View::git_head()` / `View::git_refs()` are
     //    unchanged, so the property those functions exposed is still assertable one level down —
-    //    which is how `tests/convert.rs` and `tests/op_log.rs` were re-anchored in this story.
+    //    which is how `tests/it/convert.rs` and `tests/it/op_log.rs` were re-anchored in this story.
     //
     // Changes 2 and 3 are LOUD (the revset fails to parse or resolve, so the user is told);
     // change 1 is SILENT — same input, different valid answer — which is why only it carries a

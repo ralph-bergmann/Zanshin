@@ -7,8 +7,8 @@
 //! Why this exists: Zanshin's unified coverage combines the dart-test FFI-path lcov
 //! (exported from the `--release` cdylib the worker loads) with the cargo-test lcov
 //! (from cargo-llvm-cov's `debug` test binaries — which, unlike a hand-rolled `-object`
-//! list, correctly enumerates the integration-test binaries named after their test file,
-//! e.g. `revset-<hash>`). Those are DIFFERENT instrumented objects with different function
+//! list, correctly enumerates the integration-test binaries, one `it-<hash>` per crate
+//! built from its `tests/it/`). Those are DIFFERENT instrumented objects with different function
 //! hashes, so a single `llvm-cov export` over one merged profdata cannot attribute one to
 //! the other. Unioning the two lcovs at the source level is the correct combine.
 //! See `Makefile.toml [tasks.coverage]`.

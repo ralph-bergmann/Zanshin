@@ -8,7 +8,7 @@
 // in ONE process against ONE cdylib, so an installed environment would replace
 // the one every later file reads — the pinned JJ_CONFIG and XDG_CONFIG_HOME
 // included. A refused request installs nothing; the successful install lives in
-// its own cargo test process (crates/zanshin-ffi/tests/environment_ffi.rs).
+// its own cargo test process (crates/zanshin-ffi/tests/it/environment_ffi.rs).
 
 import 'dart:typed_data';
 

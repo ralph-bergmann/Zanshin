@@ -76,7 +76,7 @@ Gate rule for this run (Ralph, 2026-10-20): do NOT run the full quality gate —
 `cargo make test-full` or `cargo make coverage`; the story loop runs it once after its last story. This
 overrides CLAUDE.md's "the quality gate is the definition of done" and build-auto's gate steps for this
 run. Verify with targeted checks instead, as far as the change reaches: `cargo test -p <crate>` (or
-`--test <name>`) for every touched crate and its dependents' affected tests, `cargo clippy -p <crate>
+`--test <name>`; `zanshin-jj`/`zanshin-ffi` have one, `--test it <module>::`) for every touched crate and its dependents' affected tests, `cargo clippy -p <crate>
 --all-targets -- -D warnings`, `cargo fmt --all --check`, `cargo make codegen` when the FFI or the schema
 changed (commit what it generates), the parity oracle (`cargo test -p zanshin-parity --test oracle`) when a
 jj verb changed, and `flutter test` / `dart analyze` / `dart format --set-exit-if-changed` for each touched

@@ -10,7 +10,7 @@
 // (mem:project-coverage-extern-fn-needs-zanshin-core-test).
 //
 // The wire's every row and the jj error ladder live in the Rust suites
-// (crates/zanshin-ffi/src/graph.rs, crates/zanshin-ffi/tests/graph_ffi.rs). What
+// (crates/zanshin-ffi/src/graph.rs, crates/zanshin-ffi/tests/it/graph_ffi.rs). What
 // these tests own is the DART half: the request crosses the buffer, the reply
 // crosses the isolate boundary as ONE copy (a TransferResult) and reads through
 // the lazy view, the topology continues into the op-pinned content call, the

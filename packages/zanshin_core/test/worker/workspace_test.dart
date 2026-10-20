@@ -14,9 +14,9 @@
 //
 // SCOPE NOTE - the Story 9.7 group below uses one workspace: it predates
 // `workspaceAdd` (Story 9.23), and its MULTI-workspace rows live in the Rust
-// suites (crates/zanshin-jj/tests/workspace.rs, crates/zanshin-ffi/tests/
-// workspace_ffi.rs). The Story 9.23 group creates the second workspace through
-// `workspaceAdd` itself.
+// suites (crates/zanshin-jj/tests/it/workspace.rs,
+// crates/zanshin-ffi/tests/it/workspace_ffi.rs). The Story 9.23 group creates
+// the second workspace through `workspaceAdd` itself.
 // The DEGRADED-path rows are reachable from here, though - deleting
 // `.jj/repo/workspace_store` needs nothing but dart:io - so the null-root decode
 // and the no-recorded-path refusal are witnessed end-to-end below.
@@ -312,7 +312,7 @@ void main() {
       // repo with `gitWorktreeCreated == true`: creating the worktree spawns `git`, whose
       // `Child::wait()` fails inside any `dart test` process — the Dart VM reaps its children
       // (creation_test.dart's clone note). The worktree itself is witnessed by the Rust suites
-      // (crates/zanshin-jj/tests/workspace_add.rs, crates/zanshin-ffi/tests/workspace_ffi.rs).
+      // (crates/zanshin-jj/tests/it/workspace_add.rs, crates/zanshin-ffi/tests/it/workspace_ffi.rs).
       final RepoHandle native = await worker.initRepo(mainPath, backend: 0);
       await expectLater(
         native.workspaceAdd(destination: '../forced', colocate: true),

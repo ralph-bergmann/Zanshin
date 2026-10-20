@@ -17,8 +17,8 @@
 // content-carrying and
 // multi-version row of the I/O matrix therefore lives in the Rust suites, which
 // can build trees and operations directly:
-// crates/zanshin-jj/tests/commit_views.rs (behaviour) and
-// crates/zanshin-ffi/tests/commit_views_ffi.rs (payload bytes across the FFI).
+// crates/zanshin-jj/tests/it/commit_views.rs (behaviour) and
+// crates/zanshin-ffi/tests/it/commit_views_ffi.rs (payload bytes across the FFI).
 // What these tests own is the DART half of the chain - that every request field
 // is built and crosses the buffer, that the three envelopes decode, and that
 // each error code surfaces as a ZanshinFfiException.

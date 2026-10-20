@@ -791,7 +791,7 @@ pub(crate) fn parse_prefixes(paths: &[String]) -> Result<Vec<RepoPathBuf>, Strin
 /// for — `Workspace::workspace_name()`, exactly as the caller this port mirrors
 /// (`cli_util.rs:2286-2298`) passes `self.workspace_name()`. Never a constant, and never derived
 /// from a path: in a repo with several workspaces the two differ, and the operation must name the
-/// one that ran it. `tests/op_workspace_name.rs` witnesses that from a SECOND workspace, which is
+/// one that ran it. `tests/it/op_workspace_name.rs` witnesses that from a SECOND workspace, which is
 /// the only place a constant `default` would show.
 ///
 /// The CLI has a second caller, the snapshot path (`cli_util.rs:2099`), which follows it with

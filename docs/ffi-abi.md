@@ -466,7 +466,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 The cdylib exports **71** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
-by `crates/zanshin-ffi/tests/ffi_abi_doc_sync.rs`, which fails if a header symbol
+by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
 
 **The header rustdoc is authoritative for each code's CONDITION** — when a code
