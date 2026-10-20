@@ -1621,7 +1621,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in Story 9.52 (bmad-build-auto, 2026-10-20)
 
-- **Cancel identifies stock macOS git by its `--git-dir` argument rather than by the token in its environment, and creates no process group — Ralph to confirm this attribution rule.** Medium.
+- ~~**Cancel identifies stock macOS git by its `--git-dir` argument rather than by the token in its environment, and creates no process group — Ralph to confirm this attribution rule.**~~ — RECORD 2026-10-20 (Ralph): the rule stays (one handle per project, calls on it serialized; the residual needs two handles on one repo at once). Medium.
   - macOS hides the environment of Apple platform binaries (`/usr/bin/git`, the CLT git, `/bin/sh`, `ssh`) from `sysctl(KERN_PROCARGS2)`, even for our own children, so "kill only processes carrying `ZANSHIN_CANCEL_TOKEN`" never matches stock git. `crates/zanshin-jj/src/cancel.rs` (`Marks::matches`, `poll`) therefore also signals a hidden-env descendant that names `--git-dir <dir>`, but only when exactly one live call watches that dir. Residual: a git without a token on that dir (e.g. a concurrent `workspace add` on another handle of the repo) cannot be told apart. Documented in `docs/ffi-abi.md` § Cancel.
   - **Follow-up:** Ralph keeps the rule, or picks an exec wrapper with `setpgid` (needs a shipped executable; Dart hooks ship only dylibs, and macOS has no `setsid(1)`), or cancel-by-checkpoints only for Apple git.
 - **No Dart witness for a successful worker clone (the reserved handle id is registered and usable).** Medium.
@@ -1633,18 +1633,21 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - ~~**Zanshin loads `[template-aliases]` and `revsets.short-prefixes` only when a verb parses a template; the CLI loads both at the start of every workspace command, so a broken alias table or short-prefixes revset refuses every CLI command but only Zanshin's template-rendering verbs.**~~ **RESOLVED 2026-10-20 (spec-9-51-closing-template-env-at-command-start, commit d8e4c60):** `snapshot::CommandEnv::load` loads both in the CLI's order for every start-up-environment verb; witnesses in `tests/templates.rs` and the oracle scenarios `abandon_broken_template_aliases` / `abandon_broken_short_prefixes`. Low.
   - `cli/src/cli_util.rs` `load_template_aliases` (:3518) and `load_short_prefixes_expression` (:1115-1136) run in `WorkspaceCommandEnvironment` setup @ v0.46.0; Story 9.51 builds its template environment lazily (`crates/zanshin-jj/src/template.rs`).
   - ~~**Follow-up:** load both in `snapshot::CommandEnv::load` for every verb (one more refusal and warning source per call), with a witness that a broken `template-aliases` table refuses a non-template verb.~~ Done (d8e4c60).
-- **A `jj.template_diagnostic` has no template-position rendering.** Low.
+- ~~**A `jj.template_diagnostic` has no template-position rendering.**~~ — RECORD 2026-10-20 (Ralph): no span rendering unless a UI asks for it. Low.
   - The CLI's `print_parse_diagnostics` renders each `TemplateParseError` with its span (`-->` over the template text, `cli/src/command_error.rs` @ v0.46.0); Zanshin's warning carries the context line, the diagnostic and its source chain only (`crates/zanshin-jj/src/warning.rs` `parse_diagnostics`) — the deviation `jj.short_prefixes_failed` already documents.
   - **Follow-up:** none unless a UI wants the span.
 - **The template function `config("<name>")` sees Zanshin's settings, not every jj-cli default.** Low.
   - `config()` reads the repo's settings (`cli/src/template_builder.rs:2645-2676` @ v0.46.0); Zanshin's hold jj-lib's defaults, Zanshin's builtin layer and the jj-cli template defaults (`[template-aliases]`, `[diff.color-words]`, `[diff.git]`, four `templates.*` keys — `crates/zanshin-jj/src/config.rs` `template_defaults_layer`), so a key only jj-cli's other default files define (e.g. `ui.color`) renders empty where the CLI renders its default.
   - **Follow-up:** take more of jj-cli's defaults into the layer if a user template needs them.
+  - **2026-10-20, Ralph:** take all of jj-cli's default layers → **Story 9.54** item 3.
 - **The GUI round trip "show `squash_plan`'s text, pass the edited text back as `message`" re-applies `templates.commit_trailers`, so a trailer the user deleted comes back and an unchanged plan text can gain a second trailer — needs Ralph's API decision.** Medium.
   - `crates/zanshin-jj/src/squash_split.rs` `squashed_description` (the `-m` arm adds trailers, as the CLI's `-m` does, squash.rs:358-372 @ v0.46.0); the CLI's editor flow writes the edited text as is. Example: B = "B\n\nSOB\n", C = "C\n": plan "B\n\nSOB\n\nC\n", round trip writes "B\n\nSOB\n\nC\n\nSOB\n". Only with `templates.commit_trailers` set.
   - **Follow-up:** Ralph decides how the GUI passes an edited editor text apart from `-m` (e.g. an "edited description" field on `SquashOptions`/`SquashRequest` that skips trailers, the same for `split`'s two descriptions), then an oracle scenario with trailers for the plan round trip.
+  - **2026-10-20, Ralph:** a new `edited_description` field written as is → **Story 9.54** item 1; 10.25 sends edits through it.
 
 ## Surfaced in the closing run of Story 9.51 (bmad-build-auto, 2026-10-20)
 
 - **`workspace add` builds no second start-up environment for the new workspace, so the CLI prints the alias-table, `immutable_heads()` and short-prefixes warnings twice and Zanshin once.** Low.
   - CLI `commands/workspace/add.rs:193` @ v0.46.0 calls `for_workable_repo` unconditionally (`cli_util.rs:836-847` → `WorkspaceCommandEnvironment::new`); `crates/zanshin-jj/src/workspace_add.rs` re-parses only `revsets.short-prefixes`, only for a non-empty `-m` with trailers, recorded once per call. Pre-existing since Story 9.23; `creation.rs::workable_env` shows the double-report pattern.
   - **Follow-up:** build the new workspace's `CommandEnv` into its own collector after `init_workspace_with_existing_repo` (as `creation.rs::workable_env` does) and use its immutable set and short-prefixes for the render; or none, if the doubled warnings are not worth it.
+  - **2026-10-20, Ralph:** align with the CLI → **Story 9.54** item 4.

@@ -7599,6 +7599,29 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Related:** 9.23, 9.29, 9.32, 9.48, 9.49.
 
+### Story 9.54: Edited editor text for `squash`/`split`, and three follow-ups of 9.51–9.53 [M/bridge/UI]
+*(Added 2026-10-20, Ralph — console session after the story loop of 9.53, 9.52 and 9.51: four findings Ralph decided to fix.)*
+
+**Scope.**
+1. **Edited editor text, written as is** (Ralph: a new field). When the GUI shows `squash_plan`'s text and passes the user's edit back as `-m`, `templates.commit_trailers` is applied again (the CLI's `-m` arm, `squash.rs:358-372` @ v0.46.0): a trailer the user deleted comes back, and an unchanged plan can gain a second one. The CLI's editor flow writes the saved text as is. Add an optional `edited_description` to `SquashOptions` / `SquashRequest`, and the same for `split`'s two descriptions: the text is written as the CLI writes a saved editor buffer (its cleanup, no trailers), excluding `-m` (`jj.invalid_input` when both are given). Dart `RepoHandle.squash` / `split` gain the parameter. deferred-work "Surfaced in Story 9.51" ("The GUI round trip … re-applies `templates.commit_trailers`").
+2. **"ahead" counts only push targets** (Ralph). Story 9.53's rule (a tracked remote row with no target reads ahead) counts only remotes that a bare `jj git push` would push to — 9.20's default-remote resolution (`git.push` as a name, list or pattern, else the only remote, else `origin`; `push.rs:1107-1130` @ v0.46.0). The resolved list reaches Dart if it does not yet; `trackingStatusOf` (`app/lib/src/features/projects/project_repos.dart`) uses it. A read-only `upstream` that auto-track matches no longer makes every bookmark ahead. Distances (`ahead`/`behind` from a present remote target) stay as they are for every tracked remote.
+3. **`config()` in templates sees every jj-cli default.** `template_defaults_layer` (`crates/zanshin-jj/src/config.rs`) takes a selection of `jj_cli::config::default_config_layers`; take all of them (below Zanshin's builtin layer and the user's config), so `config("ui.color")` renders the CLI's default. deferred-work "Surfaced in Story 9.51" ("The template function `config(…)` sees Zanshin's settings, not every jj-cli default").
+4. **`workspace add` builds the new workspace's start-up environment** (Ralph: align). The CLI calls `for_workable_repo` for the new workspace (`commands/workspace/add.rs:193` @ v0.46.0, `cli_util.rs:836-847`), so its alias, `immutable_heads()` and short-prefixes warnings come twice and the new workspace's immutable set and short-prefixes are what its trailer render uses. Build it as `creation.rs::workable_env` does, after `init_workspace_with_existing_repo`. deferred-work "Surfaced in the closing run of Story 9.51".
+
+**Non-goals.** The composer's UI (10.25 uses item 1).
+
+**Depends on.** 9.15, 9.20, 9.23, 9.51, 9.53 (done).
+
+**Design status.** Item 2 changes when the dot reads ahead, not how it looks.
+
+**Witnesses.**
+- Item 1: an oracle scenario with `templates.commit_trailers` set, where Zanshin's `squash_plan` text, edited (a trailer deleted) and passed as `edited_description`, gives the CLI's result for the same text saved from a scripted editor; unchanged, it gives no second trailer. The same for `split`. Both fields together refuse.
+- Item 2: `statusFrom` with a never-pushed bookmark tracked on `origin` (a push target) reads ahead; tracked only on a non-target `upstream`, it reads clean.
+- Item 3: a template calling `config("ui.color")` renders the CLI's value (oracle).
+- Item 4: `workspace add` with a bad alias entry warns as often as the CLI (oracle).
+
+**Related:** 9.15, 9.20, 9.23, 9.51, 9.52, 9.53; 10.25.
+
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 
@@ -11413,6 +11436,8 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 ### Story 10.25: Commit/split composer, file level — and Squash into parent with the combined-message flow [UI/bridge]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`. File-level selection is the CLI's non-interactive arm, so this story ships before Epic 5 and before 10.26 (the Epic 10 header's design update 2026-10-14, decision (g)).)*
 
+> **Note 2026-10-20 (Ralph, console session):** when the user edits the combined description that `squash_plan` returns (or split's texts), the composer sends the edit as 9.54's `edited_description`, never as `-m`: `-m` text gets `templates.commit_trailers` again, so a deleted trailer would come back (deferred-work "Surfaced in Story 9.51"). Unedited text goes the same way. **Depends on** adds 9.54.
+>
 > **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** the composer's motion follows DS tokens/motion.css, it gets the generic exit and 11.11's Checkbox, and its command preview is complete. This note amends items 1, 2, 5 and 9. It adds witnesses.
 > - **Item 2, the entrance** (decision 16.4). The composer rises 12 px and fades in on `--dur-slide` (260 ms) with `--ease-glide` (DS ui_kits/desktop/kit.css:129–130). Under reduce motion it only fades; the rise is × `--motion`. This supersedes "not under reduce motion".
 > - **The exit** (decision 16.40). When the composer goes (after a commit or a split, or when the selection is cleared), it leaves with the generic exit: a fade with a small mirrored drift × `--motion`, on `--dur-exit-lg` (180 ms) and `--ease-exit` (DS tokens/motion.css:16, :30).
