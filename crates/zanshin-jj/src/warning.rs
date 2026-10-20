@@ -55,9 +55,9 @@ pub enum WarningKind {
     /// A checkout moved `@` onto a commit with conflicts: the CLI lists each conflicted path with
     /// a description of its conflict (`print_updated_working_copy_stats`,
     /// `cli_util.rs:2297-2331` @ v0.46.0, lines from `print_conflicted_paths` `:3129-3219`; Story
-    /// 9.53). Every
-    /// finish that checks out a new `@` and the stale-working-copy recovery warn it, right after
-    /// [`WarningKind::CheckoutFilesSkipped`]; a finish that leaves `@` where it was does not.
+    /// 9.53). Every finish that checks out a new `@` and the stale-working-copy recovery warn it,
+    /// right after [`WarningKind::CheckoutFilesSkipped`]; a finish that leaves `@` where it was
+    /// does not.
     UnresolvedConflicts,
     /// Explicitly named paths that match no entry (`print_unmatched_explicit_paths`,
     /// `cli_util.rs:3323-3347`).

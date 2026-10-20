@@ -45,6 +45,8 @@ parity!(
     abandon_wc,
     edit_parent,
     edit_conflicted_merge,
+    describe_conflicted_at,
+    bookmark_create_on_conflicted_at,
     undo_after_describe,
     bookmark_create,
     bookmark_create_existing,
@@ -178,7 +180,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 128);
+    assert_eq!(SCENARIO_IDS.len(), 130);
 }
 
 #[test]

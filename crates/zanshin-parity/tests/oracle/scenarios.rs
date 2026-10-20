@@ -476,6 +476,39 @@ pub fn scenarios() -> Vec<Scenario> {
             )
         },
         Scenario {
+            // `@` is the conflicted M itself: rewriting it is a new commit, so the CLI warns
+            // again (`Some(new) != old`, Story 9.53).
+            setup: &[
+                Step::Jj(&["new", "@--", "-m", "D"]),
+                Step::Write("c.txt", "c from D\n"),
+                Step::Jj(&["new", "-m", "M", "description(substring:\"C\")", "@"]),
+            ],
+            ..simple(
+                "describe_conflicted_at",
+                |repo, _, s| {
+                    let result = repo.describe(s.change("@"), "M described\n");
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["describe", "-m", "M described"]),
+            )
+        },
+        Scenario {
+            // `@` is the conflicted M and stays where it is: no conflict warning (Story 9.53).
+            setup: &[
+                Step::Jj(&["new", "@--", "-m", "D"]),
+                Step::Write("c.txt", "c from D\n"),
+                Step::Jj(&["new", "-m", "M", "description(substring:\"C\")", "@"]),
+            ],
+            ..simple(
+                "bookmark_create_on_conflicted_at",
+                |repo, _, _| {
+                    let result = repo.bookmark_create(&["feature".to_owned()], None);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["bookmark", "create", "feature"]),
+            )
+        },
+        Scenario {
             setup: &[Step::Jj(&["describe", "-m", "to be undone"])],
             ..simple(
                 "undo_after_describe",

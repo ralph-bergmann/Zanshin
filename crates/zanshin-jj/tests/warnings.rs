@@ -508,6 +508,24 @@ fn an_edit_onto_a_conflicted_merge_lists_the_unresolved_conflicts() {
     );
 }
 
+/// Story 9.53: the CLI's print order — `print_checkout_stats`' skipped-files warning, then the
+/// unresolved conflicts (`print_updated_working_copy_stats`, `cli_util.rs:2318-2329` @ v0.46.0).
+#[test]
+fn a_checkout_that_skips_files_onto_a_conflict_warns_skipped_first() {
+    let fx = git_fx("snapshot.auto-track = \"none()\"\n");
+    let merge = test_helpers::add_conflicted_merge_with_extra_files(&fx.root, &[("extra.txt", "from the merge\n")]);
+    write(&fx.root, "extra.txt", "untracked on disk\n");
+    let mut repo = Repo::open(&fx.root).expect("open");
+    let merge = resolve_revset(&repo, &merge).expect("merge").swap_remove(0);
+
+    repo.edit(merge).expect("edit");
+
+    assert_eq!(
+        kinds(&repo.take_warnings()),
+        [WarningKind::CheckoutFilesSkipped, WarningKind::UnresolvedConflicts]
+    );
+}
+
 /// Story 9.53: the warning needs BOTH a conflicted new `@` and a moved `@` — a clean checkout
 /// and a finish that leaves the conflicted `@` where it was say nothing; a rewrite of the
 /// conflicted `@` (a new commit) warns again, as in the CLI (`Some(new) != old`).
