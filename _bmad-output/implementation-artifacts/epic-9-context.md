@@ -22,7 +22,7 @@ Build the jj CLI's meaningful operation set as typed, transaction-bounded verb c
 - Story 9.10: `next`, `prev`
 - Story 9.11: `bookmark set`/`forget`/`track`/`untrack`
 - Story 9.12: `op restore`, `op revert`
-- Story 9.13: `file chmod`; `workspace forget`/`rename`/`remove`
+- Story 9.13: `file chmod`; `workspace forget`/`rename`
 - Story 9.14: `simplify-parents`
 - Story 9.15: `squash`, `split`
 - Story 9.16: `rebase`, `parallelize`, `arrange`
@@ -64,6 +64,7 @@ Build the jj CLI's meaningful operation set as typed, transaction-bounded verb c
 - Story 9.52: Network verbs on a helper — progress + Cancel
 - Story 9.53: Parity clean-up after the 2026-10-19 loop
 - Story 9.54: Edited editor text for `squash`/`split` + 9.51–9.53 follow-ups
+- Story 9.55: One integration-test binary per crate
 
 ## Requirements & Constraints
 
@@ -86,6 +87,7 @@ Build the jj CLI's meaningful operation set as typed, transaction-bounded verb c
 - **Templates:** `zanshin-jj` uses the `jj-cli` library for its template engine only (`CommitTemplateLanguage`, `TemplateRenderer`, the builtin aliases/`templates.*` defaults) — never `CliRunner`/`Ui`/commands, no `jj_cli` type in a public position; pinned with `jj-lib`.
 - **Network verbs** (fetch, clone, push) run on a once-per-call helper isolate so progress streams live; other calls on that handle queue behind. Cancel kills git's process group and refuses with a dedicated cancel code, with the CLI's failure-path clean-up.
 - **Oracle** (`crates/zanshin-parity`): stock `jj-cli` pinned with `jj-lib`, compares repo state via jj-lib; ledger fails on UNEXPECTED/CHANGED/STALE. Reads, codes, network and interactive verbs need hand audit. Pin bumps move `jj-lib`, `jj-cli` and the `../jj` tag together and triage every oracle failure.
+- **Test layout (9.55, tooling):** `zanshin-jj` and `zanshin-ffi` move to one integration-test binary each (`tests/it/main.rs`, one module per former file, names kept) to cut `target/` size and link time. In one process, all env-mutating tests share ONE lock from `test-helpers` and restore what they set (or pin via `pin_test_env`); child-process tests' filters, `Makefile.toml`, the gate-plan rules, coverage tooling and the test-placement docs follow the new paths. Witnesses: same test count per crate, three green `cargo make test-full` runs, coverage held, baseline never lowered.
 
 ## UX & Interaction Patterns
 
@@ -101,3 +103,4 @@ Build the jj CLI's meaningful operation set as typed, transaction-bounded verb c
 - 9.50 → tree arms of 9.15/9.17/9.49; 9.31 shares `plan_*` fns with the verbs it previews.
 - 9.21's `redo` reuses 9.39's walk; 9.40's gate covers new verbs; 9.30 shares 9.5's import-options helper.
 - 9.51 builds on 9.15/9.20/9.23/9.49; 9.52 on 6.4a/9.20 (and 9.30 if first); 9.54 follows 9.51/9.53 (uses 9.20's default-remote resolution; 10.25 consumes its edited-text field).
+- 9.55 restructures the test suites of every verb story (incl. 9.47's oracle crate if it pays); stories landing after it add tests as `tests/it/` modules.
