@@ -187,6 +187,11 @@ the `zanshin-graph` lane crate was removed)*
   `add_commit_off_root` write helper, Story 4.6; and `crates/zanshin-parity` — test-only,
   never shipped, coverage `exclude_prefix` — builds the stock `jj` from `jj-cli` and reads
   repo state through `jj_lib` in its oracle tests, Story 9.47.)
+- `zanshin-jj` also depends on the `jj-cli` LIBRARY (Story 9.51) — for jj's template engine ONLY
+  (`CommitTemplateLanguage`, `template_builder::parse`, `TemplateRenderer`, and the builtin
+  `[template-aliases]` / `templates.*` defaults taken from `jj_cli::config::default_config_layers`),
+  never `CliRunner`, `Ui` or a command. No `jj_cli` type appears in a public position either. It is
+  pinned exactly with `jj-lib` and moves with it at every pin bump (below).
 - **Pin bump (jj-lib).** (1) Bump `jj-lib` and `jj-cli` together in
   `[workspace.dependencies]` (both exact pins). (2) Bump the `../jj` reference tag
   (CLAUDE.md). (3) Run `cargo make test`. (4) Triage every parity-oracle failure

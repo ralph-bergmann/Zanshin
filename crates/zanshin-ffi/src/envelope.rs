@@ -335,6 +335,8 @@ pub const JJ_PUSH_BOOKMARKS_NOT_UPDATED_LOCALLY: &str = "jj.push_bookmarks_not_u
 pub const JJ_PUSH_SIGNING_SKIPPED_IMMUTABLE: &str = "jj.push_signing_skipped_immutable";
 /// Warning: `zanshin_repo_clone`'s exact `-b` names the remote does not have (Story 9.20).
 pub const JJ_CLONE_BRANCHES_UNMATCHED: &str = "jj.clone_branches_unmatched";
+/// Warning: a template a verb renders (`templates.commit_trailers`, `draft_commit_description`, `new_description`, `git_push_bookmark`) parsed with a diagnostic; it still renders (Story 9.51).
+pub const JJ_TEMPLATE_DIAGNOSTIC: &str = "jj.template_diagnostic";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -390,6 +392,7 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::PushBookmarksNotUpdatedLocally => JJ_PUSH_BOOKMARKS_NOT_UPDATED_LOCALLY,
         K::PushSigningSkippedImmutable => JJ_PUSH_SIGNING_SKIPPED_IMMUTABLE,
         K::CloneBranchesUnmatched => JJ_CLONE_BRANCHES_UNMATCHED,
+        K::TemplateDiagnostic => JJ_TEMPLATE_DIAGNOSTIC,
     }
 }
 
@@ -1232,6 +1235,7 @@ mod tests {
             K::PushBookmarksNotUpdatedLocally => "jj.push_bookmarks_not_updated_locally",
             K::PushSigningSkippedImmutable => "jj.push_signing_skipped_immutable",
             K::CloneBranchesUnmatched => "jj.clone_branches_unmatched",
+            K::TemplateDiagnostic => "jj.template_diagnostic",
         }
     }
 
@@ -1290,6 +1294,7 @@ mod tests {
             K::PushBookmarksNotUpdatedLocally,
             K::PushSigningSkippedImmutable,
             K::CloneBranchesUnmatched,
+            K::TemplateDiagnostic,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");

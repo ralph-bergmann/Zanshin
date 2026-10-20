@@ -20,9 +20,9 @@
 //! - no tree arm, no `--interactive`, no `--tool`: the tree arm (a GUI-selected tree and its
 //!   `left`) is Story 9.50's;
 //! - no editor arm and no `--editor`: `-m` is required (the GUI always passes it), so there is no
-//!   "editor saved unchanged" case and no empty-message hint;
-//! - no trailers (`templates.commit_trailers` is the ledgered gap every describing verb shares)
-//!   and no hints.
+//!   "editor saved unchanged" case and no empty-message hint; a non-empty `-m` gets
+//!   `templates.commit_trailers` (Story 9.51, [`crate::template`]);
+//! - no hints.
 
 use jj_lib::backend::CommitId as JjCommitId;
 use jj_lib::merge::Diff;
@@ -39,6 +39,7 @@ use crate::bookmark_ops::union_expression;
 use crate::mutate::{be, build_matcher, cfg, finish_verb, mutation_result, MutateError, MutationResult};
 use crate::op_support::{join_message_paragraphs, resolve_immutable, start_repo_transaction, SelectedTree};
 use crate::snapshot::VerbContext;
+use crate::template::Templates;
 use crate::warning::WarningKind;
 use crate::ChangeId;
 
@@ -174,6 +175,12 @@ pub(crate) fn commit(
     let mut builder = tx.repo_mut().rewrite_commit(&wc_commit).detach();
     builder.set_tree(tree);
     builder.set_description(join_message_paragraphs(&options.message));
+    // `commit.rs:148-153`: a non-empty `-m` gets the trailers (`use_editor` is false).
+    if !builder.description().is_empty() {
+        let templates = Templates::new(&ctx.config, &ctx.immutable, workspace);
+        let description = templates.add_trailers(tx.repo(), &builder, &mut ctx.warnings)?;
+        builder.set_description(description);
+    }
     let committed = pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
 
     // `commit.rs:177-192`. The CLI guards this block with "some workspace's `@` is the old

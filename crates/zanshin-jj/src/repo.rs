@@ -976,7 +976,9 @@ impl Repo {
     ///
     /// Opens a jj-lib transaction, mutates via `tx.repo_mut()`, and commits with a
     /// CLI-parity op-log description (NFR-R-2) — jj-lib only, never shells to `jj`
-    /// (AR-AP-1). `description` may be empty (jj convention).
+    /// (AR-AP-1). `description` may be empty (jj convention). A non-empty `description` gets
+    /// `templates.commit_trailers` added, as `jj describe -m` does (Story 9.51); an empty one
+    /// gets none.
     ///
     /// # Errors
     ///
@@ -986,7 +988,11 @@ impl Repo {
     /// - [`crate::MutateError::Immutable`] — `change_id` resolves to a non-root commit
     ///   inside the repo's effective immutable set.
     /// - [`crate::MutateError::Config`] — the `revset-aliases."immutable_heads()"` alias does not
-    ///   resolve against the repo.
+    ///   resolve against the repo; or a template fault, before anything is written (Story 9.51):
+    ///   a non-empty `templates.commit_trailers` (parsed whatever `description` is, as the CLI
+    ///   does) that does not parse (`Failed to parse template: …`) or renders no valid trailer
+    ///   block (`Trailers should be valid utf-8`, jj-lib's trailer-parse text), a broken
+    ///   `[template-aliases]` table or `revsets.short-prefixes`, or a non-string template key.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26),
     ///   including a jj config or `immutable_heads()` alias that does not read or parse.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
@@ -1027,6 +1033,9 @@ impl Repo {
     /// `enabled-branches = []` selects none) move from that parent's parents to the parent, as the
     /// CLI's `jj new` does (Story 9.49 closing run). Any other shape never reads that config.
     ///
+    /// There is no `-m`: the new change's description is `templates.new_description` rendered on
+    /// it (default `''`: none), and a non-empty one gets `templates.commit_trailers` (Story 9.51).
+    ///
     /// # Errors
     ///
     /// Every refusal happens before the first write; nothing is written.
@@ -1041,8 +1050,11 @@ impl Repo {
     /// - [`crate::MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is inside the repo's
     ///   effective immutable set; the first offender's hex.
     /// - [`crate::MutateError::Config`] — (`-A`/`-B`) the `revset-aliases."immutable_heads()"`
-    ///   alias does not resolve against the repo; or (one positional parent) an
-    ///   `experimental-advance-branches` key is not a list of strings.
+    ///   alias does not resolve against the repo; (one positional parent) an
+    ///   `experimental-advance-branches` key is not a list of strings; or a template fault
+    ///   (Story 9.51): a non-empty `templates.new_description` — or, for a non-empty description,
+    ///   `templates.commit_trailers` — that does not parse or render (the CLI's texts, see
+    ///   [`Repo::describe`]).
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26),
     ///   including an effective jj config that changed and no longer reads (see
     ///   [`Repo::open`]); refused before the verb itself runs.
@@ -1142,7 +1154,8 @@ impl Repo {
     /// Runs the pre-verb snapshot first, then ONE transaction: the remotes resolve (`--remote`
     /// patterns, else `git.push`, else the only remote — with the hint "Pushing to the only
     /// existing remote" — else `origin`), the `--change` / `--named` bookmarks are created in the
-    /// transaction, the mode's targets are classified per remote — `--all` / `--tracked` /
+    /// transaction (each `--change` name rendered from `templates.git_push_bookmark`, Story 9.51 —
+    /// the same name in the dry run and the push), the mode's targets are classified per remote — `--all` / `--tracked` /
     /// `--deleted` and the bare push (`revsets.git-push` with `remote` bound) / `-r` skip a refused
     /// ref or a rejected commit with a warning, explicitly named refs refuse the whole push — and
     /// the operation description is built. A dry run returns that plan and writes nothing beyond the
@@ -1177,7 +1190,7 @@ impl Repo {
     /// Every refusal before the network:
     /// - [`crate::MutateError::InvalidInput`] — conflicting flags, a pattern that does not parse,
     ///   "No git remotes to push to", a `--named` argument without `=` or with an empty side or an
-    ///   unparsable name, a customised `templates.git_push_bookmark`, an empty `--change` set.
+    ///   unparsable name, an empty `--change` set.
     /// - [`crate::MutateError::BookmarkExists`] / [`crate::MutateError::BookmarkTrackedRemoteExists`]
     ///   — a `--change` / `--named` name that is taken.
     /// - [`crate::MutateError::PushRefRefused`] / [`crate::MutateError::PushCommitRejected`] — an
@@ -1185,7 +1198,10 @@ impl Repo {
     /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`] — a
     ///   revision does not parse or resolve (a `--named` one to exactly one commit).
     /// - [`crate::MutateError::Config`] — a key the push reads is malformed, or `immutable_heads()`
-    ///   does not resolve.
+    ///   does not resolve; or (`--change`, Story 9.51) `templates.git_push_bookmark` does not parse
+    ///   (`Failed to parse template: …`) or renders a name that is not UTF-8 (`Invalid character in
+    ///   bookmark name`) or is empty (`Empty bookmark name generated`), or a broken
+    ///   `[template-aliases]` table or `revsets.short-prefixes`.
     /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no Git backend.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed.
     /// - [`crate::MutateError::Backend`] — any other jj-lib failure.
@@ -1833,8 +1849,8 @@ impl Repo {
     ///   the new `@`'s parents. Empty: the parents of this workspace's `@` (root when it has
     ///   none).
     /// - `message_paragraphs` — the CLI's repeatable `-m`, joined like the CLI joins them (each
-    ///   paragraph newline-terminated, a blank line between). `templates.commit_trailers` is not
-    ///   applied (the gap `describe`/`new` share).
+    ///   paragraph newline-terminated, a blank line between). A non-empty text gets
+    ///   `templates.commit_trailers`, rendered for the NEW workspace (Story 9.51).
     /// - `colocate` — `Some(true)`/`Some(false)` are the CLI's `--colocate`/`--no-colocate`;
     ///   `None` creates a Git worktree exactly when this workspace is colocated and `git.colocate`
     ///   (default `true`) is set — the key is read only in that case.
@@ -1860,7 +1876,10 @@ impl Repo {
     ///   — a `revisions` entry; the workspace exists by then.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed.
     /// - [`crate::MutateError::Config`] — `git.colocate` or `git.executable-path` is wrong-typed,
-    ///   or the immutable set does not resolve.
+    ///   or the immutable set does not resolve; or (a non-empty `message_paragraphs`, Story 9.51)
+    ///   a `templates.commit_trailers` that does not parse or render (the CLI's texts, see
+    ///   [`Repo::describe`]) — the workspace and its `add workspace` operation exist by then, as
+    ///   in the CLI.
     /// - [`crate::MutateError::NoWorkingCopy`] / [`crate::MutateError::ConcurrentWorkingCopy`] —
     ///   the new working copy could not be locked for its sparse patterns.
     /// - [`crate::MutateError::Backend`] — the directory could not be created, or any underlying
@@ -2127,10 +2146,12 @@ impl Repo {
     /// destination's (`use_destination_message`), else the one non-empty description of the
     /// abandoned sources and the destination. When two or more are non-empty the CLI opens its
     /// editor; WITHOUT `message` this verb writes what that editor holds when it is saved
-    /// unchanged — call [`Repo::squash_plan`] first to show it to the user, and pass the edited
-    /// text back as `message`. Trailers (`templates.commit_trailers`) are not added. The
-    /// operation is `squash commits into <destination commit hex>`, the destination's id BEFORE
-    /// the squash.
+    /// unchanged — the combined descriptions, with the trailers `templates.commit_trailers` adds
+    /// that none of them carries, rendered through `templates.draft_commit_description` and
+    /// cleaned of its `JJ:` lines (Story 9.51) — call [`Repo::squash_plan`] first to show it to
+    /// the user, and pass the edited text back as `message`. Any other non-empty description gets
+    /// `templates.commit_trailers` added. The operation is `squash commits into <destination
+    /// commit hex>`, the destination's id BEFORE the squash.
     ///
     /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
     ///
@@ -2143,7 +2164,10 @@ impl Repo {
     ///   malformed, carried by no VISIBLE commit, or divergent.
     /// - [`crate::MutateError::Immutable`] — a source or the destination is inside the repo's
     ///   effective immutable set (the root commit included).
-    /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve; or a
+    ///   template fault before anything is written (Story 9.51): `templates.commit_trailers` or
+    ///   (the editor case) `templates.draft_commit_description` does not parse or render (the
+    ///   CLI's texts, see [`Repo::describe`]).
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
@@ -2153,8 +2177,9 @@ impl Repo {
     }
 
     /// The description [`Repo::squash`] would have to ask for (Story 9.15): the squash with the
-    /// same `options`, planned up to the point where the CLI opens its editor — nothing is
-    /// rewritten — and dropped.
+    /// same `options`, run up to the point where the CLI opens its editor on a transaction that is
+    /// then dropped (the hidden commits its templates render on reach the store, as the CLI's do;
+    /// Story 9.51).
     ///
     /// `SquashPlan::combined_description` is the text the CLI's editor holds, saved unchanged —
     /// exactly what `squash` writes without `message` — when the abandoned sources and the
@@ -2166,7 +2191,8 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// As [`Repo::squash`], minus the finish's [`crate::MutateError::NotAGitRepo`].
+    /// As [`Repo::squash`] (its template faults included), minus the finish's
+    /// [`crate::MutateError::NotAGitRepo`].
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn squash_plan(&mut self, options: &crate::SquashOptions) -> Result<crate::SquashPlan, crate::MutateError> {
         self.with_verb(|repo, ctx| crate::squash_split::squash_plan(repo.workspace(), ctx, options))
@@ -2191,9 +2217,13 @@ impl Repo {
     /// `false` (with `-o`/`-A`/`-B` they follow the remaining commit). `@` — of every workspace
     /// whose `@` was the target — ends on the remaining commit. Descendants are rebased.
     ///
-    /// `message` (the CLI's `-m`) describes the selected commit; the remaining one keeps the
-    /// original description. WITHOUT `message` the CLI opens its editor on both; this verb
-    /// writes what it holds when saved unchanged: the original description on both.
+    /// `message` (the CLI's `-m`) describes the selected commit — with `templates.commit_trailers`
+    /// added when non-empty (Story 9.51) — and the remaining one keeps the original description.
+    /// WITHOUT `message` the CLI opens its editor on both; this verb writes what it holds when saved
+    /// unchanged: each commit's description with the trailers added (the selected one's also when
+    /// empty), rendered through `templates.draft_commit_description` and cleaned of its `JJ:`
+    /// lines — by default the original description (with trailers) on both, or
+    /// `template-aliases.default_commit_description` for an undescribed target.
     ///
     /// Selecting every change warns `jj.split_all_selected`, selecting none
     /// `jj.split_none_selected` (after a `jj.paths_unmatched` when the paths match nothing);
@@ -2208,8 +2238,11 @@ impl Repo {
     ///   carried by no VISIBLE commit, or divergent.
     /// - [`crate::MutateError::Immutable`] — the target, or a child the location would
     ///   rewrite, is inside the repo's effective immutable set.
-    /// - [`crate::MutateError::Config`] — `split.legacy-bookmark-behavior` is not a boolean, or
-    ///   the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Config`] — `split.legacy-bookmark-behavior` is not a boolean, the
+    ///   `immutable_heads()` alias does not resolve, or a template fault before anything is
+    ///   written (Story 9.51): `templates.commit_trailers` or (without `message`)
+    ///   `templates.draft_commit_description` does not parse or render (the CLI's texts, see
+    ///   [`Repo::describe`]).
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
@@ -2225,8 +2258,9 @@ impl Repo {
     /// The selection starts from `@`'s PARENT tree: the changes `@` makes to `paths` —
     /// repo-relative PREFIXES as for [`Repo::restore`]; empty is every change (the CLI's
     /// "describe + new"), `""` the root. `@` is rewritten in place (same change id) with the
-    /// selected tree and `message` — the CLI's `-m` paragraphs, joined as it joins them; an empty
-    /// list is `-m ""` — so bookmarks on the old `@` follow it and its descendants are rebased
+    /// selected tree and `message` — the CLI's `-m` paragraphs, joined as it joins them, with
+    /// `templates.commit_trailers` added when non-empty (Story 9.51); an empty list is `-m ""` —
+    /// so bookmarks on the old `@` follow it and its descendants are rebased
     /// onto it. A NEW commit on top of it gets the old `@`'s full tree, and every workspace whose
     /// `@` was the old `@` edits it.
     ///
@@ -2247,8 +2281,10 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — a path is not a valid repo path, or an
     ///   `experimental-advance-branches` pattern does not parse.
     /// - [`crate::MutateError::Config`] — an `experimental-advance-branches` list is not a list
-    ///   of strings, the config could not be read, or the `immutable_heads()` alias does not
-    ///   resolve (the finish rebases only mutable descendants, as the CLI's `tx.finish`).
+    ///   of strings, the config could not be read, the `immutable_heads()` alias does not
+    ///   resolve (the finish rebases only mutable descendants, as the CLI's `tx.finish`), or (a
+    ///   non-empty message, Story 9.51) `templates.commit_trailers` does not parse or render (the
+    ///   CLI's texts, see [`Repo::describe`]) — refused before anything is written.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.

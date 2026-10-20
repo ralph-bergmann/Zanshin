@@ -638,5 +638,45 @@ pub fn push_scenarios() -> Vec<Scenario> {
             },
             |_| strings(&["git", "push", "--all", "-b", "b-mark"]),
         ),
+        // ── Story 9.51: `templates.git_push_bookmark` ───────────────────────
+        // A customised template names the `--change` bookmark.
+        push(
+            "push_change_custom_template",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&[
+                    "config",
+                    "set",
+                    "--repo",
+                    "templates.git_push_bookmark",
+                    "'\"mine-\" ++ change_id.short()'",
+                ]),
+            ],
+            |repo, _, _| push_change_at(repo),
+            |_| strings(&["git", "push", "-c", "@"]),
+        ),
+        // A template that renders nothing refuses ("Empty bookmark name generated").
+        push(
+            "push_change_empty_template",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&["config", "set", "--repo", "templates.git_push_bookmark", "'\"\"'"]),
+            ],
+            |repo, _, _| push_change_at(repo),
+            |_| strings(&["git", "push", "-c", "@"]),
+        ),
     ]
+}
+
+/// `git push -c @` through Zanshin.
+fn push_change_at(repo: &mut zanshin_jj::Repo) -> Outcome {
+    push_outcome(
+        repo,
+        &GitPushArgs {
+            changes: strings(&["@"]),
+            ..GitPushArgs::default()
+        },
+    )
 }

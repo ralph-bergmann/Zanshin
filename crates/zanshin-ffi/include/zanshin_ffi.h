@@ -2030,14 +2030,16 @@ ZanshinBuf *zanshin_op_log(uint64_t handle, int64_t limit);
  * - `ffi.invalid_argument` — `data` does not verify as a `GitPushRequest` buffer, or its `kind`
  *   is not `GitPush`.
  * - `jj.invalid_input` — conflicting flags, a pattern that does not parse, "No git remotes to
- *   push to", a malformed `--named`, a customised `templates.git_push_bookmark`, an empty
- *   `--change` set; the CLI's text in `context`.
+ *   push to", a malformed `--named`, an empty `--change` set; the CLI's text in `context`.
  * - `jj.bookmark_exists` / `jj.bookmark_tracked_remote_exists` — a `--change` / `--named` name is
  *   taken; the name in `context`.
  * - `jj.push_ref_refused` / `jj.push_commit_rejected` — an explicitly named ref is refused, or
  *   would push a commit that is not ready (a real push); the CLI's text in `context`.
  * - `jj.revset_parse_error` / `jj.revset_resolution_error` — a revision does not parse or resolve.
- * - `jj.config_error` — a key the push reads is malformed, or `immutable_heads()` does not resolve.
+ * - `jj.config_error` — a key the push reads is malformed, or `immutable_heads()` does not
+ *   resolve; or (`--change`, Story 9.51) `templates.git_push_bookmark` does not parse or renders a
+ *   name that is not UTF-8 or is empty — the CLI's text ("Failed to parse template: …", "Invalid
+ *   character in bookmark name", "Empty bookmark name generated") in `context`.
  * - `jj.not_a_git_repo` — the workspace has no git backend.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
  * - `jj.jj_lib_error` — any other underlying jj-lib failure; detail in `context`.

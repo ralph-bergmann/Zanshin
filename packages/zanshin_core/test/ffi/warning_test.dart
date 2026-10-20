@@ -423,9 +423,10 @@ void main() {
         'jj.push_bookmarks_not_updated_locally',
         'jj.push_signing_skipped_immutable',
         'jj.clone_branches_unmatched',
+        'jj.template_diagnostic',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(49), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(50), reason: 'no code is registered twice');
     });
   });
 

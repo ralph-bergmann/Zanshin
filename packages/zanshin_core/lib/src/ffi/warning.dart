@@ -204,6 +204,11 @@ abstract final class ZanshinWarningCode {
   /// `cloneRepo`'s exact `branches` names match no branch on the remote (Story 9.20).
   static const cloneBranchesUnmatched = 'jj.clone_branches_unmatched';
 
+  /// A template a verb renders (`templates.commit_trailers`,
+  /// `draft_commit_description`, `new_description`, `git_push_bookmark`) parsed
+  /// with a diagnostic; it still renders (Story 9.51).
+  static const templateDiagnostic = 'jj.template_diagnostic';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -260,6 +265,7 @@ abstract final class ZanshinWarningCode {
     pushBookmarksNotUpdatedLocally,
     pushSigningSkippedImmutable,
     cloneBranchesUnmatched,
+    templateDiagnostic,
     loginShellUnresolved,
   ];
 }

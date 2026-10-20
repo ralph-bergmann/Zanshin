@@ -20,7 +20,9 @@
 //!    no-separator warning;
 //! 6. a colocated NEW workspace's `.jj/.gitignore`; the sparse patterns (copied, full or empty);
 //! 7. one transaction on the NEW workspace: the new `@` on the old `@`'s parents or on the
-//!    `revisions`' union (evaluated in the OLD workspace's context), committed as `create initial
+//!    `revisions`' union (evaluated in the OLD workspace's context), a non-empty `-m` with
+//!    `templates.commit_trailers` added (rendered for the NEW workspace, Story 9.51 — a template
+//!    fault refuses here, after steps 3-6, exactly where the CLI refuses), committed as `create initial
 //!    working-copy commit in workspace <name>` through the CLI's `finish_transaction`, which
 //!    checks the new `@` out into the destination and, colocated, resets its Git HEAD.
 
@@ -42,6 +44,7 @@ use crate::mutate::{self, be, cfg, flatten_chain, rev, FinishCtx, MutateError, M
 use crate::op_support::{join_message_paragraphs, start_repo_transaction};
 use crate::snapshot::{lock_git_import_export, VerbContext};
 use crate::stale::CheckoutStats;
+use crate::template::Templates;
 use crate::warning::WarningKind;
 use crate::{ChangeId, Repo};
 
@@ -192,13 +195,15 @@ pub(crate) fn add(
     };
     let tree = pollster::block_on(merge_commit_trees(tx.repo(), &parents)).map_err(be)?;
     let parent_ids = parents.iter().map(|c| c.id().clone()).collect();
-    let new_wc_commit = pollster::block_on(
-        tx.repo_mut()
-            .new_commit(parent_ids, tree)
-            .set_description(join_message_paragraphs(args.message_paragraphs))
-            .write(),
-    )
-    .map_err(be)?;
+    let mut builder = tx.repo_mut().new_commit(parent_ids, tree).detach();
+    builder.set_description(join_message_paragraphs(args.message_paragraphs));
+    // `add.rs:257-265`: a non-empty `-m` gets the trailers, rendered for the NEW workspace.
+    if !builder.description().is_empty() {
+        let templates = Templates::at(&ctx.config, &ctx.immutable, &name, new_workspace.workspace_root());
+        let description = templates.add_trailers(tx.repo(), &builder, &mut ctx.warnings)?;
+        builder.set_description(description);
+    }
+    let new_wc_commit = pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
     pollster::block_on(tx.repo_mut().edit(name.clone(), &new_wc_commit)).map_err(be)?;
     // `edit` abandons the discardable initial working-copy commit jj-lib created; `tx.finish`'s
     // `rebase_mutable_descendants` (`cli_util.rs:2855`) settles that rewrite before the commit.

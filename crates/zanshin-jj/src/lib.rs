@@ -55,6 +55,7 @@ pub(crate) mod snapshot;
 pub(crate) mod squash_split;
 pub(crate) mod stale;
 pub(crate) mod status;
+pub(crate) mod template;
 pub(crate) mod topology;
 pub(crate) mod version;
 pub(crate) mod view;

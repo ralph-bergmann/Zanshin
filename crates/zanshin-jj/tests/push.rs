@@ -760,18 +760,49 @@ fn explicit_targets_that_match_nothing_warn() {
     assert!(kinds.contains(&WarningKind::PushRevisionsEmpty));
 }
 
-/// A customised `templates.git_push_bookmark` refuses `-c`: Zanshin renders the builtin only.
+/// A customised `templates.git_push_bookmark` names the `-c` bookmark (Story 9.51): the dry run
+/// plans it under the rendered name, and the push creates and pushes that bookmark.
 #[test]
-fn a_customised_push_bookmark_template_refuses() {
+fn a_customised_push_bookmark_template_names_the_change_bookmark() {
     let mut w = world();
     w.add_repo_config("[templates]\ngit_push_bookmark = '\"mine-\" ++ change_id.short()'\n");
+    let (change, commit) = w.change("@-");
+    let name = format!("mine-{}", &change.0[..12]);
+    let args = GitPushArgs {
+        changes: vec!["@-".to_owned()],
+        ..Default::default()
+    };
+    let plan = w
+        .push(&GitPushArgs {
+            dry_run: true,
+            ..args.clone()
+        })
+        .expect("dry run");
+    assert_eq!(plan.created_bookmarks.len(), 1);
+    assert_eq!(plan.created_bookmarks[0].name, name);
+    let outcome = w.push(&args).expect("push");
+    assert_eq!(outcome.created_bookmarks[0].name, name);
+    assert_eq!(w.remote_refs()[&format!("refs/heads/{name}")], commit);
+}
+
+/// A `templates.git_push_bookmark` that renders nothing refuses `-c` with the CLI's text, before
+/// anything is written (Story 9.51).
+#[test]
+fn an_empty_push_bookmark_name_refuses() {
+    let mut w = world();
+    w.add_repo_config("[templates]\ngit_push_bookmark = '\"\"'\n");
+    let before = w.head_op();
     let err = w
         .push(&GitPushArgs {
             changes: vec!["@-".to_owned()],
             ..Default::default()
         })
         .expect_err("refused");
-    assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
+    assert!(
+        matches!(&err, MutateError::Config { reason } if reason == "Empty bookmark name generated"),
+        "{err:?}"
+    );
+    assert_eq!(w.head_op(), before);
 }
 
 /// Sign-on-push with jj-lib's `test` signing backend (the CLI's own test signer): the commits to

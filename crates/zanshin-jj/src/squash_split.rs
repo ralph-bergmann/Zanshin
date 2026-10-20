@@ -12,10 +12,14 @@
 //!
 //! **No `-m` where the CLI opens its editor = the editor saved unchanged.** A squash whose
 //! abandoned sources and destination carry two or more non-empty descriptions (and no
-//! `-m`/`-u`) writes [`crate::op_support::combined_editor_text`]; a split without `-m` keeps
-//! both commits' descriptions (cleaned up the way a saved buffer is). The GUI asks first:
-//! [`squash_plan`] returns the combined text from the SAME read-only planning [`squash`] runs
-//! first ([`plan_squash`]), so plan and verb cannot disagree, and the plan rewrites nothing.
+//! `-m`/`-u`) writes what the CLI's editor holds for the combined commit, saved unchanged: the
+//! combined descriptions (with the CLI's "Trailers not found in the squashed commits" block)
+//! rendered through `templates.draft_commit_description` and cleaned up
+//! ([`crate::template::Templates::editor_text`], Story 9.51); a split without `-m` writes the same
+//! for both commits. The GUI asks first: [`squash_plan`] returns the text from the SAME planning
+//! and description step [`squash`] runs ([`plan_squash`], `squash_commits`,
+//! [`squashed_description`]) on a transaction it drops, so plan and verb cannot disagree, and the
+//! plan writes no operation.
 //!
 //! Divergences, all deliberate:
 //!
@@ -24,9 +28,9 @@
 //!   refuses [`MutateError::InvalidInput`];
 //! - no `squash -o`/`-A`/`-B` (experimental at v0.46.0: the squashed changes go into a NEW
 //!   commit there);
-//! - no trailers (`templates.commit_trailers` is the ledgered gap every describing verb
-//!   shares), no hints, and not squash's "is being interpreted as a fileset expression"
-//!   warning, which is about terminal argv parsing;
+//! - no hints, and not squash's "is being interpreted as a fileset expression" warning, which is
+//!   about terminal argv parsing (`templates.commit_trailers` IS applied where the CLI applies it,
+//!   Story 9.51);
 //! - clap's argument conflicts become [`MutateError::InvalidInput`] naming the flags (clap's
 //!   own text is terminal UX), checked before anything is resolved — as clap checks them.
 
@@ -53,11 +57,12 @@ use crate::mutate::{
     resolve_or_wc, warn_unmatched, MutateError, MutationResult,
 };
 use crate::op_support::{
-    cleanup_description_lines, combined_editor_text, compute_commit_location, join_message_paragraphs, resolve_ordered,
+    combine_messages_for_editing, compute_commit_location, join_message_paragraphs, resolve_ordered,
     start_repo_transaction, try_combine_messages, SelectedTree,
 };
 use crate::snapshot::VerbContext;
-use crate::warning::WarningKind;
+use crate::template::{write_hidden, Templates};
+use crate::warning::{WarningKind, Warnings};
 use crate::ChangeId;
 
 /// [`crate::Repo::squash`]'s and [`crate::Repo::squash_plan`]'s arguments — the CLI's
@@ -143,7 +148,7 @@ pub struct SplitResult {
 
 /// How the squashed revision's description is decided — `SquashedDescription`
 /// (`squash.rs:460-483` @ v0.46.0).
-enum SquashedDescription {
+pub(crate) enum SquashedDescription {
     /// `-m`: this exact description.
     Exact(String),
     /// `-u`: the destination's.
@@ -166,20 +171,19 @@ pub(crate) struct PlannedSquash {
     pub(crate) squashed: Option<SquashDecision>,
 }
 
-/// The squashed destination's description, decided before anything is rewritten.
+/// How the squashed destination's description is decided, fixed before anything is rewritten;
+/// the text itself is finished on `squash_commits`' builder ([`squashed_description`]).
 pub(crate) struct SquashDecision {
-    /// The description the squashed destination gets.
-    pub(crate) description: String,
-    /// Whether that description is the CLI's editor case ([`combined_editor_text`]).
-    pub(crate) combined: bool,
+    /// `-m`, `-u` or the combination.
+    pub(crate) mode: SquashedDescription,
     /// The sources jj-lib will abandon (every fully moved source, unless `keep_emptied`).
     pub(crate) abandoned: Vec<Commit>,
 }
 
 /// The read-only part `squash` and `squash_plan` share (Story 9.15): the clap conflicts, the
 /// source/destination resolution, the merge refusal, the rewritability guard, the selection,
-/// the unmatched-path warning, the abandoned set and the description decision — in the CLI's
-/// order (`squash.rs:184-399` @ v0.46.0).
+/// the unmatched-path warning, the abandoned set and the description mode — in the CLI's
+/// order (`squash.rs:184-355` @ v0.46.0).
 ///
 /// It rewrites NOTHING: the abandoned set is computed by `squash_commits`' own rule
 /// (`rewrite.rs:1376-1385` @ jj-lib 0.46.0 — abandon a source when `!keep_emptied` and its
@@ -251,29 +255,7 @@ pub(crate) fn plan_squash(
             abandoned.push(selection.commit.clone());
         }
     }
-    let squashed = (contributing > 0).then(|| {
-        // `squash.rs:357-399`: only the ABANDONED sources' descriptions count — a source that
-        // keeps its commit keeps its description.
-        let abandoned_descriptions: Vec<&str> = abandoned.iter().map(Commit::description).collect();
-        let (description, combined) = match mode {
-            SquashedDescription::Exact(description) => (description, false),
-            SquashedDescription::UseDestination => (destination.description().to_owned(), false),
-            SquashedDescription::Combine => {
-                match try_combine_messages(&abandoned_descriptions, destination.description()) {
-                    Some(description) => (description, false),
-                    None => (
-                        combined_editor_text(&abandoned_descriptions, Some(destination.description())),
-                        true,
-                    ),
-                }
-            }
-        };
-        SquashDecision {
-            description,
-            combined,
-            abandoned,
-        }
-    });
+    let squashed = (contributing > 0).then_some(SquashDecision { mode, abandoned });
     Ok(PlannedSquash {
         tx_description,
         destination,
@@ -368,7 +350,16 @@ pub(crate) fn squash(
         None => None,
     };
     if let Some((mut builder, decision)) = rewritten {
-        builder.set_description(decision.description);
+        let templates = Templates::new(&ctx.config, &ctx.immutable, workspace);
+        let (description, _) = squashed_description(
+            &templates,
+            tx.repo(),
+            &mut builder,
+            &destination,
+            &decision,
+            &mut ctx.warnings,
+        )?;
+        builder.set_description(description);
         pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
         // `squash.rs:413`; also what clears the abandonments before `tx.commit`.
         pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
@@ -394,9 +385,10 @@ pub(crate) fn squash(
     mutation_result(&finish, new_change_ids, abandoned_change_ids)
 }
 
-/// `squash`'s description decision without the squash (Story 9.15) — see
-/// [`crate::Repo::squash_plan`]. Runs only [`plan_squash`], which rewrites nothing, and drops
-/// its transaction: no commit and no operation is written.
+/// `squash`'s description without the squash (Story 9.15) — see [`crate::Repo::squash_plan`].
+/// Runs [`plan_squash`], `squash_commits` and [`squashed_description`] exactly as [`squash`] does,
+/// on a transaction it then drops: no operation is written (the hidden commits the description
+/// step renders on reach the store, as the CLI's do).
 ///
 /// # Errors
 ///
@@ -407,15 +399,91 @@ pub(crate) fn squash_plan(
     options: &SquashOptions,
 ) -> Result<SquashPlan, MutateError> {
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
-    let tx = start_repo_transaction(&readonly, workspace.workspace_name());
-    let planned = plan_squash(&tx, workspace, ctx, options)?;
-    drop(tx);
+    let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
+    let PlannedSquash {
+        destination,
+        selections,
+        squashed,
+        ..
+    } = plan_squash(&tx, workspace, ctx, options)?;
+    // The plan applies `squash_commits`' own rule, so a planned squash always yields a builder.
+    let rewritten = match squashed {
+        Some(decision) => pollster::block_on(squash_commits(
+            tx.repo_mut(),
+            &selections,
+            &destination,
+            options.keep_emptied,
+        ))
+        .map_err(be)?
+        .map(|SquashedCommit { commit_builder, .. }| (commit_builder.detach(), decision)),
+        None => None,
+    };
+    let Some((mut builder, decision)) = rewritten else {
+        return Ok(SquashPlan {
+            combined_description: None,
+        });
+    };
+    let templates = Templates::new(&ctx.config, &ctx.immutable, workspace);
+    let (description, editor) = squashed_description(
+        &templates,
+        tx.repo(),
+        &mut builder,
+        &destination,
+        &decision,
+        &mut ctx.warnings,
+    )?;
     Ok(SquashPlan {
-        combined_description: planned
-            .squashed
-            .filter(|squashed| squashed.combined)
-            .map(|squashed| squashed.description),
+        combined_description: editor.then_some(description),
     })
+}
+
+/// The squashed destination's description (`squash.rs:356-400` @ v0.46.0), finished on `builder`
+/// — `squash_commits`' detached builder — and whether it is the editor arm.
+///
+/// `-m`, `-u` or a single non-empty description among the abandoned sources and the destination:
+/// that text, with `templates.commit_trailers` added unless it is empty. Two or more: the CLI's
+/// editor arm — `combine_messages_for_editing` with its "Trailers not found in the squashed
+/// commits" block set on `builder`, a hidden write, and the editor's text saved unchanged
+/// ([`Templates::editor_text`]: `templates.draft_commit_description` rendered and cleaned up).
+///
+/// # Errors
+///
+/// - [`MutateError::Config`] — a template does not parse or render (see [`Templates`]).
+/// - [`MutateError::Backend`] — a hidden write failed.
+fn squashed_description(
+    templates: &Templates<'_>,
+    repo: &dyn jj_lib::repo::Repo,
+    builder: &mut DetachedCommitBuilder,
+    destination: &Commit,
+    decision: &SquashDecision,
+    sink: &mut Warnings,
+) -> Result<(String, bool), MutateError> {
+    // Only the ABANDONED sources' descriptions count — a source that keeps its commit keeps its
+    // description.
+    let abandoned: Vec<&str> = decision.abandoned.iter().map(Commit::description).collect();
+    let single = match &decision.mode {
+        SquashedDescription::Exact(description) => Some(description.clone()),
+        SquashedDescription::UseDestination => Some(destination.description().to_owned()),
+        SquashedDescription::Combine => try_combine_messages(&abandoned, destination.description()),
+    };
+    if let Some(description) = single {
+        if description.is_empty() {
+            return Ok((description, false));
+        }
+        builder.set_description(description);
+        return Ok((templates.add_trailers(repo, builder, sink)?, false));
+    }
+    let mut squashed = abandoned.clone();
+    squashed.push(destination.description());
+    let missing = templates.trailers_not_in(repo, builder, &squashed, sink)?;
+    // "It's weird that commit.description() contains "JJ: " lines, but works." (`squash.rs:390`)
+    builder.set_description(combine_messages_for_editing(
+        &abandoned,
+        Some(destination.description()),
+        &missing,
+    ));
+    let temp = write_hidden(builder)?;
+    Ok((templates.editor_text(repo, &temp, sink)?, true))
 }
 
 // ── split ────────────────────────────────────────────────────────────────────────
@@ -527,7 +595,16 @@ pub(crate) fn split(
     let PreparedSplit { target, location } = prepare_split(&tx, workspace, ctx, options)?;
     let use_move_flags = location.is_some();
 
-    let (first_builder, mut second_builder) = split_builders(tx.repo_mut(), &target, options, use_move_flags)?;
+    let (mut first_builder, mut second_builder) = split_builders(tx.repo_mut(), &target, options, use_move_flags)?;
+    let templates = Templates::new(&ctx.config, &ctx.immutable, workspace);
+    describe_split(
+        &templates,
+        tx.repo(),
+        (&mut first_builder, &mut second_builder),
+        &target,
+        options,
+        &mut ctx.warnings,
+    )?;
     let first = pollster::block_on(first_builder.write(tx.repo_mut())).map_err(be)?;
     second_builder.set_parents(if options.parallel {
         target.commit.parent_ids().to_vec()
@@ -561,12 +638,11 @@ pub(crate) fn split(
     })
 }
 
-/// The two commit builders of `cmd_split` (`split.rs:293-385` @ v0.46.0): the FIRST holds the
-/// selected tree (a new change id with `-o`/`-A`/`-B`), the SECOND the target's tree — or, in
-/// parallel, the target minus the inverted selection — with a new change id otherwise.
-///
-/// Without `-m` the CLI opens its editor on both descriptions; saved unchanged, each is its
-/// original description cleaned up the way a saved buffer is.
+/// The two commit builders of `cmd_split` (`split.rs:293-347` @ v0.46.0): the FIRST holds the
+/// selected tree (a new change id with `-o`/`-A`/`-B`) and the `-m` description, if any; the
+/// SECOND the target's tree — or, in parallel, the target minus the inverted selection — with a
+/// new change id otherwise. Both start with the target's description; [`describe_split`] finishes
+/// them.
 fn split_builders(
     repo: &mut MutableRepo,
     target: &CommitWithSelection,
@@ -609,14 +685,54 @@ fn split_builders(
         second.clear_rewrite_source();
         second.generate_new_change_id();
     }
-
-    if options.message.is_none() {
-        let first_description = cleanup_description_lines(first.description().lines());
-        first.set_description(first_description);
-        let second_description = cleanup_description_lines(second.description().lines());
-        second.set_description(second_description);
-    }
     Ok((first, second))
+}
+
+/// The two descriptions of `cmd_split` (`split.rs:302-385` @ v0.46.0). The first commit's — the
+/// `-m` text or the target's — gets `templates.commit_trailers` when non-empty; with `-m` the
+/// second keeps the target's description, untouched.
+///
+/// Without `-m` the CLI opens its editor on both (`edit_multiple_descriptions`): the first gets the
+/// trailers if still empty and is written hidden, the second is put on it (on the target's parents
+/// in parallel), gets the trailers and is written hidden, and each then holds what the editor
+/// keeps when saved unchanged — `templates.draft_commit_description` rendered on its temp commit
+/// and cleaned up ([`Templates::editor_text`]).
+///
+/// # Errors
+///
+/// - [`MutateError::Config`] — a template does not parse or render (see [`Templates`]).
+/// - [`MutateError::Backend`] — a hidden write failed.
+fn describe_split(
+    templates: &Templates<'_>,
+    repo: &dyn jj_lib::repo::Repo,
+    (first, second): (&mut DetachedCommitBuilder, &mut DetachedCommitBuilder),
+    target: &CommitWithSelection,
+    options: &SplitOptions,
+    sink: &mut Warnings,
+) -> Result<(), MutateError> {
+    if !first.description().is_empty() {
+        let description = templates.add_trailers(repo, first, sink)?;
+        first.set_description(description);
+    }
+    if options.message.is_some() {
+        return Ok(());
+    }
+    if first.description().is_empty() {
+        let description = templates.add_trailers(repo, first, sink)?;
+        first.set_description(description);
+    }
+    let first_temp = write_hidden(first)?;
+    second.set_parents(if options.parallel {
+        target.commit.parent_ids().to_vec()
+    } else {
+        vec![first_temp.id().clone()]
+    });
+    let description = templates.add_trailers(repo, second, sink)?;
+    second.set_description(description);
+    let second_temp = write_hidden(second)?;
+    first.set_description(templates.editor_text(repo, &first_temp, sink)?);
+    second.set_description(templates.editor_text(repo, &second_temp, sink)?);
+    Ok(())
 }
 
 /// `rewrite_descendants` (`split.rs:495-542` @ v0.46.0): with `legacy`

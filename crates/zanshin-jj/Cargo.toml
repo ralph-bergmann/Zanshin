@@ -15,6 +15,12 @@ etcetera = { workspace = true }  # WHY: one call site — `wc_ops.rs`'s `base_ig
 futures = { workspace = true }
 getrandom = { workspace = true }  # WHY: one call site — `config.rs::SecureLayer::create_path` seeds a `ChaCha20Rng` without `rand::make_rng()`'s panic
 gix = { workspace = true }
+# WHY: jj's own template engine (Story 9.51) — `CommitTemplateLanguage`, `template_builder::parse`,
+# `TemplateRenderer` and the builtin `[template-aliases]` / `templates.*` defaults — so a user's
+# `templates.commit_trailers` / `draft_commit_description` / `new_description` /
+# `git_push_bookmark` render exactly as the CLI renders them. The template engine only: never
+# `CliRunner`, `Ui` or a command.
+jj-cli = { workspace = true }
 jj-lib = { workspace = true }
 pollster = { workspace = true }
 rand_chacha = { workspace = true }  # WHY: one call site — `config.rs::SecureLayer::create_path` hands `SecureConfig::load_config` the `ChaCha20Rng` it takes by concrete type

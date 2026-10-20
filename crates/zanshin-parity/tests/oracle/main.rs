@@ -166,6 +166,20 @@ parity!(
     push_all_two_remotes_one_refuses,
     push_all_one_remote_left_empty,
     push_all_with_bookmark_refused,
+    describe_empty_trailers,
+    describe_broken_template,
+    new_description,
+    new_description_trailers,
+    workspace_add_trailers,
+    squash_message_trailers,
+    squash_editor_trailers,
+    squash_custom_draft,
+    squash_plan_custom_draft_as_message,
+    split_message_trailers,
+    split_editor_trailers,
+    split_editor_default_description,
+    push_change_custom_template,
+    push_change_empty_template,
 );
 
 /// Every scenario id the table and the creation list define.
@@ -180,7 +194,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 130);
+    assert_eq!(SCENARIO_IDS.len(), 144);
 }
 
 #[test]
@@ -208,14 +222,14 @@ fn ledger_names_only_known_scenarios_and_aspects() {
 /// A ledgered aspect that still diverges, but with other values than the ledger pins, must
 /// fail: otherwise a wrong fix or a fresh regression in that aspect would pass as "expected".
 #[test]
-#[should_panic(expected = "CHANGED descriptions")]
+#[should_panic(expected = "CHANGED ops written")]
 fn a_ledgered_aspect_with_other_values_fails() {
     let found = [compare::Divergence {
-        aspect: "descriptions".to_owned(),
+        aspect: "ops written".to_owned(),
         zanshin: "a different Zanshin value".to_owned(),
         cli: "a different CLI value".to_owned(),
     }];
-    ledger::assert_matches_ledger("describe_commit_trailers", &found);
+    ledger::assert_matches_ledger("describe_no_change", &found);
 }
 
 #[test]

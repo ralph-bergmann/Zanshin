@@ -23,9 +23,6 @@
 //! only a refusal before the network is an `Err`.
 //!
 //! Divergences, all deliberate:
-//! - `--change` names come from the builtin `templates.git_push_bookmark` only
-//!   (`"push-" ++ change_id.short()`, `cli/src/config/templates.toml:30`); Zanshin renders no
-//!   template, so a customised template refuses;
 //! - the "Rejected commit: …" hint and the commit list of the "Skipped signing … immutable
 //!   commits:" warning render each commit summary as `<change> <commit> [(conflict)] [(empty)]
 //!   <subject>` (the CLI renders its `commit_summary` template);
@@ -60,6 +57,7 @@ use jj_lib::view::View;
 use crate::mutate::{be, cfg, rev, MutateError};
 use crate::revset::RevsetConfig;
 use crate::snapshot::VerbContext;
+use crate::template::Templates;
 use crate::warning::{WarningKind, Warnings};
 use crate::Repo;
 
@@ -311,9 +309,6 @@ pub struct GitPushOutcome {
 
 /// `push.rs:272`.
 const TX_DESC_PUSH: &str = "push ";
-
-/// The builtin `templates.git_push_bookmark` (`cli/src/config/templates.toml:30` @ v0.46.0).
-const BUILTIN_PUSH_BOOKMARK_TEMPLATE: &str = r#""push-" ++ change_id.short()"#;
 
 /// The 12-hex short id the CLI prints (`short_commit_hash`).
 fn short_hash(id: &JjCommitId) -> String {
@@ -709,6 +704,8 @@ struct Planner<'a> {
     args: &'a GitPushArgs,
     config: &'a StackedConfig,
     parse_config: RevsetConfig,
+    /// The immutable set the start-up environment parsed — the template language's.
+    immutable: &'a Arc<UserRevsetExpression>,
     immutable_heads: &'a Arc<UserRevsetExpression>,
     sink: &'a mut Warnings,
     /// Whether the plan stops at the first explicit refusal (a real push) or records it (a dry
@@ -878,7 +875,8 @@ fn resolve_single(planner: &mut Planner<'_>, base: &ReadonlyRepo, revision: &str
     }
 }
 
-/// The CLI's `create_change_bookmarks` (`push.rs:1303-1356`) with the builtin template, then the
+/// The CLI's `create_change_bookmarks` (`push.rs:1303-1356`) — each name rendered from
+/// `templates.git_push_bookmark` ([`Templates::push_bookmark_names`], Story 9.51) — then the
 /// `--named` bookmarks (`:401-414`) — all set in `tx`. Returns the created names in the CLI's
 /// order: the `--change` ones, then the `--named` ones.
 fn create_bookmarks(
@@ -902,22 +900,15 @@ fn create_bookmarks(
                 reason: "Empty revision set".to_owned(),
             });
         }
-        let template = crate::config::templates_git_push_bookmark(planner.config).map_err(cfg)?;
-        if template != BUILTIN_PUSH_BOOKMARK_TEMPLATE {
-            return Err(MutateError::InvalidInput {
-                reason: format!(
-                    "templates.git_push_bookmark = {template:?} is not supported: only the builtin \
-                     {BUILTIN_PUSH_BOOKMARK_TEMPLATE} names --change bookmarks"
-                ),
-            });
-        }
         let commits: Vec<Commit> = ids
             .iter()
             .map(|id| base.store().get_commit(id).map_err(be))
             .collect::<Result<_, _>>()?;
-        let change_names: Vec<RefNameBuf> = commits
-            .iter()
-            .map(|commit| RefNameBuf::from(format!("push-{}", &commit.change_id().reverse_hex()[..12])))
+        let templates = Templates::new(planner.config, planner.immutable, planner.repo.workspace());
+        let change_names: Vec<RefNameBuf> = templates
+            .push_bookmark_names(tx.repo(), &commits, planner.sink)?
+            .into_iter()
+            .map(RefNameBuf::from)
             .collect();
         for (commit, name) in commits.iter().zip(&change_names) {
             let target = RefTarget::normal(commit.id().clone());
@@ -1218,7 +1209,10 @@ pub(crate) fn plan_push(
     check_flags(args)?;
     let base = Arc::clone(tx.base_repo());
     let VerbContext {
-        config, warnings: sink, ..
+        config,
+        immutable,
+        warnings: sink,
+        ..
     } = ctx;
     let mut hints = Vec::new();
     let remotes = resolve_remotes(&base, args, config, sink, &mut hints)?;
@@ -1230,6 +1224,7 @@ pub(crate) fn plan_push(
         args,
         config,
         parse_config,
+        immutable,
         immutable_heads: &immutable_heads,
         sink,
         stop_on_abort: !args.dry_run,

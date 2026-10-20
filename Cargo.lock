@@ -4983,6 +4983,7 @@ dependencies = [
  "futures 0.3.32",
  "getrandom 0.4.2",
  "gix",
+ "jj-cli",
  "jj-lib",
  "libc",
  "pollster 0.3.0",

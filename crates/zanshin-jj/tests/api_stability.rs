@@ -1352,8 +1352,8 @@ fn story_9_28_surface_resolves() {
 }
 
 /// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds;
-/// Story 9.53 the unresolved conflicts).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 48] = {
+/// Story 9.53 the unresolved conflicts; Story 9.51 the template diagnostic).
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 49] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -1404,6 +1404,7 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 48] = {
         K::PushBookmarksNotUpdatedLocally,
         K::PushSigningSkippedImmutable,
         K::CloneBranchesUnmatched,
+        K::TemplateDiagnostic,
     ]
 };
 
@@ -1473,10 +1474,11 @@ fn story_9_32_warning_surface_resolves() {
             | K::PushRemoteRejected
             | K::PushBookmarksNotUpdatedLocally
             | K::PushSigningSkippedImmutable
-            | K::CloneBranchesUnmatched => {}
+            | K::CloneBranchesUnmatched
+            | K::TemplateDiagnostic => {}
         }
     }
-    assert_eq!(every.len(), 48);
+    assert_eq!(every.len(), 49);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

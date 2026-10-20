@@ -168,6 +168,11 @@ pub enum WarningKind {
     /// `git clone -b` with exact names the remote does not have (`clone.rs:435-444` @ v0.46.0;
     /// Story 9.20).
     CloneBranchesUnmatched,
+    /// A template a verb renders (`templates.commit_trailers`, `draft_commit_description`,
+    /// `new_description`, `git_push_bookmark`) parsed with a diagnostic — the CLI's
+    /// `print_parse_diagnostics(ui, "In template expression", …)` after `template_builder::parse`
+    /// (`cli/src/cli_util.rs:1180-1195` @ v0.46.0; Story 9.51). The template still renders.
+    TemplateDiagnostic,
 }
 
 /// One warning a call produced (Story 9.32).
@@ -202,6 +207,9 @@ pub(crate) enum Load {
     FilesetAliases,
     /// The `immutable_heads()` parse.
     ImmutableHeads,
+    /// The `[template-aliases]` table (entry failures) — loaded with the first template a verb
+    /// parses (Story 9.51).
+    TemplateAliases,
 }
 
 /// The per-call warning collector (Story 9.32).
@@ -303,9 +311,12 @@ pub(crate) fn error_chain_lines(err: &(dyn Error + 'static)) -> Vec<String> {
     lines
 }
 
-/// One [`WarningKind::RevsetDiagnostic`] per diagnostic, under the CLI's context line
-/// (`"In revset expression"`, `` "In `revset-aliases.immutable_heads()`" ``, …).
+/// One `kind` warning per diagnostic, under the CLI's context line — a revset's
+/// ([`WarningKind::RevsetDiagnostic`]: `"In revset expression"`,
+/// `` "In `revset-aliases.immutable_heads()`" ``, …) or a template's
+/// ([`WarningKind::TemplateDiagnostic`]: `"In template expression"`).
 pub(crate) fn parse_diagnostics<T: Error + 'static>(
+    kind: WarningKind,
     context: &str,
     diagnostics: &jj_lib::dsl_util::Diagnostics<T>,
 ) -> Vec<Warning> {
@@ -314,7 +325,7 @@ pub(crate) fn parse_diagnostics<T: Error + 'static>(
         .map(|diag| {
             let mut lines = vec![context.to_owned()];
             lines.extend(error_chain_lines(diag));
-            local(WarningKind::RevsetDiagnostic, lines.join("\n"))
+            local(kind, lines.join("\n"))
         })
         .collect()
 }

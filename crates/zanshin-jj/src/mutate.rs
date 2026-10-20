@@ -47,6 +47,7 @@ use crate::op_support::{
 };
 use crate::revset::resolve_expression;
 use crate::snapshot::{lock_git_import_export, FinishFacts, GitImportExportLock, VerbContext};
+use crate::template::{add_trailers_with, Templates};
 use crate::warning::{self, WarningKind, Warnings};
 use crate::ChangeId;
 
@@ -822,13 +823,21 @@ pub(crate) fn describe(
         });
     }
     guard_rewritable(&tx, &ctx.immutable, std::slice::from_ref(commit.id()))?;
-    pollster::block_on(
-        tx.repo_mut()
-            .rewrite_commit(&commit)
-            .set_description(description)
-            .write(),
-    )
-    .map_err(be)?;
+    let mut builder = tx.repo_mut().rewrite_commit(&commit).detach();
+    builder.set_description(description);
+    // `describe.rs:151-163`: the trailers template is parsed whatever the description, and
+    // applied only to a non-empty one (`use_editor` is false: Zanshin always passes the text).
+    {
+        let templates = Templates::new(&ctx.config, &ctx.immutable, workspace);
+        let trailers = templates.trailers(tx.repo(), &mut ctx.warnings)?;
+        if let Some(renderer) = trailers {
+            if !builder.description().is_empty() {
+                let temp = pollster::block_on(builder.write_hidden()).map_err(be)?;
+                builder.set_description(add_trailers_with(&renderer, &temp)?);
+            }
+        }
+    }
+    pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
     pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
     let finish = finish_verb(workspace, tx, &format!("describe commit {}", commit.id().hex()), ctx)?;
     mutation_result(&finish, Vec::new(), Vec::new())
@@ -974,8 +983,19 @@ pub(crate) fn new_change(
         _ => None,
     };
     let merged_tree = pollster::block_on(merge_commit_trees(tx.repo(), &parent_commits)).map_err(be)?;
-    let new_commit =
-        pollster::block_on(tx.repo_mut().new_commit(location.parents.clone(), merged_tree).write()).map_err(be)?;
+    let mut builder = tx.repo_mut().new_commit(location.parents.clone(), merged_tree).detach();
+    // `new.rs:214-236`: no `-m` in Zanshin, so the description is `templates.new_description`;
+    // a non-empty one gets the trailers.
+    {
+        let templates = Templates::new(&ctx.config, &ctx.immutable, workspace);
+        let description = templates.new_description(tx.repo(), &builder, &mut ctx.warnings)?;
+        if !description.is_empty() {
+            builder.set_description(description);
+            let description = templates.add_trailers(tx.repo(), &builder, &mut ctx.warnings)?;
+            builder.set_description(description);
+        }
+    }
+    let new_commit = pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
     // `new.rs:235-252`: replace each old parent that is a new parent by the new commit, then
     // append it — ordered and deduplicated, like the CLI's `IndexSet`.
     for child_id in &location.children {

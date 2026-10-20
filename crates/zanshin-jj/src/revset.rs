@@ -9,6 +9,7 @@ use futures::{StreamExt as _, TryStreamExt as _};
 use jj_lib::config::{ConfigSource, StackedConfig};
 use jj_lib::dsl_util::{AliasDeclarationParser, AliasesMap};
 use jj_lib::fileset::FilesetAliasesMap;
+use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::Repo as _;
 use jj_lib::revset::{
     self, ResolvedRevset, ResolvedRevsetExpression, Revset, RevsetAliasesMap, RevsetDiagnostics, RevsetExpression,
@@ -224,6 +225,19 @@ pub(crate) struct RevsetConfig {
     user_email: String,
 }
 
+impl RevsetConfig {
+    /// The `[revset-aliases]` map — also what a template's `RevsetParseContext` expands
+    /// (Story 9.51).
+    pub(crate) fn aliases_map(&self) -> &RevsetAliasesMap {
+        &self.aliases_map
+    }
+
+    /// `mine()`'s `user.email`.
+    pub(crate) fn user_email(&self) -> &str {
+        &self.user_email
+    }
+}
+
 /// Reads [`RevsetConfig`] out of a loaded stack — the CLI's `load_revset_aliases`
 /// (`cli/src/cli_util.rs:3415-3423` @ v0.44.0): the alias map, then the builtin-redefinition
 /// check. Their warnings are recorded once per call into `sink` (Story 9.32).
@@ -317,9 +331,36 @@ pub(crate) fn parse_diagnosed_with(
     locals: &[(&str, &str)],
     sink: &mut Warnings,
 ) -> Result<Arc<UserRevsetExpression>, RevsetError> {
+    parse_diagnosed_at(
+        (workspace.workspace_root(), workspace.workspace_name()),
+        parse_config,
+        (expr, context),
+        locals,
+        sink,
+    )
+}
+
+/// [`parse_diagnosed_with`] for a workspace given by its root and name — a template's
+/// `revsets.short-prefixes` parse, which may be for a workspace no [`Workspace`] is at hand for
+/// (`workspace add`'s new one, Story 9.51).
+///
+/// # Errors
+///
+/// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function.
+pub(crate) fn parse_diagnosed_at(
+    workspace: (&Path, &WorkspaceName),
+    parse_config: &RevsetConfig,
+    (expr, context): (&str, &str),
+    locals: &[(&str, &str)],
+    sink: &mut Warnings,
+) -> Result<Arc<UserRevsetExpression>, RevsetError> {
     let mut diagnostics = RevsetDiagnostics::new();
     let parsed = parse_revset_in(workspace, parse_config, expr, locals, &mut diagnostics)?;
-    sink.extend(warning::parse_diagnostics(context, &diagnostics));
+    sink.extend(warning::parse_diagnostics(
+        WarningKind::RevsetDiagnostic,
+        context,
+        &diagnostics,
+    ));
     Ok(parsed)
 }
 
@@ -331,7 +372,7 @@ pub(crate) fn parse_diagnosed_with(
 ///
 /// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function.
 fn parse_revset_in(
-    workspace: &Workspace,
+    (workspace_root, workspace_name): (&Path, &WorkspaceName),
     parse_config: &RevsetConfig,
     expr: &str,
     locals: &[(&str, &str)],
@@ -345,12 +386,12 @@ fn parse_revset_in(
     let user_email: &str = &parse_config.user_email;
     let date_ctx: jj_lib::time_util::DatePatternContext = chrono::Local::now().into();
     let path_converter = RepoPathUiConverter::Fs {
-        cwd: workspace.workspace_root().to_owned(),
-        base: workspace.workspace_root().to_owned(),
+        cwd: workspace_root.to_owned(),
+        base: workspace_root.to_owned(),
     };
     let workspace_ctx = RevsetWorkspaceContext {
         path_converter: &path_converter,
-        workspace_name: workspace.workspace_name(),
+        workspace_name,
     };
     // WHY: three USER-VISIBLE revset-language changes arrived with the jj-lib 0.42 → 0.44 bump
     // (Story 9.0a). None is a no-op; all reach users through `resolve_revset` and through
@@ -590,7 +631,7 @@ pub(crate) fn immutable_heads_expression(
         .map(|(_, _, definition, _)| definition.clone());
     let mut diagnostics = RevsetDiagnostics::new();
     let heads = parse_revset_in(
-        workspace,
+        (workspace.workspace_root(), workspace.workspace_name()),
         parse_config,
         definition.as_deref().unwrap_or("immutable_heads()"),
         &[],
@@ -598,7 +639,11 @@ pub(crate) fn immutable_heads_expression(
     )?;
     sink.record_load(
         Load::ImmutableHeads,
-        warning::parse_diagnostics("In `revset-aliases.immutable_heads()`", &diagnostics),
+        warning::parse_diagnostics(
+            WarningKind::RevsetDiagnostic,
+            "In `revset-aliases.immutable_heads()`",
+            &diagnostics,
+        ),
     );
     Ok(heads)
 }

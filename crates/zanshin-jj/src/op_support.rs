@@ -31,9 +31,9 @@
 //! wired into every transaction this crate opens, so every Zanshin operation records
 //! `op_metadata.workspace_name` the way a CLI-written one does (Epic 9 follow-up L). Story
 //! 9.15 wired §2 (`split -o/-A/-B`), §3's description ports and §4's
-//! [`SelectedTree::into_commit_selection`] into `squash`/`split`. Still tested-but-unwired:
-//! [`apply_trailers`] (the `templates.commit_trailers` gap) and §4's GUI-selected-tree arm
-//! [`SelectedTree::from_tree_id`] (Story 9.50 decides its contract).
+//! [`SelectedTree::into_commit_selection`] into `squash`/`split`; Story 9.51 wired
+//! [`apply_trailers`] through [`crate::template`]. Still tested-but-unwired: §4's
+//! GUI-selected-tree arm [`SelectedTree::from_tree_id`] (Story 9.50 decides its contract).
 //!
 //! The CLI's two `panic!`s in `compute_commit_location` become
 //! [`MutateError::InvalidInput`]: a library must not abort the process on a caller-reachable
@@ -326,10 +326,15 @@ pub(crate) fn try_combine_messages(sources: &[&str], destination: &str) -> Optio
 /// from source commit:` header — EMPTY descriptions included, as the CLI includes them "so the
 /// user doesn't have to wonder why they only see 2 descriptions when they combined 3 commits".
 ///
-/// The CLI's trailing `JJ: Trailers not found in the squashed commits:` block is not ported:
-/// it renders `templates.commit_trailers`, the ledgered trailer gap every describing verb
-/// shares.
-pub(crate) fn combine_messages_for_editing(sources: &[&str], destination: Option<&str>) -> String {
+/// Then, when `missing_trailers` is non-empty, the CLI's `JJ: Trailers not found in the squashed
+/// commits:` block, one `key: value` line each — the trailers `templates.commit_trailers` renders
+/// that none of the squashed commits carries, which the caller renders
+/// ([`crate::template::Templates::trailers_not_in`], Story 9.51).
+pub(crate) fn combine_messages_for_editing(
+    sources: &[&str],
+    destination: Option<&str>,
+    missing_trailers: &[Trailer],
+) -> String {
     let mut combined = String::new();
     if let Some(destination) = destination {
         combined.push_str("JJ: Description from the destination commit:\n");
@@ -338,6 +343,15 @@ pub(crate) fn combine_messages_for_editing(sources: &[&str], destination: Option
     for source in sources {
         combined.push_str("\nJJ: Description from source commit:\n");
         combined.push_str(source);
+    }
+    if !missing_trailers.is_empty() {
+        combined.push_str("\nJJ: Trailers not found in the squashed commits:\n");
+        for trailer in missing_trailers {
+            combined.push_str(&trailer.key);
+            combined.push_str(": ");
+            combined.push_str(&trailer.value);
+            combined.push('\n');
+        }
     }
     combined
 }
@@ -367,17 +381,6 @@ where
     complete_newline(description.trim_matches('\n'))
 }
 
-/// The combined description a squash writes when the CLI would open its editor and the user
-/// saves the buffer UNCHANGED (Story 9.15): [`cleanup_description_lines`] over
-/// [`combine_messages_for_editing`].
-///
-/// The CLI's buffer also holds an intro line, the change id and a diff summary — all `JJ:`
-/// lines, which the cleanup drops — so the result depends on the descriptions alone. Example:
-/// destination `"B\n"`, abandoned source `"C\n"` → `"B\n\nC\n"`.
-pub(crate) fn combined_editor_text(sources: &[&str], destination: Option<&str>) -> String {
-    cleanup_description_lines(combine_messages_for_editing(sources, destination).lines())
-}
-
 /// A description from the CLI's repeatable `-m` — ports `description_util.rs:421-428`
 /// `join_message_paragraphs` @ v0.46.0: each paragraph newline-terminated
 /// (`complete_newline`), a blank line between two.
@@ -391,7 +394,7 @@ pub(crate) fn join_message_paragraphs(paragraphs: &[String]) -> String {
 
 /// `cli/src/text_util.rs:27-33` `complete_newline` @ v0.46.0: a non-empty text gets a final
 /// `\n` when it has none.
-fn complete_newline(text: &str) -> String {
+pub(crate) fn complete_newline(text: &str) -> String {
     let mut text = text.to_owned();
     if !text.is_empty() && !text.ends_with('\n') {
         text.push('\n');
@@ -402,8 +405,8 @@ fn complete_newline(text: &str) -> String {
 /// Appends `new_trailers` to `description`'s last paragraph, skipping duplicates.
 ///
 /// Ports `description_util.rs:449-476` `add_trailers_with_template` @ v0.46.0 minus the template
-/// rendering: jj's template engine is out of scope, so the caller hands over already
-/// materialized [`Trailer`] values.
+/// rendering, which [`crate::template::add_trailers_with`] does (Story 9.51): it hands over the
+/// [`Trailer`]s `parse_trailers` read from the rendered `templates.commit_trailers`.
 ///
 /// Two rules carried over verbatim:
 ///
@@ -434,7 +437,6 @@ fn complete_newline(text: &str) -> String {
 ///   already there.
 /// - **`new_trailers` is not deduplicated against itself.** Dedup is only against the
 ///   EXISTING description, so the same trailer listed twice is written twice.
-#[allow(dead_code)]
 pub(crate) fn apply_trailers(description: &str, new_trailers: &[Trailer]) -> String {
     let existing = parse_description_trailers(description);
     let mut out = description.to_owned();
@@ -856,8 +858,8 @@ mod tests {
 
     use super::{
         apply_trailers, check_rewritable, cleanup_description_lines, combine_messages_for_editing,
-        combined_editor_text, compute_commit_location, immutable_user_expression, join_message_paragraphs,
-        resolve_immutable, try_combine_messages, SelectedTree,
+        compute_commit_location, immutable_user_expression, join_message_paragraphs, resolve_immutable,
+        try_combine_messages, SelectedTree,
     };
     use crate::{MutateError, Repo};
 
@@ -1201,13 +1203,24 @@ mod tests {
     #[test]
     fn combine_messages_for_editing_lists_every_description_under_its_header() {
         assert_eq!(
-            combine_messages_for_editing(&["C\n", ""], Some("B\n")),
+            combine_messages_for_editing(&["C\n", ""], Some("B\n"), &[]),
             "JJ: Description from the destination commit:\nB\n\nJJ: Description from source commit:\nC\n\n\
              JJ: Description from source commit:\n"
         );
         assert_eq!(
-            combine_messages_for_editing(&["C\n"], None),
+            combine_messages_for_editing(&["C\n"], None, &[]),
             "\nJJ: Description from source commit:\nC\n"
+        );
+    }
+
+    /// The CLI's trailer block (`description_util.rs:~396-403` @ v0.46.0), only when a trailer is
+    /// missing.
+    #[test]
+    fn combine_messages_for_editing_appends_the_missing_trailers_block() {
+        assert_eq!(
+            combine_messages_for_editing(&["C\n"], Some("B\n"), &[trailer("Signed-off-by", "Z <z@l>")]),
+            "JJ: Description from the destination commit:\nB\n\nJJ: Description from source commit:\nC\n\n\
+             JJ: Trailers not found in the squashed commits:\nSigned-off-by: Z <z@l>\n"
         );
     }
 
@@ -1225,14 +1238,17 @@ mod tests {
         assert_eq!(clean("not JJ: a comment\n"), "not JJ: a comment\n");
     }
 
-    /// Spec example (Story 9.15): destination `"B\n"`, abandoned source `"C\n"` → `"B\n\nC\n"`;
-    /// an empty source adds nothing but its (dropped) header.
+    /// Spec example (Story 9.15): destination `"B\n"`, abandoned source `"C\n"` → `"B\n\nC\n"`
+    /// once the buffer is cleaned up; an empty source adds nothing but its (dropped) header.
     #[test]
-    fn combined_editor_text_is_the_buffer_saved_unchanged() {
-        assert_eq!(combined_editor_text(&["C\n"], Some("B\n")), "B\n\nC\n");
-        assert_eq!(combined_editor_text(&["C\n", "", "D"], Some("B\n")), "B\n\nC\n\n\nD\n");
+    fn the_combined_buffer_cleaned_up_keeps_the_descriptions() {
+        let saved = |sources: &[&str], destination| {
+            cleanup_description_lines(combine_messages_for_editing(sources, destination, &[]).lines())
+        };
+        assert_eq!(saved(&["C\n"], Some("B\n")), "B\n\nC\n");
+        assert_eq!(saved(&["C\n", "", "D"], Some("B\n")), "B\n\nC\n\n\nD\n");
         // A description without its final newline runs straight into the next header.
-        assert_eq!(combined_editor_text(&["C", "D\n"], None), "C\nD\n");
+        assert_eq!(saved(&["C", "D\n"], None), "C\nD\n");
     }
 
     #[test]
