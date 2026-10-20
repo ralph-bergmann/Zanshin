@@ -319,6 +319,27 @@ const DELETE_TRAILER_EDITOR_STEP: Step = Step::Jj(&[
 /// [`TRAILERS_STEP`] plus [`DELETE_TRAILER_EDITOR_STEP`].
 const TRAILERS_DELETE_TRAILER_EDITOR: &[Step] = &[TRAILERS_STEP, DELETE_TRAILER_EDITOR_STEP];
 
+/// `ui.editor` = a script that saves exactly `E` (Story 9.54 review) — the CLI's editor run by a
+/// user who replaces the whole buffer.
+const WRITE_E_EDITOR_STEP: Step = Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "ui.editor",
+    r#"["sh", "-c", "echo E > \"$1\"", "sh", "$path"]"#,
+]);
+
+/// [`TRAILERS_STEP`] plus [`WRITE_E_EDITOR_STEP`].
+const TRAILERS_WRITE_E_EDITOR: &[Step] = &[TRAILERS_STEP, WRITE_E_EDITOR_STEP];
+
+/// B and C undescribed, [`TRAILERS_STEP`] and [`WRITE_E_EDITOR_STEP`] (Story 9.54 review).
+const UNDESCRIBED_B_C_TRAILERS_WRITE_E_EDITOR: &[Step] = &[
+    Step::Jj(&["describe", "-m", ""]),
+    Step::Jj(&["describe", "-r", "@-", "-m", ""]),
+    TRAILERS_STEP,
+    WRITE_E_EDITOR_STEP,
+];
+
 /// [`C2_TRAILERS`] plus [`DELETE_TRAILER_EDITOR_STEP`].
 const C2_DELETE_TRAILER_EDITOR_TRAILERS: &[Step] = &[
     Step::Write("c2.txt", "c2\n"),
@@ -2055,6 +2076,37 @@ pub fn scenarios() -> Vec<Scenario> {
             )
         },
         Scenario {
+            // The single arm: `-u` with an edited text against `jj squash -u --editor`.
+            setup: TRAILERS_WRITE_E_EDITOR,
+            ..simple(
+                "squash_use_destination_edited",
+                |repo, _, _| {
+                    let options = SquashOptions {
+                        use_destination_message: true,
+                        edited_description: Some("E\n".to_owned()),
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |_| args(&["squash", "-u", "--editor"]),
+            )
+        },
+        Scenario {
+            // The single arm with no description at all: the editor still opens.
+            setup: UNDESCRIBED_B_C_TRAILERS_WRITE_E_EDITOR,
+            ..simple(
+                "squash_undescribed_edited",
+                |repo, _, _| {
+                    let options = SquashOptions {
+                        edited_description: Some("E\n".to_owned()),
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |_| args(&["squash", "--editor"]),
+            )
+        },
+        Scenario {
             setup: C2_DELETE_TRAILER_EDITOR_TRAILERS,
             ..simple(
                 "split_edited_trailer_deleted",
@@ -2097,6 +2149,25 @@ pub fn scenarios() -> Vec<Scenario> {
             extra: Some(ws2_read_back),
             ..simple(
                 "workspace_add_diagnosed_short_prefixes",
+                |repo, _, _| add_outcome(repo, None, &[], &[], None, SparseInheritance::Copy),
+                |_| args(&["workspace", "add", "../ws2"]),
+            )
+        },
+        Scenario {
+            // The finish uses the NEW workspace's immutable set (Story 9.54 review): with `@` in
+            // `immutable_heads()`, the new workspace's `@` is immutable there, so the finish puts
+            // a new `@` on top of it — the old workspace's set would name the default `@` instead.
+            init: NO_COLOCATE,
+            setup: &[Step::Jj(&[
+                "config",
+                "set",
+                "--repo",
+                "revset-aliases.'immutable_heads()'",
+                "'builtin_immutable_heads() | @'",
+            ])],
+            extra: Some(ws2_read_back),
+            ..simple(
+                "workspace_add_immutable_at",
                 |repo, _, _| add_outcome(repo, None, &[], &[], None, SparseInheritance::Copy),
                 |_| args(&["workspace", "add", "../ws2"]),
             )

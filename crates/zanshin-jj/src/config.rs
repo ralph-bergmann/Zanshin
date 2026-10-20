@@ -2061,6 +2061,56 @@ mod tests {
     /// layer — the template aliases (the draft template included), the `templates.*` keys, the
     /// diff options the engine reads and the keys no verb reads (`ui.color`), with jj-cli's
     /// values; `revsets.log` keeps Zanshin's.
+    /// Story 9.54 review: the builtin layer sits ABOVE jj-cli's defaults, so a key there that
+    /// drifted from jj-cli's value after a pin bump would silently override it. Every builtin key
+    /// must equal jj-cli's default — except `revsets.log`, Zanshin's deliberate expansion.
+    #[test]
+    fn every_builtin_key_repeats_jj_clis_default_except_revsets_log() {
+        fn leaves(table: &jj_lib::config::ConfigTableLike<'_>, path: &mut Vec<String>, out: &mut Vec<Vec<String>>) {
+            for (key, item) in table.iter() {
+                path.push(key.to_owned());
+                match item.as_table_like() {
+                    Some(sub) => leaves(sub, path, out),
+                    None => out.push(path.clone()),
+                }
+                path.pop();
+            }
+        }
+        fn normalized(value: &jj_lib::config::ConfigValue) -> String {
+            value.as_str().map_or_else(
+                || {
+                    let mut value = value.clone();
+                    value.decor_mut().clear();
+                    value.to_string()
+                },
+                |text| format!("{text:?}"),
+            )
+        }
+        let builtin = ConfigLayer::parse(ConfigSource::Default, BUILTIN_CONFIG_TOML).expect("parses");
+        let mut cli = StackedConfig::empty();
+        for layer in CLI_DEFAULTS.iter() {
+            cli.add_layer(std::sync::Arc::clone(layer));
+        }
+        let mut paths = Vec::new();
+        leaves(builtin.data.as_table(), &mut Vec::new(), &mut paths);
+        assert!(paths.len() > 20, "{paths:?}");
+        for path in paths {
+            if path == ["revsets", "log"] {
+                continue;
+            }
+            let keys: Vec<&str> = path.iter().map(String::as_str).collect();
+            let ours = builtin
+                .look_up_item(keys.as_slice())
+                .expect("a value")
+                .and_then(|item| item.as_value())
+                .expect("present");
+            let theirs = cli
+                .get_value(keys.as_slice())
+                .unwrap_or_else(|e| panic!("{path:?}: {e}"));
+            assert_eq!(normalized(ours), normalized(&theirs), "{path:?}");
+        }
+    }
+
     #[test]
     fn every_jj_cli_default_layer_sits_below_the_builtin_layer() {
         assert_eq!(CLI_DEFAULTS.len(), jj_cli::config::default_config_layers().len());

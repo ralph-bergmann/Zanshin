@@ -40,7 +40,10 @@
 //!   about terminal argv parsing (`templates.commit_trailers` IS applied where the CLI applies it,
 //!   Story 9.51);
 //! - clap's argument conflicts become [`MutateError::InvalidInput`] naming the flags (clap's
-//!   own text is terminal UX), checked before anything is resolved — as clap checks them.
+//!   own text is terminal UX), checked before anything is resolved — as clap checks them;
+//! - `-m` together with an edited text refuses, where the CLI accepts `-m --editor` (the editor
+//!   opens on the `-m` text and the saved buffer wins): the edited text IS that saved buffer, so
+//!   `-m` could change nothing (Story 9.54).
 
 use std::collections::HashMap;
 
@@ -101,7 +104,7 @@ pub struct SquashOptions {
     /// rendered, its refusals and diagnostics), then this text — cleaned up as the CLI cleans a
     /// saved buffer — is written, with NO trailers added. `None` is no editor. Conflicts with
     /// `message`; allowed with `use_destination_message` (the CLI allows `-u --editor`).
-    /// [`crate::Repo::squash_plan`] ignores it.
+    /// [`crate::Repo::squash_plan`] refuses it with `message` too, and otherwise ignores it.
     pub edited_description: Option<String>,
 }
 

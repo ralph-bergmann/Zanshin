@@ -298,8 +298,9 @@ final class RepoHandle {
   /// 9.54) — the CLI's default-remote resolution: the remotes `git.push` names
   /// (a name, a list or a pattern), else the single remote, else `origin`,
   /// each only when it exists, in remote-name order. Empty when none matches
-  /// and on a non-Git backend; an exact `git.push` name no remote carries warns
-  /// `jj.push_remotes_unmatched`.
+  /// and on a non-Git backend; an exact name no remote carries (a `git.push`
+  /// name, or the implicit `origin`) warns `jj.push_remotes_unmatched`, as the
+  /// push does.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,

@@ -111,9 +111,9 @@ fn push_remotes_to_envelope(names: &[String], report: &crate::envelope::CallRepo
 /// only when it exists, in remote-name order.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `GitPushRemotes` payload on success — EMPTY when
-/// none matches (the push itself refuses then) and on a non-Git backend. An exact `git.push` name
-/// no remote carries warns `jj.push_remotes_unmatched`, as the push does. Writes NO operation of
-/// its own, only the pre-verb snapshot's.
+/// none matches (the push itself refuses then) and on a non-Git backend. An exact name no remote
+/// carries — a `git.push` name, or the implicit `origin` — warns `jj.push_remotes_unmatched`, as
+/// the push does. Writes NO operation of its own, only the pre-verb snapshot's.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.

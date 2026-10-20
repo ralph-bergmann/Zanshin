@@ -1481,7 +1481,8 @@ remotes `jj git push` without `--remote` would push to, in remote-name order —
 name, a list or a pattern), else the single remote, else `origin`, each only when it exists
 (`push.rs:294-323`, `get_default_push_remotes` `:1107-1130` @ v0.46.0, shared with
 `zanshin_git_push`). Empty when none matches (the push itself refuses then) and on a non-Git
-backend; an exact `git.push` name no remote carries warns `jj.push_remotes_unmatched`. Dart:
+backend; an exact name no remote carries — a `git.push` name, or the implicit `origin` — warns
+`jj.push_remotes_unmatched`, as the push does. Dart:
 `RepoHandle.gitPushRemotes()` → `WarnedList<String>`; an absent `names` vector is
 `ffi.unknown`. The app's project dot counts a tracked remote row with no target as "ahead" only
 for these remotes (`trackingStatusOf`'s `pushRemotes`); the distances count for every tracked

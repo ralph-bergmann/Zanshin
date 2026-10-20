@@ -201,6 +201,9 @@ parity!(
     new_description_config_ui_color,
     workspace_add_bad_template_alias,
     workspace_add_diagnosed_short_prefixes,
+    squash_use_destination_edited,
+    squash_undescribed_edited,
+    workspace_add_immutable_at,
 );
 
 /// Every scenario id the table and the creation list define.
@@ -215,7 +218,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 165);
+    assert_eq!(SCENARIO_IDS.len(), 168);
 }
 
 #[test]

@@ -62,13 +62,22 @@ fn the_single_remote_is_the_default() {
     assert!(repo.take_warnings().is_empty());
 }
 
-/// No remote, or several without `origin`: nothing — not the push's refusal.
+/// No remote, or several without `origin`: nothing — not the push's refusal; the implicit
+/// `origin` warns as the push warns it.
 #[test]
 fn no_matching_remote_is_an_empty_list() {
-    let (_tmp, _root, mut repo) = repo_with(&[], None);
-    assert!(repo.git_push_remotes().expect("remotes").is_empty());
-    let (_tmp, _root, mut repo) = repo_with(&["a", "b"], None);
-    assert!(repo.git_push_remotes().expect("remotes").is_empty());
+    for remotes in [&[][..], &["a", "b"][..]] {
+        let (_tmp, _root, mut repo) = repo_with(remotes, None);
+        assert!(repo.git_push_remotes().expect("remotes").is_empty());
+        let warnings = repo.take_warnings();
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.kind == WarningKind::PushRemotesUnmatched
+                    && w.message == "No matching remotes for names: origin"),
+            "{warnings:?}"
+        );
+    }
 }
 
 /// `git.push` as a name, a list and a pattern — matched in remote-name order.

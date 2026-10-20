@@ -650,6 +650,18 @@ fn squash_with_the_unchanged_plan_text_keeps_exactly_one_trailer() {
     assert_eq!(fx.description(&b), format!("B\n\nC\n\n{SOB}\n"));
 }
 
+/// The single arm with NO description at all still writes the edited text — the CLI's `--editor`
+/// opens even on an empty description (`description.is_empty() && !args.editor`).
+#[test]
+fn squash_of_undescribed_changes_writes_the_edited_text() {
+    let mut fx = base(&[TRAILERS]);
+    let (b, c) = (fx.b.clone(), fx.c.clone());
+    fx.repo.describe(c, "").expect("describe C");
+    fx.repo.describe(b.clone(), "").expect("describe B");
+    fx.repo.squash(&squash_edited("E")).expect("squash");
+    assert_eq!(fx.description(&b), "E\n");
+}
+
 /// The single arm — one non-empty description, or `-u` — writes the edited text cleaned up.
 #[test]
 fn squash_single_arm_with_an_edited_text_writes_it_cleaned_up() {

@@ -110,9 +110,10 @@ fn read_split_request(data: *const u8, len: usize) -> Result<SplitOptions, FfiEr
 /// opens its editor (two or more non-empty descriptions among the abandoned sources and the
 /// destination), the combined text the editor holds is written as if saved unchanged — preview it
 /// with `zanshin_squash_plan` first, and send the user's edit back as `edited_description` (Story
-/// 9.54; the CLI's `--editor` saving exactly that text: written cleaned up, NO trailers added). The operation is `squash commits into <destination hex>`;
-/// squashing `@` into `@` writes NO operation and `MutationResult.new_op_id` carries the PRE-CALL
-/// head. The working copy is snapshotted first (Story 9.26).
+/// 9.54; the CLI's `--editor` saving exactly that text: written cleaned up, NO trailers added).
+/// The operation is `squash commits into <destination hex>`; squashing `@` into `@` writes NO
+/// operation and `MutationResult.new_op_id` carries the PRE-CALL head. The working copy is
+/// snapshotted first (Story 9.26).
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success: an
 /// abandoned `@`'s replacement in `new_change_ids`, the abandoned sources in
@@ -218,11 +219,11 @@ pub unsafe extern "C" fn zanshin_squash_plan(handle: u64, data: *const u8, len: 
 /// locations (ABSENT = the flag not given), and `edited_selected_description` /
 /// `edited_remaining_description` (Story 9.54, both or neither: the CLI's bulk editor saving
 /// exactly these two sections — the editor path runs, then each is written cleaned up, NO trailers
-/// added). Plain and parallel splits keep the target's change id
-/// on the selected commit; with a location the selected changes become a NEW change there and
-/// the remaining commit keeps the target's change id. Bookmarks follow
-/// `split.legacy-bookmark-behavior`; `@` ends on the remaining commit. The operation is
-/// `split commit <target hex>`. The working copy is snapshotted first (Story 9.26).
+/// added). Plain and parallel splits keep the target's change id on the selected commit; with a
+/// location the selected changes become a NEW change there and the remaining commit keeps the
+/// target's change id. Bookmarks follow `split.legacy-bookmark-behavior`; `@` ends on the
+/// remaining commit. The operation is `split commit <target hex>`. The working copy is
+/// snapshotted first (Story 9.26).
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `SplitResult` payload on success; selecting
 /// every change warns `jj.split_all_selected`, selecting none `jj.split_none_selected`.

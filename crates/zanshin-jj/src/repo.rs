@@ -575,9 +575,10 @@ impl Repo {
     /// order — the CLI's default-remote resolution (`push.rs:294-323`, `get_default_push_remotes`
     /// `:1107-1130` @ v0.46.0), shared with [`Repo::git_push`]: the remotes `git.push` names (a
     /// name, a list or a pattern), else the single remote, else `origin` — each kept only when it
-    /// exists. An exact `git.push` name no remote carries warns `jj.push_remotes_unmatched`, as the
-    /// push does. No match is `Ok(vec![])` (the push itself refuses "No git remotes to push to"),
-    /// and so is a non-Git (native) backend.
+    /// exists. An exact name no remote carries warns `jj.push_remotes_unmatched`, as the push does
+    /// — a `git.push` name, and the implicit `origin` too (so a repo with no remote, or several
+    /// without `origin`, warns "No matching remotes for names: origin"). No match is `Ok(vec![])`
+    /// (the push itself refuses "No git remotes to push to"), and so is a non-Git (native) backend.
     ///
     /// For the GUI's "ahead" rule: only a push target's missing remote bookmark makes a bookmark
     /// ahead. Writes NO operation of its own — only the pre-verb snapshot's, like every read.
