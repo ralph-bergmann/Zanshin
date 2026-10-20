@@ -1625,3 +1625,9 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **No Dart witness for a successful worker clone (the reserved handle id is registered and usable).** Medium.
   - Inside `dart test`, a helper-isolate clone still fails jj-lib's wait with "Failed to wait for the git process" (3 of 3 runs, re-checked in 9.52). `packages/zanshin_core/test/worker/network_operation_test.dart` accepts that outcome, so the `CreatedRepoHandle` branch of the `CloneRepoCommand` reply in `isolate.dart` never runs in Dart, and the Dart clone-cancel test may end at the pre-git checkpoint. The mid-git kill and clean-up are witnessed in Rust (`crates/zanshin-jj/tests/clone_cancel.rs`).
   - **Follow-up:** fix the child-reaping limit (deferred-work "No Dart real-cdylib witness for a SUCCESSFUL clone"), then add a Dart success-clone witness (`handleId` equals the announced id; `status()` works on it).
+
+## Surfaced in Story 9.51 (bmad-build-auto, 2026-10-20)
+
+- **Zanshin loads `[template-aliases]` and `revsets.short-prefixes` only when a verb parses a template; the CLI loads both at the start of every workspace command, so a broken alias table or short-prefixes revset refuses every CLI command but only Zanshin's template-rendering verbs.** Low.
+  - `cli/src/cli_util.rs` `load_template_aliases` (:3518) and `load_short_prefixes_expression` (:1115-1136) run in `WorkspaceCommandEnvironment` setup @ v0.46.0; Story 9.51 builds its template environment lazily (`crates/zanshin-jj/src/template.rs`).
+  - **Follow-up:** load both in `snapshot::CommandEnv::load` for every verb (one more refusal and warning source per call), with a witness that a broken `template-aliases` table refuses a non-template verb.
