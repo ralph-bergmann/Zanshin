@@ -98,6 +98,9 @@ void main() {
     // fetch cannot run under `dart test` — see mutate_test.dart's `gitFetch` note), then a
     // local rewrite keeps the change id while both sides gain a commit the other lacks.
     test('a_local_rewrite_reads_ahead_one_behind_one_under_the_same_change_id', () async {
+      // The Makefile's XDG_CONFIG_HOME pin: without it the repo-scope write below would create
+      // secure config under the developer's real ~/.config/jj — refuse before the first call.
+      Platform.environment['XDG_CONFIG_HOME'] ?? fail('XDG_CONFIG_HOME is not pinned — run via cargo make');
       final String root = tempDir.resolveSymbolicLinksSync();
       Future<void> git(List<String> args) async {
         final ProcessResult result = await Process.run('git', ['-C', root, ...args]);

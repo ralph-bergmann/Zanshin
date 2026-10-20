@@ -5,7 +5,7 @@ created: '2026-10-19'
 status: 'done'
 baseline_revision: 'ae370222fa3868147258ac1a64ff4aa1a211ad45'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/planning-artifacts/epics.md#Story 9.29'
@@ -146,6 +146,39 @@ Rows built in-test with `test_helpers::{set_local_bookmark, set_remote_bookmark}
   - `[false]` `[reject]` (intent) Auto Run Result / ledger outcomes missing — written at finalize, below.
   - `[low]` `[reject]` (intent) Collateral constant loss in generated header — group B.
 
+### 2026-10-20 — Review pass (follow-up)
+Diff reviewed: `ae370222fa3868147258ac1a64ff4aa1a211ad45..9ba0f9b` (Story 9.29's commits incl. its closing run; later Story 9.20/9.23 commits and the two flatc-generated files excluded).
+- verdicts: 28 findings — high 0, medium 0, low 16, false 11, maybe-false 1
+- findings:
+  - `[low]` `[reject]` (verification-gap other) cbindgen dropped `TopologyRef_VT_SYNCED` / `TopologyRef_VT_CONFLICTED` / `GitRefUpdate_VT_TRACKED` — carried: group B of the first pass, still unused anywhere.
+  - `[false]` `[reject]` (intent) No test makes a distance revset fail — the distance error goes through the same `be` converter (`bookmarks.rs` `fn be`) the broken-head inline test exercises; `bookmarks.rs` is at 100 % line coverage; nothing distance-specific is mapped.
+  - `[false]` `[reject]` (intent) ≥10 apart proven only under the jj-lib `testing` cap — the intent's matrix prescribes exactly that; the shipped build's `count_estimate` is exact by jj-lib design.
+  - `[false]` `[reject]` (intent) Deleted / not-created / `@git` rows not asserted across the C ABI — the encoder is one function unit-tested per field incl. absent target and absent distances, and zanshin_core's real-cdylib rewrite test asserts the `(deleted)` and `@git` rows through the ABI.
+  - `[false]` `[reject]` (intent) The dot's diverged case is a sibling, not a rewrite — `describe` of A is refused by jj (`trunk()` = `main@origin`, immutable, as the CLI); the app reads only distances, which the sibling drives identically, and the same-change-id rewrite is witnessed at the bridge.
+  - `[low]` `[reject]` (intent) Row order differs from the CLI's printed grouping — carried: the first pass's row-order reject (sort keys are 9.19's per the intent).
+  - `[false]` `[reject]` (intent) Demo-tree fakes changed beyond the capsule-states use case — `demo_projects_fakes.dart` is catalogue-only fake data showing the dot's new states, i.e. their catalogue use; no production UI changed.
+  - `[false]` `[reject]` (intent) `Makefile.toml` test-flutter XDG pin is outside the intent — test infrastructure the real-worker tests need; no bad outcome named, and the pin never leaks into later tasks (script-local `export`).
+  - `[low]` `[reject]` (intent) Regenerated bindings lost three constants — carried: group B.
+  - `[low]` `[reject]` (edge) A failing `bookmarks()` on a clean @ fails the whole read() — real, but `ProjectSession` then keeps the last reading exactly as for a failing `show`/topology call; an index-only read failing after both succeeded is unlikely, and the fix adds a catch branch.
+  - `[low]` `[defer]` (edge) Never-pushed tracked bookmark reads a clean dot — carried: deferred item 2 (not re-deferred).
+  - `[low]` `[reject]` (edge) An operation between show, topology and bookmarks() mixes two operations — carried: first-pass reject (pre-existing pattern, transient).
+  - `[low]` `[patch]` (edge) zanshin_core `a_local_rewrite_reads_ahead_one_behind_one_under_the_same_change_id` writes repo-scope config without the XDG guard its siblings carry — added the `Platform.environment['XDG_CONFIG_HOME'] ?? fail(...)` guard before the first call (`packages/zanshin_core/test/worker/bookmarks_test.dart`).
+  - `[low]` `[reject]` (edge) Header constants lost — carried: group B.
+  - `[false]` `[reject]` (edge) The diverged real-worker test does not clone + `describe` as the task says — the `describe` route is refused by jj (immutable trunk), recorded in the closing run's spec change log; distances, the only input the dot reads, are the same.
+  - `[low]` `[reject]` (blind) test-flutter skips the flutter-config copy when `XDG_CONFIG_HOME` is inherited already pinned — only reachable by chaining the private `test-core` task before `test-flutter` by hand (`test-core` is not in the gate flow, `gate_plan.rs` CORE); the guard exists to stop the copy deleting its own source; a fix adds a branch.
+  - `[low]` `[reject]` (blind) `target/test-xdg-config/jj/repos` accumulates entries — pre-existing since Story 9.28 (`test-core`/`coverage`), a few small files per run under `target/`, cleared by `cargo clean`; cleanup would add machinery.
+  - `[low]` `[patch]` (blind) zanshin_core rewrite test has no XDG guard — same root cause as the edge row above; same patch.
+  - `[low]` `[patch]` (blind) Duplicated git helper in "the read over an untracked remote and the @git row stays clean" — the local `git` closure is replaced by `gitAt(path)`, moved above that test (`app/test/features/projects/worker_project_repos_test.dart`).
+  - `[false]` `[reject]` (blind) `statusFrom` calls `statusOf` twice; `tracking` accepts any `ProjectStatus` — no behavioural harm: the second call returns the same as `tracking ?? clean`, and the only caller passes `trackingStatusOf`'s three sync values or null.
+  - `[low]` `[reject]` (blind) A failing `bookmarks()` on a clean @ fails the whole read — same as the edge row above; same reason.
+  - `[false]` `[reject]` (blind) The dot can aggregate over a different bookmark than the label names, reading diverged across two names — that is the intent's rule ("both (across the considered rows) → diverged", considered rows = every local name on `heads(::@ & bookmarks())`) and the label is design question (b)'s.
+  - `[low]` `[patch]` (blind) Each clean read pays for repo-wide distances, no name filter — carried: first-pass group D (bookmarks() only on a clean @); recorded as a residual risk, not patched again.
+  - `[low]` `[reject]` (blind) Spec frontmatter / AC / triage text are stale after the closing run — the fix edits this build's spec; deferred item 1 already carries its `resolved:` line and the closing run's change log records the sibling route.
+  - `[low]` `[reject]` (blind) Generated headers silently lose constants with no check — carried: group B.
+  - `[false]` `[reject]` (blind) `Lister` is a one-field wrapper — no harm named: it carries the head repo across four row-building methods of one listing; style only.
+  - `[false]` `[reject]` (blind) `moveLocalMain` picks the single local bookmark and never asserts @ — the fixture has exactly one local bookmark, so a second would fail loudly (correct); every caller asserts a non-dirty, non-conflict reading, which already proves @ is clean on `main`'s ancestry.
+  - `[maybe-false]` `[reject]` (blind) No visual re-check of the demo-tree states in the Projects window — settling it needs a Marionette run of the Projects demo tree; if true it is low (catalogue fake data using the capsule-checked style mapping), so rejected with this note.
+
 ## Design Notes
 
 - The epic text says "Absent remote refs stay skipped as today" (written against v0.44.0). Both v0.44.0 and v0.46.0 `format_commit_ref` print a tracked ABSENT remote ref as `@origin (not created yet)` under `--all-remotes` (`collect_items` never filters on presence), and jj-lib stores such a ref only while the local exists (the `auto-track-created-bookmarks` state). The project's binding rule is CLI parity at v0.46.0, so these rows ARE emitted (`target` null). An UNTRACKED absent remote ref cannot exist (`View::set_remote_bookmark` removes it).
@@ -197,3 +230,21 @@ Status: done. Code commit `b5c3b95b627d3d0e1c1fdf4644ccd612543e3892` (baseline `
 **Verification.** `cargo make test` green before and after the review patches (exit 0; coverage held at 99.46 %, every extern covered; 779.8 s post-patch run from the main session). Matrix test audit: each I/O-matrix row has a passing test in `crates/zanshin-jj/tests/bookmarks.rs` (synced, remote/local ahead, rewrite, ≥10 → `upper: None`, untracked, deleted, not created yet, conflicted, colocated `@git`, corrupt repo + the inline broken-head test). `build_runner` changed only the enum map. Visual: the implementer ran the catalogue's Projects > Project capsule > States in night and paper via Marionette and compared the dots with the DS tokens/labels (the DS card has no diverged row; checked against the token).
 
 **Residual risks.** Each `read()` of a clean project now adds a third head load (`bookmarks()`), and its distance walks scale with the distance of unsynced tracked pairs (uncapped in the shipped cdylib). The C header lost three unused vtable constants to a cbindgen name collision.
+
+### Follow-up review pass (2026-10-20)
+
+Status: done. Reviewed the Story 9.29 range `ae370222fa3868147258ac1a64ff4aa1a211ad45..9ba0f9b` (code, tests, schema, docs, Makefile; flatc-generated files and later stories' commits excluded) with all four layers.
+
+**Summary.** No production change. Two test-only patches: the zanshin_core real-cdylib rewrite test now refuses to run without the Makefile's `XDG_CONFIG_HOME` pin (like every sibling that writes repo-scope config), and the app's untracked-remote real-worker test reuses the shared `gitAt` helper instead of a duplicate closure.
+
+**Files changed.**
+- `packages/zanshin_core/test/worker/bookmarks_test.dart` — XDG_CONFIG_HOME guard before the repo-scope `configSet`.
+- `app/test/features/projects/worker_project_repos_test.dart` — `gitAt` moved above its first user; the duplicate local `git` closure removed.
+
+**Review.** 28 findings (high 0, medium 0, low 16, false 11, maybe-false 1). Patched: 2 low entries (the XDG guard, edge + blind; the duplicate helper). Deferred: none new (the never-pushed-bookmark dot stays deferred item 2, carried). Carried from the first pass: the cbindgen constant loss (×4), the row order, mixed-operation reads, the repo-wide distance cost (group D, residual risk), the never-pushed dot. Rejected: a failing `bookmarks()` on a clean @ failing the read (×2, low — the last reading is kept as for show/topology failures; fix adds a branch), the test-flutter copy skip under an inherited pin (low, only via a hand-chained private task), accumulated secure-store entries under `target/` (low, pre-existing since 9.28), stale spec text (spec edit), eleven `false` findings and one `maybe-false` (demo-tree visual re-check, low if true) — reasons in the triage log.
+
+**Follow-up review recommendation: false** (follow-up pass; patched entries: high 0, medium 0, low 2 — the work has converged).
+
+**Verification.** `cargo make test` exit 0 (change-aware: test-flutter, app analyze/format, core analyze/format, coverage — Rust suites + zanshin_core); coverage held at 99.07 %, every extern covered; 792.6 s.
+
+**Residual risks.** Unchanged from the first pass: each clean read adds a third head load and uncapped distance walks for unsynced tracked pairs; a tracking-read failure on a clean @ keeps the previous dot; three unused vtable constants are missing from the C header.

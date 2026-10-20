@@ -371,16 +371,20 @@ void main() {
     // two cannot run under a Dart test (the VM reaps jj-lib's git child, zanshin_core's mutate_test.dart `gitFetch`
     // note), so the tracking tests below set the third. Here the read runs over remote rows that must NOT count — the
     // colocated `@git` row and an untracked `main@origin` the local `main` is ahead of.
+    /// Runs `git -C [path]` and returns its trimmed stdout.
+    Future<String> Function(List<String>) gitAt(String path) => (args) async {
+      final ProcessResult result = await Process.run('git', <String>['-C', path, ...args]);
+      if (result.exitCode != 0) {
+        fail('git ${args.join(' ')} failed: ${result.stderr}');
+      }
+      return (result.stdout as String).trim();
+    };
+
     test('the read over an untracked remote and the @git row stays clean', () async {
       final path = '${temp.resolveSymbolicLinksSync()}/remotes';
       await Directory(path).create();
       await gitWithCommit(path);
-      Future<void> git(List<String> args) async {
-        final ProcessResult result = await Process.run('git', <String>['-C', path, ...args]);
-        if (result.exitCode != 0) {
-          fail('git ${args.join(' ')} failed: ${result.stderr}');
-        }
-      }
+      final Future<String> Function(List<String>) git = gitAt(path);
 
       await git(<String>['update-ref', 'refs/remotes/origin/main', 'HEAD']);
       File('$path/second.txt').writeAsStringSync('second');
@@ -403,15 +407,6 @@ void main() {
 
       expect(await creation.repo.read(), const ProjectReading(status: ProjectStatus.clean, bookmark: 'main'));
     });
-
-    /// Runs `git -C [path]` and returns its trimmed stdout.
-    Future<String> Function(List<String>) gitAt(String path) => (args) async {
-      final ProcessResult result = await Process.run('git', <String>['-C', path, ...args]);
-      if (result.exitCode != 0) {
-        fail('git ${args.join(' ')} failed: ${result.stderr}');
-      }
-      return (result.stdout as String).trim();
-    };
 
     /// Story 9.29's tracked start: a Git repository with A0 → A on `main`, converted, and `main@origin` at A tracked
     /// through repo-scope `remotes.origin.auto-track-bookmarks` (zanshin_core's test/worker/bookmarks_test.dart recipe);
