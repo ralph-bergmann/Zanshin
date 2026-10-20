@@ -18,12 +18,13 @@
 //! Ports `cli/src/commands/bookmark/create.rs`, `.../delete.rs` and the
 //! `has_tracked_remote_bookmarks` helper from `cli/src/cli_util.rs:3385-3393`, all @ v0.44.0.
 //!
+//! `create` auto-tracks like the CLI (`create.rs:88-111` @ v0.46.0, Story 9.54's closing run):
+//! every created name a remote's `remotes.<r>.auto-track-bookmarks` ∪
+//! `auto-track-created-bookmarks` matcher accepts is tracked on that remote, if the remote has a
+//! view.
+//!
 //! # Deliberate divergences from the CLI at v0.44.0
 //!
-//! - **No auto-tracking on create.** The CLI honours `remotes.<r>.auto-track-bookmarks` /
-//!   `auto-track-created-bookmarks` by calling `track_remote_bookmark` for every matching
-//!   remote (`create.rs:89-111`). That verb is Story 9.11's; until it lands, a created
-//!   bookmark is never auto-tracked here. Deliberately deferred, not overlooked.
 //! - **Names are DECODED values, not CLI argument text.** The CLI validates a create name
 //!   with `revset_util::parse_bookmark_name` = `revset::parse_symbol`, i.e. the user must
 //!   type `'foo bar'` to name a bookmark `foo bar`. That quoting is terminal input syntax the
@@ -37,10 +38,12 @@
 //!   `[` needs `exact:"…"`.
 //! - **No terminal UX.** "Created N bookmarks pointing to …", "Deleted N bookmarks." and
 //!   "No bookmarks to delete." are stdout chatter; the machine-readable equivalent of the last
-//!   one is already in the contract: an unchanged `new_op_id` means nothing happened. The two
-//!   WARNINGS — "Target revision is empty." and `warn_unmatched_local_bookmarks`' "No matching
-//!   bookmarks for names: …" (`bookmark/mod.rs:185-203`) — ride the call's warnings as
-//!   `jj.bookmark_target_empty` / `jj.bookmark_names_unmatched` (Story 9.32).
+//!   one is already in the contract: an unchanged `new_op_id` means nothing happened. The
+//!   WARNINGS — "Target revision is empty.", `warn_unmatched_local_bookmarks`' "No matching
+//!   bookmarks for names: …" (`bookmark/mod.rs:185-203`) and "Auto-tracking bookmark that exists
+//!   on the remote: …" (`create.rs:101-106` @ v0.46.0) — ride the call's warnings as
+//!   `jj.bookmark_target_empty` / `jj.bookmark_names_unmatched` (Story 9.32) /
+//!   `jj.bookmark_auto_track_existing`.
 
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::RefTarget;
@@ -170,6 +173,15 @@ fn join_symbols(names: &[RefNameBuf]) -> String {
 /// A target that is empty and undescribed (`Commit::is_discardable`) warns
 /// `jj.bookmark_target_empty` after both guards passed (`create.rs:84-86`, Story 9.32).
 ///
+/// Auto-tracking (`create.rs:88-111` @ v0.46.0): after that warning every remote's
+/// `remotes.<r>.auto-track-bookmarks` ∪ `auto-track-created-bookmarks` matcher is parsed — all of
+/// them, even when no name matches — and then, per name in argument order, the local target is
+/// set and the name is tracked (`MutableRepo::track_remote_bookmark`, which merges the remote
+/// target into the local one) on every remote, in name order, whose matcher accepts it and that
+/// has a remote view in the pre-call view. When that view already holds the name, the call warns
+/// `jj.bookmark_auto_track_existing` ("Auto-tracking bookmark that exists on the remote:
+/// `name@remote`") first.
+///
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — `names` is empty, or a name is the empty string.
@@ -179,6 +191,9 @@ fn join_symbols(names: &[RefNameBuf]) -> String {
 /// - [`MutateError::BookmarkExists`] — a name is already a local bookmark.
 /// - [`MutateError::BookmarkTrackedRemoteExists`] — a name's local bookmark is absent but it
 ///   still has a tracked remote bookmark.
+/// - [`MutateError::Config`] — a `remotes.<r>` entry is not a table of the known keys, or an
+///   `auto-track-bookmarks` / `auto-track-created-bookmarks` value does not parse (the CLI's
+///   ``Invalid `remotes.<r>.<field>`: …``); refused after both guards, nothing written.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn create(
@@ -205,6 +220,9 @@ pub(crate) fn create(
         names = join_symbols(&ref_names),
         id = target_id.hex(),
     );
+    // Read here, while `ctx` is not yet lent to the transaction, but refused only where the CLI
+    // parses (`create.rs:88-90`): after both guards and the empty-target warning.
+    let auto_track = crate::config::remote_auto_track_bookmarks_for_new_bookmarks(&ctx.config);
     let finished = finish_or_no_op_at(workspace, readonly, &description, ctx, |tx, sink| {
         // Both guards for EVERY name run before ANY write, and returning `Err` from here
         // drops the transaction unwritten — so a refusal creates nothing, not even the
@@ -228,9 +246,29 @@ pub(crate) fn create(
         if pollster::block_on(target.is_discardable(tx.repo())).map_err(mutate::be)? {
             sink.push(WarningKind::BookmarkTargetEmpty, "Target revision is empty.");
         }
+        let auto_track = auto_track.map_err(mutate::cfg)?;
+        // The CLI reads "has a view" and "already on the remote" off the view BEFORE any write
+        // (`create.rs:91`, `readonly_repo`), which is also the view the guards read.
+        let base = tx.base_repo().clone();
         for name in &ref_names {
             tx.repo_mut()
                 .set_local_bookmark_target(name, RefTarget::normal(target_id.clone()));
+            for (remote, matcher) in &auto_track {
+                if !matcher.is_match(name.as_str()) {
+                    continue;
+                }
+                let Some(remote_view) = base.view().get_remote_view(remote) else {
+                    continue;
+                };
+                let symbol = name.to_remote_symbol(remote);
+                if remote_view.bookmarks.contains_key(name) {
+                    sink.push(
+                        WarningKind::BookmarkAutoTrackExisting,
+                        format!("Auto-tracking bookmark that exists on the remote: {symbol}"),
+                    );
+                }
+                pollster::block_on(tx.repo_mut().track_remote_bookmark(symbol)).map_err(mutate::be)?;
+            }
         }
         // NO explicit rebase/normalize pass: `set_local_bookmark_target` calls
         // `View::add_head` (clearing the head-normalized bit) but records no REWRITE, and

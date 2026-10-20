@@ -600,9 +600,12 @@ char *zanshin_ffi_version(void);
  * Both per-name preconditions run in ARGUMENT order and are FAIL-FAST, as in the CLI: a run
  * whose second name already exists creates NOTHING and writes no operation.
  *
- * Unlike the CLI a created bookmark is never AUTO-TRACKED — that needs `track_remote_bookmark`
- * (Story 9.11). Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on
- * success.
+ * A created name is AUTO-TRACKED as in the CLI: on every remote with a remote view whose
+ * `remotes.<r>.auto-track-bookmarks` / `auto-track-created-bookmarks` matches it, the
+ * `name@remote` row becomes tracked (`zanshin_bookmarks` shows it). Warnings:
+ * `jj.bookmark_target_empty` (empty, undescribed target), then
+ * `jj.bookmark_auto_track_existing` per remote that already holds the name. Returns a
+ * `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -622,7 +625,10 @@ char *zanshin_ffi_version(void);
  *   longer reads (Story 9.27 — the pre-verb settings refresh); nothing is written. Or the
  *   pre-verb snapshot (Story 9.26) found a value it reads wrongly typed (the key in
  *   `context`): operations it committed before the fault stay, as in the CLI (colocated:
- *   `import git head`), and the partial `precondition` says which.
+ *   `import git head`), and the partial `precondition` says which. Or, after both per-name
+ *   guards, a `remotes.<r>.auto-track-bookmarks` / `auto-track-created-bookmarks` value does
+ *   not parse (the CLI's ``Invalid `remotes.<r>.<field>`: …`` in `context`); nothing is
+ *   written.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.

@@ -1334,9 +1334,13 @@ final class RepoHandle {
   ///
   /// Both per-name preconditions run in ARGUMENT order and are FAIL-FAST: a run
   /// whose second name already exists creates NOTHING — not even the first — and
-  /// writes no operation. Unlike the CLI, a created bookmark is never
-  /// auto-tracked; `remotes.<r>.auto-track-bookmarks` needs `bookmark track`
-  /// (Story 9.11).
+  /// writes no operation.
+  ///
+  /// A created name is auto-tracked as in the CLI: on every remote with a
+  /// remote view whose `remotes.<r>.auto-track-bookmarks` /
+  /// `auto-track-created-bookmarks` matches it, the `name@remote` row becomes
+  /// tracked ([bookmarks] shows it). Warnings: `jj.bookmark_target_empty`, then
+  /// `jj.bookmark_auto_track_existing` per remote that already holds the name.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed]; throws
   /// [ArgumentError] if a name or [revision] contains an interior NUL (U+0000),
@@ -1344,6 +1348,7 @@ final class RepoHandle {
   /// bookmark name; throws [ZanshinFfiException] on FFI errors
   /// (`ffi.invalid_handle`, `jj.invalid_input`, `jj.change_not_found`,
   /// `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`,
+  /// `jj.config_error` — e.g. an unparsable `remotes.<r>.auto-track-*` value —
   /// `jj.jj_lib_error`).
   Future<MutationResult> bookmarkCreate(List<String> names, {String? revision}) {
     if (_closed) {

@@ -135,6 +135,7 @@ loads (`git/init.rs:251-254`) — see `crates/zanshin-jj/src/convert.rs`'s modul
 | `jj.remote_url_duplicate` | `git/remote/add.rs:104-107` "Remote {name} already uses the same URL." | `git remote add` | — |
 | `jj.bookmark_target_empty` | `bookmark/create.rs:84-86` "Target revision is empty." | `bookmark create` | — |
 | `jj.bookmark_names_unmatched` | `bookmark/mod.rs:198-202` "No matching bookmarks for names: …" (exact names only) | `bookmark delete` | — |
+| `jj.bookmark_auto_track_existing` | `bookmark/create.rs:101-106` @ v0.46.0 "Auto-tracking bookmark that exists on the remote: {name}@{remote}", one per auto-tracked remote whose view already holds the name | `bookmark create` with `remotes.<r>.auto-track-bookmarks` / `auto-track-created-bookmarks` matching a created name (Story 9.54 closing run) | — |
 | `jj.absorb_path_skipped` | `absorb.rs:157` "Skipping {path}: {reason}", one per path | `absorb` | `AbsorbResult.skipped_paths` |
 | `jj.path_access_denied` | `file/show.rs:166-169`, `file/search.rs:111-114`, one per path | `file show`, `file search` | `FileContents.skipped`, `FileSearch.skipped` |
 | `jj.path_not_a_file` | `file/show.rs:193-196`, one per path | `file show` | `FileContents.skipped` |

@@ -562,6 +562,57 @@ void main() {
       expect(await repo.read(), const ProjectReading(status: ProjectStatus.behind, bookmark: 'main'));
     });
 
+    /// Story 9.54's closing run: a Git-backed workspace with remotes `origin` and `upstream` (so `origin` is the default
+    /// push target, `RepoHandle.gitPushRemotes`), repo-scope `remotes.<[autoTrackOn]>.auto-track-created-bookmarks`, and
+    /// `feature` created on a commit with a file, under a new empty @. `bookmark create` auto-tracks it on
+    /// [autoTrackOn] as a target-less row — the CLI's `(not created yet)`.
+    Future<ProjectRepo> autoTrackedFeature(String name, String autoTrackOn) async {
+      // The repo-scope write lands in jj's secure store under XDG_CONFIG_HOME, so it must be the gate's throwaway dir
+      // (Makefile.toml test-flutter), never the developer's own config.
+      final String? xdg = Platform.environment['XDG_CONFIG_HOME'];
+      if (xdg == null || !xdg.endsWith('/target/test-xdg-config')) {
+        fail('XDG_CONFIG_HOME is not pinned to target/test-xdg-config — run via cargo make');
+      }
+      final path = '${temp.resolveSymbolicLinksSync()}/$name';
+      await Directory(path).create();
+      final ProjectCreation creation = await repos.init(path);
+      addTearDown(creation.repo.close);
+      final RepoHandle handle = creation.repo.handle;
+      for (final remote in <String>['origin', 'upstream']) {
+        await handle.gitRemoteAdd(name: remote, url: '${temp.path}/$remote.git');
+      }
+      await worker.configSet(
+        const ConfigScopeTarget(ConfigScope.repo),
+        'remotes.$autoTrackOn.auto-track-created-bookmarks',
+        '"*"',
+        workspaceRoot: path,
+      );
+      File('$path/a.txt').writeAsStringSync('a\n');
+      final WorkingCopyStatus first = await handle.status();
+      await handle.bookmarkCreate(<String>['feature'], revision: first.workingCopyChangeId);
+      await handle.newChange(<String>[first.workingCopyChangeId]);
+
+      final remoteRows = <(String, String, bool, String?)>[
+        for (final b in await handle.bookmarks())
+          if (b.kind case RemoteBookmark(:final String remoteName, :final bool tracked))
+            (b.name, remoteName, tracked, b.target),
+      ];
+      expect(remoteRows, <(String, String, bool, String?)>[('feature', autoTrackOn, true, null)]);
+      return creation.repo;
+    }
+
+    test('a bookmark auto-tracked on the default push target but never pushed reads ahead', () async {
+      final ProjectRepo repo = await autoTrackedFeature('auto-track-origin', 'origin');
+
+      expect(await repo.read(), const ProjectReading(status: ProjectStatus.ahead, bookmark: 'feature'));
+    });
+
+    test('a bookmark auto-tracked only on a remote that is not a push target reads clean', () async {
+      final ProjectRepo repo = await autoTrackedFeature('auto-track-upstream', 'upstream');
+
+      expect(await repo.read(), const ProjectReading(status: ProjectStatus.clean, bookmark: 'feature'));
+    });
+
     test('init creates a Git-backed workspace whose Git store stays inside .jj', () async {
       final path = '${temp.resolveSymbolicLinksSync()}/plain';
       await Directory(path).create();

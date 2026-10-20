@@ -393,6 +393,7 @@ void main() {
         'jj.remote_url_duplicate',
         'jj.bookmark_target_empty',
         'jj.bookmark_names_unmatched',
+        'jj.bookmark_auto_track_existing',
         'jj.absorb_path_skipped',
         'jj.path_access_denied',
         'jj.path_not_a_file',
@@ -426,7 +427,7 @@ void main() {
         'jj.template_diagnostic',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(50), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(51), reason: 'no code is registered twice');
     });
   });
 

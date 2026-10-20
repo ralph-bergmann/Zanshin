@@ -99,6 +99,10 @@ abstract final class ZanshinWarningCode {
   /// Exact names given to `bookmark delete` that match no local bookmark.
   static const bookmarkNamesUnmatched = 'jj.bookmark_names_unmatched';
 
+  /// `bookmark create` auto-tracked a remote bookmark that already exists on
+  /// the remote.
+  static const bookmarkAutoTrackExisting = 'jj.bookmark_auto_track_existing';
+
   /// A path `absorb` could not split.
   static const absorbPathSkipped = 'jj.absorb_path_skipped';
 
@@ -235,6 +239,7 @@ abstract final class ZanshinWarningCode {
     remoteUrlDuplicate,
     bookmarkTargetEmpty,
     bookmarkNamesUnmatched,
+    bookmarkAutoTrackExisting,
     absorbPathSkipped,
     pathAccessDenied,
     pathNotAFile,

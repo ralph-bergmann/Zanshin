@@ -79,6 +79,10 @@ pub enum WarningKind {
     /// Exact names given to `bookmark delete` that match no local bookmark
     /// (`warn_unmatched_local_bookmarks`, `bookmark/mod.rs:185-203`).
     BookmarkNamesUnmatched,
+    /// `bookmark create` auto-tracked a remote bookmark that already exists on that remote — the
+    /// created name matches `remotes.<r>.auto-track-bookmarks` / `auto-track-created-bookmarks`
+    /// and the remote's view already holds it (`bookmark/create.rs:101-106` @ v0.46.0).
+    BookmarkAutoTrackExisting,
     /// A path `absorb` could not split (`absorb.rs:155-158`).
     AbsorbPathSkipped,
     /// A path whose content could not be read (`file/show.rs:164-170`, `file/search.rs:109-115`).

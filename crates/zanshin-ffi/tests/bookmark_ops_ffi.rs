@@ -27,8 +27,8 @@ use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::op_log::zanshin_op_log;
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
 use zanshin_ffi::{
-    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_BOOKMARK_EXISTS, JJ_BOOKMARK_TRACKED_REMOTE_EXISTS,
-    JJ_CHANGE_NOT_FOUND, JJ_INVALID_INPUT,
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_BOOKMARK_AUTO_TRACK_EXISTING, JJ_BOOKMARK_EXISTS,
+    JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CHANGE_NOT_FOUND, JJ_INVALID_INPUT,
 };
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
@@ -43,6 +43,8 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
         env::set_var("JJ_EMAIL", "zanshin@localhost");
         env::set_var("JJ_OP_HOSTNAME", "localhost");
         env::set_var("JJ_OP_USERNAME", "zanshin");
+        // The repo-level config the auto-track test writes lives in the secure store under it.
+        env::set_var("XDG_CONFIG_HOME", test_helpers::leaked_xdg_config_home());
     }
 });
 
@@ -380,6 +382,52 @@ fn create_reports_bookmark_tracked_remote_exists() {
     assert_eq!(error.code(), Some(JJ_BOOKMARK_TRACKED_REMOTE_EXISTS));
     assert_eq!(error.context(), Some("foo"));
     assert_eq!(head_op_id(handle), before, "a refusal writes no operation");
+
+    close_handle(handle);
+}
+
+/// Story 9.54's closing run: auto-tracking an UNTRACKED `feature@origin` that already exists
+/// under `remotes.origin.auto-track-created-bookmarks` carries the CLI's warning across the wire
+/// as `jj.bookmark_auto_track_existing`, with its text.
+#[test]
+fn create_auto_tracking_an_existing_remote_bookmark_warns_over_the_wire() {
+    pin_env();
+    let (handle, root) = open_fixture();
+    let target = wc_commit_hex(handle);
+    set_remote_bookmark(&root, "feature", "origin", &target, false);
+    zanshin_jj::config_set(
+        Some(&root),
+        &zanshin_jj::ConfigTarget::Scope(zanshin_jj::ConfigScope::Repo),
+        "remotes.origin.auto-track-created-bookmarks",
+        "\"*\"",
+    )
+    .result
+    .expect("config set --repo");
+
+    let req = create_request_bytes(Some(&["feature"]), None);
+    // SAFETY: handle is live; the buffer outlives the call.
+    let token = unsafe { zanshin_bookmark_create(handle, req.as_ptr(), req.len()) };
+    // SAFETY: fresh, non-null token.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+
+    assert!(env.ok(), "create failed: {:?}", env.error().and_then(|e| e.context()));
+    let auto_track: Vec<(&str, &str)> = env
+        .warnings()
+        .map(|w| {
+            w.iter()
+                .filter(|w| w.code() == Some(JJ_BOOKMARK_AUTO_TRACK_EXISTING))
+                .map(|w| (w.code().unwrap_or_default(), w.message().unwrap_or_default()))
+                .collect()
+        })
+        .unwrap_or_default();
+    assert_eq!(
+        auto_track,
+        [(
+            JJ_BOOKMARK_AUTO_TRACK_EXISTING,
+            "Auto-tracking bookmark that exists on the remote: feature@origin"
+        )]
+    );
 
     close_handle(handle);
 }

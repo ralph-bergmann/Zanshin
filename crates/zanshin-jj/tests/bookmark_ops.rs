@@ -24,7 +24,9 @@ use jj_lib::repo::Repo as _;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{add_commit_off_root, add_divergent_twin, extract_fixture, set_local_bookmark, set_remote_bookmark};
-use zanshin_jj::{BookmarkKind, ChangeId, MutateError, MutationResult, Repo};
+use zanshin_jj::{
+    Bookmark, BookmarkKind, ChangeId, ConfigScope, ConfigTarget, MutateError, MutationResult, Repo, WarningKind,
+};
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
     env::set_var("JJ_CONFIG", "");
@@ -33,6 +35,8 @@ static ENV_GUARD: LazyLock<()> = LazyLock::new(|| unsafe {
     env::set_var("JJ_EMAIL", "zanshin@localhost");
     env::set_var("JJ_OP_HOSTNAME", "localhost");
     env::set_var("JJ_OP_USERNAME", "zanshin");
+    // The repo-level config the auto-track tests write lives in the secure store under it.
+    env::set_var("XDG_CONFIG_HOME", test_helpers::leaked_xdg_config_home());
 });
 
 /// A syntactically valid reverse-hex change id (the alphabet is `k`-`z`) that no commit in the
@@ -623,4 +627,235 @@ fn create_then_delete_writes_both_cli_descriptions() {
         format!("create bookmark feature pointing to commit {}", lay.wc_commit_hex)
     );
     assert!(repo.list_bookmarks().unwrap().is_empty());
+}
+
+// ── create: auto-tracking (Story 9.54's closing run) ─────────────────────────
+//
+// `create.rs:88-111` @ v0.46.0: every created name a remote's `auto-track-bookmarks` ∪
+// `auto-track-created-bookmarks` matcher accepts is tracked on that remote, if the remote has a
+// view. Remote views come from `git remote add` (jj-lib's `add_remote` calls `ensure_remote`)
+// or, with a row, from `set_remote_bookmark`.
+
+/// Writes `name = value` (a TOML value) into the repo-level config, as `jj config set --repo`.
+fn set_repo_config(root: &Path, name: &str, value: &str) {
+    zanshin_jj::config_set(Some(root), &ConfigTarget::Scope(ConfigScope::Repo), name, value)
+        .result
+        .expect("config set --repo");
+}
+
+/// Adds a git remote with a fake URL — enough for jj-lib to create its remote view.
+fn add_remote(repo: &mut Repo, root: &Path, name: &str) {
+    let url = root.join(format!("{name}.git"));
+    repo.git_remote_add(name, &url.to_string_lossy(), None)
+        .expect("git remote add");
+}
+
+/// `(name, remote, tracked, target)` of every REMOTE row `list_bookmarks` reports.
+fn remote_rows(repo: &mut Repo) -> Vec<(String, String, bool, Option<ChangeId>)> {
+    repo.list_bookmarks()
+        .expect("list bookmarks")
+        .into_iter()
+        .filter_map(|Bookmark { name, target, kind, .. }| match kind {
+            BookmarkKind::Remote {
+                remote_name, tracked, ..
+            } => Some((name, remote_name, tracked, target)),
+            BookmarkKind::Local => None,
+        })
+        .collect()
+}
+
+/// The auto-track warnings a call left, as messages.
+fn auto_track_warnings(repo: &mut Repo) -> Vec<String> {
+    repo.take_warnings()
+        .into_iter()
+        .filter(|w| w.kind == WarningKind::BookmarkAutoTrackExisting)
+        .map(|w| w.message)
+        .collect()
+}
+
+/// `auto-track-created-bookmarks` alone suffices: a remote with a view but no such bookmark gets
+/// a TRACKED, target-absent row (the CLI's "not created yet"), and nothing warns.
+#[test]
+fn create_auto_tracks_on_a_remote_with_a_view_under_the_created_only_config() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let lay = layout(&fx.path);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    add_remote(&mut repo, &fx.path, "origin");
+    set_repo_config(&fx.path, "remotes.origin.auto-track-created-bookmarks", "\"*\"");
+    let _ = repo.take_warnings();
+
+    repo.bookmark_create(&["feature".to_owned()], None).unwrap();
+
+    assert!(auto_track_warnings(&mut repo).is_empty());
+    assert_eq!(
+        local_bookmark_target(&fx.path, "feature"),
+        Some(lay.wc_commit_hex.clone())
+    );
+    assert_eq!(
+        remote_rows(&mut repo),
+        [("feature".to_owned(), "origin".to_owned(), true, None)]
+    );
+    let (_, description) = head_op(&mut repo);
+    assert_eq!(
+        description,
+        format!("create bookmark feature pointing to commit {}", lay.wc_commit_hex)
+    );
+}
+
+/// `auto-track-bookmarks` alone also counts for a created name — and only the names its matcher
+/// accepts are tracked.
+#[test]
+fn create_auto_tracks_only_the_names_the_plain_auto_track_matcher_accepts() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    add_remote(&mut repo, &fx.path, "origin");
+    set_repo_config(&fx.path, "remotes.origin.auto-track-bookmarks", "\"glob:feat*\"");
+
+    repo.bookmark_create(&["feature".to_owned(), "other".to_owned()], None)
+        .unwrap();
+
+    assert_eq!(local_bookmark_names(&fx.path), ["feature", "other"]);
+    assert_eq!(
+        remote_rows(&mut repo),
+        [("feature".to_owned(), "origin".to_owned(), true, None)]
+    );
+}
+
+/// A rejecting matcher tracks nothing, and neither does a matcher of a remote WITHOUT a view: the
+/// call is then the plain create, description included.
+#[test]
+fn create_tracks_nothing_when_the_matcher_rejects_or_the_remote_has_no_view() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let lay = layout(&fx.path);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    add_remote(&mut repo, &fx.path, "origin");
+    set_repo_config(
+        &fx.path,
+        "remotes.origin.auto-track-created-bookmarks",
+        "\"glob:release-*\"",
+    );
+    set_repo_config(&fx.path, "remotes.ghost.auto-track-created-bookmarks", "\"*\"");
+    let _ = repo.take_warnings();
+
+    repo.bookmark_create(&["feature".to_owned()], None).unwrap();
+
+    assert!(auto_track_warnings(&mut repo).is_empty());
+    assert!(remote_rows(&mut repo).is_empty());
+    assert_eq!(local_bookmark_names(&fx.path), ["feature"]);
+    let (_, description) = head_op(&mut repo);
+    assert_eq!(
+        description,
+        format!("create bookmark feature pointing to commit {}", lay.wc_commit_hex)
+    );
+}
+
+/// Every matching remote with a view is tracked.
+#[test]
+fn create_auto_tracks_on_every_matching_remote() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    add_remote(&mut repo, &fx.path, "origin");
+    add_remote(&mut repo, &fx.path, "upstream");
+    set_repo_config(&fx.path, "remotes.origin.auto-track-created-bookmarks", "\"*\"");
+    set_repo_config(&fx.path, "remotes.upstream.auto-track-bookmarks", "\"feature\"");
+
+    repo.bookmark_create(&["feature".to_owned()], None).unwrap();
+
+    assert_eq!(
+        remote_rows(&mut repo),
+        [
+            ("feature".to_owned(), "origin".to_owned(), true, None),
+            ("feature".to_owned(), "upstream".to_owned(), true, None),
+        ]
+    );
+}
+
+/// An UNTRACKED `feature@origin` already on the remote warns the CLI's line, becomes tracked, and
+/// jj-lib's `track_remote_bookmark` merges its target into the new local one — here a different
+/// commit than `@`, so the local bookmark comes out conflicted, exactly as in the CLI.
+#[test]
+fn create_auto_tracking_an_existing_remote_bookmark_warns_and_merges_its_target() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let remote_hex = add_commit_off_root(&fx.path, "on the remote");
+    let remote_change = change_id_of(&fx.path, &remote_hex);
+    set_remote_bookmark(&fx.path, "feature", "origin", &remote_hex, false);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    set_repo_config(&fx.path, "remotes.origin.auto-track-created-bookmarks", "\"*\"");
+    let _ = repo.take_warnings();
+
+    repo.bookmark_create(&["feature".to_owned()], None).unwrap();
+
+    assert_eq!(
+        auto_track_warnings(&mut repo),
+        ["Auto-tracking bookmark that exists on the remote: feature@origin"]
+    );
+    assert_eq!(
+        remote_rows(&mut repo),
+        [("feature".to_owned(), "origin".to_owned(), true, Some(remote_change))]
+    );
+    let ws = oracle_workspace(&fx.path);
+    let head = pollster::block_on(ws.repo_loader().load_at_head()).expect("oracle load_at_head");
+    let local = head.view().get_local_bookmark("feature".as_ref());
+    assert!(
+        !local.is_resolved(),
+        "local `@` merged with the remote target conflicts"
+    );
+    let mut adds: Vec<String> = local.present_adds().map(jj_lib::object_id::ObjectId::hex).collect();
+    adds.sort();
+    let lay = layout(&fx.path);
+    let mut expected = vec![lay.wc_commit_hex, remote_hex];
+    expected.sort();
+    assert_eq!(adds, expected);
+    let remote = head.view().get_remote_bookmark(jj_lib::ref_name::RemoteRefSymbol {
+        name: "feature".as_ref(),
+        remote: "origin".as_ref(),
+    });
+    assert_eq!(remote.state, RemoteRefState::Tracked);
+}
+
+/// A broken matcher refuses the whole call with the CLI's text, after the guards and before any
+/// write: nothing is created and no operation is written. Every remote is parsed — `origin` has
+/// no view here at all.
+#[test]
+fn create_refuses_a_broken_auto_track_pattern_without_writing_an_operation() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    set_repo_config(&fx.path, "remotes.origin.auto-track-created-bookmarks", "\"(\"");
+    let (before, _) = head_op(&mut repo);
+
+    let err = repo.bookmark_create(&["feature".to_owned()], None).unwrap_err();
+
+    assert!(
+        matches!(&err, MutateError::Config { reason }
+            if reason.contains("Invalid `remotes.origin.auto-track-created-bookmarks`: ")),
+        "unexpected error: {err:?}"
+    );
+    assert_eq!(head_op(&mut repo).0, before, "a refusal writes no operation");
+    assert!(local_bookmark_names(&fx.path).is_empty());
+}
+
+/// The per-name guards precede the matcher parse (`create.rs:64-83` before `:88-90`).
+#[test]
+fn create_guards_refuse_before_a_broken_auto_track_pattern() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let lay = layout(&fx.path);
+    set_local_bookmark(&fx.path, "feature", &[&lay.wc_commit_hex]);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    set_repo_config(&fx.path, "remotes.origin.auto-track-created-bookmarks", "\"(\"");
+    let (before, _) = head_op(&mut repo);
+
+    let err = repo.bookmark_create(&["feature".to_owned()], None).unwrap_err();
+
+    assert!(
+        matches!(&err, MutateError::BookmarkExists { name } if name == "feature"),
+        "unexpected error: {err:?}"
+    );
+    assert_eq!(head_op(&mut repo).0, before);
 }

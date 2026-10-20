@@ -127,7 +127,7 @@
 //! [`resolve_raw`], so `--when.commands` scopes match there as in the CLI; `--when.hostnames`
 //! scopes match against `whoami::hostname()`, exactly as in the CLI.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
@@ -1355,25 +1355,88 @@ fn remote_auto_track_bookmarks(
     config: &StackedConfig,
 ) -> Result<HashMap<jj_lib::ref_name::RemoteNameBuf, jj_lib::str_util::StringMatcher>, ConfigError> {
     let mut matchers = HashMap::new();
-    let names: Vec<String> = config.table_keys("remotes").map(str::to_owned).collect();
-    for name in names {
-        let settings: jj_lib::settings::RemoteSettings =
-            config.get(["remotes", name.as_str()]).map_err(|e| value_error(&e))?;
+    for (remote, settings) in every_remote_settings(config)? {
         let Some(text) = settings.auto_track_bookmarks else {
             continue;
         };
-        let remote: jj_lib::ref_name::RemoteNameBuf = name.as_str().into();
-        let expression = jj_lib::revset::parse_string_expression(&mut jj_lib::revset::RevsetDiagnostics::new(), &text)
-            .map_err(|e| ConfigError::Load {
-                reason: format!(
-                    "Invalid `remotes.{}.auto-track-bookmarks`: {}",
-                    remote.as_symbol(),
-                    e.kind()
-                ),
-            })?;
+        let expression = parse_remote_string_expression(&remote, &text, "auto-track-bookmarks")?;
         matchers.insert(remote, expression.to_matcher());
     }
     Ok(matchers)
+}
+
+/// The CLI's `parse_remote_auto_track_bookmarks_map_for_new_bookmarks`
+/// (`cli/src/revset_util.rs:444-476` @ v0.46.0), the matchers `jj bookmark create` auto-tracks
+/// with: per remote, the UNION of `remotes.<name>.auto-track-bookmarks` and
+/// `remotes.<name>.auto-track-created-bookmarks` (either alone suffices; a remote with neither
+/// has no entry).
+///
+/// Name-ordered: the CLI's `HashMap` iterates in an unspecified order, so name order is the one
+/// deterministic choice for the warnings the caller emits per remote. Returns `jj_lib` types,
+/// which is why it is `pub(crate)` (FR-JJ-16).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — a `remotes.<name>` entry is not a table of the known string keys,
+///   or either value does not parse (the CLI's ``Invalid `remotes.<name>.<field>`: …``). Every
+///   remote is parsed, whether or not a caller's name would match it.
+pub(crate) fn remote_auto_track_bookmarks_for_new_bookmarks(
+    config: &StackedConfig,
+) -> Result<BTreeMap<jj_lib::ref_name::RemoteNameBuf, jj_lib::str_util::StringMatcher>, ConfigError> {
+    let mut matchers = BTreeMap::new();
+    for (remote, settings) in every_remote_settings(config)? {
+        let mut expressions = Vec::new();
+        if let Some(text) = &settings.auto_track_bookmarks {
+            expressions.push(parse_remote_string_expression(&remote, text, "auto-track-bookmarks")?);
+        }
+        if let Some(text) = &settings.auto_track_created_bookmarks {
+            expressions.push(parse_remote_string_expression(
+                &remote,
+                text,
+                "auto-track-created-bookmarks",
+            )?);
+        }
+        if expressions.is_empty() {
+            continue;
+        }
+        matchers.insert(
+            remote,
+            jj_lib::str_util::StringExpression::union_all(expressions).to_matcher(),
+        );
+    }
+    Ok(matchers)
+}
+
+/// jj-lib's `RemoteSettings::table_from_settings` read off the stack directly, in the stack's
+/// key order: one `(remote, settings)` per `remotes.<name>` entry.
+fn every_remote_settings(
+    config: &StackedConfig,
+) -> Result<Vec<(jj_lib::ref_name::RemoteNameBuf, jj_lib::settings::RemoteSettings)>, ConfigError> {
+    let names: Vec<String> = config.table_keys("remotes").map(str::to_owned).collect();
+    names
+        .into_iter()
+        .map(|name| {
+            let settings: jj_lib::settings::RemoteSettings =
+                config.get(["remotes", name.as_str()]).map_err(|e| value_error(&e))?;
+            Ok((name.as_str().into(), settings))
+        })
+        .collect()
+}
+
+/// The CLI's `parse_remote_string_expression` (`cli/src/revset_util.rs:504-528` @ v0.46.0):
+/// one `remotes.<remote>.<field>` value parsed as a string expression, refusing with the CLI's
+/// ``Invalid `remotes.<remote>.<field>`: <kind>``. Its diagnostics sink is dropped — jj-lib 0.46
+/// emits none for string patterns (as `bookmark_ops::union_expression` documents).
+fn parse_remote_string_expression(
+    remote: &jj_lib::ref_name::RemoteName,
+    text: &str,
+    field: &str,
+) -> Result<jj_lib::str_util::StringExpression, ConfigError> {
+    jj_lib::revset::parse_string_expression(&mut jj_lib::revset::RevsetDiagnostics::new(), text).map_err(|e| {
+        ConfigError::Load {
+            reason: format!("Invalid `remotes.{}.{field}`: {}", remote.as_symbol(), e.kind()),
+        }
+    })
 }
 
 /// Reads the effective `snapshot.auto-update-stale` (Story 9.26) — the CLI's
@@ -3732,5 +3795,63 @@ fetch-bookmarks = \"main\"
             git_import_options(&config).is_ok_and(|options| options.remote_auto_track_bookmarks.is_empty()),
             "an entry without auto-track-bookmarks tracks nothing"
         );
+    }
+
+    // ── Story 9.54 closing run: `bookmark create`'s auto-track matchers ──────
+
+    #[test]
+    fn new_bookmark_matchers_union_both_fields_per_remote_in_name_order() {
+        let config = stack_with(concat!(
+            "[remotes.zeta]\nauto-track-created-bookmarks = \"glob:z*\"\n",
+            "[remotes.both]\nauto-track-bookmarks = \"glob:feat*\"\n",
+            "auto-track-created-bookmarks = \"exact:other\"\n",
+            "[remotes.plain]\nauto-track-bookmarks = \"glob:feat*\"\n",
+            "[remotes.neither]\nfetch-tags = \"v*\"\n",
+        ));
+        let matchers = super::remote_auto_track_bookmarks_for_new_bookmarks(&config).unwrap();
+        let names: Vec<&str> = matchers.keys().map(|name| name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["both", "plain", "zeta"],
+            "name order; no entry without either field"
+        );
+        let both = &matchers[jj_lib::ref_name::RemoteName::new("both")];
+        assert!(both.is_match("feature") && both.is_match("other") && !both.is_match("main"));
+        let plain = &matchers[jj_lib::ref_name::RemoteName::new("plain")];
+        assert!(plain.is_match("feature") && !plain.is_match("other"));
+        let zeta = &matchers[jj_lib::ref_name::RemoteName::new("zeta")];
+        assert!(zeta.is_match("zap") && !zeta.is_match("feature"));
+        assert!(
+            git_import_options(&config).is_ok_and(|options| options.remote_auto_track_bookmarks.len() == 2),
+            "the import matchers still read `auto-track-bookmarks` alone"
+        );
+    }
+
+    #[test]
+    fn new_bookmark_matchers_refuse_a_broken_field_with_the_cli_text() {
+        let created = stack_with("[remotes.origin]\nauto-track-created-bookmarks = \"(\"\n");
+        let Err(crate::ConfigError::Load { reason }) = super::remote_auto_track_bookmarks_for_new_bookmarks(&created)
+        else {
+            panic!("a broken auto-track-created-bookmarks refuses");
+        };
+        assert!(
+            reason.starts_with("Invalid `remotes.origin.auto-track-created-bookmarks`: "),
+            "{reason}"
+        );
+        assert!(
+            git_import_options(&created).is_ok(),
+            "the import options never read auto-track-created-bookmarks"
+        );
+        let plain = stack_with("[remotes.origin]\nauto-track-bookmarks = \"(\"\n");
+        let Err(crate::ConfigError::Load { reason }) = super::remote_auto_track_bookmarks_for_new_bookmarks(&plain)
+        else {
+            panic!("a broken auto-track-bookmarks refuses");
+        };
+        assert!(
+            reason.starts_with("Invalid `remotes.origin.auto-track-bookmarks`: "),
+            "{reason}"
+        );
+        let entry = stack_with("[remotes]\norigin = 1\n");
+        assert!(super::remote_auto_track_bookmarks_for_new_bookmarks(&entry).is_err());
     }
 }

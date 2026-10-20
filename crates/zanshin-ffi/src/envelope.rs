@@ -268,6 +268,8 @@ pub const JJ_REMOTE_URL_DUPLICATE: &str = "jj.remote_url_duplicate";
 pub const JJ_BOOKMARK_TARGET_EMPTY: &str = "jj.bookmark_target_empty";
 /// Warning: exact names given to `bookmark delete` that match no local bookmark.
 pub const JJ_BOOKMARK_NAMES_UNMATCHED: &str = "jj.bookmark_names_unmatched";
+/// Warning: `bookmark create` auto-tracked a remote bookmark that already exists on the remote.
+pub const JJ_BOOKMARK_AUTO_TRACK_EXISTING: &str = "jj.bookmark_auto_track_existing";
 /// Warning: a path `absorb` could not split.
 pub const JJ_ABSORB_PATH_SKIPPED: &str = "jj.absorb_path_skipped";
 /// Warning: a path whose content could not be read.
@@ -362,6 +364,7 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::RemoteUrlDuplicate => JJ_REMOTE_URL_DUPLICATE,
         K::BookmarkTargetEmpty => JJ_BOOKMARK_TARGET_EMPTY,
         K::BookmarkNamesUnmatched => JJ_BOOKMARK_NAMES_UNMATCHED,
+        K::BookmarkAutoTrackExisting => JJ_BOOKMARK_AUTO_TRACK_EXISTING,
         K::AbsorbPathSkipped => JJ_ABSORB_PATH_SKIPPED,
         K::PathAccessDenied => JJ_PATH_ACCESS_DENIED,
         K::PathNotAFile => JJ_PATH_NOT_A_FILE,
@@ -1205,6 +1208,7 @@ mod tests {
             K::RemoteUrlDuplicate => "jj.remote_url_duplicate",
             K::BookmarkTargetEmpty => "jj.bookmark_target_empty",
             K::BookmarkNamesUnmatched => "jj.bookmark_names_unmatched",
+            K::BookmarkAutoTrackExisting => "jj.bookmark_auto_track_existing",
             K::AbsorbPathSkipped => "jj.absorb_path_skipped",
             K::PathAccessDenied => "jj.path_access_denied",
             K::PathNotAFile => "jj.path_not_a_file",
@@ -1264,6 +1268,7 @@ mod tests {
             K::RemoteUrlDuplicate,
             K::BookmarkTargetEmpty,
             K::BookmarkNamesUnmatched,
+            K::BookmarkAutoTrackExisting,
             K::AbsorbPathSkipped,
             K::PathAccessDenied,
             K::PathNotAFile,

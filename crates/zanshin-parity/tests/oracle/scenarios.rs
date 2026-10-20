@@ -2175,5 +2175,6 @@ pub fn scenarios() -> Vec<Scenario> {
     ]
     .into_iter()
     .chain(crate::git_scenarios::push_scenarios())
+    .chain(crate::git_scenarios::bookmark_auto_track_scenarios())
     .collect()
 }

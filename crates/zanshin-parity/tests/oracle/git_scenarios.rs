@@ -711,3 +711,77 @@ fn push_change_at(repo: &mut zanshin_jj::Repo) -> Outcome {
         },
     )
 }
+
+// ── jj bookmark create: auto-tracking (Story 9.54's closing run) ─────────────
+
+/// `bookmark create feature` through Zanshin, at `revision` (`None` = the CLI's `-r @`).
+fn create_feature(repo: &mut zanshin_jj::Repo, revision: Option<&zanshin_jj::ChangeId>) -> Outcome {
+    let result = repo.bookmark_create(&strings(&["feature"]), revision);
+    crate::compare::zanshin_outcome(repo, &result)
+}
+
+/// `bookmark create` against a bare `origin` whose remote view `git remote add` made (and
+/// `remotes.origin.*` auto-track config), read back with [`push_read_back`]: every bookmark with
+/// its remotes and tracked state — a tracked, not-yet-created `feature@origin` included — and
+/// the bare remote's refs.
+pub fn bookmark_auto_track_scenarios() -> Vec<Scenario> {
+    vec![
+        // `auto-track-created-bookmarks` alone: `feature@origin` becomes a tracked row without a
+        // target; nothing warns.
+        push(
+            "bookmark_create_auto_track_created",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&[
+                    "config",
+                    "set",
+                    "--repo",
+                    "remotes.origin.auto-track-created-bookmarks",
+                    "\"*\"",
+                ]),
+            ],
+            |repo, _, _| create_feature(repo, None),
+            |_| strings(&["bookmark", "create", "feature"]),
+        ),
+        // An untracked `feature@origin` at B already exists (pushed, then the local bookmark
+        // forgotten): creating `feature` at B warns "Auto-tracking bookmark that exists on the
+        // remote: feature@origin" and tracks it; the merged local target stays B.
+        push(
+            "bookmark_create_auto_track_existing",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&["git", "push", "--named", "feature=@-"]),
+                Step::Jj(&["bookmark", "forget", "feature"]),
+                Step::Jj(&[
+                    "config",
+                    "set",
+                    "--repo",
+                    "remotes.origin.auto-track-created-bookmarks",
+                    "\"*\"",
+                ]),
+            ],
+            |repo, _, s| create_feature(repo, Some(&s.change("B"))),
+            |_| strings(&["bookmark", "create", "feature", "-r", "@-"]),
+        ),
+        // A pattern that does not parse refuses the whole call ("Invalid
+        // `remotes.origin.auto-track-created-bookmarks`: …"); nothing is created.
+        push(
+            "bookmark_create_auto_track_broken",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&[
+                    "config",
+                    "set",
+                    "--repo",
+                    "remotes.origin.auto-track-created-bookmarks",
+                    "\"(\"",
+                ]),
+            ],
+            |repo, _, _| create_feature(repo, None),
+            |_| strings(&["bookmark", "create", "feature"]),
+        ),
+    ]
+}

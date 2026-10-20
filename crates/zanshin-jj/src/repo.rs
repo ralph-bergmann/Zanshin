@@ -1965,9 +1965,13 @@ impl Repo {
     /// a run whose second name already exists creates NOTHING — not even the first name — and
     /// writes no operation.
     ///
-    /// Unlike the CLI, a created bookmark is never AUTO-TRACKED: honouring
-    /// `remotes.<r>.auto-track-bookmarks` needs `track_remote_bookmark`, the verb Story 9.11
-    /// owns. Deliberately deferred.
+    /// A created name is AUTO-TRACKED as the CLI does it (Story 9.54's closing run): on every
+    /// remote whose `remotes.<r>.auto-track-bookmarks` ∪ `auto-track-created-bookmarks` matches
+    /// it and that already has a remote view (e.g. after `git remote add` or a fetch), the
+    /// `name@remote` row becomes tracked — target-absent ("not created yet") when the remote has
+    /// no such bookmark, otherwise jj-lib merges its target into the new local one. Such an
+    /// existing row warns `jj.bookmark_auto_track_existing`; an empty, undescribed target warns
+    /// `jj.bookmark_target_empty` before it. [`Repo::list_bookmarks`] shows the tracked rows.
     ///
     /// # Errors
     ///
@@ -1982,6 +1986,10 @@ impl Repo {
     ///   `name@git` does NOT count: the default-ignored remote is excluded, exactly as in the
     ///   CLI. That exclusion is git-specific — on any other backend no remote is ignored, so a
     ///   tracked `name@git` refuses there.
+    /// - [`crate::MutateError::Config`] — a `remotes.<r>` entry is not a table of the known
+    ///   keys, or an `auto-track-bookmarks` / `auto-track-created-bookmarks` value does not
+    ///   parse (the CLI's ``Invalid `remotes.<r>.<field>`: …``), checked for every remote after
+    ///   both guards; nothing is created and no operation written.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26),
     ///   including an effective jj config that changed and no longer reads (see
     ///   [`Repo::open`]); refused before the verb itself runs.
