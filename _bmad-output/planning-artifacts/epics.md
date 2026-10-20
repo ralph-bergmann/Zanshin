@@ -7622,6 +7622,26 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Related:** 9.15, 9.20, 9.23, 9.51, 9.52, 9.53; 10.25.
 
+### Story 9.55: One integration-test binary per crate [tooling]
+*(Added 2026-10-20, Ralph — console session on the disk space: `target/` holds ~120 test binaries of 60–80 MB each, because every `crates/*/tests/*.rs` links jj-lib and jj-cli on its own.)*
+
+**Motivation.** `crates/zanshin-jj/tests/` has 56 files and `crates/zanshin-ffi/tests/` 29; each is its own binary in `target/debug/deps` and again, instrumented, in `target/llvm-cov-target` (measured 2026-10-20: 206 executables, 12 GB in `target/debug/deps` alone, plus link time on every gate). The usual Rust layout — one `tests/it/main.rs` per crate with the old files as modules — leaves one binary per crate.
+
+**Scope.**
+1. **One binary per crate** for `zanshin-jj` and `zanshin-ffi` (`tests/it/main.rs` + one module per former file, names kept); `test-helpers` and `zanshin-parity` only if it pays. Inner attributes of the old files move to module level where Rust allows it.
+2. **One environment lock.** 74 of the 85 files mutate the process environment and 65 keep their own `ENV_GUARD`-style static; in one process these must share ONE lock (`test-helpers`), and every test that sets a variable restores it (or pins through `pin_test_env`). Audit for leaks a fresh process used to hide.
+3. **Child-process tests** (`clone_init.rs`, `network_cancel.rs` start the current test binary with a filter): their filters follow the new module paths.
+4. **Everything that names a test target** follows: `Makefile.toml`, `crates/xtask/src/tasks/gate_plan.rs` rules, the coverage tooling, docs; CLAUDE.md's and project-context.md's test-placement wording names `tests/it/`.
+
+**Non-goals.** Parallelizing the `zanshin_core` Dart suite (the earlier attempt is on branch `claude/distracted-greider-3e8ed3`); changing what any test asserts.
+
+**Witnesses.**
+- `cargo test -- --list` counts the same tests before and after, per crate.
+- Three full `cargo make test-full` runs in a row are green (flakiness check), coverage held, baseline not lowered.
+- The spec records `target/` size and full-gate time before and after.
+
+**Related:** 9.47 (oracle crate), the gate-sweep step (2026-10-20).
+
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 

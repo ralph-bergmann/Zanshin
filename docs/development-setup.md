@@ -73,6 +73,16 @@ dart pub global activate ffigen
 cargo install cargo-make
 ```
 
+### `cargo-sweep` (recommended)
+
+The gate's last step (`gate-sweep`) keeps `target/` under `ZANSHIN_TARGET_MAX_SIZE` (default
+`30GB`) by removing the least recently built artifacts; Cargo itself never deletes stale ones.
+Without the tool the step only prints a hint.
+
+```sh
+cargo install cargo-sweep
+```
+
 ## Build & test
 
 ```sh
