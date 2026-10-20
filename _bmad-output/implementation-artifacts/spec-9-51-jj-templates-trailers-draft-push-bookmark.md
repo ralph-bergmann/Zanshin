@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/template.rs; crates/zanshin-jj/src/snapshot.rs CommandEnv::load
     severity: low
+    resolved: >-
+      2026-10-20 — fixed (spec-9-51-closing-template-env-at-command-start, commit d8e4c60): CommandEnv::load loads the template aliases and revsets.short-prefixes in the CLI's start-up order for every verb; a broken table refuses before anything is written.
   - summary: >-
       A `jj.template_diagnostic` carries the CLI's context line, the diagnostic and its source chain, but not the CLI's template-position rendering (the `-->` span over the template text) — the same deviation `jj.short_prefixes_failed` documents.
     evidence: |-
