@@ -3,7 +3,7 @@ title: 'Story 9.20 closing run — clone failures typed on the wire (`jj.network
 type: 'bugfix'
 created: '2026-10-20'
 baseline_revision: '20002837d99404db5e646e8b2bdeb8aeb66372dd'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -81,6 +81,33 @@ deferred: []
 
 ## Review Triage Log
 
+### 2026-10-20 — Review pass
+- verdicts: 22 findings — high 0, medium 0, low 15, false 7, maybe-false 0 (edge-case layer: no findings)
+- findings:
+  - `[low]` `[patch]` (verification-gap 1) the default-branch query's network arm (`get_default_branch(..).map_err(fetch_error)`) had no test; every network test failed inside `fetch` first — group A: `clone_init.rs::a_failing_default_branch_query_is_a_network_error_and_cleans_up` (empty `-b` list → no refspecs → `fetch` runs no git, `git remote show` fails) (bd0c7bc); witnessed by a mutation run: reverting that call site to `clone_failed` makes the test fail.
+  - `[low]` `[patch]` (verification-gap other 1) `packages/zanshin_core/lib/src/ffi/repo.dart:93` `zanshinRepoClone`'s hand-written "Errors:" list lacked `jj.network_error` — group B: added (bd0c7bc).
+  - `[false]` `[reject]` (intent 1) no `## Auto Run Result` yet — a mid-run state; finalisation writes it.
+  - `[false]` `[reject]` (intent 2) the run struck the existing deferred-work.md entry — the dispatch forbids only re-mirroring it; marking a ledger item RESOLVED is the ledger's own convention (every closing run does it) and was a task of this spec.
+  - `[low]` `[reject]` (intent 3) the network class is not witnessed at the `packages/zanshin_core` surface — unreachable there: a network failure needs a `git` child, which the Dart VM reaps (`creation_test.dart`'s WHY note); witnessed on the wire (`repo_ffi.rs`) and in Rust.
+  - `[low]` `[reject]` (intent 4) no authentication-failure witness — an auth failure is the same `GitSubprocessError::External` as any failing git child; a credential-rejecting remote needs a local auth server for a mapping arm already witnessed.
+  - `[low]` `[reject]` (intent 5) `jj.network_error` also covers non-network causes (git not runnable, an unknown URL scheme) — group C, see blind 1.
+  - `[low]` `[patch]` (intent 6) the Dart wrapper error list — group B, see verification-gap other 1.
+  - `[false]` `[reject]` (intent 7) renamed / replaced 9.20 tests exceed "only as far as the item needs" — each flipped or replaced test asserted the old `CloneFailed` / `jj.jj_lib_error` the item changes; the uncreatable-destination wire test pins the matrix row that must stay `jj.jj_lib_error`.
+  - `[low]` `[reject]` (blind 1) every `GitFetchError::Subprocess` becomes `jj.network_error`, also `Wait` / `Spawn*` / `UnsupportedGitOption` — group C: exactly the ledger's named mapping and `zanshin_git_fetch`'s existing rule for the same jj-lib call (one code for both verbs); `GitSubprocessError` is not nameable outside jj-lib, so splitting it needs a jj-lib type the crate cannot match on plus a new code; the reason (now with its cause, blind 3) says which.
+  - `[low]` `[reject]` (blind 2) under the Dart VM every clone that reaches the fetch now fails as `jj.network_error` (`Wait`) instead of `jj.jj_lib_error` — group C; the underlying "clone/push from the running app unverified" gap is pre-existing and already ledgered (Story 9.20's residual risks / deferred-work); the code swaps one generic code for another in an already-broken environment.
+  - `[low]` `[patch]` (blind 3) `context` lost the `#[source]` cause of `Spawn*` / `Wait`, and the docs called the text "git's message" — group D: `fetch_error` builds the reason with `mutate::flatten_chain(&e)`; "the git failure (jj-lib's message with its cause)" in the variant doc, `Repo::clone`, the `zanshin_repo_clone` bullet (+ codegen) and the registry row (bd0c7bc).
+  - `[low]` `[patch]` (blind 4) default-branch arm untested — group A, see verification-gap 1.
+  - `[low]` `[patch]` (blind 5) the `CloneFailed` / `jj.jj_lib_error` docs dropped fetch failures that still land there (rejected ref updates) — group E: one phrase back in the variant doc, `Repo::clone` and the `zanshin_repo_clone` bullet (+ codegen) (bd0c7bc).
+  - `[low]` `[patch]` (blind 6) Dart wrapper error list — group B.
+  - `[low]` `[patch]` (blind 7a) the `jj.network_error` row's "No operation is committed" is not literally true for a clone — group F: qualified (fetch commits none; a clone's committed `add git remote` op is removed with the workspace by the clean-up) (bd0c7bc).
+  - `[low]` `[reject]` (blind 7b) the `jj.invalid_input` Meaning column says "for a mutation" — pre-existing wording that already mismatches most of its emitters (config readers, file reads, environment adopt); rewriting the shared column is beyond this item.
+  - `[low]` `[patch]` (blind 8) the wire remap is not flagged as a deliberate observable change — group F: the registry row marks the clone emission "DELIBERATE OBSERVABLE CHANGE (was `jj.jj_lib_error`)"; the `docs/ffi-abi.md` row's Story column adds "9.20 closing run" (bd0c7bc).
+  - `[false]` `[reject]` (blind 9) "warnings are unchanged" not asserted over FFI — the diff touches no warning code (the sink is filled independently of the error variant), and the Rust network test still asserts the finished `add git remote`'s identity warning (`clone_init.rs`), which the envelope carries by the unchanged `creation_envelope`.
+  - `[false]` `[reject]` (blind 10) the ledger was closed before the review finished — the cited fix commit 24ce688 is the fix; finalisation adds the review-patch commit to the ledger line.
+  - `[low]` `[reject]` (blind 11) the uncreatable-destination wire test hardcodes `/nonexistent/...` — the same pattern the existing `tests/repo.rs:110` test uses; the gate never runs as root on macOS.
+  - `[low]` `[patch]` (blind 12) `zanshin_ffi::JJ_INVALID_INPUT` written as a full path while `JJ_NETWORK_ERROR` is imported — imported in the `use` list (bd0c7bc).
+  - `[false]` `[reject]` (blind 13) the FFI remote-name test covers only `git` — the wire mapping is per variant (`RepoError::InvalidInput`), and both names are asserted on that variant in `clone_init.rs`; a second wire case adds no witness.
+
 ## Design Notes
 
 Why a new `RepoError` variant rather than reusing `MutateError::NetworkError`: creation paths return `RepoError` (`CreationOutcome`), and `map_repo_err` is the single wire mapping for them; one variant + one arm mirrors `DestinationNotEmpty`/`GitRepoExists` from Story 9.20.
@@ -93,3 +120,43 @@ Why only `Subprocess`: it is exactly `git_fetch`'s rule for the same jj-lib call
 - `cargo test -p zanshin-jj --test clone_init --test repo --test api_stability` -- expected: pass.
 - `cargo test -p zanshin-ffi --test repo_ffi --test ffi_abi_doc_sync` and `cargo test -p zanshin-ffi --lib repo::` -- expected: pass.
 - `cargo make test` (repo root, unpiped, synchronous, long timeout) -- expected: exit 0.
+
+## Auto Run Result
+
+Status: done (2026-10-20). Blocking condition: none.
+
+**Items handed to this closing run.**
+1. **Clone failures are untyped on the wire — fixed** (commit `24ce688c436063e4b859729960ec91f6148355da`, review patches `bd0c7bc695f2579c6476f701a5e151256b63ed3c`).
+   - Verified first: `configure_remote` and `fetch_new_remote` (`crates/zanshin-jj/src/creation.rs`) sent every failure through `clone_failed` → `RepoError::CloneFailed` → `jj.jj_lib_error` (`crates/zanshin-ffi/src/repo.rs` `map_repo_err`), while `zanshin_git_fetch` already typed the same jj-lib failure as `jj.network_error`.
+   - Now: the clone's `git` subprocess failures (`GitFetchError::Subprocess` from the fetch and from the default-branch query `git remote show`) are the new `RepoError::NetworkError` → `jj.network_error`, with jj-lib's message and its cause in `context`; a remote name jj refuses (`GitRemoteManagementError::RemoteName`: reserved `git`, a slash, a name gix rejects) is `RepoError::InvalidInput` → `jj.invalid_input`; everything else stays `jj.jj_lib_error`. Steps, ordering, clean-up scope and warnings are unchanged.
+
+**Summary.** One new `RepoError` variant and its FFI arm, two error-mapping fns in `creation.rs`, docs and tests. No `.fbs`, Dart API, push, fetch or init change.
+
+**Files changed:**
+- `crates/zanshin-jj/src/repo.rs` — `RepoError::NetworkError`; `CloneFailed` / `InvalidInput` docs; `Repo::clone` `# Errors`.
+- `crates/zanshin-jj/src/creation.rs` — `fetch_error`, `add_remote_error`; inline test for the arms that stay `CloneFailed`.
+- `crates/zanshin-ffi/src/repo.rs` — `map_repo_err` `NetworkError` → `jj.network_error`; inline test; `zanshin_repo_clone` `# Errors`; regenerated `zanshin_ffi.h` / `bindings.dart` (doc comments only).
+- `packages/zanshin_core/lib/src/ffi/repo.dart` — `zanshinRepoClone`'s error list.
+- Tests: `crates/zanshin-jj/tests/{clone_init,repo,api_stability}.rs` (flipped to the typed variants, a default-branch-query witness, the `NetworkError` pin), `crates/zanshin-ffi/tests/repo_ffi.rs` (one wire test per class + the unchanged uncreatable-destination row), `packages/zanshin_core/test/worker/creation_test.dart` (reserved remote name → `jj.invalid_input`, real cdylib).
+- Docs: `docs/rust-error-codes.md` (`jj.network_error` row: clone emission, deliberate observable change; `jj.invalid_input` row: clone remote name), `docs/ffi-abi.md` (`zanshin_repo_clone` row).
+- `coverage-baseline.txt` — `creation.rs` 96.59 → 96.74 (raised by the gate).
+- Tracking: `deferred-work.md` (the item marked RESOLVED), this spec. No new deferrals, so no "Surfaced in the closing run of Story 9.20" section was added.
+
+**Deviations from the spec (Spec Change Log).** The `not-a-real-url://nope` source fails in the git subprocess, not in gix, so those two `tests/repo.rs` tests now witness `NetworkError` (renamed).
+
+**Review findings.** 22 findings (high 0, medium 0, low 15, false 7, maybe-false 0); the edge-case layer reported none.
+- **Patched, 6 entries (all low):** the default-branch-query witness (verification-gap 1, blind 4; mutation-checked); the Dart wrapper's error list (verification-gap other 1, intent 6, blind 6); the reason keeps its cause + doc wording (blind 3); fetch failures that stay `jj.jj_lib_error` named in the docs (blind 5); the registry row's "no operation" qualified and the remap marked a deliberate observable change, ffi-abi Story column (blind 7a, blind 8); the `JJ_INVALID_INPUT` import (blind 12). Applied by the implementation subagent on re-engagement.
+- **Deferred:** none.
+- **Rejected:** network class not witnessed in Dart (git child reaped by the VM); no auth-failure witness (same `External` arm); `jj.network_error` covering `Wait` / `Spawn*` / unknown schemes (×3 — the ledger's named mapping and `git_fetch`'s rule; `GitSubprocessError` is not nameable outside jj-lib); the shared `jj.invalid_input` "for a mutation" wording (pre-existing, mismatches most emitters); the hardcoded `/nonexistent` path (existing pattern, no root runs).
+- **False:** Auto Run Result missing (mid-run); striking the ledger entry (ledger convention, not a re-mirror); renamed tests out of scope (they asserted the changed codes); warnings unasserted over FFI (no warning code touched; Rust witness stands); ledger closed early (fix commit correct; patch commit added at finalisation); only `git` over the wire (per-variant mapping).
+
+**Follow-up review recommendation:** false — this first pass patched 6 entries, all low (patched counts: high 0, medium 0, low 6).
+
+**Verification:**
+- Implementation run: `cargo test -p zanshin-jj --test clone_init --test repo --test api_stability`, `--lib creation::`, `cargo test -p zanshin-ffi --test repo_ffi --test ffi_abi_doc_sync`, `--lib repo::` pass; `cargo make test` exit 0 on `24ce688` (≈ 890 s).
+- Orchestrator, on the patched tree (`bd0c7bc`): the targeted commands above pass; mutation check (default-branch call site reverted to `clone_failed` → the new test fails; reverted). The gate plan was "every step" (`coverage-baseline.txt` changed); each of its 29 tasks (incl. `gate-plan` and `gate-stamp`) ran as its own `cargo make --allow-private <task>` (one `cargo make test` exceeds this session's 10-minute foreground limit): clippy, fmt, cargo-doc, deny, hygiene, jj-adapter-hygiene, the core/app/shell/settings/ui analyze/format/test steps (app 743, zanshin_core 867 tests passed), `gate-coverage` exit 0 (held at 99.07 %, every extern covered, baseline unchanged), then `gate-stamp`.
+- Matrix audit: Unreachable source — `clone_init.rs` (missing path, plain directory with the identity warning, empty `-b` list), `tests/repo.rs`, `repo_ffi.rs` wire test; Invalid remote name — `clone_init.rs` (`git`, `a/b`), `repo_ffi.rs`, `creation_test.dart`; Uncreatable destination — `tests/repo.rs`, `repo_ffi.rs`; Successful clone — the existing `clone_init.rs` / oracle clone tests (all ran and passed).
+
+**Residual risks:**
+- A GUI branching on `jj.network_error` for clone also sees "git not runnable" and the Dart-VM child-reaping `Wait` failure under that code (same as `zanshin_git_fetch`); the reason text distinguishes them.
+- The gate's run of this tree was step by step, not one `cargo make test` invocation (same tasks, same plan).
