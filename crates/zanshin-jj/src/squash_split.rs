@@ -112,7 +112,9 @@ pub struct SplitOptions {
     /// one: the CLI's no-paths default is its interactive diff editor.
     pub paths: Vec<String>,
     /// `-m`, repeatable: the SELECTED commit's description; the other keeps the original one.
-    /// `None` is no `-m` (both keep the original description).
+    /// `None` is no `-m`: both get what the CLI's editor holds saved unchanged — their description
+    /// with `templates.commit_trailers` added, rendered through `templates.draft_commit_description`
+    /// (`template-aliases.default_commit_description` for an undescribed target; Story 9.51).
     pub message: Option<Vec<String>>,
     /// `-p/--parallel`: the two commits become siblings instead of parent and child.
     /// Conflicts with `onto`/`insert_after`/`insert_before`.

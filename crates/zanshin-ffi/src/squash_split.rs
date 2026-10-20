@@ -124,7 +124,9 @@ fn read_split_request(data: *const u8, len: usize) -> Result<SplitOptions, FfiEr
 /// - `jj.change_not_found` — `revision`, a `from` entry or `into` is malformed, carried by no
 ///   VISIBLE commit, or divergent; the id in `context`.
 /// - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
-/// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
+/// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve; or
+///   (Story 9.51) `templates.commit_trailers` or (the editor case) `templates.draft_commit_description`
+///   does not parse or render — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
@@ -170,7 +172,9 @@ pub unsafe extern "C" fn zanshin_squash(handle: u64, data: *const u8, len: usize
 /// - `jj.change_not_found` — `revision`, a `from` entry or `into` does not resolve; the id in
 ///   `context`.
 /// - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
-/// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
+/// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve; or
+///   (Story 9.51) `templates.commit_trailers` or (the editor case) `templates.draft_commit_description`
+///   does not parse or render — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
@@ -224,7 +228,9 @@ pub unsafe extern "C" fn zanshin_squash_plan(handle: u64, data: *const u8, len: 
 ///   commit, or divergent; the id in `context`.
 /// - `jj.immutable` — the target, or a child the location would rewrite, is immutable.
 /// - `jj.config_error` — `split.legacy-bookmark-behavior` is not a boolean, or the config or its
-///   `immutable_heads()` alias does not read or resolve.
+///   `immutable_heads()` alias does not read or resolve; or (Story 9.51) `templates.commit_trailers`
+///   or (without `message`) `templates.draft_commit_description` does not parse or render —
+///   the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///

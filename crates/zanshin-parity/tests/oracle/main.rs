@@ -180,6 +180,16 @@ parity!(
     split_editor_default_description,
     push_change_custom_template,
     push_change_empty_template,
+    squash_use_destination_trailers,
+    squash_single_description_trailers,
+    split_editor_undescribed_trailers,
+    split_parallel_editor_trailers,
+    commit_empty_message_trailers,
+    workspace_add_no_message_trailers,
+    describe_environment_trailers,
+    squash_broken_draft_template,
+    push_change_shortest_template,
+    push_change_broken_template,
 );
 
 /// Every scenario id the table and the creation list define.
@@ -194,7 +204,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 144);
+    assert_eq!(SCENARIO_IDS.len(), 154);
 }
 
 #[test]

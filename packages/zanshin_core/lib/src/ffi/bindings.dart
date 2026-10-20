@@ -335,7 +335,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_change(
 /// - `jj.invalid_input` — a `paths` entry is not a valid repo path, or an
 /// `experimental-advance-branches` pattern does not parse; detail in `context`.
 /// - `jj.config_error` — an `experimental-advance-branches` list is not a list of strings, or the
-/// config does not read.
+/// config does not read; or (a non-empty message, Story 9.51) `templates.commit_trailers` does
+/// not parse or render — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
@@ -665,6 +666,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_config_unset(
 /// - `jj.config_error` — the repo's jj config, or its
 /// `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
 /// immutable set is unknown; detail in `context`.
+/// Or (Story 9.51) a non-empty `templates.commit_trailers` (parsed whatever the description)
+/// does not parse or renders no valid trailer block, or `[template-aliases]` /
+/// `revsets.short-prefixes` is broken — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 /// the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -1777,7 +1781,8 @@ external int zanshin_network_token();
 /// `import git head`), and the partial `precondition` says which. Or (one parent) an
 /// `experimental-advance-branches` key is not a list of strings (Story 9.49 closing run), or
 /// (`-A`/`-B`) the `revset-aliases."immutable_heads()"` alias does not resolve (Story 9.48);
-/// nothing is written.
+/// nothing is written. Or (Story 9.51) a non-empty `templates.new_description` — or, for a
+/// non-empty description, `templates.commit_trailers` — does not parse or render; the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 /// the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -2303,7 +2308,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_snapshot(
 /// commit, or divergent; the id in `context`.
 /// - `jj.immutable` — the target, or a child the location would rewrite, is immutable.
 /// - `jj.config_error` — `split.legacy-bookmark-behavior` is not a boolean, or the config or its
-/// `immutable_heads()` alias does not read or resolve.
+/// `immutable_heads()` alias does not read or resolve; or (Story 9.51) `templates.commit_trailers`
+/// or (without `message`) `templates.draft_commit_description` does not parse or render —
+/// the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
@@ -2353,7 +2360,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_split(
 /// - `jj.change_not_found` — `revision`, a `from` entry or `into` is malformed, carried by no
 /// VISIBLE commit, or divergent; the id in `context`.
 /// - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
-/// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
+/// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve; or
+/// (Story 9.51) `templates.commit_trailers` or (the editor case) `templates.draft_commit_description`
+/// does not parse or render — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
@@ -2393,7 +2402,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_squash(
 /// - `jj.change_not_found` — `revision`, a `from` entry or `into` does not resolve; the id in
 /// `context`.
 /// - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
-/// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
+/// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve; or
+/// (Story 9.51) `templates.commit_trailers` or (the editor case) `templates.draft_commit_description`
+/// does not parse or render — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
@@ -2521,6 +2532,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_undo(
 /// - `jj.revset_parse_error` / `jj.revset_resolution_error` — a `revisions` entry.
 /// - `jj.config_error` — the pre-verb snapshot found the config unreadable or a knob it reads
 /// wrongly typed, or `git.colocate` / `git.executable-path` is wrongly typed; key in `context`.
+/// Or (a non-empty message, Story 9.51) `templates.commit_trailers` does not parse or render —
+/// the CLI's text in `context`; the workspace and its `add workspace` operation exist by then, as
+/// in the CLI.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the current working copy stale.
 /// - `jj.no_working_copy` — the new workspace has no `@` to lock for its sparse patterns.
 /// - `jj.concurrent_working_copy` — the new working copy's recorded tree is not its `@`'s.

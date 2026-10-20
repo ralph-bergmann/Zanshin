@@ -1039,6 +1039,9 @@ pub unsafe extern "C" fn zanshin_repo_convert(path: *const c_char) -> *mut Zansh
 /// - `jj.config_error` — the repo's jj config, or its
 ///   `revset-aliases."immutable_heads()"`, could not be read/parsed/resolved, so the
 ///   immutable set is unknown; detail in `context`.
+///   Or (Story 9.51) a non-empty `templates.commit_trailers` (parsed whatever the description)
+///   does not parse or renders no valid trailer block, or `[template-aliases]` /
+///   `revsets.short-prefixes` is broken — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
@@ -1116,7 +1119,8 @@ pub unsafe extern "C" fn zanshin_describe(
 ///   `import git head`), and the partial `precondition` says which. Or (one parent) an
 ///   `experimental-advance-branches` key is not a list of strings (Story 9.49 closing run), or
 ///   (`-A`/`-B`) the `revset-aliases."immutable_heads()"` alias does not resolve (Story 9.48);
-///   nothing is written.
+///   nothing is written. Or (Story 9.51) a non-empty `templates.new_description` — or, for a
+///   non-empty description, `templates.commit_trailers` — does not parse or render; the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.

@@ -667,6 +667,37 @@ pub fn push_scenarios() -> Vec<Scenario> {
             |repo, _, _| push_change_at(repo),
             |_| strings(&["git", "push", "-c", "@"]),
         ),
+        // The template environment's id-prefix context: `shortest(8)` disambiguated within a custom
+        // `revsets.short-prefixes` (8 characters at least, so the two sides' random change ids
+        // compare by label).
+        push(
+            "push_change_shortest_template",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&[
+                    "config",
+                    "set",
+                    "--repo",
+                    "templates.git_push_bookmark",
+                    "'\"push-\" ++ change_id.shortest(8)'",
+                ]),
+                Step::Jj(&["config", "set", "--repo", "revsets.short-prefixes", "@"]),
+            ],
+            |repo, _, _| push_change_at(repo),
+            |_| strings(&["git", "push", "-c", "@"]),
+        ),
+        // A template that does not parse refuses.
+        push(
+            "push_change_broken_template",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&["config", "set", "--repo", "templates.git_push_bookmark", "nope("]),
+            ],
+            |repo, _, _| push_change_at(repo),
+            |_| strings(&["git", "push", "-c", "@"]),
+        ),
     ]
 }
 

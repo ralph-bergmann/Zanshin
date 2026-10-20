@@ -315,6 +315,38 @@ const UNDESCRIBED_DEFAULT_DESCRIPTION_EDITOR: &[Step] = &[
     EDITOR_STEP,
 ];
 
+/// `C` undescribed, then [`TRAILERS_STEP`]: squashing `@` into B leaves ONE non-empty description
+/// (Story 9.51 review).
+const UNDESCRIBED_C_TRAILERS: &[Step] = &[Step::Jj(&["describe", "-m", ""]), TRAILERS_STEP];
+
+/// An undescribed `@` on C holding `x.txt` and `y.txt`, [`TRAILERS_STEP`] and [`EDITOR_STEP`]
+/// (Story 9.51 review).
+const UNDESCRIBED_TRAILERS_EDITOR: &[Step] = &[
+    Step::Jj(&["new"]),
+    Step::Write("x.txt", "x\n"),
+    Step::Write("y.txt", "y\n"),
+    Step::Jj(&["util", "snapshot"]),
+    TRAILERS_STEP,
+    EDITOR_STEP,
+];
+
+/// A `templates.commit_trailers` built from the template ENVIRONMENT — the immutable set and the
+/// working copy (Story 9.51 review).
+const ENVIRONMENT_TRAILERS: &[Step] = &[Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "templates.commit_trailers",
+    "concat(\"Imm: \", if(immutable, \"y\", \"n\"), \"\\nWc: \", if(current_working_copy, \"y\", \"n\"), \"\\n\")",
+])];
+
+/// A `templates.draft_commit_description` that does not parse, plus [`EDITOR_STEP`] (Story 9.51
+/// review).
+const BROKEN_DRAFT_EDITOR: &[Step] = &[
+    Step::Jj(&["config", "set", "--repo", "templates.draft_commit_description", "nope("]),
+    EDITOR_STEP,
+];
+
 /// `Repo::squash` with `options`.
 fn squash_outcome(repo: &mut zanshin_jj::Repo, options: &SquashOptions) -> Outcome {
     let result = repo.squash(options);
@@ -1780,6 +1812,94 @@ pub fn scenarios() -> Vec<Scenario> {
                     split_outcome(repo, &options)
                 },
                 |_| args(&["split", "x.txt"]),
+            )
+        },
+        // ── Story 9.51 review: the remaining trailer branches, the environment, refusals ──
+        Scenario {
+            setup: TRAILERS,
+            ..simple(
+                "squash_use_destination_trailers",
+                |repo, _, _| {
+                    let options = SquashOptions {
+                        use_destination_message: true,
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |_| args(&["squash", "-u"]),
+            )
+        },
+        Scenario {
+            setup: UNDESCRIBED_C_TRAILERS,
+            ..simple(
+                "squash_single_description_trailers",
+                |repo, _, _| squash_outcome(repo, &SquashOptions::default()),
+                |_| args(&["squash"]),
+            )
+        },
+        Scenario {
+            setup: UNDESCRIBED_TRAILERS_EDITOR,
+            ..simple(
+                "split_editor_undescribed_trailers",
+                |repo, _, _| {
+                    let options = SplitOptions {
+                        message: None,
+                        ..split_first(&["x.txt"])
+                    };
+                    split_outcome(repo, &options)
+                },
+                |_| args(&["split", "x.txt"]),
+            )
+        },
+        Scenario {
+            setup: C2_EDITOR_TRAILERS,
+            ..simple(
+                "split_parallel_editor_trailers",
+                |repo, _, _| {
+                    let options = SplitOptions {
+                        message: None,
+                        ..split_parallel()
+                    };
+                    split_outcome(repo, &options)
+                },
+                |_| args(&["split", "--parallel", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: TRAILERS,
+            ..simple(
+                "commit_empty_message_trailers",
+                |repo, _, _| commit_outcome(repo, &[], &[""]),
+                |_| args(&["commit", "-m", ""]),
+            )
+        },
+        Scenario {
+            init: NO_COLOCATE,
+            setup: TRAILERS,
+            extra: Some(ws2_read_back),
+            ..simple(
+                "workspace_add_no_message_trailers",
+                |repo, _, _| add_outcome(repo, None, &[], &[], None, SparseInheritance::Copy),
+                |_| args(&["workspace", "add", "../ws2"]),
+            )
+        },
+        Scenario {
+            setup: ENVIRONMENT_TRAILERS,
+            ..simple(
+                "describe_environment_trailers",
+                |repo, _, s| {
+                    let result = repo.describe(s.change("B"), "T\n");
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["describe", "@-", "-m", "T"]),
+            )
+        },
+        Scenario {
+            setup: BROKEN_DRAFT_EDITOR,
+            ..simple(
+                "squash_broken_draft_template",
+                |repo, _, _| squash_outcome(repo, &SquashOptions::default()),
+                |_| args(&["squash"]),
             )
         },
     ]

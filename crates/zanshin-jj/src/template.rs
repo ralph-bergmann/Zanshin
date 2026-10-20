@@ -175,7 +175,9 @@ impl<'c> Templates<'c> {
     /// # Errors
     ///
     /// - [`MutateError::Config`] — the environment does not load (see [`Templates::env`]), or
-    ///   the template does not parse: "Failed to parse template: {kind}".
+    ///   the template does not parse: "Failed to parse template: {kind}", then the CLI's
+    ///   `Caused by:` chain one entry per line (the error with its position, then every source —
+    ///   e.g. the fault inside an alias expansion).
     pub(crate) fn parse_commit<'a>(
         &'a self,
         repo: &'a dyn JjRepo,
@@ -208,8 +210,12 @@ impl<'c> Templates<'c> {
         );
         let mut diagnostics = TemplateDiagnostics::new();
         let renderer = template_builder::parse(&language, &mut diagnostics, text, &env.aliases).map_err(|e| {
+            // The CLI's headline, then its `Caused by:` chain — the error (with its position) and
+            // every source below it, so the fault inside an alias expansion is named.
+            let mut lines = vec![format!("Failed to parse template: {}", e.kind())];
+            lines.extend(warning::error_chain_lines(&e));
             MutateError::Config {
-                reason: format!("Failed to parse template: {}", e.kind()),
+                reason: lines.join("\n"),
             }
         })?;
         sink.extend(warning::parse_diagnostics(
@@ -610,7 +616,24 @@ mod tests {
                 .trailers(tx.repo(), &mut Warnings::default())
                 .map(|r| r.is_some()),
         );
-        assert_eq!(reason, "Failed to parse template: Syntax error");
+        assert_eq!(reason.lines().next(), Some("Failed to parse template: Syntax error"));
+
+        // A fault inside an alias expansion: the headline names the alias, the cause the fault.
+        let f = fixture("templates.commit_trailers = 'broken'\n[template-aliases]\nbroken = 'nope('\n");
+        let head = f.head();
+        let (tx, _) = detached(&head, "");
+        let reason = config_reason(
+            f.templates()
+                .trailers(tx.repo(), &mut Warnings::default())
+                .map(|r| r.is_some()),
+        );
+        assert_eq!(
+            reason.lines().next(),
+            Some("Failed to parse template: In alias `broken`")
+        );
+        // The inner fault, with its position in the alias definition.
+        assert!(reason.contains("1 | nope("), "{reason}");
+        assert!(reason.contains("expected <identifier> or <expression>"), "{reason}");
     }
 
     /// Trailers that are no trailer block refuse with jj-lib's text.

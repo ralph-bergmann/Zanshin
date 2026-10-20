@@ -72,7 +72,8 @@ fn read_commit_request(data: *const u8, len: usize) -> Result<CommitOptions, Ffi
 /// - `jj.invalid_input` — a `paths` entry is not a valid repo path, or an
 ///   `experimental-advance-branches` pattern does not parse; detail in `context`.
 /// - `jj.config_error` — an `experimental-advance-branches` list is not a list of strings, or the
-///   config does not read.
+///   config does not read; or (a non-empty message, Story 9.51) `templates.commit_trailers` does
+///   not parse or render — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///

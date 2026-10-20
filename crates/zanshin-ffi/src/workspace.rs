@@ -361,6 +361,9 @@ pub unsafe extern "C" fn zanshin_workspace_root(handle: u64, data: *const u8, le
 /// - `jj.revset_parse_error` / `jj.revset_resolution_error` — a `revisions` entry.
 /// - `jj.config_error` — the pre-verb snapshot found the config unreadable or a knob it reads
 ///   wrongly typed, or `git.colocate` / `git.executable-path` is wrongly typed; key in `context`.
+///   Or (a non-empty message, Story 9.51) `templates.commit_trailers` does not parse or render —
+///   the CLI's text in `context`; the workspace and its `add workspace` operation exist by then, as
+///   in the CLI.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the current working copy stale.
 /// - `jj.no_working_copy` — the new workspace has no `@` to lock for its sparse patterns.
 /// - `jj.concurrent_working_copy` — the new working copy's recorded tree is not its `@`'s.

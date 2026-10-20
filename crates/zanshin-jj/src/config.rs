@@ -130,6 +130,7 @@
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock};
 use std::time::SystemTime;
 
 use jj_lib::backend::{BackendInitError, BackendLoadError};
@@ -244,6 +245,9 @@ trunk() | tags() | untracked_remote_bookmarks() | untracked_remote_tags()
 'hidden()' = '~visible()'
 "#;
 
+/// [`template_defaults_layer`], built on first use and shared by every config load.
+static TEMPLATE_DEFAULTS: LazyLock<Arc<ConfigLayer>> = LazyLock::new(|| Arc::new(template_defaults_layer()));
+
 /// The `templates.*` keys Zanshin renders (Story 9.51) — the only ones [`template_defaults_layer`]
 /// takes from jj-cli's defaults.
 const TEMPLATE_KEYS: [&str; 4] = [
@@ -271,6 +275,9 @@ const TEMPLATE_TABLES: [[&str; 2]; 3] = [["template-aliases", ""], ["diff", "col
 /// Every entry is copied as it is (an alias as a plain string or a table with a `definition` key),
 /// so [`crate::revset::build_aliases_map`] reads the CLI's alias table exactly as the CLI's alias
 /// loader does.
+///
+/// Built once per process ([`TEMPLATE_DEFAULTS`]): the result is static, and every config load
+/// would otherwise re-parse all of jj-cli's default TOML.
 fn template_defaults_layer() -> ConfigLayer {
     let mut layer = ConfigLayer::empty(ConfigSource::Default);
     for cli_layer in jj_cli::config::default_config_layers() {
@@ -934,7 +941,7 @@ pub(crate) fn load_raw(
     let builtin = ConfigLayer::parse(ConfigSource::Default, BUILTIN_CONFIG_TOML)
         .map_err(|e| ConfigError::Load { reason: describe(&e) })?;
     config.add_layer(builtin);
-    config.add_layer(template_defaults_layer());
+    config.add_layer(Arc::clone(&TEMPLATE_DEFAULTS));
 
     add_path_layers(
         &mut config,

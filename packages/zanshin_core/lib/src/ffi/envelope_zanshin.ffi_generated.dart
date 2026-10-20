@@ -1846,7 +1846,10 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
 ///    paths              repo-relative PREFIXES, at least one (no paths = the CLI's interactive
 ///                       diff editor, refused as `jj.invalid_input`)
 ///    message            the CLI's `-m` for the SELECTED commit; ABSENT = no `-m` (both commits
-///                       keep the original description)
+///                       get what the CLI's editor holds saved unchanged: their description with
+///                       `templates.commit_trailers` added, rendered through
+///                       `templates.draft_commit_description` — `default_commit_description` for an
+///                       undescribed target; Story 9.51)
 ///    parallel           `--parallel`; may NOT be combined with a location
 ///    onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`: ABSENT = the flag not
 ///                       given, present-EMPTY = given with no revision (refused: no parent)
