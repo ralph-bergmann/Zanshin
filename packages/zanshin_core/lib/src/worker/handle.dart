@@ -1257,13 +1257,15 @@ final class RepoHandle {
   /// A stale working copy is checked out onto the fresh `@` (in a colocated
   /// workspace after a `reset git head` operation); one whose operation was lost
   /// gets a recovery commit holding the files on disk; a fresh one reports
-  /// `StaleRecoveryOutcome.notStale`. A dirty working copy is snapshotted first,
-  /// so nothing on disk is lost. [lastPrecondition] then holds the recovery's
-  /// trailing snapshot report.
+  /// `StaleRecoveryOutcome.notStale`. A dirty working copy is snapshotted first:
+  /// its edits are kept in a (divergent) commit, and the working copy then holds
+  /// the fresh `@`'s files, so those edits leave the disk — as in the CLI.
+  /// [lastPrecondition] then holds the recovery's trailing snapshot report.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed]; throws
   /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.concurrent_working_copy`, `jj.config_error`, `jj.jj_lib_error`).
+  /// `jj.concurrent_working_copy`, `jj.config_error`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
   Future<StaleRecovery> workspaceUpdateStale() {
     if (_closed) {
       throw StateError('RepoHandle is already closed');

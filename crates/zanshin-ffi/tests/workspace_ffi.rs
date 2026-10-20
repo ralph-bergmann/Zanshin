@@ -715,6 +715,14 @@ fn workspace_add_round_trips_its_result() {
     assert!(!result.git_worktree_created());
     let mutation = result.mutation().expect("mutation");
     assert_eq!(mutation.new_change_ids().map(|v| v.len()), Some(1));
+    // `message_paragraphs` crossed the wire: the new `@` carries the `-m` description.
+    let new_at = mutation.working_copy_change_id().expect("new @").to_owned();
+    let description = zanshin_jj::Repo::open(&dest)
+        .expect("open the new workspace")
+        .get_change(&zanshin_jj::ChangeId(new_at))
+        .expect("new @")
+        .description;
+    assert_eq!(description, "T\n");
     assert!(result.checkout().is_some());
     assert!(
         env.precondition().is_some(),

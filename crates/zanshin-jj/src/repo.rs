@@ -1780,6 +1780,9 @@ impl Repo {
     ///   is not the stale `@`'s ("Concurrent working copy operation. Try again.").
     /// - [`crate::MutateError::Precondition`] wrapping [`crate::PreconditionError::Config`] — the
     ///   config does not read, or a value a snapshot reads is wrong-typed.
+    /// - [`crate::MutateError::Precondition`] wrapping
+    ///   [`crate::PreconditionError::StaleWorkingCopy`] — another operation made the working copy
+    ///   stale again before the trailing snapshot.
     /// - [`crate::MutateError::Precondition`] wrapping [`crate::PreconditionError::Backend`] —
     ///   the workspace has no `@`, or any underlying jj-lib failure.
     pub fn workspace_update_stale(&mut self) -> Result<crate::StaleRecovery, crate::MutateError> {

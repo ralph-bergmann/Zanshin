@@ -21,7 +21,9 @@ use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
-use zanshin_jj::{Backend, ChangeId, Repo, SparseInheritance, StaleRecoveryOutcome, WarningKind};
+use zanshin_jj::{
+    Backend, ChangeId, MutateError, PreconditionError, Repo, SparseInheritance, StaleRecoveryOutcome, WarningKind,
+};
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
     // SAFETY: every test calls `pin_env()` FIRST; the `LazyLock` blocks them all until this
@@ -308,6 +310,73 @@ fn a_colocated_recovery_resets_git_head_before_the_checkout() {
     assert!(
         git(&["status", "--porcelain", "--untracked-files=no"], &fx.root).is_empty(),
         "index reset"
+    );
+}
+
+/// Colocated, but `@`'s first parent did not move: Git HEAD already matches, so no
+/// `reset git head` operation is committed (`if tx.repo().has_changes()`, `cli_util.rs:684-706`
+/// @ v0.46.0).
+#[test]
+fn a_colocated_recovery_with_an_unmoved_parent_writes_no_reset() {
+    let (fx, mut repo) = two_workspaces(true, "");
+    make_default_stale(&fx);
+    let head = head_op(&fx.root);
+
+    let recovery = repo.workspace_update_stale().expect("update-stale");
+
+    assert_eq!(recovery.outcome, StaleRecoveryOutcome::Updated);
+    assert_eq!(recovery.git_head_reset_op_id, None);
+    assert_eq!(head_op(&fx.root), head, "no operation at all");
+}
+
+/// A recovery that fails keeps its code and leaves its (partial) trailing report for the
+/// envelope: a wrong-typed snapshot knob refuses at the stale snapshot.
+#[test]
+fn a_failed_recovery_reports_its_code_and_a_report() {
+    let (fx, mut repo) = two_workspaces(false, "");
+    make_default_stale(&fx);
+    fs::write(
+        fx.root.join(".jj").join("repo").join("config.toml"),
+        "snapshot.max-new-file-size = true\n",
+    )
+    .expect("repo config");
+
+    let err = repo.workspace_update_stale().expect_err("wrong-typed knob");
+
+    assert!(
+        matches!(
+            &err,
+            MutateError::Precondition(PreconditionError::Config { reason })
+                if reason.contains("snapshot.max-new-file-size")
+        ),
+        "{err:?}"
+    );
+    assert!(
+        repo.take_precondition().is_some(),
+        "the error envelope carries a report"
+    );
+}
+
+/// The auto arm on a DIRTY stale working copy: the edit is snapshotted at the working copy's own
+/// operation (then reconciled), so the call reports that it wrote.
+#[test]
+fn auto_update_stale_snapshots_a_dirty_working_copy_first() {
+    let (fx, mut repo) = two_workspaces(false, "snapshot.auto-update-stale = true\n");
+    make_default_stale(&fx);
+    fs::write(fx.root.join("g.txt"), "dirty").expect("write");
+
+    repo.status().expect("status runs on the recovered state");
+
+    let report = repo.take_precondition().expect("report");
+    assert!(
+        report.was_snapshot_taken,
+        "the dirty snapshot and its reconcile were written"
+    );
+    let recovery = report.stale_recovery.expect("recovered");
+    assert_eq!(recovery.outcome, StaleRecoveryOutcome::Updated);
+    assert_eq!(
+        load(&fx.root).1.operation().metadata().description,
+        "reconcile divergent operations"
     );
 }
 

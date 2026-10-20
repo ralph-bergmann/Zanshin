@@ -411,6 +411,8 @@ pub unsafe extern "C" fn zanshin_workspace_add(handle: u64, data: *const u8, len
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `jj.concurrent_working_copy` — the working copy's recorded tree is not the stale `@`'s.
 /// - `jj.config_error` — the config does not read, or a value a snapshot reads is wrong-typed.
+/// - `jj.stale_working_copy` — another operation made the working copy stale again before the
+///   trailing snapshot.
 /// - `jj.jj_lib_error` — the workspace has no `@`, or any underlying jj-lib failure.
 ///
 /// # Safety

@@ -1827,7 +1827,8 @@ class ZanshinWorker {
   /// FlatBuffers `Envelope<StaleRecovery>` bytes.
   ///
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.concurrent_working_copy`, `jj.config_error`, `jj.jj_lib_error`).
+  /// `jj.concurrent_working_copy`, `jj.config_error`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
   /// Completes with a [StateError] after [close]; the close-guard [StateError]
   /// is delivered synchronously by [RepoHandle.workspaceUpdateStale].
   Future<repo_ffi_workspace.StaleRecovery> workspaceUpdateStale(int handleId) async {

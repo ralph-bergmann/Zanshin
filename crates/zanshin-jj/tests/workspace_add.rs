@@ -194,6 +194,25 @@ fn add_default_creates_a_sibling_workspace_on_ats_parents() {
         .map(|w| w.name)
         .collect();
     assert!(names.contains(&"ws2".to_owned()), "{names:?}");
+    // The workspace store records ws2's path relative to the repo: it resolves back to the
+    // destination (the canonicalisation trap `test_helpers::add_workspace` documents).
+    let recorded = repo.resolve_workspace_root(Some("ws2")).expect("ws2 root").value;
+    assert_eq!(fs::canonicalize(recorded).expect("recorded root exists"), ws2);
+}
+
+/// `revisions` are evaluated in the CURRENT workspace's context: `@` is this workspace's `@`.
+#[test]
+fn revisions_resolve_in_the_current_workspaces_context() {
+    let fx = init(Some(Backend::Git), "");
+    let mut repo = Repo::open(&fx.root).expect("open");
+    fs::write(fx.root.join("a.txt"), "a").expect("write");
+
+    repo.workspace_add("../ws2", None, &["@".to_owned()], &[], None, SparseInheritance::Copy)
+        .expect("add");
+
+    let default_at = wc_of(&fx.root, "default");
+    assert_eq!(wc_of(&fx.root, "ws2").parent_ids(), [default_at.id().clone()]);
+    assert!(fx.sibling("ws2").join("a.txt").is_file());
 }
 
 #[test]
@@ -293,6 +312,9 @@ fn a_bad_revset_refuses_with_the_revset_code() {
         )
         .expect_err("resolve");
     assert!(matches!(err, MutateError::RevsetResolutionError { .. }), "{err:?}");
+    // Resolved after the workspace exists (`add.rs:226-252` @ v0.46.0): it stays, as in the CLI.
+    assert!(fx.sibling("ws3").join(".jj").is_dir(), "the workspace exists");
+    assert_eq!(descriptions(&fx.root)[0], "add workspace 'ws3'");
 }
 
 #[test]
@@ -413,9 +435,16 @@ fn colocation_follows_the_flags_and_git_colocate() {
         matches!(&err, MutateError::Config { reason } if reason.contains("git.colocate")),
         "{err:?}"
     );
+    assert!(
+        fx.sibling("ws2").is_dir(),
+        "the directory is created first, as in the CLI"
+    );
 
     let fx = init(Some(Backend::Git), "git.colocate = \"never read\"\n");
     let mut repo = Repo::open(&fx.root).expect("open");
+    // Not colocated: the CLI's short-circuit never reads `git.colocate`.
+    let plain = add(&mut repo, "../plain").expect("git.colocate is not read");
+    assert!(!plain.git_worktree_created);
     let result = repo
         .workspace_add("../ws2", None, &[], &[], Some(true), SparseInheritance::Copy)
         .expect("add");
