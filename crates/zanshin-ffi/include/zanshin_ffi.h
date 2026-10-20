@@ -2401,7 +2401,8 @@ ZanshinBuf *zanshin_repo_convert(const char *path);
  *   immutable set is unknown; detail in `context`.
  *   Or (Story 9.51) a non-empty `templates.commit_trailers` (parsed whatever the description)
  *   does not parse or renders no valid trailer block, or `[template-aliases]` /
- *   `revsets.short-prefixes` is broken — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
+ *   `revsets.short-prefixes` is broken (that start-up refusal applies to every verb that
+ *   builds the start-up environment, not only the template verbs — 9.51's closing run) — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.

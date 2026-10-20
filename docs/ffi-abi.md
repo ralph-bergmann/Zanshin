@@ -154,7 +154,11 @@ the envelope has none) — when a failed handle-scoped call's error envelope car
 the same report `RepoHandle.lastPrecondition` holds (one without a report leaves
 `lastPrecondition` at the previous report while the exception's is `null`).
 A failed pre-verb snapshot is `jj.stale_working_copy`, `jj.config_error` or
-`jj.jj_lib_error`; every such symbol's row names all three.
+`jj.jj_lib_error`; every such symbol's row names all three. Before it, every such verb
+builds the CLI's start-up environment in the CLI's order (fileset, revset and template
+aliases, `immutable_heads()`, `revsets.short-prefixes`; Story 9.51's closing run): a
+broken one is `jj.config_error` with nothing written, whether or not the verb renders a
+template.
 
 With `snapshot.auto-update-stale = true` (Story 9.23) a stale working copy is not refused:
 the pre-verb snapshot runs the stale-working-copy recovery under its lock, reports it in
