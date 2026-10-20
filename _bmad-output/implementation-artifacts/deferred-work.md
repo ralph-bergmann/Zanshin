@@ -1662,9 +1662,9 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in Story 9.55 (bmad-build-auto, 2026-10-21)
 
-- **The three statements of the new test-environment rule disagree on who must call `pin_test_env()`.** Low.
+- ~~**The three statements of the new test-environment rule disagree on who must call `pin_test_env()`.**~~ — RESOLVED 2026-10-21 (console session, doc fix): CLAUDE.md and project-context.md now use the `main.rs` wording (every test that reads the environment through jj pins). Low.
   - CLAUDE.md's test-placement paragraph says every test that does not use `own_process!` pins; `_bmad-output/project-context.md` (Test layout) and `crates/zanshin-{jj,ffi}/tests/it/main.rs` say only tests that read the environment through jj (`detect`, `find_repo_root`, `api_stability`, `ffi_abi_doc_sync` do not pin). Deferred because the fix edits an agent-context file.
   - **Follow-up:** pick one wording (the `main.rs` one matches the code) and use it in CLAUDE.md and project-context.md.
-- **The `.claude/skills/story-loop/SKILL.md` gate-rule sentence Story 9.55 amended reads ambiguously.** Low.
+- ~~**The `.claude/skills/story-loop/SKILL.md` gate-rule sentence Story 9.55 amended reads ambiguously.**~~ — RESOLVED 2026-10-21 (console session, doc fix): reworded: all integration tests of `zanshin-jj`/`zanshin-ffi` are one target `it`, `--test it <module>::` selects one former file. Low.
   - `.claude/skills/story-loop/SKILL.md:79` — "`zanshin-jj`/`zanshin-ffi` have one, `--test it <module>::`" means that each crate has a single integration-test target `it`, filtered by module path. Agent-context file, so deferred.
   - **Follow-up:** reword the sentence to say that plainly.

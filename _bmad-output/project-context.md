@@ -328,7 +328,8 @@ the `zanshin-graph` lane crate was removed)*
   they test. Integration tests in each crate's `tests/` directory; `zanshin-jj` and
   `zanshin-ffi` build ONE integration-test binary each (Story 9.55): `tests/it/main.rs`
   plus one module per test file (`tests/it/<name>.rs`). The process environment there has
-  one writer, `test_helpers::pin_test_env()`; a test that needs a different environment (or
+  one writer, `test_helpers::pin_test_env()`, which every test that reads the environment
+  through jj calls first; a test that needs a different environment (or
   the FFI event sink) starts with `test_helpers::own_process!` and runs alone in a child
   process of the binary.
 - Dart unit tests in `app/test/` mirroring `lib/src/` layout.

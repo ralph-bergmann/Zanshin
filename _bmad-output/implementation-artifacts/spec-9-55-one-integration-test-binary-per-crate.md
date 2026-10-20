@@ -25,6 +25,8 @@ deferred:
     location: >-
       CLAUDE.md (Test placement paragraph)
     severity: low
+    resolved: >-
+      2026-10-21 — fixed in the console session (doc wording in CLAUDE.md / project-context.md / story-loop SKILL.md).
   - summary: >-
       The `.claude/skills/story-loop/SKILL.md` gate-rule sentence this story amended reads
       ambiguously ("`zanshin-jj`/`zanshin-ffi` have one, `--test it <module>::`").
@@ -35,6 +37,8 @@ deferred:
     location: >-
       .claude/skills/story-loop/SKILL.md:79
     severity: low
+    resolved: >-
+      2026-10-21 — fixed in the console session (doc wording in CLAUDE.md / project-context.md / story-loop SKILL.md).
 ---
 
 <intent-contract>
