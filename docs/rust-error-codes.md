@@ -135,7 +135,7 @@ loads (`git/init.rs:251-254`) — see `crates/zanshin-jj/src/convert.rs`'s modul
 | `jj.remote_url_duplicate` | `git/remote/add.rs:104-107` "Remote {name} already uses the same URL." | `git remote add` | — |
 | `jj.bookmark_target_empty` | `bookmark/create.rs:84-86` "Target revision is empty." | `bookmark create` | — |
 | `jj.bookmark_names_unmatched` | `bookmark/mod.rs:198-202` "No matching bookmarks for names: …" (exact names only) | `bookmark delete` | — |
-| `jj.bookmark_auto_track_existing` | `bookmark/create.rs:101-106` @ v0.46.0 "Auto-tracking bookmark that exists on the remote: {name}@{remote}", one per auto-tracked remote whose view already holds the name | `bookmark create` with `remotes.<r>.auto-track-bookmarks` / `auto-track-created-bookmarks` matching a created name (Story 9.54 closing run) | — |
+| `jj.bookmark_auto_track_existing` | `bookmark/create.rs:104-108` @ v0.46.0 "Auto-tracking bookmark that exists on the remote: {name}@{remote}", one per auto-tracked remote whose view already holds the name | `bookmark create` with `remotes.<r>.auto-track-bookmarks` / `auto-track-created-bookmarks` matching a created name (Story 9.54 closing run) | — |
 | `jj.absorb_path_skipped` | `absorb.rs:157` "Skipping {path}: {reason}", one per path | `absorb` | `AbsorbResult.skipped_paths` |
 | `jj.path_access_denied` | `file/show.rs:166-169`, `file/search.rs:111-114`, one per path | `file show`, `file search` | `FileContents.skipped`, `FileSearch.skipped` |
 | `jj.path_not_a_file` | `file/show.rs:193-196`, one per path | `file show` | `FileContents.skipped` |
@@ -184,8 +184,7 @@ These CLI warnings have no code, each for the reason given (and the story that o
 - **Fileset parse diagnostics** — jj-lib emits none (re-checked at v0.46.0: `revset.rs` is jj-lib's only `add_warning` caller).
 - **Name-pattern diagnostics** (bookmark / remote patterns) — jj-lib emits none (re-checked at v0.46.0, as above).
 - **`git fetch`'s "Ignored refspec", unmatched remotes and `--branch`** — Story 9.30 (fetch rework); the failed-ref NAMES of a fetch are a warning only, with no payload (deferred).
-- **`bookmark create` auto-track** — Stories 9.11 / 9.30.
-- **`In remotes.<r>.*` / `In name pattern` diagnostics** of the remote settings `clone` and the conversion's refs step read (`parse_remote_fetch_*`, `load_git_import_options`) — unreachable at jj-lib 0.44 and, re-checked, still at 0.46, which emit none. Owner: the next jj-lib pin bump re-checks it (the Story 9.0 / 9.0a pattern).
+- **`In remotes.<r>.*` / `In name pattern` diagnostics** of the remote settings `clone`, the conversion's refs step and `bookmark create` read (`parse_remote_fetch_*`, `load_git_import_options`, `parse_remote_auto_track_bookmarks_map_for_new_bookmarks`) — unreachable at jj-lib 0.44 and, re-checked, still at 0.46, which emit none. Owner: the next jj-lib pin bump re-checks it (the Story 9.0 / 9.0a pattern).
 - **Secure-config migration messages** on a freshly created `.jj/` — unreachable there (Story 9.37).
 - **`open`** — not a CLI command; it builds no start-up environment. `zanshin_repo_open` carries neither `precondition` nor `warnings`.
 - **cu:2277-2281 unresolved conflicts**, **cu:2437-2442 "workspace no longer exists"** (Zanshin errors after committing instead — a recorded divergence) and **`status`'s conflict lines** — status formatter output, not `ui.warning_*`.

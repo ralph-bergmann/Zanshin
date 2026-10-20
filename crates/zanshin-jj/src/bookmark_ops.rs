@@ -41,7 +41,7 @@
 //!   one is already in the contract: an unchanged `new_op_id` means nothing happened. The
 //!   WARNINGS — "Target revision is empty.", `warn_unmatched_local_bookmarks`' "No matching
 //!   bookmarks for names: …" (`bookmark/mod.rs:185-203`) and "Auto-tracking bookmark that exists
-//!   on the remote: …" (`create.rs:101-106` @ v0.46.0) — ride the call's warnings as
+//!   on the remote: …" (`create.rs:104-108` @ v0.46.0) — ride the call's warnings as
 //!   `jj.bookmark_target_empty` / `jj.bookmark_names_unmatched` (Story 9.32) /
 //!   `jj.bookmark_auto_track_existing`.
 
@@ -221,7 +221,7 @@ pub(crate) fn create(
         id = target_id.hex(),
     );
     // Read here, while `ctx` is not yet lent to the transaction, but refused only where the CLI
-    // parses (`create.rs:88-90`): after both guards and the empty-target warning.
+    // parses (`create.rs:89-91`): after both guards and the empty-target warning.
     let auto_track = crate::config::remote_auto_track_bookmarks_for_new_bookmarks(&ctx.config);
     let finished = finish_or_no_op_at(workspace, readonly, &description, ctx, |tx, sink| {
         // Both guards for EVERY name run before ANY write, and returning `Err` from here
@@ -248,7 +248,7 @@ pub(crate) fn create(
         }
         let auto_track = auto_track.map_err(mutate::cfg)?;
         // The CLI reads "has a view" and "already on the remote" off the view BEFORE any write
-        // (`create.rs:91`, `readonly_repo`), which is also the view the guards read.
+        // (`create.rs:92`, `readonly_repo`), which is also the view the guards read.
         let base = tx.base_repo().clone();
         for name in &ref_names {
             tx.repo_mut()

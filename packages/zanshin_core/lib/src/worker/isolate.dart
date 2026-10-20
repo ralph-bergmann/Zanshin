@@ -2012,7 +2012,11 @@ class ZanshinWorker {
   /// jj reverse-hex CHANGE id, so a divergent one is refused, never guessed.
   /// Both per-name preconditions run in ARGUMENT order and are FAIL-FAST: a run
   /// whose second name already exists creates nothing and writes no operation.
-  /// Unlike the CLI, a created bookmark is never auto-tracked (Story 9.11).
+  /// A created name is auto-tracked as in the CLI: on every remote with a
+  /// remote view whose `remotes.<r>.auto-track-bookmarks` /
+  /// `auto-track-created-bookmarks` matches it, the `name@remote` row becomes
+  /// tracked. Warnings: `jj.bookmark_target_empty`, then
+  /// `jj.bookmark_auto_track_existing` per remote that already holds the name.
   ///
   /// Sends a [BookmarkCreateCommand] via [send] and decodes the returned
   /// FlatBuffers `Envelope<MutationResult>` bytes.
@@ -2020,9 +2024,10 @@ class ZanshinWorker {
   /// Throws [ArgumentError] if any name or [revision] contains an interior NUL
   /// (U+0000). Throws [ZanshinFfiException] on FFI errors (e.g.
   /// `ffi.invalid_handle`, `jj.invalid_input`, `jj.change_not_found`,
-  /// `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`). Completes with a
-  /// [StateError] after [close]; the close-guard [StateError] is delivered
-  /// synchronously by [RepoHandle.bookmarkCreate].
+  /// `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`,
+  /// `jj.config_error` — e.g. an unparsable `remotes.<r>.auto-track-*` value).
+  /// Completes with a [StateError] after [close]; the close-guard [StateError]
+  /// is delivered synchronously by [RepoHandle.bookmarkCreate].
   Future<repo_ffi_mutate.MutationResult> bookmarkCreate(
     int handleId,
     List<String> names, {

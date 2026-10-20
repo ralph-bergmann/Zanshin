@@ -765,6 +765,51 @@ pub fn bookmark_auto_track_scenarios() -> Vec<Scenario> {
             |repo, _, s| create_feature(repo, Some(&s.change("B"))),
             |_| strings(&["bookmark", "create", "feature", "-r", "@-"]),
         ),
+        // Both fields unioned on `origin` (`feature` by `auto-track-bookmarks`, `other` by
+        // `auto-track-created-bookmarks`), everything on `upstream`, and a matching `ghost` that
+        // has no remote view: `feature` and `other` on both remotes, `third` on `upstream` only.
+        push(
+            "bookmark_create_auto_track_union",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Git(&["init", "-q", "--bare", "../remote2.git"]),
+                Step::Jj(&["git", "remote", "add", "upstream", "../remote2.git"]),
+                Step::Jj(&[
+                    "config",
+                    "set",
+                    "--repo",
+                    "remotes.origin.auto-track-bookmarks",
+                    "\"glob:feat*\"",
+                ]),
+                Step::Jj(&[
+                    "config",
+                    "set",
+                    "--repo",
+                    "remotes.origin.auto-track-created-bookmarks",
+                    "\"exact:other\"",
+                ]),
+                Step::Jj(&[
+                    "config",
+                    "set",
+                    "--repo",
+                    "remotes.upstream.auto-track-created-bookmarks",
+                    "\"*\"",
+                ]),
+                Step::Jj(&[
+                    "config",
+                    "set",
+                    "--repo",
+                    "remotes.ghost.auto-track-created-bookmarks",
+                    "\"*\"",
+                ]),
+            ],
+            |repo, _, _| {
+                let result = repo.bookmark_create(&strings(&["feature", "other", "third"]), None);
+                crate::compare::zanshin_outcome(repo, &result)
+            },
+            |_| strings(&["bookmark", "create", "feature", "other", "third"]),
+        ),
         // A pattern that does not parse refuses the whole call ("Invalid
         // `remotes.origin.auto-track-created-bookmarks`: …"); nothing is created.
         push(

@@ -81,7 +81,7 @@ pub enum WarningKind {
     BookmarkNamesUnmatched,
     /// `bookmark create` auto-tracked a remote bookmark that already exists on that remote — the
     /// created name matches `remotes.<r>.auto-track-bookmarks` / `auto-track-created-bookmarks`
-    /// and the remote's view already holds it (`bookmark/create.rs:101-106` @ v0.46.0).
+    /// and the remote's view already holds it (`bookmark/create.rs:104-108` @ v0.46.0).
     BookmarkAutoTrackExisting,
     /// A path `absorb` could not split (`absorb.rs:155-158`).
     AbsorbPathSkipped,

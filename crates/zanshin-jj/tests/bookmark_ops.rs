@@ -774,6 +774,41 @@ fn create_auto_tracks_on_every_matching_remote() {
     );
 }
 
+/// The warnings come in the CLI's print order: the empty-target warning first, then one
+/// auto-track warning per remote already holding the name, remotes in name order. The root commit
+/// is the empty, undescribed target.
+#[test]
+fn create_warns_target_empty_then_each_existing_remote_in_name_order() {
+    pin_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let lay = layout(&fx.path);
+    set_remote_bookmark(&fx.path, "feature", "upstream", &lay.wc_commit_hex, false);
+    set_remote_bookmark(&fx.path, "feature", "origin", &lay.wc_commit_hex, false);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    set_repo_config(&fx.path, "remotes.upstream.auto-track-created-bookmarks", "\"*\"");
+    set_repo_config(&fx.path, "remotes.origin.auto-track-created-bookmarks", "\"*\"");
+    let _ = repo.take_warnings();
+
+    repo.bookmark_create(&["feature".to_owned()], Some(&lay.root_change_id))
+        .unwrap();
+
+    let warnings: Vec<(WarningKind, String)> = repo.take_warnings().into_iter().map(|w| (w.kind, w.message)).collect();
+    assert_eq!(
+        warnings,
+        [
+            (WarningKind::BookmarkTargetEmpty, "Target revision is empty.".to_owned()),
+            (
+                WarningKind::BookmarkAutoTrackExisting,
+                "Auto-tracking bookmark that exists on the remote: feature@origin".to_owned()
+            ),
+            (
+                WarningKind::BookmarkAutoTrackExisting,
+                "Auto-tracking bookmark that exists on the remote: feature@upstream".to_owned()
+            ),
+        ]
+    );
+}
+
 /// An UNTRACKED `feature@origin` already on the remote warns the CLI's line, becomes tracked, and
 /// jj-lib's `track_remote_bookmark` merges its target into the new local one — here a different
 /// commit than `@`, so the local bookmark comes out conflicted, exactly as in the CLI.
@@ -840,7 +875,7 @@ fn create_refuses_a_broken_auto_track_pattern_without_writing_an_operation() {
     assert!(local_bookmark_names(&fx.path).is_empty());
 }
 
-/// The per-name guards precede the matcher parse (`create.rs:64-83` before `:88-90`).
+/// The per-name guards precede the matcher parse (`create.rs:64-83` before `:89-91`).
 #[test]
 fn create_guards_refuse_before_a_broken_auto_track_pattern() {
     pin_env();

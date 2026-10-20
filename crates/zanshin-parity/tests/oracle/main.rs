@@ -207,6 +207,7 @@ parity!(
     bookmark_create_auto_track_created,
     bookmark_create_auto_track_existing,
     bookmark_create_auto_track_broken,
+    bookmark_create_auto_track_union,
 );
 
 /// Every scenario id the table and the creation list define.
@@ -221,7 +222,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 171);
+    assert_eq!(SCENARIO_IDS.len(), 172);
 }
 
 #[test]
