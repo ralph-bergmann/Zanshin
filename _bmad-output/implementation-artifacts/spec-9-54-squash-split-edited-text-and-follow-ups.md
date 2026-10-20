@@ -22,6 +22,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/bookmark_ops.rs:23
     severity: medium
+    resolved: >-
+      2026-10-20 — fixed (spec-9-54-closing-bookmark-create-auto-track, commit 182cf65): bookmark create tracks the new name on every remote whose auto-track-bookmarks / auto-track-created-bookmarks matches, with the CLI's warning as jj.bookmark_auto_track_existing.
 ---
 
 <intent-contract>
