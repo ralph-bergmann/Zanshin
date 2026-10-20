@@ -5,7 +5,7 @@ created: '2026-10-19'
 status: 'done'
 baseline_revision: '9ba0f9b25bb91a6ce49399d828a61fb4225e9fa1'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: [multiple-goals, oversized]
@@ -40,6 +40,13 @@ deferred:
     severity: medium
     resolved: >-
       2026-10-20 — fixed (spec-9-20-closing-typed-clone-failures, commit 24ce688): a failing git child in the clone is jj.network_error, a refused remote name jj.invalid_input; the rest stays jj.jj_lib_error.
+  - summary: >-
+      `jj git push --all` to several remotes fails and records nothing when one remote has nothing to push, although the other remotes already received their refs (CLI parity, pinned by the oracle); Story 11.8's push sheet may want to avoid it.
+    evidence: |-
+      crates/zanshin-parity/tests/oracle/git_scenarios.rs:604 push_all_one_remote_left_empty: the CLI and Zanshin (push.rs push_remotes) run `git push` at the empty remote with no refspecs, git fails, exit 1, no operation written, so Undo cannot reach the first remote's refs. Follow-up review pass 2026-10-20 (blind).
+    location: >-
+      crates/zanshin-jj/src/push.rs push_remotes; Story 11.8 push sheet
+    severity: low
 ---
 
 <intent-contract>
@@ -210,6 +217,38 @@ CLI anchors at `v0.46.0` (`git -C ../jj show v0.46.0:<path>`; P = `cli/src/comma
   - `[low]` `[reject]` (blind) the custom-template check is a literal compare, so an equivalent respelling is refused — equivalence needs a template parser (the deferred port); a respelled default is not everyday.
   - `[low]` `[patch]` (blind) Dart depth above `u32::MAX` not refused — same as the edge rows; fixed in b6206b4.
 
+### 2026-10-20 — Review pass
+- scope: follow-up pass on the done spec. Diff = baseline..560bff7 (all Story 9.20 commits incl. the closing run; later commits are other stories), generated FlatBuffers files and `_bmad-output/` excluded (723 kB).
+- verdicts: 27 findings — high 0, medium 4, low 15, false 7, maybe-false 1
+- findings:
+  - `[medium]` `[patch]` (verification-gap) the push request seam (FFI reader + Dart chain) witnessed for 5 of 14 flags — fixed: `push::tests::read_push_request_maps_every_field` (every field distinct, each flag alone) in `crates/zanshin-ffi/src/push.rs`; Dart dry runs through `RepoHandle.gitPush` for `named` / `changes` / `allowEmptyDescription` (abort without, push with) and `revisions` (`@` vs `root()`) in `test/worker/push_test.dart`. `tags` / `deleted` / `allowPrivate` / `allowConflicts` / `options` cross Dart unwitnessed (no git-free setup; the Rust reader test pins their wire mapping).
+  - `[medium]` `[patch]` (verification-gap) clone `colocate` / `depth` / `branches` / `tags` / `object_hash` and init `object_hash` never shown to cross the creation request seam — fixed: `repo::tests::creation_readers_map_every_field` (every field of both readers); Dart `init_object_hash_reaches_the_new_repository` (sha256 in `.git/config`) and `clone_branch_and_tag_patterns_reach_the_verb`; clone `colocate` / `depth` through Dart need a real clone (the VM reaps git) — the reader test covers their wire hop.
+  - `[low]` `[patch]` (verification-gap) `JJ_NETWORK_ERROR`'s doc still says clone reports a git failure as `jj.jj_lib_error` — fixed: doc names `zanshin_repo_clone` (closing run, `map_repo_err`).
+  - `[medium]` `[patch]` (intent) push plan shapes (`-c` / `--named` / Skip / Abort) verified only below the Dart surface — same root as the first verification-gap row; fixed by the same Dart dry runs.
+  - `[false]` `[reject]` (intent) the app adapter never reaches the CLI-default colocated init/clone — the intent requires the adapter to keep the `--no-colocate` commands the window displays.
+  - `[false]` `[reject]` (intent) the matrix says a failing clone fetch is `jj.jj_lib_error`, the code `jj.network_error` — the matrix row was superseded by the closing run (spec-9-20-closing-typed-clone-failures, this spec's resolved deferral).
+  - `[low]` `[reject]` (intent) carried — real-run refusals carry no hint on the error envelope (house rule; hints travel in the dry-run plan).
+  - `[false]` `[reject]` (intent) carried — the dry run returns a plan where the CLI's dry run errors (deliberate, Design Notes).
+  - `[low]` `[reject]` (intent) Dart tests check push/clone warnings only by decoding — the codes are pinned in Rust (`every_warning_kind_has_its_registered_code`) and by the oracle's counts; a Dart witness per code adds nothing at that seam.
+  - `[low]` `[patch]` (blind) `docs/rust-error-codes.md` row `jj.push_signing_skipped_immutable` says "(commit lines dropped)" — fixed: "with up to 10 commit summaries, then "  ..."".
+  - `[low]` `[patch]` (blind) `PushFailureKind.PushError`'s wire doc says "nothing recorded" though a late failure can be recorded — fixed in `schemas/envelope.fbs` (codegen re-run) and the Dart model doc.
+  - `[low]` `[reject]` (blind) the late-error branch of `git_push` drops the rows when `render` fails and overwrites the loop's failure — `render` fails only on an index error (`render_row`'s `is_ancestor`) and the overwrite needs `record_push` to fail after a failed push; not everyday, and a fallback renderer plus failure chaining is new branching.
+  - `[medium]` `[patch]` (blind) `tests/clone_init.rs` fixtures run `git` before `pin_test_env`, so the first tests' git reads the developer's global config (`commit.gpgsign = true` here, with a 1Password signer that fails when locked) — fixed: `git()` pins first.
+  - `[low]` `[reject]` (blind) oracle creation scenarios give Zanshin an absolute `source` and the CLI a relative one, so the relative-URL stance is not witnessed — the GUI passes absolute paths and the stance (no `absolute_git_url`) is documented in Design Notes; a scenario plus ledger entry for an input the GUI never sends is not worth the oracle surface.
+  - `[false]` `[reject]` (blind) `normalize_ids` widens equality for every scenario — comparing commits by label is the oracle's own identity notion (its state aspects already do); raw ids in aspects could never have matched across sides, so no scenario loses a divergence it could detect.
+  - `[low]` `[defer]` (blind) `push_all_one_remote_left_empty` depends on the environment and its product consequence is unrecorded — both sides run under the same environment, so the parity comparison holds; the consequence (`--all` to several remotes fails unrecorded after the first got its refs) is CLI behaviour for 11.8 to decide: added to `deferred:` and mirrored to deferred-work.md.
+  - `[low]` `[patch]` (blind) registry rows not widened for the new externs' emitters — fixed: `jj.invalid_input`, `jj.convert_failed`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.not_a_git_repo` name `zanshin_git_push` / `zanshin_repo_init` / `zanshin_repo_clone`.
+  - `[low]` `[reject]` (blind) the oracle lacks lease-failure, unreachable-remote, `clone -b nope`, `-t`, `--depth` scenarios — not in the spec's scenario list; witnessed in `tests/push.rs` / `tests/clone_init.rs`; each needs remote-side fault setup.
+  - `[maybe-false]` `[reject]` (blind) `plan_push` may emit `immutable_heads()` diagnostics a second time — would need an `immutable_heads()` alias that yields a diagnostic plus a warning-count comparison to settle; if true only low (no everyday config has one).
+  - `[false]` `[reject]` (blind) push reads `git.executable-path` / `signing.*` from stale loader settings — `Repo::refresh_settings` (start of every precondition) reloads the repo when the config stack's fingerprint changed, so the loader's settings are current.
+  - `[low]` `[patch]` (edge) `JJ_NETWORK_ERROR` doc — same as the verification-gap row; fixed there.
+  - `[low]` `[patch]` (edge) a row refused as an untracked remote ref reports `before = None`, which the doc reads as "absent on the remote" — fixed: the `PushRef.before` / `after` / `action` docs (Rust, `.fbs`, Dart, `docs/ffi-abi.md`) say a ref refused as conflicted or untracked reports none.
+  - `[low]` `[reject]` (edge) a render failure after the push empties `outcome.remotes` — same as the blind late-error row.
+  - `[low]` `[patch]` (edge) a colocated init over `.git` with a dangling `.jj` symlink fails as `ConvertFailed` instead of `AlreadyJjRepo` — fixed: `symlink_metadata().is_ok()` in `creation.rs`; witness `a_dangling_jj_symlink_over_git_is_an_existing_workspace`.
+  - `[low]` `[patch]` (edge) the skipped-signing commit list uses Zanshin's fixed-prefix summary, not listed as a divergence — fixed: the module doc's divergence line covers it.
+  - `[false]` `[reject]` (edge) the AC "real run pushes exactly the plan's non-skipped refs" breaks for Abort rows — a plan with an Abort row carries `failure`; the real run refuses with the same CLI text, which is the planned outcome.
+  - `[false]` `[reject]` (edge) carried — a refused push on a dirty working copy moves the op head (Story 9.26's pre-verb snapshot, every verb).
+
 ## Design Notes
 
 - **Push failure as data.** Once a push has started, jj may have changed remotes even when it fails (a lease failure after an export, a second remote unreachable after the first succeeded). The UI must show per-remote, per-ref results and whether Undo works (epics 9.20 item 8), which an error envelope cannot carry. So the verb returns `Ok(GitPushOutcome)` with `failure` set, and the oracle treats `failure.is_some()` as the CLI's non-zero exit. Refusals before the network stay `Err` with registered codes: `jj.invalid_input` (flag conflicts, `--named` syntax, "No git remotes to push to", template failures), the codes `MutateError::BookmarkExists` / `BookmarkTrackedRemoteExists` already map to (ensure_new_bookmark_name), `jj.revset_parse_error` / `jj.revset_resolution_error`, `jj.config_error`, precondition codes, and the two new codes `jj.push_ref_refused` / `jj.push_commit_rejected` for an explicit target's refusal or rejection (message = CLI text; the hint travels in the dry-run plan).
@@ -264,4 +303,10 @@ Status: done
 
 **Verification.** `cargo test -p zanshin-jj --test push --test clone_init --test repo --test creation_warnings` (pass), `cargo test -p zanshin-parity --test oracle` (136 pass, no ledger entry for any creation/push scenario), `cargo make test` after the review patches: exit 0 in 846 s, coverage ratchet raised `creation.rs` 95.85 → 96.59 and `push.rs` 91.53 → 93.68 (committed), extern-fn guard OK.
 
+
+**Follow-up review pass (2026-10-20).** 27 findings (high 0, medium 4, low 15, false 7, maybe-false 1). Patched (entry verdicts: medium 3, low 7): request-seam witnesses for push (every `GitPushRequest` field in the FFI reader; `named` / `changes` / `allowEmptyDescription` / `revisions` through Dart) and for clone/init (every field of both readers; init `objectHash` and clone `branches` / `tags` through Dart); `tests/clone_init.rs` pins the test environment before any fixture git; a dangling `.jj` symlink over `.git` is `AlreadyJjRepo`; docs (`JJ_NETWORK_ERROR`, `PushFailureKind.PushError` incl. codegen, `PushRef` before/after/action for refused rows, the skipped-signing divergence, the signing-skip registry row, seven registry rows widened for the new emitters). Deferred: `--all` to several remotes with one left empty fails unrecorded (CLI parity; Story 11.8 decides), mirrored to deferred-work.md. Rejected: late-error fallback rendering (unreachable without an index fault), the relative-source oracle scenario, missing oracle fault scenarios, Dart warning witnesses, the possible double `immutable_heads()` diagnostic (unverified, low if true), and seven false or carried findings (see the triage log).
+- Files: `crates/zanshin-ffi/src/{push,repo,envelope}.rs`, `crates/zanshin-jj/src/{push,creation}.rs`, `crates/zanshin-jj/tests/clone_init.rs`, `schemas/envelope.fbs` + the two generated files, `packages/zanshin_core/lib/src/ffi/push.dart`, `packages/zanshin_core/test/worker/{push,creation}_test.dart`, `docs/{ffi-abi,rust-error-codes}.md`, `coverage-baseline.txt` (`crates/zanshin-ffi/src/push.rs` 98.11 → 98.44), `deferred-work.md`.
+- Verification: `cargo make codegen` (no further diff), `cargo test -p zanshin-jj --test clone_init --test push --test repo --test creation_warnings` (pass), `cargo test -p zanshin-parity --test oracle` (136 pass), `cargo make test` exit 0 in 783 s (11 of 27 steps by the gate plan; coverage ratchet raised one file, extern-fn guard OK). Disk was at 1.1 GiB free; `target/debug/incremental` and `target/llvm-cov-target/debug/incremental` (build caches) were removed to run the gate.
+- Follow-up review recommendation: false — a follow-up pass patched no high finding.
+- Residual risks: the Dart forwarding of `tags`, `deleted`, `allowPrivate`, `allowConflicts`, `options` (push) and `colocate`, `depth` (clone) is unwitnessed above the FFI reader.
 **Residual risks.** Whether a clone or push works from the running macOS app is unverified (the Dart VM reaps git's child under `dart test`; existing deferred-work item). Progress reaches Dart only after the call returns; no cancel. A customised `templates.git_push_bookmark` refuses `-c`. Clone failures map to `jj.jj_lib_error`. `ProjectSession.clone` still runs its own copy of the destination rules (harmless duplication until the UI follow-up).

@@ -25,8 +25,10 @@ use zanshin_jj::{
     WarningKind,
 };
 
-/// Runs `git` in `dir`; panics on a non-zero exit. Fixture setup only.
+/// Runs `git` in `dir`; panics on a non-zero exit. Fixture setup only. Pins the test
+/// environment first, so no fixture git reads the developer's global config.
 fn git(args: &[&str], dir: &Path) -> String {
+    test_helpers::pin_test_env();
     let out = Command::new("git")
         .args(args)
         .current_dir(dir)
@@ -471,6 +473,25 @@ fn an_uncreatable_init_destination_is_refused() {
             outcome.result
         );
     }
+}
+
+/// Over an existing `.git`, a dangling `.jj` symlink is an existing workspace, as jj-lib's
+/// `create_dir` refuses it (`DestinationExists`).
+#[test]
+fn a_dangling_jj_symlink_over_git_is_an_existing_workspace() {
+    let dir = TempDir::new().unwrap();
+    source_repo(dir.path());
+    std::os::unix::fs::symlink(dir.path().join("nowhere"), dir.path().join(".jj")).unwrap();
+    let outcome = init(&InitOptions {
+        path: dir.path().to_owned(),
+        backend: Some(Backend::Git),
+        ..Default::default()
+    });
+    assert!(
+        matches!(outcome.result, Err(RepoError::AlreadyJjRepo { .. })),
+        "{:?}",
+        outcome.result
+    );
 }
 
 /// Over an existing `.git`: colocated, the External flow (`import git refs`, the snapshot, the

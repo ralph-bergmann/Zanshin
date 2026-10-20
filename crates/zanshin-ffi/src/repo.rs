@@ -1860,6 +1860,68 @@ mod tests {
         assert!(!tmp.path().join(".jj").exists());
     }
 
+    /// Every `RepoInitRequest` / `RepoCloneRequest` field reaches its own option: the init
+    /// object hash and colocation, the clone's remote name, colocation, depth, `-b` / `-t`
+    /// (kept apart) and object hash.
+    #[test]
+    fn creation_readers_map_every_field() {
+        let mut b = FlatBufferBuilder::new();
+        let path = b.create_string("/x/init");
+        let req = fbs::RepoInitRequest::create(
+            &mut b,
+            &fbs::RepoInitRequestArgs {
+                kind: fbs::RequestKind::RepoInit,
+                path: Some(path),
+                backend: fbs::InitBackend::Git,
+                colocate: true,
+                no_colocate: false,
+                object_hash: fbs::ObjectHash::Sha256,
+            },
+        );
+        b.finish(req, None);
+        let bytes = b.finished_data();
+        let init = read_init_request(bytes.as_ptr(), bytes.len()).expect("valid init request");
+        assert_eq!(init.path, std::path::PathBuf::from("/x/init"));
+        assert!(matches!(init.backend, Some(Backend::Git)));
+        assert_eq!(init.colocate, Some(true));
+        assert_eq!(init.object_hash, Some(ObjectHash::Sha256));
+
+        let mut b = FlatBufferBuilder::new();
+        let source = b.create_string("file:///src");
+        let destination = b.create_string("/x/dest");
+        let remote_name = b.create_string("up");
+        let branch = b.create_string("main");
+        let branches = b.create_vector(&[branch]);
+        let tag = b.create_string("v1");
+        let tags = b.create_vector(&[tag]);
+        let req = fbs::RepoCloneRequest::create(
+            &mut b,
+            &fbs::RepoCloneRequestArgs {
+                kind: fbs::RequestKind::RepoClone,
+                source: Some(source),
+                destination: Some(destination),
+                remote_name: Some(remote_name),
+                colocate: false,
+                no_colocate: true,
+                depth: 7,
+                branches: Some(branches),
+                tags: Some(tags),
+                object_hash: fbs::ObjectHash::Sha1,
+            },
+        );
+        b.finish(req, None);
+        let bytes = b.finished_data();
+        let clone = read_clone_request(bytes.as_ptr(), bytes.len()).expect("valid clone request");
+        assert_eq!(clone.source, "file:///src");
+        assert_eq!(clone.destination, std::path::PathBuf::from("/x/dest"));
+        assert_eq!(clone.remote_name.as_deref(), Some("up"));
+        assert_eq!(clone.colocate, Some(false));
+        assert_eq!(clone.depth.map(std::num::NonZeroU32::get), Some(7));
+        assert_eq!(clone.branches, Some(vec!["main".to_owned()]));
+        assert_eq!(clone.tags, Some(vec!["v1".to_owned()]));
+        assert_eq!(clone.object_hash, Some(ObjectHash::Sha1));
+    }
+
     #[test]
     fn repo_close_zero_handle_returns_ffi_invalid_handle() {
         let token = unsafe { zanshin_repo_close(0) };

@@ -17,6 +17,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/file_ops.dart';
 import 'package:zanshin_core/src/ffi/precondition.dart';
+import 'package:zanshin_core/src/ffi/repo.dart' as repo_ffi;
 import 'package:zanshin_core/src/ffi/warning.dart';
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
@@ -133,6 +134,42 @@ void main() {
       expect(File('$colocated/.jj/.gitignore').existsSync(), isTrue);
       expect(Directory('$internal/.git').existsSync(), isFalse);
       expect(Directory('$internal/.jj/repo/store/git').existsSync(), isTrue);
+    });
+
+    // Story 9.20 follow-up review: `objectHash` reaches the Rust verb (gix writes
+    // the repository, no git child runs).
+    test('init_object_hash_reaches_the_new_repository', () async {
+      final path = '${tempDir.resolveSymbolicLinksSync()}/sha256';
+
+      final CreatedRepoHandle repo = await worker.initRepo(
+        path,
+        backend: 1,
+        colocate: true,
+        objectHash: repo_ffi.ObjectHash.sha256,
+      );
+      await repo.close();
+
+      expect(File('$path/.git/config').readAsStringSync(), contains(RegExp(r'objectformat\s*=\s*sha256')));
+    });
+
+    // Story 9.20 follow-up review: `branches` and `tags` each reach the Rust verb —
+    // a pattern that does not parse is refused before any git runs.
+    test('clone_branch_and_tag_patterns_reach_the_verb', () async {
+      for (final (branches, tags) in [
+        (const ['glob:['], null),
+        (null, const ['glob:[']),
+      ]) {
+        await expectLater(
+          worker.cloneRepo(
+            source: 'file:///nowhere',
+            destination: '${tempDir.path}/dst',
+            noColocate: true,
+            branches: branches,
+            tags: tags,
+          ),
+          throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+        );
+      }
     });
 
     test('init_with_both_colocation_flags_is_refused', () async {

@@ -26,8 +26,9 @@
 //! - `--change` names come from the builtin `templates.git_push_bookmark` only
 //!   (`"push-" ++ change_id.short()`, `cli/src/config/templates.toml:30`); Zanshin renders no
 //!   template, so a customised template refuses;
-//! - the "Rejected commit: …" hint renders the commit summary as `<change> <commit> [(conflict)]
-//!   [(empty)] <subject>` (the CLI renders its `commit_summary` template);
+//! - the "Rejected commit: …" hint and the commit list of the "Skipped signing … immutable
+//!   commits:" warning render each commit summary as `<change> <commit> [(conflict)] [(empty)]
+//!   <subject>` (the CLI renders its `commit_summary` template);
 //! - a dry run does not stop at an explicitly named ref that is refused or rejected (the CLI's
 //!   dry run errors there like the real run): it returns the whole plan with that row marked
 //!   [`PushPath::Abort`] and [`GitPushOutcome::failure`] set to the CLI's error;
@@ -180,11 +181,11 @@ pub struct PushRef {
     pub kind: PushRefKind,
     /// The name (unquoted).
     pub name: String,
-    /// Where the remote has it now (full commit hex); `None` = absent there, or unknown for a
-    /// conflicted ref.
+    /// Where the remote has it now (full commit hex); `None` = absent there, or not reported for
+    /// a ref refused as conflicted (locally or on the remote) or as an untracked remote ref.
     pub before: Option<String>,
     /// Where the push moves it (full commit hex; after sign-on-push, the signed commit);
-    /// `None` = deleted there, or unknown for a conflicted ref.
+    /// `None` = deleted there, or not reported for a ref refused as conflicted or untracked.
     pub after: Option<String>,
     /// The move in jj's words — "move forward|backward|sideways from <old> to <new>", "add to
     /// <new>", "delete from <old>" (12-hex ids, `push.rs:1057-1085`); `None` for a conflicted

@@ -65,15 +65,62 @@ void main() {
       );
     });
 
-    test('a dry run plans the push without touching the network', () async {
-      // A remote written straight into the internal git store's config: no `git`
-      // runs, and a dry run never reaches the URL. The handle is reopened because
-      // the git backend reads that config once, when the repo loads.
+    /// A remote written straight into the internal git store's config: no `git`
+    /// runs, and a dry run never reaches the URL. The handle is reopened because
+    /// the git backend reads that config once, when the repo loads.
+    Future<void> addRemote() async {
       await repo.close();
       File(
         '${tempDir.path}/.jj/repo/store/git/config',
       ).writeAsStringSync('\n[remote "origin"]\n\turl = /nowhere\n', mode: FileMode.append);
       repo = await worker.openRepo(tempDir.path);
+    }
+
+    test('named, changes and allowEmptyDescription reach the plan', () async {
+      await addRemote();
+      // `@` is undescribed: without the override both explicit refs abort.
+      final GitPushResult refused = await repo.gitPush(named: const ['x=@'], changes: const ['@'], dryRun: true);
+      expect(refused.failure?.kind, PushFailureKind.commitRejected);
+      expect(refused.remotes.single.refs.map((r) => r.path), contains(PushPath.abort));
+
+      final GitPushResult plan = await repo.gitPush(
+        named: const ['x=@'],
+        changes: const ['@'],
+        allowEmptyDescription: true,
+        dryRun: true,
+      );
+
+      expect(plan.failure, isNull);
+      final List<PushRef> refs = plan.remotes.single.refs;
+      expect(refs, hasLength(2));
+      expect(refs.map((r) => r.path), everyElement(PushPath.push));
+      // Only `--change` reports "Creating bookmark" (`create_change_bookmarks`).
+      final String created = plan.createdBookmarks.single.name;
+      expect(created, startsWith('push-'));
+      expect(refs.map((r) => r.name), unorderedEquals(['x', created]));
+    });
+
+    test('revisions select the bookmarks they carry', () async {
+      await addRemote();
+      final String at = (await repo.status()).workingCopyChangeId;
+      await repo.describe(changeId: at, description: 'A\n');
+      await repo.bookmarkCreate(const ['main']);
+
+      final GitPushResult plan = await repo.gitPush(revisions: const ['@'], dryRun: true);
+      final GitPushResult none = await repo.gitPush(revisions: const ['root()'], dryRun: true);
+
+      // `-r` never creates a remote bookmark (`allow_new = false`): skipped, warned.
+      final PushRef main = plan.remotes.single.refs.single;
+      expect(main.name, 'main');
+      expect(main.path, PushPath.skip);
+      expect(main.refusal?.message, contains('Refusing to create new remote bookmark main@origin'));
+      // A bare push would select `main` too; `root()` carries no bookmark.
+      expect(none.nothingChanged, isTrue);
+      expect(none.remotes.expand((r) => r.refs), isEmpty);
+    });
+
+    test('a dry run plans the push without touching the network', () async {
+      await addRemote();
       File('${tempDir.path}/a.txt').writeAsStringSync('a\n');
       final String at = (await repo.status()).workingCopyChangeId;
       await repo.describe(changeId: at, description: 'A\n');

@@ -797,8 +797,9 @@ class _PushRefStatusReader extends fb.Reader<PushRefStatus> {
 
 ///  Why a push failed after its planning phase: a dry run's explicit `RefRefused` /
 ///  `CommitRejected` (the real run's error codes), `SomeRefsFailed` (the CLI's "Failed to push
-///  some bookmarks", possibly recorded), `PushError` (the push stopped at a remote; nothing
-///  recorded).
+///  some bookmarks", possibly recorded), `PushError` (the push stopped at a remote, nothing
+///  recorded; or a step after the push loop failed, and `recorded` says whether the operation
+///  was written).
 enum PushFailureKind {
   RefRefused(0),
   CommitRejected(1),
@@ -8993,8 +8994,9 @@ class PushCommitRejectionObjectBuilder extends fb.ObjectBuilder {
 }
 
 ///  One ref of a remote's plan. `before` / `after` are full commit hex ids — ABSENT when the ref
-///  is absent on that side or conflicted; `action` is the move in jj's words ("move forward from
-///  <old> to <new>", "add to <new>", "delete from <old>"), ABSENT for a conflicted ref.
+///  is absent on that side, or the ref is refused as conflicted or untracked; `action` is the move
+///  in jj's words ("move forward from <old> to <new>", "add to <new>", "delete from <old>"), ABSENT
+///  for such a refused ref.
 ///  `refusal` is the mode's refusal (Skip / Abort), `explicit_refusal` the one the ref would get if
 ///  named explicitly (ABSENT = it could be), `rejection` the commit the push refuses to send.
 ///  `status` / `status_reason` after a real push.

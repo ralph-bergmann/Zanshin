@@ -1608,3 +1608,9 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **About 50 in-verb head reloads still call jj-lib's `load_at_head()`, which writes an unnamed `reconcile divergent operations` when heads diverge between the pre-verb snapshot and the verb; the CLI names the workspace on every reconcile (`resolve_operation`).** Low.
   - `grep -rc "load_at_head()" crates/zanshin-jj/src`: e.g. `mutate.rs` (8), `view.rs` (3), `file.rs` (3), `squash_split.rs` (3), `commit_views.rs` (3), `status.rs`, `bookmark_ops.rs`, `git.rs`; Story 9.23 moved only the precondition, the recovery and `workspace_add` to `snapshot::load_head` (`cli_util.rs:807-829` @ v0.46.0). Pre-existing; observable only with a concurrent writer.
   - **Follow-up:** route the remaining head loads through `snapshot::load_head` (or a `Repo` helper), with a divergent-heads witness per path family.
+
+## Surfaced in the follow-up review of Story 9.20 (bmad-build-auto, 2026-10-20)
+
+- **`jj git push --all` to several remotes fails and records nothing when one remote has nothing to push, although the other remotes already received their refs (CLI parity, pinned by the oracle).** Low.
+  - `crates/zanshin-parity/tests/oracle/git_scenarios.rs:604` `push_all_one_remote_left_empty`: the CLI (and Zanshin, `crates/zanshin-jj/src/push.rs` `push_remotes`) runs `git push` at the empty remote with no refspecs, git fails, the command exits 1 and the operation is not written, so Undo cannot reach the first remote's refs.
+  - **Follow-up:** Story 11.8's push sheet decides whether to warn before such a push or to push remote by remote; the verb keeps the CLI's behaviour.

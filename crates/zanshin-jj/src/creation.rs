@@ -200,7 +200,9 @@ fn init_steps(
         // `GitInitMode::External(.git)`: the convert-colocated steps (`init.rs:249-282`), which
         // report into the outcome — without the conversion's rollback (`init` never cleans up
         // beyond jj-lib's own `.jj` removal).
-        if root.join(".jj").exists() {
+        // `symlink_metadata`, not `exists`: a dangling `.jj` symlink is taken too (jj-lib's
+        // `create_dir` refuses it as `DestinationExists`).
+        if root.join(".jj").symlink_metadata().is_ok() {
             return Err(RepoError::AlreadyJjRepo { path: root });
         }
         let (result, report, warnings) = crate::convert::init_over_git_dir(&settings, &root);

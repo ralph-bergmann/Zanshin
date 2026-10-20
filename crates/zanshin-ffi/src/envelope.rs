@@ -157,9 +157,9 @@ pub const JJ_PUSH_COMMIT_REJECTED: &str = "jj.push_commit_rejected";
 /// `context` (Story 9.23). The destination directory created before stays, as in the CLI.
 pub const JJ_GIT_WORKTREE_FAILED: &str = "jj.git_worktree_failed";
 /// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when the underlying `git` subprocess
-/// fails (network, authentication, or transport error); detail in `context`. (`zanshin_git_push`
-/// reports such a failure as data — `GitPushResult.failure` — and `zanshin_repo_clone` as
-/// `jj.jj_lib_error`, Story 9.20.)
+/// fails (network, authentication, or transport error); detail in `context`. Also emitted by
+/// `repo.rs::zanshin_repo_clone` when its fetch's `git` subprocess fails (Story 9.20 closing run,
+/// `map_repo_err`). (`zanshin_git_push` reports such a failure as data — `GitPushResult.failure`.)
 pub const JJ_NETWORK_ERROR: &str = "jj.network_error";
 /// AR-P-4: emitted by `repo.rs` when a filesystem I/O error (e.g. EACCES, ENOTDIR) prevented repo-kind classification.
 pub const JJ_DETECT_FAILED: &str = "jj.detect_failed";

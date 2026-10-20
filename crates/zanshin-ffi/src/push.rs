@@ -468,4 +468,78 @@ mod tests {
         }
         assert_eq!(saturate(usize::MAX), u32::MAX);
     }
+
+    /// Every `GitPushRequest` field reaches its own `GitPushArgs` field: each list holds a
+    /// distinct value, and each flag is checked set alone against all others unset.
+    #[test]
+    fn read_push_request_maps_every_field() {
+        fn request(flag: Option<&str>) -> Vec<u8> {
+            let mut b = FlatBufferBuilder::new();
+            let mut list = |s: &str| {
+                let item = b.create_string(s);
+                b.create_vector(&[item])
+            };
+            let (remotes, bookmarks, tags) = (list("r"), list("b"), list("t"));
+            let (revisions, changes, named, options) = (list("rev"), list("c"), list("n=@"), list("o"));
+            let on = |name: &str| flag == Some(name);
+            let req = fbs::GitPushRequest::create(
+                &mut b,
+                &fbs::GitPushRequestArgs {
+                    kind: fbs::RequestKind::GitPush,
+                    remotes: Some(remotes),
+                    bookmarks: Some(bookmarks),
+                    tags: Some(tags),
+                    all: on("all"),
+                    tracked: on("tracked"),
+                    deleted: on("deleted"),
+                    allow_empty_description: on("allow_empty_description"),
+                    allow_private: on("allow_private"),
+                    allow_conflicts: on("allow_conflicts"),
+                    revisions: Some(revisions),
+                    changes: Some(changes),
+                    named: Some(named),
+                    dry_run: on("dry_run"),
+                    options: Some(options),
+                },
+            );
+            b.finish(req, None);
+            b.finished_data().to_vec()
+        }
+        let read = |flag| {
+            let bytes = request(flag);
+            read_push_request(bytes.as_ptr(), bytes.len()).expect("valid request")
+        };
+        let lists = GitPushArgs {
+            remotes: Some(vec!["r".to_owned()]),
+            bookmarks: vec!["b".to_owned()],
+            tags: vec!["t".to_owned()],
+            revisions: vec!["rev".to_owned()],
+            changes: vec!["c".to_owned()],
+            named: vec!["n=@".to_owned()],
+            options: vec!["o".to_owned()],
+            ..GitPushArgs::default()
+        };
+        assert_eq!(read(None), lists);
+        for name in [
+            "all",
+            "tracked",
+            "deleted",
+            "allow_empty_description",
+            "allow_private",
+            "allow_conflicts",
+            "dry_run",
+        ] {
+            let mut expected = lists.clone();
+            *match name {
+                "all" => &mut expected.all,
+                "tracked" => &mut expected.tracked,
+                "deleted" => &mut expected.deleted,
+                "allow_empty_description" => &mut expected.allow_empty_description,
+                "allow_private" => &mut expected.allow_private,
+                "allow_conflicts" => &mut expected.allow_conflicts,
+                _ => &mut expected.dry_run,
+            } = true;
+            assert_eq!(read(Some(name)), expected, "flag {name}");
+        }
+    }
 }

@@ -127,7 +127,9 @@ enum PushFailureKind {
   /// "Failed to push some bookmarks" — possibly recorded.
   someRefsFailed,
 
-  /// The push stopped at a remote; nothing recorded.
+  /// The push stopped at a remote, nothing recorded; or a step after the push
+  /// loop failed, and [GitPushResult.recorded] says whether the operation was
+  /// written.
   pushError,
 }
 
@@ -187,14 +189,16 @@ final class PushRef {
   /// The ref's name.
   final String name;
 
-  /// The remote's target, full hex; `null` when absent there or conflicted.
+  /// The remote's target, full hex; `null` when absent there, or for a ref
+  /// refused as conflicted or untracked.
   final String? before;
 
-  /// The pushed target, full hex; `null` for a deletion or a conflict.
+  /// The pushed target, full hex; `null` for a deletion, or for a ref refused
+  /// as conflicted or untracked.
   final String? after;
 
   /// jj's words: "move forward from … to …", "add to …", "delete from …"; `null` for a
-  /// conflicted ref.
+  /// ref refused as conflicted or untracked.
   final String? action;
 
   /// Push, skip or abort.
