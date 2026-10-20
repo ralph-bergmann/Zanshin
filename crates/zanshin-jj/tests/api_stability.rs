@@ -1350,8 +1350,9 @@ fn story_9_28_surface_resolves() {
     );
 }
 
-/// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 47] = {
+/// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds;
+/// Story 9.53 the unresolved conflicts).
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 48] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -1363,6 +1364,7 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 47] = {
         K::SnapshotFilesRefused,
         K::SnapshotPathsNotUtf8,
         K::CheckoutFilesSkipped,
+        K::UnresolvedConflicts,
         K::PathsUnmatched,
         K::ConfigAliasInvalid,
         K::ConfigAliasRedefined,
@@ -1432,6 +1434,7 @@ fn story_9_32_warning_surface_resolves() {
             | K::SnapshotFilesRefused
             | K::SnapshotPathsNotUtf8
             | K::CheckoutFilesSkipped
+            | K::UnresolvedConflicts
             | K::PathsUnmatched
             | K::ConfigAliasInvalid
             | K::ConfigAliasRedefined
@@ -1472,7 +1475,7 @@ fn story_9_32_warning_surface_resolves() {
             | K::CloneBranchesUnmatched => {}
         }
     }
-    assert_eq!(every.len(), 47);
+    assert_eq!(every.len(), 48);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

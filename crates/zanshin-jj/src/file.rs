@@ -250,11 +250,13 @@ fn res(e: ResolveError, revision: Option<&ChangeId>) -> FileError {
     }
 }
 
-/// Parses one caller-supplied repo path, reporting a malformed one as invalid input.
+/// Parses one caller-supplied repo path exactly as [`parse_prefixes`] parses each
+/// entry (Story 9.53): `.` components drop and `..` pops, as the CLI's `parse_file_path` from the
+/// workspace root; a path that leaves the repo, or is malformed, is invalid input.
 fn parse_path(path: &str) -> Result<RepoPathBuf, FileError> {
-    RepoPathBuf::from_internal_string(path.to_owned()).map_err(|e| FileError::InvalidInput {
-        reason: format!("invalid path: {e}"),
-    })
+    parse_prefixes(std::slice::from_ref(&path.to_owned()))
+        .map(|mut parsed| parsed.swap_remove(0))
+        .map_err(|reason| FileError::InvalidInput { reason })
 }
 
 /// Re-resolves to the head operation and resolves `revision` (or `@`) to its commit.
@@ -434,10 +436,11 @@ fn render_entry(
 /// # Errors
 ///
 /// - [`FileError::InvalidInput`] — `paths` is empty (the CLI marks FILESETS `required`), or
-///   an entry is not a valid repo path.
+///   an entry is not a valid repo path or leaves the repo through `..` (`./x` and `a/../x` read
+///   `x` on both branches, Story 9.53).
 /// - [`FileError::ChangeNotFound`] — `revision` does not resolve.
 /// - [`FileError::PathNotFound`] — exactly one path was given and it is absent from the
-///   tree.
+///   tree; it names the resolved path.
 /// - [`FileError::Config`] — the effective jj config is unreadable or malformed (including
 ///   an `ui.conflict-marker-style` that is not one of jj's four style names).
 /// - [`FileError::Backend`] — `load_at_head` or a blob read failed.
@@ -531,10 +534,12 @@ pub(crate) fn file_show(
 /// # Errors
 ///
 /// - [`FileError::ChangeNotFound`] — `revision` does not resolve.
-/// - [`FileError::InvalidInput`] — `path` is not a valid repo path.
+/// - [`FileError::InvalidInput`] — `path` is not a valid repo path or leaves the repo through
+///   `..` (`invalid path: Path "../x" is not in the repo "."`); `./x` and `a/../x` read `x`, as
+///   the CLI's `parse_file_path` from the workspace root (Story 9.53).
 /// - [`FileError::PathNotFound`] — `path` is absent from the revision's tree.
 /// - [`FileError::NotAFile`] — `path` exists but is not a regular file (a directory, a
-///   symlink, a submodule, or a conflict with a non-file side).
+///   symlink, a submodule, or a conflict with a non-file side). Both name the resolved path.
 /// - [`FileError::Backend`] — `load_at_head`, the annotation walk, or a store read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn file_annotate(

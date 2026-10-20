@@ -192,7 +192,9 @@ final class StaleRecovery {
   final String opId;
 
   /// The call's warnings when this is `workspaceUpdateStale`'s result, in the
-  /// CLI's print order; always empty on a `Precondition.staleRecovery`.
+  /// CLI's print order (e.g. `jj.checkout_files_skipped`, then
+  /// `jj.unresolved_conflicts` when the fresh `@` has conflicts); always empty
+  /// on a `Precondition.staleRecovery`.
   final List<ZanshinWarning> warnings;
 }
 

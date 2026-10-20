@@ -13,9 +13,12 @@
 //! diagnostics) are recorded ONCE per call: the CLI loads those tables once per command, while
 //! Zanshin may re-load the same table within one call.
 
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::path::Path;
 
+use jj_lib::backend::{BackendError, MergedTreeValue, TreeValue};
+use jj_lib::commit::Commit;
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::repo_path::{RepoPath, RepoPathBuf};
 use jj_lib::settings::{HumanByteSize, UserSettings};
@@ -49,6 +52,13 @@ pub enum WarningKind {
     /// Working-copy updates skipped because of conflicting on-disk changes
     /// (`print_checkout_stats`, `cli_util.rs:3303-3309`).
     CheckoutFilesSkipped,
+    /// A checkout moved `@` onto a commit with conflicts: the CLI lists each conflicted path with
+    /// a description of its conflict (`print_updated_working_copy_stats`,
+    /// `cli_util.rs:2297-2331` @ v0.46.0, lines from `print_conflicted_paths` `:3129-3219`; Story
+    /// 9.53). Every
+    /// finish that checks out a new `@` and the stale-working-copy recovery warn it, right after
+    /// [`WarningKind::CheckoutFilesSkipped`]; a finish that leaves `@` where it was does not.
+    UnresolvedConflicts,
     /// Explicitly named paths that match no entry (`print_unmatched_explicit_paths`,
     /// `cli_util.rs:3323-3347`).
     PathsUnmatched,
@@ -436,6 +446,75 @@ pub(crate) fn checkout_files_skipped(skipped_files: u32) -> Option<Warning> {
     })
 }
 
+/// `print_updated_working_copy_stats`' conflict warning (`cli_util.rs:2318-2329` @ v0.46.0,
+/// Story 9.53) for the `@` a checkout just moved to: `None` when `new_wc_commit` has no conflict.
+/// The caller applies the CLI's other guard — the new `@` differs from the old one.
+///
+/// # Errors
+///
+/// A conflicted path's value could not be read (the CLI's `conflict?` fails the command there).
+pub(crate) fn unresolved_conflicts(
+    workspace_root: &Path,
+    new_wc_commit: &Commit,
+) -> Result<Option<Warning>, BackendError> {
+    if !new_wc_commit.has_conflict() {
+        return Ok(None);
+    }
+    let mut conflicts = Vec::new();
+    for (path, value) in new_wc_commit.tree().conflicts() {
+        conflicts.push((ui_path(workspace_root, &path), value?));
+    }
+    Ok(Some(local(
+        WarningKind::UnresolvedConflicts,
+        conflicted_paths(&conflicts),
+    )))
+}
+
+/// The heading plus `print_conflicted_paths`' lines (`cli_util.rs:3129-3219` @ v0.46.0): each
+/// rendered path padded to the longest one (capped at 32 bytes) plus three, then a space and the
+/// description of the simplified conflict.
+fn conflicted_paths(conflicts: &[(String, MergedTreeValue)]) -> String {
+    let max_path_len = conflicts.iter().map(|(p, _)| p.len()).max().unwrap_or(0);
+    let width = max_path_len.min(32) + 3;
+    let mut lines = vec!["There are unresolved conflicts at these paths:".to_owned()];
+    for (path, conflict) in conflicts {
+        lines.push(format!("{path:width$} {}", conflict_description(&conflict.simplify())));
+    }
+    lines.join("\n")
+}
+
+/// `{sides}-sided conflict`, plus ` including ` and the sorted deletions and special kinds among
+/// the terms — a non-executable file adds nothing (`cli_util.rs:3150-3215` @ v0.46.0).
+fn conflict_description(conflict: &MergedTreeValue) -> String {
+    let sides = conflict.num_sides();
+    let deletions = sides - conflict.adds().flatten().count();
+    let mut seen = BTreeSet::new();
+    if deletions > 0 {
+        seen.insert(format!("{deletions} deletion{}", if deletions > 1 { "s" } else { "" }));
+    }
+    for term in conflict.removes().chain(conflict.adds()).flatten() {
+        let kind = match term {
+            TreeValue::File { executable: false, .. } => continue,
+            TreeValue::File { executable: true, .. } => "an executable",
+            TreeValue::Symlink(_) => "a symlink",
+            TreeValue::Tree(_) => "a directory",
+            TreeValue::GitSubmodule(_) => "a git submodule",
+        };
+        seen.insert(kind.to_owned());
+    }
+    let mut description = format!("{sides}-sided conflict");
+    let seen: Vec<String> = seen.into_iter().collect();
+    if let Some((last, rest)) = seen.split_last() {
+        description.push_str(" including ");
+        if !rest.is_empty() {
+            description.push_str(&rest.join(", "));
+            description.push_str(" and ");
+        }
+        description.push_str(last);
+    }
+    description
+}
+
 /// The failed clone's clean-up warning (`git/clone.rs:276-284`): the canonical target the clone
 /// was rolled back in, then the I/O error of the removal.
 pub(crate) fn clone_cleanup_failed(target: &Path, err: &std::io::Error) -> Warning {
@@ -632,6 +711,88 @@ mod tests {
         let w = clone_cleanup_failed(Path::new("/ws/target"), &err);
         assert_eq!(w.kind, WarningKind::CloneCleanupFailed);
         assert_eq!(w.message, "Failed to clean up /ws/target: Permission denied");
+    }
+
+    /// Story 9.53: `print_conflicted_paths`' descriptions — deletions first (a count sorts
+    /// before the kinds), the special kinds of removes and adds, a plain file adding nothing.
+    #[test]
+    fn conflict_descriptions_name_deletions_and_special_kinds_like_the_cli() {
+        use jj_lib::backend::{CopyId, FileId, SymlinkId, TreeId, TreeValue};
+        use jj_lib::merge::Merge;
+
+        let file = |byte: u8, executable: bool| {
+            Some(TreeValue::File {
+                id: FileId::new(vec![byte]),
+                executable,
+                copy_id: CopyId::placeholder(),
+            })
+        };
+        let describe = |values: Vec<Option<TreeValue>>| super::conflict_description(&Merge::from_vec(values));
+
+        assert_eq!(
+            describe(vec![file(1, false), file(0, false), file(2, false)]),
+            "2-sided conflict"
+        );
+        assert_eq!(
+            describe(vec![None, file(0, false), file(2, true)]),
+            "2-sided conflict including 1 deletion and an executable"
+        );
+        assert_eq!(
+            describe(vec![
+                file(1, false),
+                file(0, false),
+                Some(TreeValue::Symlink(SymlinkId::new(vec![3]))),
+            ]),
+            "2-sided conflict including a symlink"
+        );
+        assert_eq!(
+            describe(vec![
+                None,
+                file(0, false),
+                None,
+                file(4, false),
+                Some(TreeValue::Tree(TreeId::new(vec![5]))),
+            ]),
+            "3-sided conflict including 2 deletions and a directory"
+        );
+        assert_eq!(
+            describe(vec![
+                Some(TreeValue::GitSubmodule(jj_lib::backend::CommitId::new(vec![6]))),
+                file(0, true),
+                Some(TreeValue::Symlink(SymlinkId::new(vec![7]))),
+            ]),
+            "2-sided conflict including a git submodule, a symlink and an executable"
+        );
+    }
+
+    /// Story 9.53: the heading, then each path padded to the longest (`min(len, 32) + 3`) and a
+    /// space — the CLI's golden `c.txt    2-sided conflict`, and a cap at 35 for long paths.
+    #[test]
+    fn conflicted_paths_pad_to_the_longest_path_capped_at_32() {
+        use jj_lib::backend::{CopyId, FileId, TreeValue};
+        use jj_lib::merge::Merge;
+
+        let file = |byte: u8| {
+            Some(TreeValue::File {
+                id: FileId::new(vec![byte]),
+                executable: false,
+                copy_id: CopyId::placeholder(),
+            })
+        };
+        let two_sided = || Merge::from_vec(vec![file(1), file(0), file(2)]);
+        assert_eq!(
+            super::conflicted_paths(&[("c.txt".to_owned(), two_sided())]),
+            "There are unresolved conflicts at these paths:\nc.txt    2-sided conflict"
+        );
+        let long = "d".repeat(40);
+        let message = super::conflicted_paths(&[("a".to_owned(), two_sided()), (long.clone(), two_sided())]);
+        assert_eq!(
+            message,
+            format!(
+                "There are unresolved conflicts at these paths:\na{} 2-sided conflict\n{long} 2-sided conflict",
+                " ".repeat(34)
+            )
+        );
     }
 
     #[test]

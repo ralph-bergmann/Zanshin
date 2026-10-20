@@ -71,6 +71,10 @@ abstract final class ZanshinWarningCode {
   /// Working-copy updates skipped because of conflicting on-disk changes.
   static const checkoutFilesSkipped = 'jj.checkout_files_skipped';
 
+  /// A checkout moved `@` onto a commit with conflicts; the message lists each
+  /// conflicted path with a description of its conflict (Story 9.53).
+  static const unresolvedConflicts = 'jj.unresolved_conflicts';
+
   /// Explicitly named paths that match no entry.
   static const pathsUnmatched = 'jj.paths_unmatched';
 
@@ -217,6 +221,7 @@ abstract final class ZanshinWarningCode {
     snapshotFilesRefused,
     snapshotPathsNotUtf8,
     checkoutFilesSkipped,
+    unresolvedConflicts,
     pathsUnmatched,
     configAliasInvalid,
     configAliasRedefined,

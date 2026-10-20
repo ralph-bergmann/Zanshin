@@ -24,7 +24,9 @@
 //!      colocated workspace Git HEAD and the index are reset to the new `@` in an operation of
 //!      their own (`reset git head`, committed only when it changed anything), then the working
 //!      copy is checked out onto the head's `@` and recorded at the head (or the reset)
-//!      operation — WITHOUT an operation of its own;
+//!      operation — WITHOUT an operation of its own; a head `@` with conflicts that is not the
+//!      stale `@` warns `jj.unresolved_conflicts` right after any `jj.checkout_files_skipped`
+//!      (Story 9.53);
 //!    - the full pre-verb snapshot runs again (`snapshot_impl`: Git HEAD, the working copy, Git
 //!      refs), and the stats of both snapshots are merged.
 //! 2. When the working copy's operation is gone, jj-lib writes a `recovery commit` on top of the
@@ -176,7 +178,8 @@ pub(crate) fn run(
 ///   before the check stays, as in the CLI.
 /// - [`PreconditionError::Config`] — a snapshot knob or Git import option the snapshots read is
 ///   wrong-typed.
-/// - [`PreconditionError::Backend`] — the workspace has no `@`, or any jj-lib failure.
+/// - [`PreconditionError::Backend`] — the workspace has no `@`, or any jj-lib failure (a
+///   conflicted path of the head's `@` that cannot be read included).
 pub(crate) fn recover(
     workspace: &mut Workspace,
     ctx: &StepCtx<'_>,
@@ -268,8 +271,14 @@ fn recover_at(
             }
             let stats = update_stale_working_copy(locked_ws.locked_wc(), &stale_wc_commit, &desired_wc_commit)?;
             pollster::block_on(locked_ws.finish(repo.op_id().clone())).map_err(|e| backend(&e))?;
-            // `print_updated_working_copy_stats` → `print_checkout_stats`.
+            // `print_updated_working_copy_stats` → `print_checkout_stats`, then the conflicts of
+            // the head's `@` when it is not the stale one (Story 9.53) — a working copy at a
+            // sibling operation can be stale with the head's `@` unchanged.
             sink.extend(warning::checkout_files_skipped(stats.skipped_files));
+            if stale_wc_commit.id() != desired_wc_commit.id() {
+                let conflicts = warning::unresolved_conflicts(&workspace_root, &desired_wc_commit);
+                sink.extend(conflicts.map_err(|e| backend(&e))?);
+            }
             recovery.outcome = StaleRecoveryOutcome::Updated;
             recovery.commit_id = Some(CommitId(desired_wc_commit.id().hex()));
             recovery.checkout = Some(CheckoutStats::project(&stats));

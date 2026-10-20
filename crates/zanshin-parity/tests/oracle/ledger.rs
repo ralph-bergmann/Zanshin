@@ -124,12 +124,4 @@ pub const LEDGER: &[Expected] = &[
         zanshin: r#"A="A\n"  B="B\n"  T="T\n"  (empty)="""#,
         cli: r#"A="A\n"  B="B\n"  T="T\n\nSigned-off-by: Zanshin <zanshin@localhost>\n"  (empty)="""#,
     },
-    Expected {
-        scenario: "new_conflicting_merge",
-        aspect: "warnings",
-        reason: "the CLI's \"There are unresolved conflicts\" status line has no Zanshin warning code",
-        reference: "docs/rust-error-codes.md",
-        zanshin: "0",
-        cli: "1",
-    },
 ];

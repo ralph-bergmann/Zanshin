@@ -176,6 +176,22 @@ fn reparent_default_at(fx: &Fx) -> String {
     new_parent
 }
 
+/// Rewrites the default `@` to hold a conflicted merge's tree (`conflicted.txt`, 2-sided) without
+/// a checkout there — the default working copy is stale.
+fn conflict_default_at(fx: &Fx) {
+    let merge = test_helpers::add_conflicted_merge_off_root(&fx.root);
+    let (_workspace, head) = load(&fx.root);
+    let at = default_at(&fx.root);
+    let merge = head
+        .store()
+        .get_commit(&jj_lib::backend::CommitId::try_from_hex(&merge).expect("hex"))
+        .expect("merge");
+    let mut tx = head.start_transaction();
+    pollster::block_on(tx.repo_mut().rewrite_commit(&at).set_tree(merge.tree()).write()).expect("conflict @");
+    pollster::block_on(tx.repo_mut().rebase_descendants()).expect("rebase");
+    pollster::block_on(tx.commit("test: conflict default@")).expect("commit");
+}
+
 #[test]
 fn a_stale_clean_working_copy_is_checked_out_without_an_operation() {
     let (fx, mut repo) = two_workspaces(false, "");
@@ -354,6 +370,102 @@ fn a_failed_recovery_reports_its_code_and_a_report() {
     assert!(
         repo.take_precondition().is_some(),
         "the error envelope carries a report"
+    );
+}
+
+/// Story 9.53: a recovery that fails AFTER writing operations — here the `reset git head` of a
+/// colocated recovery, then a Git import option only the trailing snapshot's refs step reads (a
+/// `git.*` key would already fail the Git backend's load) —
+/// reports `was_snapshot_taken` against the operation the precondition LOADED, not the
+/// recovered one.
+#[test]
+fn a_recovery_failing_after_its_reset_reports_that_it_wrote() {
+    let (fx, mut repo) = two_workspaces(true, "snapshot.auto-update-stale = true\n");
+    let _ = reparent_default_at(&fx);
+    fs::write(
+        fx.root.join(".jj").join("repo").join("config.toml"),
+        "snapshot.auto-update-stale = true\n[remotes.origin]\nauto-track-bookmarks = \"(\"\n",
+    )
+    .expect("repo config");
+    let loaded = head_op(&fx.root);
+
+    let err = repo
+        .describe(ChangeId(default_at(&fx.root).change_id().reverse_hex()), "never")
+        .expect_err("malformed import option");
+
+    assert!(
+        matches!(
+            &err,
+            MutateError::Precondition(PreconditionError::Config { reason })
+                if reason.contains("remotes.origin.auto-track-bookmarks")
+        ),
+        "{err:?}"
+    );
+    let report = repo.take_precondition().expect("the error envelope carries a report");
+    assert!(report.was_snapshot_taken, "the recovery wrote before it failed");
+    assert_ne!(head_op(&fx.root), loaded, "the head moved off the loaded operation");
+    assert_eq!(descriptions(&fx.root)[0], "reset git head");
+}
+
+/// Story 9.53: the recovery checks out a head `@` with conflicts — the CLI's "There are
+/// unresolved conflicts at these paths:" (`print_updated_working_copy_stats` with the stale `@`
+/// as the old commit, `cli_util.rs:715` @ v0.46.0).
+#[test]
+fn a_recovery_onto_a_conflicted_at_warns_about_the_unresolved_conflicts() {
+    let (fx, mut repo) = two_workspaces(false, "");
+    conflict_default_at(&fx);
+
+    let recovery = repo.workspace_update_stale().expect("update-stale");
+
+    assert_eq!(recovery.outcome, StaleRecoveryOutcome::Updated);
+    let warnings = repo.take_warnings();
+    let kinds: Vec<WarningKind> = warnings.iter().map(|w| w.kind).collect();
+    assert_eq!(kinds, [WarningKind::UnresolvedConflicts]);
+    assert_eq!(
+        warnings[0].message,
+        "There are unresolved conflicts at these paths:\nconflicted.txt    2-sided conflict"
+    );
+}
+
+/// Story 9.53: a working copy at a SIBLING operation is stale although the head's `@` is the
+/// stale `@` itself — the CLI's `Some(new) != old` guard keeps a conflicted `@` from warning.
+#[test]
+fn a_recovery_that_keeps_a_conflicted_at_does_not_warn() {
+    let (fx, mut repo) = two_workspaces(false, "");
+    conflict_default_at(&fx);
+    repo.workspace_update_stale().expect("onto the conflicted @");
+    assert_eq!(
+        repo.take_warnings().iter().map(|w| w.kind).collect::<Vec<_>>(),
+        [WarningKind::UnresolvedConflicts]
+    );
+    {
+        let (mut workspace, head) = load(&fx.root);
+        let mut tx = head.start_transaction();
+        let root_id = head.store().root_commit_id().clone();
+        let tree = head.store().empty_merged_tree();
+        pollster::block_on(
+            tx.repo_mut()
+                .new_commit(vec![root_id], tree)
+                .set_description("unpublished")
+                .write(),
+        )
+        .expect("write");
+        let unpublished = pollster::block_on(tx.write("test: unpublished"))
+            .expect("write")
+            .leave_unpublished();
+        let locked = pollster::block_on(workspace.start_working_copy_mutation()).expect("lock");
+        pollster::block_on(locked.finish(unpublished.op_id().clone())).expect("finish");
+    }
+    let _ = test_helpers::add_commit_off_root(&fx.root, "published sibling");
+
+    let recovery = repo.workspace_update_stale().expect("update-stale");
+
+    assert_eq!(recovery.outcome, StaleRecoveryOutcome::Updated);
+    assert!(
+        repo.take_warnings()
+            .iter()
+            .all(|w| w.kind != WarningKind::UnresolvedConflicts),
+        "@ did not move"
     );
 }
 

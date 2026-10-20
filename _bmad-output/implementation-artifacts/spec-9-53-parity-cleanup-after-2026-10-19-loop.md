@@ -3,7 +3,7 @@ title: 'Story 9.53 — Parity clean-up after the 2026-10-19 story loop'
 type: 'bugfix'
 created: '2026-10-20'
 status: 'in-progress'
-baseline_revision: '2e0d7f8c4f28ff5c83fe4f7b59a824c2e42433a5'
+baseline_revision: 'a8ce4124b209d9d603fa1d541faff43c6e2786a8'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:

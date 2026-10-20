@@ -384,6 +384,7 @@ void main() {
         'jj.snapshot_files_refused',
         'jj.snapshot_paths_not_utf8',
         'jj.checkout_files_skipped',
+        'jj.unresolved_conflicts',
         'jj.paths_unmatched',
         'jj.config_alias_invalid',
         'jj.config_alias_redefined',
@@ -424,7 +425,7 @@ void main() {
         'jj.clone_branches_unmatched',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(48), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(49), reason: 'no code is registered twice');
     });
   });
 

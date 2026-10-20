@@ -395,7 +395,9 @@ impl VerbContext {
 /// working copy. `false` refuses; `true` runs the recovery ([`crate::stale::recover`]) under the
 /// same lock, records it in [`Precondition::stale_recovery`] and returns the recovery's merged
 /// stats, so the verb continues on the recovered state. [`Precondition::was_snapshot_taken`] is
-/// then the CLI's `changed`: whether the head moved off the operation loaded here.
+/// then the CLI's `changed`: whether the head moved off the operation loaded here — also when the
+/// recovery FAILS after writing operations (a `snapshot working copy`, a `reset git head`), read
+/// from the operation heads against the operation loaded here as on any failed step (Story 9.53).
 ///
 /// Fills `report` and `sink` as it goes, so a failure leaves the partial facts behind. Returns
 /// jj-lib's raw snapshot stats, which `file track` merges into its own
@@ -430,7 +432,8 @@ pub(crate) fn run(
             if !crate::config::snapshot_auto_update_stale(config)? {
                 return Err(stale);
             }
-            let (recovery, stats) = crate::stale::recover(workspace, &ctx, report, sink)?;
+            let (recovery, stats) = crate::stale::recover(workspace, &ctx, report, sink)
+                .inspect_err(|_| note_heads_moved(workspace, &loaded_op_id, report))?;
             report.was_snapshot_taken = recovery.op_id.0 != loaded_op_id.hex();
             report.stale_recovery = Some(recovery);
             Ok(stats)
@@ -466,16 +469,22 @@ pub(crate) fn snapshot_locked(
         }
         Err(e) => {
             // A later step failed after an earlier one may have committed (e.g. `import git
-            // head`, then a snapshot jj-lib refuses): the partial report says so. The heads are
-            // only READ — loading them would merge divergent heads and write an unnamed
-            // reconcile, where the CLI returns the error and writes nothing more
-            // (`cli_util.rs:498` @ v0.46.0). An unreadable store leaves the flag as it was.
-            let op_heads = workspace.repo_loader().op_heads_store().get_op_heads();
-            if let Ok(heads) = pollster::block_on(op_heads) {
-                report.was_snapshot_taken = heads != [loaded_op_id];
-            }
+            // head`, then a snapshot jj-lib refuses): the partial report says so.
+            note_heads_moved(workspace, &loaded_op_id, report);
             Err(e)
         }
+    }
+}
+
+/// After a failed step: sets [`Precondition::was_snapshot_taken`] from a READ of the operation
+/// heads — `false` only while they are exactly `loaded_op_id`. The heads are only read — loading
+/// them would merge divergent heads and write an unnamed reconcile, where the CLI returns the
+/// error and writes nothing more (`cli_util.rs:498` @ v0.46.0). An unreadable store leaves the
+/// flag as it was.
+fn note_heads_moved(workspace: &Workspace, loaded_op_id: &jj_lib::op_store::OperationId, report: &mut Precondition) {
+    let op_heads = workspace.repo_loader().op_heads_store().get_op_heads();
+    if let Ok(heads) = pollster::block_on(op_heads) {
+        report.was_snapshot_taken = heads.as_slice() != std::slice::from_ref(loaded_op_id);
     }
 }
 

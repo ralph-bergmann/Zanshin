@@ -94,7 +94,8 @@
 //! 5. on the snapshot's success: `jj.snapshot_files_refused` / `jj.snapshot_paths_not_utf8`
 //!    (`cli_util.rs:1340`);
 //! 6. non-colocated only: the `import git head` finish — `jj.working_copy_immutable` (the new
-//!    `@` became immutable), `jj.checkout_files_skipped` and `jj.identity_missing`.
+//!    `@` became immutable), `jj.checkout_files_skipped`, `jj.unresolved_conflicts` (the new `@`
+//!    has conflicts) and `jj.identity_missing`.
 //!
 //! The raw commits (`import git refs`, the colocated `import git head`, `snapshot working copy`)
 //! run no identity check, exactly as in the CLI; only a finish does. The snapshot's report is
@@ -260,8 +261,8 @@ fn convert_colocated_steps(path: &Path, report: &mut ConversionReport) -> Result
 ///
 /// As for [`convert_colocated`] (see the module doc's "What both verbs report"); the
 /// non-colocated shape adds the head import's finish — `jj.working_copy_immutable` (the new `@`
-/// became immutable), `jj.checkout_files_skipped` and the ONE `jj.identity_missing` a conversion
-/// with an empty identity reports.
+/// became immutable), `jj.checkout_files_skipped`, `jj.unresolved_conflicts` and the ONE
+/// `jj.identity_missing` a conversion with an empty identity reports.
 ///
 /// # Errors
 ///

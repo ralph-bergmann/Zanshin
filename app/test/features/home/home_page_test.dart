@@ -33,6 +33,9 @@ import '../../helpers/icon_registry.dart';
 import '../../helpers/recording_shell.dart';
 import '../../helpers/shell_host.dart';
 
+/// How long `settle` waits, in real time, for work started in the fake zone.
+const _settleBudget = Duration(seconds: 10);
+
 /// Counts the windows the page asks for.
 class _Actions implements AppWindowActions {
   var projects = 0;
@@ -96,12 +99,23 @@ void main() {
   }
 
   /// Lets an open the page started in the fake zone finish its settings writes (real file IO) until [done].
+  ///
+  /// The wait is bounded by [_settleBudget] of real time, not by a number of polls: each write is fsync'd and
+  /// chained, so under the full gate's parallel load one can take seconds. The dart:core `Stopwatch` reads real
+  /// time here: fake_async fakes timers, microtasks and `package:clock`, not `Stopwatch`.
   Future<void> settle(WidgetTester tester, bool Function() done) async {
-    for (var i = 0; i < 100 && !done(); i++) {
+    final watch = Stopwatch()..start();
+    while (!done() && watch.elapsed < _settleBudget) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
       await tester.pump();
     }
-    expect(done(), isTrue);
+    expect(
+      done(),
+      isTrue,
+      reason:
+          'settings writes not done after ${watch.elapsedMilliseconds} ms of real time '
+          '(budget ${_settleBudget.inSeconds} s)',
+    );
   }
 
   Finder capsuleName(String name) => find.descendant(of: find.byType(ProjectCapsule), matching: find.text(name));

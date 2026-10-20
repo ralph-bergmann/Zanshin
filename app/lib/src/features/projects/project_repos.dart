@@ -120,8 +120,9 @@ const _ignoredRemote = 'git';
 
 /// The dot's sync state (Story 9.29) from the refs of `heads(::@ & bookmarks())` and the bookmark list: over the
 /// tracked remote rows of those local bookmarks (remote `git` excluded), [ProjectStatus.ahead] when the local side has
-/// commits a remote lacks (a remote row's `behind`), [ProjectStatus.behind] when a remote has commits the local side
-/// lacks (its `ahead`), [ProjectStatus.diverged] when both hold, null when neither does.
+/// commits a remote lacks (a remote row's `behind`, or a row with no target — the CLI's `(not created yet)`, a
+/// bookmark never pushed there; Story 9.53), [ProjectStatus.behind] when a remote has commits the local side lacks
+/// (its `ahead`), [ProjectStatus.diverged] when both hold, null when neither does.
 ProjectStatus? trackingStatusOf(Iterable<TopologyRef> headRefs, Iterable<Bookmark> bookmarks) {
   final names = <String>{
     for (final ref in headRefs)
@@ -132,7 +133,7 @@ ProjectStatus? trackingStatusOf(Iterable<TopologyRef> headRefs, Iterable<Bookmar
   for (final bookmark in bookmarks) {
     if (bookmark.kind case RemoteBookmark(tracked: true, :final remoteName, :final ahead, :final behind)
         when remoteName != _ignoredRemote && names.contains(bookmark.name)) {
-      localAhead |= (behind?.lower ?? 0) > 0;
+      localAhead |= bookmark.target == null || (behind?.lower ?? 0) > 0;
       localBehind |= (ahead?.lower ?? 0) > 0;
     }
   }

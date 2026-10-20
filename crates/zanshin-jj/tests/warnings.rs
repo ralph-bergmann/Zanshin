@@ -488,6 +488,55 @@ fn a_checkout_over_an_untracked_file_warns_about_the_skipped_update() {
     );
 }
 
+/// Story 9.53: `edit` onto a conflicted merge — the CLI's "There are unresolved conflicts at
+/// these paths:" with one padded line per conflicted path (`print_updated_working_copy_stats`,
+/// `cli_util.rs:2318-2329` @ v0.46.0).
+#[test]
+fn an_edit_onto_a_conflicted_merge_lists_the_unresolved_conflicts() {
+    let fx = git_fx("");
+    let merge = test_helpers::add_conflicted_merge_off_root(&fx.root);
+    let mut repo = Repo::open(&fx.root).expect("open");
+    let merge = resolve_revset(&repo, &merge).expect("merge").swap_remove(0);
+
+    repo.edit(merge).expect("edit");
+
+    let warnings = repo.take_warnings();
+    assert_eq!(kinds(&warnings), [WarningKind::UnresolvedConflicts]);
+    assert_eq!(
+        warnings[0].message,
+        "There are unresolved conflicts at these paths:\nconflicted.txt    2-sided conflict"
+    );
+}
+
+/// Story 9.53: the warning needs BOTH a conflicted new `@` and a moved `@` — a clean checkout
+/// and a finish that leaves the conflicted `@` where it was say nothing; a rewrite of the
+/// conflicted `@` (a new commit) warns again, as in the CLI (`Some(new) != old`).
+#[test]
+fn only_a_moved_conflicted_at_warns_about_unresolved_conflicts() {
+    let fx = git_fx("");
+    let clean = test_helpers::add_commit_with_files(&fx.root, &[], &[("a.txt", "a\n")], "clean");
+    let merge = test_helpers::add_conflicted_merge_off_root(&fx.root);
+    let mut repo = Repo::open(&fx.root).expect("open");
+    let clean = resolve_revset(&repo, &clean).expect("clean").swap_remove(0);
+    let merge = resolve_revset(&repo, &merge).expect("merge").swap_remove(0);
+
+    repo.edit(clean).expect("edit clean");
+    assert!(repo.take_warnings().is_empty(), "a clean checkout");
+
+    repo.edit(merge.clone()).expect("edit merge");
+    assert_eq!(kinds(&repo.take_warnings()), [WarningKind::UnresolvedConflicts]);
+
+    repo.bookmark_create(&["here".to_owned()], None).expect("bookmark on @");
+    assert!(repo.take_warnings().is_empty(), "@ did not move");
+
+    repo.describe(merge, "described").expect("describe @");
+    assert_eq!(
+        kinds(&repo.take_warnings()),
+        [WarningKind::UnresolvedConflicts],
+        "a rewritten @ is a new commit"
+    );
+}
+
 // ── The channel's rules ──────────────────────────────────────────────────────────
 
 /// Config loads, then the snapshot's stats, then the verb body — the CLI's print order.

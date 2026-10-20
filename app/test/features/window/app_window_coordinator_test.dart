@@ -25,6 +25,9 @@ import 'package:zanshin_settings/zanshin_settings.dart';
 import '../../helpers/fake_projects.dart';
 import '../../helpers/fake_windows.dart';
 
+/// How long `until` waits, in real time, for the coordinator's chains.
+const _untilBudget = Duration(seconds: 10);
+
 /// The project window's stand-in content.
 class _ProjectContent extends StatelessWidget {
   const _ProjectContent();
@@ -132,11 +135,21 @@ class _Rig {
   ];
 
   /// Waits until [done] (the coordinator's chains run on real file IO).
+  ///
+  /// The wait is bounded by [_untilBudget] of real time, not by a number of polls: each settings write is fsync'd
+  /// and chained, so under the full gate's parallel load one can take seconds.
   Future<void> until(bool Function() done) async {
-    for (var i = 0; i < 200 && !done(); i++) {
+    final watch = Stopwatch()..start();
+    while (!done() && watch.elapsed < _untilBudget) {
       await Future<void>.delayed(const Duration(milliseconds: 5));
     }
-    expect(done(), isTrue);
+    expect(
+      done(),
+      isTrue,
+      reason:
+          'coordinator chains not done after ${watch.elapsedMilliseconds} ms of real time '
+          '(budget ${_untilBudget.inSeconds} s)',
+    );
   }
 
   /// Presses the red button of the window [key].

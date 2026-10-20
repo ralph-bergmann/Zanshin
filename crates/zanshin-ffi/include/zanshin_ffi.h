@@ -2207,9 +2207,10 @@ ZanshinBuf *zanshin_repo_init(const uint8_t *data,
  * `Envelope.warnings` carries the clone's warnings on the ok envelope AND on every error
  * envelope, in the CLI's order: the start-up environment's (twice: before and after the remote
  * is added), each finish's (`jj.identity_missing` once per operation written, `jj.git_export_failed`
- * colocated, `jj.working_copy_immutable`, `jj.checkout_files_skipped`), `jj.clone_branches_unmatched`
- * and `jj.git_import_failed` before the fetch's finish; on a failure inside the clean-up scope,
- * `jj.clone_cleanup_failed` last when the clean-up failed. No `Envelope.precondition`.
+ * colocated, `jj.working_copy_immutable`, `jj.checkout_files_skipped`, `jj.unresolved_conflicts`),
+ * `jj.clone_branches_unmatched` and `jj.git_import_failed` before the fetch's finish; on a
+ * failure inside the clean-up scope, `jj.clone_cleanup_failed` last when the clean-up failed.
+ * No `Envelope.precondition`.
  *
  * # Safety
  * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by

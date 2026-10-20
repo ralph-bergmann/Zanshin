@@ -642,7 +642,9 @@ fn wc_is_immutable(
 ///    through this function warns and nothing else does.
 ///
 /// Its warnings land in `sink` in the CLI's print order: became-immutable, the HEAD reset, the
-/// export failures, the skipped checkout files, the identity (Story 9.32).
+/// export failures, the skipped checkout files, the unresolved conflicts of a NEW `@` (only when
+/// `@` is not the commit it was, as the CLI's `Some(new) != old`; Story 9.53), the identity
+/// (Story 9.32).
 ///
 /// The old `@` whose tree `check_out` verifies the working copy against is read from
 /// `tx.base_repo()`, as in the CLI.
@@ -650,7 +652,7 @@ fn wc_is_immutable(
 /// # Errors
 ///
 /// - [`MutateError::Backend`] — a store read, the Git reset, the commit or the checkout failed
-///   ("Failed to check out commit …").
+///   ("Failed to check out commit …"), or a conflicted path of the new `@` could not be read.
 /// - [`MutateError::NotAGitRepo`] — the colocated export found no Git backend.
 pub(crate) fn finish_transaction(
     workspace: &mut Workspace,
@@ -710,6 +712,11 @@ pub(crate) fn finish_transaction(
                 ))
             })?;
         sink.extend(warning::checkout_files_skipped(stats.skipped_files));
+        // WHY: the CLI warns only when `@` moved (`Some(new) != old`); Zanshin checks out
+        // unconditionally, so the guard is explicit.
+        if maybe_old_wc_commit.as_ref().map(Commit::id) != Some(new_wc_commit.id()) {
+            sink.extend(warning::unresolved_conflicts(workspace.workspace_root(), new_wc_commit).map_err(be)?);
+        }
         checkout = Some(crate::CheckoutStats::project(&stats));
     }
     sink.extend(warning::identity_missing(new_repo.settings()));

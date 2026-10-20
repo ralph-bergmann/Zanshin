@@ -457,6 +457,25 @@ pub fn scenarios() -> Vec<Scenario> {
             |s| vec!["edit".to_owned(), s.change_arg("B")],
         ),
         Scenario {
+            // M merges C and D, which both add c.txt with different content; `@` is M's empty
+            // child, so `edit` checks out the conflicted M (Story 9.53: "There are unresolved
+            // conflicts at these paths:").
+            setup: &[
+                Step::Jj(&["new", "@--", "-m", "D"]),
+                Step::Write("c.txt", "c from D\n"),
+                Step::Jj(&["new", "-m", "M", "description(substring:\"C\")", "@"]),
+                Step::Jj(&["new"]),
+            ],
+            ..simple(
+                "edit_conflicted_merge",
+                |repo, _, s| {
+                    let result = repo.edit(s.change("M"));
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["edit".to_owned(), s.change_arg("M")],
+            )
+        },
+        Scenario {
             setup: &[Step::Jj(&["describe", "-m", "to be undone"])],
             ..simple(
                 "undo_after_describe",

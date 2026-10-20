@@ -443,6 +443,40 @@ fn file_show_refuses_a_malformed_path_on_both_parse_sites() {
     );
 }
 
+/// Story 9.53: the single-path fast path resolves `.` and `..` as the multi-path branch does
+/// (the CLI's `parse_file_path` from the workspace root) — the answer and a refusal name the
+/// RESOLVED path, and a path that leaves the repo is refused with jj-lib's text.
+#[test]
+fn file_show_resolves_dot_and_dot_dot_in_a_single_path() {
+    pin_env();
+    let t = mixed_tree();
+    let mut repo = open(&t.fx);
+
+    for path in ["./a.txt", "dir/../a.txt"] {
+        let out = repo
+            .file_show(Some(t.change.clone()), &[path.to_owned()])
+            .unwrap_or_else(|e| panic!("{path}: {e:?}"));
+        assert_eq!(out.files.len(), 1, "{path}");
+        assert_eq!(out.files[0].path, "a.txt", "{path}");
+    }
+
+    let err = repo
+        .file_show(Some(t.change.clone()), &["./nope.txt".to_owned()])
+        .expect_err("absent");
+    assert!(
+        matches!(&err, FileError::PathNotFound { path } if path == "nope.txt"),
+        "unexpected error: {err:?}"
+    );
+
+    let err = repo
+        .file_show(Some(t.change), &["../x".to_owned()])
+        .expect_err("outside the repo");
+    assert!(
+        matches!(&err, FileError::InvalidInput { reason } if reason == r#"invalid path: Path "../x" is not in the repo ".""#),
+        "unexpected error: {err:?}"
+    );
+}
+
 #[test]
 fn file_show_reports_a_malformed_conflict_marker_style_as_a_config_error() {
     pin_env();
@@ -571,6 +605,39 @@ fn file_annotate_refuses_an_absent_path_and_a_non_file() {
     );
 
     assert_eq!(head_op_id(&mut repo), before, "no refusal writes an operation");
+}
+
+/// Story 9.53: `file annotate`'s path resolves `.` and `..` like `file show`'s; a refusal names
+/// the resolved path, and a path that leaves the repo is invalid input.
+#[test]
+fn file_annotate_resolves_dot_and_dot_dot() {
+    pin_env();
+    let t = mixed_tree();
+    let mut repo = open(&t.fx);
+
+    let plain = repo.file_annotate(Some(t.change.clone()), "a.txt").expect("plain path");
+    for path in ["./a.txt", "dir/../a.txt"] {
+        let lines = repo
+            .file_annotate(Some(t.change.clone()), path)
+            .unwrap_or_else(|e| panic!("{path}: {e:?}"));
+        assert_eq!(lines, plain, "{path}");
+    }
+
+    let err = repo
+        .file_annotate(Some(t.change.clone()), "dir/nested/..")
+        .expect_err("a directory");
+    assert!(
+        matches!(&err, FileError::NotAFile { path } if path == "dir"),
+        "unexpected error: {err:?}"
+    );
+
+    let err = repo
+        .file_annotate(Some(t.change), "../x")
+        .expect_err("outside the repo");
+    assert!(
+        matches!(&err, FileError::InvalidInput { reason } if reason == r#"invalid path: Path "../x" is not in the repo ".""#),
+        "unexpected error: {err:?}"
+    );
 }
 
 #[test]

@@ -243,6 +243,9 @@ pub const JJ_SNAPSHOT_FILES_REFUSED: &str = "jj.snapshot_files_refused";
 pub const JJ_SNAPSHOT_PATHS_NOT_UTF8: &str = "jj.snapshot_paths_not_utf8";
 /// Warning: working-copy updates skipped because of conflicting on-disk changes.
 pub const JJ_CHECKOUT_FILES_SKIPPED: &str = "jj.checkout_files_skipped";
+/// Warning: a checkout moved `@` onto a commit with conflicts; the message lists each conflicted
+/// path (Story 9.53).
+pub const JJ_UNRESOLVED_CONFLICTS: &str = "jj.unresolved_conflicts";
 /// Warning: explicitly named paths that match no entry.
 pub const JJ_PATHS_UNMATCHED: &str = "jj.paths_unmatched";
 /// Warning: a `[revset-aliases]` / `[fileset-aliases]` entry that does not load.
@@ -342,6 +345,7 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::SnapshotFilesRefused => JJ_SNAPSHOT_FILES_REFUSED,
         K::SnapshotPathsNotUtf8 => JJ_SNAPSHOT_PATHS_NOT_UTF8,
         K::CheckoutFilesSkipped => JJ_CHECKOUT_FILES_SKIPPED,
+        K::UnresolvedConflicts => JJ_UNRESOLVED_CONFLICTS,
         K::PathsUnmatched => JJ_PATHS_UNMATCHED,
         K::ConfigAliasInvalid => JJ_CONFIG_ALIAS_INVALID,
         K::ConfigAliasRedefined => JJ_CONFIG_ALIAS_REDEFINED,
@@ -1183,6 +1187,7 @@ mod tests {
             K::SnapshotFilesRefused => "jj.snapshot_files_refused",
             K::SnapshotPathsNotUtf8 => "jj.snapshot_paths_not_utf8",
             K::CheckoutFilesSkipped => "jj.checkout_files_skipped",
+            K::UnresolvedConflicts => "jj.unresolved_conflicts",
             K::PathsUnmatched => "jj.paths_unmatched",
             K::ConfigAliasInvalid => "jj.config_alias_invalid",
             K::ConfigAliasRedefined => "jj.config_alias_redefined",
@@ -1240,6 +1245,7 @@ mod tests {
             K::SnapshotFilesRefused,
             K::SnapshotPathsNotUtf8,
             K::CheckoutFilesSkipped,
+            K::UnresolvedConflicts,
             K::PathsUnmatched,
             K::ConfigAliasInvalid,
             K::ConfigAliasRedefined,

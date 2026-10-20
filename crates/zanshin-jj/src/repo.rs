@@ -2496,8 +2496,9 @@ impl Repo {
     ///
     /// In the CLI's order: the start-up environment's (twice: before and after the reload), the
     /// first finish's, `jj.clone_branches_unmatched`, `jj.git_import_failed`, the fetch finish's,
-    /// the checkout finish's (`jj.checkout_files_skipped`, `jj.identity_missing`, …); on a failure
-    /// inside the clean-up scope, `jj.clone_cleanup_failed` last when the clean-up failed.
+    /// the checkout finish's (`jj.checkout_files_skipped`, `jj.unresolved_conflicts`,
+    /// `jj.identity_missing`, …); on a failure inside the clean-up scope, `jj.clone_cleanup_failed`
+    /// last when the clean-up failed.
     ///
     /// # Errors
     ///
