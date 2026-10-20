@@ -2,7 +2,7 @@
 title: 'Story 9.54 — Edited editor text for squash/split, and three follow-ups of 9.51–9.53'
 type: 'feature'
 created: '2026-10-20'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '942338fd777e6480e81b071b59908a5bcf939919'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -10,7 +10,18 @@ context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-9-context.md'
 warnings: ['multiple-goals', 'oversized']
-deferred: []
+deferred:
+  - summary: >-
+      `bookmark create` does not auto-track the new bookmark on remotes matched by
+      `remotes.<name>.auto-track-bookmarks` / `auto-track-created-bookmarks`, as the CLI does.
+    evidence: |-
+      CLI `cli/src/commands/bookmark/create.rs:88-111` @ v0.46.0 calls `track_remote_bookmark` for every
+      matching remote that has a remote view (warning "Auto-tracking bookmark that exists on the remote");
+      `crates/zanshin-jj/src/bookmark_ops.rs:23-26` documents "No auto-tracking on create … until Story 9.11
+      lands" and no code tracks. Pre-existing since Story 9.8; surfaced while triaging Story 9.54's review.
+    location: >-
+      crates/zanshin-jj/src/bookmark_ops.rs:23
+    severity: medium
 ---
 
 <intent-contract>
@@ -106,6 +117,40 @@ deferred: []
 
 ## Review Triage Log
 
+### 2026-10-20 — Review pass
+- verdicts: 29 findings — high 0, medium 0, low 24, false 5, maybe-false 0
+- findings:
+  - `[false]` `[reject]` (intent 1) the edited text is cleaned up and the editor's render still runs, where the deferred-work entry says "written as is" — epics.md Story 9.54 item 1 (Ralph's text) says "written as the CLI writes a saved editor buffer (its cleanup, no trailers)"; "as is" meant "without trailers", and the oracle compares against the stock CLI's `--editor` flow.
+  - `[false]` `[reject]` (intent 2) split's both-or-neither refusal is a Zanshin-only rule — the CLI's bulk editor refuses a missing section too ("The description for the following commits were not found in the edited message", `description_util.rs` `validate_commit_descriptions` @ v0.46.0); two fields are that buffer's two sections.
+  - `[low]` `[reject]` (intent 3) the intent's example (B already carrying the trailer) is not the fixture — the edited text replaces the description whatever it held; the trailer block of the combined text is 9.51's `trailers_not_in`, unchanged here and oracle-covered there (`squash_editor_trailers`).
+  - `[low]` `[reject]` (intent 4) a wrong-typed or unparsable `git.push` now makes the project dot's read fail — the same config breaks `jj git push`; a malformed config surfacing as an error is how every other read behaves (`read()` rethrows non-stale errors), and a fallback-to-empty catch is a guard branch for a rare config typo. Same root as verification-gap other 1, blind 1, edge 1.
+  - `[low]` `[reject]` (intent 5) `config("revsets.log")` still differs from the CLI — Ralph's story text puts jj-cli's layers BELOW Zanshin's builtin layer; `revsets.log` is the builtin's deliberate expansion behind `LogDefaults` (pre-existing, pinned by `api_stability.rs`).
+  - `[low]` `[patch]` (intent 6) workspace add's new immutable set / doubled `immutable_heads()` warnings are untested — patched with verification-gap 2 (oracle `workspace_add_immutable_at`).
+  - `[low]` `[patch]` (intent 7) the claim that every builtin key repeats jj-cli's default is untested — patched with blind 8.
+  - `[false]` `[reject]` (intent 8) no `## Auto Run Result` yet — mid-run state; finalisation writes it.
+  - `[low]` `[reject]` (intent 9) the app's `gitPushRemotes` wiring has no end-to-end test — as verification-gap 3.
+  - `[low]` `[patch]` (verification-gap 1) the squash single arm with an EMPTY description and an edited text has no witness — patched: `squash_of_undescribed_changes_writes_the_edited_text` (`crates/zanshin-jj/tests/templates.rs`) and oracle `squash_undescribed_edited` (CLI `jj squash --editor`, editor script saving `E`).
+  - `[low]` `[patch]` (verification-gap 2) workspace add's finish/trailers on the NEW environment are unpinned — patched: oracle `workspace_add_immutable_at` (`immutable_heads()` = `builtin_immutable_heads() | @`); it FAILS with `FinishCtx.immutable` reverted to the old workspace's set (checked locally, reverted).
+  - `[low]` `[reject]` (verification-gap 3) no real-worker test that `read()` feeds `gitPushRemotes()` into the rule — Dart has no way to make a tracked remote row with no target: no `bookmark track` in `RepoHandle`, and Zanshin's `bookmark_create` does not auto-track (a pre-existing divergence, deferred below); the rule and the read are each witnessed (`worker_project_repos_test.dart`, `test/worker/remotes_test.dart`), the wiring is a five-line closure.
+  - `[low]` `[reject]` (verification-gap other 1) a bad `git.push` breaks the dot — as intent 4.
+  - `[low]` `[reject]` (blind 1) a bad `git.push` breaks the dot — as intent 4.
+  - `[low]` `[reject]` (blind 2) the push remotes are read on every clean refresh — one more precondition (a no-op snapshot when nothing changed) per clean read; reading lazily only when a target-less row exists adds branching for no observed cost.
+  - `[false]` `[reject]` (blind 3) the single squash arm has no preview text — by design (9.15): the single arm asks nothing, 10.25 runs it at once; `squash_plan` returns `None` there.
+  - `[low]` `[reject]` (blind 4) split has no way to get its two editor texts — no consumer needs one: 10.25's split always sends `-m`; a split plan would be new API the story did not ask for.
+  - `[low]` `[patch]` (blind 5) the empty single arm has no witness — as verification-gap 1.
+  - `[low]` `[patch]` (blind 6) no oracle scenario for the single arm — patched: `squash_use_destination_edited` (CLI `jj squash -u --editor`) and `squash_undescribed_edited`.
+  - `[low]` `[patch]` (blind 7) workspace add's `new_env.immutable` is unguarded — as verification-gap 2.
+  - `[low]` `[patch]` (blind 8) the builtin layer's "repeats jj-cli's value" claim is untested, so a pin bump could leave a stale builtin copy overriding a changed CLI default — patched: inline `every_builtin_key_repeats_jj_clis_default_except_revsets_log` (`config.rs`).
+  - `[low]` `[reject]` (blind 9) the push-remotes warning, bad pattern and native backend are not tested across FFI/Dart, nor the remaining-only split refusal — all witnessed at the `Repo` level; the envelope carries warnings and errors through the one shared path every verb uses.
+  - `[low]` `[patch]` (blind 10) the `-m` + edited-text refusal is missing from the module's "Divergences" list — patched: listed in `squash_split.rs`'s module doc.
+  - `[low]` `[patch]` (blind 11) `SquashOptions::edited_description`'s doc says `squash_plan` ignores it — patched: "refuses it with `message` too, and otherwise ignores it".
+  - `[low]` `[patch]` (blind 12) two FFI doc comments were not re-wrapped — patched in `crates/zanshin-ffi/src/squash_split.rs`; `cargo make codegen` regenerated `zanshin_ffi.h` / `bindings.dart`.
+  - `[false]` `[reject]` (blind 13) sprint-status still says `backlog` — finalisation sets the story's status; the 10-25 entry's note already routes edits through `edited_description`.
+  - `[low]` `[reject]` (edge 1) a bad `git.push` breaks the dot — as intent 4.
+  - `[low]` `[patch]` (edge 2) the implicit `origin` warns "No matching remotes for names: origin" on a repo without it, where the docs name only `git.push` names — the push warns the same (`push.rs:309-321` @ v0.46.0 runs the unmatched check on the default `exact("origin")`), so behaviour stays; patched the docs (`repo.rs`, `zanshin-ffi/src/remotes.rs`, `handle.dart`, `docs/ffi-abi.md`, `docs/rust-error-codes.md`) and asserted the warning in `tests/push_remotes.rs` `no_matching_remote_is_an_empty_list`.
+  - `[low]` `[reject]` (edge 3) an edited split text holding a literal `JJ: describe ` line is dropped where the CLI's bulk parser would refuse — a user would have to type jj's section header into the GUI field; `cleanup_description_lines` drops every `JJ:` line as the CLI's per-section cleanup does.
+- also surfaced while triaging verification-gap 3 (pre-existing, not a reviewer finding): `bookmark_create` does not auto-track per `remotes.<name>.auto-track-bookmarks` / `auto-track-created-bookmarks` — deferred (frontmatter `deferred`, mirrored in deferred-work.md).
+
 ## Design Notes
 
 **Item 1 = `--editor` with a scripted editor.** The CLI writes `cleanup_description_lines(saved buffer)` in every arm where its editor opens, after rendering the draft (trailers added, `templates.draft_commit_description` rendered). Modelling the field as "the editor saved this" keeps the render's refusals and diagnostics identical to the CLI's and lets the oracle drive the stock CLI with `--editor` / `ui.editor` set to a script. Example: B = `B\n\nSOB\n`, C = `C\n`, trailers on: plan `B\n\nSOB\n\nC\n`; unchanged as `edited_description` → `B\n\nSOB\n\nC\n` (today's `-m` gives a second SOB).
@@ -122,3 +167,46 @@ deferred: []
 - `cargo test -p zanshin-parity --test oracle` -- expected: all pass.
 - `flutter test test/features/projects/worker_project_repos_test.dart` (in `app/`) and `flutter test test/worker/squash_split_test.dart` (in `packages/zanshin_core`) -- expected: green.
 - `cargo make test` (repo root, unpiped, synchronous, long timeout; PATH with `~/development/sdks/flutter/bin` and `~/development/sdks/cargo/bin`, `CARGO_HOME=~/development/sdks/cargo`, `RUSTUP_HOME` unset) -- expected: exit 0; coverage held or raised.
+
+## Auto Run Result
+
+Status: done (2026-10-20). Blocking condition: none. Commits: spec + recompiled Epic 9 context 942338fd777e6480e81b071b59908a5bcf939919; code 65bce23 (full: see `git log`); review patches 158c1621284a256ee93e34ecea277870122df998; plus the finalisation commit of this spec, deferred-work.md and sprint-status.yaml.
+
+**Items** (I1–I3 are the dispatch's deferred-work items; story items 1–4).
+- **I1 / item 1 — the edited `squash_plan` text re-gained trailers through `-m` — fixed** (65bce23, witnesses widened in 158c162). Verified first: `squashed_description`'s `-m` arm added `templates.commit_trailers`. Now `SquashOptions.edited_description` and `SplitOptions.edited_selected_description` / `edited_remaining_description` (appended `.fbs` fields, FFI readers, Dart `RepoHandle.squash(editedDescription:)` / `split(editedSelectedDescription:, editedRemainingDescription:)`) are the CLI's `--editor` saving exactly that text: the description step renders as with the editor, then the text is written through `cleanup_description_lines`, no trailers; `-m` with an edited text and a lone split text refuse `jj.invalid_input`. Oracle: `squash_plan_edited_trailer_deleted`, `squash_plan_edited_unchanged`, `split_edited_trailer_deleted`, `split_edited_unchanged`, `squash_use_destination_edited`, `squash_undescribed_edited`.
+- **Item 2 — "ahead" counted every tracked remote's missing bookmark — fixed** (65bce23). `Repo::git_push_remotes` (9.20's default-remote resolution, factored out of `push::resolve_remotes` and shared with `git push`; empty on no match or a non-Git backend), extern `zanshin_git_push_remotes` / payload `GitPushRemotes`, Dart `RepoHandle.gitPushRemotes()`; `trackingStatusOf` gates only the target-less term on those remotes, distances unchanged.
+- **I2 / item 3 — `config()` saw only a selection of jj-cli defaults — fixed** (65bce23; builtin-equality test 158c162). Every `jj_cli::config::default_config_layers()` layer sits below `BUILTIN_CONFIG_TOML` (replacing `template_defaults_layer`); `config("ui.color")` renders `"auto"` as the CLI (oracle `new_description_config_ui_color`).
+- **I3 / item 4 — `workspace add` built no start-up environment for the new workspace — fixed** (65bce23; oracle `workspace_add_immutable_at` 158c162). The new workspace's `CommandEnv` loads into its own collector right after `init_workspace_with_existing_repo`: its warnings come twice as in the CLI, and the trailers and the finish use its immutable set, aliases and short-prefixes. Oracle `workspace_add_bad_template_alias`, `workspace_add_diagnosed_short_prefixes`, `workspace_add_immutable_at` (fails with the old set, checked).
+
+I1–I3 are marked RESOLVED in deferred-work.md. One new pre-existing item was deferred (below) and mirrored there under "Surfaced in Story 9.54 (bmad-build-auto, 2026-10-20)".
+
+**Files changed:**
+- `crates/zanshin-jj/src/squash_split.rs` — edited-text fields, refusals, editor-model description step, docs.
+- `crates/zanshin-jj/src/push.rs`, `crates/zanshin-jj/src/repo.rs` — shared default-remote helper, `Repo::git_push_remotes`, docs.
+- `crates/zanshin-jj/src/config.rs` — `CLI_DEFAULTS` below the builtin layer; rewritten and new inline tests.
+- `crates/zanshin-jj/src/workspace_add.rs`, `template.rs`, `warning.rs` — new workspace's start-up environment; `Templates::at` removed; corrected docs.
+- `schemas/envelope.fbs`, `crates/zanshin-ffi/src/{squash_split,remotes}.rs`, regenerated `envelope_generated.rs` / `zanshin_ffi.h` / `bindings.dart` / `envelope_zanshin.ffi_generated.dart` — FFI surface.
+- `packages/zanshin_core/lib/src/{ffi/squash_split,ffi/remotes,worker/commands,worker/isolate,worker/handle}.dart` — Dart surface.
+- `app/lib/src/features/projects/{project_repos,worker_project_repos}.dart` — the push-target "ahead" rule.
+- Tests: `crates/zanshin-jj/tests/{templates,push_remotes,api_stability}.rs`, `crates/zanshin-ffi/tests/{squash_split_ffi,push_remotes_ffi,ffi_abi_doc_sync}.rs`, `packages/zanshin_core/test/{ffi,worker}/{squash_split,remotes}_test.dart`, `app/test/features/projects/worker_project_repos_test.dart`, `crates/zanshin-parity/tests/oracle/{scenarios,main}.rs` (158 → 168 scenarios).
+- `docs/ffi-abi.md`, `docs/rust-error-codes.md`, `coverage-baseline.txt` (push.rs raised 93.84 → 93.99).
+
+**Review findings.** 29 findings (high 0, medium 0, low 24, false 5, maybe-false 0).
+- **Patched, 7 entries (all low), applied by the parent** (a resumed implementation agent reports asynchronously, which this unattended run cannot wait for): single-arm edited witnesses (verification-gap 1, blind 5, blind 6); new-environment immutable set (verification-gap 2, intent 6, blind 7); builtin-vs-CLI defaults test (blind 8, intent 7); divergence list entry (blind 10); field doc (blind 11); doc re-wrap + codegen (blind 12); implicit-`origin` warning documented and asserted (edge 2).
+- **Deferred, 1 (pre-existing, not a reviewer finding):** `bookmark create` does not auto-track per `remotes.<name>.auto-track-bookmarks` / `auto-track-created-bookmarks` (medium) — found while triaging verification-gap 3.
+- **Rejected, low (reasons in the triage log):** a bad `git.push` breaks the project dot (intent 4, verification-gap other 1, blind 1, edge 1); the intent's pre-trailered example (intent 3); `revsets.log` still Zanshin's (intent 5); no real-worker wiring test (verification-gap 3, intent 9 — no Dart path makes a target-less tracked row); per-refresh push-remotes read (blind 2); no split plan (blind 4); FFI/Dart-level copies of Repo-level witnesses (blind 9); a literal `JJ: describe` line in an edited split text (edge 3).
+- **False, 5:** "as is" vs cleanup (intent 1); split's both-or-neither (intent 2); missing Auto Run Result (intent 8); single arm preview (blind 3); sprint-status lag (blind 13).
+
+**Follow-up review recommendation:** false — this first pass patched 7 entries, all low (patched counts: high 0, medium 0, low 7).
+
+**Verification:**
+- Implementation run: `cargo make test` exit 0 on 65bce23 (coverage raised for push.rs, baseline committed).
+- Orchestrator before review: `cargo test -p zanshin-jj --test squash_split --test templates --test workspace_add --test api_stability --test push_remotes` green; `cargo test -p zanshin-ffi` green; `cargo test -p zanshin-parity --test oracle` 174 passed; `flutter test` of `packages/zanshin_core` squash/split + remotes tests green; the app's `worker_project_repos_test.dart` green under the gate's environment (`cargo make --allow-private test-flutter`, 746 tests; run bare it refuses its real-worker cases for the unpinned `XDG_CONFIG_HOME`, by design).
+- After the review patches: new oracle scenarios passed, `workspace_add_immutable_at` failed with `FinishCtx.immutable` reverted (then restored), inline `every_builtin_key_repeats_jj_clis_default_except_revsets_log` passed, `cargo make codegen` run; `cargo make test` (repo root, unpiped to a log, synchronous) exit 0, coverage held at 99.12 % (20349/20529), extern coverage OK, `coverage-baseline.txt` not lowered.
+- Matrix audit: squash round trip deleted / unchanged — `squash_with_the_plan_text_minus_its_trailer_writes_no_trailer`, `squash_with_the_unchanged_plan_text_keeps_exactly_one_trailer`, oracle `squash_plan_edited_*`; single arm — `squash_single_arm_with_an_edited_text_writes_it_cleaned_up`, `squash_of_undescribed_changes_writes_the_edited_text`, oracle `squash_use_destination_edited` / `squash_undescribed_edited`; split — `split_with_both_edited_texts_writes_them_without_trailers`, `split_with_the_unchanged_editor_texts_keeps_one_trailer_each`, oracle `split_edited_*`; conflicts — `an_edited_text_conflicts_with_message_and_split_needs_both`, FFI `an_edited_squash_description_with_a_message_is_refused`, `edited_split_descriptions_cross_and_need_each_other`; push targets — `tests/push_remotes.rs` (one test per row); ahead rule — `worker_project_repos_test.dart` origin-vs-upstream cases; `config()` — `a_template_reads_a_jj_cli_default_through_config`, oracle `new_description_config_ui_color`; workspace add — `workspace_add_reports_the_start_up_warnings_twice`, oracle `workspace_add_bad_template_alias` / `_diagnosed_short_prefixes`. All ran and passed.
+
+**Residual risks:**
+- A wrong-typed or unparsable `git.push` makes the project dot's read fail (`jj.config_error` / `jj.invalid_input`), where before it read fine; the same config breaks `jj git push`.
+- The app's wiring of `gitPushRemotes()` into the rule has no real-worker test until `bookmark create` auto-tracks (deferred item) or Dart gains `bookmark track` (Story 9.11).
+- `config get` / `config list --include-defaults` now show every jj-cli default (merge tools, colors, `ui.editor = "nano"`, …), as the CLI does.
+- Split's edited texts have no plan to start from; a GUI that edits split descriptions needs a split plan first.
