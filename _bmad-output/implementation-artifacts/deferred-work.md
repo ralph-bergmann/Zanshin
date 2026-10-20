@@ -1628,7 +1628,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in Story 9.51 (bmad-build-auto, 2026-10-20)
 
-- **Zanshin loads `[template-aliases]` and `revsets.short-prefixes` only when a verb parses a template; the CLI loads both at the start of every workspace command, so a broken alias table or short-prefixes revset refuses every CLI command but only Zanshin's template-rendering verbs.** Low.
+- ~~**Zanshin loads `[template-aliases]` and `revsets.short-prefixes` only when a verb parses a template; the CLI loads both at the start of every workspace command, so a broken alias table or short-prefixes revset refuses every CLI command but only Zanshin's template-rendering verbs.**~~ **RESOLVED 2026-10-20 (spec-9-51-closing-template-env-at-command-start, commit d8e4c60):** `snapshot::CommandEnv::load` loads both in the CLI's order for every start-up-environment verb; witnesses in `tests/templates.rs` and the oracle scenarios `abandon_broken_template_aliases` / `abandon_broken_short_prefixes`. Low.
   - `cli/src/cli_util.rs` `load_template_aliases` (:3518) and `load_short_prefixes_expression` (:1115-1136) run in `WorkspaceCommandEnvironment` setup @ v0.46.0; Story 9.51 builds its template environment lazily (`crates/zanshin-jj/src/template.rs`).
   - **Follow-up:** load both in `snapshot::CommandEnv::load` for every verb (one more refusal and warning source per call), with a witness that a broken `template-aliases` table refuses a non-template verb.
 - **A `jj.template_diagnostic` has no template-position rendering.** Low.
