@@ -352,7 +352,7 @@ pub(crate) fn squash(
         None => None,
     };
     if let Some((mut builder, decision)) = rewritten {
-        let templates = Templates::new(&ctx.config, &ctx.immutable, workspace);
+        let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, workspace);
         let (description, _) = squashed_description(
             &templates,
             tx.repo(),
@@ -425,7 +425,7 @@ pub(crate) fn squash_plan(
             combined_description: None,
         });
     };
-    let templates = Templates::new(&ctx.config, &ctx.immutable, workspace);
+    let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, workspace);
     let (description, editor) = squashed_description(
         &templates,
         tx.repo(),
@@ -598,7 +598,7 @@ pub(crate) fn split(
     let use_move_flags = location.is_some();
 
     let (mut first_builder, mut second_builder) = split_builders(tx.repo_mut(), &target, options, use_move_flags)?;
-    let templates = Templates::new(&ctx.config, &ctx.immutable, workspace);
+    let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, workspace);
     describe_split(
         &templates,
         tx.repo(),

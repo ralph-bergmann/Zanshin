@@ -207,9 +207,13 @@ pub(crate) enum Load {
     FilesetAliases,
     /// The `immutable_heads()` parse.
     ImmutableHeads,
-    /// The `[template-aliases]` table (entry failures) — loaded with the first template a verb
-    /// parses (Story 9.51).
+    /// The `[template-aliases]` table (entry failures) — loaded by the start-up environment
+    /// (Story 9.51).
     TemplateAliases,
+    /// The `revsets.short-prefixes` parse (its diagnostics) — the start-up environment's, which
+    /// `workspace add`'s re-parse for the new workspace and the graph walk's parse of the same
+    /// text repeat silently.
+    ShortPrefixes,
 }
 
 /// The per-call warning collector (Story 9.32).

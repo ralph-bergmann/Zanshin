@@ -28,10 +28,12 @@
 //! disambiguated within `revsets.short-prefixes` (else `revsets.log`; empty = none) and no
 //! template extensions — stock jj registers none.
 //!
-//! One divergence, ledgered in the spec's `deferred:`: the CLI loads `[template-aliases]` and
-//! parses `revsets.short-prefixes` at the start of EVERY workspace command, so a broken table or
-//! short-prefixes revset refuses every command; Zanshin loads both lazily, with the first
-//! template a verb parses ([`Templates`]), so only the template-rendering verbs refuse.
+//! The `[template-aliases]` table and the `revsets.short-prefixes` parse are the template half of
+//! the start-up environment ([`TemplateStartup`]): the CLI loads both at the start of EVERY
+//! workspace command (`WorkspaceCommandEnvironment::new`, `cli_util.rs:961-991`), so
+//! [`crate::snapshot::CommandEnv::load`] does too — a broken table or short-prefixes revset
+//! refuses every verb that builds the start-up environment, and their warnings are recorded once
+//! per call. [`Templates`] renders with what it loaded.
 
 use std::cell::OnceCell;
 use std::path::{Path, PathBuf};
@@ -58,17 +60,72 @@ use crate::mutate::{be, cfg, MutateError};
 use crate::op_support::{apply_trailers, cleanup_description_lines, complete_newline};
 use crate::revset::RevsetConfig;
 use crate::warning::{self, Load, WarningKind, Warnings};
+use crate::ConfigError;
 
 /// The context line the CLI prints above a template's parse diagnostics
 /// (`cli/src/cli_util.rs:1193` @ v0.46.0).
 const IN_TEMPLATE_EXPRESSION: &str = "In template expression";
 
-/// The commit templates of ONE verb call: the config they are read from, the workspace they are
-/// rendered for, and the environment the CLI builds the template language in — loaded with the
+/// The template half of the CLI's start-up environment (`WorkspaceCommandEnvironment::new`,
+/// `cli_util.rs:961-991` @ v0.46.0): the `[template-aliases]` map and the parsed
+/// `revsets.short-prefixes` expression. [`crate::snapshot::CommandEnv::load`] builds it with
+/// [`load_aliases`] and [`load_short_prefixes`], in the CLI's order; it travels in the call's
+/// context into [`Templates`], which never loads either itself.
+pub(crate) struct TemplateStartup {
+    /// The `[template-aliases]` map every template of the call expands.
+    pub(crate) aliases: TemplateAliasesMap,
+    /// The expression the id-prefix context disambiguates within; `None` when the effective text
+    /// is empty.
+    pub(crate) short_prefixes: Option<Arc<UserRevsetExpression>>,
+}
+
+/// The CLI's `load_template_aliases` (`cli_util.rs:3518-3524` @ v0.46.0): the
+/// `[template-aliases]` map, its entry warnings recorded once per call ([`Load::TemplateAliases`]).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — a layer's `template-aliases` is not a table.
+pub(crate) fn load_aliases(config: &StackedConfig, sink: &mut Warnings) -> Result<TemplateAliasesMap, ConfigError> {
+    let (aliases, warnings) = crate::revset::build_aliases_map::<TemplateAliasParser>(config, "template-aliases")?;
+    sink.record_load(Load::TemplateAliases, warnings);
+    Ok(aliases)
+}
+
+/// The CLI's `load_short_prefixes_expression` (`cli_util.rs:1120-1141` @ v0.46.0) for the
+/// workspace given by its root and name: the effective `revsets.short-prefixes` text (else
+/// `revsets.log`) parsed, its diagnostics recorded once per call ([`Load::ShortPrefixes`]);
+/// `None` for an empty text.
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — a value is not a string (the key is named), or the text does not
+///   parse: "Invalid `revsets.short-prefixes`: {reason}".
+pub(crate) fn load_short_prefixes(
+    workspace: (&Path, &WorkspaceName),
+    revset: &RevsetConfig,
+    config: &StackedConfig,
+    sink: &mut Warnings,
+) -> Result<Option<Arc<UserRevsetExpression>>, ConfigError> {
+    let text = crate::config::revsets_short_prefixes(config)?;
+    if text.is_empty() {
+        return Ok(None);
+    }
+    crate::revset::parse_short_prefixes(workspace, revset, &text, sink)
+        .map(Some)
+        .map_err(|e| ConfigError::Load {
+            reason: format!("Invalid `revsets.short-prefixes`: {}", parse_reason(e)),
+        })
+}
+
+/// The commit templates of ONE verb call: the config they are read from, the start-up
+/// environment's alias map and short-prefixes expression, the workspace they are rendered for,
+/// and the rest of the environment the CLI builds the template language in — loaded with the
 /// first template parsed, then kept for the call.
 pub(crate) struct Templates<'c> {
     config: &'c StackedConfig,
     immutable: &'c Arc<UserRevsetExpression>,
+    aliases: &'c TemplateAliasesMap,
+    short_prefixes: Option<Arc<UserRevsetExpression>>,
     workspace_name: WorkspaceNameBuf,
     workspace_root: PathBuf,
     env: OnceCell<Env>,
@@ -81,46 +138,55 @@ struct Env {
     fileset_aliases: FilesetAliasesMap,
     extensions: Arc<RevsetExtensions>,
     conflict_marker_style: ConflictMarkerStyle,
-    aliases: TemplateAliasesMap,
     id_prefix_context: IdPrefixContext,
 }
 
 impl<'c> Templates<'c> {
     /// The templates of a call in `workspace`, read off `config`; `immutable` is the immutable set
-    /// the start-up environment parsed (`::(immutable_heads() | root())`).
+    /// the start-up environment parsed (`::(immutable_heads() | root())`), `startup` its template
+    /// half.
     pub(crate) fn new(
         config: &'c StackedConfig,
         immutable: &'c Arc<UserRevsetExpression>,
+        startup: &'c TemplateStartup,
         workspace: &Workspace,
     ) -> Self {
         Self::at(
             config,
             immutable,
+            &startup.aliases,
+            startup.short_prefixes.clone(),
             workspace.workspace_name(),
             workspace.workspace_root(),
         )
     }
 
-    /// [`Templates::new`] for a workspace given by its name and root — `workspace add` renders
-    /// for the NEW workspace (`add.rs:222` @ v0.46.0: the new workspace's transaction).
+    /// [`Templates::new`] for a workspace given by its name and root, with its own short-prefixes
+    /// expression — `workspace add` renders for the NEW workspace (`add.rs:222` @ v0.46.0: the
+    /// new workspace's transaction), whose `@` the expression names ([`load_short_prefixes`] for
+    /// that workspace).
     pub(crate) fn at(
         config: &'c StackedConfig,
         immutable: &'c Arc<UserRevsetExpression>,
+        aliases: &'c TemplateAliasesMap,
+        short_prefixes: Option<Arc<UserRevsetExpression>>,
         workspace_name: &WorkspaceName,
         workspace_root: &Path,
     ) -> Self {
         Self {
             config,
             immutable,
+            aliases,
+            short_prefixes,
             workspace_name: workspace_name.to_owned(),
             workspace_root: workspace_root.to_owned(),
             env: OnceCell::new(),
         }
     }
 
-    /// The environment, loaded on first use: the `[revset-aliases]`, `[fileset-aliases]` and
-    /// `[template-aliases]` tables (each table's warnings recorded once per call),
-    /// `ui.conflict-marker-style`, and the `revsets.short-prefixes` parse with its diagnostics.
+    /// The environment, loaded on first use: the `[revset-aliases]` and `[fileset-aliases]`
+    /// tables (each table's warnings recorded once per call), `ui.conflict-marker-style`, and the
+    /// id-prefix context disambiguated within the short-prefixes expression.
     fn env(&self, sink: &mut Warnings) -> Result<&Env, MutateError> {
         if let Some(env) = self.env.get() {
             return Ok(env);
@@ -134,25 +200,11 @@ impl<'c> Templates<'c> {
         let (fileset_aliases, warnings): (FilesetAliasesMap, _) =
             crate::revset::build_aliases_map(self.config, "fileset-aliases").map_err(cfg)?;
         sink.record_load(Load::FilesetAliases, warnings);
-        let (aliases, warnings): (TemplateAliasesMap, _) =
-            crate::revset::build_aliases_map::<TemplateAliasParser>(self.config, "template-aliases").map_err(cfg)?;
-        sink.record_load(Load::TemplateAliases, warnings);
         let conflict_marker_style = crate::config::conflict_marker_style(self.config).map_err(cfg)?;
         let extensions = Arc::new(RevsetExtensions::default());
-        let short_prefixes = crate::config::revsets_short_prefixes(self.config).map_err(cfg)?;
         let mut id_prefix_context = IdPrefixContext::new(Arc::clone(&extensions));
-        if !short_prefixes.is_empty() {
-            let expression = crate::revset::parse_diagnosed_at(
-                (&self.workspace_root, &self.workspace_name),
-                &revset,
-                (&short_prefixes, "In `revsets.short-prefixes`"),
-                &[],
-                sink,
-            )
-            .map_err(|e| MutateError::Config {
-                reason: format!("Invalid `revsets.short-prefixes`: {}", parse_reason(e)),
-            })?;
-            id_prefix_context = id_prefix_context.disambiguate_within(expression);
+        if let Some(expression) = &self.short_prefixes {
+            id_prefix_context = id_prefix_context.disambiguate_within(Arc::clone(expression));
         }
         Ok(Env {
             path_converter: RepoPathUiConverter::Fs {
@@ -163,7 +215,6 @@ impl<'c> Templates<'c> {
             fileset_aliases,
             extensions,
             conflict_marker_style,
-            aliases,
             id_prefix_context,
         })
     }
@@ -209,7 +260,7 @@ impl<'c> Templates<'c> {
             &[] as &[Box<dyn jj_cli::commit_templater::CommitTemplateLanguageExtension>],
         );
         let mut diagnostics = TemplateDiagnostics::new();
-        let renderer = template_builder::parse(&language, &mut diagnostics, text, &env.aliases).map_err(|e| {
+        let renderer = template_builder::parse(&language, &mut diagnostics, text, self.aliases).map_err(|e| {
             // The CLI's headline, then its `Caused by:` chain — the error (with its position) and
             // every source below it, so the fault inside an alias expansion is named.
             let mut lines = vec![format!("Failed to parse template: {}", e.kind())];
@@ -419,26 +470,38 @@ mod tests {
     use jj_lib::commit_builder::DetachedCommitBuilder;
     use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
     use jj_lib::repo::{ReadonlyRepo, Repo as _};
-    use jj_lib::revset::UserRevsetExpression;
     use jj_lib::transaction::Transaction;
 
     use super::Templates;
     use crate::mutate::MutateError;
     use crate::op_support::start_repo_transaction;
+    use crate::snapshot::CommandEnv;
     use crate::warning::{WarningKind, Warnings};
 
     const SOB: &str = "Signed-off-by: Zanshin <zanshin@localhost>";
 
-    /// A fresh repo, its effective config with `toml` as a user layer on top, and the immutable
-    /// set parsed off it.
+    /// A fresh repo, its effective config with `toml` as a user layer on top, and the start-up
+    /// environment built off it (the immutable set and the template start-up).
     struct Fixture {
         _tmp: tempfile::TempDir,
         repo: crate::Repo,
         config: StackedConfig,
-        immutable: Arc<UserRevsetExpression>,
+        env: CommandEnv,
     }
 
     fn fixture(toml: &str) -> Fixture {
+        let (tmp, repo, config) = repo_with(toml);
+        let env = CommandEnv::load(repo.workspace(), &config, &mut Warnings::default()).expect("start-up");
+        Fixture {
+            _tmp: tmp,
+            repo,
+            config,
+            env,
+        }
+    }
+
+    /// A fresh repo and its effective config with `toml` as a user layer on top.
+    fn repo_with(toml: &str) -> (tempfile::TempDir, crate::Repo, StackedConfig) {
         test_helpers::pin_test_env();
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let repo = crate::Repo::init(&crate::InitOptions {
@@ -449,20 +512,17 @@ mod tests {
         .expect("init");
         let mut config = crate::config::load(&repo).expect("config");
         config.add_layer(ConfigLayer::parse(ConfigSource::User, toml).expect("toml"));
-        let immutable =
-            crate::op_support::immutable_user_expression(repo.workspace(), &config, &mut Warnings::default())
-                .expect("immutable");
-        Fixture {
-            _tmp: tmp,
-            repo,
-            config,
-            immutable,
-        }
+        (tmp, repo, config)
     }
 
     impl Fixture {
         fn templates(&self) -> Templates<'_> {
-            Templates::new(&self.config, &self.immutable, self.repo.workspace())
+            Templates::new(
+                &self.config,
+                &self.env.immutable,
+                &self.env.template_startup,
+                self.repo.workspace(),
+            )
         }
 
         fn head(&self) -> Arc<ReadonlyRepo> {
@@ -490,10 +550,10 @@ mod tests {
     }
 
     /// An empty `templates.commit_trailers` parses nothing — not even the environment, so a broken
-    /// alias table does not refuse — and leaves the description as it is.
+    /// `ui.conflict-marker-style` does not refuse — and leaves the description as it is.
     #[test]
     fn an_empty_trailers_key_parses_nothing() {
-        let f = fixture("template-aliases = 1\n");
+        let f = fixture("ui.conflict-marker-style = 1\n");
         let head = f.head();
         let (tx, builder) = detached(&head, "T\n");
         let templates = f.templates();
@@ -584,7 +644,7 @@ mod tests {
     /// `templates.new_description`: empty is `""` without a parse, a text is newline-completed.
     #[test]
     fn the_new_description_is_rendered_and_completed() {
-        let f = fixture("template-aliases = 1\n");
+        let f = fixture("ui.conflict-marker-style = 1\n");
         let head = f.head();
         let (tx, builder) = detached(&head, "");
         let mut sink = Warnings::default();
@@ -702,14 +762,18 @@ mod tests {
         );
     }
 
-    /// The environment's warnings: a bad alias entry warns once per call, however many templates
-    /// are parsed; a short-prefixes index that does not load is a template diagnostic.
+    /// The start-up environment's warnings: a bad alias entry warns once per call, however often
+    /// the table is loaded and however many templates are parsed; a short-prefixes index that does
+    /// not load is a template diagnostic.
     #[test]
-    fn the_environment_warns_once_and_diagnostics_are_template_warnings() {
-        let f = fixture("[template-aliases]\n'x(' = '1'\n\n[revsets]\nshort-prefixes = 'missing'\n");
-        let head = f.head();
-        let templates = f.templates();
+    fn the_start_up_warns_once_and_diagnostics_are_template_warnings() {
+        let (_tmp, repo, config) =
+            repo_with("[template-aliases]\n'x(' = '1'\n\n[revsets]\nshort-prefixes = 'missing'\n");
         let mut sink = Warnings::default();
+        let env = CommandEnv::load(repo.workspace(), &config, &mut sink).expect("start-up");
+        super::load_aliases(&config, &mut sink).expect("loads again");
+        let head = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("head");
+        let templates = Templates::new(&config, &env.immutable, &env.template_startup, repo.workspace());
         templates
             .parse_commit(head.as_ref(), "change_id.shortest()", &mut sink)
             .expect("parses");
@@ -739,16 +803,62 @@ mod tests {
         );
     }
 
-    /// A `revsets.short-prefixes` that does not parse refuses with the CLI's text.
+    /// An empty `revsets.short-prefixes` is no expression: the id-prefix context disambiguates
+    /// within every commit, and a template using it still parses and renders.
     #[test]
-    fn a_broken_short_prefixes_revset_refuses() {
-        let f = fixture("revsets.short-prefixes = '('\n");
+    fn an_empty_short_prefixes_text_renders_without_an_expression() {
+        let f = fixture("revsets.short-prefixes = ''\n");
+        assert!(f.env.template_startup.short_prefixes.is_none());
         let head = f.head();
-        let reason = config_reason(
-            f.templates()
-                .parse_commit(head.as_ref(), "description", &mut Warnings::default())
-                .map(|_| ()),
+        let (_tx, builder) = detached(&head, "x\n");
+        let commit = super::write_hidden(&builder).expect("hidden");
+        let templates = f.templates();
+        let renderer = templates
+            .parse_commit(head.as_ref(), "change_id.shortest()", &mut Warnings::default())
+            .expect("parses");
+        assert!(!renderer.format_plain_text(&commit).is_empty());
+    }
+
+    /// The short-prefixes loader: a text that does not parse refuses with the CLI's text, a
+    /// non-string value names the key, an empty text is no expression, and a diagnosed text warns
+    /// once per call however often it is parsed.
+    #[test]
+    fn the_short_prefixes_loader_refuses_and_warns_once() {
+        let load = |toml: &str, sink: &mut Warnings| {
+            let (_tmp, repo, config) = repo_with(toml);
+            let revset = crate::revset::revset_config(&config, sink).expect("revset config");
+            let workspace = (repo.workspace().workspace_root(), repo.workspace().workspace_name());
+            let first = super::load_short_prefixes(workspace, &revset, &config, sink);
+            let second = super::load_short_prefixes(workspace, &revset, &config, sink);
+            first.map(|e| (e.is_some(), second.expect("same text").is_some()))
+        };
+        let reason = |result: Result<(bool, bool), crate::ConfigError>| {
+            let crate::ConfigError::Load { reason } = result.expect_err("refused");
+            reason
+        };
+
+        let broken = reason(load("revsets.short-prefixes = '('\n", &mut Warnings::default()));
+        assert!(broken.starts_with("Invalid `revsets.short-prefixes`: "), "{broken}");
+        let typed = reason(load("revsets.short-prefixes = 1\n", &mut Warnings::default()));
+        assert!(typed.contains("revsets.short-prefixes"), "{typed}");
+
+        let mut sink = Warnings::default();
+        assert_eq!(
+            load("revsets.short-prefixes = ''\n", &mut sink).expect("empty"),
+            (false, false)
         );
-        assert!(reason.starts_with("Invalid `revsets.short-prefixes`: "), "{reason}");
+        assert!(sink.take().is_empty());
+
+        assert_eq!(
+            load("revsets.short-prefixes = 'diff_contains(\"x\")'\n", &mut sink).expect("parses"),
+            (true, true)
+        );
+        let warnings = sink.take();
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert_eq!(warnings[0].kind, WarningKind::RevsetDiagnostic);
+        assert!(
+            warnings[0].message.starts_with("In `revsets.short-prefixes`\n"),
+            "{warnings:?}"
+        );
     }
 }

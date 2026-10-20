@@ -991,10 +991,12 @@ impl Repo {
     ///   resolve against the repo; or a template fault, before anything is written (Story 9.51):
     ///   a non-empty `templates.commit_trailers` (parsed whatever `description` is, as the CLI
     ///   does) that does not parse (`Failed to parse template: …`) or renders no valid trailer
-    ///   block (`Trailers should be valid utf-8`, jj-lib's trailer-parse text), a broken
-    ///   `[template-aliases]` table or `revsets.short-prefixes`, or a non-string template key.
+    ///   block (`Trailers should be valid utf-8`, jj-lib's trailer-parse text), or a non-string
+    ///   template key.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26),
-    ///   including a jj config or `immutable_heads()` alias that does not read or parse.
+    ///   including a jj config, `immutable_heads()` alias, `[template-aliases]` table or
+    ///   `revsets.short-prefixes` that does not read or parse (the start-up environment, as for
+    ///   every verb).
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     // WHY: signature (owned `ChangeId`) is fixed by epics.md Story 6.1 / AC-1; the
@@ -1200,10 +1202,11 @@ impl Repo {
     /// - [`crate::MutateError::Config`] — a key the push reads is malformed, or `immutable_heads()`
     ///   does not resolve; or (`--change`, Story 9.51) `templates.git_push_bookmark` does not parse
     ///   (`Failed to parse template: …`) or renders a name that is not UTF-8 (`Invalid character in
-    ///   bookmark name`) or is empty (`Empty bookmark name generated`), or a broken
-    ///   `[template-aliases]` table or `revsets.short-prefixes`.
+    ///   bookmark name`) or is empty (`Empty bookmark name generated`).
     /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no Git backend.
-    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed, including a broken
+    ///   `[template-aliases]` table or `revsets.short-prefixes` (the start-up environment, as for
+    ///   every verb).
     /// - [`crate::MutateError::Backend`] — any other jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_push(

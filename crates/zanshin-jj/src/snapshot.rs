@@ -56,9 +56,10 @@ use jj_lib::working_copy::{self, LockedWorkingCopy, WorkingCopyFreshness};
 use jj_lib::workspace::Workspace;
 
 use crate::git::GitExportFailure;
-use crate::mutate::{self, flatten_chain, MutateError};
+use crate::mutate::{self, cfg, flatten_chain, MutateError};
 use crate::op_support::start_repo_transaction;
 use crate::stale::StaleRecovery;
+use crate::template::TemplateStartup;
 use crate::warning::{self, Load, WarningKind, Warnings};
 use crate::wc_ops::{self, SnapshotStats};
 use crate::GitImportResult;
@@ -190,7 +191,8 @@ pub enum PreconditionError {
     },
     /// The effective config could not be read, or a value a step reads has the wrong type (the
     /// key is named). Each is refused where the CLI reads it: the start-up environment (the
-    /// alias tables, the `immutable_heads()` parse) before the Git import/export lock is taken;
+    /// fileset, revset and template alias tables, the `immutable_heads()` parse, the
+    /// `revsets.short-prefixes` parse) before the Git import/export lock is taken;
     /// the snapshot knobs (`snapshot.auto-track`, `snapshot.max-new-file-size`) at the start of
     /// the snapshot step, after the head import; a malformed Git import option at the start of
     /// the refs step, after the head import and the snapshot. Operations committed before the
@@ -308,25 +310,30 @@ pub(crate) fn load_head(workspace: &Workspace) -> Result<Arc<ReadonlyRepo>, Prec
 
 // ── The start-up environment ─────────────────────────────────────────────────────
 
-/// The part of the CLI's `WorkspaceCommandEnvironment::new` (`cli/src/cli_util.rs:936-966` @
-/// v0.44.0) the precondition ports: the `[fileset-aliases]` table, then the `[revset-aliases]`
-/// table (with its builtin redefinitions) and the `immutable_heads()` parse.
+/// The part of the CLI's `WorkspaceCommandEnvironment::new` (`cli/src/cli_util.rs:961-991` @
+/// v0.46.0) the precondition ports: the `[fileset-aliases]` table, the `[revset-aliases]` table
+/// (with its builtin redefinitions), the `[template-aliases]` table, then the `immutable_heads()`
+/// parse and the `revsets.short-prefixes` parse (`reload_revset_expressions`, `:1083-1087`).
 ///
-/// Built BEFORE the Git import/export lock, as `workspace_helper_with_stats` builds it (`:477`),
-/// so a bad `immutable_heads()` alias refuses without waiting for a concurrent holder and writes
-/// nothing. The snapshot knobs are deliberately NOT here: [`snapshot_working_copy`] reads them
-/// where the CLI does, after `import git head` (Story 9.34).
+/// Built BEFORE the Git import/export lock, as `workspace_helper_with_stats` builds it (`:478`),
+/// so a bad alias table, `immutable_heads()` alias or short-prefixes revset refuses without
+/// waiting for a concurrent holder and writes nothing. The snapshot knobs are deliberately NOT
+/// here: [`snapshot_working_copy`] reads them where the CLI does, after `import git head`
+/// (Story 9.34).
 pub(crate) struct CommandEnv {
     /// `::(immutable_heads() | root())` as the effective config defines it — parsed here,
     /// resolved only where a step needs it.
     pub(crate) immutable: Arc<UserRevsetExpression>,
+    /// The template half — the `[template-aliases]` map and the short-prefixes expression the
+    /// call's templates render with (Story 9.51).
+    pub(crate) template_startup: TemplateStartup,
 }
 
 impl CommandEnv {
-    /// Builds the start-up environment off `config` for `workspace`. Its warnings — the fileset
-    /// and revset alias tables, the builtin redefinitions, the `immutable_heads()` diagnostics —
-    /// land in `sink` in the CLI's order (`cli_util.rs:938-939`, `:964`), once per call (Story
-    /// 9.32).
+    /// Builds the start-up environment off `config` for `workspace`. Its warnings — the fileset,
+    /// revset and template alias tables, the builtin redefinitions, the `immutable_heads()` and
+    /// `revsets.short-prefixes` diagnostics — land in `sink` in the CLI's order, once per call
+    /// (Story 9.32); the first fault in that order refuses.
     ///
     /// The `[fileset-aliases]` table is loaded here for its warnings and its refusal only: the
     /// snapshot step's `snapshot.auto-track` parse loads it again, silently
@@ -335,7 +342,8 @@ impl CommandEnv {
     /// # Errors
     ///
     /// - [`PreconditionError::Config`] — an alias table is not a table, the effective config is
-    ///   malformed, or the `immutable_heads()` alias does not parse.
+    ///   malformed, the `immutable_heads()` alias does not parse, or `revsets.short-prefixes` is
+    ///   not a string or does not parse ("Invalid `revsets.short-prefixes`: …").
     pub(crate) fn load(
         workspace: &Workspace,
         config: &StackedConfig,
@@ -343,19 +351,36 @@ impl CommandEnv {
     ) -> Result<Self, PreconditionError> {
         let (_, warnings): (FilesetAliasesMap, _) = crate::revset::build_aliases_map(config, "fileset-aliases")?;
         sink.record_load(Load::FilesetAliases, warnings);
-        let immutable = crate::op_support::immutable_user_expression(workspace, config, sink)?;
-        Ok(Self { immutable })
+        let revset = crate::revset::revset_config(config, sink)?;
+        let aliases = crate::template::load_aliases(config, sink)?;
+        let immutable = crate::revset::immutable_expression(workspace, &revset, sink).map_err(cfg)?;
+        let short_prefixes = crate::template::load_short_prefixes(
+            (workspace.workspace_root(), workspace.workspace_name()),
+            &revset,
+            config,
+            sink,
+        )?;
+        Ok(Self {
+            immutable,
+            template_startup: TemplateStartup {
+                aliases,
+                short_prefixes,
+            },
+        })
     }
 }
 
 /// What a verb carries out of a successful precondition: the effective config it was read
-/// from, the parsed immutable set a verb reuses rather than re-parsing, the pre-verb snapshot's
-/// raw stats, and the call's warning collector (Story 9.32).
+/// from, the parsed immutable set and template start-up a verb reuses rather than re-loading, the
+/// pre-verb snapshot's raw stats, and the call's warning collector (Story 9.32).
 pub(crate) struct VerbContext {
     /// The effective config stack the precondition read.
     pub(crate) config: StackedConfig,
     /// `::(immutable_heads() | root())` as that config defines it.
     pub(crate) immutable: Arc<UserRevsetExpression>,
+    /// The start-up environment's template half — what the call's [`crate::template::Templates`]
+    /// render with.
+    pub(crate) template_startup: TemplateStartup,
     /// Whether the working copy is shared with a Git work tree.
     pub(crate) colocated: bool,
     /// jj-lib's own stats of the pre-verb snapshot — `file track` merges them into its own.
@@ -377,6 +402,7 @@ impl VerbContext {
         Self {
             config,
             immutable: env.immutable,
+            template_startup: env.template_startup,
             colocated,
             auto_stats,
             warnings,

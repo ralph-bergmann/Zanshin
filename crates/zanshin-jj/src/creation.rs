@@ -13,9 +13,7 @@
 //! - no `--git-repo` arm (the `convert_*` verbs own the external flows), no `--at-op`,
 //!   `--ignore-working-copy` or `--no-integrate-operation` (no Zanshin counterpart);
 //! - the clone destination is never guessed from the source (the caller passes it) and the
-//!   source URL is passed to git as given (`absolute_git_url` is terminal-cwd UX);
-//! - the start-up environment ([`snapshot::CommandEnv`]) ports the alias tables and the
-//!   `immutable_heads()` parse, not the template and short-prefixes parses (Story 9.32's deferral).
+//!   source URL is passed to git as given (`absolute_git_url` is terminal-cwd UX).
 
 use std::io;
 use std::num::NonZeroU32;

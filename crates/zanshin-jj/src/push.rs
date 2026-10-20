@@ -57,7 +57,7 @@ use jj_lib::view::View;
 use crate::mutate::{be, cfg, rev, MutateError};
 use crate::revset::RevsetConfig;
 use crate::snapshot::VerbContext;
-use crate::template::Templates;
+use crate::template::{TemplateStartup, Templates};
 use crate::warning::{WarningKind, Warnings};
 use crate::Repo;
 
@@ -706,6 +706,9 @@ struct Planner<'a> {
     parse_config: RevsetConfig,
     /// The immutable set the start-up environment parsed — the template language's.
     immutable: &'a Arc<UserRevsetExpression>,
+    /// The start-up environment's template half — the template language's alias map and
+    /// short-prefixes expression.
+    template_startup: &'a TemplateStartup,
     immutable_heads: &'a Arc<UserRevsetExpression>,
     sink: &'a mut Warnings,
     /// Whether the plan stops at the first explicit refusal (a real push) or records it (a dry
@@ -904,7 +907,12 @@ fn create_bookmarks(
             .iter()
             .map(|id| base.store().get_commit(id).map_err(be))
             .collect::<Result<_, _>>()?;
-        let templates = Templates::new(planner.config, planner.immutable, planner.repo.workspace());
+        let templates = Templates::new(
+            planner.config,
+            planner.immutable,
+            planner.template_startup,
+            planner.repo.workspace(),
+        );
         let change_names: Vec<RefNameBuf> = templates
             .push_bookmark_names(tx.repo(), &commits, planner.sink)?
             .into_iter()
@@ -1211,6 +1219,7 @@ pub(crate) fn plan_push(
     let VerbContext {
         config,
         immutable,
+        template_startup,
         warnings: sink,
         ..
     } = ctx;
@@ -1225,6 +1234,7 @@ pub(crate) fn plan_push(
         config,
         parse_config,
         immutable,
+        template_startup,
         immutable_heads: &immutable_heads,
         sink,
         stop_on_abort: !args.dry_run,

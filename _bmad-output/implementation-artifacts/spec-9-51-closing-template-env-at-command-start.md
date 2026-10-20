@@ -86,6 +86,8 @@ CLI anchors in `~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/jj-cli-0.
 
 ## Spec Change Log
 
+- **2026-10-20 (implementation) — one existing expected value changed, CLI-verified.** `tests/warnings.rs` `immutable_heads_diagnostics_warn_once_per_call` (`immutable_heads()` = `diff_contains("zzz") & none()`, `walk_graph("@", …, "")`) now sees TWO `jj.revset_diagnostic`s, not one: the start-up `revsets.short-prefixes` parse falls back to the default `revsets.log` = `builtin_log()`, which expands `immutable_heads()`, so its deprecation diagnostic is reported again under "In `revsets.short-prefixes`". The pinned CLI (`crates/zanshin-parity`'s `jj log -r @` on the same config) prints exactly these two warnings in this order, so the AC "no expected value changed" yields to CLI parity for this one test; the assertion pins both context lines. No default-config expectation changed. Also: `op_support::immutable_user_expression` lost its last production caller (`CommandEnv::load` now calls `revset_config` / `immutable_expression` itself) and was removed; its three test callers use `CommandEnv::load(..).immutable`.
+
 ## Review Triage Log
 
 ## Design Notes

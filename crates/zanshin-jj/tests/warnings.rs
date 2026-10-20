@@ -332,7 +332,10 @@ fn revset_parse_diagnostics_warn_under_the_clis_context_line() {
 }
 
 /// The `immutable_heads()` definition's diagnostics carry the CLI's own context line, and are
-/// recorded once per call although the graph walk parses the immutable set again.
+/// recorded once per call although the graph walk parses the immutable set again. The start-up
+/// `revsets.short-prefixes` parse (Story 9.51 closing run) expands the same alias through the
+/// default `revsets.log` (`builtin_log()`), so — as the pinned CLI's `jj log -r @` prints — its
+/// diagnostic follows, once.
 #[test]
 fn immutable_heads_diagnostics_warn_once_per_call() {
     let fx = git_fx("[revset-aliases]\n'immutable_heads()' = 'diff_contains(\"zzz\") & none()'\n");
@@ -344,13 +347,21 @@ fn immutable_heads_diagnostics_warn_once_per_call() {
     assert_eq!(flow, ControlFlow::Continue(()));
 
     let warnings = repo.take_warnings();
-    assert_eq!(kinds(&warnings), [WarningKind::RevsetDiagnostic]);
+    assert_eq!(
+        kinds(&warnings),
+        [WarningKind::RevsetDiagnostic, WarningKind::RevsetDiagnostic]
+    );
     assert!(
         warnings[0]
             .message
             .starts_with("In `revset-aliases.immutable_heads()`\n"),
         "{}",
         warnings[0].message
+    );
+    assert!(
+        warnings[1].message.starts_with("In `revsets.short-prefixes`\n"),
+        "{}",
+        warnings[1].message
     );
 }
 

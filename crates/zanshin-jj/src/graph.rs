@@ -31,8 +31,8 @@ use jj_lib::revset::{ResolvedRevsetExpression, Revset, RevsetEvaluationError, Re
 
 use crate::commit_meta::LogMetaIndex;
 use crate::revset::{
-    evaluate_revset, immutable_expression, parse_diagnosed, parse_revset_with, resolve_expression, revset_config,
-    RevsetConfig,
+    evaluate_revset, immutable_expression, parse_diagnosed, parse_revset_with, parse_short_prefixes,
+    resolve_expression, revset_config, RevsetConfig, IN_SHORT_PREFIXES,
 };
 use crate::warning::{self, WarningKind, Warnings};
 use crate::{CommitId, CommitMeta, Repo, RevsetError};
@@ -208,14 +208,27 @@ impl LogParse {
         let config = crate::config::load(repo)?;
         let parse_config = revset_config(&config, sink)?;
         let immutable = immutable_expression(repo.workspace(), &parse_config, sink)?;
+        // The effective `revsets.short-prefixes` text is the one the start-up environment parsed
+        // (`jj log` prints its diagnostics once): its parse here records under the same once-per-
+        // call load. A caller-supplied override that differs warns on its own.
+        let effective = crate::config::revsets_short_prefixes(&config).ok();
         let short = (!short_prefixes.is_empty())
             .then(|| {
-                parse_diagnosed(
-                    repo.workspace(),
-                    &parse_config,
-                    (short_prefixes, "In `revsets.short-prefixes`"),
-                    sink,
-                )
+                if effective.as_deref() == Some(short_prefixes) {
+                    parse_short_prefixes(
+                        (repo.workspace().workspace_root(), repo.workspace().workspace_name()),
+                        &parse_config,
+                        short_prefixes,
+                        sink,
+                    )
+                } else {
+                    parse_diagnosed(
+                        repo.workspace(),
+                        &parse_config,
+                        (short_prefixes, IN_SHORT_PREFIXES),
+                        sink,
+                    )
+                }
             })
             .transpose()?;
         let log = parse_revset_with(repo, &parse_config, revset, sink)?;

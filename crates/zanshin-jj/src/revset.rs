@@ -364,6 +364,29 @@ pub(crate) fn parse_diagnosed_at(
     Ok(parsed)
 }
 
+/// The context line the CLI prints above the `revsets.short-prefixes` parse diagnostics
+/// (`load_short_prefixes_expression`, `cli/src/cli_util.rs:1139` @ v0.46.0).
+pub(crate) const IN_SHORT_PREFIXES: &str = "In `revsets.short-prefixes`";
+
+/// Parses the `revsets.short-prefixes` text `expr` for a workspace given by its root and name —
+/// [`parse_diagnosed_at`] with its diagnostics recorded once per call ([`Load::ShortPrefixes`]):
+/// the CLI parses the key once per command, in its start-up environment.
+///
+/// # Errors
+///
+/// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function.
+pub(crate) fn parse_short_prefixes(
+    workspace: (&Path, &WorkspaceName),
+    parse_config: &RevsetConfig,
+    expr: &str,
+    sink: &mut Warnings,
+) -> Result<Arc<UserRevsetExpression>, RevsetError> {
+    let mut own = Warnings::default();
+    let parsed = parse_diagnosed_at(workspace, parse_config, (expr, IN_SHORT_PREFIXES), &[], &mut own)?;
+    sink.record_load(Load::ShortPrefixes, own.take());
+    Ok(parsed)
+}
+
 /// Parses `expr` for a caller that holds a bare [`Workspace`], collecting jj-lib's parse
 /// diagnostics into `diagnostics` — the conversion verbs' pre-verb snapshot runs before any
 /// [`Repo`] exists (Story 9.26).

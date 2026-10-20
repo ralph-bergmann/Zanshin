@@ -45,7 +45,6 @@ use std::sync::Arc;
 use futures::TryStreamExt as _;
 use jj_lib::backend::{CommitId, TreeId};
 use jj_lib::commit::Commit;
-use jj_lib::config::StackedConfig;
 use jj_lib::conflict_labels::ConflictLabels;
 use jj_lib::matchers::Matcher;
 use jj_lib::merge::{Diff, Merge};
@@ -60,41 +59,11 @@ use jj_lib::store::Store;
 use jj_lib::trailer::{parse_description_trailers, Trailer};
 use jj_lib::transaction::Transaction;
 use jj_lib::ui_path::parse_fs_path;
-use jj_lib::workspace::Workspace;
 
 use crate::mutate::{be, cfg, MutateError};
-use crate::revset::{immutable_expression, resolve_expression, revset_config};
+use crate::revset::resolve_expression;
 
 // ── §1 Rewritability guard ────────────────────────────────────────────────────────
-
-/// Builds the repo's effective immutable-set expression, `::(immutable_heads() | root())`.
-///
-/// The canonical per-operation idiom (`graph.rs`): load the effective config, build the
-/// alias map from every layer, then construct the expression in code. A user's
-/// `revset-aliases."immutable_heads()"` therefore REPLACES the builtin by (name, arity),
-/// exactly as it does for the CLI — the guard reads the effective config, never a Rust
-/// constant.
-///
-/// Built off an already-loaded stack for a bare [`Workspace`], so the pre-verb snapshot's
-/// start-up environment ([`crate::snapshot::CommandEnv`], Stories 9.26 / 9.34) — and the
-/// conversion verbs, which have no [`crate::Repo`] yet — read it from the one config load every
-/// verb makes.
-///
-/// # Errors
-///
-/// - [`MutateError::Config`] — the repo's jj config is malformed or unreadable, or the
-///   `immutable_heads()` alias does not parse. Both are the SAME fault the CLI reports as
-///   ``Invalid `revset-aliases.immutable_heads()` `` (`cli_util.rs:1139`), and the same one
-///   the read side surfaces as [`crate::RevsetError::Config`] — never the unclassified
-///   backend bucket, and never a silent fall-back to the builtin set.
-pub(crate) fn immutable_user_expression(
-    workspace: &Workspace,
-    config: &StackedConfig,
-    sink: &mut crate::warning::Warnings,
-) -> Result<Arc<UserRevsetExpression>, MutateError> {
-    let parse_config = revset_config(config, sink).map_err(cfg)?;
-    immutable_expression(workspace, &parse_config, sink).map_err(cfg)
-}
 
 /// Resolves the immutable expression's symbols against `repo`.
 ///
@@ -858,8 +827,7 @@ mod tests {
 
     use super::{
         apply_trailers, check_rewritable, cleanup_description_lines, combine_messages_for_editing,
-        compute_commit_location, immutable_user_expression, join_message_paragraphs, resolve_immutable,
-        try_combine_messages, SelectedTree,
+        compute_commit_location, join_message_paragraphs, resolve_immutable, try_combine_messages, SelectedTree,
     };
     use crate::{MutateError, Repo};
 
@@ -873,8 +841,10 @@ mod tests {
     fn immutable_at_head(path: &Path) -> (Arc<ReadonlyRepo>, Arc<ResolvedRevsetExpression>) {
         let repo = Repo::open(path).expect("fixture opens");
         let config = crate::config::load(&repo).expect("config loads");
-        let expr = immutable_user_expression(repo.workspace(), &config, &mut crate::warning::Warnings::default())
-            .expect("builtin immutable_heads() parses");
+        let expr =
+            crate::snapshot::CommandEnv::load(repo.workspace(), &config, &mut crate::warning::Warnings::default())
+                .expect("builtin immutable_heads() parses")
+                .immutable;
         let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("load_at_head");
         let resolved = resolve_immutable(readonly.as_ref(), &expr).expect("immutable set resolves");
         (readonly, resolved)

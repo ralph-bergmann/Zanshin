@@ -32,12 +32,14 @@ use std::sync::Arc;
 use futures::StreamExt as _;
 use jj_lib::backend::CommitId as JjCommitId;
 use jj_lib::commit::Commit;
+use jj_lib::commit_builder::DetachedCommitBuilder;
 use jj_lib::default_backend_factories::default_working_copy_factory;
 use jj_lib::file_util;
 use jj_lib::git;
 use jj_lib::ref_name::{WorkspaceName, WorkspaceNameBuf};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::rewrite::merge_commit_trees;
+use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, be, cfg, flatten_chain, rev, FinishCtx, MutateError, MutationResult};
@@ -197,12 +199,7 @@ pub(crate) fn add(
     let parent_ids = parents.iter().map(|c| c.id().clone()).collect();
     let mut builder = tx.repo_mut().new_commit(parent_ids, tree).detach();
     builder.set_description(join_message_paragraphs(args.message_paragraphs));
-    // `add.rs:257-265`: a non-empty `-m` gets the trailers, rendered for the NEW workspace.
-    if !builder.description().is_empty() {
-        let templates = Templates::at(&ctx.config, &ctx.immutable, &name, new_workspace.workspace_root());
-        let description = templates.add_trailers(tx.repo(), &builder, &mut ctx.warnings)?;
-        builder.set_description(description);
-    }
+    add_trailers_for(ctx, &tx, &mut builder, (&name, new_workspace.workspace_root()))?;
     let new_wc_commit = pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
     pollster::block_on(tx.repo_mut().edit(name.clone(), &new_wc_commit)).map_err(be)?;
     // `edit` abandons the discardable initial working-copy commit jj-lib created; `tx.finish`'s
@@ -233,6 +230,41 @@ pub(crate) fn add(
         git_worktree_created: should_colocate,
         checkout: finish.checkout.unwrap_or_default(),
     })
+}
+
+/// `add.rs:257-265` @ v0.46.0: a non-empty `-m` gets `templates.commit_trailers`, rendered for the
+/// NEW workspace — with that workspace's own `revsets.short-prefixes` parse (`for_workable_repo`,
+/// `add.rs:193`: its `@` names the new workspace; the diagnostics stay the start-up's, recorded
+/// once per call).
+///
+/// # Errors
+///
+/// - [`MutateError::Config`] — the short-prefixes text does not load, or see
+///   [`Templates::add_trailers`].
+/// - [`MutateError::Backend`] — the hidden write failed.
+fn add_trailers_for(
+    ctx: &mut VerbContext,
+    tx: &Transaction,
+    builder: &mut DetachedCommitBuilder,
+    (name, root): (&WorkspaceName, &Path),
+) -> Result<(), MutateError> {
+    if builder.description().is_empty() {
+        return Ok(());
+    }
+    let revset = crate::revset::revset_config(&ctx.config, &mut ctx.warnings).map_err(cfg)?;
+    let short_prefixes =
+        crate::template::load_short_prefixes((root, name), &revset, &ctx.config, &mut ctx.warnings).map_err(cfg)?;
+    let templates = Templates::at(
+        &ctx.config,
+        &ctx.immutable,
+        &ctx.template_startup.aliases,
+        short_prefixes,
+        name,
+        root,
+    );
+    let description = templates.add_trailers(tx.repo(), builder, &mut ctx.warnings)?;
+    builder.set_description(description);
+    Ok(())
 }
 
 /// The `--sparse-patterns` step (`add.rs:199-221` @ v0.46.0): `Copy` reads the CURRENT

@@ -828,7 +828,7 @@ pub(crate) fn describe(
     // `describe.rs:151-163`: the trailers template is parsed whatever the description, and
     // applied only to a non-empty one (`use_editor` is false: Zanshin always passes the text).
     {
-        let templates = Templates::new(&ctx.config, &ctx.immutable, workspace);
+        let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, workspace);
         let trailers = templates.trailers(tx.repo(), &mut ctx.warnings)?;
         if let Some(renderer) = trailers {
             if !builder.description().is_empty() {
@@ -987,7 +987,7 @@ pub(crate) fn new_change(
     // `new.rs:214-236`: no `-m` in Zanshin, so the description is `templates.new_description`;
     // a non-empty one gets the trailers.
     {
-        let templates = Templates::new(&ctx.config, &ctx.immutable, workspace);
+        let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, workspace);
         let description = templates.new_description(tx.repo(), &builder, &mut ctx.warnings)?;
         if !description.is_empty() {
             builder.set_description(description);
@@ -1464,9 +1464,9 @@ where
 ///   `--from`/`--into`/`--changes-in` defaults spelled out above.
 /// - [`MutateError::Immutable`] — the destination is inside the repo's effective immutable
 ///   set. The ROOT commit needs no separate guard: `check_rewritable` runs BEFORE any tree
-///   work and `immutable_user_expression` unions `root()` unconditionally, so root always
-///   refuses here — exactly as it does for the CLI, which has no root guard in `restore.rs`
-///   either.
+///   work and the immutable set (`::(immutable_heads() | root())`) unions `root()`
+///   unconditionally, so root always refuses here — exactly as it does for the CLI, which has
+///   no root guard in `restore.rs` either.
 /// - [`MutateError::Config`] — the repo's jj config or its `immutable_heads()` alias could
 ///   not be read, parsed, or resolved.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
@@ -1830,8 +1830,9 @@ mod tests {
         let (_tmp, mut repo, head) = at_rewritten_without_checkout();
         let config = crate::config::load(&repo).expect("config");
         let mut sink = crate::warning::Warnings::default();
-        let immutable =
-            crate::op_support::immutable_user_expression(repo.workspace(), &config, &mut sink).expect("immutable set");
+        let immutable = crate::snapshot::CommandEnv::load(repo.workspace(), &config, &mut sink)
+            .expect("immutable set")
+            .immutable;
         let lock = crate::snapshot::lock_git_import_export(repo.workspace(), false).expect("no lock needed");
         let workspace_name = repo.workspace().workspace_name().to_owned();
         let tx = crate::op_support::start_repo_transaction(&head, &workspace_name);

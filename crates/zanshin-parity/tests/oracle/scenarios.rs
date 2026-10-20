@@ -256,6 +256,14 @@ const BROKEN_TRAILERS: &[Step] = &[Step::Jj(&[
     "nope(",
 ])];
 
+/// A `template-aliases` that is not a table (Story 9.51 closing run) — refused at the start-up
+/// environment of every workspace command.
+const BROKEN_TEMPLATE_ALIASES: &[Step] = &[Step::Jj(&["config", "set", "--repo", "template-aliases", "1"])];
+
+/// A `revsets.short-prefixes` that does not parse (Story 9.51 closing run) — refused at the
+/// start-up environment of every workspace command.
+const BROKEN_SHORT_PREFIXES: &[Step] = &[Step::Jj(&["config", "set", "--repo", "revsets.short-prefixes", "("])];
+
 /// `templates.new_description = '"N"'` — a template string literal (Story 9.51).
 const NEW_DESCRIPTION_STEP: Step = Step::Jj(&["config", "set", "--repo", "templates.new_description", "'\"N\"'"]);
 
@@ -1900,6 +1908,29 @@ pub fn scenarios() -> Vec<Scenario> {
                 "squash_broken_draft_template",
                 |repo, _, _| squash_outcome(repo, &SquashOptions::default()),
                 |_| args(&["squash"]),
+            )
+        },
+        // ── Story 9.51 closing run: the template half of the start-up environment ──
+        Scenario {
+            setup: BROKEN_TEMPLATE_ALIASES,
+            ..simple(
+                "abandon_broken_template_aliases",
+                |repo, _, s| {
+                    let result = repo.abandon(&[s.change("@")]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["abandon"]),
+            )
+        },
+        Scenario {
+            setup: BROKEN_SHORT_PREFIXES,
+            ..simple(
+                "abandon_broken_short_prefixes",
+                |repo, _, s| {
+                    let result = repo.abandon(&[s.change("@")]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["abandon"]),
             )
         },
     ]

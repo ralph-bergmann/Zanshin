@@ -177,7 +177,7 @@ pub(crate) fn commit(
     builder.set_description(join_message_paragraphs(&options.message));
     // `commit.rs:148-153`: a non-empty `-m` gets the trailers (`use_editor` is false).
     if !builder.description().is_empty() {
-        let templates = Templates::new(&ctx.config, &ctx.immutable, workspace);
+        let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, workspace);
         let description = templates.add_trailers(tx.repo(), &builder, &mut ctx.warnings)?;
         builder.set_description(description);
     }

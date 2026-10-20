@@ -22,8 +22,8 @@ use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{
-    Backend, ChangeId, CommitOptions, ConfigScope, ConfigTarget, MutateError, Repo, SparseInheritance, SplitOptions,
-    SquashOptions, WarningKind,
+    Backend, ChangeId, CommitOptions, ConfigScope, ConfigTarget, MutateError, PreconditionError, Repo,
+    SparseInheritance, SplitOptions, SquashOptions, WarningKind,
 };
 
 static ENV_GUARD: LazyLock<()> = LazyLock::new(|| {
@@ -418,4 +418,121 @@ fn squash_with_an_empty_message_adds_no_trailer() {
     fx.repo.squash(&options).expect("squash");
     let b = fx.b.clone();
     assert_eq!(fx.description(&b), "");
+}
+
+// ── The template half of the start-up environment (Story 9.51 closing run) ──────────
+//
+// The CLI loads `[template-aliases]` and parses `revsets.short-prefixes` at the start of EVERY
+// workspace command (`WorkspaceCommandEnvironment::new`, `cli_util.rs:961-991` @ v0.46.0), so a
+// verb that renders no template — `abandon` here — refuses and warns on them too.
+
+/// `revsets.short-prefixes = diff_contains("x")` — parses, with a deprecation diagnostic.
+const DIAGNOSED_SHORT_PREFIXES: &str = "diff_contains(\"x\")";
+
+impl Fx {
+    /// Runs `abandon(@)`, which must refuse at the start-up environment with a
+    /// `PreconditionError::Config` whose reason satisfies `check`, and write nothing.
+    fn assert_start_up_refusal(&mut self, check: impl Fn(&str) -> bool) {
+        let before = self.head_op();
+        let at = self.c.clone();
+        let err = self.repo.abandon(&[at]).expect_err("refused");
+        assert!(
+            matches!(&err, MutateError::Precondition(PreconditionError::Config { reason }) if check(reason)),
+            "{err:?}"
+        );
+        assert_eq!(self.head_op(), before, "a refusal writes no operation");
+    }
+}
+
+/// The warnings of `kind` whose message starts with `prefix`.
+fn warnings_of(warnings: &[zanshin_jj::Warning], kind: WarningKind, prefix: &str) -> usize {
+    warnings
+        .iter()
+        .filter(|w| w.kind == kind && w.message.starts_with(prefix))
+        .count()
+}
+
+/// A `template-aliases` layer that is not a table refuses a verb that renders no template.
+#[test]
+fn a_broken_template_alias_table_refuses_every_verb() {
+    let mut fx = base(&[("template-aliases", "1")]);
+    fx.assert_start_up_refusal(|reason| reason.ends_with("template-aliases: Expected a table, but is integer"));
+}
+
+/// A `revsets.short-prefixes` that does not parse refuses a verb that renders no template.
+#[test]
+fn an_unparsable_short_prefixes_refuses_every_verb() {
+    let mut fx = base(&[("revsets.short-prefixes", "'('")]);
+    fx.assert_start_up_refusal(|reason| reason.starts_with("Invalid `revsets.short-prefixes`: "));
+}
+
+/// A `revsets.short-prefixes` that is not a string refuses, naming the key.
+#[test]
+fn a_non_string_short_prefixes_refuses_every_verb() {
+    let mut fx = base(&[("revsets.short-prefixes", "1")]);
+    fx.assert_start_up_refusal(|reason| reason.contains("revsets.short-prefixes"));
+}
+
+/// A bad template alias entry warns exactly once on a verb that renders no template, and the
+/// verb runs.
+#[test]
+fn a_bad_template_alias_entry_warns_once_on_every_verb() {
+    let mut fx = base(&[("template-aliases.'x('", "'1'")]);
+    let at = fx.c.clone();
+    fx.repo.abandon(&[at]).expect("abandon");
+    let warnings = fx.repo.take_warnings();
+    assert_eq!(
+        warnings_of(
+            &warnings,
+            WarningKind::ConfigAliasInvalid,
+            "Failed to load `template-aliases.x(`: "
+        ),
+        1,
+        "{warnings:?}"
+    );
+}
+
+/// A diagnosed `revsets.short-prefixes` warns exactly once on a verb that renders no template.
+#[test]
+fn short_prefixes_diagnostics_warn_once_on_every_verb() {
+    let mut fx = base(&[("revsets.short-prefixes", &format!("'{DIAGNOSED_SHORT_PREFIXES}'"))]);
+    let at = fx.c.clone();
+    fx.repo.abandon(&[at]).expect("abandon");
+    let warnings = fx.repo.take_warnings();
+    assert_eq!(
+        warnings_of(
+            &warnings,
+            WarningKind::RevsetDiagnostic,
+            "In `revsets.short-prefixes`\n"
+        ),
+        1,
+        "{warnings:?}"
+    );
+}
+
+/// The graph walk passed the effective short-prefixes text (what `log_defaults` returns) warns
+/// once, as `jj log` does — its own parse of the same text is the start-up's.
+#[test]
+fn the_graph_walk_with_the_effective_short_prefixes_warns_once() {
+    let mut fx = base(&[("revsets.short-prefixes", &format!("'{DIAGNOSED_SHORT_PREFIXES}'"))]);
+    let flow = fx
+        .repo
+        .walk_graph(
+            "all()",
+            zanshin_jj::DEFAULT_GRAPH_PRIORITIZE,
+            DIAGNOSED_SHORT_PREFIXES,
+            |_| std::ops::ControlFlow::Continue(()),
+        )
+        .expect("graph");
+    assert_eq!(flow, std::ops::ControlFlow::Continue(()));
+    let warnings = fx.repo.take_warnings();
+    assert_eq!(
+        warnings_of(
+            &warnings,
+            WarningKind::RevsetDiagnostic,
+            "In `revsets.short-prefixes`\n"
+        ),
+        1,
+        "{warnings:?}"
+    );
 }
