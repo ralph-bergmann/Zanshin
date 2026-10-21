@@ -9811,6 +9811,8 @@ Plus one real-cdylib test (`tester.runAsync`): an `edit` through the runner move
 ### Story 10.10: Drag-and-drop on the graph — changes and bookmarks onto a change, the drop menu from `drop_actions` — *NEEDS DESIGN* [UI]
 *(Added 2026-09-26, Ralph — console session on the commit-graph view; re-authored 2026-09-26 for the HTML design export; research: `_bmad-output/planning-artifacts/research/technical-commit-graph-virtualization-research-2026-09-26.md`. Placeholder: this is not in the design; refine it once Story 9.31 is scheduled.)*
 
+> **Note 2026-10-21 (Ralph, after the story loop 9.24/9.30/9.31):** measure the hover path on a deep stack before deciding anything about it. A rebase row's no-op check applies jj-lib's whole move on a dropped transaction, so a hover pays the tree merges of every descendant and leaves git commit objects plus `refs/jj/keep/*` until `jj util gc` (deferred-work "Surfaced in Story 9.31"). If either bites: query once per drop target, or compute the no-op from the parents without writing. Template faults after a plan phase stay advisory (the verb's own refusal is authoritative).
+
 > **Design update 2026-09-28 (Ralph: commit cards and bookmarks will both be draggable later; the design has no drag yet):**
 > - **Bookmark drags join this story.** The sources are the legend pill, the bookmark button and the rows of the bookmark popover. A drop on a card moves the bookmark there (`jj bookmark move` / `set`, backend 9.19). As in the CLI, moving a bookmark backwards or sideways needs `--allow-backwards`: a visible choice in the drop menu, never a hidden default. The Non-goal "Dropping bookmark labels" is lifted.
 > - **What already holds, so drag needs no rework later** (10.3, 10.6, 10.17):
@@ -12707,6 +12709,10 @@ Today the app stores one preference, the theme (`packages/zanshin_settings/lib/s
 
 ### Story 11.8: Sync — Fetch, Push, the remote-change poll, the upstream badge [UI/bridge]
 *(Added 2026-10-14, Ralph — console session on the floating-client export `e74ced3`; Claude builds it under the scope change of 11.0. DS synced through #9.)*
+
+> **Note 2026-10-21 (Ralph, after the story loop 9.24/9.30/9.31):**
+> - **Witness the poll in the running app.** Inside `dart test` the Dart VM reaps the poll's git child, so no Dart test sees a successful `remoteChanges` (deferred-work "Surfaced in Story 9.24"). This story runs `RepoHandle.remoteChanges('origin')` once in the running app (Marionette) and checks a moved bookmark arrives as `moved`.
+> - **No special auth handling for the timed poll.** A credential helper or the 1Password SSH dialog may appear on a tick, as in SourceTree. If nobody confirms it, that tick fails quietly (no error toast for a background poll) and the next tick tries again; ticks never overlap (a running poll is not started twice).
 
 > **Design update 2026-10-16 (the Epic 11 header; DS rounds 1–3):** Push opens a selection sheet with a `--dry-run` preview instead of pushing (decisions 16.8, 16.25; DS components/push/PushDialog.prompt.md), and both buttons are Zs controls (decision 16.1). This note supersedes item 3's "Then it runs `jj git push` with the CLI's defaults …" and "See design question (b)", design question (b) itself, and the non-goal "Pushing single bookmarks (9.19, 10.15)". It amends items 1, 2, 4 and 6 and Depends on. It adds items 7–9 and witnesses.
 > - **Item 1, buttons.** The two buttons are the 11.11 IconButton, with icons at the `bar` size (17; decision 16.32). The tooltips stay "Fetch — jj git fetch" and "Push — jj git push" (DS components/actions/IconButton.prompt.md:9). The resolved remotes (item 1's proposal) are named in words after the command ("Fetch — jj git fetch · origin, upstream"), never as `--remote` flags the call does not pass (decision 16.44; Claude's proposal).
