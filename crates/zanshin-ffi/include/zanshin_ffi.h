@@ -369,6 +369,12 @@ typedef struct {
 
 #define GitFetchResult_VT_FAILED_REF_NAMES 10
 
+#define GitFetchResult_VT_CHANGED_BOOKMARKS 12
+
+#define GitFetchResult_VT_CHANGED_TAGS 14
+
+#define GitFetchResult_VT_NUM_REWRITTEN 16
+
 #define RemoteRefChange_VT_CHANGE 8
 
 #define RemoteRefChange_VT_OLD_COMMIT_IDS 10
@@ -544,12 +550,6 @@ typedef struct {
 #define SearchMatch_VT_HAS_CONFLICT_SIDE 12
 
 #define FileSearch_VT_MATCHES 4
-
-#define GitImportResult_VT_CHANGED_BOOKMARKS 6
-
-#define GitImportResult_VT_CHANGED_TAGS 8
-
-#define GitImportResult_VT_NUM_REWRITTEN 12
 
 #define GitExportResult_VT_FAILED_BOOKMARKS 6
 
@@ -2723,10 +2723,13 @@ ZanshinBuf *zanshin_describe(uint64_t handle,
  *   is not `NewChange`. The two wrappers that read this ONE table carry different kinds, so an
  *   `Abandon`-tagged buffer is refused here rather than treated as `parents`.
  * - `jj.invalid_input` — `parents` combined with `insert_after` / `insert_before`; all three
- *   lists empty; (`-A`/`-B`) the location would create a loop (`Refusing to create a loop:
- *   commit <12 hex> would be both an ancestor and a descendant of the new commit`) — Story
- *   9.48; or (one parent) an
- *   `experimental-advance-branches` pattern does not parse (Story 9.49 closing run).
+ *   lists empty; (Git backend) two or more parents — positional, or computed by `-A`/`-B` —
+ *   including the root commit, refused up front with the Git backend's own text ("The Git
+ *   backend does not support creating merge commits with the root commit as one of the
+ *   parents.") — Story 9.31; (`-A`/`-B`) the location would create a loop (`Refusing to create
+ *   a loop: commit <12 hex> would be both an ancestor and a descendant of the new commit`) —
+ *   Story 9.48; or (one parent) an `experimental-advance-branches` pattern does not parse
+ *   (Story 9.49 closing run).
  * - `jj.change_not_found` — an id in any list is malformed, absent, only-hidden, or divergent.
  * - `jj.immutable` — (`-A`/`-B`) a commit to rebase is inside the repo's effective immutable
  *   set; the first offender's hex commit id in `context` (Story 9.48).
@@ -2901,7 +2904,9 @@ ZanshinBuf *zanshin_undo(uint64_t handle, bool allow_cross_workspace);
  * `MutationResult` (its `abandoned_change_ids` are the commits the import abandoned because
  * they became unreachable in git — what `git.abandon-unreachable-commits` governs; its
  * `new_change_ids` always empty), the remotes fetched from, the CLI's hints ("Fetching from the
- * only existing remote: <name>") and the refs the import could not read. Warnings:
+ * only existing remote: <name>"), the refs the import could not read, the remote bookmarks and
+ * tags the import changed (`GitRefUpdate`s, as `zanshin_git_import` reports them) and how many
+ * commits it rewrote. Warnings:
  * `jj.fetch_remotes_unmatched`, `jj.fetch_refspec_ignored`, `jj.git_import_failed`,
  * `jj.fetch_branches_unmatched`, then the finish's.
  *
@@ -2911,14 +2916,20 @@ ZanshinBuf *zanshin_undo(uint64_t handle, bool allow_cross_workspace);
  * - `ffi.invalid_argument` — `data` does not verify as a `GitFetchRequest` buffer, its `kind` is
  *   not `GitFetch`, or a mode is unknown.
  * - `jj.invalid_input` — no remote matched ("No git remotes to fetch from", after the
- *   `jj.fetch_remotes_unmatched` warning; nothing is written), a name pattern does not parse, or
- *   a pattern cannot become a refspec; the CLI's text in `context`.
+ *   `jj.fetch_remotes_unmatched` warning; nothing is written), a name pattern does not parse
+ *   (a `Named` remote pattern is parsed before the backend is checked, so it precedes
+ *   `jj.not_a_git_repo`), a pattern cannot become a refspec, a matched remote's name is one jj
+ *   cannot use (e.g. a Git remote named `git`; `context` ends in the CLI's ``Hint: Run `jj git
+ *   remote rename` to give a different name.`` line), or Git rejected a ref update ("Failed to
+ *   update refs: …"); the CLI's text in `context`. No operation is written.
  * - `jj.not_a_git_repo` — the OPEN WORKSPACE has no git backend at all, so `git fetch`
  *   cannot run. Carries NO `context` — there is no path to name. Identical to what the
  *   six `zanshin_git_remote_*`/`_import`/`_export` wrappers report for that condition.
  * - `jj.config_error` — the repo's effective config could not be read; the git.fetch setting is
- *   neither a string nor a list; a `remotes.<name>` entry or its `fetch-bookmarks`/`fetch-tags` is
- *   malformed (the CLI's ``Invalid `remotes.<name>.<field>`: …``); or
+ *   neither a string nor a list (read only in `Default` remotes mode, before the backend is
+ *   checked — so it precedes `jj.not_a_git_repo`); a `remotes.<name>` entry or its
+ *   `fetch-bookmarks`/`fetch-tags` is malformed (the CLI's ``Invalid `remotes.<name>.<field>`:
+ *   …``); or
  *   `git.abandon-unreachable-commits`/`git.record-synthetic-predecessors` has a non-boolean
  *   value — all read per call rather than hardcoded.
  * - `jj.remote_not_found` — a matched remote vanished before its fetch (jj-lib's

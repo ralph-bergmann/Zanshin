@@ -11,6 +11,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import 'package:zanshin_core/src/ffi/fetch.dart';
+import 'package:zanshin_core/src/ffi/git.dart' show GitRefUpdate;
 import 'package:zanshin_core/src/ffi/warning.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
 
@@ -21,6 +22,9 @@ void main() {
       List<String>? remotes = const ['origin', 'up'],
       List<String>? hints = const [],
       List<String>? failedRefNames = const [],
+      List<fbs.GitRefUpdateObjectBuilder>? changedBookmarks = const [],
+      List<fbs.GitRefUpdateObjectBuilder>? changedTags = const [],
+      int? numRewritten,
       List<fbs.WarningObjectBuilder>? warnings,
     }) => fbs.EnvelopeObjectBuilder(
       ok: true,
@@ -30,6 +34,9 @@ void main() {
         remotes: remotes,
         hints: hints,
         failedRefNames: failedRefNames,
+        changedBookmarks: changedBookmarks,
+        changedTags: changedTags,
+        numRewritten: numRewritten,
       ),
       warnings: warnings,
     ).toBytes();
@@ -46,6 +53,16 @@ void main() {
           remotes: const ['up'],
           hints: const ['Fetching from the only existing remote: up'],
           failedRefNames: const ['refs/remotes/git/x'],
+          changedBookmarks: [
+            fbs.GitRefUpdateObjectBuilder(
+              name: 'main',
+              remote: 'up',
+              kind: fbs.GitRefUpdateKind.Updated,
+              tracked: true,
+            ),
+          ],
+          changedTags: [fbs.GitRefUpdateObjectBuilder(name: 'v1', remote: 'up', kind: fbs.GitRefUpdateKind.New)],
+          numRewritten: 3,
           warnings: [
             fbs.WarningObjectBuilder(code: ZanshinWarningCode.gitImportFailed, message: 'Failed to import'),
           ],
@@ -58,6 +75,10 @@ void main() {
       expect(result.remotes, ['up']);
       expect(result.hints, ['Fetching from the only existing remote: up']);
       expect(result.failedRefNames, ['refs/remotes/git/x']);
+      String describe(GitRefUpdate u) => '${u.name}@${u.remote} ${u.kind.name} tracked=${u.tracked}';
+      expect(result.changedBookmarks.map(describe), ['main@up updated tracked=true']);
+      expect(result.changedTags.map(describe), ['v1@up created tracked=false']);
+      expect(result.numRewritten, 3);
       expect(result.warnings.map((w) => w.code), [ZanshinWarningCode.gitImportFailed]);
     });
 
@@ -70,10 +91,18 @@ void main() {
       expect(() => decodeGitFetchResultEnvelope(fetchResult(remotes: null)), unknown('remotes'));
       expect(() => decodeGitFetchResultEnvelope(fetchResult(hints: null)), unknown('hints'));
       expect(() => decodeGitFetchResultEnvelope(fetchResult(failedRefNames: null)), unknown('failed_ref_names'));
+      expect(() => decodeGitFetchResultEnvelope(fetchResult(changedBookmarks: null)), unknown('changed_bookmarks'));
+      expect(() => decodeGitFetchResultEnvelope(fetchResult(changedTags: null)), unknown('changed_tags'));
       final Uint8List noMutation = fbs.EnvelopeObjectBuilder(
         ok: true,
         dataType: fbs.PayloadTypeId.GitFetchResult,
-        data: fbs.GitFetchResultObjectBuilder(remotes: const [], hints: const [], failedRefNames: const []),
+        data: fbs.GitFetchResultObjectBuilder(
+          remotes: const [],
+          hints: const [],
+          failedRefNames: const [],
+          changedBookmarks: const [],
+          changedTags: const [],
+        ),
       ).toBytes();
       expect(() => decodeGitFetchResultEnvelope(noMutation), unknown('mutation'));
     });

@@ -278,34 +278,42 @@ pub struct GitFetchOutcome {
     /// The Git refs the import could not read, lossy UTF-8, sorted by name (jj-lib's order) — what
     /// `jj.git_import_failed` lists.
     pub failed_ref_names: Vec<String>,
+    /// Remote BOOKMARKS the import changed, in jj-lib's own `symbol` order — the lines the CLI's
+    /// `print_imported_changes` prints (`cli/src/git_util.rs:228-266` @ v0.46.0); as
+    /// [`crate::GitImportResult::changed_bookmarks`].
+    pub changed_bookmarks: Vec<crate::GitRefUpdate>,
+    /// Remote TAGS the import changed, in jj-lib's own `symbol` order; as
+    /// [`crate::GitImportResult::changed_tags`].
+    pub changed_tags: Vec<crate::GitRefUpdate>,
+    /// How many commits the import rewrote (the CLI's `Updated {n} rewritten commits.`),
+    /// saturating at `u32::MAX`; as [`crate::GitImportResult::num_rewritten`].
+    pub num_rewritten: u32,
 }
 
-/// The remotes `args` selects (`fetch.rs:142-172` @ v0.46.0), before any transaction.
+/// The remotes `args` selects (`fetch.rs:142-172` @ v0.46.0), before any transaction. The
+/// remote expression is built BEFORE the remotes are listed, in the CLI's order: a malformed
+/// `git.fetch` refuses as `Config` even without a Git backend, and `--remote` / `--all-remotes`
+/// never read it.
 fn resolve_fetch_remotes(
     store: &jj_lib::store::Store,
     remotes: &FetchRemotes,
     ctx: &mut VerbContext,
     hints: &mut Vec<String>,
 ) -> Result<Vec<RemoteNameBuf>, MutateError> {
+    let defaults = crate::push::FETCH_REMOTES;
+    // `(given, configured)`: `given` is the `--remote` / `--all-remotes` expression; without it,
+    // `configured` is `git.fetch`'s, and `default_remotes` falls back on the remote list.
+    let (given, configured) = match remotes {
+        FetchRemotes::All => (Some(StringExpression::all()), None),
+        FetchRemotes::Named(texts) => (Some(crate::bookmark_ops::union_expression(texts)?), None),
+        FetchRemotes::Default => (None, crate::push::configured_remotes(&ctx.config, defaults)?),
+    };
     let all_remotes = git::get_all_remote_names(store).map_err(|_| MutateError::NotAGitRepo)?;
-    let unmatched = crate::push::FETCH_REMOTES.unmatched;
-    let matching = match remotes {
-        FetchRemotes::All => {
-            crate::push::matching_remotes(&all_remotes, &StringExpression::all(), unmatched, &mut ctx.warnings)
+    let matching = match given {
+        Some(expression) => {
+            crate::push::matching_remotes(&all_remotes, &expression, defaults.unmatched, &mut ctx.warnings)
         }
-        FetchRemotes::Named(texts) => crate::push::matching_remotes(
-            &all_remotes,
-            &crate::bookmark_ops::union_expression(texts)?,
-            unmatched,
-            &mut ctx.warnings,
-        ),
-        FetchRemotes::Default => crate::push::default_remotes(
-            &all_remotes,
-            &ctx.config,
-            crate::push::FETCH_REMOTES,
-            &mut ctx.warnings,
-            hints,
-        )?,
+        None => crate::push::default_remotes(&all_remotes, configured, defaults, &mut ctx.warnings, hints),
     };
     if matching.is_empty() {
         return Err(MutateError::InvalidInput {
@@ -443,17 +451,23 @@ fn fetch_description(remotes: &[RemoteNameBuf]) -> String {
     format!("fetch from git remote(s) {}", names.join(","))
 }
 
-/// Maps one remote's `GitFetch::fetch` failure.
+/// Maps one remote's `GitFetch::fetch` failure — exhaustive, in the CLI's classification
+/// (`From<GitFetchError>`, `cli/src/command_error.rs:583-593` @ v0.46.0): every variant is a
+/// `user_error`; `RemoteName` carries the CLI's hint as a last `Hint:` line of the reason, since
+/// errors have no hint channel of their own.
 fn fetch_error(e: GitFetchError, cancel: Option<&crate::cancel::CancelGuard>) -> MutateError {
     match e {
         GitFetchError::NoSuchRemote(name) => MutateError::RemoteNotFound {
             name: name.into_string(),
         },
+        GitFetchError::RemoteName(e) => MutateError::InvalidInput {
+            reason: format!("{e}\nHint: Run `jj git remote rename` to give a different name."),
+        },
+        rejected @ GitFetchError::RejectedUpdates(_) => invalid(rejected),
         GitFetchError::Subprocess(_) if crate::cancel::is_cancelled(cancel) => MutateError::Cancelled,
         GitFetchError::Subprocess(sub) => MutateError::NetworkError {
             reason: sub.to_string(),
         },
-        other => mutate::be(other),
     }
 }
 
@@ -541,8 +555,6 @@ pub(crate) fn git_fetch(
     let stats = pollster::block_on(fetcher.import_refs()).map_err(mutate::be)?;
     // `print_git_import_stats`, right after the import (`fetch.rs:247-248`, Story 9.32).
     ctx.warnings.extend(crate::warning::git_import_failed(&stats));
-    let failed_ref_names = crate::git::failed_ref_names(&stats);
-    let abandoned_change_ids = crate::git::project_abandoned(&stats);
     if let Some(expression) = &common_bookmarks {
         warn_if_branches_not_found(&mut ctx.warnings, &tx, expression, &remotes);
     }
@@ -565,12 +577,18 @@ pub(crate) fn git_fetch(
     // reports abandonments, changed remote refs, rewritten commit ids and failed ref names.
     // `git_import` leaves this field empty for the same reason. When `@` itself was abandoned,
     // jj-lib's replacement is already reported via `working_copy_change_id`.
-    let mutation = mutate::mutation_result(&finish, Vec::new(), abandoned_change_ids)?;
+    let mutation = mutate::mutation_result(&finish, Vec::new(), crate::git::project_abandoned(&stats))?;
+    // WHY `committed = true`: a fetch always writes its operation (`finish_verb` has no
+    // `has_changes` check), so `finish.repo` is the post-import view the projection reads.
+    let import = crate::git::project_import(&stats, &finish.repo, true, mutation);
     Ok(GitFetchOutcome {
-        mutation,
+        mutation: import.mutation,
         remotes: remotes.into_iter().map(RemoteNameBuf::into_string).collect(),
         hints,
-        failed_ref_names,
+        failed_ref_names: import.failed_ref_names,
+        changed_bookmarks: import.changed_bookmarks,
+        changed_tags: import.changed_tags,
+        num_rewritten: import.num_rewritten,
     })
 }
 
@@ -593,16 +611,18 @@ mod tests {
         assert_eq!(fetch_description(&remotes[..1]), "fetch from git remote(s) origin");
     }
 
-    /// A remote gone before its fetch is `RemoteNotFound`; a failure without its own mapping
-    /// is a `Backend` error carrying jj-lib's Display. `NoSuchRemote` is not reachable through a
-    /// fetch fixture (the remotes are resolved from the store just before); `RejectedUpdates`
-    /// stands in for any jj-lib fetch failure without its own mapping. So the mapping is called
-    /// directly.
+    /// A remote gone before its fetch is `RemoteNotFound`; a rejected ref update and a remote
+    /// name jj cannot use are `InvalidInput` carrying jj-lib's Display — the CLI's `user_error`s
+    /// (`command_error.rs:583-593` @ v0.46.0), the latter with the CLI's hint. `NoSuchRemote` is
+    /// not reachable through a fetch fixture (the remotes are resolved from the store just
+    /// before), and `RejectedUpdates` hardly is (jj-lib force-updates remote refs; its own note
+    /// names implicit tag updates as the one exception), so the mapping is called directly. The
+    /// `RemoteName` refusal through a real fetch is pinned in `tests/it/git_fetch_parity.rs`.
     #[test]
     fn fetch_failures_map_to_their_mutate_errors() {
         use super::fetch_error;
         use crate::MutateError;
-        use jj_lib::git::GitFetchError;
+        use jj_lib::git::{GitFetchError, GitRemoteNameError};
 
         let gone = fetch_error(GitFetchError::NoSuchRemote("gone".into()), None);
         assert!(
@@ -611,9 +631,19 @@ mod tests {
         );
         let rejected = fetch_error(GitFetchError::RejectedUpdates(vec!["refs/heads/main".into()]), None);
         assert!(
-            matches!(&rejected, MutateError::Backend(reason)
+            matches!(&rejected, MutateError::InvalidInput { reason }
                 if reason.starts_with("Failed to update refs: ") && reason.contains("refs/heads/main")),
             "{rejected:?}"
+        );
+        let reserved = fetch_error(
+            GitFetchError::RemoteName(GitRemoteNameError::ReservedForLocalGitRepo),
+            None,
+        );
+        assert!(
+            matches!(&reserved, MutateError::InvalidInput { reason }
+                if reason.starts_with(&GitRemoteNameError::ReservedForLocalGitRepo.to_string())
+                    && reason.ends_with("\nHint: Run `jj git remote rename` to give a different name.")),
+            "{reserved:?}"
         );
     }
 

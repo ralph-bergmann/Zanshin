@@ -105,11 +105,12 @@ fn ref_update_kind_to_fbs(k: GitRefUpdateKind) -> fbs::GitRefUpdateKind {
     }
 }
 
-/// Build the `[GitRefUpdate]` vector into `b` and return its offset.
+/// Build the `[GitRefUpdate]` vector into `b` and return its offset. `pub(crate)` since the
+/// fetch's `GitFetchResult` carries the same changed refs.
 ///
 /// Children before parents (`FlatBuffers` requirement): each entry's two strings are built
 /// before its table, and the vector comes after the loop.
-fn build_ref_updates<'a>(
+pub(crate) fn build_ref_updates<'a>(
     b: &mut FlatBufferBuilder<'a>,
     updates: &[GitRefUpdate],
 ) -> flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<fbs::GitRefUpdate<'a>>>> {

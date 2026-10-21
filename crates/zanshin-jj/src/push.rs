@@ -797,7 +797,8 @@ fn resolve_remotes(
             sink,
         )
     } else {
-        default_remotes(&all_remotes, config, PUSH_REMOTES, sink, hints)?
+        let configured = configured_remotes(config, PUSH_REMOTES)?;
+        default_remotes(&all_remotes, configured, PUSH_REMOTES, sink, hints)
     };
     if matching.is_empty() {
         return Err(MutateError::InvalidInput {
@@ -835,27 +836,41 @@ pub(crate) const FETCH_REMOTES: RemoteDefaults = RemoteDefaults {
     unmatched: WarningKind::FetchRemotesUnmatched,
 };
 
-/// The remotes a push or fetch WITHOUT `--remote` goes to (`push.rs:294-323`'s default arm,
-/// `get_default_push_remotes` `:1107-1130`; `get_default_fetch_remotes`, `fetch.rs:267-290` @
-/// v0.46.0), out of `all_remotes` in their order: the remotes the verb's key (`git.push` /
-/// `git.fetch`) names (a name, a list or a pattern), else the single remote (with the CLI's
-/// only-remote hint into `hints` unless it is `origin`), else `origin`. An exact name no remote
-/// carries warns `defaults.unmatched`; matching none is `[]` — the verb refuses that,
-/// [`default_remote_names`] reports it. Shared by both verbs and both queries (Stories 9.54, 9.30).
+/// The union of the name patterns the verb's key (`git.push` / `git.fetch`) names — a name, a
+/// list or a pattern — or `None` when it is unset: the configured half of
+/// [`default_remotes`]'s resolution, split off so the fetch can read it before listing the
+/// remotes, in the CLI's order (`fetch.rs:142-149` @ v0.46.0).
 ///
 /// # Errors
 ///
 /// - [`MutateError::Config`] — the key is neither a string nor a list of strings.
 /// - [`MutateError::InvalidInput`] — one of its patterns does not parse.
+pub(crate) fn configured_remotes(
+    config: &StackedConfig,
+    defaults: RemoteDefaults,
+) -> Result<Option<StringExpression>, MutateError> {
+    (defaults.configured)(config)
+        .map_err(cfg)?
+        .map(|texts| crate::bookmark_ops::union_expression(&texts))
+        .transpose()
+}
+
+/// The remotes a push or fetch WITHOUT `--remote` goes to (`push.rs:294-323`'s default arm,
+/// `get_default_push_remotes` `:1107-1130`; `get_default_fetch_remotes`, `fetch.rs:267-290` @
+/// v0.46.0), out of `all_remotes` in their order: the remotes `configured` (the verb's key, read
+/// by [`configured_remotes`]) matches, else the single remote (with the CLI's only-remote hint
+/// into `hints` unless it is `origin`), else `origin`. An exact name no remote carries warns
+/// `defaults.unmatched`; matching none is `[]` — the verb refuses that, [`default_remote_names`]
+/// reports it. Shared by both verbs and both queries (Stories 9.54, 9.30).
 pub(crate) fn default_remotes(
     all_remotes: &[RemoteNameBuf],
-    config: &StackedConfig,
+    configured: Option<StringExpression>,
     defaults: RemoteDefaults,
     sink: &mut Warnings,
     hints: &mut Vec<String>,
-) -> Result<Vec<RemoteNameBuf>, MutateError> {
-    let expression = if let Some(texts) = (defaults.configured)(config).map_err(cfg)? {
-        crate::bookmark_ops::union_expression(&texts)?
+) -> Vec<RemoteNameBuf> {
+    let expression = if let Some(expression) = configured {
+        expression
     } else if let [single] = all_remotes {
         if single.as_str() != "origin" {
             hints.push(format!("{}: {}", defaults.only_remote_hint, single.as_symbol()));
@@ -864,7 +879,7 @@ pub(crate) fn default_remotes(
     } else {
         StringExpression::exact("origin")
     };
-    Ok(matching_remotes(all_remotes, &expression, defaults.unmatched, sink))
+    matching_remotes(all_remotes, &expression, defaults.unmatched, sink)
 }
 
 /// The remotes of `all_remotes` `expression` matches, in their order; each exact name no remote
@@ -901,7 +916,7 @@ pub(crate) fn matching_remotes(
 ///
 /// # Errors
 ///
-/// See [`default_remotes`].
+/// See [`configured_remotes`].
 pub(crate) fn default_remote_names(
     workspace: &jj_lib::workspace::Workspace,
     config: &StackedConfig,
@@ -911,7 +926,8 @@ pub(crate) fn default_remote_names(
     let Ok(all_remotes) = jj_lib::git::get_all_remote_names(workspace.repo_loader().store()) else {
         return Ok(Vec::new());
     };
-    let remotes = default_remotes(&all_remotes, config, defaults, sink, &mut Vec::new())?;
+    let configured = configured_remotes(config, defaults)?;
+    let remotes = default_remotes(&all_remotes, configured, defaults, sink, &mut Vec::new());
     Ok(remotes.into_iter().map(RemoteNameBuf::into_string).collect())
 }
 

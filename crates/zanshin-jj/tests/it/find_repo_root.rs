@@ -9,6 +9,7 @@ use zanshin_jj::{find_repo_root, DetectError, RepoKind, RepoRoot};
 
 /// Run a git command in `dir`; panics on non-zero exit.
 fn git(args: &[&str], dir: &Path) {
+    test_helpers::pin_test_env();
     let status = std::process::Command::new("git")
         .args(args)
         .current_dir(dir)

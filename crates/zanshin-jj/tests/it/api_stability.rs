@@ -1535,7 +1535,12 @@ fn story_9_30_fetch_surface_resolves() {
             remotes,
             hints,
             failed_ref_names,
+            changed_bookmarks,
+            changed_tags,
+            num_rewritten,
         } = outcome;
+        let _: (Vec<zanshin_jj::GitRefUpdate>, Vec<zanshin_jj::GitRefUpdate>, u32) =
+            (changed_bookmarks, changed_tags, num_rewritten);
         (mutation, remotes, hints, failed_ref_names)
     };
 }

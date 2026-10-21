@@ -14334,6 +14334,12 @@ pub mod zanshin {
         ///   hints              the CLI's hints, verbatim: "Fetching from the only existing remote: <name>"
         ///   failed_ref_names   the Git refs the import could not read (lossy UTF-8, sorted by name) —
         ///                      what `jj.git_import_failed` lists
+        ///   changed_bookmarks  the remote bookmarks the import changed, in jj-lib's symbol order — as
+        ///                      `GitImportResult.changed_bookmarks` (the CLI's `print_imported_changes`)
+        ///   changed_tags       the remote tags the import changed, in jj-lib's symbol order — as
+        ///                      `GitImportResult.changed_tags`
+        ///   num_rewritten      how many commits the import rewrote ("Updated {n} rewritten commits."),
+        ///                      saturating at 4294967295 — as `GitImportResult.num_rewritten`
         pub struct GitFetchResult<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -14353,6 +14359,9 @@ pub mod zanshin {
             pub const VT_REMOTES: ::flatbuffers::VOffsetT = 6;
             pub const VT_HINTS: ::flatbuffers::VOffsetT = 8;
             pub const VT_FAILED_REF_NAMES: ::flatbuffers::VOffsetT = 10;
+            pub const VT_CHANGED_BOOKMARKS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_CHANGED_TAGS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_NUM_REWRITTEN: ::flatbuffers::VOffsetT = 16;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -14364,6 +14373,13 @@ pub mod zanshin {
                 args: &'args GitFetchResultArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<GitFetchResult<'bldr>> {
                 let mut builder = GitFetchResultBuilder::new(_fbb);
+                builder.add_num_rewritten(args.num_rewritten);
+                if let Some(x) = args.changed_tags {
+                    builder.add_changed_tags(x);
+                }
+                if let Some(x) = args.changed_bookmarks {
+                    builder.add_changed_bookmarks(x);
+                }
                 if let Some(x) = args.failed_ref_names {
                     builder.add_failed_ref_names(x);
                 }
@@ -14424,6 +14440,39 @@ pub mod zanshin {
                     >>(GitFetchResult::VT_FAILED_REF_NAMES, None)
                 }
             }
+            #[inline]
+            pub fn changed_bookmarks(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitRefUpdate<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitRefUpdate>>,
+                    >>(GitFetchResult::VT_CHANGED_BOOKMARKS, None)
+                }
+            }
+            #[inline]
+            pub fn changed_tags(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitRefUpdate<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitRefUpdate>>,
+                    >>(GitFetchResult::VT_CHANGED_TAGS, None)
+                }
+            }
+            #[inline]
+            pub fn num_rewritten(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(GitFetchResult::VT_NUM_REWRITTEN, Some(0)).unwrap() }
+            }
         }
 
         impl ::flatbuffers::Verifiable for GitFetchResult<'_> {
@@ -14437,6 +14486,9 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("remotes", Self::VT_REMOTES, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("hints", Self::VT_HINTS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("failed_ref_names", Self::VT_FAILED_REF_NAMES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GitRefUpdate>>>>("changed_bookmarks", Self::VT_CHANGED_BOOKMARKS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GitRefUpdate>>>>("changed_tags", Self::VT_CHANGED_TAGS, false)?
+     .visit_field::<u32>("num_rewritten", Self::VT_NUM_REWRITTEN, false)?
      .finish();
                 Ok(())
             }
@@ -14449,6 +14501,13 @@ pub mod zanshin {
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub failed_ref_names:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub changed_bookmarks: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitRefUpdate<'a>>>>,
+            >,
+            pub changed_tags: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GitRefUpdate<'a>>>>,
+            >,
+            pub num_rewritten: u32,
         }
         impl<'a> Default for GitFetchResultArgs<'a> {
             #[inline]
@@ -14458,6 +14517,9 @@ pub mod zanshin {
                     remotes: None,
                     hints: None,
                     failed_ref_names: None,
+                    changed_bookmarks: None,
+                    changed_tags: None,
+                    num_rewritten: 0,
                 }
             }
         }
@@ -14503,6 +14565,33 @@ pub mod zanshin {
                 );
             }
             #[inline]
+            pub fn add_changed_bookmarks(
+                &mut self,
+                changed_bookmarks: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GitRefUpdate<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    GitFetchResult::VT_CHANGED_BOOKMARKS,
+                    changed_bookmarks,
+                );
+            }
+            #[inline]
+            pub fn add_changed_tags(
+                &mut self,
+                changed_tags: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GitRefUpdate<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitFetchResult::VT_CHANGED_TAGS, changed_tags);
+            }
+            #[inline]
+            pub fn add_num_rewritten(&mut self, num_rewritten: u32) {
+                self.fbb_
+                    .push_slot::<u32>(GitFetchResult::VT_NUM_REWRITTEN, num_rewritten, 0);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitFetchResultBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 GitFetchResultBuilder {
@@ -14524,6 +14613,9 @@ pub mod zanshin {
                 ds.field("remotes", &self.remotes());
                 ds.field("hints", &self.hints());
                 ds.field("failed_ref_names", &self.failed_ref_names());
+                ds.field("changed_bookmarks", &self.changed_bookmarks());
+                ds.field("changed_tags", &self.changed_tags());
+                ds.field("num_rewritten", &self.num_rewritten());
                 ds.finish()
             }
         }

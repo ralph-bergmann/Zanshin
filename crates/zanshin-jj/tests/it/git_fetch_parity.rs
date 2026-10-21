@@ -15,11 +15,13 @@ use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{
     Backend, BookmarkKind, ConfigScope, ConfigTarget, FetchRefs, FetchRemotes, GitFetchArgs, GitFetchOutcome,
-    MutateError, ProgressEvent, RemoteRefChangeKind, Repo, TagKind, Warning, WarningKind,
+    GitRefUpdate, GitRefUpdateKind, MutateError, ProgressEvent, RemoteRefChangeKind, Repo, TagKind, Warning,
+    WarningKind,
 };
 
 /// Runs `git` in `dir`; panics on a non-zero exit. Returns trimmed stdout.
 fn git(args: &[&str], dir: &Path) -> String {
+    test_helpers::pin_test_env();
     let out = Command::new("git")
         .args(args)
         .current_dir(dir)
@@ -861,4 +863,157 @@ fn a_negated_branch_name_does_not_warn() {
         "{warnings:?}"
     );
     assert_eq!(fx.remote_bookmark("main", "origin"), Some(origin.head("main")));
+}
+
+/// `(name, remote, kind, tracked)` of each changed ref.
+fn changes(updates: &[GitRefUpdate]) -> Vec<(&str, &str, GitRefUpdateKind, bool)> {
+    updates
+        .iter()
+        .map(|u| (u.name.as_str(), u.remote.as_str(), u.kind, u.tracked))
+        .collect()
+}
+
+/// The fetch reports what its import changed, as `print_imported_changes` prints it
+/// (`git_util.rs:228-266` @ v0.46.0): the first fetch creates `feat@origin`, `main@origin` and
+/// `v1@origin`; a fetch after upstream moved `main` and deleted `feat` updates the one and deletes
+/// the other; a fetch with nothing new reports nothing.
+#[test]
+fn the_fetch_reports_the_remote_refs_it_changed() {
+    use GitRefUpdateKind::{Deleted, New, Updated};
+    let dir = TempDir::new().unwrap();
+    let origin = Upstream::new(dir.path(), "origin");
+    origin.commit("feat", "feature").tag("v1");
+    let mut fx = Fx::new(&[("origin", &origin)]);
+
+    let first = fx.fetch(&GitFetchArgs::default()).expect("first fetch");
+    // With no `remotes.origin.auto-track-bookmarks`, a fetched bookmark stays untracked; a
+    // fetched tag is tracked. A deleted ref is untracked afterwards.
+    assert_eq!(
+        changes(&first.changed_bookmarks),
+        [("feat", "origin", New, false), ("main", "origin", New, false)]
+    );
+    assert_eq!(changes(&first.changed_tags), [("v1", "origin", New, true)]);
+    assert_eq!(first.num_rewritten, 0);
+
+    git(&["checkout", "-q", "main"], &origin.work);
+    git(&["branch", "-q", "-D", "feat"], &origin.work);
+    origin.commit("main", "second");
+    let moved = fx.fetch(&GitFetchArgs::default()).expect("second fetch");
+    assert_eq!(
+        changes(&moved.changed_bookmarks),
+        [("feat", "origin", Deleted, false), ("main", "origin", Updated, false)]
+    );
+    assert!(moved.changed_tags.is_empty(), "{:?}", moved.changed_tags);
+
+    let idle = fx.fetch(&GitFetchArgs::default()).expect("third fetch");
+    assert!(idle.changed_bookmarks.is_empty(), "{:?}", idle.changed_bookmarks);
+    assert!(idle.changed_tags.is_empty(), "{:?}", idle.changed_tags);
+    assert_eq!(idle.num_rewritten, 0);
+}
+
+/// `--remote` / `--all-remotes` never read `git.fetch` (`fetch.rs:142-149` @ v0.46.0), so a
+/// malformed one does not refuse them; without either, `git_fetch_remotes` refuses it.
+#[test]
+fn a_malformed_git_fetch_setting_is_read_only_without_remotes() {
+    let dir = TempDir::new().unwrap();
+    let origin = Upstream::new(dir.path(), "origin");
+    let mut fx = Fx::new(&[("origin", &origin)]);
+    fx.set("git.fetch", "1");
+
+    let outcome = fx.fetch(&named(&["origin"])).expect("--remote ignores git.fetch");
+    assert_eq!(outcome.remotes, strings(&["origin"]));
+    let outcome = fx
+        .fetch(&GitFetchArgs {
+            remotes: FetchRemotes::All,
+            refs: FetchRefs::Default,
+        })
+        .expect("--all-remotes ignores git.fetch");
+    assert_eq!(outcome.remotes, strings(&["origin"]));
+
+    let err = fx.repo.git_fetch_remotes().expect_err("malformed");
+    assert!(
+        matches!(&err, MutateError::Config { reason } if reason.contains("git.fetch")),
+        "{err:?}"
+    );
+}
+
+/// `git.fetch` is read before the remotes are listed, as the CLI reads it: without a Git backend
+/// a malformed one still refuses as `Config`, not `NotAGitRepo`.
+#[test]
+fn a_malformed_git_fetch_setting_refuses_before_the_backend_check() {
+    test_helpers::pin_test_env();
+    let tmp = TempDir::new().expect("tempdir");
+    let mut repo = Repo::init(&zanshin_jj::InitOptions {
+        path: tmp.path().to_path_buf(),
+        ..Default::default()
+    })
+    .result
+    .expect("init");
+    let root = repo.workspace_root().to_owned();
+    zanshin_jj::config_set(Some(&root), &ConfigTarget::Scope(ConfigScope::Repo), "git.fetch", "1")
+        .result
+        .expect("config set");
+    let err = repo
+        .git_fetch(&GitFetchArgs::default(), &|_: ProgressEvent| {}, None)
+        .expect_err("malformed");
+    assert!(
+        matches!(&err, MutateError::Config { reason } if reason.contains("git.fetch")),
+        "{err:?}"
+    );
+}
+
+/// `--remote` patterns are parsed before the remotes are listed, as the CLI parses them: without
+/// a Git backend an unparsable one still refuses as `InvalidInput`, not `NotAGitRepo`.
+#[test]
+fn an_unparsable_remote_pattern_refuses_before_the_backend_check() {
+    test_helpers::pin_test_env();
+    let tmp = TempDir::new().expect("tempdir");
+    let mut repo = Repo::init(&zanshin_jj::InitOptions {
+        path: tmp.path().to_path_buf(),
+        ..Default::default()
+    })
+    .result
+    .expect("init");
+    let err = repo
+        .git_fetch(&named(&["glob:("]), &|_: ProgressEvent| {}, None)
+        .expect_err("unparsable");
+    assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
+}
+
+/// A Git remote named `git` — reserved by jj, so no Zanshin verb adds one — refuses its fetch
+/// with jj-lib's reason and the CLI's hint (`command_error.rs:586-588` @ v0.46.0), and writes
+/// no operation.
+#[test]
+fn a_remote_named_git_refuses_with_the_rename_hint() {
+    let dir = TempDir::new().unwrap();
+    let origin = Upstream::new(dir.path(), "origin");
+    let fx = Fx::new(&[]);
+    let git_dir = fx.root.join(".jj").join("repo").join("store").join("git");
+    git(
+        &[
+            "--git-dir",
+            &git_dir.to_string_lossy(),
+            "remote",
+            "add",
+            "git",
+            &origin.url(),
+        ],
+        fx.tmp.path(),
+    );
+    // A fresh handle, so the Git backend re-reads the edited Git config.
+    let Fx { tmp, root, .. } = fx;
+    let mut fx = Fx {
+        repo: Repo::open(&root).expect("reopen"),
+        tmp,
+        root,
+    };
+    let (before, _) = fx.head_op();
+    let err = fx.fetch(&named(&["git"])).expect_err("reserved name");
+    assert!(
+        matches!(&err, MutateError::InvalidInput { reason }
+            if reason == "Git remote named 'git' is reserved for local Git repository\n\
+                          Hint: Run `jj git remote rename` to give a different name."),
+        "{err:?}"
+    );
+    assert_eq!(fx.head_op().0, before, "a refusal writes no operation");
 }

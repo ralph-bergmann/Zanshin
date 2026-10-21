@@ -287,8 +287,8 @@ GitImportResult decodeGitImportResultInternal(
   List<ZanshinWarning> warnings = const [],
 }) => GitImportResult(
   mutation: decodeMutationResultInternal(payload.mutation),
-  changedBookmarks: _refUpdates(payload.changedBookmarks),
-  changedTags: _refUpdates(payload.changedTags),
+  changedBookmarks: decodeRefUpdatesInternal(payload.changedBookmarks),
+  changedTags: decodeRefUpdatesInternal(payload.changedTags),
   abandonedChangeIds: payload.abandonedChangeIds?.toList() ?? const [],
   numRewritten: payload.numRewritten,
   failedRefNames: payload.failedRefNames?.toList() ?? const [],
@@ -335,7 +335,9 @@ fbs.Envelope _okEnvelope(Uint8List bytes) {
   return env;
 }
 
-List<GitRefUpdate> _refUpdates(List<fbs.GitRefUpdate>? raw) =>
+/// Rebuild a [GitRefUpdate] list; an absent vector is empty. Shared with the
+/// fetch's `GitFetchResult` decoder, which refuses an absent vector first.
+List<GitRefUpdate> decodeRefUpdatesInternal(List<fbs.GitRefUpdate>? raw) =>
     raw
         ?.map(
           (u) => GitRefUpdate(

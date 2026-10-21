@@ -7,6 +7,7 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
+import 'git.dart' show GitRefUpdate, decodeRefUpdatesInternal;
 import 'mutate.dart' show MutationResult, decodeMutationResultInternal;
 import 'precondition.dart' show decodeEnvelopeErrorInternal;
 import 'request_bytes.dart';
@@ -144,6 +145,9 @@ final class GitFetchResult {
     required this.remotes,
     required this.hints,
     required this.failedRefNames,
+    required this.changedBookmarks,
+    required this.changedTags,
+    required this.numRewritten,
     this.warnings = const [],
   });
 
@@ -164,6 +168,17 @@ final class GitFetchResult {
   /// The Git refs the import could not read — what `jj.git_import_failed`
   /// lists.
   final List<String> failedRefNames;
+
+  /// Remote bookmarks the import changed, as `GitImportResult.changedBookmarks`
+  /// reports them — what the CLI prints after a fetch.
+  final List<GitRefUpdate> changedBookmarks;
+
+  /// Remote tags the import changed, as `GitImportResult.changedTags`.
+  final List<GitRefUpdate> changedTags;
+
+  /// How many commits the import rewrote (the CLI's "Updated {n} rewritten
+  /// commits."); it saturates at 4294967295.
+  final int numRewritten;
 
   /// The call's warnings (Story 9.32), in the CLI's print order:
   /// `jj.fetch_remotes_unmatched`, `jj.fetch_refspec_ignored`,
@@ -192,16 +207,16 @@ GitFetchResult decodeGitFetchResultEnvelopeInternal(Uint8List bytes) {
   }
   // Rust always writes every vector, empty ones included — an absent one is a
   // malformed buffer.
-  List<String> list(List<String>? value, String field) =>
+  T present<T extends Object>(T? value, String field) =>
       value ?? (throw ZanshinFfiException('ffi.unknown', 'GitFetchResult payload is missing its $field'));
   return GitFetchResult(
-    mutation: decodeMutationResultInternal(
-      payload.mutation ??
-          (throw const ZanshinFfiException('ffi.unknown', 'GitFetchResult payload is missing its mutation')),
-    ),
-    remotes: list(payload.remotes, 'remotes'),
-    hints: list(payload.hints, 'hints'),
-    failedRefNames: list(payload.failedRefNames, 'failed_ref_names'),
+    mutation: decodeMutationResultInternal(present(payload.mutation, 'mutation')),
+    remotes: present(payload.remotes, 'remotes'),
+    hints: present(payload.hints, 'hints'),
+    failedRefNames: present(payload.failedRefNames, 'failed_ref_names'),
+    changedBookmarks: decodeRefUpdatesInternal(present(payload.changedBookmarks, 'changed_bookmarks')),
+    changedTags: decodeRefUpdatesInternal(present(payload.changedTags, 'changed_tags')),
+    numRewritten: payload.numRewritten,
     warnings: decodeEnvelopeWarningsInternal(env),
   );
 }

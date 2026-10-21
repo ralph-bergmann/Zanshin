@@ -1348,6 +1348,8 @@ fn ok_git_fetch_result(outcome: &GitFetchOutcome, report: &CallReport) -> Vec<u8
     let remotes = strings(&outcome.remotes);
     let hints = strings(&outcome.hints);
     let failed_ref_names = strings(&outcome.failed_ref_names);
+    let changed_bookmarks = crate::git::build_ref_updates(&mut b, &outcome.changed_bookmarks);
+    let changed_tags = crate::git::build_ref_updates(&mut b, &outcome.changed_tags);
     let result = fbs::GitFetchResult::create(
         &mut b,
         &fbs::GitFetchResultArgs {
@@ -1355,6 +1357,9 @@ fn ok_git_fetch_result(outcome: &GitFetchOutcome, report: &CallReport) -> Vec<u8
             remotes: Some(remotes),
             hints: Some(hints),
             failed_ref_names: Some(failed_ref_names),
+            changed_bookmarks: Some(changed_bookmarks),
+            changed_tags: Some(changed_tags),
+            num_rewritten: outcome.num_rewritten,
         },
     );
     finish_envelope(b, fbs::Payload::GitFetchResult, Some(result.as_union_value()), report)
@@ -1386,7 +1391,9 @@ fn ok_git_fetch_result(outcome: &GitFetchOutcome, report: &CallReport) -> Vec<u8
 /// `MutationResult` (its `abandoned_change_ids` are the commits the import abandoned because
 /// they became unreachable in git — what `git.abandon-unreachable-commits` governs; its
 /// `new_change_ids` always empty), the remotes fetched from, the CLI's hints ("Fetching from the
-/// only existing remote: <name>") and the refs the import could not read. Warnings:
+/// only existing remote: <name>"), the refs the import could not read, the remote bookmarks and
+/// tags the import changed (`GitRefUpdate`s, as `zanshin_git_import` reports them) and how many
+/// commits it rewrote. Warnings:
 /// `jj.fetch_remotes_unmatched`, `jj.fetch_refspec_ignored`, `jj.git_import_failed`,
 /// `jj.fetch_branches_unmatched`, then the finish's.
 ///
@@ -1396,14 +1403,20 @@ fn ok_git_fetch_result(outcome: &GitFetchOutcome, report: &CallReport) -> Vec<u8
 /// - `ffi.invalid_argument` — `data` does not verify as a `GitFetchRequest` buffer, its `kind` is
 ///   not `GitFetch`, or a mode is unknown.
 /// - `jj.invalid_input` — no remote matched ("No git remotes to fetch from", after the
-///   `jj.fetch_remotes_unmatched` warning; nothing is written), a name pattern does not parse, or
-///   a pattern cannot become a refspec; the CLI's text in `context`.
+///   `jj.fetch_remotes_unmatched` warning; nothing is written), a name pattern does not parse
+///   (a `Named` remote pattern is parsed before the backend is checked, so it precedes
+///   `jj.not_a_git_repo`), a pattern cannot become a refspec, a matched remote's name is one jj
+///   cannot use (e.g. a Git remote named `git`; `context` ends in the CLI's ``Hint: Run `jj git
+///   remote rename` to give a different name.`` line), or Git rejected a ref update ("Failed to
+///   update refs: …"); the CLI's text in `context`. No operation is written.
 /// - `jj.not_a_git_repo` — the OPEN WORKSPACE has no git backend at all, so `git fetch`
 ///   cannot run. Carries NO `context` — there is no path to name. Identical to what the
 ///   six `zanshin_git_remote_*`/`_import`/`_export` wrappers report for that condition.
 /// - `jj.config_error` — the repo's effective config could not be read; the git.fetch setting is
-///   neither a string nor a list; a `remotes.<name>` entry or its `fetch-bookmarks`/`fetch-tags` is
-///   malformed (the CLI's ``Invalid `remotes.<name>.<field>`: …``); or
+///   neither a string nor a list (read only in `Default` remotes mode, before the backend is
+///   checked — so it precedes `jj.not_a_git_repo`); a `remotes.<name>` entry or its
+///   `fetch-bookmarks`/`fetch-tags` is malformed (the CLI's ``Invalid `remotes.<name>.<field>`:
+///   …``); or
 ///   `git.abandon-unreachable-commits`/`git.record-synthetic-predecessors` has a non-boolean
 ///   value — all read per call rather than hardcoded.
 /// - `jj.remote_not_found` — a matched remote vanished before its fetch (jj-lib's
@@ -1734,6 +1747,19 @@ mod tests {
             remotes: vec!["origin".to_owned(), "up".to_owned()],
             hints: vec!["Fetching from the only existing remote: up".to_owned()],
             failed_ref_names: vec!["refs/remotes/git/x".to_owned()],
+            changed_bookmarks: vec![zanshin_jj::GitRefUpdate {
+                name: "main".to_owned(),
+                remote: "origin".to_owned(),
+                kind: zanshin_jj::GitRefUpdateKind::Updated,
+                tracked: true,
+            }],
+            changed_tags: vec![zanshin_jj::GitRefUpdate {
+                name: "v1".to_owned(),
+                remote: "up".to_owned(),
+                kind: zanshin_jj::GitRefUpdateKind::New,
+                tracked: false,
+            }],
+            num_rewritten: 3,
         };
         let bytes = ok_git_fetch_result(&outcome, &CallReport::default());
         let envelope = verified_envelope(&bytes);
@@ -1750,6 +1776,29 @@ mod tests {
         assert_eq!(list(result.remotes()), ["origin", "up"]);
         assert_eq!(list(result.hints()), ["Fetching from the only existing remote: up"]);
         assert_eq!(list(result.failed_ref_names()), ["refs/remotes/git/x"]);
+        let updates = |v: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<fbs::GitRefUpdate<'_>>>>| {
+            v.expect("present")
+                .iter()
+                .map(|u| {
+                    (
+                        u.name().map(ToOwned::to_owned),
+                        u.remote().map(ToOwned::to_owned),
+                        u.kind(),
+                        u.tracked(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let some = |s: &str| Some(s.to_owned());
+        assert_eq!(
+            updates(result.changed_bookmarks()),
+            [(some("main"), some("origin"), fbs::GitRefUpdateKind::Updated, true)]
+        );
+        assert_eq!(
+            updates(result.changed_tags()),
+            [(some("v1"), some("up"), fbs::GitRefUpdateKind::New, false)]
+        );
+        assert_eq!(result.num_rewritten(), 3);
     }
 
     #[test]

@@ -456,29 +456,32 @@ mod tests {
         list.iter().map(|s| ChangeId((*s).to_owned())).collect()
     }
 
-    fn reason(location: &DropLocation) -> Option<String> {
-        match check_location(location) {
-            Ok(()) => None,
-            Err(MutateError::InvalidInput { reason }) => Some(reason),
-            Err(other) => panic!("unexpected {other:?}"),
-        }
+    /// Asserts `check_location` accepts `location` (`expected` is `None`) or refuses it as
+    /// `InvalidInput` reading exactly `expected`.
+    fn assert_refusal(location: &DropLocation, expected: Option<&str>) {
+        let result = check_location(location);
+        let as_expected = match expected {
+            None => result.is_ok(),
+            Some(text) => matches!(&result, Err(MutateError::InvalidInput { reason }) if reason == text),
+        };
+        assert!(as_expected, "{location:?}: expected {expected:?}, got {result:?}");
     }
 
     #[test]
     fn check_location_refuses_clap_shapes_with_compute_commit_locations_texts() {
-        assert_eq!(reason(&DropLocation::default()).as_deref(), Some(NO_LOCATION));
+        assert_refusal(&DropLocation::default(), Some(NO_LOCATION));
         let both = DropLocation {
             onto: ids(&["a"]),
             insert_after: ids(&["b"]),
             ..DropLocation::default()
         };
-        assert_eq!(reason(&both).as_deref(), Some(ONTO_WITH_INSERT));
+        assert_refusal(&both, Some(ONTO_WITH_INSERT));
         let onto_before = DropLocation {
             onto: ids(&["a"]),
             insert_before: ids(&["b"]),
             ..DropLocation::default()
         };
-        assert_eq!(reason(&onto_before).as_deref(), Some(ONTO_WITH_INSERT));
+        assert_refusal(&onto_before, Some(ONTO_WITH_INSERT));
         for ok in [
             DropLocation {
                 onto: ids(&["a", "b"]),
@@ -494,7 +497,7 @@ mod tests {
                 ..DropLocation::default()
             },
         ] {
-            assert_eq!(reason(&ok), None, "{ok:?}");
+            assert_refusal(&ok, None);
         }
     }
 

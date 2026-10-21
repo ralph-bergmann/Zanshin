@@ -40,6 +40,7 @@ fn envelope(bytes: &[u8]) -> fbs::Envelope<'_> {
 }
 
 fn git(args: &[&str], dir: &Path) {
+    test_helpers::pin_test_env();
     let status = Command::new("git")
         .args(args)
         .current_dir(dir)

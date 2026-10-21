@@ -1303,7 +1303,11 @@ impl Repo {
     ///   and `remotes.<name>.fetch-tags`, else every tag.
     ///
     /// Then one `import_refs` (its failed refs warn `jj.git_import_failed` and land in
-    /// [`crate::GitFetchOutcome::failed_ref_names`]); with `Patterns`, branch names no matched
+    /// [`crate::GitFetchOutcome::failed_ref_names`]; the remote bookmarks and tags it changed land
+    /// in [`crate::GitFetchOutcome::changed_bookmarks`] / [`crate::GitFetchOutcome::changed_tags`]
+    /// and the count of commits it rewrote in [`crate::GitFetchOutcome::num_rewritten`] — what the
+    /// CLI's `print_imported_changes` prints, projected as [`Repo::git_import`] projects them);
+    /// with `Patterns`, branch names no matched
     /// remote has warn `jj.fetch_branches_unmatched`. The operation is `fetch from git remote(s)
     /// <names joined by ",">`. It finishes like the CLI's `tx.finish` (Story 9.26): a colocated
     /// workspace exports the fetched refs to Git, and the working copy is checked out at the new
@@ -1326,14 +1330,20 @@ impl Repo {
     /// # Errors
     ///
     /// - [`crate::MutateError::InvalidInput`] — no remote matched ("No git remotes to fetch
-    ///   from", the CLI's refusal; nothing is written), a name pattern does not parse, or a
-    ///   pattern cannot become a refspec (jj-lib's expansion error).
+    ///   from", the CLI's refusal; nothing is written), a name pattern does not parse (a
+    ///   `--remote` one is parsed before the remotes are listed, so even without a Git backend), a
+    ///   pattern cannot become a refspec (jj-lib's expansion error), a matched remote's name is
+    ///   one jj cannot use (jj-lib's `RemoteName`, e.g. a Git remote named `git`; the reason ends
+    ///   in the CLI's ``Hint: Run `jj git remote rename` to give a different name.`` line), or Git
+    ///   rejected a ref update ("Failed to update refs: …"). No operation is written.
+    /// - [`crate::MutateError::Config`] — `git.fetch` (read only without `--remote` /
+    ///   `--all-remotes`, and before the remotes are listed — so even without a Git backend) is
+    ///   neither a string nor a list of strings; a `remotes.<name>` entry or its
+    ///   `fetch-bookmarks`/`fetch-tags` is malformed (the CLI's ``Invalid
+    ///   `remotes.<name>.<field>`: …``); the `revset-aliases."immutable_heads()"` alias does not
+    ///   resolve against the repo; or — in a NON-colocated workspace, where the verb reads them —
+    ///   a `git.*` / `remotes.<name>.auto-track-bookmarks` key above is malformed.
     /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend at all.
-    /// - [`crate::MutateError::Config`] — `git.fetch` is neither a string nor a list of strings; a
-    ///   `remotes.<name>` entry or its `fetch-bookmarks`/`fetch-tags` is malformed (the CLI's
-    ///   ``Invalid `remotes.<name>.<field>`: …``); the `revset-aliases."immutable_heads()"` alias
-    ///   does not resolve against the repo; or — in a NON-colocated workspace, where the verb
-    ///   reads them — a `git.*` / `remotes.<name>.auto-track-bookmarks` key above is malformed.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26),
     ///   including a jj config or alias that does not read or parse, and — in a COLOCATED
     ///   workspace, whose pre-verb refs import reads them first — a malformed key above.

@@ -8092,6 +8092,12 @@ class GitPushRemotesObjectBuilder extends fb.ObjectBuilder {
 ///    hints              the CLI's hints, verbatim: "Fetching from the only existing remote: <name>"
 ///    failed_ref_names   the Git refs the import could not read (lossy UTF-8, sorted by name) —
 ///                       what `jj.git_import_failed` lists
+///    changed_bookmarks  the remote bookmarks the import changed, in jj-lib's symbol order — as
+///                       `GitImportResult.changed_bookmarks` (the CLI's `print_imported_changes`)
+///    changed_tags       the remote tags the import changed, in jj-lib's symbol order — as
+///                       `GitImportResult.changed_tags`
+///    num_rewritten      how many commits the import rewrote ("Updated {n} rewritten commits."),
+///                       saturating at 4294967295 — as `GitImportResult.num_rewritten`
 class GitFetchResult {
   GitFetchResult._(this._bc, this._bcOffset);
   factory GitFetchResult(List<int> bytes) {
@@ -8109,10 +8115,15 @@ class GitFetchResult {
   List<String>? get hints => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
   List<String>? get failedRefNames =>
       const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  List<GitRefUpdate>? get changedBookmarks =>
+      const fb.ListReader<GitRefUpdate>(GitRefUpdate.reader).vTableGetNullable(_bc, _bcOffset, 12);
+  List<GitRefUpdate>? get changedTags =>
+      const fb.ListReader<GitRefUpdate>(GitRefUpdate.reader).vTableGetNullable(_bc, _bcOffset, 14);
+  int get numRewritten => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 16, 0);
 
   @override
   String toString() {
-    return 'GitFetchResult{mutation: ${mutation}, remotes: ${remotes}, hints: ${hints}, failedRefNames: ${failedRefNames}}';
+    return 'GitFetchResult{mutation: ${mutation}, remotes: ${remotes}, hints: ${hints}, failedRefNames: ${failedRefNames}, changedBookmarks: ${changedBookmarks}, changedTags: ${changedTags}, numRewritten: ${numRewritten}}';
   }
 }
 
@@ -8129,7 +8140,7 @@ class GitFetchResultBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(7);
   }
 
   int addMutationOffset(int? offset) {
@@ -8152,6 +8163,21 @@ class GitFetchResultBuilder {
     return fbBuilder.offset;
   }
 
+  int addChangedBookmarksOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addChangedTagsOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNumRewritten(int? numRewritten) {
+    fbBuilder.addUint32(6, numRewritten);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -8162,16 +8188,25 @@ class GitFetchResultObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _remotes;
   final List<String>? _hints;
   final List<String>? _failedRefNames;
+  final List<GitRefUpdateObjectBuilder>? _changedBookmarks;
+  final List<GitRefUpdateObjectBuilder>? _changedTags;
+  final int? _numRewritten;
 
   GitFetchResultObjectBuilder({
     MutationResultObjectBuilder? mutation,
     List<String>? remotes,
     List<String>? hints,
     List<String>? failedRefNames,
+    List<GitRefUpdateObjectBuilder>? changedBookmarks,
+    List<GitRefUpdateObjectBuilder>? changedTags,
+    int? numRewritten,
   }) : _mutation = mutation,
        _remotes = remotes,
        _hints = hints,
-       _failedRefNames = failedRefNames;
+       _failedRefNames = failedRefNames,
+       _changedBookmarks = changedBookmarks,
+       _changedTags = changedTags,
+       _numRewritten = numRewritten;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -8184,11 +8219,20 @@ class GitFetchResultObjectBuilder extends fb.ObjectBuilder {
     final int? failedRefNamesOffset = _failedRefNames == null
         ? null
         : fbBuilder.writeList(_failedRefNames!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(4);
+    final int? changedBookmarksOffset = _changedBookmarks == null
+        ? null
+        : fbBuilder.writeList(_changedBookmarks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? changedTagsOffset = _changedTags == null
+        ? null
+        : fbBuilder.writeList(_changedTags!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(7);
     fbBuilder.addOffset(0, mutationOffset);
     fbBuilder.addOffset(1, remotesOffset);
     fbBuilder.addOffset(2, hintsOffset);
     fbBuilder.addOffset(3, failedRefNamesOffset);
+    fbBuilder.addOffset(4, changedBookmarksOffset);
+    fbBuilder.addOffset(5, changedTagsOffset);
+    fbBuilder.addUint32(6, _numRewritten);
     return fbBuilder.endTable();
   }
 

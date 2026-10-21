@@ -313,11 +313,13 @@ mod tests {
             .collect()
     }
 
-    fn malformed(stdout: &str) -> String {
-        match parse_advertisement(stdout.as_bytes()) {
-            Err(MutateError::Backend(reason)) => reason,
-            other => panic!("expected a Backend error, got {other:?}"),
-        }
+    /// Asserts `stdout` is refused as a `Backend` error reading exactly `expected`.
+    fn assert_malformed(stdout: &str, expected: &str) {
+        let result = parse_advertisement(stdout.as_bytes());
+        assert!(
+            matches!(&result, Err(MutateError::Backend(reason)) if reason == expected),
+            "expected a Backend error {expected:?}, got {result:?}"
+        );
     }
 
     #[test]
@@ -359,17 +361,14 @@ mod tests {
 
     #[test]
     fn malformed_lines_are_backend_errors() {
-        assert_eq!(
-            malformed("no tab here\n"),
-            "unexpected git ls-remote output: no tab here"
+        assert_malformed("no tab here\n", "unexpected git ls-remote output: no tab here");
+        assert_malformed(
+            "\trefs/heads/main",
+            "unexpected git ls-remote output: \trefs/heads/main",
         );
-        assert_eq!(
-            malformed("\trefs/heads/main"),
-            "unexpected git ls-remote output: \trefs/heads/main"
-        );
-        assert_eq!(
-            malformed("xyz\trefs/heads/main"),
-            "unexpected git ls-remote output: xyz\trefs/heads/main"
+        assert_malformed(
+            "xyz\trefs/heads/main",
+            "unexpected git ls-remote output: xyz\trefs/heads/main",
         );
     }
 
@@ -471,32 +470,32 @@ mod tests {
         }
     }
 
-    fn network_reason(executable: &str) -> String {
-        match ls_remote(Path::new("/nonexistent"), &options(executable), "origin") {
-            Err(MutateError::NetworkError { reason }) => reason,
-            other => panic!("expected a NetworkError, got {other:?}"),
-        }
+    /// Asserts `ls_remote` with `executable` fails as a `NetworkError` whose reason `accepts`
+    /// accepts; `expectation` describes it for the failure message.
+    fn assert_network_error(executable: &str, expectation: &str, accepts: impl Fn(&str) -> bool) {
+        let result = ls_remote(Path::new("/nonexistent"), &options(executable), "origin");
+        assert!(
+            matches!(&result, Err(MutateError::NetworkError { reason }) if accepts(reason)),
+            "expected a NetworkError {expectation}, got {result:?}"
+        );
     }
 
     #[test]
     fn a_git_that_cannot_be_spawned_reports_jj_libs_texts() {
-        assert_eq!(
-            network_reason("zanshin-no-such-git"),
-            "Could not execute the git process, found in the OS path 'zanshin-no-such-git'"
-        );
-        assert_eq!(
-            network_reason("/nonexistent/zanshin-git"),
-            "Could not execute git process at specified path '/nonexistent/zanshin-git'"
-        );
+        assert_network_error("zanshin-no-such-git", "naming the OS path", |reason| {
+            reason == "Could not execute the git process, found in the OS path 'zanshin-no-such-git'"
+        });
+        assert_network_error("/nonexistent/zanshin-git", "naming the specified path", |reason| {
+            reason == "Could not execute git process at specified path '/nonexistent/zanshin-git'"
+        });
     }
 
     #[test]
     fn a_failing_git_reports_its_stderr() {
-        let reason = network_reason("git");
-        assert!(reason.starts_with("External git program failed:\n"), "{reason}");
-        assert!(
-            reason.len() > "External git program failed:\n".len(),
-            "stderr is forwarded"
-        );
+        const PREFIX: &str = "External git program failed:\n";
+        // A longer reason than the prefix: git's stderr is forwarded.
+        assert_network_error("git", "with git's stderr after the prefix", |reason| {
+            reason.starts_with(PREFIX) && reason.len() > PREFIX.len()
+        });
     }
 }

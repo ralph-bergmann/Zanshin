@@ -1554,6 +1554,17 @@ tracked 9.40 divergence). The answer is `GitFetchResult`:
 | `remotes` | The remotes fetched from, in remote-name order. |
 | `hints` | The CLI's hints, verbatim: "Fetching from the only existing remote: R" (when that remote is not `origin`). |
 | `failed_ref_names` | The Git refs the import could not read, lossy UTF-8 — what `jj.git_import_failed` lists. |
+| `changed_bookmarks` / `changed_tags` | The remote bookmarks / tags the import changed (`GitRefUpdate`: name, remote, `New` / `Updated` / `Deleted`, tracked afterwards), in jj-lib's symbol order — as `GitImportResult` reports them and the CLI's `print_imported_changes` prints them. |
+| `num_rewritten` | How many commits the import rewrote ("Updated {n} rewritten commits."), saturating at `u32::MAX`. |
+
+`git.fetch` is read only in `Default` mode and BEFORE the remotes are listed, as the CLI reads it:
+a malformed one refuses `jj.config_error` even on a non-Git backend, and never refuses `Named` /
+`All`. An unparsable `Named` pattern is likewise refused (`jj.invalid_input`) before the backend
+check. A remote name jj cannot use (a Git remote named `git`) refuses `jj.invalid_input` with
+jj-lib's text and the CLI's ``Hint: Run `jj git remote rename` to give a different name.`` as the
+last line of `context`; a ref update Git rejects is `jj.invalid_input` "Failed to update refs: …".
+Neither writes an operation, though on a multi-remote fetch the earlier remotes' Git
+remote-tracking refs are already updated in the backing Git repo.
 
 `zanshin_git_fetch_remotes(handle)` answers `GitFetchRemotes { names }` with the `Default`
 resolution alone — the Fetch button's enable rule: empty when none matches (warning

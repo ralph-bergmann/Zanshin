@@ -867,6 +867,15 @@ fn git_fetch_happy_path_reports_progress_and_returns_mutation_result() {
     assert_eq!(list(result.remotes()), ["up"]);
     assert_eq!(list(result.hints()), ["Fetching from the only existing remote: up"]);
     assert!(list(result.failed_ref_names()).is_empty());
+    let changed: Vec<_> = result
+        .changed_bookmarks()
+        .expect("changed_bookmarks")
+        .iter()
+        .map(|u| (u.name(), u.remote(), u.kind()))
+        .collect();
+    assert_eq!(changed, [(Some("main"), Some("up"), fbs::GitRefUpdateKind::New)]);
+    assert!(result.changed_tags().expect("changed_tags").is_empty());
+    assert_eq!(result.num_rewritten(), 0);
     let head = Repo::open(dst.path()).expect("open").op_log(Some(1)).expect("op log");
     assert_eq!(head[0].id.0, new_op_id);
     assert_eq!(head[0].description, "fetch from git remote(s) up");
