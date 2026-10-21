@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use zanshin_jj::{
     config_get, config_list, config_path, config_set, ConfigCmdError, ConfigListQuery, ConfigScope, ConfigTarget,
-    PreconditionError, Repo, RepoError, StatusError, Warning, WarningKind,
+    MutateError, PreconditionError, Repo, RepoError, StatusError, Warning, WarningKind,
 };
 
 /// Pins the shared test environment; returns its `$XDG_CONFIG_HOME`, under which every secure
@@ -305,6 +305,37 @@ fn a_refused_verb_still_reports_its_own_migration() {
     assert!(
         matches!(err, StatusError::Precondition(PreconditionError::Config { .. })),
         "{err:?}"
+    );
+    assert_eq!(kinds(&repo.take_warnings()), [WarningKind::ConfigMigrated]);
+}
+
+/// The remote-change poll (Story 9.24) wires its fix-up warnings itself (it runs no precondition):
+/// a legacy file that appeared after the open is migrated by the poll and reported, even though
+/// the poll then refuses the native backend.
+#[test]
+fn a_remote_change_poll_reports_its_own_migration() {
+    let (_tmp, root) = workspace();
+    let mut repo = Repo::open(&root).expect("open");
+    fs::write(repo_dir(&root).join("config.toml"), LEGACY).unwrap();
+
+    let err = repo.remote_changes("origin", None).expect_err("a native backend");
+    assert!(matches!(err, MutateError::NotAGitRepo), "{err:?}");
+    assert_eq!(kinds(&repo.take_warnings()), [WarningKind::ConfigMigrated]);
+}
+
+/// The poll's refresh refuses a broken migrated file — and still reports the migration.
+#[test]
+fn a_remote_change_poll_refused_by_its_refresh_still_reports_the_migration() {
+    let (_tmp, root) = workspace();
+    let mut repo = Repo::open(&root).expect("open");
+    fs::write(repo_dir(&root).join("config.toml"), "not toml [").unwrap();
+
+    let err = repo
+        .remote_changes("origin", None)
+        .expect_err("the migrated file does not parse");
+    assert!(
+        !matches!(err, MutateError::NotAGitRepo),
+        "the refresh refuses first: {err:?}"
     );
     assert_eq!(kinds(&repo.take_warnings()), [WarningKind::ConfigMigrated]);
 }

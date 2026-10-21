@@ -230,6 +230,13 @@ fn fetched_tags_are_compared_at_their_peeled_commits() {
             change(RemoteRefKind::Tag, "v1", RemoteRefChangeKind::Deleted, &[&first], None),
         ]
     );
+
+    w.repo.git_fetch("origin", &|_: ProgressEvent| {}, None).expect("fetch");
+    assert_eq!(
+        w.poll("origin").expect("poll after the second fetch"),
+        [],
+        "the fetch prunes v1@origin"
+    );
 }
 
 /// A branch removed upstream is deleted.
@@ -247,6 +254,13 @@ fn a_branch_removed_upstream_is_deleted() {
             &[&x],
             None
         )]
+    );
+
+    w.repo.git_fetch("origin", &|_: ProgressEvent| {}, None).expect("fetch");
+    assert_eq!(
+        w.poll("origin").expect("poll after the fetch"),
+        [],
+        "the fetch prunes x@origin"
     );
 }
 

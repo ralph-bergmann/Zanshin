@@ -1797,8 +1797,8 @@ external void zanshin_logging_init();
 
 /// Cancel the network call running — or about to run — under `token` (Story 9.52).
 ///
-/// The token's flag is set; the call refuses at its next checkpoint (`jj.cancelled` for a fetch
-/// or clone, `GitPushResult.failure.kind = Cancelled` for a push). While the call runs, the
+/// The token's flag is set; the call refuses at its next checkpoint (`jj.cancelled` for a fetch,
+/// clone or remote-change poll, `GitPushResult.failure.kind = Cancelled` for a push). While the call runs, the
 /// call's `git` processes among this process's descendants — and their descendants, git's
 /// helpers — get SIGTERM, and SIGKILL if still alive 2 s after the cancel. A process is the
 /// call's when its environment carries `ZANSHIN_CANCEL_TOKEN=<token>`, or — when its environment
@@ -1813,8 +1813,8 @@ external void zanshin_network_cancel(
   int token,
 );
 
-/// Allocate a cancel token for one network call — `zanshin_git_fetch`, `zanshin_git_push` or
-/// `zanshin_repo_clone` (Story 9.52).
+/// Allocate a cancel token for one network call — `zanshin_git_fetch`, `zanshin_git_push`,
+/// `zanshin_repo_clone` (Story 9.52) or `zanshin_git_remote_changes` (Story 9.24).
 ///
 /// The token is a fresh id from the session-id space (never `0`, never reused, never a live
 /// session's id), registered until the call it is passed to ends; `zanshin_network_cancel`

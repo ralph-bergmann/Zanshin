@@ -5,7 +5,7 @@ created: '2026-10-21'
 status: 'done'
 baseline_revision: '479adf60fbfb10877e5b9f5a13237bb8baab10b2'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: [oversized]
@@ -244,6 +244,43 @@ deferred:
   - `[low]` `[reject]` (edge) the non-zero-exit reason lacks fetch's `Git process failed: ` prefix — the spec's matrix fixes the text (`reason starts External git program failed:`); a UI never string-matches contexts.
   - `[low]` `[reject]` (edge) `ShowEntry_VT_CHANGE` dropped — same as the verification-gap row.
 
+### 2026-10-21 — Review pass (follow-up)
+- verdicts: 33 findings — high 0, medium 4, low 23, false 6, maybe-false 0
+- findings:
+  - `[medium]` `[defer]` (intent) the success-path matrix rows never reach an executed assertion at the Dart `RepoHandle.remoteChanges` surface — carried: same as the first pass's D1 row (`resultOrReaped`, VM child reaping), already in the frontmatter and deferred-work.md.
+  - `[low]` `[reject]` (intent) "git fails" and "cancelled while running" are witnessed as `MutateError` variants only, and `jj.config_error` not at all for this call — the code mapping is the pre-existing shared `map_mutate_err`, witnessed by fetch's FFI rows; `git_subprocess_options`' config fault is the same helper fetch uses; a per-call duplicate witness adds no behaviour.
+  - `[false]` `[reject]` (intent) local `main` and `@` are never read directly after the poll — `head_op()` asserts the op-heads directory unchanged, and a jj view is bound to its operation, so `main`, `main@origin` and `@` cannot change without a new op head.
+  - `[low]` `[reject]` (intent) `ShowEntry_VT_CHANGE` dropped from the header and `bindings.dart` — carried: first pass rejected it (cbindgen per-name constant collision, no user).
+  - `[false]` `[reject]` (intent) `present_adds()` instead of `added_ids()`, and a failing `get_all_remote_names` mapped to `NotAGitRepo` — `added_ids` does not exist on jj-core 0.46.0's `Merge`; `present_adds()` yields the same ids in order; the auditor itself names both behaviour-neutral, and the remote-name read only fails on an unreadable git dir.
+  - `[false]` `[reject]` (intent) the fetch-filter, non-commit-tag and auth-prompt behaviours sit outside the intent's text — the auditor finds them consistent with the intent's letter, and all three are already frontmatter deferrals.
+  - `[low]` `[patch]` (verification-gap) `Repo::remote_changes` wires its fix-up warnings inline (not via `start_call`) and no test reads them — added `a_remote_change_poll_reports_its_own_migration` (migrated, then `NotAGitRepo`) and `a_remote_change_poll_refused_by_its_refresh_still_reports_the_migration` to `crates/zanshin-jj/tests/it/secure_config_fixups.rs`; dropping or reordering the `extend` now fails both.
+  - `[medium]` `[defer]` (verification-gap) the Dart success witness never runs its assertions — carried: D1.
+  - `[low]` `[reject]` (verification-gap) `ShowEntry_VT_CHANGE` silently removed — carried: first-pass rejection.
+  - `[low]` `[reject]` (edge) a git remote named `git` or containing `/` is not refused — carried: first-pass rejection (plain-git setup only, adds a guard).
+  - `[low]` `[reject]` (edge) a hung `git ls-remote` without a cancel never returns and queues every later command on the handle — the intent itself specifies that later calls queue behind and that `cancel()` is the remedy; a deadline would add a parameter, and the poll timer (UI scope) owns the cancel.
+  - `[low]` `[reject]` (edge) a blank or CR-terminated line fails the whole poll — git's `ls-remote` writes LF-terminated `<id>\t<ref>` lines only (the trailing LF is stripped, `remote_changes.rs:185`); the guard covers output git does not produce.
+  - `[low]` `[reject]` (edge) a hex id of the wrong length is accepted — carried: the first pass's non-40-char id rejection (SHA-1 backend, git never truncates).
+  - `[low]` `[reject]` (edge) the Dart decoder turns an absent `RemoteRefChange.name` into `''` — the same file's `Remote` decoder does the same (`remotes.dart:168`), and the Rust builder always writes the name; only a broken Rust builder reaches it, and a throw is an added guard.
+  - `[low]` `[reject]` (edge) `ShowEntry_VT_CHANGE` deletion — carried: first-pass rejection.
+  - `[low]` `[reject]` (edge) the poll's `jj.network_error` text lacks fetch's `Git process failed: ` prefix — carried: first-pass rejection (the matrix fixes the text).
+  - `[medium]` `[defer]` (edge) AC 1 has no Dart witness — carried: D1.
+  - `[low]` `[reject]` (edge) `load_head` can write a reconcile op — carried: first-pass rejection (the CLI's own head load, divergent heads only).
+  - `[low]` `[reject]` (blind) header lost `ShowEntry_VT_CHANGE` (and `RemoteRefChange_VT_KIND`/`_VT_NAME` absent) — carried: first-pass rejection.
+  - `[low]` `[patch]` (blind) `zanshin_network_token` / `zanshin_network_cancel` docs still name only fetch, push and clone — both docs now name `zanshin_git_remote_changes` (`crates/zanshin-ffi/src/repo.rs`); header and `bindings.dart` regenerated (`cargo make --allow-private codegen-cbindgen` + `codegen-ffigen`, comment lines only). The Dart `zanshinNetworkToken` doc names no call list.
+  - `[low]` `[reject]` (blind) the poll blocks the whole handle per tick and has no timeout — same as the edge-case hang row: the intent's queue-behind shape, cancel is the remedy.
+  - `[low]` `[reject]` (blind) a git remote named `git` is not refused — carried: first-pass rejection.
+  - `[low]` `[reject]` (blind) spawn/wait errors drop the `io::Error` cause and skip jj-lib's `tracing::debug!` — fetch's reason (`GitSubprocessError::to_string()`) drops the `#[source]` too, so the poll matches it; adding the cause changes the texts the matrix fixes, and zanshin-jj logs no git spawn anywhere.
+  - `[low]` `[reject]` (blind) Dart decoder `name: c.name ?? ''` — same as the edge-case row.
+  - `[medium]` `[defer]` (blind) the Dart success tests pass without checking anything — carried: D1 (when the wait wins, the `if (changes != null)` branch does run the assertions).
+  - `[false]` `[reject]` (blind) `coverage-baseline.txt` lacks `remote_changes.rs` — coverage is measured and the baseline auto-raised by the story loop's final gate (this loop's gate rule); nothing is skipped.
+  - `[low]` `[patch]` (blind) Story 9.30's sprint-status row still says "no poll (9-24)" although the fetch-filter deferral hands the poll's filter to 9.30 — the 9-30 row now carries that obligation and points at deferred-work.md "Surfaced in Story 9.24".
+  - `[low]` `[patch]` (blind) FFI tests miss `ffi.utf8_error`, `jj.network_error`, `jj.config_error`, the fix-up warnings and divergent reconcile — the utf8/network/config/reconcile part is carried (first-pass rejection, shared helpers); the fix-up-warnings part shares VG's root and is closed by the same two tests at the `Repo` layer, where the inline wiring lives.
+  - `[false]` `[reject]` (blind) no test shows a fetch clears Deleted entries, so a deleted upstream tag might light the badge forever — jj-lib's fetch runs `git fetch --prune` with forced refspecs into `refs/jj/remote-tags/<remote>/*` (jj-lib 0.46.0 `git_subprocess.rs:180`, `git.rs:2975-2999`); settled by running it: `fetched_tags_are_compared_at_their_peeled_commits` and `a_branch_removed_upstream_is_deleted` now fetch again and poll `[]`, both pass.
+  - `[low]` `[reject]` (blind) all Rust tests use non-colocated clones; an external `git fetch` in a colocated repo reads Moved — carried: first-pass rejection (colocated repo not imported first).
+  - `[low]` `[reject]` (blind) `parse_advertisement` accepts ids of any length — carried: first-pass rejection.
+  - `[low]` `[reject]` (blind) `ls-remote --heads` is a deprecated synonym of `--branches` since git 2.46 — git emits no warning for it and only a non-zero exit is an error; `--branches` would break every git before 2.46.
+  - `[false]` `[reject]` (blind) the 9-24 sprint-status row's deferral count disagrees with deferred-work.md — the row names all five: three under OPEN (fetch filters, non-commit tags, codegen) plus the Dart success witness, and the review note's three (Dart success, auth prompts, codegen).
+
 ## Design Notes
 
 **Why no snapshot, and why the head view.** The verb's whole point is to change nothing (epics: "No transaction, no op-log entry"). A timer-driven poll that snapshotted would write `snapshot working copy` operations while the user types. jj has no CLI counterpart to mirror. The diff base is "the last-known `<name>@<remote>` targets in the current view", which is the head. Loading the head the CLI way (`load_head`) can reconcile divergent op heads. That reconcile is the CLI's behaviour for any command; the poll itself writes nothing.
@@ -279,6 +316,14 @@ deferred:
 - `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings`, `dart format --output=none --set-exit-if-changed .` — clean; `dart test test/worker/remote_changes_test.dart test/worker/network_operation_test.dart test/ffi/remotes_test.dart` (the `test-core` environment) — 25 passed (+ the two `remoteChanges` cancel tests).
 - The `.fbs` comment edit regenerated one comment line in each `envelope_generated` file (`cargo make --allow-private codegen-flatc-rust`; `flatc --dart` + `dart format` from inside `packages/zanshin_core`); header and `bindings.dart` unchanged.
 - Not run, by this run's gate rule: `cargo make test` / `test-full` / `coverage`, and the parity oracle (no jj verb changed — the poll has no CLI counterpart and writes nothing).
+
+**Results of the follow-up review pass (2026-10-21, targeted checks only — no `cargo make test` / `test-full` / `coverage`):**
+- `cargo test -p zanshin-jj --test it -- remote_changes:: secure_config_fixups::` — 22 passed (the two new fix-up rows; the two extended prune rows).
+- `cargo make --allow-private codegen-cbindgen`, then `codegen-ffigen` — header and `bindings.dart` changed in the two doc comments only (schema unchanged, so flatc was not re-run).
+- `cargo test -p zanshin-ffi --test it -- remote_changes_ffi:: ffi_abi_doc_sync::` — 21 passed.
+- `cargo clippy -p zanshin-jj -p zanshin-ffi --all-targets -- -D warnings` — clean. `cargo fmt --all --check` — clean after `cargo fmt --all` re-wrapped the new test lines.
+- `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings` — no issues; `dart format --output=none --set-exit-if-changed .` — 0 changed.
+- Parity oracle not run: no jj verb changed.
 
 ## Auto Run Result
 
@@ -337,3 +382,36 @@ Status: done
 - Coverage of `remote_changes.rs` and the FFI additions is unmeasured until the final gate. A few error-mapping lines, such as the wait error, have no test.
 - A timer-driven poll may prompt for credentials (unverified, deferred).
 - `cargo make codegen` will re-wrap hand-written Dart again until `Makefile.toml` is fixed (deferred).
+
+### Follow-up review pass (2026-10-21)
+
+Status: done
+
+**Summary.** A fresh four-layer review of the finished Story 9.24 diff (baseline `479adf60fbfb10877e5b9f5a13237bb8baab10b2`). It found no defect in the poll itself. It added witnesses for two gaps, corrected two stale docs and one ledger row. No production code changed.
+
+**Files changed.**
+- `crates/zanshin-jj/tests/it/secure_config_fixups.rs`: two rows that read the poll's own fix-up warnings (a migration, then `NotAGitRepo`; a migration refused by the refresh).
+- `crates/zanshin-jj/tests/it/remote_changes.rs`: the deleted-branch and moved/deleted-tag rows fetch again and poll `[]`, so the fetch is shown to prune deleted refs.
+- `crates/zanshin-ffi/src/repo.rs`, plus the regenerated `crates/zanshin-ffi/include/zanshin_ffi.h` and `packages/zanshin_core/lib/src/ffi/bindings.dart`: the `zanshin_network_token` / `zanshin_network_cancel` docs name the poll.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`: the 9-30 row carries the poll's per-remote filter obligation.
+
+**Review findings.** 33 findings: 0 high, 4 medium, 23 low, 6 false, 0 maybe-false. 18 rows carried from the first pass.
+- **Patched: 3 entries, all low.**
+  - The poll's inline fix-up warning wiring is witnessed (verification-gap row plus the blind FFI-row half).
+  - The network-token docs name the poll.
+  - The 9-30 sprint-status row names the poll filter.
+- **Deferred: none new.** The four medium rows are the carried D1 deferral (no Dart witness of a successful poll), already in the frontmatter and deferred-work.md. Nothing was mirrored to deferred-work.md, because no item was added to `deferred:`.
+- **Rejected.**
+  - False: local refs unread (op heads pin the view); `present_adds` / remote-name mapping; out-of-text behaviours (already deferred); coverage baseline (the final gate measures it); fetch never clearing Deleted (refuted by running it); deferral-count mismatch (the row lists all five).
+  - Low, not worth fixing: error rows witnessed at the `MutateError` layer only (shared `map_mutate_err`); hang without timeout / handle blocked per tick (×2, the intent's queue-behind shape with `cancel()` as remedy); CR/blank lines (git never emits them); absent Dart `name` coalesced to `''` (×2, same as the sibling `Remote` decoder, needs a broken builder); `io::Error` cause dropped (fetch's reason drops it too); `--heads` deprecation (no warning, `--branches` breaks older git).
+  - Carried first-pass rejections: `ShowEntry_VT_CHANGE` (×4), reserved remote names (×2), id length (×2), the `Git process failed:` prefix, the divergent-head reconcile op, the colocated import, and the FFI utf8/network/config rows.
+
+**Follow-up review recommendation: false.** This is a follow-up pass, and it patched no high entry (patched: 0 high, 0 medium, 3 low). The work has converged.
+
+**Verification.** See `## Verification` → "Results of the follow-up review pass": every targeted check passed. The full gate was not run, by this run's rule.
+
+**Residual risks.** Unchanged from the first pass:
+- The Dart success path is witnessed only in Rust and FFI (D1).
+- Possible credential prompts on a timer-driven poll (unverified).
+- The codegen 80-column re-wrap.
+- Coverage of the new files is unmeasured until the story loop's final gate.
