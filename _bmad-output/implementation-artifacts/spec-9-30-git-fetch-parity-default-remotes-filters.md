@@ -5,12 +5,24 @@ created: '2026-10-21'
 status: 'done'
 baseline_revision: '91f3575ad8b208ea344e83b36c2cc758c40f11ee'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/planning-artifacts/epics.md#Story 9.30'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      A fetch reports no import stats beyond failed_ref_names: the remote bookmarks/tags it
+      changed and the rewritten-commit count the CLI prints are not in GitFetchOutcome /
+      GitFetchResult.
+    evidence: |-
+      cmd_git_fetch prints them via print_git_import_stats -> print_imported_changes
+      (cli/src/git_util.rs:228-266 @ v0.46.0); GitImportResult already carries changed_bookmarks /
+      changed_tags / num_rewritten, the fetch outcome does not. Pre-existing (the fetch never
+      reported them) and the intent fixes the outcome's fields.
+    location: >-
+      crates/zanshin-jj/src/remotes.rs GitFetchOutcome
+    severity: low
 ---
 
 <intent-contract>
@@ -204,6 +216,38 @@ Bare remotes are built in-test (`git init --bare` + `jj_lib::git::add_remote` / 
   - (intent-alignment) `[false]` `[reject]` I5 adds no new witness — the existing `git_fetch_honours_remote_auto_track_bookmarks` already pins it through `list_bookmarks`.
   - (intent-alignment) `[false]` `[reject]` No numbered `## Auto Run Result` / commits yet — written at finalization (this step), not part of the reviewed diff.
 
+### 2026-10-21 — Review pass (follow-up)
+- verdicts: 28 findings — high 0, medium 3, low 17, false 8, maybe-false 0 (reviewed diff: `91f3575..4e378d3`, minus `_bmad-output/` and the two flatc outputs; the 6 intent-alignment rows are its descriptive divergences)
+- findings:
+  - (blind-hunter) `[low]` `[defer]` The fetch drops the import stats the CLI prints (changed remote bookmarks/tags, rewritten commits) — pre-existing: the old `git_fetch` returned only `MutationResult`; the intent fixes `GitFetchOutcome`'s fields; deferred (frontmatter + deferred-work.md).
+  - (blind-hunter) `[low]` `[reject]` carried — cbindgen drops/merges `*_VT_*` defines in `zanshin_ffi.h`; no consumer of any `VT_*` macro, the wire is `envelope.fbs`.
+  - (blind-hunter) `[low]` `[reject]` carried — a verified buffer with a wrong kind/unknown mode leaves its cancel token unattached; push-consistent, unreachable from the Dart adapter.
+  - (blind-hunter) `[low]` `[reject]` carried — `Patterns{[],[]}` / `Named([])` are representable; the spec's `specific`-group semantics, built only deliberately.
+  - (blind-hunter) `[low]` `[reject]` Config-sourced pattern/refspec faults report `jj.invalid_input` — for `expand_fetch_refspecs` that is the intent's rule ("its Display" as `InvalidInput`); the remaining case (`load_default_fetch_bookmarks` on an unreadable `.git/config` refspec, `remotes.rs:345`) needs a corrupt Git config and a new error mapping.
+  - (blind-hunter) `[low]` `[reject]` Progress events do not name their remote in a multi-remote fetch — the fix adds a public field to `ProgressEvent` (wire + Dart) for the rare `All`/`git.fetch`-list case; the bar still progresses per remote.
+  - (blind-hunter) `[low]` `[reject]` carried — per-remote cancel / second-remote failure / `GitFetchError::NoSuchRemote` arm untested; the final checkpoint before `import_refs` bounds a cancel, the `NoSuchRemote` arm needs a remote removed mid-call.
+  - (blind-hunter) `[false]` `[reject]` carried — the oracle is thinner than the matrix; every matrix row has a Rust test, the oracle covers the nine CLI shapes the spec named.
+  - (blind-hunter) `[false]` `[reject]` carried — no Dart end-to-end success fetch; the Dart VM reaps jj-lib's git child (documented limit), the AC states the split.
+  - (blind-hunter) `[low]` `[reject]` carried — native backend + bad `--remote` pattern reports `jj.not_a_git_repo` first; push-consistent, restructures the shared resolution.
+  - (blind-hunter) `[low]` `[reject]` carried — `remotes.*` re-read per remote; a few in-memory lookups, no observable effect.
+  - (blind-hunter) `[low]` `[patch]` `failed_ref_names` described as "sorted by name" (`GitImportResult`) and "in jj-lib's order" (fetch) — jj-lib sorts them (`jj-lib-0.46.0/src/git.rs:1013`); patched: `remotes.rs`, `git.rs` and `envelope.fbs` now say "sorted by name"; `cargo make codegen` regenerated the two doc-carrying outputs.
+  - (blind-hunter) `[low]` `[reject]` Interior-NUL patterns are refused asynchronously (`internal.dispatch_error`) instead of a synchronous `ArgumentError` — the old `gitFetch(String)` and `remoteChanges` behave the same; a GUI never sends NUL; the fix adds validation code to `RepoHandle`.
+  - (edge-case-hunter) `[low]` `[reject]` carried — token not attached before the kind/mode check (same as blind-hunter row 3).
+  - (edge-case-hunter) `[low]` `[reject]` carried — `PatternFetchRefs()` with both lists empty fetches nothing yet writes an op (same as blind-hunter row 4).
+  - (edge-case-hunter) `[low]` `[reject]` carried — `Named` with an absent/empty list refuses without a warning (same as blind-hunter row 4).
+  - (edge-case-hunter) `[low]` `[reject]` carried — native-backend error order (same as blind-hunter row 10).
+  - (edge-case-hunter) `[low]` `[reject]` A matched remote removed from Git config before its refspecs load reports `jj.invalid_input`, not the documented `jj.remote_not_found` — real (`remotes.rs:345` maps every `GitDefaultRefspecError` with `invalid`), but only reachable when `.git/config` is edited between `get_all_remote_names` and the refspec read inside one call; the fix adds a match arm for a race no GUI user meets.
+  - (edge-case-hunter) `[low]` `[reject]` carried — the only-remote hint is lost on a failing fetch; cosmetic, new error-envelope surface.
+  - (verification-gap) `[medium]` `[patch]` Narrowing by the remote's Git fetch refspecs (`load_default_fetch_bookmarks` fallback) is untested in the fetch and the poll — patched: `git_fetch_parity::a_narrowed_git_refspec_selects_the_default_branches` (`remote.origin.fetch = +refs/heads/main:refs/remotes/origin/main`: `other` not fetched, the poll reports only `main`); sensitivity checked (fallback → `all()` fails it).
+  - (verification-gap) `[medium]` `[patch]` `warn_if_branches_not_found` tested only with one remote and a fresh fetch — patched: `a_branch_name_one_of_several_remotes_has_does_not_warn` (`All`, `feat` on origin only), `a_branch_deleted_upstream_since_the_last_fetch_does_not_warn` (base view), `a_negated_branch_name_does_not_warn` (`~nope`); each fails under its mutation (`.all`→`.any`, dropped base-view term, dropped matcher filter). No oracle scenario added: the Rust rows pin the CLI's rule at `fetch.rs:292-321`.
+  - (verification-gap) `[medium]` `[patch]` `refs` passing through the Dart worker is unverified — patched: `network_operation_test.dart` "a fetch carries its refs through the worker to the helper" (`PatternFetchRefs(branches: ['a\u0000b'])` → `internal.dispatch_error`; a dropped `refs` would reach Rust and answer `jj.invalid_input`).
+  - (intent-alignment) `[false]` `[reject]` The product expectation (GUI Fetch button) is not reached — the intent's Never rule says "No UI code"; no Fetch button exists in `app/lib`; the bridge offers every capability (`gitFetch`, `gitFetchRemotes`).
+  - (intent-alignment) `[false]` `[reject]` carried — the matrix is exercised at the Rust API and the oracle compares no hint/failed refs/ignored refspec (same claim as the prior "oracle thinner" row); the two matrix-wording deviations (`["nope","main"]`, `git.fetch = "up"` after a prior fetch) still witness each row's expected outcome.
+  - (intent-alignment) `[false]` `[reject]` FFI exercises the wire, not the matrix modes — the FFI only decodes the request and encodes the outcome; every mode's decode/encode round-trips in `crates/zanshin-ffi/src/repo.rs` unit tests, the behaviour is `Repo::git_fetch`'s, witnessed by the matrix.
+  - (intent-alignment) `[false]` `[reject]` carried — Dart never decodes a successful real fetch's fields (Dart VM reaps the git child).
+  - (intent-alignment) `[false]` `[reject]` carried — the poll gained refusals (`jj.config_error`, `jj.invalid_input`); the spec filters both sides deliberately and the codes are documented.
+  - (intent-alignment) `[false]` `[reject]` Generated FlatBuffers code not reviewable — an artifact of this pass's diff staging (the two flatc outputs were left out); `cargo make codegen` re-run this pass reproduces the committed outputs apart from the patched doc comment.
+
 ## Design Notes
 
 - **Typed either/or, not refusals:** the epic asks for `--tracked` vs patterns as "a typed either/or". `FetchRemotes`/`FetchRefs` make the clap conflicts unrepresentable on every layer, wire enums included. Push's bool style (refusing the conflicts) is not repeated.
@@ -235,6 +279,7 @@ Gate rule (Ralph, 2026-10-20): no `cargo make test`/`test-full`/`coverage`.
 - `failed_ref_names` row — constructible: a ref in jj's reserved `refs/remotes/git/` namespace of the backing Git repo (`git_fetch_parity::a_ref_the_import_cannot_read_is_reported`).
 - Not run, per the gate rule: `cargo make test` / `test-full` / `coverage` (the coverage ratchet is unverified for the new lines).
 - Review pass re-verification (2026-10-21, after the seven patches): `cargo fmt --all --check` clean; `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity --all-targets -- -D warnings` clean; `cargo test -p zanshin-jj` 286 unit + 946 integration passed (1 pre-existing ignore); `cargo test -p zanshin-ffi` 190 + 300 passed; `cargo test -p zanshin-parity --test oracle` 190 passed; `cargo make codegen` re-run, no further diff; `cargo make --allow-private test-core` 909 passed; `dart analyze` (zanshin_core, app) no issues; `dart format --set-exit-if-changed` clean. Matrix audit: every I/O-matrix row has a passing test (`tests/it/git_fetch_parity.rs`, 24 tests; the `as_symbol` row is `remotes.rs`' inline `the_fetch_description_quotes_each_remote_as_a_symbol`).
+- Follow-up review pass (2026-10-21, after its four patches; gate rule: no `cargo make test`/`test-full`/`coverage`): `cargo make codegen` — regenerated `envelope_generated.rs` and `envelope_zanshin.ffi_generated.dart` (the `GitFetchResult` doc comment only), committed; `cargo test -p zanshin-jj --test it git_fetch_parity::` — 28 passed; mutation checks of the four new Rust tests (`.all`→`.any`, base-view term dropped, matcher filter dropped, refspec fallback → `all()`) — each fails its test, then reverted; `cargo test -p zanshin-jj` — 286 unit + 950 integration passed (1 pre-existing ignore); `cargo test -p zanshin-ffi` — 190 + 300 passed; `cargo fmt --all --check` — clean (after `cargo fmt --all` on the new tests); `cargo clippy -p zanshin-jj -p zanshin-ffi --all-targets -- -D warnings` — clean; `packages/zanshin_core`: `cargo make --allow-private test-core` — 910 passed, `dart analyze` — no issues, `dart format --set-exit-if-changed .` — clean; `app/`: `dart analyze` — no issues. Parity oracle not run: no jj verb's behaviour changed (doc comment + tests only).
 
 ## Auto Run Result
 
@@ -270,3 +315,20 @@ Status: done
 
 **Residual risks:** the coverage ratchet has not measured the new lines (gate rule); the Dart happy-path fetch is witnessed only in Rust/FFI (Dart VM reaps the git child, pre-existing limit).
 
+### Follow-up review pass (2026-10-21)
+
+**Summary.** A fresh four-layer review of `91f3575..4e378d3` (the Story 9.30 code, minus the planning docs and the two flatc outputs). No behaviour change: four patches add witnesses and fix one doc wording.
+
+**Files changed:**
+- `crates/zanshin-jj/tests/it/git_fetch_parity.rs` — four tests: a narrowed Git fetch refspec (fetch + poll), a `-b` name one of several remotes carries, a branch deleted upstream since the last fetch (base view), a negated `-b` name.
+- `packages/zanshin_core/test/worker/network_operation_test.dart` — `refs` reaches the helper isolate (`PatternFetchRefs` with a NUL → `internal.dispatch_error`).
+- `crates/zanshin-jj/src/{remotes,git}.rs`, `schemas/envelope.fbs` (+ regenerated `crates/zanshin-ffi/src/envelope_generated.rs`, `packages/zanshin_core/lib/src/ffi/envelope_zanshin.ffi_generated.dart`) — `failed_ref_names` documented as "sorted by name".
+- `_bmad-output/implementation-artifacts/deferred-work.md` — the deferred import-stats item.
+
+**Review findings:** 28 rows (high 0, medium 3, low 17, false 8). Patched: 3 medium entries (Git-refspec narrowing untested; `warn_if_branches_not_found` multi-remote/base-view/negation untested; Dart `refs` pass-through untested) and 1 low (the `failed_ref_names` order wording). Deferred: 1 low (the fetch carries no changed-refs / rewritten-commit stats; pre-existing). Rejected: config-sourced faults as `jj.invalid_input` (the intent's rule for refspec expansion; the rest needs a corrupt Git config); progress events without a remote name (new public field, rare multi-remote case); late NUL refusal in Dart (pre-existing style, GUI never sends NUL); vanished remote between match and refspec read reports `jj.invalid_input` (a mid-call config race); GUI button not reached (the intent forbids UI code); FFI witnesses the wire, not the matrix (behaviour is `Repo::git_fetch`'s); generated code absent from the reviewed diff (staging artifact, codegen reproduces it); plus 13 rows carried from the first pass with their recorded verdicts.
+
+**Follow-up review recommended: false** — this follow-up pass patched no `high` (patched counts: high 0, medium 3, low 1).
+
+**Verification:** see the follow-up line under Verification (codegen, `zanshin-jj` 286 + 950, `zanshin-ffi` 190 + 300, the 28 `git_fetch_parity` tests with mutation checks, fmt, clippy, `test-core` 910, `dart analyze` / `dart format`).
+
+**Residual risks:** unchanged from the first pass — the coverage ratchet has not measured the Story 9.30 lines (gate rule; the loop's final gate will), and the Dart happy-path fetch is witnessed only in Rust/FFI.

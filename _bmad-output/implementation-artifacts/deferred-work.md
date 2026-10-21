@@ -1686,3 +1686,9 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **A timer-driven remote-change poll runs git with the user's full auth and no non-interactive guard, so each tick might raise a credential-helper or SSH-agent confirmation prompt (unverified).** Medium.
   - `crates/zanshin-jj/src/remote_changes.rs` `ls_remote` spawns git the way jj-lib spawns fetch (stdin null, no `GIT_TERMINAL_PROMPT=0`, no ssh `BatchMode`), as the story asks ("auth = the user's git … for free"); a fetch is user-initiated, a poll is not. Whether prompts appear for a Finder-launched app (no tty) is unverified.
   - **Follow-up:** poll an SSH remote behind a confirming agent (1Password) and an HTTPS remote with a GUI credential helper from the running app; if prompts appear, Ralph decides on a non-interactive environment for the poll only.
+
+## Surfaced in the follow-up review of Story 9.30 (bmad-build-auto, 2026-10-21)
+
+- **A fetch reports no import stats beyond `failed_ref_names`: the remote bookmarks/tags it changed and the rewritten-commit count the CLI prints are not in `GitFetchOutcome` / `GitFetchResult`.** Low.
+  - `cmd_git_fetch` prints them through `print_git_import_stats` → `print_imported_changes` (`cli/src/git_util.rs:228-266` @ v0.46.0); `GitImportResult` already carries `changed_bookmarks` / `changed_tags` / `num_rewritten` (`crates/zanshin-jj/src/git.rs` `project_import`), the fetch outcome does not (`crates/zanshin-jj/src/remotes.rs` `GitFetchOutcome`). Pre-existing: the fetch never reported them, and Story 9.30's intent fixes the outcome's fields.
+  - **Follow-up:** if the UI wants to say what a fetch brought, add the three fields to `GitFetchOutcome` / `GitFetchResult` (schema append, FFI, Dart), projected like `GitImportResult`.
