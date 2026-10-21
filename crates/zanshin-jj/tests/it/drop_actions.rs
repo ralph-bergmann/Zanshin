@@ -15,7 +15,8 @@ use std::sync::Arc;
 
 use jj_lib::commit::Commit;
 use jj_lib::object_id::ObjectId as _;
-use jj_lib::ref_name::WorkspaceName;
+use jj_lib::op_store::RefTarget;
+use jj_lib::ref_name::{RefName, WorkspaceName};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
@@ -666,6 +667,42 @@ fn a_bookmark_moves_forward_backwards_or_nowhere() {
     let unknown = ChangeId(UNKNOWN.to_owned());
     let rows = query(&mut fx, &mark, &[onto(&[&unknown])]);
     assert_eq!(rows, vec![(DropVerb::BookmarkMove, 0, refused(&not_found(UNKNOWN)))]);
+}
+
+/// The CLI's `is_fast_forward` (`bookmark/mod.rs:165-182` @ v0.46.0) asks whether ANY side of a
+/// conflicted bookmark is an ancestor of the new target, and `bookmark move` never skips a
+/// conflicted bookmark as already there (`old.as_normal() != Some(target)`).
+#[test]
+fn a_conflicted_bookmark_moves_forward_when_any_side_is_an_ancestor() {
+    let mut fx = base(None);
+    let (a, c, d) = (fx.a.clone(), fx.c.clone(), fx.d.clone());
+    let id = |change: &ChangeId| jj_lib::backend::CommitId::try_from_hex(hex(&fx.root, change)).expect("commit hex");
+    let (a_id, b_id, d_id) = (id(&fx.a), id(&fx.b), id(&fx.d));
+    {
+        let mut tx = load(&fx.root).start_transaction();
+        tx.repo_mut().set_local_bookmark_target(
+            RefName::new("mark"),
+            RefTarget::from_legacy_form([a_id], [b_id.clone(), d_id.clone()]),
+        );
+        pollster::block_on(tx.commit("test: conflicted mark")).expect("commit");
+    }
+    fx.repo = Repo::open(&fx.root).expect("reopen");
+    let _ = fx.repo.take_warnings();
+    let head = load(&fx.root);
+    let target = head.view().get_local_bookmark(RefName::new("mark"));
+    assert!(!target.is_resolved(), "mark is conflicted");
+    assert_eq!(target.present_adds().collect::<Vec<_>>(), [&b_id, &d_id]);
+    let mark = DropSource::Bookmark("mark".to_owned());
+    let rows = query(&mut fx, &mark, &[onto(&[&c]), onto(&[&d]), onto(&[&a])]);
+    assert_eq!(
+        rows,
+        vec![
+            // `B` is an ancestor of `C`, `D` is not — an "every side" rule would say backwards.
+            (DropVerb::BookmarkMove, 0, available()),
+            (DropVerb::BookmarkMove, 1, available()),
+            (DropVerb::BookmarkMove, 2, backwards()),
+        ]
+    );
 }
 
 /// The seven card-menu rows in field order.
