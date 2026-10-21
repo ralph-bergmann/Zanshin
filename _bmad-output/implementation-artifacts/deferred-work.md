@@ -1761,7 +1761,7 @@ Spec: spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation.
 
 Spec: spec-9-31-matrix-rows-rebase-b-revert-restore-absorb-interdiff.
 
-- **A location's immutable set is resolved before its ids and whether or not it has children, so `-A`/`-B` plans refuse `jj.config_error` where the CLI would not.** Low.
+- ~~**A location's immutable set is resolved before its ids and whether or not it has children, so `-A`/`-B` plans refuse `jj.config_error` where the CLI would not.**~~ — REJECTED 2026-10-21 (spec-9-31-matrix-rows-closing-location-ids-before-immutable): the premise is false — the CLI's `tx.finish` resolves `immutable_heads()` on every write with changes, so it refuses too; the reorder failed the parity oracle and was reverted; witness `new_insert::insert_after_a_leaf_refuses_an_unresolvable_alias_like_the_cli` (commit 70c98be). Do not reorder. Low.
   - `revert::plan_revert` and `rebase::plan_rebase_branch` (and the shipped `duplicate::plan_duplicate`, `mutate::plan_new`) call `resolve_immutable` before `resolve_commit_location`; the CLI's `compute_commit_location` (`cli_util.rs` @ v0.46.0) resolves the ids first and checks rewritability only for non-empty children — so an unresolvable `immutable_heads()` alias with `-A` on a leaf, or with an unknown location id, reads `jj.config_error` instead of success / the unknown revision.
   - **Follow-up:** resolve the location ids first and the immutable set only when `new_child_ids` is non-empty (one helper in `op_support.rs` shared by all four plans), plus a test with an unresolvable alias.
 

@@ -19,6 +19,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/revert.rs plan_revert; crates/zanshin-jj/src/rebase.rs plan_rebase_branch
     severity: low
+    resolved: >-
+      2026-10-21 — rejected (spec-9-31-matrix-rows-closing-location-ids-before-immutable): the CLI refuses too, in tx.finish; the reorder failed the parity oracle and was reverted.
 ---
 
 <intent-contract>
