@@ -46,6 +46,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/bookmark_ops.rs is_fast_forward
     severity: low
+    resolved: >-
+      2026-10-21 — fixed (spec-9-31-closing-conflicted-bookmark-fast-forward, commit 6691ae0): drop_actions tests with a conflicted bookmark (two sides, and one side deleted) pin the "any side" rule.
   - summary: >-
       The original matrix rows rebase -b, revert, restore, absorb and interdiff are not built (Claude's proposal in the 2026-10-14 design update adopted).
     evidence: |-
