@@ -562,13 +562,21 @@ description = "Generate Dart FlatBuffers accessors from schemas/*.fbs into packa
 script_runner = "bash"
 script = '''
 set -euo pipefail
+# WHY: flatc generates code in its own style; dart format normalises it so
+# that `cargo make test` (which runs dart format --set-exit-if-changed) does
+# not flag the committed generated file as unformatted. The package's width
+# (`formatter.page_width` in linter/rules.yaml) comes from
+# analysis_options.yaml's include chain, which ends in a `package:` include —
+# without the workspace package config the formatter cannot resolve it and
+# silently falls back to 80 columns, so resolve the workspace first, before
+# flatc touches the tree. Only the flatc outputs are formatted: the
+# hand-written files beside them are not codegen's business.
+(cd packages/zanshin_core && dart pub get)
 for fbs in schemas/*.fbs; do
     flatc --dart -o packages/zanshin_core/lib/src/ffi/ "$fbs"
 done
-# WHY: flatc generates code in its own style; dart format normalises it so
-# that `cargo make test` (which runs dart format --set-exit-if-changed) does
-# not flag the committed generated files as unformatted.
-dart format packages/zanshin_core/lib/src/ffi/
+cd packages/zanshin_core
+dart format lib/src/ffi/*_generated.dart
 '''
 
 [tasks.codegen-cbindgen]
