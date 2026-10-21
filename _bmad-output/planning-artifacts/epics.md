@@ -7642,6 +7642,27 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Related:** 9.47 (oracle crate), the gate-sweep step (2026-10-20).
 
+### Story 9.56: Hints on errors, and three follow-ups of the 9.24/9.30/9.31 loop [M/bridge]
+*(Added 2026-10-21, Ralph — console session after the story loop of 9.24, 9.30 and 9.31 and its follow-on runs: Ralph asked for a hint field on errors and for the three new ledger items to be fixed.)*
+
+**Scope.**
+1. **Errors carry the CLI's hints** (Ralph: an own field). A refusal today has only `code` + `context` (`schemas/envelope.fbs` `FfiError`); a CLI hint is either dropped or appended to the reason in-band (fetch's `RemoteName` refusal ends in "Hint: Run `jj git remote rename` to give a different name."; `GitRefExpansionError::Expression`'s "Specify patterns in `(positive | ...) & ~(negative | ...)` form." is lost, `command_error.rs` ~:604-609 @ v0.46.0). Add `hints: [string]` to `FfiError` (appended, absent = none), carried from the Rust error through the FFI to Dart (`ZanshinFfiException.hints`), the CLI's hint lines verbatim and in the CLI's order, the reason/context without them. Fill it on every ported error path where the CLI prints a hint (the registry `docs/rust-error-codes.md` notes the dropped ones, e.g. `jj.git_repo_exists`'s "run `jj git init --colocate`"); move the in-band hint out of fetch's reason. Same shape as the payloads' existing `hints: [string]` fields (`GitFetchRemotes`, `GitPushResult`).
+2. **A verb's finish resolves the immutable set as the CLI's `tx.finish` does.** CLI `WorkspaceCommandTransaction::finish` → `rebase_mutable_descendants` (`cli_util.rs:2849-2858`, `:2986-3002` @ v0.46.0) resolves `immutable_heads()` with `?` for every write with changes, so under an unresolvable alias `jj new`, `jj bookmark create` etc. refuse `Config error` and write no operation. Zanshin's `finish_transaction` / `finish_verb` (`crates/zanshin-jj/src/mutate.rs` ~:669-775) resolve it only in `wc_is_immutable`, which skips on failure; `new_change` uses plain `rebase_descendants()`. Audit every unguarded finish caller (positional `new`, bookmark verbs, `duplicate`/`revert` at `-o` or without a location, undo/op verbs, `git export`, `git remote remove`/`rename`, `workspace add`, …) and resolve the set in the shared finish and in the affected plan fns, so their drop/card rows (9.31) agree. `tests/it/new_insert.rs` `only_insert_resolves_the_immutable_set` pins today's divergence and flips.
+3. **`git push` builds its remote expression before listing remotes** — the gap the cleanup run fixed for fetch. `cmd_git_push` (`push.rs:294-301` @ v0.46.0) parses `--remote` / `git.push` first; `crates/zanshin-jj/src/push.rs` `resolve_remotes` (~:784) lists first, so a non-Git backend with a malformed `git.push` or an unparsable `--remote` answers `jj.not_a_git_repo` where the CLI reports the config / pattern error.
+4. **A real non-zero `num_rewritten`.** The fetch's and `git import`'s rewritten-commit count is only ever observed as 0 (`tests/it/git_fetch_parity.rs` `the_fetch_reports_the_remote_refs_it_changed`, `tests/it/git_sync.rs`); FFI/Dart tests feed a synthetic count. Add a fixture where the import rewrites commits (an upstream force-push leaving local descendants to rebase), asserted for both verbs.
+
+**Non-goals.** Hints on warnings (`Warning` keeps code + message; a separate decision). UI.
+
+**Depends on.** 9.20, 9.30, 9.31, 9.32 (done).
+
+**Witnesses.**
+- Item 1: fetch from a remote named `git` refuses with the rename hint in `hints` and not in `context` (Rust, FFI, Dart); a malformed fetch ref pattern carries the CLI's hint; an error without a CLI hint has none; the registry names each code that carries hints.
+- Item 2: an oracle scenario with an unresolvable `immutable_heads()` alias for `new`, `bookmark create` and one more finish caller: Zanshin refuses `jj.config_error` and writes no operation, as the CLI (ledger entry for the CLI's short-prefixes warnings Zanshin does not emit, if needed); the matching drop/card rows read Refused.
+- Item 3: a native-backend test with a malformed `git.push` and with an unparsable `--remote` gets the config / pattern error.
+- Item 4: fetch and `git import` report `num_rewritten > 0` on the force-push fixture.
+
+**Related:** 9.20, 9.30, 9.31, 9.32; deferred-work "Surfaced in the cleanup run after the story loop 9.24/9.30/9.31", "Surfaced in the closing run of the Story 9.31 matrix-rows run".
+
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 
