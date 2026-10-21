@@ -399,6 +399,20 @@ fn only_insert_resolves_the_immutable_set() {
     assert_eq!(parents(&fx.root, &n), [c]);
 }
 
+/// `-A` on a leaf (no child to rewrite) still refuses an unresolvable alias, as `jj new -A` does:
+/// the CLI resolves the set again in `tx.finish` (`rebase_mutable_descendants`, `cli_util.rs:2855`
+/// @ v0.46.0), so it refuses `Config` with no operation even where `compute_commit_location`
+/// skips the rewritability check (closing run of the Story 9.31 matrix-rows run).
+#[test]
+fn insert_after_a_leaf_refuses_an_unresolvable_alias_like_the_cli() {
+    let mut fx = base();
+    let c = fx.c.clone();
+    set_repo_config(&mut fx, "[revset-aliases]\n\"immutable_heads()\" = \"no-such-mark\"\n");
+
+    let err = refused(&mut fx, &[], std::slice::from_ref(&c), &[]);
+    assert!(matches!(err, MutateError::Config { .. }), "{err:?}");
+}
+
 #[test]
 fn insert_before_the_root_is_refused_as_immutable() {
     let mut fx = base();
