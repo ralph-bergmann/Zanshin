@@ -45,6 +45,8 @@ deferred:
     location: >-
       Makefile.toml [tasks.codegen-flatc-dart]
     severity: low
+    resolved: >-
+      2026-10-21 — fixed (spec-9-24-closing-codegen-dart-format-width, commit fe7b82a): the cause was a missing workspace package_config (the width's include chain ends in `lints`); the task now runs `dart pub get` first and formats only the flatc output from inside the package.
 ---
 
 <intent-contract>
