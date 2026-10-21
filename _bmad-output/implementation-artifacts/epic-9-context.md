@@ -104,3 +104,5 @@ Build the jj CLI's meaningful operation set as typed, transaction-bounded verb c
 - 9.21's `redo` reuses 9.39's walk; 9.40's gate covers new verbs; 9.30 shares 9.5's import-options helper.
 - 9.51 builds on 9.15/9.20/9.23/9.49; 9.52 on 6.4a/9.20 (and 9.30 if first); 9.54 follows 9.51/9.53 (uses 9.20's default-remote resolution; 10.25 consumes its edited-text field).
 - 9.55 restructures the test suites of every verb story (incl. 9.47's oracle crate if it pays); stories landing after it add tests as `tests/it/` modules.
+- Already covered outside Epic 9 (not re-listed): reads `status`/`revset`/`change`/`op_log`/`bookmark list`/`remotes` (Epic 2), graph + `log` (Epic 4), `diff` (Epic 5); `describe`/`new`/`edit`/`abandon` (6.1), `undo` (6.2), `git fetch` (6.4a).
+- UI consumers: 10.10 (drop menu) uses 9.31's `drop_actions` — its rebase no-op check applies the whole move on a dropped transaction, so hover cost on deep stacks is measured there before any change; 11.8 (Sync) uses 9.24's poll and witnesses a successful `remoteChanges` in the running app, since `dart test` reaps the poll's git child.
