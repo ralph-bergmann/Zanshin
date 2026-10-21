@@ -287,20 +287,31 @@ mod tests {
         assert_eq!(dry.sign_settings().behavior, SignBehavior::Drop);
     }
 
-    /// `-b` with `-A`: the only arm that resolves the immutable set for the location (the drop
-    /// rows use `-b` at `onto` only). The fixture is `root → Commit 1 → Commit 2 → Commit 3` plus
-    /// an empty `@` off the root; `-b @ -A "Commit 1"` inserts `@` above Commit 2, unless Commit 2
-    /// is immutable.
+    /// `-s` and `-b` with `-A`: `-b`'s only arm that resolves the immutable set for the location,
+    /// and the one `-s` arm that skips the `-o` destination checks (the drop rows use `-s`/`-b` at
+    /// `onto` only). The fixture is `root → Commit 1 → Commit 2 → Commit 3` plus an empty `@` off
+    /// the root; `-s @ -A "Commit 1"` and `-b @ -A "Commit 1"` insert `@` above Commit 2, unless
+    /// Commit 2 is immutable.
     #[test]
-    fn plan_rebase_branch_with_an_insert_location_checks_the_children() {
+    fn plan_rebase_source_and_branch_with_an_insert_location_check_the_children() {
+        use std::sync::Arc;
+
         use jj_lib::backend::CommitId;
         use jj_lib::object_id::ObjectId as _;
         use jj_lib::repo::Repo as _;
-        use jj_lib::revset::RevsetExpression;
-        use jj_lib::rewrite::MoveCommitsTarget;
+        use jj_lib::revset::{RevsetExpression, UserRevsetExpression};
+        use jj_lib::rewrite::{MoveCommitsLocation, MoveCommitsTarget};
+        use jj_lib::transaction::Transaction;
 
         use crate::mutate::MutateError;
         use crate::op_support::LocationArgs;
+
+        type Plan = fn(
+            &Transaction,
+            &Arc<UserRevsetExpression>,
+            &[crate::ChangeId],
+            &LocationArgs<'_>,
+        ) -> Result<MoveCommitsLocation, MutateError>;
 
         test_helpers::pin_test_env();
         let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture");
@@ -310,14 +321,13 @@ mod tests {
         let store = readonly.store();
         let by_description = |description: &str| -> jj_lib::commit::Commit {
             let mut pending: Vec<CommitId> = readonly.view().heads().iter().cloned().collect();
-            while let Some(id) = pending.pop() {
-                let commit = store.get_commit(&id).expect("commit");
-                if commit.description().trim_end() == description {
-                    return commit;
-                }
+            std::iter::from_fn(|| {
+                let commit = store.get_commit(&pending.pop()?).expect("commit");
                 pending.extend(commit.parent_ids().iter().cloned());
-            }
-            panic!("no commit described {description:?}");
+                Some(commit)
+            })
+            .find(|commit| commit.description().trim_end() == description)
+            .expect("a commit with that description")
         };
         let change = |commit: &jj_lib::commit::Commit| crate::ChangeId(commit.change_id().reverse_hex());
         let (c1, c2) = (by_description("Commit 1"), by_description("Commit 2"));
@@ -330,18 +340,24 @@ mod tests {
             insert_before: &[],
         };
         let tx = crate::op_support::start_repo_transaction(&readonly, &name);
-
-        let loc = super::plan_rebase_branch(&tx, &RevsetExpression::root(), &[change(&at)], &location).expect("plan");
-        assert_eq!(loc.new_parent_ids, [c1.id().clone()]);
-        assert_eq!(loc.new_child_ids, [c2.id().clone()]);
-        assert!(matches!(&loc.target, MoveCommitsTarget::Roots(roots) if roots == &[at.id().clone()]));
-
         let immutable = RevsetExpression::commits(vec![c2.id().clone()]);
-        let refused = super::plan_rebase_branch(&tx, &immutable, &[change(&at)], &location);
-        assert!(
-            matches!(&refused, Err(MutateError::Immutable { commit_id }) if *commit_id == c2.id().hex()),
-            "{refused:?}"
-        );
+
+        let plans: [(&str, Plan); 2] = [("-s", super::plan_rebase_source), ("-b", super::plan_rebase_branch)];
+        for (flag, plan) in plans {
+            let loc = plan(&tx, &RevsetExpression::root(), &[change(&at)], &location).expect(flag);
+            assert_eq!(loc.new_parent_ids, [c1.id().clone()], "{flag}");
+            assert_eq!(loc.new_child_ids, [c2.id().clone()], "{flag}");
+            assert!(
+                matches!(&loc.target, MoveCommitsTarget::Roots(roots) if roots == &[at.id().clone()]),
+                "{flag}"
+            );
+
+            let refused = plan(&tx, &immutable, &[change(&at)], &location);
+            assert!(
+                matches!(&refused, Err(MutateError::Immutable { commit_id }) if *commit_id == c2.id().hex()),
+                "{flag}: {refused:?}"
+            );
+        }
     }
 
     #[test]
