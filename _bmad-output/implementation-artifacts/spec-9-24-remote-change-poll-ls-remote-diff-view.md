@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/remote_changes.rs (advertisement filter); Story 9.30
     severity: medium
+    resolved: >-
+      2026-10-21 — fixed (spec-9-30-git-fetch-parity-default-remotes-filters, commit 7e51a50): the poll filters with the fetch's per-remote filters and refuses what the fetch refuses.
   - summary: >-
       A tag whose target is not a commit (a tag of a tree or blob) is reported as "new upstream" on every poll, because the ref advertisement carries no object type and jj never imports such a tag.
     evidence: |-
