@@ -87,7 +87,7 @@ pub(crate) fn plan_duplicate(
 mod tests {
     /// No location and `-A`: the arms `drop_actions`' `duplicate` row (always `-o`) never takes.
     /// The fixture is `root → Commit 1 → Commit 2 → Commit 3` plus an empty `@` off the root;
-    /// `@ -A "Commit 1"` inserts the duplicate above Commit 2, unless Commit 2 is immutable.
+    /// `@ -A "Commit 1"` inserts the duplicate between Commit 1 and Commit 2, unless Commit 2 is immutable.
     #[test]
     fn plan_duplicate_without_a_location_and_with_an_insert_location() {
         use std::sync::Arc;

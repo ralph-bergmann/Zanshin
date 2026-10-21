@@ -217,6 +217,8 @@ pub(crate) fn add(
     // resolving the new workspace's immutable set against `tx.base_repo()`, so an unresolvable
     // alias refuses here, after jj-lib's "add workspace" operation, as in the CLI (Story 9.56).
     let immutable = crate::op_support::resolve_immutable(tx.base_repo().as_ref(), &new_env.immutable)?;
+    // WHY: the abandoned initial `@` has no descendants, so the no-op progress closure never
+    // runs — it stays on the call's line, or that line counts as uncovered.
     pollster::block_on(
         tx.repo_mut()
             .rebase_descendants_with_options(&immutable, &RebaseOptions::default(), |_, _| {}),

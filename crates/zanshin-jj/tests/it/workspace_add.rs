@@ -187,7 +187,7 @@ fn add_default_creates_a_sibling_workspace_on_ats_parents() {
 
 /// Without an `@` in the current workspace (forgotten through jj-lib, as `status.rs`'s
 /// `remove_working_copy`), the new `@` goes onto the root — the CLI's `else { vec![root_commit] }`
-/// (`add.rs` @ v0.46.0).
+/// (`cli/src/commands/workspace/add.rs` @ v0.46.0).
 #[test]
 fn a_workspace_without_at_adds_on_the_root() {
     let fx = init(Some(Backend::Git), "");
@@ -214,10 +214,11 @@ fn a_workspace_without_at_adds_on_the_root() {
     );
     assert!(!fx.sibling("ws2").join("p.txt").exists(), "p.txt absent in ws2");
     assert_eq!(
-        &descriptions(&fx.root)[..2],
+        &descriptions(&fx.root)[..3],
         [
             "create initial working-copy commit in workspace ws2",
-            "add workspace 'ws2'"
+            "add workspace 'ws2'",
+            "test: remove working-copy commit"
         ]
     );
 }
