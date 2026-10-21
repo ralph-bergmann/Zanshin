@@ -669,29 +669,35 @@ fn a_bookmark_moves_forward_backwards_or_nowhere() {
     assert_eq!(rows, vec![(DropVerb::BookmarkMove, 0, refused(&not_found(UNKNOWN)))]);
 }
 
-/// The CLI's `is_fast_forward` (`bookmark/mod.rs:165-182` @ v0.46.0) asks whether ANY side of a
-/// conflicted bookmark is an ancestor of the new target, and `bookmark move` never skips a
-/// conflicted bookmark as already there (`old.as_normal() != Some(target)`).
-#[test]
-fn a_conflicted_bookmark_moves_forward_when_any_side_is_an_ancestor() {
-    let mut fx = base(None);
-    let (a, c, d) = (fx.a.clone(), fx.c.clone(), fx.d.clone());
-    let id = |change: &ChangeId| jj_lib::backend::CommitId::try_from_hex(hex(&fx.root, change)).expect("commit hex");
-    let (a_id, b_id, d_id) = (id(&fx.a), id(&fx.b), id(&fx.d));
-    {
-        let mut tx = load(&fx.root).start_transaction();
-        tx.repo_mut().set_local_bookmark_target(
-            RefName::new("mark"),
-            RefTarget::from_legacy_form([a_id], [b_id.clone(), d_id.clone()]),
-        );
-        pollster::block_on(tx.commit("test: conflicted mark")).expect("commit");
-    }
+fn commit_id(fx: &Fx, change: &ChangeId) -> jj_lib::backend::CommitId {
+    jj_lib::backend::CommitId::try_from_hex(hex(&fx.root, change)).expect("commit hex")
+}
+
+/// Sets `mark` to the conflicted `target` through jj-lib — no Zanshin verb creates a conflicted
+/// bookmark — reopens `fx.repo` and checks that `mark` is conflicted with exactly `present_adds`.
+fn conflict_mark(fx: &mut Fx, target: RefTarget, present_adds: &[&jj_lib::backend::CommitId]) {
+    let mut tx = load(&fx.root).start_transaction();
+    tx.repo_mut().set_local_bookmark_target(RefName::new("mark"), target);
+    pollster::block_on(tx.commit("test: conflicted mark")).expect("commit");
     fx.repo = Repo::open(&fx.root).expect("reopen");
     let _ = fx.repo.take_warnings();
     let head = load(&fx.root);
     let target = head.view().get_local_bookmark(RefName::new("mark"));
     assert!(!target.is_resolved(), "mark is conflicted");
-    assert_eq!(target.present_adds().collect::<Vec<_>>(), [&b_id, &d_id]);
+    assert_eq!(target.present_adds().collect::<Vec<_>>(), present_adds);
+}
+
+/// The CLI's `is_fast_forward` (`cli/src/commands/bookmark/mod.rs:165-182` @ v0.46.0) asks whether
+/// ANY side of a conflicted bookmark is an ancestor of the new target, and `bookmark move`
+/// (`cli/src/commands/bookmark/move.rs` @ v0.46.0) never skips a conflicted bookmark as already
+/// there (`old.as_normal() != Some(target)`).
+#[test]
+fn a_conflicted_bookmark_moves_forward_when_any_side_is_an_ancestor() {
+    let mut fx = base(None);
+    let (a, c, d) = (fx.a.clone(), fx.c.clone(), fx.d.clone());
+    let (a_id, b_id, d_id) = (commit_id(&fx, &a), commit_id(&fx, &fx.b), commit_id(&fx, &d));
+    let target = RefTarget::from_legacy_form([a_id], [b_id.clone(), d_id.clone()]);
+    conflict_mark(&mut fx, target, &[&b_id, &d_id]);
     let mark = DropSource::Bookmark("mark".to_owned());
     let rows = query(&mut fx, &mark, &[onto(&[&c]), onto(&[&d]), onto(&[&a])]);
     assert_eq!(
@@ -699,7 +705,32 @@ fn a_conflicted_bookmark_moves_forward_when_any_side_is_an_ancestor() {
         vec![
             // `B` is an ancestor of `C`, `D` is not — an "every side" rule would say backwards.
             (DropVerb::BookmarkMove, 0, available()),
+            // `D` is one side itself — never a no-op while the target is conflicted.
             (DropVerb::BookmarkMove, 1, available()),
+            // `A` is the parent of both sides — no side is an ancestor, so backwards.
+            (DropVerb::BookmarkMove, 2, backwards()),
+        ]
+    );
+}
+
+/// A conflict with a deleted side (a concurrent delete vs. a move): only the present side counts,
+/// an absent side makes no fast-forward.
+#[test]
+fn a_conflicted_bookmark_with_a_deleted_side_counts_only_the_present_side() {
+    let mut fx = base(None);
+    let (a, b, c) = (fx.a.clone(), fx.b.clone(), fx.c.clone());
+    let (a_id, b_id) = (commit_id(&fx, &a), commit_id(&fx, &b));
+    let target = RefTarget::from_legacy_form([a_id], [b_id.clone()]);
+    conflict_mark(&mut fx, target, &[&b_id]);
+    let mark = DropSource::Bookmark("mark".to_owned());
+    let rows = query(&mut fx, &mark, &[onto(&[&c]), onto(&[&b]), onto(&[&a])]);
+    assert_eq!(
+        rows,
+        vec![
+            (DropVerb::BookmarkMove, 0, available()),
+            // `B` is the present side itself — never a no-op while the target is conflicted.
+            (DropVerb::BookmarkMove, 1, available()),
+            // The absent side is not an ancestor of anything — `A` stays backwards.
             (DropVerb::BookmarkMove, 2, backwards()),
         ]
     );
