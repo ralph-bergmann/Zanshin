@@ -2,7 +2,7 @@
 title: 'Story 9.56 — Hints on errors, and three follow-ups of the 9.24/9.30/9.31 loop'
 type: 'feature'
 created: '2026-10-21'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '6f863bf23349a91ab6b8268673556c8bea7fed63'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -33,6 +33,20 @@ deferred:
       conflicts with the rollback contract — a Ralph decision.
     location: >-
       crates/zanshin-jj/src/convert.rs:655
+    severity: low
+  - summary: >-
+      The immutable refusal's "Could not modify commit: <summary>" hint (like push's "Rejected commit:"
+      hint) renders Zanshin's approximate summary, not the CLI's `templates.commit_summary`, so a commit
+      with bookmarks loses its "<refs> | " part and a user's custom summary template is ignored.
+    evidence: |-
+      crates/zanshin-jj/src/op_support.rs `immutable_hints` reuses `push::commit_summary`
+      (crates/zanshin-jj/src/push.rs:476), whose module doc lists it as a deliberate divergence since
+      Story 9.20; CLI v0.46.0 `cli_util.rs:2064-2068` writes `write_commit_summary`, default template
+      `format_commit_summary_with_refs(self, format_commit_ref_names(bookmarks))`
+      (cli/src/config/templates.toml:4, :350-362). Rendering it needs the jj-cli template engine
+      (Story 9.51) threaded into `check_rewritable`'s callers.
+    location: >-
+      crates/zanshin-jj/src/push.rs:476
     severity: low
 ---
 
@@ -153,6 +167,43 @@ deferred:
 
 ## Review Triage Log
 
+### 2026-10-21 — Review pass
+- verdicts: 33 findings — high 0, medium 0, low 29, false 3, maybe-false 1
+- findings:
+  - `[low]` `[reject]` (intent) the Dart leg of the reserved-remote witness decodes a hand-built envelope; the real-cdylib Dart test uses `jj.bookmark_exists` — every error envelope decodes through the one choke point `decodeEnvelopeErrorInternal`, the real fetch envelope is pinned at the FFI (`repo_write_ffi.rs` `git_fetch_from_a_remote_named_git_carries_the_rename_hint`); another test adds no path coverage.
+  - `[low]` `[patch]` (intent) test doc comments in `git_remotes.rs` / `workspace_add.rs` claim a check against the pinned `jj` CLI that the tests never run — reworded (see the matching blind-hunter row).
+  - `[low]` `[reject]` (intent) `git export` with changes under the unresolvable alias is not exercised — it goes through the same `finish_verb` the oracle pins for `new` / `bookmark create` / `undo`; a per-caller test adds nothing users would meet.
+  - `[low]` `[reject]` (intent) the `trunk()` fallback is not in the spec — its fix is to edit this build's spec; the addition is the CLI's own start-up behavior that item 2 would otherwise regress, pinned by two oracle scenarios; recorded in Design Notes.
+  - `[false]` `[reject]` (intent) item 3's FFI code mapping is not re-tested — the mapping (`Config` → `jj.config_error`, `InvalidInput` → `jj.invalid_input`) is unchanged and already pinned by `repo.rs` `map_mutate_err_*` tests; only the order in `resolve_remotes` changed.
+  - `[low]` `[reject]` (intent) item 4's FFI/Dart projections still see synthetic counts — the ledger item's risk was the Rust projection reading the wrong `GitImportStats` field, now pinned with a real count of 1 for fetch and import; the FFI copies the `u32` 1:1 under its own round-trip test.
+  - `[low]` `[reject]` (intent) codegen dropped `GitFetchResult_VT_HINTS` from `zanshin_ffi.h` / `bindings.dart` — cbindgen keeps one same-named vtable constant; nothing uses these offsets (Dart reads through the flatc accessors), and the fix means changing the generator config.
+  - `[low]` `[reject]` (intent) the refreshed `epic-9-context.md` dropped some older decisions — it is the workflow's compiled, size-budgeted digest, regenerated whenever planning docs change; every dropped decision is still in `epics.md`, the source.
+  - `[false]` `[reject]` (intent) `## Auto Run Result` and the recorded checks are missing — they are written at finalize, after this review.
+  - `[low]` `[reject]` (blind) undocumented scope addition (`trunk()` fallback, extra hint fields, a new warning code despite "no new error codes") — fix is to edit this build's spec; a warning code is not an error code; the extra fields carry site-dependent hints; recorded in Design Notes.
+  - `[low]` `[patch]` (blind) `trunk_fallback` survives the call: a later call without the precondition (`log_defaults`) loads config with the old `trunk()` = `root()` layer, and a failing re-load leaves it set — reset when the call ends and on `fall_back_on_trunk`'s error path.
+  - `[low]` `[defer]` (blind) "Could not modify commit:" uses Zanshin's approximate summary (no `<refs> | `, no custom template) — the same approximation push's hints have carried as a documented deliberate divergence since Story 9.20; rendering the real template needs the jj-cli template engine threaded into `check_rewritable`'s callers. Deferred.
+  - `[low]` `[reject]` (blind) the partial-clone hint of `GitImportError::MissingHeadTarget` / `MissingRefAncestor` is not ported — reached only on partial Git clones, and carrying it needs a hint field on the import error path; unlikely in everyday use.
+  - `[low]` `[reject]` (blind) `GitFetchResult_VT_HINTS` lost from the committed header/bindings — duplicate of the intent row above.
+  - `[low]` `[reject]` (blind) `plan_new` reports the immutable-set error before the advance-branches / template errors the CLI reports first — needs two simultaneous config faults, both `jj.config_error`; reordering adds a plan-vs-verb branch to `plan_new`.
+  - `[low]` `[reject]` (blind) `epic-9-context.md` dropped decisions — duplicate of the intent row above.
+  - `[low]` `[patch]` (blind) the 9.31 / cleanup-run deferred-work entries this story closes stay open — marked RESOLVED with the code commit at finalize.
+  - `[low]` `[patch]` (blind) `workspace_add` / `git_remotes` tests claim pinned-CLI parity they never check — doc comments reworded to what the tests pin.
+  - `[low]` `[patch]` (blind) hint-coverage gaps — added: immutable count > 1, root refusal without hints, `git push --named` tracked-remote hint; rejected: the `" or more"` branch (`count_estimate` is exact on these small sets, no fixture reaches it) and the `--tracked` fetch expansion (shares `expansion_error` with the pinned paths).
+  - `[low]` `[patch]` (blind) `ZanshinFfiException.toString()` drops `hints`, so the rename hint vanished from logs — `toString()` now prints non-empty hints.
+  - `[low]` `[patch]` (blind) `push_error` hand-writes the rename hint — uses the shared constant; the duplicated same-change-id rewrite helper in two test modules is rejected (test-only, two call sites).
+  - `[false]` `[reject]` (blind) `envelope_generated.rs` has a misindented block, so codegen is not reproducible — `cargo make codegen` re-run leaves the tree unchanged; the indentation is rustfmt's output on an over-long generated line.
+  - `[low]` `[patch]` (verification-gap) `finish_verb`'s `has_changes()` gate is not pinned — test added: a no-change fetch under an unresolvable alias does not refuse `Config`.
+  - `[low]` `[patch]` (verification-gap) the immutable-hint count is pinned only where `.descendants()` changes nothing — test with an immutable descendant (count 2) added.
+  - `[maybe-false]` `[reject]` (verification-gap) `workspace add` under an unresolvable `trunk()` builds the new workspace's environment from the call's config with the fallback layer, while the CLI's `for_workable_repo` builds it fresh (no fallback) and might refuse — settled only by running the pinned `jj workspace add` with an unresolvable `trunk()`; if true, low (two rare conditions together).
+  - `[low]` `[reject]` (verification-gap) scope additions not in the spec — duplicate of the blind-hunter row.
+  - `[low]` `[reject]` (verification-gap) `GitFetchResult_VT_HINTS` dropped by codegen — duplicate of the intent row.
+  - `[low]` `[defer]` (edge-case) "Could not modify commit:" not verbatim for commits with bookmarks — same root cause as the blind-hunter row; deferred with it.
+  - `[low]` `[reject]` (edge-case) `plan_new` error order with two config faults — duplicate of the blind-hunter row.
+  - `[low]` `[reject]` (edge-case) `trunk_alias_redefined` misses a key spelled `trunk( )` or a redefined builtin the builtin `trunk()` calls — exotic spellings; the builtin `trunk()` wraps its parts in `present()` and ends in `| root()`, so it resolves.
+  - `[low]` `[patch]` (edge-case) `trunk_fallback` flag outlives the call — same fix as the blind-hunter row.
+  - `[low]` `[reject]` (edge-case) `GitFetchResult_VT_HINTS` removed — duplicate of the intent row.
+  - `[low]` `[reject]` (edge-case) hint fields on three more public variants than the spec named — their hints come from the emitting site; fix is to edit this build's spec; recorded in Design Notes.
+
 ## Design Notes
 
 **Why `hints()` plus a few fields.** Most hints are constant per variant or derived from its data (bookmark name, stale kind), so a `hints()` accessor keeps those variants unchanged and lets each FFI mapper set `FfiErrorObj.hints = e.hints()` uniformly. Only variants reused by sites with different CLI hints (`InvalidInput` across fetch/undo/squash/push, `Immutable` needing a repo-computed summary/count, `BookmarkExists` differing between `bookmark create` and `git push`) need a field. Shape:
@@ -163,6 +214,8 @@ impl MutateError { pub fn hints(&self) -> Vec<String> { match self { Self::Inval
 
 **Why gate on `has_changes()` in `finish_verb`.** CLI `finish` returns "Nothing changed." before `rebase_mutable_descendants` (`cli_util.rs:2849-2858`), so a no-change verb never resolves; `finish_verb` itself has no such gate (ledger `describe_no_change`, Story 9.40), so the resolution carries its own.
 
+**Added during implementation: the CLI's start-up `trunk()` fallback.** Resolving the immutable set in the shared finish made every write refuse under an unresolvable `trunk()` alias (the builtin `immutable_heads()` contains `trunk()`), where the CLI's `load_from_workspace` (`cli_util.rs:540-562` @ v0.46.0) warns and runs with `trunk()` = `root()`. Item 2 would otherwise have regressed CLI parity, so the fallback was ported in this story: `Repo::fall_back_on_trunk` at the end of `start_call`, a per-call `trunk()` = `root()` config layer, the new warning code `jj.trunk_alias_unresolved` (the CLI's two warning lines; its hint dropped, as on every warning), and oracle scenarios `new_unresolvable_trunk` / `bookmark_create_unresolvable_trunk` (no ledger entries). Hint fields also ride `PushRefRefused`, `PushCommitRejected` and `RepoError::CloneFailed`, whose hints come from the emitting site.
+
 ## Verification
 
 **Commands (targeted; the story loop runs the full gate):**
@@ -172,3 +225,31 @@ impl MutateError { pub fn hints(&self) -> Vec<String> { match self { Self::Inval
 - `cargo test -p zanshin-parity --test oracle` -- expected: green, ledger has no UNEXPECTED/CHANGED/STALE.
 - `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity --all-targets -- -D warnings`, `cargo fmt --all --check` -- expected: clean.
 - `flutter test` / `dart analyze` / `dart format --set-exit-if-changed .` in `packages/zanshin_core` -- expected: green (zanshin_core tests need the cdylib built as the gate builds it).
+
+**Verification notes (run 2026-10-21, after the review patches; no `cargo make test` / `test-full` / `coverage` per the loop's gate rule):**
+- `cargo fmt --all --check` — clean.
+- `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity -p zanshin-mcp --all-targets -- -D warnings` — clean.
+- `cargo test -p zanshin-jj` — 301 lib + 1008 `it` passed (1 pre-existing ignored).
+- `cargo test -p zanshin-ffi` — 195 lib + 307 `it` passed.
+- `cargo test -p zanshin-parity --test oracle` — 196 passed, no UNEXPECTED / CHANGED / STALE.
+- `cargo make codegen` — re-run leaves the tree unchanged (generated header, Rust and Dart accessors, bindings committed).
+- `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings` clean, `dart format --set-exit-if-changed` clean, `dart test` (real cdylib, gate env) 931 passed; `dart analyze` in `app/` clean.
+- Coverage not measured (loop gate rule); every new or changed line got tests.
+
+## Auto Run Result
+
+Status: done
+
+**Items (all four fixed in df76db9b3f94b0aacea16e6d9ea916c9c6cffcd4):**
+- **I1 — fixed (df76db9).** `FfiError.hints: [string]` appended (absent = none; empty writes no field, `PANIC_FALLBACK_ENVELOPE` unchanged), carried by `hints()` accessors on `MutateError` / `RepoError` / `PreconditionError` / `ConfigCmdError` (fields on `InvalidInput`, `Immutable`, `BookmarkExists`, `PushRefRefused`, `PushCommitRejected`, `RepoError::CloneFailed`) through every FFI mapper to `ZanshinFfiException.hints` and `ActionRefusal.hints`. Every ported verb-specific CLI hint site is filled verbatim; fetch's rename hint left the reason; the `Expression` pattern hint is kept. Not ported: `repo_not_found`'s "looks like a git repo" (not distinguished), the generic hint families (deferred), the partial-clone import hint (rejected in review).
+- **I2 — fixed (df76db9).** `finish_verb` resolves the immutable set against `tx.base_repo()` for every transaction with changes and rebases the mutable descendants; per-verb copies removed (commit, fetch, push, `git import` — a no-op import no longer refuses); `workspace add` resolves after jj-lib's "add workspace" op; `plan_new` (positional), `plan_duplicate`, `plan_revert` and the FF/backwards bookmark-move row resolve. Oracle scenarios `new_` / `bookmark_create_` / `undo_unresolvable_immutable` (ledger: the CLI's 7 start-up template warnings). Because the builtin `immutable_heads()` contains `trunk()`, the CLI's start-up `trunk()` = `root()` fallback was ported too (warning `jj.trunk_alias_unresolved`, oracle `new_` / `bookmark_create_unresolvable_trunk`, no ledger entries). `convert`'s finish stays open (deferred, Ralph's call).
+- **I3 — fixed (df76db9).** `resolve_remotes` builds the `--remote` / `git.push` expression before listing remotes; native-backend tests for a malformed `git.push` (`Config`) and an unparsable `--remote` (`InvalidInput`).
+- **I4 — fixed (df76db9).** Same-change-id force-push fixtures: fetch and `git import` report `num_rewritten == 1` and the local child sits on the rewrite.
+
+**Files changed (main):** `schemas/envelope.fbs` (+ generated `envelope_generated.rs`, `envelope_zanshin.ffi_generated.dart`, `zanshin_ffi.h`, `bindings.dart`); `crates/zanshin-jj/src/{mutate,op_support,push,remotes,remote_changes,creation,bookmark_ops,wc_ops,op_log,squash_split,repo,snapshot,config,config_cmd,revset,warning,git,commit,duplicate,revert,rebase,drop_actions,workspace_add}.rs` (hints, shared finish resolution, plans, push order, `trunk()` fallback); `crates/zanshin-ffi/src/*.rs` (`FfiErrorObj.hints`, every mapper, `build_ffi_error`); `packages/zanshin_core/lib/src/{worker/responses,ffi/precondition,ffi/drop_actions,ffi/warning}.dart`; tests under `crates/zanshin-jj/tests/it/`, `crates/zanshin-ffi/tests/it/repo_write_ffi.rs`, `packages/zanshin_core/test/`; oracle `scenarios.rs` / `main.rs` / `ledger.rs`; `docs/ffi-abi.md`, `docs/rust-error-codes.md`.
+
+**Review:** 33 findings (low 29, false 3, maybe-false 1). Patched (all low): `trunk_fallback` reset at call end; tests for the `has_changes()` gate (no-change fetch under the alias), the immutable count with descendants (2), root without hints, `--named` tracked-remote hint; shared rename-hint constant in `push_error`; `ZanshinFfiException.toString()` prints hints; test doc comments no longer claim unrun CLI checks; the four ledger entries marked RESOLVED. Deferred: the approximate "Could not modify commit:" summary (shared with push's documented divergence). Rejected: see the triage log (each with its reason).
+
+**Follow-up review recommended:** false — patched counts high 0, medium 0, low 7 entries.
+
+**Residual risks:** `GitFetchResult_VT_HINTS` no longer appears in the generated C header / Dart bindings (cbindgen keeps one same-named vtable constant; unused); `workspace add` under an unresolvable `trunk()` may diverge from the CLI (unverified, maybe-false); with both an unresolvable alias and a broken `experimental-advance-branches`, plain `new` reports the alias error first; `zanshin_jj::resolve_revset` (no precondition) does not apply the `trunk()` fallback; coverage ratchet not run (loop gate at the end).
