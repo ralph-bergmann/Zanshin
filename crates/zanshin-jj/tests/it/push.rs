@@ -1183,29 +1183,89 @@ fn a_partial_success_with_an_export_records() {
     assert_eq!(w.remote_refs()["refs/heads/main"], third);
 }
 
-/// Sign-on-push skips an immutable commit to push with the CLI's warning and its commit list.
+/// Sign-on-push skips an immutable commit to push with the CLI's warning and its commit list —
+/// each line `templates.commit_summary` rendered, the default's and a custom one's.
 #[test]
 fn sign_on_push_lists_the_immutable_commits_it_skips() {
+    for summary in ["", "[templates]\ncommit_summary = 'commit_id.short() ++ \" custom\"'\n"] {
+        let mut w = world();
+        w.add_repo_config(&format!(
+            "[git]\nsign-on-push = true\n\n[signing]\nbackend = \"test\"\n\n{summary}"
+        ));
+        let third = advance_main(&mut w);
+        // A tag makes `third` immutable (`builtin_immutable_heads()` holds `tags()`).
+        test_helpers::set_tag(&w.root, "v2", &[&third]);
+        w.reopen();
+        let outcome = w.push(&GitPushArgs::default()).expect("push");
+        assert!(outcome.signing.is_none(), "nothing mutable needed a signature");
+        let warning = w
+            .warnings()
+            .into_iter()
+            .find(|(kind, _)| *kind == WarningKind::PushSigningSkippedImmutable)
+            .map(|(_, message)| message)
+            .expect("warned");
+        let lines: Vec<&str> = warning.lines().collect();
+        assert_eq!(lines[0], "Skipped signing 1 immutable commits:");
+        assert_eq!(lines.len(), 2, "{warning}");
+        if summary.is_empty() {
+            assert!(
+                lines[1].starts_with("  ") && lines[1].contains(&third[..8]) && lines[1].ends_with(" main* | third"),
+                "{warning}"
+            );
+        } else {
+            assert_eq!(lines[1], format!("  {} custom", short(&third)), "{warning}");
+        }
+        assert_eq!(w.remote_refs()["refs/heads/main"], third, "pushed unsigned");
+    }
+}
+
+/// `templates.commit_summary` renders the "Rejected commit:" hint of `-c @` on an undescribed `@`,
+/// in the refusal and in the dry run's failure and row (the CLI's `write_commit_summary`).
+#[test]
+fn the_rejected_commit_hint_renders_the_commit_summary_template() {
     let mut w = world();
-    w.add_repo_config("[git]\nsign-on-push = true\n\n[signing]\nbackend = \"test\"\n");
-    let third = advance_main(&mut w);
-    // A tag makes `third` immutable (`builtin_immutable_heads()` holds `tags()`).
-    test_helpers::set_tag(&w.root, "v2", &[&third]);
-    w.reopen();
-    let outcome = w.push(&GitPushArgs::default()).expect("push");
-    assert!(outcome.signing.is_none(), "nothing mutable needed a signature");
-    let warning = w
-        .warnings()
-        .into_iter()
-        .find(|(kind, _)| *kind == WarningKind::PushSigningSkippedImmutable)
-        .map(|(_, message)| message)
-        .expect("warned");
-    let lines: Vec<&str> = warning.lines().collect();
-    assert_eq!(lines[0], "Skipped signing 1 immutable commits:");
-    assert_eq!(lines.len(), 2, "{warning}");
-    assert!(
-        lines[1].starts_with("  ") && lines[1].contains(&third[..8]) && lines[1].ends_with(" third"),
-        "{warning}"
-    );
-    assert_eq!(w.remote_refs()["refs/heads/main"], third, "pushed unsigned");
+    w.add_repo_config("[templates]\ncommit_summary = 'commit_id.short() ++ \" custom\"'\n");
+    let at = w.hex("@");
+    let hint = format!("Rejected commit: {} custom", short(&at));
+    let change = GitPushArgs {
+        changes: vec!["@".to_owned()],
+        ..Default::default()
+    };
+    let before = w.head_op();
+    let err = w.push(&change).expect_err("an undescribed @ is rejected");
+    assert_eq!(err.hints(), std::slice::from_ref(&hint));
+    assert_eq!(w.head_op(), before, "a refusal before the network writes nothing");
+    let plan = w
+        .push(&GitPushArgs {
+            dry_run: true,
+            ..change
+        })
+        .expect("the dry run plans");
+    assert_eq!(plan.failure.and_then(|f| f.hint), Some(hint.clone()));
+    let row = &plan.remotes[0].refs[0];
+    assert_eq!(row.rejection.as_ref().expect("rejected").hints, [hint]);
+}
+
+/// An unparsable `templates.commit_summary` refuses a push whose rejection hint would render it —
+/// real run and dry run alike — as `Config`, writing nothing (the CLI refuses such a template at
+/// start-up).
+#[test]
+fn a_broken_commit_summary_template_refuses_the_push() {
+    let mut w = world();
+    w.add_repo_config("[templates]\ncommit_summary = 'nope('\n");
+    let before = w.head_op();
+    for dry_run in [false, true] {
+        let err = w
+            .push(&GitPushArgs {
+                changes: vec!["@".to_owned()],
+                dry_run,
+                ..Default::default()
+            })
+            .expect_err("the summary template does not parse");
+        assert!(
+            matches!(&err, MutateError::Config { reason } if reason.starts_with("Failed to parse template: ")),
+            "dry run {dry_run}: {err:?}"
+        );
+        assert_eq!(w.head_op(), before, "dry run {dry_run}: nothing written");
+    }
 }

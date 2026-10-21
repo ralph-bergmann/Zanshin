@@ -11,11 +11,12 @@ use std::sync::Arc;
 use futures::TryStreamExt as _;
 use jj_lib::backend::CommitId;
 use jj_lib::repo::Repo as _;
-use jj_lib::revset::{ResolvedRevsetExpression, RevsetExpression, UserRevsetExpression};
+use jj_lib::revset::{ResolvedRevsetExpression, RevsetExpression};
 use jj_lib::transaction::Transaction;
 
 use crate::mutate::{be, refuse_git_root_merge, MutateError};
 use crate::op_support::{resolve_commit_location, resolve_immutable, resolve_ordered, LocationArgs};
+use crate::template::Templates;
 use crate::ChangeId;
 
 /// What [`plan_revert`] decided.
@@ -53,7 +54,7 @@ pub(crate) struct RevertPlan {
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 pub(crate) fn plan_revert(
     tx: &Transaction,
-    immutable: &Arc<UserRevsetExpression>,
+    templates: &Templates<'_>,
     revisions: &[ChangeId],
     location: &LocationArgs<'_>,
 ) -> Result<Option<RevertPlan>, MutateError> {
@@ -66,16 +67,17 @@ pub(crate) fn plan_revert(
         return Ok(None);
     }
     let resolved: Arc<ResolvedRevsetExpression> = if location.inserts() {
-        resolve_immutable(tx.base_repo().as_ref(), immutable)?
+        resolve_immutable(tx.base_repo().as_ref(), templates.immutable())?
     } else {
         RevsetExpression::none()
     };
-    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, &resolved, location, "reverted commits")?;
+    let (new_parent_ids, new_child_ids) =
+        resolve_commit_location(tx, &resolved, templates, location, "reverted commits")?;
     // The Git backend refuses the first reverted commit's write for a root merge; refused up
     // front so the preview and the verb agree (Story 9.31).
     refuse_git_root_merge(tx.repo().store(), &new_parent_ids)?;
     if !location.inserts() {
-        resolve_immutable(tx.base_repo().as_ref(), immutable)?;
+        resolve_immutable(tx.base_repo().as_ref(), templates.immutable())?;
     }
     Ok(Some(RevertPlan {
         to_revert,
@@ -107,7 +109,12 @@ mod tests {
             insert_after: &[],
             insert_before: &[],
         };
-        let immutable = jj_lib::revset::RevsetExpression::root();
-        assert!(plan_revert(&tx, &immutable, &[], &location).expect("plan").is_none());
+        let config = crate::config::load(&repo).expect("config");
+        let env =
+            crate::snapshot::CommandEnv::load(repo.workspace(), &config, &mut crate::warning::Warnings::default())
+                .expect("start-up");
+        let templates =
+            crate::template::Templates::new(&config, &env.immutable, &env.template_startup, repo.workspace());
+        assert!(plan_revert(&tx, &templates, &[], &location).expect("plan").is_none());
     }
 }

@@ -1579,6 +1579,18 @@ pub(crate) fn templates_git_push_bookmark(config: &StackedConfig) -> Result<Stri
     config.get("templates.git_push_bookmark").map_err(|e| value_error(&e))
 }
 
+/// Reads the effective `templates.commit_summary` TEXT — the CLI's `get_string` in
+/// `WorkspaceCommandHelper::new` (`cli_util.rs:1272` @ v0.46.0), the template its commit-summary
+/// hints render. Its default `format_commit_summary_with_refs(…)` is jj-cli's own
+/// ([`CLI_DEFAULTS`], the CLI's `config/templates.toml:4`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a string (the key is named).
+pub(crate) fn templates_commit_summary(config: &StackedConfig) -> Result<String, ConfigError> {
+    config.get("templates.commit_summary").map_err(|e| value_error(&e))
+}
+
 /// Reads the effective `templates.commit_trailers` TEXT (Story 9.51) — the CLI's `get_string` in
 /// `parse_trailers_template` (`description_util.rs:437` @ v0.46.0). Its default `''` (no trailers)
 /// is jj-cli's own ([`CLI_DEFAULTS`]).

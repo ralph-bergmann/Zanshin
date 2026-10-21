@@ -279,9 +279,9 @@ impl Rows<'_> {
         self.row(ctx, |tx, ctx| {
             let changes = std::slice::from_ref(change);
             let loc = match form {
-                RebaseForm::Source => plan_rebase_source(tx, &ctx.immutable, changes, location)?,
-                RebaseForm::Revisions => plan_rebase_revisions(tx, &ctx.immutable, changes, location)?,
-                RebaseForm::Branch => plan_rebase_branch(tx, &ctx.immutable, changes, location)?,
+                RebaseForm::Source => plan_rebase_source(tx, &ctx.templates(self.workspace), changes, location)?,
+                RebaseForm::Revisions => plan_rebase_revisions(tx, &ctx.templates(self.workspace), changes, location)?,
+                RebaseForm::Branch => plan_rebase_branch(tx, &ctx.templates(self.workspace), changes, location)?,
             };
             Ok(Planned {
                 no_op: rebase_is_no_op(tx, &loc)?,
@@ -311,7 +311,12 @@ impl Rows<'_> {
         location: &LocationArgs<'_>,
     ) -> Result<ActionOutcome, MutateError> {
         self.row(ctx, |tx, ctx| {
-            let plan = plan_revert(tx, &ctx.immutable, std::slice::from_ref(change), location)?;
+            let plan = plan_revert(
+                tx,
+                &ctx.templates(self.workspace),
+                std::slice::from_ref(change),
+                location,
+            )?;
             Ok(Planned {
                 no_op: plan.is_none(),
                 ..Planned::AVAILABLE
@@ -369,7 +374,7 @@ impl Rows<'_> {
         insert_before: &[ChangeId],
     ) -> Result<ActionOutcome, MutateError> {
         self.row(ctx, |tx, ctx| {
-            plan_new(tx, &ctx.immutable, parents, insert_after, insert_before)?;
+            plan_new(tx, &ctx.templates(self.workspace), parents, insert_after, insert_before)?;
             Ok(Planned::AVAILABLE)
         })
     }
@@ -409,7 +414,7 @@ impl Rows<'_> {
                 parents.push(change.clone());
                 rows.push((DropVerb::NewMerge, self.new_change(ctx, &parents, &[], &[])?));
                 let duplicate = self.row(ctx, |tx, ctx| {
-                    plan_duplicate(tx, &ctx.immutable, std::slice::from_ref(change), &args)?;
+                    plan_duplicate(tx, &ctx.templates(self.workspace), std::slice::from_ref(change), &args)?;
                     Ok(Planned::AVAILABLE)
                 })?;
                 rows.push((DropVerb::Duplicate, duplicate));
@@ -551,11 +556,11 @@ pub(crate) fn change_actions(
             new_insert_after: rows.new_change(ctx, &[], one, &[])?,
             new_insert_before: rows.new_change(ctx, &[], &[], one)?,
             edit: rows.row(ctx, |tx, ctx| {
-                plan_edit(tx, &ctx.immutable, change)?;
+                plan_edit(tx, &ctx.templates(rows.workspace), change)?;
                 Ok(Planned::AVAILABLE)
             })?,
             describe: rows.row(ctx, |tx, ctx| {
-                plan_describe(tx, &ctx.immutable, change)?;
+                plan_describe(tx, &ctx.templates(rows.workspace), change)?;
                 Ok(Planned::AVAILABLE)
             })?,
             squash_into_parent: rows.squash(
@@ -566,7 +571,7 @@ pub(crate) fn change_actions(
                 },
             )?,
             abandon: rows.row(ctx, |tx, ctx| {
-                plan_abandon(tx, &ctx.immutable, one)?;
+                plan_abandon(tx, &ctx.templates(rows.workspace), one)?;
                 Ok(Planned::AVAILABLE)
             })?,
         })

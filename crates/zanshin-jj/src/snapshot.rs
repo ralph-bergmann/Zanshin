@@ -432,6 +432,12 @@ impl VerbContext {
             warnings,
         }
     }
+
+    /// The call's [`crate::template::Templates`] in `workspace` — what a plan fn's rewritability
+    /// guard renders its summary hint with.
+    pub(crate) fn templates(&self, workspace: &Workspace) -> crate::template::Templates<'_> {
+        crate::template::Templates::new(&self.config, &self.immutable, &self.template_startup, workspace)
+    }
 }
 
 // ── The precondition ─────────────────────────────────────────────────────────────

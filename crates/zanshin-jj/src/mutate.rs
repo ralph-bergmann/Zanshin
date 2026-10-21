@@ -604,15 +604,16 @@ pub(crate) fn resolve_commit(repo: &MutableRepo, id: &ChangeId) -> Result<Commit
 /// way.
 ///
 /// Returns the RESOLVED set so a caller that also feeds it to
-/// `rebase_descendants_with_options` does not resolve twice.
+/// `rebase_descendants_with_options` does not resolve twice. The set is `templates`' start-up
+/// immutable set; `templates` also renders the refusal's summary hint.
 pub(crate) fn guard_rewritable(
     tx: &Transaction,
-    immutable: &Arc<UserRevsetExpression>,
+    templates: &Templates<'_>,
     commit_ids: &[jj_lib::backend::CommitId],
 ) -> Result<Arc<ResolvedRevsetExpression>, MutateError> {
     let base: &ReadonlyRepo = tx.base_repo();
-    let resolved = resolve_immutable(base, immutable)?;
-    check_rewritable(base, &resolved, commit_ids)?;
+    let resolved = resolve_immutable(base, templates.immutable())?;
+    check_rewritable(base, &resolved, templates, commit_ids)?;
     Ok(resolved)
 }
 
@@ -895,7 +896,7 @@ pub(crate) fn mutation_result(
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 pub(crate) fn plan_describe(
     tx: &Transaction,
-    immutable: &Arc<UserRevsetExpression>,
+    templates: &Templates<'_>,
     change_id: &ChangeId,
 ) -> Result<Commit, MutateError> {
     let commit = resolve_commit(tx.repo(), change_id)?;
@@ -907,7 +908,7 @@ pub(crate) fn plan_describe(
     if commit.id() == tx.repo().store().root_commit_id() {
         return Err(MutateError::invalid("cannot describe the root commit".to_owned()));
     }
-    guard_rewritable(tx, immutable, std::slice::from_ref(commit.id()))?;
+    guard_rewritable(tx, templates, std::slice::from_ref(commit.id()))?;
     Ok(commit)
 }
 
@@ -938,7 +939,7 @@ pub(crate) fn describe(
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    let commit = plan_describe(&tx, &ctx.immutable, change_id)?;
+    let commit = plan_describe(&tx, &ctx.templates(workspace), change_id)?;
     let mut builder = tx.repo_mut().rewrite_commit(&commit).detach();
     builder.set_description(description);
     // `describe.rs:151-163`: the trailers template is parsed whatever the description, and
@@ -1016,7 +1017,7 @@ pub(crate) struct NewLocation {
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 pub(crate) fn plan_new(
     tx: &Transaction,
-    immutable: &Arc<UserRevsetExpression>,
+    templates: &Templates<'_>,
     parents: &[ChangeId],
     insert_after: &[ChangeId],
     insert_before: &[ChangeId],
@@ -1037,16 +1038,23 @@ pub(crate) fn plan_new(
     let before = resolve_ordered(tx, given(insert_before))?;
     if let Some(parents) = destination {
         refuse_git_root_merge(tx.repo().store(), &parents)?;
-        resolve_immutable(tx.base_repo().as_ref(), immutable)?;
+        resolve_immutable(tx.base_repo().as_ref(), templates.immutable())?;
         return Ok(NewLocation {
             parents,
             children: Vec::new(),
         });
     }
     let base: &ReadonlyRepo = tx.base_repo();
-    let resolved = resolve_immutable(base, immutable)?;
-    let (parents, children) =
-        compute_commit_location(base, &resolved, None, after.as_deref(), before.as_deref(), "new commit")?;
+    let resolved = resolve_immutable(base, templates.immutable())?;
+    let (parents, children) = compute_commit_location(
+        base,
+        &resolved,
+        templates,
+        None,
+        after.as_deref(),
+        before.as_deref(),
+        "new commit",
+    )?;
     refuse_git_root_merge(tx.repo().store(), &parents)?;
     Ok(NewLocation { parents, children })
 }
@@ -1115,7 +1123,7 @@ pub(crate) fn new_change(
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    let location = plan_new(&tx, &ctx.immutable, parents, insert_after, insert_before)?;
+    let location = plan_new(&tx, &ctx.templates(workspace), parents, insert_after, insert_before)?;
     let mut parent_commits = Vec::with_capacity(location.parents.len());
     for id in &location.parents {
         parent_commits.push(tx.repo().store().get_commit(id).map_err(be)?);
@@ -1192,11 +1200,11 @@ pub(crate) fn new_change(
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 pub(crate) fn plan_edit(
     tx: &Transaction,
-    immutable: &Arc<UserRevsetExpression>,
+    templates: &Templates<'_>,
     change_id: &ChangeId,
 ) -> Result<Commit, MutateError> {
     let commit = resolve_commit(tx.repo(), change_id)?;
-    guard_rewritable(tx, immutable, std::slice::from_ref(commit.id()))?;
+    guard_rewritable(tx, templates, std::slice::from_ref(commit.id()))?;
     Ok(commit)
 }
 
@@ -1228,7 +1236,7 @@ pub(crate) fn edit(
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    let commit = plan_edit(&tx, &ctx.immutable, change_id)?;
+    let commit = plan_edit(&tx, &ctx.templates(workspace), change_id)?;
     pollster::block_on(tx.repo_mut().edit(workspace_name.clone(), &commit)).map_err(be)?;
     // See new_change's comment: edit() may implicitly abandon a discardable previous
     // `@`, leaving an un-rebased rewrite that would trip tx.commit()'s assertion.
@@ -1252,7 +1260,7 @@ pub(crate) fn edit(
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 pub(crate) fn plan_abandon(
     tx: &Transaction,
-    immutable: &Arc<UserRevsetExpression>,
+    templates: &Templates<'_>,
     change_ids: &[ChangeId],
 ) -> Result<(Vec<Commit>, Arc<ResolvedRevsetExpression>), MutateError> {
     let mut commits = Vec::with_capacity(change_ids.len());
@@ -1269,7 +1277,7 @@ pub(crate) fn plan_abandon(
     // CLI parity (`abandon.rs:85`): every target must be rewritable. Runs AFTER the
     // per-commit root guards above, so the root commit keeps its `InvalidInput` refusal.
     let target_ids: Vec<jj_lib::backend::CommitId> = commits.iter().map(|c| c.id().clone()).collect();
-    let resolved = guard_rewritable(tx, immutable, &target_ids)?;
+    let resolved = guard_rewritable(tx, templates, &target_ids)?;
     Ok((commits, resolved))
 }
 
@@ -1309,7 +1317,7 @@ pub(crate) fn abandon(
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     // `resolved_immutable` is the set resolved against `tx.base_repo()`, which the
     // `rebase_descendants_with_options` call below depends on.
-    let (commits, resolved_immutable) = plan_abandon(&tx, &ctx.immutable, change_ids)?;
+    let (commits, resolved_immutable) = plan_abandon(&tx, &ctx.templates(workspace), change_ids)?;
     // Whether `@` itself is among the abandoned commits determines whether jj-lib's
     // own update_wc_commits() mints a genuinely NEW change to replace it (vs. `@`
     // merely being rebased because it descends from an abandoned ancestor, which
@@ -1652,7 +1660,7 @@ pub(crate) fn plan_restore(
     };
     // CLI parity (`restore.rs:138`): the rewritability guard runs BEFORE any matcher or
     // tree work, so an immutable destination costs no diffing and writes no blobs.
-    guard_rewritable(tx, &ctx.immutable, std::slice::from_ref(to_commit.id()))?;
+    guard_rewritable(tx, &ctx.templates(workspace), std::slice::from_ref(to_commit.id()))?;
 
     let matcher = build_matcher(paths)?;
     let to_tree = to_commit.tree();
@@ -1833,7 +1841,7 @@ pub(crate) fn plan_absorb(
     // discovered by annotation — not over anything the caller named. An empty target set is
     // trivially rewritable: nothing is absorbable, and the verb writes no operation.
     let target_ids: Vec<jj_lib::backend::CommitId> = selected.target_commits.keys().cloned().collect();
-    guard_rewritable(tx, &ctx.immutable, &target_ids)?;
+    guard_rewritable(tx, &ctx.templates(workspace), &target_ids)?;
 
     Ok(AbsorbPlan {
         source,

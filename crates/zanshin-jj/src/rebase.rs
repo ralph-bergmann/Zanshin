@@ -19,7 +19,7 @@ use jj_lib::backend::{BackendError, CommitId};
 use jj_lib::commit::Commit;
 use jj_lib::config::{ConfigLayer, ConfigSource};
 use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoader};
-use jj_lib::revset::{RevsetExpression, UserRevsetExpression};
+use jj_lib::revset::RevsetExpression;
 use jj_lib::rewrite::{
     compute_move_commits, find_duplicate_divergent_commits, EmptyBehavior, MoveCommitsLocation, MoveCommitsTarget,
     RebaseOptions, RewriteRefsOptions,
@@ -29,6 +29,7 @@ use jj_lib::transaction::Transaction;
 
 use crate::mutate::{be, guard_rewritable, MutateError};
 use crate::op_support::{resolve_commit_location, resolve_immutable, resolve_ordered, LocationArgs};
+use crate::template::Templates;
 use crate::ChangeId;
 
 /// The noun `compute_commit_location`'s loop refusal names for every rebase form.
@@ -50,18 +51,18 @@ const REBASED_COMMITS: &str = "rebased commits";
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 pub(crate) fn plan_rebase_revisions(
     tx: &Transaction,
-    immutable: &Arc<UserRevsetExpression>,
+    templates: &Templates<'_>,
     revisions: &[ChangeId],
     location: &LocationArgs<'_>,
 ) -> Result<MoveCommitsLocation, MutateError> {
     let ids = resolve_ordered(tx, Some(revisions))?.unwrap_or_default();
-    let resolved = guard_rewritable(tx, immutable, &ids)?;
+    let resolved = guard_rewritable(tx, templates, &ids)?;
     // "in reverse topological order" (`rebase.rs:446`): the revset's own order.
     let set = RevsetExpression::commits(ids)
         .evaluate(tx.base_repo().as_ref())
         .map_err(be)?;
     let target_commit_ids: Vec<CommitId> = pollster::block_on(set.stream().try_collect()).map_err(be)?;
-    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, &resolved, location, REBASED_COMMITS)?;
+    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, &resolved, templates, location, REBASED_COMMITS)?;
     if !location.onto.is_empty() {
         if let Some(id) = target_commit_ids.iter().find(|id| new_parent_ids.contains(id)) {
             return Err(onto_itself(id));
@@ -84,13 +85,13 @@ pub(crate) fn plan_rebase_revisions(
 /// `onto itself` one.
 pub(crate) fn plan_rebase_source(
     tx: &Transaction,
-    immutable: &Arc<UserRevsetExpression>,
+    templates: &Templates<'_>,
     sources: &[ChangeId],
     location: &LocationArgs<'_>,
 ) -> Result<MoveCommitsLocation, MutateError> {
     let source_ids = resolve_ordered(tx, Some(sources))?.unwrap_or_default();
-    let resolved = guard_rewritable(tx, immutable, &source_ids)?;
-    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, &resolved, location, REBASED_COMMITS)?;
+    let resolved = guard_rewritable(tx, templates, &source_ids)?;
+    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, &resolved, templates, location, REBASED_COMMITS)?;
     if !location.onto.is_empty() {
         for id in &source_ids {
             let commit = tx.base_repo().store().get_commit(id).map_err(be)?;
@@ -118,24 +119,24 @@ pub(crate) fn plan_rebase_source(
 /// As [`plan_rebase_source`]: the roots take the sources' place.
 pub(crate) fn plan_rebase_branch(
     tx: &Transaction,
-    immutable: &Arc<UserRevsetExpression>,
+    templates: &Templates<'_>,
     branch: &[ChangeId],
     location: &LocationArgs<'_>,
 ) -> Result<MoveCommitsLocation, MutateError> {
     let branch_ids = resolve_ordered(tx, Some(branch))?.unwrap_or_default();
     let resolved = if location.inserts() {
-        resolve_immutable(tx.base_repo().as_ref(), immutable)?
+        resolve_immutable(tx.base_repo().as_ref(), templates.immutable())?
     } else {
         RevsetExpression::none()
     };
-    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, &resolved, location, REBASED_COMMITS)?;
+    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, &resolved, templates, location, REBASED_COMMITS)?;
     let roots = RevsetExpression::commits(new_parent_ids.clone())
         .range(&RevsetExpression::commits(branch_ids))
         .roots()
         .evaluate(tx.base_repo().as_ref())
         .map_err(be)?;
     let root_ids: Vec<CommitId> = pollster::block_on(roots.stream().try_collect()).map_err(be)?;
-    guard_rewritable(tx, immutable, &root_ids)?;
+    guard_rewritable(tx, templates, &root_ids)?;
     if !location.onto.is_empty() {
         for id in &root_ids {
             let commit = tx.base_repo().store().get_commit(id).map_err(be)?;
@@ -304,10 +305,11 @@ mod tests {
 
         use crate::mutate::MutateError;
         use crate::op_support::LocationArgs;
+        use crate::template::Templates;
 
         type Plan = fn(
             &Transaction,
-            &Arc<UserRevsetExpression>,
+            &Templates<'_>,
             &[crate::ChangeId],
             &LocationArgs<'_>,
         ) -> Result<MoveCommitsLocation, MutateError>;
@@ -340,11 +342,18 @@ mod tests {
             insert_before: &[],
         };
         let tx = crate::op_support::start_repo_transaction(&readonly, &name);
-        let immutable = RevsetExpression::commits(vec![c2.id().clone()]);
+        let config = crate::config::load(&repo).expect("config");
+        let env =
+            crate::snapshot::CommandEnv::load(repo.workspace(), &config, &mut crate::warning::Warnings::default())
+                .expect("start-up");
+        let root: Arc<UserRevsetExpression> = RevsetExpression::root();
+        let immutable: Arc<UserRevsetExpression> = RevsetExpression::commits(vec![c2.id().clone()]);
+        let mutable_all = Templates::new(&config, &root, &env.template_startup, repo.workspace());
+        let c2_immutable = Templates::new(&config, &immutable, &env.template_startup, repo.workspace());
 
         let plans: [(&str, Plan); 2] = [("-s", super::plan_rebase_source), ("-b", super::plan_rebase_branch)];
         for (flag, plan) in plans {
-            let loc = plan(&tx, &RevsetExpression::root(), &[change(&at)], &location).expect(flag);
+            let loc = plan(&tx, &mutable_all, &[change(&at)], &location).expect(flag);
             assert_eq!(loc.new_parent_ids, [c1.id().clone()], "{flag}");
             assert_eq!(loc.new_child_ids, [c2.id().clone()], "{flag}");
             assert!(
@@ -352,7 +361,7 @@ mod tests {
                 "{flag}"
             );
 
-            let refused = plan(&tx, &immutable, &[change(&at)], &location);
+            let refused = plan(&tx, &c2_immutable, &[change(&at)], &location);
             assert!(
                 matches!(&refused, Err(MutateError::Immutable { commit_id, .. }) if *commit_id == c2.id().hex()),
                 "{flag}: {refused:?}"

@@ -22,13 +22,18 @@
 //! whether the operation was recorded, the CLI's failure text — is returned as data on `Ok`;
 //! only a refusal before the network is an `Err`.
 //!
+//! The "Rejected commit: …" hint and the commit list of the "Skipped signing … immutable
+//! commits:" warning render each commit through the effective `templates.commit_summary`, over
+//! the transaction's base repo, as the CLI's base workspace helper does
+//! ([`Templates::commit_summary`]).
+//!
 //! Divergences, all deliberate:
-//! - the "Rejected commit: …" hint and the commit list of the "Skipped signing … immutable
-//!   commits:" warning render each commit summary as `<change> <commit> [(conflict)] [(empty)]
-//!   <subject>` (the CLI renders its `commit_summary` template);
 //! - a dry run does not stop at an explicitly named ref that is refused or rejected (the CLI's
 //!   dry run errors there like the real run): it returns the whole plan with that row marked
-//!   [`PushPath::Abort`] and [`GitPushOutcome::failure`] set to the CLI's error;
+//!   [`PushPath::Abort`] and [`GitPushOutcome::failure`] set to the CLI's error — except that a
+//!   `templates.commit_summary` that does not parse refuses the dry run as
+//!   [`MutateError::Config`] when a rejection's hint renders it (the CLI refuses such a template
+//!   at start-up);
 //! - no `--no-integrate-operation` (no Zanshin counterpart).
 
 use std::collections::{HashMap, HashSet};
@@ -454,11 +459,23 @@ impl Rejected {
         }
     }
 
-    /// The abort path's rejection (`push.rs:762-775`).
-    fn aborted(&self, repo: &dyn jj_lib::repo::Repo) -> PushCommitRejection {
-        let mut hints = vec![format!("Rejected commit: {}", commit_summary(repo, &self.commit))];
+    /// The abort path's rejection (`push.rs:762-775`): the "Rejected commit:" hint renders
+    /// `templates.commit_summary` over `repo`.
+    ///
+    /// # Errors
+    ///
+    /// - [`MutateError::Config`] — `templates.commit_summary` is not a string or does not parse.
+    fn aborted(
+        &self,
+        repo: &dyn jj_lib::repo::Repo,
+        templates: &Templates<'_>,
+    ) -> Result<PushCommitRejection, MutateError> {
+        let mut hints = vec![format!(
+            "Rejected commit: {}",
+            templates.commit_summary(repo, &self.commit)?
+        )];
         hints.extend(self.hint.iter().cloned());
-        PushCommitRejection {
+        Ok(PushCommitRejection {
             commit_id: self.commit.id().hex(),
             reasons: self.reasons.iter().map(|r| (*r).to_owned()).collect(),
             message: format!(
@@ -467,35 +484,15 @@ impl Rejected {
                 self.message()
             ),
             hints,
-        }
+        })
     }
 }
 
-/// A commit's one-line summary for the "Rejected commit:" hint (see the module doc) — and, since
-/// Story 9.56, for the immutable refusal's "Could not modify commit:" hint.
-pub(crate) fn commit_summary(repo: &dyn jj_lib::repo::Repo, commit: &Commit) -> String {
-    let mut parts = vec![
-        commit.change_id().reverse_hex()[..8].to_owned(),
-        commit.id().hex()[..8].to_owned(),
-    ];
-    if commit.has_conflict() {
-        parts.push("(conflict)".to_owned());
-    }
-    if pollster::block_on(commit.is_empty(repo)).unwrap_or(false) {
-        parts.push("(empty)".to_owned());
-    }
-    let subject = commit.description().lines().next().unwrap_or_default();
-    parts.push(if subject.is_empty() {
-        "(no description set)".to_owned()
-    } else {
-        subject.to_owned()
-    });
-    parts.join(" ")
-}
-
-/// The CLI's `CommitsValidator` (`push.rs:778-891`), built per remote.
-struct CommitsValidator<'r> {
+/// The CLI's `CommitsValidator` (`push.rs:778-891`), built per remote — with the call's templates,
+/// which render a rejection's summary hint.
+struct CommitsValidator<'r, 't> {
     repo: &'r ReadonlyRepo,
+    templates: Templates<'t>,
     known_heads: Vec<JjCommitId>,
     immutable_heads: Arc<ResolvedRevsetExpression>,
     private_commits: Option<(String, Box<RevsetContainingFn<'r>>)>,
@@ -503,8 +500,8 @@ struct CommitsValidator<'r> {
     allow_conflicts: bool,
 }
 
-impl<'r> CommitsValidator<'r> {
-    fn new(base: &'r ReadonlyRepo, remote: &RemoteName, planner: &mut Planner<'_>) -> Result<Self, MutateError> {
+impl<'r, 't> CommitsValidator<'r, 't> {
+    fn new(base: &'r ReadonlyRepo, remote: &RemoteName, planner: &mut Planner<'t>) -> Result<Self, MutateError> {
         let known_heads = base
             .view()
             .remote_bookmarks(remote)
@@ -522,6 +519,12 @@ impl<'r> CommitsValidator<'r> {
         };
         Ok(Self {
             repo: base,
+            templates: Templates::new(
+                planner.config,
+                planner.immutable,
+                planner.template_startup,
+                planner.repo.workspace(),
+            ),
             known_heads,
             immutable_heads,
             private_commits,
@@ -1158,7 +1161,7 @@ fn revision_targets(planner: &mut Planner<'_>, base: &ReadonlyRepo) -> Result<Ha
 fn classify_skipping(
     planner: &mut Planner<'_>,
     plan: &mut RemotePlan,
-    validator: &mut CommitsValidator<'_>,
+    validator: &mut CommitsValidator<'_, '_>,
     (kind, name, targets): (PushRefKind, &RefName, LocalAndRemoteRef<'_>),
     params: ClassifyParams,
 ) -> Result<(), MutateError> {
@@ -1254,7 +1257,7 @@ fn classify_explicit(
 fn validate_explicit(
     stop_on_abort: bool,
     plan: &mut RemotePlan,
-    validator: &mut CommitsValidator<'_>,
+    validator: &mut CommitsValidator<'_, '_>,
     abort: &mut Option<PushFailure>,
 ) -> Result<(), MutateError> {
     let new_heads: Vec<JjCommitId> = plan
@@ -1267,7 +1270,7 @@ fn validate_explicit(
     let Some(rejected) = validator.validate(&new_heads)? else {
         return Ok(());
     };
-    let rejection = rejected.aborted(validator.repo);
+    let rejection = rejected.aborted(validator.repo, &validator.templates)?;
     if stop_on_abort {
         return Err(MutateError::PushCommitRejected {
             message: rejection.message,
@@ -1290,7 +1293,7 @@ fn validate_explicit(
         match validator.validate(std::slice::from_ref(&after))? {
             Some(rejected) => {
                 row.path = PushPath::Abort;
-                row.rejection = Some(rejected.aborted(validator.repo));
+                row.rejection = Some(rejected.aborted(validator.repo, &validator.templates)?);
             }
             None => passed.push(after),
         }
@@ -1568,10 +1571,11 @@ fn ready_to_push(base: &ReadonlyRepo, plan: &RemotePlan) -> Arc<UserRevsetExpres
 
 /// The CLI's `sign_commits_before_push` (`push.rs:912-1038`): the commits to push that need a
 /// signature signed (`SignBehavior::Own`) and their descendants rebased, in `tx`; immutable ones
-/// skipped with a warning; every remote's new targets remapped.
+/// skipped with a warning (each listed through `templates.commit_summary` over the base repo);
+/// every remote's new targets remapped.
 fn sign_before_push(
     tx: &mut Transaction,
-    immutable: &Arc<UserRevsetExpression>,
+    templates: &Templates<'_>,
     plans: &mut [RemotePlan],
     sink: &mut Warnings,
 ) -> Result<Option<PushSigning>, MutateError> {
@@ -1587,12 +1591,13 @@ fn sign_before_push(
             .collect()
     };
 
+    let immutable = templates.immutable();
     let skipped: Vec<String> = commits_of(&to_push.intersection(immutable))?
         .into_iter()
         .filter(|commit| needs_signing(commit))
         .take(11)
-        .map(|commit| commit_summary(base.as_ref(), &commit))
-        .collect();
+        .map(|commit| templates.commit_summary(base.as_ref(), &commit))
+        .collect::<Result<_, _>>()?;
     if !skipped.is_empty() {
         sink.push(
             WarningKind::PushSigningSkippedImmutable,
@@ -1850,7 +1855,8 @@ pub(crate) fn git_push(
     }
 
     if crate::config::git_sign_on_push(&ctx.config).map_err(cfg)? {
-        outcome.signing = sign_before_push(&mut tx, &ctx.immutable, &mut plan.remotes, &mut ctx.warnings)?;
+        let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, repo.workspace());
+        outcome.signing = sign_before_push(&mut tx, &templates, &mut plan.remotes, &mut ctx.warnings)?;
     }
     let pushed = push_remotes(&mut tx, &readonly, &plan.remotes, (args, progress, cancel), ctx)?;
     outcome.hints.extend(pushed.hints);

@@ -162,6 +162,12 @@ impl<'c> Templates<'c> {
         }
     }
 
+    /// The immutable set the start-up environment parsed (`::(immutable_heads() | root())`) —
+    /// what the rewritability guard resolves.
+    pub(crate) fn immutable(&self) -> &Arc<UserRevsetExpression> {
+        self.immutable
+    }
+
     /// The environment, loaded on first use: the `[revset-aliases]` and `[fileset-aliases]`
     /// tables (each table's warnings recorded once per call), `ui.conflict-marker-style`, and the
     /// id-prefix context disambiguated within the short-prefixes expression.
@@ -364,6 +370,22 @@ impl<'c> Templates<'c> {
         Ok(complete_newline(&String::from_utf8_lossy(
             &renderer.format_plain_text(&temp),
         )))
+    }
+
+    /// The CLI's `write_commit_summary` (`cli_util.rs:1995-2033` @ v0.46.0) as plain text:
+    /// `templates.commit_summary` rendered on `commit` over `repo` — the summary the
+    /// "Could not modify commit:" / "Rejected commit:" hints and push's skipped-signing list show.
+    /// Its diagnostics are dropped, as the CLI's `reparse_valid_template` drops them (they come from
+    /// its start-up parse, which Zanshin does not port).
+    ///
+    /// # Errors
+    ///
+    /// - [`MutateError::Config`] — the key is not a string, or see [`Templates::parse_commit`]:
+    ///   the CLI refuses such a template at start-up, before any verb runs.
+    pub(crate) fn commit_summary(&self, repo: &dyn JjRepo, commit: &Commit) -> Result<String, MutateError> {
+        let text = crate::config::templates_commit_summary(self.config).map_err(cfg)?;
+        let renderer = self.parse_commit(repo, &text, &mut Warnings::default())?;
+        Ok(String::from_utf8_lossy(&renderer.format_plain_text(commit)).into_owned())
     }
 
     /// `jj git push --change`'s bookmark names (`push.rs:1322-1337`): `templates.git_push_bookmark`
@@ -706,6 +728,38 @@ mod tests {
             &mut Warnings::default(),
         ));
         assert_eq!(reason, "Empty bookmark name generated");
+    }
+
+    /// `templates.commit_summary`: the default renders a bookmarked commit with its refs
+    /// ("<bookmark> | <subject>"), a custom template its own text, and an unparsable one refuses as
+    /// config — its diagnostics never reach the call's warnings.
+    #[test]
+    fn the_commit_summary_renders_the_template() {
+        let f = fixture("");
+        let head = f.head();
+        let (mut tx, builder) = detached(&head, "B\n");
+        let commit = pollster::block_on(builder.write(tx.repo_mut())).expect("write");
+        tx.repo_mut().set_local_bookmark_target(
+            "b-mark".as_ref(),
+            jj_lib::op_store::RefTarget::normal(commit.id().clone()),
+        );
+        let summary = f.templates().commit_summary(tx.repo(), &commit).expect("summary");
+        assert!(summary.ends_with(" b-mark | (empty) B"), "{summary}");
+
+        let f = fixture("templates.commit_summary = 'commit_id.short() ++ \" custom\"'\n");
+        let summary = f.templates().commit_summary(tx.repo(), &commit).expect("summary");
+        assert_eq!(
+            summary,
+            format!("{} custom", &jj_lib::object_id::ObjectId::hex(commit.id())[..12])
+        );
+
+        let f = fixture("templates.commit_summary = 'nope('\n");
+        let reason = config_reason(f.templates().commit_summary(tx.repo(), &commit));
+        assert_eq!(reason.lines().next(), Some("Failed to parse template: Syntax error"));
+
+        let f = fixture("templates.commit_summary = 1\n");
+        let reason = config_reason(f.templates().commit_summary(tx.repo(), &commit));
+        assert!(reason.contains("templates.commit_summary"), "{reason}");
     }
 
     /// Output that is not UTF-8 (a file's bytes in a git diff) refuses as trailers and as a push

@@ -254,7 +254,7 @@ pub(crate) fn plan_squash(
     let (sources, destination) = resolve_squash(tx, workspace, options)?;
     let mut ids: Vec<JjCommitId> = sources.iter().map(|c| c.id().clone()).collect();
     ids.push(destination.id().clone());
-    guard_rewritable(tx, &ctx.immutable, &ids)?;
+    guard_rewritable(tx, &ctx.templates(workspace), &ids)?;
     let tx_description = format!("squash commits into {}", destination.id().hex());
 
     let matcher = build_matcher(&options.paths)?;
@@ -611,7 +611,8 @@ pub(crate) fn prepare_split(
     }
 
     let target = resolve_or_wc(tx.repo(), workspace.workspace_name(), options.revision.as_ref())?;
-    let immutable = guard_rewritable(tx, &ctx.immutable, std::slice::from_ref(target.id()))?;
+    let templates = ctx.templates(workspace);
+    let immutable = guard_rewritable(tx, &templates, std::slice::from_ref(target.id()))?;
     let matcher = build_matcher(&options.paths)?;
     let location = if use_move_flags {
         let onto = resolve_ordered(tx, options.onto.as_deref())?;
@@ -620,6 +621,7 @@ pub(crate) fn prepare_split(
         Some(compute_commit_location(
             tx.base_repo().as_ref(),
             &immutable,
+            &templates,
             onto.as_deref(),
             after.as_deref(),
             before.as_deref(),

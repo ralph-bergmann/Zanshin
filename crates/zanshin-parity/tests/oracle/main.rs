@@ -15,6 +15,7 @@ mod compare;
 mod driver;
 mod git_scenarios;
 mod harness;
+mod hints;
 mod ledger;
 mod scenarios;
 mod state;

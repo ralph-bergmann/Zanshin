@@ -1374,3 +1374,54 @@ fn the_immutable_hint_counts_immutable_descendants_and_the_root_has_none() {
         "{err:?}"
     );
 }
+
+/// `fx` with `toml` appended to its repo config, re-opened.
+fn with_repo_config(fx: &mut Fx, toml: &str) {
+    let path = fx.root.join(".jj").join("repo").join("config.toml");
+    let text = fs::read_to_string(&path).expect("repo config");
+    fs::write(&path, format!("{text}\n{toml}")).expect("repo config");
+    fx.repo = Repo::open(&fx.root).expect("reopen");
+    let _ = fx.repo.take_warnings();
+}
+
+/// The immutable refusal's summary hint renders `templates.commit_summary` (the CLI's
+/// `write_commit_summary`, `cli_util.rs:2027-2033` @ v0.46.0, in the hint block `:2061-2065`) —
+/// a custom template's text, in the verb's refusal and in the card row's alike.
+#[test]
+fn a_custom_commit_summary_renders_the_immutable_hint() {
+    let mut fx = base(Some(|fx| &fx.b));
+    with_repo_config(
+        &mut fx,
+        "[templates]\ncommit_summary = 'commit_id.short() ++ \" custom\"'\n",
+    );
+    let b = fx.b.clone();
+    let expected = format!("Could not modify commit: {} custom", &hex(&fx.root, &b)[..12]);
+    let actions = fx.repo.change_actions(&b).expect("change_actions");
+    let row_hints = actions.describe.refusal.as_ref().expect("refused").hints();
+    let err = fx.repo.describe(b, "described\n").expect_err("immutable");
+    assert_eq!(err.hints(), row_hints);
+    assert_eq!(row_hints[0], expected);
+}
+
+/// An unparsable `templates.commit_summary` turns the immutable refusal into the template's
+/// `Config` refusal ("Failed to parse template: …"), with no operation written — the CLI refuses
+/// that config before any verb runs. The card row refuses alike.
+#[test]
+fn a_broken_commit_summary_refuses_the_immutable_rewrite_as_config() {
+    let mut fx = base(Some(|fx| &fx.b));
+    with_repo_config(&mut fx, "[templates]\ncommit_summary = 'nope('\n");
+    let b = fx.b.clone();
+    let actions = fx.repo.change_actions(&b).expect("change_actions");
+    assert!(
+        matches!(&actions.describe.refusal, Some(MutateError::Config { reason }) if reason.starts_with("Failed to parse template: ")),
+        "{:?}",
+        actions.describe
+    );
+    let before = head_op(&fx.root);
+    let err = fx.repo.describe(b, "described\n").expect_err("refused");
+    assert!(
+        matches!(&err, MutateError::Config { reason } if reason.starts_with("Failed to parse template: Syntax error")),
+        "{err:?}"
+    );
+    assert_eq!(head_op(&fx.root), before, "no operation");
+}

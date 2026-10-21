@@ -10,11 +10,12 @@ use std::sync::Arc;
 use futures::TryStreamExt as _;
 use jj_lib::backend::CommitId;
 use jj_lib::repo::Repo as _;
-use jj_lib::revset::{ResolvedRevsetExpression, RevsetExpression, UserRevsetExpression};
+use jj_lib::revset::{ResolvedRevsetExpression, RevsetExpression};
 use jj_lib::transaction::Transaction;
 
 use crate::mutate::{be, refuse_git_root_merge, MutateError};
 use crate::op_support::{resolve_commit_location, resolve_immutable, resolve_ordered, LocationArgs};
+use crate::template::Templates;
 use crate::ChangeId;
 
 /// What [`plan_duplicate`] decided.
@@ -48,7 +49,7 @@ pub(crate) struct DuplicatePlan {
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 pub(crate) fn plan_duplicate(
     tx: &Transaction,
-    immutable: &Arc<UserRevsetExpression>,
+    templates: &Templates<'_>,
     revisions: &[ChangeId],
     location: &LocationArgs<'_>,
 ) -> Result<DuplicatePlan, MutateError> {
@@ -64,11 +65,11 @@ pub(crate) fn plan_duplicate(
     let has_location = !location.onto.is_empty() || inserts;
     let location = if has_location {
         let resolved: Arc<ResolvedRevsetExpression> = if inserts {
-            resolve_immutable(tx.base_repo().as_ref(), immutable)?
+            resolve_immutable(tx.base_repo().as_ref(), templates.immutable())?
         } else {
             RevsetExpression::none()
         };
-        let (parents, children) = resolve_commit_location(tx, &resolved, location, "duplicated commits")?;
+        let (parents, children) = resolve_commit_location(tx, &resolved, templates, location, "duplicated commits")?;
         // The Git backend refuses the duplicates' write for a root merge; refused up front so the
         // preview and the verb agree (Story 9.31).
         refuse_git_root_merge(tx.repo().store(), &parents)?;
@@ -77,7 +78,7 @@ pub(crate) fn plan_duplicate(
         None
     };
     if !inserts {
-        resolve_immutable(tx.base_repo().as_ref(), immutable)?;
+        resolve_immutable(tx.base_repo().as_ref(), templates.immutable())?;
     }
     Ok(DuplicatePlan { to_duplicate, location })
 }
