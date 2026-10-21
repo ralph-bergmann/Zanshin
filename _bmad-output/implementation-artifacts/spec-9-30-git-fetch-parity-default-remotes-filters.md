@@ -23,6 +23,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/remotes.rs GitFetchOutcome
     severity: low
+    resolved: >-
+      2026-10-21 — fixed (spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation, commit 46031ea): the three import-stat fields ride `GitFetchOutcome` / `GitFetchResult` (Rust, FFI, Dart), projected like `git import`.
 ---
 
 <intent-contract>

@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/remotes.rs:447 fetch_error
     severity: medium
+    resolved: >-
+      2026-10-21 — fixed (spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation, commit 46031ea): `RejectedUpdates` is refused `InvalidInput`, the CLI's user error.
   - summary: >-
       fetch_error's GitFetchError::RemoteName arm falls through to Backend and drops the CLI's rename hint.
     evidence: |-
@@ -24,6 +26,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/remotes.rs:447 fetch_error
     severity: low
+    resolved: >-
+      2026-10-21 — fixed (spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation, commit 46031ea): the `RemoteName` arm is `InvalidInput` and ends in the CLI's rename hint.
   - summary: >-
       No test pins that a malformed git.fetch is ignored when --remote or --all-remotes is given, nor that Repo::git_fetch_remotes refuses it.
     evidence: |-
@@ -31,6 +35,8 @@ deferred:
     location: >-
       crates/zanshin-jj/tests/it/git_fetch_parity.rs
     severity: low
+    resolved: >-
+      2026-10-21 — fixed (spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation, commit 46031ea): the fetch resolves `git.fetch` and the `--remote` patterns before listing remotes (push keeps its order, a new deferral).
   - summary: >-
       resolve_fetch_remotes lists the remotes before it reads git.fetch / parses --remote, the CLI does it the other way round.
     evidence: |-
@@ -38,6 +44,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/remotes.rs:290 resolve_fetch_remotes
     severity: low
+    resolved: >-
+      2026-10-21 — fixed (spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation, commit 46031ea): witnessed: `--remote` / `--all-remotes` ignore a malformed `git.fetch`, `git_fetch_remotes` refuses it.
   - summary: >-
       Never-run panic! arms in the loop's new test helpers keep remote_changes.rs and drop_actions.rs below 100% in the new baseline.
     evidence: |-
@@ -45,6 +53,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/remote_changes.rs, crates/zanshin-jj/src/drop_actions.rs
     severity: low
+    resolved: >-
+      2026-10-21 — fixed (spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation, commit 46031ea): the test helpers use `assert!(matches!(…))`; the final gate raises both entries.
 ---
 
 <intent-contract>

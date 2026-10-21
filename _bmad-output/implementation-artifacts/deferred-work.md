@@ -1693,7 +1693,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in the follow-up review of Story 9.30 (bmad-build-auto, 2026-10-21)
 
-- **A fetch reports no import stats beyond `failed_ref_names`: the remote bookmarks/tags it changed and the rewritten-commit count the CLI prints are not in `GitFetchOutcome` / `GitFetchResult`.** Low.
+- ~~**A fetch reports no import stats beyond `failed_ref_names`: the remote bookmarks/tags it changed and the rewritten-commit count the CLI prints are not in `GitFetchOutcome` / `GitFetchResult`.**~~ — RESOLVED 2026-10-21 (spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation, commit 46031ea): the three import-stat fields ride `GitFetchOutcome` / `GitFetchResult` (Rust, FFI, Dart), projected like `git import`. Low.
   - `cmd_git_fetch` prints them through `print_git_import_stats` → `print_imported_changes` (`cli/src/git_util.rs:228-266` @ v0.46.0); `GitImportResult` already carries `changed_bookmarks` / `changed_tags` / `num_rewritten` (`crates/zanshin-jj/src/git.rs` `project_import`), the fetch outcome does not (`crates/zanshin-jj/src/remotes.rs` `GitFetchOutcome`). Pre-existing: the fetch never reported them, and Story 9.30's intent fixes the outcome's fields.
   - **Follow-up:** if the UI wants to say what a fetch brought, add the three fields to `GitFetchOutcome` / `GitFetchResult` (schema append, FFI, Dart), projected like `GitImportResult`.
   - **2026-10-21, Ralph:** add the three fields in the cleanup run after the story loop.
@@ -1725,19 +1725,19 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 Spec: spec-loop-9-24-9-31-fixup-coverage-config-remotes (commits 492220f, 1141db4). All pre-existing; the fix-up only added tests.
 
-- **`fetch_error` maps `GitFetchError::RejectedUpdates` to `MutateError::Backend`; the CLI treats it as a user error.** Medium.
+- ~~**`fetch_error` maps `GitFetchError::RejectedUpdates` to `MutateError::Backend`; the CLI treats it as a user error.**~~ — RESOLVED 2026-10-21 (spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation, commit 46031ea): `RejectedUpdates` is refused `InvalidInput`, the CLI's user error. Medium.
   - jj-cli v0.46.0 `cli/src/command_error.rs:590` (`RejectedUpdates(_) | Subprocess(_) => user_error`); `crates/zanshin-jj/src/remotes.rs` `fetch_error` sends every unmapped variant to `mutate::be`. The fix-up's `fetch_failures_map_to_their_mutate_errors` witnesses today's mapping.
   - **Follow-up:** map `RejectedUpdates` to `InvalidInput` (CLI user_error) and update that test.
-- **`fetch_error`'s `RemoteName` arm drops the CLI's "Run `jj git remote rename` to give a different name." hint.** Low.
+- ~~**`fetch_error`'s `RemoteName` arm drops the CLI's "Run `jj git remote rename` to give a different name." hint.**~~ — RESOLVED 2026-10-21 (spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation, commit 46031ea): the `RemoteName` arm is `InvalidInput` and ends in the CLI's rename hint. Low.
   - CLI `command_error.rs:587-588`; `push_error` (`crates/zanshin-jj/src/push.rs:1703-1705`) keeps it for the same jj-lib variant.
   - **Follow-up:** mirror `push_error`'s arm in `fetch_error`.
-- **A malformed `git.fetch` is read after the remote listing; the CLI reads it first.** Low.
+- ~~**A malformed `git.fetch` is read after the remote listing; the CLI reads it first.**~~ — RESOLVED 2026-10-21 (spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation, commit 46031ea): the fetch resolves `git.fetch` and the `--remote` patterns before listing remotes (push keeps its order, a new deferral). Low.
   - `cmd_git_fetch` (`fetch.rs:142-150` @ v0.46.0) builds the remote expression before `get_all_remote_names`; `resolve_fetch_remotes` (`remotes.rs:290`) lists first, so a non-Git backend with a malformed `git.fetch` answers `jj.not_a_git_repo` where the CLI reports the config error.
   - **Follow-up:** resolve the expression before listing.
-- **Untested: a malformed `git.fetch` is ignored under `--remote` / `--all-remotes`, and `Repo::git_fetch_remotes` refuses it.** Low.
+- ~~**Untested: a malformed `git.fetch` is ignored under `--remote` / `--all-remotes`, and `Repo::git_fetch_remotes` refuses it.**~~ — RESOLVED 2026-10-21 (spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation, commit 46031ea): witnessed: `--remote` / `--all-remotes` ignore a malformed `git.fetch`, `git_fetch_remotes` refuses it. Low.
   - Code is correct (only `FetchRemotes::Default` reads `git.fetch`); nothing pins it.
   - **Follow-up:** two assertions next to `git_fetch_parity::a_malformed_git_fetch_setting_is_a_config_error`.
-- **Never-run `panic!` fallbacks in the loop's new tests keep `remote_changes.rs` (99.31) and `drop_actions.rs` (99.32) below 100% in the baseline.** Low.
+- ~~**Never-run `panic!` fallbacks in the loop's new tests keep `remote_changes.rs` (99.31) and `drop_actions.rs` (99.32) below 100% in the baseline.**~~ — RESOLVED 2026-10-21 (spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation, commit 46031ea): the test helpers use `assert!(matches!(…))`; the final gate raises both entries. Low.
   - `crates/zanshin-jj/src/remote_changes.rs:319`, `:477`; `crates/zanshin-jj/src/drop_actions.rs:463`. The fix-up rewrote the same pattern in `config.rs` as `assert!(matches!(…))`.
   - **Follow-up:** same rewrite there; the gate then raises both entries.
 
