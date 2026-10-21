@@ -48,6 +48,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/push.rs:476
     severity: low
+    resolved: >-
+      2026-10-21 — fixed (spec-9-56-closing-commit-summary-template-hints, commit 348d70f): both hint sites and the skipped-signing list render templates.commit_summary through the jj-cli template engine; oracle witnesses in hints.rs.
 ---
 
 <intent-contract>
