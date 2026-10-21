@@ -63,6 +63,23 @@ deferred: []
 
 ## Review Triage Log
 
+### 2026-10-21 — Review pass
+- verdicts: 13 findings — high 0, medium 0, low 8, false 5, maybe-false 0
+- findings:
+  - `[low]` `[patch]` (blind 1) the struck deferred-work bullet kept a now-false evidence line and a "Follow-up: Story 9.19 …" that silently closed with it, though 9.19's move verb still owes a test of the WRITE — evidence line prefixed "Was:" (past tense), follow-up rewritten to stay live for 9.19's write test (6a5d447).
+  - `[low]` `[patch]` (blind 2) a conflict with a DELETED side (concurrent delete vs move) was not witnessed — added `a_conflicted_bookmark_with_a_deleted_side_counts_only_the_present_side` (adds `B` + absent; onto C / B available, onto A backwards) with shared helpers `commit_id` / `conflict_mark` (6a5d447); a mutation "some add absent ⇒ fast-forward" fails it on `onto A`.
+  - `[low]` `[patch]` (blind 3) rows `onto D` / `onto A` uncommented, the no-op exclusion never mutation-checked — row comments added (6a5d447); mutation `plan_bookmark_move` = no-op when the target is any present add fails both tests; reverted.
+  - `[low]` `[reject]` (blind 4) the spec's AC names only `onto C` and its Code Map says `CommitId::from_hex` while the code uses `try_from_hex` — the fix edits this build's spec; the Results note records the deviation.
+  - `[low]` `[patch]` (blind 5) the test doc cited `as_normal() != Some(target)` as if it lived in `mod.rs` — now names `cli/src/commands/bookmark/move.rs` @ v0.46.0 (6a5d447).
+  - `[low]` `[patch]` (blind 6) the module header says the fixture uses Zanshin's own verbs, the new test writes through jj-lib — `conflict_mark`'s doc says why: no Zanshin verb creates a conflicted bookmark (6a5d447).
+  - `[false]` `[reject]` (blind 7) the `present_adds` order assertion could break if jj-lib canonicalised side order — `RefTarget::from_legacy_form` in jj-lib 0.46.0 keeps the given order, so the precondition is deterministic; a future change would fail loudly on the precondition, not mask the rule.
+  - `[low]` `[patch]` (edge 1) absent-add conflict never exercised — same root as blind 2, patched there.
+  - `[false]` `[reject]` (intent 1) no inline unit test at the `is_fast_forward` surface — the intent names `drop_actions`' bookmark source as the surface to witness ("witness it there now"); the mutation checks prove the indirect witness reaches the fn.
+  - `[false]` `[reject]` (intent 2) no running-CLI comparison — the intent says the CLI is read at `git show v0.46.0`, and there is no Zanshin move verb for the oracle to compare (gate rule: oracle only when a jj verb changed).
+  - `[false]` `[reject]` (intent 3) no `## Auto Run Result`, status mismatch — mid-run state; finalisation writes both.
+  - `[low]` `[patch]` (intent 4) the deferred-work edit was unrequested and left stale child lines — the stale lines are blind 1's root, patched there; resolving the handed item's bullet is every closing run's ledger hygiene (9.23, 9.48, 9.49, 9.51, 9.54).
+  - `[false]` `[reject]` (intent 5) the test pins `onto D` / `onto A` beyond the item — assertions inside the requested witness covering the CLI's own neighbouring rules (no-op exclusion, backwards branch); no production behaviour added.
+
 ## Verification
 
 **Commands:**
@@ -75,3 +92,35 @@ deferred: []
 - Mutation check: `is_fast_forward` changed to require every present add → the new test failed (`onto C` and `onto D` read `backwards`); reverted, `bookmark_ops.rs` unchanged.
 - `cargo clippy -p zanshin-jj --all-targets -- -D warnings` and `cargo fmt --all --check` -- clean.
 - Note: `CommitId::from_hex` takes `&'static str` in jj-core 0.46.0, so the test uses `try_from_hex`.
+
+**Results after the review patches (2026-10-21, commit 6a5d447):**
+- `cargo test -p zanshin-jj --test it drop_actions::` -- 28 passed (both conflicted-bookmark tests included).
+- Mutation checks, each reverted (`bookmark_ops.rs` has no diff): `is_fast_forward` → true when any add is absent: the deleted-side test fails on `onto A`; `plan_bookmark_move` → no-op when the target is any present add: both conflicted tests fail.
+- `cargo clippy -p zanshin-jj --all-targets -- -D warnings` -- clean; `cargo fmt --all --check` -- clean.
+- Not run, per the run's gate rule: `cargo make test` / `test-full` / `coverage` (the story loop runs the gate once at its end). No FFI, schema, jj verb or Dart change, so no codegen, oracle or Dart checks apply.
+
+## Auto Run Result
+
+Status: done (2026-10-21). Blocking condition: none.
+
+**Items.**
+- **Item 1 (the bookmark row's "any side of a conflict" fast-forward rule is untested)** — fixed (6691ae0; review patches 6a5d447). Verified real at `8ecd14c`: `bookmark_ops::is_fast_forward` mirrors the CLI's `fallible_any` over `present_adds()` (`cli/src/commands/bookmark/mod.rs:165-182` @ v0.46.0), but every test used an absent or non-conflicted target. No product decision needed; no production code changed. `tests/it/drop_actions.rs` now witnesses the rule through `Repo::drop_actions`' bookmark source: a conflicted `mark` (adds `B`, `D`) reads onto `C` (only `B` an ancestor) and onto `D` as fast-forwards and onto `A` as backwards; a conflict with a deleted side (adds `B` + absent) reads onto `C` / `B` as fast-forwards and onto `A` as backwards.
+
+No new finding was deferred, so nothing new was mirrored into deferred-work.md; the item's own bullet there is marked RESOLVED, with its 9.19 follow-up kept live (the move verb's WRITE of a conflicted bookmark still owes its own test).
+
+**Files changed.**
+- `crates/zanshin-jj/tests/it/drop_actions.rs` — helpers `commit_id`, `conflict_mark` (writes the conflict through jj-lib, reopens, asserts it); tests `a_conflicted_bookmark_moves_forward_when_any_side_is_an_ancestor`, `a_conflicted_bookmark_with_a_deleted_side_counts_only_the_present_side`.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — the item's bullet resolved.
+
+**Review.** 13 findings: high 0, medium 0, low 8, false 5, maybe-false 0 (triage log above).
+- Patched (6a5d447, 5 entries, all low): stale ledger child lines (blind 1 / intent 4); deleted-side conflict witness (blind 2 / edge 1); row comments + no-op mutation check (blind 3); CLI citation of the no-op exclusion (blind 5); why jj-lib writes the conflict (blind 6).
+- Deferred: none.
+- Rejected: spec self-contradictions (blind 4 — fix edits this build's spec); false: order brittleness (blind 7), unit-test surface (intent 1), running-CLI comparison (intent 2), missing result mid-run (intent 3), extra rows (intent 5).
+
+**Follow-up review recommendation:** false — this first pass patched 0 high and 0 medium entries (patched counts: high 0, medium 0, low 5).
+
+**Matrix audit.** One side an ancestor (onto C), onto one side (onto D), no side an ancestor (onto A): all three rows in `a_conflicted_bookmark_moves_forward_when_any_side_is_an_ancestor`, which ran and passed.
+
+**Residual risks.** None beyond the gate not having run in this loop iteration; the change is test-only.
+
+**Commits.** addc321 (spec), 6691ae0 (test), b180511 (interim finalisation by the implementer), 6a5d447 (review patches), and the finalisation commit of this spec.
