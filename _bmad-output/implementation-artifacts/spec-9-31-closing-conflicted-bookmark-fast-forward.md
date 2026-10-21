@@ -2,7 +2,7 @@
 title: 'Story 9.31 closing run — conflicted-bookmark fast-forward witness'
 type: 'chore'
 created: '2026-10-21'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '8ecd14c05057dd075ec0f4708b40e491fe05ee54'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -69,3 +69,9 @@ deferred: []
 - `cargo test -p zanshin-jj --test it drop_actions::` -- expected: all pass.
 - `cargo clippy -p zanshin-jj --all-targets -- -D warnings` -- expected: clean.
 - `cargo fmt --all --check` -- expected: clean.
+
+**Results (2026-10-21, commit 6691ae0):**
+- `cargo test -p zanshin-jj --test it drop_actions::` -- 27 passed (the new test included).
+- Mutation check: `is_fast_forward` changed to require every present add → the new test failed (`onto C` and `onto D` read `backwards`); reverted, `bookmark_ops.rs` unchanged.
+- `cargo clippy -p zanshin-jj --all-targets -- -D warnings` and `cargo fmt --all --check` -- clean.
+- Note: `CommitId::from_hex` takes `&'static str` in jj-core 0.46.0, so the test uses `try_from_hex`.

@@ -1707,7 +1707,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **The rebase dry run still writes git commit objects, `refs/jj/keep/*` refs and extra-metadata entries for every commit it rebases, on every hover.** Low.
   - `crates/zanshin-jj/src/rebase.rs::rebase_is_no_op` → `apply` → `CommitBuilder::write` → `GitBackend::write_commit`, which keeps a no-gc ref per commit (jj-lib 0.46.0 `git_backend.rs` ~:1467); signing is dropped for the dry run (review patch), but the transaction's drop does not remove the objects and refs, which stay until `jj util gc`.
   - **Follow-up:** if they pile up visibly (colocated `git for-each-ref`), compute the no-op from the parents without writing, or move the check off the hover path.
-- **The bookmark row's "any side of a conflict" fast-forward rule is untested.** Low.
+- ~~**The bookmark row's "any side of a conflict" fast-forward rule is untested.** Low.~~ — RESOLVED 2026-10-21 (closing run, spec-9-31-closing-conflicted-bookmark-fast-forward, commit 6691ae0): `tests/it/drop_actions.rs::a_conflicted_bookmark_moves_forward_when_any_side_is_an_ancestor` conflicts `mark` (adds `B`, `D`) and pins onto `C` / `D` fast-forward, onto `A` backwards; an "all sides" mutation of `is_fast_forward` fails it.
   - `crates/zanshin-jj/src/bookmark_ops.rs::is_fast_forward` loops over `present_adds`; every test uses a non-conflicted bookmark, so an "all sides" regression would pass.
   - **Follow-up:** Story 9.19's move verb adds a conflicted-bookmark test that covers the shared fn.
 - **The original matrix rows `rebase -b`, `revert`, `restore`, `absorb` and `interdiff` are not built.** Low.
