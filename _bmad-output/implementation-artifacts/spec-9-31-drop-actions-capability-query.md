@@ -55,6 +55,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/drop_actions.rs location_rows
     severity: low
+    resolved: >-
+      2026-10-21 — fixed (spec-9-31-matrix-rows-rebase-b-revert-restore-absorb-interdiff, commit ad64376): Ralph wanted the rows; rebase -b, revert, restore, absorb and interdiff rows answer from their own plan fns.
 ---
 
 <intent-contract>
