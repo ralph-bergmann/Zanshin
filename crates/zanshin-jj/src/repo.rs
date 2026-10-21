@@ -1304,6 +1304,55 @@ impl Repo {
         })
     }
 
+    /// Asks `remote_name` what it has now and diffs that against the head view, without fetching
+    /// (Story 9.24, FR-JJ-13c): the Fetch button's "something new upstream" poll.
+    ///
+    /// Runs `git ls-remote --heads --tags -- <remote>` the way jj-lib runs every git (the
+    /// `git.executable-path` executable, the user's git auth, the adopted login-shell environment)
+    /// and compares each advertised branch and tag with the view's `<name>@<remote>` target. An
+    /// annotated tag is compared at the commit it peels to, as jj imports it. The result lists the
+    /// refs that moved, are new or were deleted upstream — bookmarks before tags, each by name; an
+    /// empty list means a fetch would bring nothing new. Tracked local bookmarks play no part.
+    ///
+    /// No pre-verb snapshot (a dirty working copy stays unsnapshotted), no transaction, no
+    /// operation of its own, no object download: views, bookmarks, Git refs and files are left
+    /// untouched. Loading the head the CLI's way may still reconcile divergent operation heads
+    /// (`reconcile divergent operations`, as every jj command does). The call leaves no
+    /// [`Repo::take_precondition`] report; [`Repo::take_warnings`] holds the start-up
+    /// secure-config fix-up's warnings.
+    ///
+    /// It is a network call, so it takes Story 9.52's cancel token like [`Repo::git_fetch`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::Config`] — the start-up fix-up failed, the changed config stack no
+    ///   longer reads, or `git.executable-path` does not read.
+    /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no Git backend; nothing runs.
+    /// - [`crate::MutateError::RemoteNotFound`] — no configured git remote is named `remote_name`
+    ///   exactly; git never runs.
+    /// - [`crate::MutateError::NetworkError`] — git could not be spawned, or failed (network,
+    ///   authentication, transport); jj-lib's texts, e.g. `External git program failed:\n<stderr>`.
+    /// - [`crate::MutateError::Cancelled`] — `cancel`'s token was cancelled before or right after
+    ///   the git work, or git failed after the cancel killed it. Never without a token.
+    /// - [`crate::MutateError::Precondition`] — the head could not be loaded.
+    /// - [`crate::MutateError::Backend`] — git's output is not a ref advertisement, or the
+    ///   workspace could not be reloaded after a config change.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn remote_changes(
+        &mut self,
+        remote_name: &str,
+        cancel: Option<&crate::cancel::CancelGuard>,
+    ) -> Result<Vec<crate::RemoteRefChange>, crate::MutateError> {
+        let mut fix_ups = Vec::new();
+        let refreshed = self.refresh_settings(&mut fix_ups);
+        // After the refresh: a reload replaces `*self`, collector included.
+        self.pending_precondition = None;
+        self.pending_warnings = crate::warning::Warnings::default();
+        self.pending_warnings.extend(fix_ups);
+        refreshed?;
+        crate::remote_changes::remote_changes(&self.workspace, &self.settings, remote_name, cancel)
+    }
+
     /// Reloads the workspace from disk so a freshly-written git config is visible.
     ///
     /// jj-lib's four remote mutators call `save_git_config()`, which writes the git config

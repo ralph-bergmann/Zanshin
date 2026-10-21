@@ -950,6 +950,29 @@ table GitPushRemotes {
   names: [string];
 }
 
+/// The kind of a `RemoteRefChange`'s ref (Story 9.24). Mirrors zanshin_jj::RemoteRefKind.
+enum RemoteRefKind : ubyte { Bookmark, Tag }
+
+/// How a `RemoteRefChange`'s ref differs from the view (Story 9.24). Mirrors
+/// zanshin_jj::RemoteRefChangeKind.
+enum RemoteRefChangeKind : ubyte { Moved, New, Deleted }
+
+/// One ref whose `<name>@<remote>` target in the head view differs from what the remote
+/// advertises now (Story 9.24, `zanshin_git_remote_changes`).
+table RemoteRefChange {
+  kind: RemoteRefKind;
+  name: string;              // the ref's name without its namespace, e.g. "main"
+  change: RemoteRefChangeKind;
+  old_commit_ids: [string];  // the view's target, full hex; several for a conflicted one; empty for New
+  new_commit_id: string;     // the advertised commit (an annotated tag peeled); ABSENT = Deleted
+}
+
+/// `zanshin_git_remote_changes`' answer (Story 9.24): the refs that moved, are new or were
+/// deleted upstream — bookmarks before tags, each by name. Empty = nothing new.
+table RemoteChanges {
+  changes: [RemoteRefChange];
+}
+
 /// Classification of a path from detect_repo (FR-JJ-17).
 /// Mirrors zanshin_jj::RepoKind — order must stay identical.
 enum RepoKind : byte { Jj, Git, Neither, PathNotFound }
@@ -1896,6 +1919,7 @@ union Payload {
   SplitResult,
   GitPushResult,
   GitPushRemotes,
+  RemoteChanges,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@ import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/precondition.dart' show Precondition;
 import '../ffi/push.dart' show GitPushResult;
-import '../ffi/remotes.dart' show Remote;
+import '../ffi/remotes.dart' show Remote, RemoteRefChange;
 import '../ffi/squash_split.dart' show SplitResult, SquashPlan;
 import '../ffi/status.dart' show WorkingCopyStatus;
 import '../ffi/warning.dart' show WarnedList, ZanshinWarning;
@@ -489,6 +489,38 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.gitFetch(_handleId, remoteName);
+  }
+
+  /// Asks [remoteName] what it has now and diffs that against the head view,
+  /// without fetching (Story 9.24): the Fetch button's "something new
+  /// upstream" poll. `git ls-remote --heads --tags` runs the way jj-lib runs
+  /// every git (`git.executable-path`, the user's git auth, the adopted
+  /// login-shell environment); each advertised branch and tag is compared with
+  /// the view's `<name>@<remote>` target, an annotated tag at the commit it
+  /// peels to.
+  ///
+  /// The result lists the refs that moved, were created or deleted upstream —
+  /// bookmarks before tags, each by name; an empty list means a fetch would
+  /// bring nothing new. No snapshot (a dirty working copy stays as it is), no
+  /// operation, no object download; the call's warnings are the start-up
+  /// secure-config fix-up's, and [lastPrecondition] is not touched.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `ffi.null_pointer`, `ffi.invalid_argument` — an interior NUL in
+  /// [remoteName] —, `jj.remote_not_found` — no remote of exactly that name,
+  /// git never runs —, `jj.not_a_git_repo`, `jj.config_error`,
+  /// `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error`).
+  ///
+  /// Returns a [NetworkOperation] like [gitFetch]: the poll runs on a helper
+  /// isolate, later calls on this handle — [close] included — wait for it, and
+  /// `cancel()` kills its git (`jj.cancelled`). git sends no progress, so
+  /// `progress` stays empty.
+  NetworkOperation<WarnedList<RemoteRefChange>> remoteChanges(String remoteName) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.remoteChanges(_handleId, remoteName);
   }
 
   /// Push bookmarks and tags to git remotes (Story 9.20) — the CLI's

@@ -48,6 +48,7 @@ pub(crate) mod mutate;
 pub(crate) mod op_log;
 pub(crate) mod op_support;
 pub(crate) mod push;
+pub(crate) mod remote_changes;
 pub(crate) mod remotes;
 mod repo;
 pub(crate) mod revset;
@@ -90,6 +91,7 @@ pub use push::{
     GitPushArgs, GitPushOutcome, PushCommitRejection, PushCreatedBookmark, PushFailure, PushFailureKind, PushPath,
     PushRef, PushRefKind, PushRefName, PushRefStatus, PushRefusal, PushRemote, PushSigning,
 };
+pub use remote_changes::{RemoteRefChange, RemoteRefChangeKind, RemoteRefKind};
 pub use remotes::{ProgressEvent, ProgressFn, Remote, RemoteError};
 pub use repo::{Backend, CreationOutcome, Repo, RepoError};
 pub use revset::{resolve_revset, RevsetError, DEFAULT_LOG_REVSET};

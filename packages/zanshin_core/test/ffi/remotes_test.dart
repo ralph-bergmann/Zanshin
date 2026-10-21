@@ -160,4 +160,80 @@ void main() {
       );
     });
   });
+
+  group('decodeRemoteChangesEnvelope decode contract (Story 9.24)', () {
+    test('decodes every kind and change; an absent new id stays null', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.RemoteChanges,
+        data: fbs.RemoteChangesObjectBuilder(
+          changes: [
+            fbs.RemoteRefChangeObjectBuilder(
+              kind: fbs.RemoteRefKind.Bookmark,
+              name: 'main',
+              change: fbs.RemoteRefChangeKind.Moved,
+              oldCommitIds: ['aa', 'bb'],
+              newCommitId: 'cc',
+            ),
+            fbs.RemoteRefChangeObjectBuilder(
+              kind: fbs.RemoteRefKind.Bookmark,
+              name: 'x',
+              change: fbs.RemoteRefChangeKind.Deleted,
+              oldCommitIds: ['ee'],
+            ),
+            fbs.RemoteRefChangeObjectBuilder(
+              kind: fbs.RemoteRefKind.Tag,
+              name: 'v1',
+              change: fbs.RemoteRefChangeKind.New,
+              oldCommitIds: const [],
+              newCommitId: 'dd',
+            ),
+          ],
+        ),
+      ).toBytes();
+
+      final List<RemoteRefChange> changes = decodeRemoteChangesEnvelope(bytes);
+
+      expect(changes.map((c) => (c.kind, c.name, c.change, c.oldCommitIds.join(','), c.newCommitId)).toList(), [
+        (RemoteRefKind.bookmark, 'main', RemoteRefChangeKind.moved, 'aa,bb', 'cc'),
+        (RemoteRefKind.bookmark, 'x', RemoteRefChangeKind.deleted, 'ee', null),
+        (RemoteRefKind.tag, 'v1', RemoteRefChangeKind.created, '', 'dd'),
+      ]);
+      expect(changes.first.toString(), contains('main'));
+    });
+
+    test('an empty or absent changes vector is no change', () {
+      for (final List<fbs.RemoteRefChangeObjectBuilder>? changes in [
+        const <fbs.RemoteRefChangeObjectBuilder>[],
+        null,
+      ]) {
+        final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+          ok: true,
+          dataType: fbs.PayloadTypeId.RemoteChanges,
+          data: fbs.RemoteChangesObjectBuilder(changes: changes),
+        ).toBytes();
+        expect(decodeRemoteChangesEnvelope(bytes), isEmpty);
+      }
+    });
+
+    test('throws on an error envelope and ffi.unknown on a wrong payload', () {
+      final Uint8List error = fbs.EnvelopeObjectBuilder(
+        ok: false,
+        error: fbs.FfiErrorObjectBuilder(code: 'jj.network_error', context: 'External git program failed:\n'),
+      ).toBytes();
+      expect(
+        () => decodeRemoteChangesEnvelope(error),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.network_error')),
+      );
+      final Uint8List wrong = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.RepoHandle,
+        data: fbs.RepoHandleObjectBuilder(handle: 0),
+      ).toBytes();
+      expect(
+        () => decodeRemoteChangesEnvelope(wrong),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')),
+      );
+    });
+  });
 }

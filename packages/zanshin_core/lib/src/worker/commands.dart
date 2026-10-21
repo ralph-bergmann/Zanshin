@@ -512,6 +512,30 @@ final class GitFetchCommand extends WorkerCommand implements HandleScopedCommand
   final String remoteName;
 }
 
+/// Ask [remoteName] what it has now and diff that against the head view,
+/// without fetching, in the repo identified by [handleId] (Story 9.24) — the
+/// `git ls-remote` poll behind the Fetch button's badge.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), runs `zanshinGitRemoteChanges(raw, remoteName, cancelToken: …)` on
+/// a helper isolate (Story 9.52) while later commands for the same handle wait,
+/// and replies with a `BufferResult` carrying the FlatBuffers
+/// `Envelope<RemoteChanges>` bytes. No snapshot, no operation, no progress.
+final class GitRemoteChangesCommand extends WorkerCommand implements HandleScopedCommand {
+  const GitRemoteChangesCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.remoteName,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// Name of the configured git remote to ask, exactly.
+  final String remoteName;
+}
+
 /// Push bookmarks and tags to git remotes, in the repo identified by
 /// [handleId] (Story 9.20) — the CLI's `jj git push`, every parameter passed
 /// through.

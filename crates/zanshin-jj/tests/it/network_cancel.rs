@@ -267,6 +267,41 @@ fn a_fetch_cancelled_before_it_starts_never_runs_git() {
     assert_eq!(w.head_op(), before);
 }
 
+/// Story 9.24: a remote-change poll cancelled while its `git ls-remote` runs — the wrapper's git
+/// is killed and the poll refuses as `Cancelled` within seconds, writing nothing.
+// The kill is macOS-only.
+#[cfg(target_os = "macos")]
+#[test]
+fn a_remote_change_poll_cancelled_while_git_runs_is_killed() {
+    let mut w = world();
+    w.slow_git(r#""$GIT" "$@"; s=$?; touch "$MARK/listed"; sleep 30; exit $s"#);
+    let before = w.head_op();
+    let id = token();
+    let guard = cancel::attach(id).expect("attaches");
+    let canceller = cancel_when(w.marker("listed"), id);
+    let started = Instant::now();
+    let result = w.repo.remote_changes("origin", Some(&guard));
+    let elapsed = started.elapsed();
+    canceller.join().unwrap();
+    assert!(matches!(result, Err(MutateError::Cancelled)), "{result:?}");
+    assert!(elapsed < KILLED_WITHIN, "the kill took {elapsed:?}");
+    drop(guard);
+    assert_eq!(w.head_op(), before, "no operation");
+}
+
+/// Story 9.24: a remote-change poll cancelled before it starts never runs git.
+#[test]
+fn a_remote_change_poll_cancelled_before_it_starts_never_runs_git() {
+    let mut w = world();
+    w.slow_git(r#"touch "$MARK/ran"; exec "$GIT" "$@""#);
+    let id = token();
+    cancel::cancel(id);
+    let guard = cancel::attach(id).expect("attaches");
+    let result = w.repo.remote_changes("origin", Some(&guard));
+    assert!(matches!(result, Err(MutateError::Cancelled)), "{result:?}");
+    assert!(!w.marker("ran").exists(), "git never ran");
+}
+
 /// A fetch with a token nobody cancels is a normal fetch, and a cancel after it is a no-op.
 #[test]
 fn an_uncancelled_fetch_finishes_and_a_later_cancel_is_a_no_op() {

@@ -1036,6 +1036,191 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
+        pub const ENUM_MIN_REMOTE_REF_KIND: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_REMOTE_REF_KIND: u8 = 1;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_REMOTE_REF_KIND: [RemoteRefKind; 2] = [RemoteRefKind::Bookmark, RemoteRefKind::Tag];
+
+        /// The kind of a `RemoteRefChange`'s ref (Story 9.24). Mirrors zanshin_jj::RemoteRefKind.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct RemoteRefKind(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl RemoteRefKind {
+            pub const Bookmark: Self = Self(0);
+            pub const Tag: Self = Self(1);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 1;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Bookmark, Self::Tag];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Bookmark => Some("Bookmark"),
+                    Self::Tag => Some("Tag"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for RemoteRefKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for RemoteRefKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for RemoteRefKind {
+            type Output = RemoteRefKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for RemoteRefKind {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for RemoteRefKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for RemoteRefKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_REMOTE_REF_CHANGE_KIND: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_REMOTE_REF_CHANGE_KIND: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_REMOTE_REF_CHANGE_KIND: [RemoteRefChangeKind; 3] = [
+            RemoteRefChangeKind::Moved,
+            RemoteRefChangeKind::New,
+            RemoteRefChangeKind::Deleted,
+        ];
+
+        /// How a `RemoteRefChange`'s ref differs from the view (Story 9.24). Mirrors
+        /// zanshin_jj::RemoteRefChangeKind.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct RemoteRefChangeKind(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl RemoteRefChangeKind {
+            pub const Moved: Self = Self(0);
+            pub const New: Self = Self(1);
+            pub const Deleted: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Moved, Self::New, Self::Deleted];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Moved => Some("Moved"),
+                    Self::New => Some("New"),
+                    Self::Deleted => Some("Deleted"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for RemoteRefChangeKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for RemoteRefChangeKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for RemoteRefChangeKind {
+            type Output = RemoteRefChangeKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for RemoteRefChangeKind {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for RemoteRefChangeKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for RemoteRefChangeKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
         pub const ENUM_MIN_REPO_KIND: i8 = 0;
         #[deprecated(
             since = "2.0.0",
@@ -2343,13 +2528,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 42;
+        pub const ENUM_MAX_PAYLOAD: u8 = 43;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 43] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 44] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -2393,6 +2578,7 @@ pub mod zanshin {
             Payload::SplitResult,
             Payload::GitPushResult,
             Payload::GitPushRemotes,
+            Payload::RemoteChanges,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -2443,9 +2629,10 @@ pub mod zanshin {
             pub const SplitResult: Self = Self(40);
             pub const GitPushResult: Self = Self(41);
             pub const GitPushRemotes: Self = Self(42);
+            pub const RemoteChanges: Self = Self(43);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 42;
+            pub const ENUM_MAX: u8 = 43;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -2490,6 +2677,7 @@ pub mod zanshin {
                 Self::SplitResult,
                 Self::GitPushResult,
                 Self::GitPushRemotes,
+                Self::RemoteChanges,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -2537,6 +2725,7 @@ pub mod zanshin {
                     Self::SplitResult => Some("SplitResult"),
                     Self::GitPushResult => Some("GitPushResult"),
                     Self::GitPushRemotes => Some("GitPushRemotes"),
+                    Self::RemoteChanges => Some("RemoteChanges"),
                     _ => None,
                 }
             }
@@ -12928,6 +13117,332 @@ pub mod zanshin {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("GitPushRemotes");
                 ds.field("names", &self.names());
+                ds.finish()
+            }
+        }
+        pub enum RemoteRefChangeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One ref whose `<name>@<remote>` target in the head view differs from what the remote
+        /// advertises now (Story 9.24, `zanshin_git_remote_changes`).
+        pub struct RemoteRefChange<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RemoteRefChange<'a> {
+            type Inner = RemoteRefChange<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RemoteRefChange<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 6;
+            pub const VT_CHANGE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_OLD_COMMIT_IDS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_NEW_COMMIT_ID: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RemoteRefChange { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RemoteRefChangeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RemoteRefChange<'bldr>> {
+                let mut builder = RemoteRefChangeBuilder::new(_fbb);
+                if let Some(x) = args.new_commit_id {
+                    builder.add_new_commit_id(x);
+                }
+                if let Some(x) = args.old_commit_ids {
+                    builder.add_old_commit_ids(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.add_change(args.change);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RemoteRefKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RemoteRefKind>(RemoteRefChange::VT_KIND, Some(RemoteRefKind::Bookmark))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RemoteRefChange::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn change(&self) -> RemoteRefChangeKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RemoteRefChangeKind>(RemoteRefChange::VT_CHANGE, Some(RemoteRefChangeKind::Moved))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn old_commit_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RemoteRefChange::VT_OLD_COMMIT_IDS, None)
+                }
+            }
+            #[inline]
+            pub fn new_commit_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RemoteRefChange::VT_NEW_COMMIT_ID, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RemoteRefChange<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RemoteRefKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+     .visit_field::<RemoteRefChangeKind>("change", Self::VT_CHANGE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("old_commit_ids", Self::VT_OLD_COMMIT_IDS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("new_commit_id", Self::VT_NEW_COMMIT_ID, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct RemoteRefChangeArgs<'a> {
+            pub kind: RemoteRefKind,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub change: RemoteRefChangeKind,
+            pub old_commit_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub new_commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for RemoteRefChangeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RemoteRefChangeArgs {
+                    kind: RemoteRefKind::Bookmark,
+                    name: None,
+                    change: RemoteRefChangeKind::Moved,
+                    old_commit_ids: None,
+                    new_commit_id: None,
+                }
+            }
+        }
+
+        pub struct RemoteRefChangeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RemoteRefChangeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RemoteRefKind) {
+                self.fbb_
+                    .push_slot::<RemoteRefKind>(RemoteRefChange::VT_KIND, kind, RemoteRefKind::Bookmark);
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RemoteRefChange::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_change(&mut self, change: RemoteRefChangeKind) {
+                self.fbb_.push_slot::<RemoteRefChangeKind>(
+                    RemoteRefChange::VT_CHANGE,
+                    change,
+                    RemoteRefChangeKind::Moved,
+                );
+            }
+            #[inline]
+            pub fn add_old_commit_ids(
+                &mut self,
+                old_commit_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RemoteRefChange::VT_OLD_COMMIT_IDS,
+                    old_commit_ids,
+                );
+            }
+            #[inline]
+            pub fn add_new_commit_id(&mut self, new_commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RemoteRefChange::VT_NEW_COMMIT_ID, new_commit_id);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RemoteRefChangeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RemoteRefChangeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RemoteRefChange<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RemoteRefChange<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RemoteRefChange");
+                ds.field("kind", &self.kind());
+                ds.field("name", &self.name());
+                ds.field("change", &self.change());
+                ds.field("old_commit_ids", &self.old_commit_ids());
+                ds.field("new_commit_id", &self.new_commit_id());
+                ds.finish()
+            }
+        }
+        pub enum RemoteChangesOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_git_remote_changes`' answer (Story 9.24): the refs that moved, are new or were
+        /// deleted upstream — bookmarks before tags, each by name. Empty = nothing new.
+        pub struct RemoteChanges<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RemoteChanges<'a> {
+            type Inner = RemoteChanges<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RemoteChanges<'a> {
+            pub const VT_CHANGES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RemoteChanges { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RemoteChangesArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RemoteChanges<'bldr>> {
+                let mut builder = RemoteChangesBuilder::new(_fbb);
+                if let Some(x) = args.changes {
+                    builder.add_changes(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn changes(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RemoteRefChange<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RemoteRefChange>>,
+                    >>(RemoteChanges::VT_CHANGES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RemoteChanges<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<RemoteRefChange>>,
+                    >>("changes", Self::VT_CHANGES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RemoteChangesArgs<'a> {
+            pub changes: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RemoteRefChange<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for RemoteChangesArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RemoteChangesArgs { changes: None }
+            }
+        }
+
+        pub struct RemoteChangesBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RemoteChangesBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_changes(
+                &mut self,
+                changes: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<RemoteRefChange<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RemoteChanges::VT_CHANGES, changes);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RemoteChangesBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RemoteChangesBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RemoteChanges<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RemoteChanges<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RemoteChanges");
+                ds.field("changes", &self.changes());
                 ds.finish()
             }
         }
@@ -25371,6 +25886,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_remote_changes(&self) -> Option<RemoteChanges<'a>> {
+                if self.data_type() == Payload::RemoteChanges {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { RemoteChanges::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -25426,6 +25956,7 @@ pub mod zanshin {
           Payload::SplitResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<SplitResult>>("Payload::SplitResult", pos),
           Payload::GitPushResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitPushResult>>("Payload::GitPushResult", pos),
           Payload::GitPushRemotes => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitPushRemotes>>("Payload::GitPushRemotes", pos),
+          Payload::RemoteChanges => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<RemoteChanges>>("Payload::RemoteChanges", pos),
           _ => Ok(()),
         }
      })?
@@ -25811,6 +26342,13 @@ pub mod zanshin {
                     }
                     Payload::GitPushRemotes => {
                         if let Some(x) = self.data_as_git_push_remotes() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::RemoteChanges => {
+                        if let Some(x) = self.data_as_remote_changes() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

@@ -123,9 +123,9 @@ the `zanshin-graph` lane crate was removed)*
   in `lib/`.
 - Async: use `Future`/`Stream` plus the single long-running worker isolate (AD-4).
   Never `Isolate.run` for repeated work — send a `WorkerCommand` instead. One exception
-  (Story 9.52): the worker itself runs each network verb (fetch, clone, push) on a
-  short-lived `Isolate.run` helper, once per call, so its event loop keeps forwarding
-  progress; other calls on that handle queue behind it.
+  (Story 9.52): the worker itself runs each network call (fetch, clone, push, and Story
+  9.24's remote-change poll) on a short-lived `Isolate.run` helper, once per call, so its
+  event loop keeps forwarding progress; other calls on that handle queue behind it.
 - Use `sealed class` for `WorkerCommand` hierarchy so the dispatcher's `switch`
   is exhaustive (compile-time guarantee).
 - `NativeFinalizer` MUST be attached to every Dart wrapper holding a Rust handle.
@@ -696,8 +696,9 @@ the `zanshin-graph` lane crate was removed)*
   discipline rule still applies; code-review catches it.
 - **NEVER use `Isolate.run` for repeated work** in Dart. Send the work as a
   `WorkerCommand` on the existing worker bus. The only `Isolate.run` is the worker's
-  once-per-call helper for the network verbs (Story 9.52, `isolate.dart`
-  `_fetchOnHelper` / `_pushOnHelper` / `_cloneOnHelper`).
+  once-per-call helper for the network calls (Story 9.52, `isolate.dart`
+  `_fetchOnHelper` / `_pushOnHelper` / `_cloneOnHelper`, and Story 9.24's
+  `_remoteChangesOnHelper`).
 - **NEVER put JSON on the FFI wire, and NEVER invent alternative envelope shapes.**
   Faillible FFI functions return the FlatBuffers `Envelope` table (ADR-0001);
   composite data is FlatBuffers; lone strings are CString; scalars are plain types.

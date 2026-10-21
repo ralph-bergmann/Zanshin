@@ -1395,6 +1395,56 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_remote_add(
   int len,
 );
 
+/// Ask `remote_name` what it has now and diff that against the head view, without fetching, in
+/// the repo referenced by `handle` (Story 9.24): `git ls-remote --heads --tags`, run the way
+/// jj-lib runs every git, compared with the view's `<name>@<remote>` bookmarks and tags. An
+/// annotated tag is compared at the commit it peels to.
+///
+/// No pre-verb snapshot, no transaction, no operation of its own, no object download; loading
+/// the head may reconcile divergent operation heads, as every jj command does. The envelope
+/// carries the start-up secure-config fix-up's warnings and NO `precondition`.
+///
+/// `cancel_token` (Story 9.52) is `0` (not cancellable) or a token from `zanshin_network_token`;
+/// `zanshin_network_cancel` cancels the poll (its git is killed), and the token ends with this
+/// call.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `RemoteChanges` payload on success — the refs
+/// that moved, are new or were deleted upstream, bookmarks before tags, each by name; EMPTY when
+/// nothing is new.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `remote_name` is a null pointer.
+/// - `ffi.utf8_error` — `remote_name` is not valid UTF-8.
+/// - `jj.remote_not_found` — no configured git remote is named `remote_name` exactly; the name in
+/// `context`. git never runs.
+/// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.config_error` — the start-up fix-up failed, the changed config stack no longer reads, or
+/// `git.executable-path` does not read; detail in `context`.
+/// - `jj.network_error` — git could not be spawned or failed (network, authentication,
+/// transport); jj-lib's text in `context`, e.g. `External git program failed:` + git's stderr.
+/// - `jj.cancelled` — `cancel_token` was cancelled before or right after the git work, or git
+/// failed after the cancel killed it; `context` is "Cancelled". Never without a token.
+/// - `jj.jj_lib_error` — git's output is not a ref advertisement, or any other jj-lib failure;
+/// detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// `remote_name` must be a NUL-terminated UTF-8 C string owned by the caller (Dart
+/// allocates via `toNativeUtf8()` and frees with `calloc.free()` after this call
+/// returns — AR-P-5 inbound rule). Rust only borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Char>, ffi.Uint64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_git_remote_changes(
+  int handle,
+  ffi.Pointer<ffi.Char> remote_name,
+  int cancel_token,
+);
+
 /// Remove a git remote and forget its bookmarks, in the repo referenced by `handle` — the
 /// CLI's `jj git remote remove`.
 ///
@@ -2845,6 +2895,10 @@ const int ENUM_MAX_PUSH_REF_KIND = 1;
 
 const int ENUM_MAX_PUSH_REF_STATUS = 4;
 
+const int ENUM_MAX_REMOTE_REF_CHANGE_KIND = 2;
+
+const int ENUM_MAX_REMOTE_REF_KIND = 1;
+
 const int ENUM_MAX_REPO_KIND = 3;
 
 const int ENUM_MAX_REQUEST_KIND = 37;
@@ -2888,6 +2942,10 @@ const int ENUM_MIN_PUSH_PATH = 0;
 const int ENUM_MIN_PUSH_REF_KIND = 0;
 
 const int ENUM_MIN_PUSH_REF_STATUS = 0;
+
+const int ENUM_MIN_REMOTE_REF_CHANGE_KIND = 0;
+
+const int ENUM_MIN_REMOTE_REF_KIND = 0;
 
 const int ENUM_MIN_REPO_KIND = 0;
 
@@ -3137,6 +3195,12 @@ const int RefDistance_VT_LOWER = 4;
 
 const int RefDistance_VT_UPPER = 6;
 
+const int RemoteRefChange_VT_CHANGE = 8;
+
+const int RemoteRefChange_VT_NEW_COMMIT_ID = 12;
+
+const int RemoteRefChange_VT_OLD_COMMIT_IDS = 10;
+
 const int RepoCloneRequest_VT_BRANCHES = 18;
 
 const int RepoCloneRequest_VT_COLOCATE = 12;
@@ -3178,8 +3242,6 @@ const int SearchMatch_VT_CONFLICT_SIDE = 10;
 const int SearchMatch_VT_HAS_CONFLICT_SIDE = 12;
 
 const int SearchMatch_VT_LINE_NUMBER = 6;
-
-const int ShowEntry_VT_CHANGE = 4;
 
 const int ShowEntry_VT_FILE_CHANGES = 6;
 

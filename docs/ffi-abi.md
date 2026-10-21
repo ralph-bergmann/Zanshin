@@ -37,7 +37,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 71
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 72
 exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -139,7 +139,7 @@ notes — `@` was immutable, `.jjconflict` files present, a failed Git HEAD rese
 are not fields: they are `Envelope.warnings` (Story 9.32). On an error it is PARTIAL — every field
 up to the failing step. The field is **absent** on every other symbol (open,
 init, clone, detect, close, `zanshin_log_defaults`,
-`zanshin_workspace_root`, `zanshin_commit_contents`, the infrastructure symbols, async events, and every
+`zanshin_workspace_root`, `zanshin_commit_contents`, `zanshin_git_remote_changes` (Story 9.24), the infrastructure symbols, async events, and every
 `zanshin_config_*` symbol but one) and whenever
 the call was refused before the verb ran (`ffi.null_pointer`, `ffi.invalid_handle`,
 a request buffer that fails validation). `zanshin_repo_convert` (Story 9.33) carries
@@ -218,7 +218,7 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Thirty-five of the 71 exported symbols take their arguments as a **FlatBuffers
+Thirty-five of the 72 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
 strings. Twenty-five use the handle-scoped three-parameter shape:
 
@@ -464,7 +464,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **71** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **72** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -526,6 +526,7 @@ or no `# Errors` block.
 | `zanshin_file_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileUntrackRequest` | `UntrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.path_not_ignored`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_snapshot` | `(uint64_t handle)` | — | — (no-payload success; the report is `Envelope.precondition`) | `ffi.invalid_handle`, `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error` | 9.26 |
 | `zanshin_git_fetch` | `(uint64_t handle, const char *remote_name, uint64_t cancel_token)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.network_error`, `jj.cancelled`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (domain side + `Progress`: 6.4a; `cancel_token`: 9.52) |
+| `zanshin_git_remote_changes` | `(uint64_t handle, const char *remote_name, uint64_t cancel_token)` | — | `RemoteChanges` (the refs that moved, are new or were deleted upstream; empty = nothing new) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error` | 9.24 |
 | `zanshin_git_push` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitPushRequest` (+ `cancel_token`, see § Cancel) | `GitPushResult` (see § `GitPushResult` payload; a cancel is `failure.kind = Cancelled`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.push_ref_refused`, `jj.push_commit_rejected`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.20 (+`Progress`) |
 | `zanshin_git_import` | `(uint64_t handle)` | — | `GitImportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_export` | `(uint64_t handle)` | — | `GitExportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
@@ -919,8 +920,9 @@ from Story 6-4a during the 3-10 code review (Ralph, 2026-07-04); Story 6-4a's
 
 ## Cancel (Story 9.52)
 
-The three network verbs — `zanshin_git_fetch`, `zanshin_git_push`, `zanshin_repo_clone` — take a
-**cancel token**: `zanshin_git_fetch`'s third argument, the `cancel_token` field of
+The four network calls — `zanshin_git_fetch`, `zanshin_git_push`, `zanshin_repo_clone` and the
+remote-change poll `zanshin_git_remote_changes` (Story 9.24) — take a **cancel token**:
+`zanshin_git_fetch`'s and `zanshin_git_remote_changes`' third argument, the `cancel_token` field of
 `GitPushRequest` / `RepoCloneRequest`. `0` (the absent-field default) is no token: the call is not
 cancellable and never answers `jj.cancelled`.
 
@@ -940,7 +942,9 @@ id, so its `Progress` events are routable before it returns (*Payload schemas* a
   the clone's clean-up scope, so what the clone created is removed (a pre-existing empty
   destination stays) — `jj.clone_cleanup_failed` warns as for any failure there;
 - push: before each remote's git push. There is no checkpoint after the last remote: once every
-  remote's git push has run, the push finishes normally.
+  remote's git push has run, the push finishes normally;
+- remote-change poll: before its `git ls-remote`, and after it before the diff — it writes nothing
+  either way.
 
 A `git` failure while the token is cancelled is the cancel too (a killed git is indistinguishable
 from any other failure in jj-lib); every other error passes through unchanged — a refusal raised
@@ -966,7 +970,7 @@ other process is signalled. Residual: a git without a token on that dir — a co
 add`'s worktree git — is not told apart from the call's. Elsewhere than macOS a cancel sets the flag
 and the checkpoints refuse, nothing more.
 
-**Outcomes.** A cancelled fetch or clone answers `jj.cancelled` (context `Cancelled`); a
+**Outcomes.** A cancelled fetch, clone or remote-change poll answers `jj.cancelled` (context `Cancelled`); a
 cancelled push answers its ok `GitPushResult` with `failure.kind = Cancelled` (message
 `Cancelled`), `recorded = false`, and the per-remote rows saying which remotes' git push completed
 (`PushRemote.finished`, `PushRef.status`) — the push failure model of Story 9.20 keeps a push's
@@ -1489,6 +1493,30 @@ for these remotes (`trackingStatusOf`'s `pushRemotes`); the distances count for 
 remote.
 
 ---
+
+## `RemoteChanges` payload and `zanshin_git_remote_changes` (Story 9.24)
+
+`zanshin_git_remote_changes(handle, remote_name, cancel_token)` answers
+`RemoteChanges { changes: [RemoteRefChange] }` without fetching: it runs `git ls-remote --heads
+--tags -- <remote>` the way jj-lib runs every git (`git.executable-path`, `-c
+core.fsmonitor=false -c submodule.recurse=false --git-dir <store>`, `LC_MESSAGES=C`, the adopted
+environment plus the cancel token; `git_subprocess.rs:102-160` @ v0.46.0) and diffs the
+advertisement against the head view's `<name>@<remote>` targets. `remote_name` must name a
+configured remote exactly (else `jj.remote_not_found`, git never runs). Each `RemoteRefChange` is
+`{ kind: RemoteRefKind (Bookmark | Tag), name, change: RemoteRefChangeKind (Moved | New | Deleted),
+old_commit_ids: [string], new_commit_id: string }`: `New` has no old ids, `Deleted` an ABSENT
+`new_commit_id`, `Moved` the view target's added ids (several for a conflicted target) and the
+advertised commit. Branches are `refs/heads/*` except `HEAD`; tags are `refs/tags/*`, an annotated
+tag at the commit its `^{}` line peels to. Order: bookmarks before tags, each by name; an empty
+list means a fetch would bring nothing new. No pre-verb snapshot, no transaction, no operation of
+its own (loading the head may reconcile divergent operation heads, as every jj command does); the
+envelope carries the start-up fix-up's warnings and NO `precondition`. git's failure is
+`jj.network_error` with jj-lib's own text (`External git program failed:` + stderr, or the spawn
+error); output that is not a ref advertisement is `jj.jj_lib_error`. Not yet applied: the CLI
+fetch's per-remote bookmark/tag filters (Story 9.30), so a ref the fetch would skip stays "new";
+a tag of a non-commit object reads "new" on every poll. Dart: `RepoHandle.remoteChanges(remoteName)`
+→ `NetworkOperation<WarnedList<RemoteRefChange>>`, on the worker's helper isolate like a fetch
+(progress operation `remote_changes`, no events).
 
 ## `GitPushResult` payload and `zanshin_git_push` (Story 9.20)
 

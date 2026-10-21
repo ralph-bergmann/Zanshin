@@ -1166,6 +1166,27 @@ class ZanshinWorker {
     );
   }
 
+  /// Ask [remoteName] what it has now and diff that against the head view,
+  /// without fetching, in the repo identified by [handleId] (Story 9.24). See
+  /// [RepoHandle.remoteChanges].
+  ///
+  /// Sends a [GitRemoteChangesCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<RemoteChanges>` bytes. A [NetworkOperation] like
+  /// [gitFetch]: it runs on a helper isolate, later commands for [handleId]
+  /// wait for it, and `cancel()` stops its git (`jj.cancelled`). git sends no
+  /// progress for it, so `progress` stays empty.
+  NetworkOperation<WarnedList<repo_ffi_remotes.RemoteRefChange>> remoteChanges(int handleId, String remoteName) {
+    final int commandId = _correlator.allocateId();
+    return _networkOperation(
+      commandId: commandId,
+      operation: 'remote_changes',
+      handleId: () => _announcedHandles[commandId],
+      start: () => send(
+        GitRemoteChangesCommand(commandId: commandId, handleId: handleId, remoteName: remoteName),
+      ).then(repo_ffi_remotes.decodeRemoteChangesEnvelopeInternal),
+    );
+  }
+
   /// Push bookmarks and tags to git remotes, in the repo identified by
   /// [handleId] (Story 9.20) — the CLI's `jj git push`. See
   /// [RepoHandle.gitPush].
@@ -2729,6 +2750,28 @@ void _workerEntry(_WorkerInit init) {
             );
           }
 
+        case GitRemoteChangesCommand(:final int handleId, :final String remoteName):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitRemoteChangesCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            scheduler.run(
+              commandId: commandId,
+              handleId: handleId,
+              call: (token) {
+                eventSP.send(_NetworkHandleAnnouncement(commandId, handleId));
+                return _remoteChangesOnHelper(raw, remoteName, token);
+              },
+              reply: (bytes, _) => responseSP.send((commandId, BufferResult(bytes))),
+              fail: (e, _) {
+                log.warning('Worker: remote-changes helper failed for command $commandId: $e');
+                responseSP.send((commandId, BufferResult(_dispatchErrorEnvelope(e))));
+              },
+            );
+          }
+
         case final GitPushCommand push:
           final int handleId = push.handleId;
           final int? raw = handles[handleId]; // lookup — never remove
@@ -3447,7 +3490,9 @@ final class _NetworkScheduler {
       repo_ffi.zanshinNetworkCancel(token);
     } else if (_waiting.values.any(
       (queue) => queue.any(
-        (command) => command.commandId == targetCommandId && (command is GitFetchCommand || command is GitPushCommand),
+        (command) =>
+            command.commandId == targetCommandId &&
+            (command is GitFetchCommand || command is GitRemoteChangesCommand || command is GitPushCommand),
       ),
     )) {
       _cancelledWhileQueued.add(targetCommandId);
@@ -3472,6 +3517,13 @@ final class _NetworkScheduler {
 /// [Isolate.run] sends captures nothing but its arguments.
 Future<Uint8List> _fetchOnHelper(int raw, String remoteName, int token) => Isolate.run(
   () => repo_ffi_mutate.zanshinGitFetch(raw, remoteName, cancelToken: token),
+  debugName: 'ZanshinNetwork',
+);
+
+/// The helper-isolate half of a remote-change poll (Story 9.24); see
+/// [_fetchOnHelper].
+Future<Uint8List> _remoteChangesOnHelper(int raw, String remoteName, int token) => Isolate.run(
+  () => repo_ffi_remotes.zanshinGitRemoteChanges(raw, remoteName, cancelToken: token),
   debugName: 'ZanshinNetwork',
 );
 

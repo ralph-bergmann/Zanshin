@@ -1697,3 +1697,45 @@ fn story_9_52_cancel_tokens_resolve() {
     _ = zanshin_jj::RepoError::Cancelled;
     _ = zanshin_jj::PushFailureKind::Cancelled;
 }
+
+/// Story 9.24: the remote-change poll — its three types, every variant and field, and
+/// `Repo::remote_changes`' full signature.
+#[test]
+fn remote_changes_surface_resolves() {
+    type _RemoteRefChange = zanshin_jj::RemoteRefChange;
+    type _RemoteRefKind = zanshin_jj::RemoteRefKind;
+    type _RemoteRefChangeKind = zanshin_jj::RemoteRefChangeKind;
+
+    _ = zanshin_jj::Repo::remote_changes
+        as fn(
+            &mut zanshin_jj::Repo,
+            &str,
+            Option<&zanshin_jj::cancel::CancelGuard>,
+        ) -> Result<Vec<zanshin_jj::RemoteRefChange>, zanshin_jj::MutateError>;
+    let change = zanshin_jj::RemoteRefChange {
+        kind: zanshin_jj::RemoteRefKind::Bookmark,
+        name: "main".to_owned(),
+        change: zanshin_jj::RemoteRefChangeKind::Moved,
+        old_commit_ids: vec![zanshin_jj::CommitId(String::new())],
+        new_commit_id: None,
+    };
+    let zanshin_jj::RemoteRefChange {
+        kind,
+        name,
+        change,
+        old_commit_ids,
+        new_commit_id,
+    } = change;
+    assert_eq!(
+        (kind, name.as_str(), change),
+        (
+            zanshin_jj::RemoteRefKind::Bookmark,
+            "main",
+            zanshin_jj::RemoteRefChangeKind::Moved
+        )
+    );
+    assert_eq!((old_commit_ids.len(), new_commit_id), (1, None));
+    _ = zanshin_jj::RemoteRefKind::Tag;
+    _ = zanshin_jj::RemoteRefChangeKind::New;
+    _ = zanshin_jj::RemoteRefChangeKind::Deleted;
+}

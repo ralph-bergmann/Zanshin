@@ -48,6 +48,14 @@
 
 #define ENUM_MAX_BOOKMARK_KIND 1
 
+#define ENUM_MIN_REMOTE_REF_KIND 0
+
+#define ENUM_MAX_REMOTE_REF_KIND 1
+
+#define ENUM_MIN_REMOTE_REF_CHANGE_KIND 0
+
+#define ENUM_MAX_REMOTE_REF_CHANGE_KIND 2
+
 #define ENUM_MIN_REPO_KIND 0
 
 #define ENUM_MAX_REPO_KIND 3
@@ -323,6 +331,12 @@ typedef struct {
 
 #define Bookmark_VT_BEHIND 20
 
+#define RemoteRefChange_VT_CHANGE 8
+
+#define RemoteRefChange_VT_OLD_COMMIT_IDS 10
+
+#define RemoteRefChange_VT_NEW_COMMIT_ID 12
+
 #define RepoDetect_VT_SUGGESTED_ROOT 6
 
 #define RepoDetect_VT_SUGGESTED_KIND 8
@@ -484,8 +498,6 @@ typedef struct {
 #define GitExportResult_VT_FAILED_BOOKMARKS 6
 
 #define GitExportResult_VT_FAILED_TAGS 8
-
-#define ShowEntry_VT_CHANGE 4
 
 #define ShowEntry_VT_FILE_CHANGES 6
 
@@ -2126,6 +2138,55 @@ ZanshinBuf *zanshin_remotes(uint64_t handle);
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_git_push_remotes(uint64_t handle);
+
+/**
+ * Ask `remote_name` what it has now and diff that against the head view, without fetching, in
+ * the repo referenced by `handle` (Story 9.24): `git ls-remote --heads --tags`, run the way
+ * jj-lib runs every git, compared with the view's `<name>@<remote>` bookmarks and tags. An
+ * annotated tag is compared at the commit it peels to.
+ *
+ * No pre-verb snapshot, no transaction, no operation of its own, no object download; loading
+ * the head may reconcile divergent operation heads, as every jj command does. The envelope
+ * carries the start-up secure-config fix-up's warnings and NO `precondition`.
+ *
+ * `cancel_token` (Story 9.52) is `0` (not cancellable) or a token from `zanshin_network_token`;
+ * `zanshin_network_cancel` cancels the poll (its git is killed), and the token ends with this
+ * call.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `RemoteChanges` payload on success — the refs
+ * that moved, are new or were deleted upstream, bookmarks before tags, each by name; EMPTY when
+ * nothing is new.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `remote_name` is a null pointer.
+ * - `ffi.utf8_error` — `remote_name` is not valid UTF-8.
+ * - `jj.remote_not_found` — no configured git remote is named `remote_name` exactly; the name in
+ *   `context`. git never runs.
+ * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+ * - `jj.config_error` — the start-up fix-up failed, the changed config stack no longer reads, or
+ *   `git.executable-path` does not read; detail in `context`.
+ * - `jj.network_error` — git could not be spawned or failed (network, authentication,
+ *   transport); jj-lib's text in `context`, e.g. `External git program failed:` + git's stderr.
+ * - `jj.cancelled` — `cancel_token` was cancelled before or right after the git work, or git
+ *   failed after the cancel killed it; `context` is "Cancelled". Never without a token.
+ * - `jj.jj_lib_error` — git's output is not a ref advertisement, or any other jj-lib failure;
+ *   detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`,
+ * `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+ * been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+ * non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+ * (Story 3.9) makes a stale handle unreachable.
+ * `remote_name` must be a NUL-terminated UTF-8 C string owned by the caller (Dart
+ * allocates via `toNativeUtf8()` and frees with `calloc.free()` after this call
+ * returns — AR-P-5 inbound rule). Rust only borrows it for the duration of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_git_remote_changes(uint64_t handle,
+                                       const char *remote_name,
+                                       uint64_t cancel_token);
 
 /**
  * Allocate a cancel token for one network call — `zanshin_git_fetch`, `zanshin_git_push` or

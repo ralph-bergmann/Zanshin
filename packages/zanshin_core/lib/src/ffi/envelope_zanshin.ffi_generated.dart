@@ -503,6 +503,84 @@ class _BookmarkKindReader extends fb.Reader<BookmarkKind> {
   BookmarkKind read(fb.BufferContext bc, int offset) => BookmarkKind.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
+///  The kind of a `RemoteRefChange`'s ref (Story 9.24). Mirrors zanshin_jj::RemoteRefKind.
+enum RemoteRefKind {
+  Bookmark(0),
+  Tag(1);
+
+  final int value;
+  const RemoteRefKind(this.value);
+
+  factory RemoteRefKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return RemoteRefKind.Bookmark;
+      case 1:
+        return RemoteRefKind.Tag;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static RemoteRefKind? _createOrNull(int? value) => value == null ? null : RemoteRefKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 1;
+  static const fb.Reader<RemoteRefKind> reader = _RemoteRefKindReader();
+}
+
+class _RemoteRefKindReader extends fb.Reader<RemoteRefKind> {
+  const _RemoteRefKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  RemoteRefKind read(fb.BufferContext bc, int offset) =>
+      RemoteRefKind.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  How a `RemoteRefChange`'s ref differs from the view (Story 9.24). Mirrors
+///  zanshin_jj::RemoteRefChangeKind.
+enum RemoteRefChangeKind {
+  Moved(0),
+  New(1),
+  Deleted(2);
+
+  final int value;
+  const RemoteRefChangeKind(this.value);
+
+  factory RemoteRefChangeKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return RemoteRefChangeKind.Moved;
+      case 1:
+        return RemoteRefChangeKind.New;
+      case 2:
+        return RemoteRefChangeKind.Deleted;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static RemoteRefChangeKind? _createOrNull(int? value) => value == null ? null : RemoteRefChangeKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<RemoteRefChangeKind> reader = _RemoteRefChangeKindReader();
+}
+
+class _RemoteRefChangeKindReader extends fb.Reader<RemoteRefChangeKind> {
+  const _RemoteRefChangeKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  RemoteRefChangeKind read(fb.BufferContext bc, int offset) =>
+      RemoteRefChangeKind.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
 ///  Classification of a path from detect_repo (FR-JJ-17).
 ///  Mirrors zanshin_jj::RepoKind — order must stay identical.
 enum RepoKind {
@@ -1118,7 +1196,8 @@ enum PayloadTypeId {
   SquashPlan(39),
   SplitResult(40),
   GitPushResult(41),
-  GitPushRemotes(42);
+  GitPushRemotes(42),
+  RemoteChanges(43);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -1211,6 +1290,8 @@ enum PayloadTypeId {
         return PayloadTypeId.GitPushResult;
       case 42:
         return PayloadTypeId.GitPushRemotes;
+      case 43:
+        return PayloadTypeId.RemoteChanges;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -1219,7 +1300,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 42;
+  static const int maxValue = 43;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -7367,6 +7448,201 @@ class GitPushRemotesObjectBuilder extends fb.ObjectBuilder {
     final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
     fbBuilder.startTable(1);
     fbBuilder.addOffset(0, namesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One ref whose `<name>@<remote>` target in the head view differs from what the remote
+///  advertises now (Story 9.24, `zanshin_git_remote_changes`).
+class RemoteRefChange {
+  RemoteRefChange._(this._bc, this._bcOffset);
+  factory RemoteRefChange(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RemoteRefChange> reader = _RemoteRefChangeReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RemoteRefKind get kind => RemoteRefKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  RemoteRefChangeKind get change =>
+      RemoteRefChangeKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 8, 0));
+  List<String>? get oldCommitIds =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  String? get newCommitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 12);
+
+  @override
+  String toString() {
+    return 'RemoteRefChange{kind: ${kind}, name: ${name}, change: ${change}, oldCommitIds: ${oldCommitIds}, newCommitId: ${newCommitId}}';
+  }
+}
+
+class _RemoteRefChangeReader extends fb.TableReader<RemoteRefChange> {
+  const _RemoteRefChangeReader();
+
+  @override
+  RemoteRefChange createObject(fb.BufferContext bc, int offset) => RemoteRefChange._(bc, offset);
+}
+
+class RemoteRefChangeBuilder {
+  RemoteRefChangeBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addKind(RemoteRefKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addChange(RemoteRefChangeKind? change) {
+    fbBuilder.addUint8(2, change?.value);
+    return fbBuilder.offset;
+  }
+
+  int addOldCommitIdsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNewCommitIdOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RemoteRefChangeObjectBuilder extends fb.ObjectBuilder {
+  final RemoteRefKind? _kind;
+  final String? _name;
+  final RemoteRefChangeKind? _change;
+  final List<String>? _oldCommitIds;
+  final String? _newCommitId;
+
+  RemoteRefChangeObjectBuilder({
+    RemoteRefKind? kind,
+    String? name,
+    RemoteRefChangeKind? change,
+    List<String>? oldCommitIds,
+    String? newCommitId,
+  }) : _kind = kind,
+       _name = name,
+       _change = change,
+       _oldCommitIds = oldCommitIds,
+       _newCommitId = newCommitId;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? oldCommitIdsOffset = _oldCommitIds == null
+        ? null
+        : fbBuilder.writeList(_oldCommitIds!.map(fbBuilder.writeString).toList());
+    final int? newCommitIdOffset = _newCommitId == null ? null : fbBuilder.writeString(_newCommitId!);
+    fbBuilder.startTable(5);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, nameOffset);
+    fbBuilder.addUint8(2, _change?.value);
+    fbBuilder.addOffset(3, oldCommitIdsOffset);
+    fbBuilder.addOffset(4, newCommitIdOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_git_remote_changes`' answer (Story 9.24): the refs that moved, are new or were
+///  deleted upstream — bookmarks before tags, each by name. Empty = nothing new.
+class RemoteChanges {
+  RemoteChanges._(this._bc, this._bcOffset);
+  factory RemoteChanges(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RemoteChanges> reader = _RemoteChangesReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<RemoteRefChange>? get changes =>
+      const fb.ListReader<RemoteRefChange>(RemoteRefChange.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'RemoteChanges{changes: ${changes}}';
+  }
+}
+
+class _RemoteChangesReader extends fb.TableReader<RemoteChanges> {
+  const _RemoteChangesReader();
+
+  @override
+  RemoteChanges createObject(fb.BufferContext bc, int offset) => RemoteChanges._(bc, offset);
+}
+
+class RemoteChangesBuilder {
+  RemoteChangesBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addChangesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RemoteChangesObjectBuilder extends fb.ObjectBuilder {
+  final List<RemoteRefChangeObjectBuilder>? _changes;
+
+  RemoteChangesObjectBuilder({
+    List<RemoteRefChangeObjectBuilder>? changes,
+  }) : _changes = changes;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? changesOffset = _changes == null
+        ? null
+        : fbBuilder.writeList(_changes!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, changesOffset);
     return fbBuilder.endTable();
   }
 
@@ -14505,6 +14781,8 @@ class Envelope {
         return GitPushResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 42:
         return GitPushRemotes.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 43:
+        return RemoteChanges.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

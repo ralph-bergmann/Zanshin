@@ -47,6 +47,7 @@ export 'src/ffi/push.dart'
         PushRefusal,
         PushRemote,
         PushSigning;
+export 'src/ffi/remotes.dart' show RemoteRefChange, RemoteRefChangeKind, RemoteRefKind;
 export 'src/ffi/repo.dart' show ObjectHash;
 export 'src/ffi/repo_detect.dart' show RepoDetectResult, RepoKind;
 export 'src/ffi/squash_split.dart' show SplitResult, SquashPlan;

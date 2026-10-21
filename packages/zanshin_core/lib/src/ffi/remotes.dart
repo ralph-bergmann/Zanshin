@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
 
 import '../worker/responses.dart';
@@ -25,6 +27,23 @@ Uint8List zanshinRemotes(int rawHandle) => readToken(zanshin_remotes(rawHandle))
 /// FlatBuffers `Envelope` bytes (Story 9.54): the remotes `jj git push`
 /// without `--remote` would push to. Handle-only, like [zanshinRemotes].
 Uint8List zanshinGitPushRemotes(int rawHandle) => readToken(zanshin_git_push_remotes(rawHandle));
+
+/// Call `zanshin_git_remote_changes` with the raw `u64` handle, [remoteName]
+/// and [cancelToken], and return the FlatBuffers `Envelope` bytes (Story 9.24):
+/// the `git ls-remote` poll, diffed against the head view without fetching.
+///
+/// [cancelToken] (Story 9.52) is `0` (not cancellable) or a token from
+/// `zanshinNetworkToken`; `zanshinNetworkCancel` cancels the poll
+/// (`jj.cancelled`). git sends no progress for it.
+Uint8List zanshinGitRemoteChanges(int rawHandle, String remoteName, {int cancelToken = 0}) {
+  rejectInteriorNul(remoteName, 'remoteName');
+  final ffi.Pointer<Utf8> p = remoteName.toNativeUtf8();
+  try {
+    return readToken(zanshin_git_remote_changes(rawHandle, p.cast(), cancelToken));
+  } finally {
+    calloc.free(p);
+  }
+}
 
 // ── Dart models ───────────────────────────────────────────────────────────────
 
@@ -53,6 +72,68 @@ final class Remote {
   /// configured but happened to equal [url]. Treat `null` as "leave the push URL
   /// alone", not "clear it".
   final String? pushUrl;
+}
+
+/// Which kind of ref a [RemoteRefChange] is about (mirrors
+/// `zanshin_jj::RemoteRefKind`).
+enum RemoteRefKind {
+  /// A bookmark — a Git branch under `refs/heads/`.
+  bookmark,
+
+  /// A tag — under `refs/tags/`.
+  tag,
+}
+
+/// How a [RemoteRefChange]'s ref differs from the view (mirrors
+/// `zanshin_jj::RemoteRefChangeKind`).
+///
+/// The second member is [created], not `new`, ONLY because `new` is a Dart
+/// keyword — it is the same wire value as the schema's and Rust's `New`, as in
+/// `GitRefUpdateKind`.
+enum RemoteRefChangeKind {
+  /// The remote advertises another commit than the view's target (or that
+  /// target is conflicted).
+  moved,
+
+  /// The remote advertises a ref the view has no `<name>@<remote>` target for.
+  /// The wire/Rust member is `New`.
+  created,
+
+  /// The view has a `<name>@<remote>` target the remote no longer advertises.
+  deleted,
+}
+
+/// One ref whose `<name>@<remote>` target in the head view differs from what
+/// the remote advertises now (Story 9.24) — an entry of
+/// `RepoHandle.remoteChanges`' result.
+final class RemoteRefChange {
+  const RemoteRefChange({
+    required this.kind,
+    required this.name,
+    required this.change,
+    required this.oldCommitIds,
+    required this.newCommitId,
+  });
+
+  /// Bookmark or tag.
+  final RemoteRefKind kind;
+
+  /// The ref's name without its namespace, e.g. `"main"`.
+  final String name;
+
+  /// Moved, created upstream, or deleted upstream.
+  final RemoteRefChangeKind change;
+
+  /// The view's target, full hex — several ids for a conflicted target, empty
+  /// for [RemoteRefChangeKind.created].
+  final List<String> oldCommitIds;
+
+  /// The advertised commit, full hex (an annotated tag at the commit it peels
+  /// to); `null` for [RemoteRefChangeKind.deleted].
+  final String? newCommitId;
+
+  @override
+  String toString() => 'RemoteRefChange(${kind.name} $name ${change.name} $oldCommitIds -> $newCommitId)';
 }
 
 // ── Decoder ───────────────────────────────────────────────────────────────────
@@ -117,3 +198,44 @@ WarnedList<String> decodeGitPushRemotesEnvelopeInternal(Uint8List bytes) {
   }
   return WarnedList(names, decodeEnvelopeWarningsInternal(env));
 }
+
+/// Decode a `RemoteChanges` `Envelope` buffer into the changed refs —
+/// bookmarks before tags, each by name; empty when nothing is new — carrying
+/// the call's warnings (Story 9.24).
+///
+/// Exposed for decode-contract tests with synthetic buffers; production calls
+/// go through `ZanshinWorker.remoteChanges`.
+@visibleForTesting
+WarnedList<RemoteRefChange> decodeRemoteChangesEnvelope(Uint8List bytes) => decodeRemoteChangesEnvelopeInternal(bytes);
+
+/// Internal decoder used by production code in `isolate.dart`.
+WarnedList<RemoteRefChange> decodeRemoteChangesEnvelopeInternal(Uint8List bytes) {
+  final env = fbs.Envelope(bytes);
+  if (!env.ok) {
+    throw decodeEnvelopeErrorInternal(env);
+  }
+  final Object? payload = env.data;
+  if (payload is! fbs.RemoteChanges) {
+    throw ZanshinFfiException('ffi.unknown', 'expected RemoteChanges payload, got ${env.dataType}');
+  }
+  return WarnedList(
+    payload.changes?.map(_mapRemoteRefChange).toList() ?? const [],
+    decodeEnvelopeWarningsInternal(env),
+  );
+}
+
+RemoteRefChange _mapRemoteRefChange(fbs.RemoteRefChange c) => RemoteRefChange(
+  kind: switch (c.kind) {
+    fbs.RemoteRefKind.Bookmark => RemoteRefKind.bookmark,
+    fbs.RemoteRefKind.Tag => RemoteRefKind.tag,
+  },
+  name: c.name ?? '',
+  change: switch (c.change) {
+    fbs.RemoteRefChangeKind.Moved => RemoteRefChangeKind.moved,
+    fbs.RemoteRefChangeKind.New => RemoteRefChangeKind.created,
+    fbs.RemoteRefChangeKind.Deleted => RemoteRefChangeKind.deleted,
+  },
+  oldCommitIds: List.unmodifiable(c.oldCommitIds ?? const <String>[]),
+  // Null-for-absence: absent is the wire form of a deleted ref.
+  newCommitId: c.newCommitId,
+);

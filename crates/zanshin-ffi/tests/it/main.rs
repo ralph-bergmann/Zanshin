@@ -31,6 +31,7 @@ mod log_defaults_ffi;
 mod op_log_ffi;
 mod push_ffi;
 mod push_remotes_ffi;
+mod remote_changes_ffi;
 mod remotes_ffi;
 mod repo_config_ffi;
 mod repo_ffi;
