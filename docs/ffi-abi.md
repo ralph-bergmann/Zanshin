@@ -218,9 +218,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Thirty-five of the 72 exported symbols take their arguments as a **FlatBuffers
+Forty of the 75 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Twenty-five use the handle-scoped three-parameter shape:
+strings. Twenty-eight use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -378,7 +378,7 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **37** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **38** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
@@ -391,11 +391,11 @@ lists — `jj new -A` / `-B`, Story 9.48 — are read only by `zanshin_new_chang
 `zanshin_abandon` ignores them) and `SquashRequest`
 (`zanshin_squash` and `zanshin_squash_plan`, Story 9.15 — the plan previews the
 squash its caller is about to run, with the same arguments). Every other table has
-exactly one caller, and no table is orphaned. 37 tables + 2 shared reuses = the 39
+exactly one caller, and no table is orphaned. 38 tables + 2 shared reuses = the 40
 request-buffer symbols (Story 9.20 adds `GitPushRequest`, `RepoCloneRequest` and
 `RepoInitRequest` — `zanshin_repo_init` / `zanshin_repo_clone` took two C strings / a string and
 an `int32_t` backend before; Story 9.30 adds `GitFetchRequest` — `zanshin_git_fetch` took a
-remote name and a cancel token before).
+remote name and a cancel token before; Story 9.31 adds `DropActionsRequest`).
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
 members of the `RevisionRef` union carried by `InterdiffRequest`'s `from`/`to`,
@@ -403,7 +403,8 @@ so they are nested values, never a buffer root: nothing verifies them
 standalone, and they carry no `kind` tag of their own — the tag belongs to the
 request table that owns them. `EnvironmentVariable` (Story 9.36) is the same kind of
 nested helper: the entries of `EnvironmentAdoptRequest`'s `variables` vector, `name` and
-`value` as `[ubyte]` because an environment is not guaranteed UTF-8.
+`value` as `[ubyte]` because an environment is not guaranteed UTF-8. `DropLocation` (Story 9.31) is one
+too: the entries of `DropActionsRequest`'s `locations` vector.
 
 #### The `RequestKind` tag
 
@@ -414,7 +415,7 @@ request table is therefore `kind: RequestKind`, and every reader refuses a buffe
 whose tag is not its own — row 3 of the ladder above, before any other field is
 read and before the handle is borrowed.
 
-The tag is per-**wrapper**, not per-table. For 35 tables the variant name plus
+The tag is per-**wrapper**, not per-table. For 36 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **two** kinds, `NewChange`
 and `Abandon`, because a per-table tag would have left the sharpest collision
 unrefused — a buffer meant as `parents` abandoning those commits instead. Only
@@ -465,7 +466,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **73** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **75** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -520,6 +521,8 @@ or no `# Errors` block.
 | `zanshin_squash` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SquashRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54) |
 | `zanshin_squash_plan` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SquashRequest` | `SquashPlan` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54) |
 | `zanshin_split` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SplitRequest` | `SplitResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54) |
+| `zanshin_drop_actions` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DropActionsRequest` | `DropActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
+| `zanshin_change_actions` | `(uint64_t handle, const char *change_id)` | — | `ChangeActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_commit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.no_working_copy`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.49 |
 | `zanshin_undo` | `(uint64_t handle, bool allow_cross_workspace)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.undo_cross_workspace`, `jj.nothing_to_undo`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (+9.39) |
 | `zanshin_bookmark_create` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkCreateRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.8 |
@@ -1558,6 +1561,44 @@ resolution alone — the Fetch button's enable rule: empty when none matches (wa
 reported; no operation of its own. Dart: `RepoHandle.gitFetch({remotes, refs})` →
 `NetworkOperation<GitFetchResult>` (sealed `FetchRemotes` / `FetchRefs`), and
 `RepoHandle.gitFetchRemotes()` → `WarnedList<String>`.
+
+## `DropActions` / `ChangeActions` payloads (Story 9.31)
+
+The capability query the graph's drag-and-drop and card menu ask BEFORE anything runs.
+`zanshin_drop_actions` takes a `DropActionsRequest` — the source (`source_kind` `Change` with
+`change_id`, `Selection` with `change_id` + `paths`, or `Bookmark` with `bookmark`; a field the kind
+needs that is absent is `jj.invalid_input` "<field> is required") and the `locations`, each a
+`DropLocation` with the CLI's `onto` / `insert_after` / `insert_before` (absent or empty = the flag
+not given). A location that gives `onto` with an insert list, or none of the three, refuses the
+WHOLE call `jj.invalid_input` with `compute_commit_location`'s text, before anything resolves.
+`zanshin_change_actions(handle, change_id)` takes the change id as a C string.
+
+Every row is answered by the verb's own plan — the fn the verb runs before its first write — on
+its own transaction from one head, dropped afterwards: neither call writes an operation of its
+own, only the pre-verb snapshot's, and the envelope's warnings are the precondition's only.
+
+| Table | Fields |
+|-------|--------|
+| `DropActions` | `actions: [DropAction]` — every location's rows, in location order. |
+| `DropAction` | `verb: DropVerb`, `location: uint` (index into the request's `locations`), `outcome: ActionOutcome`. |
+| `ChangeActions` | Seven `ActionOutcome`s, always present: `new_onto` (`new X`), `new_insert_after` (`new -A X`), `new_insert_before` (`new -B X`), `edit`, `describe`, `squash_into_parent` (`squash -r X`), `abandon`. |
+| `ActionOutcome` | `status: ActionStatus` (`Available`, `NoOp`, `Refused`), `refusal: FfiError` (present exactly for `Refused`), `combined_description_needed` (a squash row: two or more non-empty descriptions would be combined — `zanshin_squash_plan` returns the text), `allow_backwards_needed` (a bookmark row: the move is not a fast-forward). |
+
+The rows per location (`DropVerb`, append-only): a `Change` at `onto` — `RebaseSource`
+(`rebase -s S -o T…`), `RebaseRevisions` (`rebase -r S -o T…`), `Squash` (`squash --from S --into
+T`, only for exactly one target), `NewMerge` (`new T… S`), `Duplicate` (`duplicate S -o T…`); a
+`Change` at `-A`/`-B` — `RebaseRevisions`. A `Selection` at `onto` with one target — `Squash` with
+the paths; at `-A`/`-B` — `Split` (`split -r S <paths> -A/-B …`). A `Bookmark` at `onto` with one
+target — `BookmarkMove` (`bookmark move N --to T`). `NoOp` means the verb would write no
+operation (a rebase whose planned move changes nothing, a squash with nothing to squash, a
+bookmark already at the target or of a name no local bookmark has); only those three report it.
+
+A row's `refusal` is the `FfiError` the verb's own wrapper returns, mapped through the same
+`map_mutate_err` — same code, same `context` (`jj.invalid_input`, `jj.change_not_found` for an id
+that does not resolve, `jj.immutable`, `jj.config_error`). A jj-lib failure in any row fails the
+whole call `jj.jj_lib_error`. Dart: `RepoHandle.dropActions(source, locations)` → `DropActions`
+(sealed `DropSource`: `ChangeDropSource` / `SelectionDropSource` / `BookmarkDropSource`; a refusal
+is an `ActionRefusal(code, context)`), `RepoHandle.changeActions(changeId)` → `ChangeActions`.
 
 ## `GitPushResult` payload and `zanshin_git_push` (Story 9.20)
 

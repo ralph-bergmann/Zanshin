@@ -28,6 +28,20 @@ export 'src/ffi/config.dart'
         MissingRepoConfig,
         WorkingCopyAuthor;
 export 'src/ffi/diagnostics.dart' show Diagnostics, GetDiagnostics, ZanshinDiagnosticsModule;
+export 'src/ffi/drop_actions.dart'
+    show
+        ActionOutcome,
+        ActionRefusal,
+        ActionStatus,
+        BookmarkDropSource,
+        ChangeActions,
+        ChangeDropSource,
+        DropAction,
+        DropActions,
+        DropLocation,
+        DropSource,
+        DropVerb,
+        SelectionDropSource;
 export 'src/ffi/fetch.dart'
     show
         AllFetchRemotes,

@@ -355,6 +355,66 @@ pub(crate) fn delete(
     Ok(finished.mutation)
 }
 
+/// What `jj bookmark move <name> --to <target>` would do to the one LOCAL bookmark named exactly
+/// `name` (Story 9.31) — the plan of `cmd_bookmark_move` (`cli/src/commands/bookmark/move.rs` @
+/// v0.46.0) for an exact name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BookmarkMovePlan {
+    /// Nothing to move: no local bookmark has that name, or it already points at the target (the
+    /// CLI excludes such no-op matches, then says "No bookmarks to update.").
+    NoOp,
+    /// The move is a fast-forward: allowed as is.
+    FastForward,
+    /// The move goes backwards or sideways: the CLI refuses it ("Refusing to move bookmark
+    /// backwards or sideways: <name>") unless `--allow-backwards` is given.
+    Backwards,
+}
+
+/// Plans moving the local bookmark `name` to `target`, an already-resolved commit — the CLI
+/// resolves `--to` before it matches names. A bookmark already at `target`, or no local bookmark
+/// of that exact name, is [`BookmarkMovePlan::NoOp`]; otherwise the CLI's `is_fast_forward`
+/// (`bookmark/mod.rs:165-182`) decides between [`BookmarkMovePlan::FastForward`] and
+/// [`BookmarkMovePlan::Backwards`]. Reads the view of `repo` only. `drop_actions`' bookmark row
+/// calls it today; the bookmark move verb (Story 9.19) is meant to call the same fn.
+///
+/// # Errors
+///
+/// - [`MutateError::Backend`] — an index read failed.
+pub(crate) fn plan_bookmark_move(
+    repo: &dyn jj_lib::repo::Repo,
+    name: &str,
+    target: &jj_lib::backend::CommitId,
+) -> Result<BookmarkMovePlan, MutateError> {
+    let old = repo.view().get_local_bookmark(RefName::new(name));
+    if old.is_absent() || old.as_normal() == Some(target) {
+        return Ok(BookmarkMovePlan::NoOp);
+    }
+    Ok(if is_fast_forward(repo, old, target)? {
+        BookmarkMovePlan::FastForward
+    } else {
+        BookmarkMovePlan::Backwards
+    })
+}
+
+/// The CLI's `is_fast_forward` (`bookmark/mod.rs:165-182` @ v0.46.0): some present add of the old
+/// target is an ancestor of the new one — "any", not "all", so a conflicted bookmark can be
+/// resolved by moving it to a descendant of one side. An absent old target is a fast-forward.
+fn is_fast_forward(
+    repo: &dyn jj_lib::repo::Repo,
+    old_target: &RefTarget,
+    new_target_id: &jj_lib::backend::CommitId,
+) -> Result<bool, MutateError> {
+    if !old_target.is_present() {
+        return Ok(true);
+    }
+    for old in old_target.present_adds() {
+        if pollster::block_on(repo.index().is_ancestor(old, new_target_id)).map_err(mutate::be)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 #[cfg(test)]
 mod tests {
     use jj_lib::str_util::StringMatcher;
@@ -480,5 +540,25 @@ mod tests {
         let alternation = union_matcher(&["exact:\"a\" | exact:\"b\"".to_owned()]).expect("a `|` parses");
         assert!(alternation.is_match("a") && alternation.is_match("b"));
         assert!(!alternation.is_match("c"));
+    }
+
+    /// Story 9.31: the CLI's `is_fast_forward` counts an ABSENT old target as a fast-forward —
+    /// unreachable through `plan_bookmark_move`, which answers no-op for a missing bookmark first,
+    /// so witnessed here directly — and a commit as its own ancestor.
+    #[test]
+    fn is_fast_forward_counts_an_absent_old_target_as_a_fast_forward() {
+        use jj_lib::op_store::RefTarget;
+        test_helpers::pin_test_env();
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let repo = crate::Repo::init(&crate::InitOptions {
+            path: tmp.path().to_owned(),
+            ..Default::default()
+        })
+        .result
+        .expect("init");
+        let head = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("head");
+        let root = jj_lib::repo::Repo::store(head.as_ref()).root_commit_id().clone();
+        assert!(super::is_fast_forward(head.as_ref(), &RefTarget::absent(), &root).expect("absent"));
+        assert!(super::is_fast_forward(head.as_ref(), &RefTarget::normal(root.clone()), &root).expect("itself"));
     }
 }

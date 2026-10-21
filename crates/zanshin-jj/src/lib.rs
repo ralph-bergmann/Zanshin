@@ -40,6 +40,8 @@ pub(crate) mod config_cmd;
 pub(crate) mod convert;
 pub(crate) mod creation;
 pub(crate) mod detect;
+pub(crate) mod drop_actions;
+pub(crate) mod duplicate;
 pub(crate) mod environment;
 pub(crate) mod file;
 pub(crate) mod git;
@@ -48,6 +50,7 @@ pub(crate) mod mutate;
 pub(crate) mod op_log;
 pub(crate) mod op_support;
 pub(crate) mod push;
+pub(crate) mod rebase;
 pub(crate) mod remote_changes;
 pub(crate) mod remotes;
 mod repo;
@@ -81,6 +84,9 @@ pub use config_cmd::{
 pub use convert::{convert_colocated, convert_import};
 pub use creation::{CloneOptions, InitOptions, ObjectHash};
 pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};
+pub use drop_actions::{
+    ActionOutcome, ActionStatus, ChangeActions, DropAction, DropActions, DropLocation, DropSource, DropVerb,
+};
 pub use environment::adopt_environment;
 pub use file::{AnnotationLine, FileContents, FileEntry, FileError, FileSearch, FileType, SearchMatch, ShownFile};
 pub use git::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate, GitRefUpdateKind};

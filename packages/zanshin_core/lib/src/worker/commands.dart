@@ -2,6 +2,7 @@
 
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 import '../ffi/config.dart' show ConfigScope, ConfigTarget;
+import '../ffi/drop_actions.dart' show DropLocation, DropSource;
 import '../ffi/fetch.dart' show FetchRefs, FetchRemotes;
 import '../ffi/repo.dart' show ObjectHash;
 import '../ffi/workspace.dart' show SparseInheritance;
@@ -1509,6 +1510,53 @@ final class SquashPlanCommand extends WorkerCommand implements HandleScopedComma
 
   /// As [SquashCommand.keepEmptied].
   final bool keepEmptied;
+}
+
+/// Preview which verbs [source] can run at each of [locations], in the repo
+/// identified by [handleId] (Story 9.31). Writes no operation of its own.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinDropActions(raw, source, locations)`, and replies
+/// with a `BufferResult` carrying the FlatBuffers `Envelope<DropActions>`
+/// bytes.
+final class DropActionsCommand extends WorkerCommand implements HandleScopedCommand {
+  const DropActionsCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.source,
+    required this.locations,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// What is dragged.
+  final DropSource source;
+
+  /// Where it is dropped.
+  final List<DropLocation> locations;
+}
+
+/// Preview the card menu's verbs for [changeId], in the repo identified by
+/// [handleId] (Story 9.31). Writes no operation of its own.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinChangeActions(raw, changeId)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<ChangeActions>` bytes.
+final class ChangeActionsCommand extends WorkerCommand implements HandleScopedCommand {
+  const ChangeActionsCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.changeId,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// jj reverse-hex change identifier of the card.
+  final String changeId;
 }
 
 /// Split a revision in two, in the repo identified by [handleId] (Story 9.15)

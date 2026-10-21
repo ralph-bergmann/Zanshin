@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 38;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 39;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 39] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 40] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -63,6 +63,7 @@ pub mod zanshin {
             RequestKind::RepoClone,
             RequestKind::RepoInit,
             RequestKind::GitFetch,
+            RequestKind::DropActions,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -80,7 +81,7 @@ pub mod zanshin {
         /// named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
         /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
         /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-        /// squash, never a different verb. For the other 34 tables the variant name plus `Request` IS
+        /// squash, never a different verb. For the other 35 tables the variant name plus `Request` IS
         /// the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -133,9 +134,10 @@ pub mod zanshin {
             pub const RepoClone: Self = Self(36);
             pub const RepoInit: Self = Self(37);
             pub const GitFetch: Self = Self(38);
+            pub const DropActions: Self = Self(39);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 38;
+            pub const ENUM_MAX: u8 = 39;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -176,6 +178,7 @@ pub mod zanshin {
                 Self::RepoClone,
                 Self::RepoInit,
                 Self::GitFetch,
+                Self::DropActions,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -219,6 +222,7 @@ pub mod zanshin {
                     Self::RepoClone => Some("RepoClone"),
                     Self::RepoInit => Some("RepoInit"),
                     Self::GitFetch => Some("GitFetch"),
+                    Self::DropActions => Some("DropActions"),
                     _ => None,
                 }
             }
@@ -947,6 +951,102 @@ pub mod zanshin {
         }
 
         impl ::flatbuffers::SimpleToVerifyInSlice for ConfigScope {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_DROP_SOURCE_KIND: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_DROP_SOURCE_KIND: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_DROP_SOURCE_KIND: [DropSourceKind; 3] = [
+            DropSourceKind::Change,
+            DropSourceKind::Selection,
+            DropSourceKind::Bookmark,
+        ];
+
+        /// What `zanshin_drop_actions` previews as dragged (Story 9.31). Member order IS the wire
+        /// value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct DropSourceKind(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl DropSourceKind {
+            pub const Change: Self = Self(0);
+            pub const Selection: Self = Self(1);
+            pub const Bookmark: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Change, Self::Selection, Self::Bookmark];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Change => Some("Change"),
+                    Self::Selection => Some("Selection"),
+                    Self::Bookmark => Some("Bookmark"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for DropSourceKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for DropSourceKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for DropSourceKind {
+            type Output = DropSourceKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for DropSourceKind {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for DropSourceKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for DropSourceKind {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -1794,6 +1894,216 @@ pub mod zanshin {
         }
 
         impl ::flatbuffers::SimpleToVerifyInSlice for TopologyRefKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_DROP_VERB: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_DROP_VERB: u8 = 6;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_DROP_VERB: [DropVerb; 7] = [
+            DropVerb::RebaseSource,
+            DropVerb::RebaseRevisions,
+            DropVerb::Squash,
+            DropVerb::NewMerge,
+            DropVerb::Duplicate,
+            DropVerb::Split,
+            DropVerb::BookmarkMove,
+        ];
+
+        /// The verb a `DropAction` row previews (`S` the source, `T…` the location's ids):
+        /// `rebase -s S -o T…`, `rebase -r S -o T…` (or `-A`/`-B`), `squash --from S --into T [paths]`,
+        /// `new T… S`, `duplicate S -o T…`, `split -r S <paths> -A/-B …`, `bookmark move N --to T`.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct DropVerb(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl DropVerb {
+            pub const RebaseSource: Self = Self(0);
+            pub const RebaseRevisions: Self = Self(1);
+            pub const Squash: Self = Self(2);
+            pub const NewMerge: Self = Self(3);
+            pub const Duplicate: Self = Self(4);
+            pub const Split: Self = Self(5);
+            pub const BookmarkMove: Self = Self(6);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 6;
+            pub const ENUM_VALUES: &'static [Self] = &[
+                Self::RebaseSource,
+                Self::RebaseRevisions,
+                Self::Squash,
+                Self::NewMerge,
+                Self::Duplicate,
+                Self::Split,
+                Self::BookmarkMove,
+            ];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::RebaseSource => Some("RebaseSource"),
+                    Self::RebaseRevisions => Some("RebaseRevisions"),
+                    Self::Squash => Some("Squash"),
+                    Self::NewMerge => Some("NewMerge"),
+                    Self::Duplicate => Some("Duplicate"),
+                    Self::Split => Some("Split"),
+                    Self::BookmarkMove => Some("BookmarkMove"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for DropVerb {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for DropVerb {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for DropVerb {
+            type Output = DropVerb;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for DropVerb {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for DropVerb {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for DropVerb {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_ACTION_STATUS: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_ACTION_STATUS: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_ACTION_STATUS: [ActionStatus; 3] =
+            [ActionStatus::Available, ActionStatus::NoOp, ActionStatus::Refused];
+
+        /// Whether a previewed verb would run: write an operation (`Available`), write none (`NoOp` — only
+        /// rebase, squash and bookmark move), or refuse (`Refused`).
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct ActionStatus(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl ActionStatus {
+            pub const Available: Self = Self(0);
+            pub const NoOp: Self = Self(1);
+            pub const Refused: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Available, Self::NoOp, Self::Refused];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Available => Some("Available"),
+                    Self::NoOp => Some("NoOp"),
+                    Self::Refused => Some("Refused"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for ActionStatus {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for ActionStatus {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for ActionStatus {
+            type Output = ActionStatus;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for ActionStatus {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for ActionStatus {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for ActionStatus {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -2724,13 +3034,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 45;
+        pub const ENUM_MAX_PAYLOAD: u8 = 47;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 46] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 48] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -2777,6 +3087,8 @@ pub mod zanshin {
             Payload::RemoteChanges,
             Payload::GitFetchResult,
             Payload::GitFetchRemotes,
+            Payload::DropActions,
+            Payload::ChangeActions,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -2830,9 +3142,11 @@ pub mod zanshin {
             pub const RemoteChanges: Self = Self(43);
             pub const GitFetchResult: Self = Self(44);
             pub const GitFetchRemotes: Self = Self(45);
+            pub const DropActions: Self = Self(46);
+            pub const ChangeActions: Self = Self(47);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 45;
+            pub const ENUM_MAX: u8 = 47;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -2880,6 +3194,8 @@ pub mod zanshin {
                 Self::RemoteChanges,
                 Self::GitFetchResult,
                 Self::GitFetchRemotes,
+                Self::DropActions,
+                Self::ChangeActions,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -2930,6 +3246,8 @@ pub mod zanshin {
                     Self::RemoteChanges => Some("RemoteChanges"),
                     Self::GitFetchResult => Some("GitFetchResult"),
                     Self::GitFetchRemotes => Some("GitFetchRemotes"),
+                    Self::DropActions => Some("DropActions"),
+                    Self::ChangeActions => Some("ChangeActions"),
                     _ => None,
                 }
             }
@@ -10931,6 +11249,425 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum DropLocationOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One location of `zanshin_drop_actions` (Story 9.31) — the CLI's `-o` / `-A` / `-B`, change ids
+        /// in jj reverse-hex. ABSENT or EMPTY is the flag not given; `onto` excludes the other two, and at
+        /// least one must be given (else `jj.invalid_input` for the whole call).
+        pub struct DropLocation<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for DropLocation<'a> {
+            type Inner = DropLocation<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> DropLocation<'a> {
+            pub const VT_ONTO: ::flatbuffers::VOffsetT = 4;
+            pub const VT_INSERT_AFTER: ::flatbuffers::VOffsetT = 6;
+            pub const VT_INSERT_BEFORE: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DropLocation { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DropLocationArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DropLocation<'bldr>> {
+                let mut builder = DropLocationBuilder::new(_fbb);
+                if let Some(x) = args.insert_before {
+                    builder.add_insert_before(x);
+                }
+                if let Some(x) = args.insert_after {
+                    builder.add_insert_after(x);
+                }
+                if let Some(x) = args.onto {
+                    builder.add_onto(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn onto(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(DropLocation::VT_ONTO, None)
+                }
+            }
+            #[inline]
+            pub fn insert_after(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(DropLocation::VT_INSERT_AFTER, None)
+                }
+            }
+            #[inline]
+            pub fn insert_before(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(DropLocation::VT_INSERT_BEFORE, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for DropLocation<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("onto", Self::VT_ONTO, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_after", Self::VT_INSERT_AFTER, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_before", Self::VT_INSERT_BEFORE, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct DropLocationArgs<'a> {
+            pub onto:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub insert_after:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub insert_before:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for DropLocationArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DropLocationArgs {
+                    onto: None,
+                    insert_after: None,
+                    insert_before: None,
+                }
+            }
+        }
+
+        pub struct DropLocationBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DropLocationBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_onto(
+                &mut self,
+                onto: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DropLocation::VT_ONTO, onto);
+            }
+            #[inline]
+            pub fn add_insert_after(
+                &mut self,
+                insert_after: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DropLocation::VT_INSERT_AFTER, insert_after);
+            }
+            #[inline]
+            pub fn add_insert_before(
+                &mut self,
+                insert_before: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DropLocation::VT_INSERT_BEFORE, insert_before);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DropLocationBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DropLocationBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DropLocation<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for DropLocation<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DropLocation");
+                ds.field("onto", &self.onto());
+                ds.field("insert_after", &self.insert_after());
+                ds.field("insert_before", &self.insert_before());
+                ds.finish()
+            }
+        }
+        pub enum DropActionsRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_drop_actions` (Story 9.31).
+        ///
+        ///   source_kind        `Change` (the change `change_id`), `Selection` (the changes to `paths` —
+        ///                      repo-relative PREFIXES; empty = every path for the squash row, which the
+        ///                      split row refuses with split's no-paths text — inside `change_id`) or
+        ///                      `Bookmark` (the local bookmark named exactly `bookmark`)
+        ///   change_id          the dragged change (jj reverse-hex); `Change` / `Selection` only
+        ///   paths              the selected paths; `Selection` only
+        ///   bookmark           the dragged bookmark's name; `Bookmark` only
+        ///   locations          the drop locations; each row's `location` is an index into this list
+        ///
+        /// A field the `source_kind` needs that is ABSENT is `jj.invalid_input` "<field> is required".
+        pub struct DropActionsRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for DropActionsRequest<'a> {
+            type Inner = DropActionsRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> DropActionsRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SOURCE_KIND: ::flatbuffers::VOffsetT = 6;
+            pub const VT_CHANGE_ID: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_BOOKMARK: ::flatbuffers::VOffsetT = 12;
+            pub const VT_LOCATIONS: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DropActionsRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DropActionsRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DropActionsRequest<'bldr>> {
+                let mut builder = DropActionsRequestBuilder::new(_fbb);
+                if let Some(x) = args.locations {
+                    builder.add_locations(x);
+                }
+                if let Some(x) = args.bookmark {
+                    builder.add_bookmark(x);
+                }
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.change_id {
+                    builder.add_change_id(x);
+                }
+                builder.add_source_kind(args.source_kind);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(DropActionsRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn source_kind(&self) -> DropSourceKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<DropSourceKind>(DropActionsRequest::VT_SOURCE_KIND, Some(DropSourceKind::Change))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DropActionsRequest::VT_CHANGE_ID, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(DropActionsRequest::VT_PATHS, None)
+                }
+            }
+            #[inline]
+            pub fn bookmark(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DropActionsRequest::VT_BOOKMARK, None)
+                }
+            }
+            #[inline]
+            pub fn locations(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DropLocation<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DropLocation>>,
+                    >>(DropActionsRequest::VT_LOCATIONS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for DropActionsRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<DropSourceKind>("source_kind", Self::VT_SOURCE_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("change_id", Self::VT_CHANGE_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("bookmark", Self::VT_BOOKMARK, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<DropLocation>>>>("locations", Self::VT_LOCATIONS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct DropActionsRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub source_kind: DropSourceKind,
+            pub change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub bookmark: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub locations: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DropLocation<'a>>>>,
+            >,
+        }
+        impl<'a> Default for DropActionsRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DropActionsRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    source_kind: DropSourceKind::Change,
+                    change_id: None,
+                    paths: None,
+                    bookmark: None,
+                    locations: None,
+                }
+            }
+        }
+
+        pub struct DropActionsRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DropActionsRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(DropActionsRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_source_kind(&mut self, source_kind: DropSourceKind) {
+                self.fbb_.push_slot::<DropSourceKind>(
+                    DropActionsRequest::VT_SOURCE_KIND,
+                    source_kind,
+                    DropSourceKind::Change,
+                );
+            }
+            #[inline]
+            pub fn add_change_id(&mut self, change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DropActionsRequest::VT_CHANGE_ID, change_id);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DropActionsRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn add_bookmark(&mut self, bookmark: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DropActionsRequest::VT_BOOKMARK, bookmark);
+            }
+            #[inline]
+            pub fn add_locations(
+                &mut self,
+                locations: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<DropLocation<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DropActionsRequest::VT_LOCATIONS, locations);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DropActionsRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DropActionsRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DropActionsRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for DropActionsRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DropActionsRequest");
+                ds.field("kind", &self.kind());
+                ds.field("source_kind", &self.source_kind());
+                ds.field("change_id", &self.change_id());
+                ds.field("paths", &self.paths());
+                ds.field("bookmark", &self.bookmark());
+                ds.field("locations", &self.locations());
+                ds.finish()
+            }
+        }
         pub enum GraphTopologyRequestOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -16971,6 +17708,710 @@ pub mod zanshin {
                 ds.field("mutation", &self.mutation());
                 ds.field("selected_change_id", &self.selected_change_id());
                 ds.field("remaining_change_id", &self.remaining_change_id());
+                ds.finish()
+            }
+        }
+        pub enum ActionOutcomeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One previewed verb's answer. `refusal` is present exactly when `status` is `Refused`: the
+        /// `FfiError` the verb's own wrapper returns for it (same code, same `context`).
+        /// `combined_description_needed` (a squash row) — the squash would combine two or more non-empty
+        /// descriptions, the case the CLI opens its editor for (`zanshin_squash_plan` returns the text);
+        /// `allow_backwards_needed` (a bookmark row) — the move is not a fast-forward.
+        pub struct ActionOutcome<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ActionOutcome<'a> {
+            type Inner = ActionOutcome<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ActionOutcome<'a> {
+            pub const VT_STATUS: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REFUSAL: ::flatbuffers::VOffsetT = 6;
+            pub const VT_COMBINED_DESCRIPTION_NEEDED: ::flatbuffers::VOffsetT = 8;
+            pub const VT_ALLOW_BACKWARDS_NEEDED: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ActionOutcome { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ActionOutcomeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ActionOutcome<'bldr>> {
+                let mut builder = ActionOutcomeBuilder::new(_fbb);
+                if let Some(x) = args.refusal {
+                    builder.add_refusal(x);
+                }
+                builder.add_allow_backwards_needed(args.allow_backwards_needed);
+                builder.add_combined_description_needed(args.combined_description_needed);
+                builder.add_status(args.status);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn status(&self) -> ActionStatus {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ActionStatus>(ActionOutcome::VT_STATUS, Some(ActionStatus::Available))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn refusal(&self) -> Option<FfiError<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<FfiError>>(ActionOutcome::VT_REFUSAL, None)
+                }
+            }
+            #[inline]
+            pub fn combined_description_needed(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ActionOutcome::VT_COMBINED_DESCRIPTION_NEEDED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn allow_backwards_needed(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ActionOutcome::VT_ALLOW_BACKWARDS_NEEDED, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ActionOutcome<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<ActionStatus>("status", Self::VT_STATUS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<FfiError>>("refusal", Self::VT_REFUSAL, false)?
+                    .visit_field::<bool>(
+                        "combined_description_needed",
+                        Self::VT_COMBINED_DESCRIPTION_NEEDED,
+                        false,
+                    )?
+                    .visit_field::<bool>("allow_backwards_needed", Self::VT_ALLOW_BACKWARDS_NEEDED, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ActionOutcomeArgs<'a> {
+            pub status: ActionStatus,
+            pub refusal: Option<::flatbuffers::WIPOffset<FfiError<'a>>>,
+            pub combined_description_needed: bool,
+            pub allow_backwards_needed: bool,
+        }
+        impl<'a> Default for ActionOutcomeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ActionOutcomeArgs {
+                    status: ActionStatus::Available,
+                    refusal: None,
+                    combined_description_needed: false,
+                    allow_backwards_needed: false,
+                }
+            }
+        }
+
+        pub struct ActionOutcomeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ActionOutcomeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_status(&mut self, status: ActionStatus) {
+                self.fbb_
+                    .push_slot::<ActionStatus>(ActionOutcome::VT_STATUS, status, ActionStatus::Available);
+            }
+            #[inline]
+            pub fn add_refusal(&mut self, refusal: ::flatbuffers::WIPOffset<FfiError<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<FfiError>>(ActionOutcome::VT_REFUSAL, refusal);
+            }
+            #[inline]
+            pub fn add_combined_description_needed(&mut self, combined_description_needed: bool) {
+                self.fbb_.push_slot::<bool>(
+                    ActionOutcome::VT_COMBINED_DESCRIPTION_NEEDED,
+                    combined_description_needed,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_allow_backwards_needed(&mut self, allow_backwards_needed: bool) {
+                self.fbb_
+                    .push_slot::<bool>(ActionOutcome::VT_ALLOW_BACKWARDS_NEEDED, allow_backwards_needed, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ActionOutcomeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ActionOutcomeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ActionOutcome<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ActionOutcome<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ActionOutcome");
+                ds.field("status", &self.status());
+                ds.field("refusal", &self.refusal());
+                ds.field("combined_description_needed", &self.combined_description_needed());
+                ds.field("allow_backwards_needed", &self.allow_backwards_needed());
+                ds.finish()
+            }
+        }
+        pub enum DropActionOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One row of `zanshin_drop_actions`' answer; `location` indexes the request's `locations`.
+        pub struct DropAction<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for DropAction<'a> {
+            type Inner = DropAction<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> DropAction<'a> {
+            pub const VT_VERB: ::flatbuffers::VOffsetT = 4;
+            pub const VT_LOCATION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_OUTCOME: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DropAction { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DropActionArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DropAction<'bldr>> {
+                let mut builder = DropActionBuilder::new(_fbb);
+                if let Some(x) = args.outcome {
+                    builder.add_outcome(x);
+                }
+                builder.add_location(args.location);
+                builder.add_verb(args.verb);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn verb(&self) -> DropVerb {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<DropVerb>(DropAction::VT_VERB, Some(DropVerb::RebaseSource))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn location(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(DropAction::VT_LOCATION, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn outcome(&self) -> Option<ActionOutcome<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<ActionOutcome>>(DropAction::VT_OUTCOME, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for DropAction<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<DropVerb>("verb", Self::VT_VERB, false)?
+                    .visit_field::<u32>("location", Self::VT_LOCATION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<ActionOutcome>>("outcome", Self::VT_OUTCOME, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct DropActionArgs<'a> {
+            pub verb: DropVerb,
+            pub location: u32,
+            pub outcome: Option<::flatbuffers::WIPOffset<ActionOutcome<'a>>>,
+        }
+        impl<'a> Default for DropActionArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DropActionArgs {
+                    verb: DropVerb::RebaseSource,
+                    location: 0,
+                    outcome: None,
+                }
+            }
+        }
+
+        pub struct DropActionBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DropActionBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_verb(&mut self, verb: DropVerb) {
+                self.fbb_
+                    .push_slot::<DropVerb>(DropAction::VT_VERB, verb, DropVerb::RebaseSource);
+            }
+            #[inline]
+            pub fn add_location(&mut self, location: u32) {
+                self.fbb_.push_slot::<u32>(DropAction::VT_LOCATION, location, 0);
+            }
+            #[inline]
+            pub fn add_outcome(&mut self, outcome: ::flatbuffers::WIPOffset<ActionOutcome<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<ActionOutcome>>(DropAction::VT_OUTCOME, outcome);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DropActionBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DropActionBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DropAction<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for DropAction<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DropAction");
+                ds.field("verb", &self.verb());
+                ds.field("location", &self.location());
+                ds.field("outcome", &self.outcome());
+                ds.finish()
+            }
+        }
+        pub enum DropActionsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_drop_actions`' answer: every location's rows, in location order.
+        pub struct DropActions<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for DropActions<'a> {
+            type Inner = DropActions<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> DropActions<'a> {
+            pub const VT_ACTIONS: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DropActions { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DropActionsArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DropActions<'bldr>> {
+                let mut builder = DropActionsBuilder::new(_fbb);
+                if let Some(x) = args.actions {
+                    builder.add_actions(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn actions(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DropAction<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DropAction>>,
+                    >>(DropActions::VT_ACTIONS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for DropActions<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<DropAction>>,
+                    >>("actions", Self::VT_ACTIONS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct DropActionsArgs<'a> {
+            pub actions: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DropAction<'a>>>>,
+            >,
+        }
+        impl<'a> Default for DropActionsArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DropActionsArgs { actions: None }
+            }
+        }
+
+        pub struct DropActionsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DropActionsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_actions(
+                &mut self,
+                actions: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<DropAction<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DropActions::VT_ACTIONS, actions);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DropActionsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DropActionsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DropActions<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for DropActions<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DropActions");
+                ds.field("actions", &self.actions());
+                ds.finish()
+            }
+        }
+        pub enum ChangeActionsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_change_actions`' answer: the card menu's verbs for one change `X` — `new X`,
+        /// `new -A X`, `new -B X`, `edit X`, `describe X`, `squash -r X` (with the combined-description
+        /// flag) and `abandon X`. Every field is always present.
+        pub struct ChangeActions<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ChangeActions<'a> {
+            type Inner = ChangeActions<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ChangeActions<'a> {
+            pub const VT_NEW_ONTO: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NEW_INSERT_AFTER: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NEW_INSERT_BEFORE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_EDIT: ::flatbuffers::VOffsetT = 10;
+            pub const VT_DESCRIBE: ::flatbuffers::VOffsetT = 12;
+            pub const VT_SQUASH_INTO_PARENT: ::flatbuffers::VOffsetT = 14;
+            pub const VT_ABANDON: ::flatbuffers::VOffsetT = 16;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ChangeActions { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ChangeActionsArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ChangeActions<'bldr>> {
+                let mut builder = ChangeActionsBuilder::new(_fbb);
+                if let Some(x) = args.abandon {
+                    builder.add_abandon(x);
+                }
+                if let Some(x) = args.squash_into_parent {
+                    builder.add_squash_into_parent(x);
+                }
+                if let Some(x) = args.describe {
+                    builder.add_describe(x);
+                }
+                if let Some(x) = args.edit {
+                    builder.add_edit(x);
+                }
+                if let Some(x) = args.new_insert_before {
+                    builder.add_new_insert_before(x);
+                }
+                if let Some(x) = args.new_insert_after {
+                    builder.add_new_insert_after(x);
+                }
+                if let Some(x) = args.new_onto {
+                    builder.add_new_onto(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn new_onto(&self) -> Option<ActionOutcome<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<ActionOutcome>>(ChangeActions::VT_NEW_ONTO, None)
+                }
+            }
+            #[inline]
+            pub fn new_insert_after(&self) -> Option<ActionOutcome<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<ActionOutcome>>(ChangeActions::VT_NEW_INSERT_AFTER, None)
+                }
+            }
+            #[inline]
+            pub fn new_insert_before(&self) -> Option<ActionOutcome<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<ActionOutcome>>(ChangeActions::VT_NEW_INSERT_BEFORE, None)
+                }
+            }
+            #[inline]
+            pub fn edit(&self) -> Option<ActionOutcome<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<ActionOutcome>>(ChangeActions::VT_EDIT, None)
+                }
+            }
+            #[inline]
+            pub fn describe(&self) -> Option<ActionOutcome<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<ActionOutcome>>(ChangeActions::VT_DESCRIBE, None)
+                }
+            }
+            #[inline]
+            pub fn squash_into_parent(&self) -> Option<ActionOutcome<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<ActionOutcome>>(
+                        ChangeActions::VT_SQUASH_INTO_PARENT,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn abandon(&self) -> Option<ActionOutcome<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<ActionOutcome>>(ChangeActions::VT_ABANDON, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ChangeActions<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<ActionOutcome>>("new_onto", Self::VT_NEW_ONTO, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<ActionOutcome>>(
+                        "new_insert_after",
+                        Self::VT_NEW_INSERT_AFTER,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<ActionOutcome>>(
+                        "new_insert_before",
+                        Self::VT_NEW_INSERT_BEFORE,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<ActionOutcome>>("edit", Self::VT_EDIT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<ActionOutcome>>("describe", Self::VT_DESCRIBE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<ActionOutcome>>(
+                        "squash_into_parent",
+                        Self::VT_SQUASH_INTO_PARENT,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<ActionOutcome>>("abandon", Self::VT_ABANDON, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ChangeActionsArgs<'a> {
+            pub new_onto: Option<::flatbuffers::WIPOffset<ActionOutcome<'a>>>,
+            pub new_insert_after: Option<::flatbuffers::WIPOffset<ActionOutcome<'a>>>,
+            pub new_insert_before: Option<::flatbuffers::WIPOffset<ActionOutcome<'a>>>,
+            pub edit: Option<::flatbuffers::WIPOffset<ActionOutcome<'a>>>,
+            pub describe: Option<::flatbuffers::WIPOffset<ActionOutcome<'a>>>,
+            pub squash_into_parent: Option<::flatbuffers::WIPOffset<ActionOutcome<'a>>>,
+            pub abandon: Option<::flatbuffers::WIPOffset<ActionOutcome<'a>>>,
+        }
+        impl<'a> Default for ChangeActionsArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ChangeActionsArgs {
+                    new_onto: None,
+                    new_insert_after: None,
+                    new_insert_before: None,
+                    edit: None,
+                    describe: None,
+                    squash_into_parent: None,
+                    abandon: None,
+                }
+            }
+        }
+
+        pub struct ChangeActionsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ChangeActionsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_new_onto(&mut self, new_onto: ::flatbuffers::WIPOffset<ActionOutcome<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<ActionOutcome>>(ChangeActions::VT_NEW_ONTO, new_onto);
+            }
+            #[inline]
+            pub fn add_new_insert_after(&mut self, new_insert_after: ::flatbuffers::WIPOffset<ActionOutcome<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<ActionOutcome>>(
+                    ChangeActions::VT_NEW_INSERT_AFTER,
+                    new_insert_after,
+                );
+            }
+            #[inline]
+            pub fn add_new_insert_before(&mut self, new_insert_before: ::flatbuffers::WIPOffset<ActionOutcome<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<ActionOutcome>>(
+                    ChangeActions::VT_NEW_INSERT_BEFORE,
+                    new_insert_before,
+                );
+            }
+            #[inline]
+            pub fn add_edit(&mut self, edit: ::flatbuffers::WIPOffset<ActionOutcome<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<ActionOutcome>>(ChangeActions::VT_EDIT, edit);
+            }
+            #[inline]
+            pub fn add_describe(&mut self, describe: ::flatbuffers::WIPOffset<ActionOutcome<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<ActionOutcome>>(ChangeActions::VT_DESCRIBE, describe);
+            }
+            #[inline]
+            pub fn add_squash_into_parent(&mut self, squash_into_parent: ::flatbuffers::WIPOffset<ActionOutcome<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<ActionOutcome>>(
+                    ChangeActions::VT_SQUASH_INTO_PARENT,
+                    squash_into_parent,
+                );
+            }
+            #[inline]
+            pub fn add_abandon(&mut self, abandon: ::flatbuffers::WIPOffset<ActionOutcome<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<ActionOutcome>>(ChangeActions::VT_ABANDON, abandon);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ChangeActionsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ChangeActionsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ChangeActions<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ChangeActions<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ChangeActions");
+                ds.field("new_onto", &self.new_onto());
+                ds.field("new_insert_after", &self.new_insert_after());
+                ds.field("new_insert_before", &self.new_insert_before());
+                ds.field("edit", &self.edit());
+                ds.field("describe", &self.describe());
+                ds.field("squash_into_parent", &self.squash_into_parent());
+                ds.field("abandon", &self.abandon());
                 ds.finish()
             }
         }
@@ -26713,6 +28154,36 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_drop_actions(&self) -> Option<DropActions<'a>> {
+                if self.data_type() == Payload::DropActions {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { DropActions::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_change_actions(&self) -> Option<ChangeActions<'a>> {
+                if self.data_type() == Payload::ChangeActions {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { ChangeActions::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -26771,6 +28242,8 @@ pub mod zanshin {
           Payload::RemoteChanges => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<RemoteChanges>>("Payload::RemoteChanges", pos),
           Payload::GitFetchResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitFetchResult>>("Payload::GitFetchResult", pos),
           Payload::GitFetchRemotes => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitFetchRemotes>>("Payload::GitFetchRemotes", pos),
+          Payload::DropActions => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<DropActions>>("Payload::DropActions", pos),
+          Payload::ChangeActions => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ChangeActions>>("Payload::ChangeActions", pos),
           _ => Ok(()),
         }
      })?
@@ -27177,6 +28650,20 @@ pub mod zanshin {
                     }
                     Payload::GitFetchRemotes => {
                         if let Some(x) = self.data_as_git_fetch_remotes() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::DropActions => {
+                        if let Some(x) = self.data_as_drop_actions() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::ChangeActions => {
+                        if let Some(x) = self.data_as_change_actions() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

@@ -135,6 +135,7 @@ parity!(
     new_insert_after_immutable_child,
     new_insert_after_no_advance,
     new_insert_loop,
+    new_merge_with_root,
     new_duplicate_parents,
     init_missing_destination,
     init_over_git_colocate,
@@ -231,7 +232,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 181);
+    assert_eq!(SCENARIO_IDS.len(), 182);
 }
 
 #[test]

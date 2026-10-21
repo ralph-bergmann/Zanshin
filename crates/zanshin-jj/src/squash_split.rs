@@ -478,6 +478,34 @@ pub(crate) fn squash_plan(
     })
 }
 
+/// The one description the squash writes without asking — `-m`'s, `-u`'s or the single non-empty
+/// one among the abandoned sources and the destination — or `None` when two or more are non-empty
+/// and the CLI opens its editor (`squash.rs:356-372` @ v0.46.0). The one rule
+/// [`squashed_description`] and [`combined_description_needed`] share.
+fn single_description(decision: &SquashDecision, destination: &Commit) -> Option<String> {
+    match &decision.mode {
+        SquashedDescription::Exact(description) => Some(description.clone()),
+        SquashedDescription::UseDestination => Some(destination.description().to_owned()),
+        // Only the ABANDONED sources' descriptions count — a source that keeps its commit keeps
+        // its description.
+        SquashedDescription::Combine => {
+            let abandoned: Vec<&str> = decision.abandoned.iter().map(Commit::description).collect();
+            try_combine_messages(&abandoned, destination.description())
+        }
+    }
+}
+
+/// Whether the planned squash needs a combined description — the case the CLI opens its editor
+/// for and [`crate::Repo::squash_plan`] returns a text for: something is squashed, the description
+/// is combined (no `-m`, no `-u`) and two or more of the abandoned sources and the destination
+/// are non-empty (Story 9.31).
+pub(crate) fn combined_description_needed(plan: &PlannedSquash) -> bool {
+    plan.squashed.as_ref().is_some_and(|decision| {
+        matches!(decision.mode, SquashedDescription::Combine)
+            && single_description(decision, &plan.destination).is_none()
+    })
+}
+
 /// The squashed destination's description (`squash.rs:356-400` @ v0.46.0), finished on `builder`
 /// — `squash_commits`' detached builder — and whether it is the editor arm.
 ///
@@ -504,15 +532,8 @@ fn squashed_description(
     edited: Option<&str>,
     sink: &mut Warnings,
 ) -> Result<(String, bool), MutateError> {
-    // Only the ABANDONED sources' descriptions count — a source that keeps its commit keeps its
-    // description.
     let abandoned: Vec<&str> = decision.abandoned.iter().map(Commit::description).collect();
-    let single = match &decision.mode {
-        SquashedDescription::Exact(description) => Some(description.clone()),
-        SquashedDescription::UseDestination => Some(destination.description().to_owned()),
-        SquashedDescription::Combine => try_combine_messages(&abandoned, destination.description()),
-    };
-    if let Some(description) = single {
+    if let Some(description) = single_description(decision, destination) {
         if description.is_empty() && edited.is_none() {
             return Ok((description, false));
         }

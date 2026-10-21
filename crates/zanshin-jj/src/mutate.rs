@@ -789,6 +789,38 @@ pub(crate) fn mutation_result(
     })
 }
 
+/// The read-only part of [`describe`] (Story 9.31): the target resolved, the root guard and the
+/// rewritability guard, in the verb's order. Writes nothing; [`describe`] runs it first and
+/// `drop_actions`' `describe` row calls the same fn.
+///
+/// # Errors
+///
+/// - [`MutateError::ChangeNotFound`] — `change_id` is malformed, absent, only-hidden, or
+///   divergent.
+/// - [`MutateError::InvalidInput`] — `change_id` resolves to the root commit.
+/// - [`MutateError::Immutable`] — `change_id` resolves to a non-root immutable commit.
+/// - [`MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+/// - [`MutateError::Backend`] — an underlying jj-lib failure.
+pub(crate) fn plan_describe(
+    tx: &Transaction,
+    immutable: &Arc<UserRevsetExpression>,
+    change_id: &ChangeId,
+) -> Result<Commit, MutateError> {
+    let commit = resolve_commit(tx.repo(), change_id)?;
+    // jj-lib's `rewrite_commit` internally asserts the target isn't the root commit
+    // (`assert_ne!`) rather than returning an error — guard explicitly so a caller gets
+    // a normal `MutateError` instead of a process-crashing panic. Keep this BEFORE the
+    // immutability guard: root would otherwise be reported as immutable (as the CLI does),
+    // changing a shipped error code and making these lines unreachable.
+    if commit.id() == tx.repo().store().root_commit_id() {
+        return Err(MutateError::InvalidInput {
+            reason: "cannot describe the root commit".to_owned(),
+        });
+    }
+    guard_rewritable(tx, immutable, std::slice::from_ref(commit.id()))?;
+    Ok(commit)
+}
+
 /// Rewrites `change_id`'s description to `description` (FR-JJ-10a).
 ///
 /// `ctx.immutable` is the repo's effective immutable-set expression, parsed by the pre-verb
@@ -816,18 +848,7 @@ pub(crate) fn describe(
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    let commit = resolve_commit(tx.repo(), change_id)?;
-    // jj-lib's `rewrite_commit` internally asserts the target isn't the root commit
-    // (`assert_ne!`) rather than returning an error — guard explicitly so a caller gets
-    // a normal `MutateError` instead of a process-crashing panic. Keep this BEFORE the
-    // immutability guard: root would otherwise be reported as immutable (as the CLI does),
-    // changing a shipped error code and making these lines unreachable.
-    if commit.id() == tx.repo().store().root_commit_id() {
-        return Err(MutateError::InvalidInput {
-            reason: "cannot describe the root commit".to_owned(),
-        });
-    }
-    guard_rewritable(&tx, &ctx.immutable, std::slice::from_ref(commit.id()))?;
+    let commit = plan_describe(&tx, &ctx.immutable, change_id)?;
     let mut builder = tx.repo_mut().rewrite_commit(&commit).detach();
     builder.set_description(description);
     // `describe.rs:151-163`: the trailers template is parsed whatever the description, and
@@ -863,7 +884,8 @@ pub(crate) struct NewLocation {
 /// The read-only part of `jj new` (Story 9.48): the argument shape, the ordered dedup
 /// resolution and — for `-A`/`-B` — the insert location with its refusals, in `cmd_new`'s
 /// order (`cli/src/commands/new.rs:168-186` @ v0.46.0). Writes nothing; [`new_change`] runs it
-/// first, and Story 9.31's `new` drop row is meant to call the same fn.
+/// first, and Story 9.31's `new` rows (`drop_actions`' merge row, `change_actions`' three) call
+/// the same fn.
 ///
 /// The three lists are the CLI's positional `REVSETS`, `--insert-after` and `--insert-before`.
 /// An EMPTY list means "flag not given" — clap cannot pass a flag with no values, and a change
@@ -879,11 +901,17 @@ pub(crate) struct NewLocation {
 ///   parents and the children to rebase: `-A` alone takes the targets' children, `-B` alone
 ///   the targets' parents, both together take both lists verbatim.
 ///
+/// Either way, two or more resolved parents with the root commit among them refuse up front on a
+/// Git-backed store, with the Git backend's own text (Story 9.31): the CLI reaches it at the
+/// commit write. `-A`/`-B` yield that too — e.g. `-B` of a child of the root together with `-B`
+/// of a commit in another lineage takes the root and that commit's parent.
+///
 /// # Errors
 ///
 /// - [`MutateError::InvalidInput`] — `parents` together with `insert_after`/`insert_before`
 ///   (clap's `conflicts_with = "revisions"`); all three lists empty (Zanshin has no `@`
-///   default, the caller passes it); or the location would create a loop (`Refusing to create
+///   default, the caller passes it); (Git backend) two or more parents — positional or computed
+///   by `-A`/`-B` — including the root commit ([`GIT_ROOT_MERGE`]); or the location would create a loop (`Refusing to create
 ///   a loop: commit <12 hex> would be both an ancestor and a descendant of the new commit`).
 ///   `compute_commit_location`'s `No revisions found to use as parent` cannot happen here:
 ///   `-A` keeps its non-empty targets as parents, and `-B` finds none only for the root, which
@@ -916,6 +944,7 @@ pub(crate) fn plan_new(
     let after = resolve_ordered(tx, given(insert_after))?;
     let before = resolve_ordered(tx, given(insert_before))?;
     if let Some(parents) = destination {
+        refuse_git_root_merge(tx.repo().store(), &parents)?;
         return Ok(NewLocation {
             parents,
             children: Vec::new(),
@@ -925,11 +954,34 @@ pub(crate) fn plan_new(
     let resolved = resolve_immutable(base, immutable)?;
     let (parents, children) =
         compute_commit_location(base, &resolved, None, after.as_deref(), before.as_deref(), "new commit")?;
+    refuse_git_root_merge(tx.repo().store(), &parents)?;
     Ok(NewLocation { parents, children })
 }
 
+/// The Git backend's text for a merge with the root commit among its parents
+/// (`git_backend.rs:1345-1355` @ jj-lib 0.46.0), verbatim.
+pub(crate) const GIT_ROOT_MERGE: &str =
+    "The Git backend does not support creating merge commits with the root commit as one of the parents.";
+
+/// Refuses, before anything is written, the merge the Git backend would refuse at its write: two
+/// or more `parents` with the root commit among them, on a Git-backed store (Story 9.31). The CLI
+/// reaches the same text from the backend's write error; the refusal up front keeps `new`'s plan
+/// and its execution in agreement.
+pub(crate) fn refuse_git_root_merge(
+    store: &Arc<jj_lib::store::Store>,
+    parents: &[jj_lib::backend::CommitId],
+) -> Result<(), MutateError> {
+    let is_git = store.backend().name() == jj_lib::git_backend::GitBackend::NAME;
+    if is_git && parents.len() > 1 && parents.contains(store.root_commit_id()) {
+        return Err(MutateError::InvalidInput {
+            reason: GIT_ROOT_MERGE.to_owned(),
+        });
+    }
+    Ok(())
+}
+
 /// An empty list is a flag that was not given (`None` for [`resolve_ordered`]).
-fn given(ids: &[ChangeId]) -> Option<&[ChangeId]> {
+pub(crate) fn given(ids: &[ChangeId]) -> Option<&[ChangeId]> {
     (!ids.is_empty()).then_some(ids)
 }
 
@@ -1038,6 +1090,27 @@ pub(crate) fn new_change(
     mutation_result(&finish, vec![new_change_id], Vec::new())
 }
 
+/// The read-only part of [`edit`] (Story 9.31): the target resolved and the rewritability guard.
+/// Writes nothing; [`edit`] runs it first and `drop_actions`' `edit` row calls the same fn.
+///
+/// # Errors
+///
+/// - [`MutateError::ChangeNotFound`] — `change_id` is malformed, absent, only-hidden, or
+///   divergent.
+/// - [`MutateError::Immutable`] — `change_id` resolves to an immutable commit (the root
+///   included).
+/// - [`MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+/// - [`MutateError::Backend`] — an underlying jj-lib failure.
+pub(crate) fn plan_edit(
+    tx: &Transaction,
+    immutable: &Arc<UserRevsetExpression>,
+    change_id: &ChangeId,
+) -> Result<Commit, MutateError> {
+    let commit = resolve_commit(tx.repo(), change_id)?;
+    guard_rewritable(tx, immutable, std::slice::from_ref(commit.id()))?;
+    Ok(commit)
+}
+
 /// Switches the working copy to `change_id` without creating a new commit (FR-JJ-10a).
 ///
 /// `ctx.immutable` is the repo's effective immutable-set expression, parsed by the pre-verb
@@ -1066,14 +1139,51 @@ pub(crate) fn edit(
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    let commit = resolve_commit(tx.repo(), change_id)?;
-    guard_rewritable(&tx, &ctx.immutable, std::slice::from_ref(commit.id()))?;
+    let commit = plan_edit(&tx, &ctx.immutable, change_id)?;
     pollster::block_on(tx.repo_mut().edit(workspace_name.clone(), &commit)).map_err(be)?;
     // See new_change's comment: edit() may implicitly abandon a discardable previous
     // `@`, leaving an un-rebased rewrite that would trip tx.commit()'s assertion.
     pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
     let finish = finish_verb(workspace, tx, &format!("edit commit {}", commit.id().hex()), ctx)?;
     mutation_result(&finish, Vec::new(), Vec::new())
+}
+
+/// The read-only part of [`abandon`] (Story 9.31): each target resolved with its root guard, then
+/// the rewritability guard over all of them, in the verb's order. Returns the targets and the
+/// immutable set resolved against `tx.base_repo()`. Writes nothing; [`abandon`] runs it first
+/// (after its empty-list check) and `drop_actions`' `abandon` row calls the same fn.
+///
+/// # Errors
+///
+/// - [`MutateError::ChangeNotFound`] — a target id is malformed, absent, only-hidden, or
+///   divergent.
+/// - [`MutateError::InvalidInput`] — a target resolves to the root commit.
+/// - [`MutateError::Immutable`] — a target resolves to a non-root immutable commit.
+/// - [`MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+/// - [`MutateError::Backend`] — an underlying jj-lib failure.
+pub(crate) fn plan_abandon(
+    tx: &Transaction,
+    immutable: &Arc<UserRevsetExpression>,
+    change_ids: &[ChangeId],
+) -> Result<(Vec<Commit>, Arc<ResolvedRevsetExpression>), MutateError> {
+    let mut commits = Vec::with_capacity(change_ids.len());
+    for change_id in change_ids {
+        let commit = resolve_commit(tx.repo(), change_id)?;
+        // jj-lib's `record_abandoned_commit` internally asserts the target isn't the
+        // root commit rather than returning an error — guard explicitly so a caller
+        // gets a normal `MutateError` instead of a process-crashing panic.
+        if commit.id() == tx.repo().store().root_commit_id() {
+            return Err(MutateError::InvalidInput {
+                reason: "cannot abandon the root commit".to_owned(),
+            });
+        }
+        commits.push(commit);
+    }
+    // CLI parity (`abandon.rs:85`): every target must be rewritable. Runs AFTER the
+    // per-commit root guards above, so the root commit keeps its `InvalidInput` refusal.
+    let target_ids: Vec<jj_lib::backend::CommitId> = commits.iter().map(|c| c.id().clone()).collect();
+    let resolved = guard_rewritable(tx, immutable, &target_ids)?;
+    Ok((commits, resolved))
 }
 
 /// Abandons `change_ids`, rebasing descendants onto their parents and deleting any
@@ -1110,26 +1220,9 @@ pub(crate) fn abandon(
     let old_wc_id = readonly.view().get_wc_commit_id(&workspace_name).cloned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    let mut commits = Vec::with_capacity(change_ids.len());
-    for change_id in change_ids {
-        let commit = resolve_commit(tx.repo(), change_id)?;
-        // jj-lib's `record_abandoned_commit` internally asserts the target isn't the
-        // root commit rather than returning an error — guard explicitly so a caller
-        // gets a normal `MutateError` instead of a process-crashing panic.
-        if commit.id() == tx.repo().store().root_commit_id() {
-            return Err(MutateError::InvalidInput {
-                reason: "cannot abandon the root commit".to_owned(),
-            });
-        }
-        commits.push(commit);
-    }
-    // CLI parity (`abandon.rs:85`): every target must be rewritable. Runs AFTER the
-    // per-commit root guards above, so the root commit keeps its `InvalidInput` refusal.
-    let target_ids: Vec<jj_lib::backend::CommitId> = commits.iter().map(|c| c.id().clone()).collect();
-    // NOT shadowing `immutable`: the parameter is the UNRESOLVED user expression, this is
-    // the set resolved against `tx.base_repo()`, and the distinction is what the
-    // `rebase_descendants_with_options` call ~30 lines below depends on.
-    let resolved_immutable = guard_rewritable(&tx, &ctx.immutable, &target_ids)?;
+    // `resolved_immutable` is the set resolved against `tx.base_repo()`, which the
+    // `rebase_descendants_with_options` call below depends on.
+    let (commits, resolved_immutable) = plan_abandon(&tx, &ctx.immutable, change_ids)?;
     // Whether `@` itself is among the abandoned commits determines whether jj-lib's
     // own update_wc_commits() mints a genuinely NEW change to replace it (vs. `@`
     // merely being rebased because it descends from an abandoned ancestor, which

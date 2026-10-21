@@ -31,6 +31,7 @@ mod convert;
 mod convert_alias_write_failure;
 mod creation_warnings;
 mod detect;
+mod drop_actions;
 mod file_reads;
 mod file_track_home_git_ignore;
 mod file_track_untrack;

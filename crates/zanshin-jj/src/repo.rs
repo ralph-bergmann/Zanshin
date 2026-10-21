@@ -1110,7 +1110,10 @@ impl Repo {
     /// Every refusal happens before the first write; nothing is written.
     ///
     /// - [`crate::MutateError::InvalidInput`] — `parents` combined with an insert list; all three
-    ///   lists empty; (`-A`/`-B`) the location would create a loop (`Refusing to create a loop:
+    ///   lists empty; (Git backend) two or more parents — positional, or computed by `-A`/`-B` —
+    ///   including the root commit — the Git
+    ///   backend's own text, "The Git backend does not support creating merge commits with the
+    ///   root commit as one of the parents." (Story 9.31); (`-A`/`-B`) the location would create a loop (`Refusing to create a loop:
     ///   commit <12 hex> would be both an ancestor and a descendant of the new commit`); or (one
     ///   positional parent) an
     ///   `experimental-advance-branches` pattern does not parse.
@@ -2361,6 +2364,67 @@ impl Repo {
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn squash_plan(&mut self, options: &crate::SquashOptions) -> Result<crate::SquashPlan, crate::MutateError> {
         self.with_verb(|repo, ctx| crate::squash_split::squash_plan(repo.workspace(), ctx, options))
+    }
+
+    /// Which verbs `source` can run at each of `locations` — the drop-action capability query
+    /// (Story 9.31). Every row is answered by the verb's own plan fn, the one the verb runs before
+    /// its first write, so a refusal is exactly the [`crate::MutateError`] the verb returns.
+    ///
+    /// The rows per location, in this order (`S` the source, `T…` the location's ids):
+    ///
+    /// - [`crate::DropSource::Change`] at `onto`: [`crate::DropVerb::RebaseSource`] (`rebase -s S
+    ///   -o T…`), [`crate::DropVerb::RebaseRevisions`] (`rebase -r S -o T…`),
+    ///   [`crate::DropVerb::Squash`] (`squash --from S --into T`, only for exactly one `T`, with
+    ///   `combined_description_needed`), [`crate::DropVerb::NewMerge`] (`new T… S`) and
+    ///   [`crate::DropVerb::Duplicate`] (`duplicate S -o T…`); at `-A`/`-B`: `RebaseRevisions`
+    ///   only.
+    /// - [`crate::DropSource::Selection`] at `onto` with one id: `Squash` with the paths; at
+    ///   `-A`/`-B`: [`crate::DropVerb::Split`] (`split -r S <paths> -A/-B …`).
+    /// - [`crate::DropSource::Bookmark`] at `onto` with one id: [`crate::DropVerb::BookmarkMove`]
+    ///   (`bookmark move N --to T`), with `allow_backwards_needed` when the move is not a
+    ///   fast-forward; nothing else.
+    ///
+    /// [`crate::ActionStatus::NoOp`] means the verb would write no operation: a rebase whose
+    /// planned move (jj-lib's, applied on a dropped transaction) changes nothing, a squash with
+    /// nothing to squash, a bookmark move to where the bookmark already is or of a name no local
+    /// bookmark has. An id that does not resolve refuses each row it affects with
+    /// [`crate::MutateError::ChangeNotFound`].
+    ///
+    /// Each row plans on its own transaction from one head, which is then dropped; the query
+    /// writes NO operation of its own — only the pre-verb snapshot's (Story 9.26). The call's
+    /// warnings are the precondition's only: a row's plan warnings are discarded.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — a location gives `onto` together with
+    ///   `insert_after`/`insert_before`, or none of the three; checked before anything resolves.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure, a row's included.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn drop_actions(
+        &mut self,
+        source: &crate::DropSource,
+        locations: &[crate::DropLocation],
+    ) -> Result<crate::DropActions, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::drop_actions::drop_actions(repo.workspace(), ctx, source, locations))
+    }
+
+    /// The card menu's verbs for `change` (Story 9.31): `new` onto it, `new -A` / `new -B` it,
+    /// `edit`, `describe`, `squash -r` (into its parent, with `combined_description_needed`) and
+    /// `abandon` — each answered by the verb's own plan fn, as in [`Repo::drop_actions`]. Only the
+    /// squash reports [`crate::ActionStatus::NoOp`]. An id that does not resolve refuses every row
+    /// with [`crate::MutateError::ChangeNotFound`].
+    ///
+    /// Writes NO operation of its own — only the pre-verb snapshot's; the call's warnings are the
+    /// precondition's only.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure, a row's included.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn change_actions(&mut self, change: &crate::ChangeId) -> Result<crate::ChangeActions, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::drop_actions::change_actions(repo.workspace(), ctx, change))
     }
 
     /// Splits a revision in two (Story 9.15) — the CLI's `jj split`, paths only.

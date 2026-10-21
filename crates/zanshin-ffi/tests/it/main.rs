@@ -20,6 +20,7 @@ mod commit_contents_ffi;
 mod commit_ffi;
 mod commit_views_ffi;
 mod config_ffi;
+mod drop_actions_ffi;
 mod environment_ffi;
 mod events_ffi;
 mod ffi_abi_doc_sync;

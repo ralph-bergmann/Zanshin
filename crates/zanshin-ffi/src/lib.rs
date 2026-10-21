@@ -37,6 +37,7 @@ pub mod commit_contents;
 pub mod commit_views;
 pub mod config;
 pub mod diagnostics;
+pub mod drop_actions;
 pub mod environment;
 pub mod events;
 pub mod ffi_strings;

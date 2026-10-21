@@ -1715,6 +1715,15 @@ pub fn scenarios() -> Vec<Scenario> {
                 ]
             },
         ),
+        // ── Story 9.31: a Git merge with the root refuses (up front in Zanshin) ─────────
+        simple(
+            "new_merge_with_root",
+            |repo, _, s| {
+                let result = repo.new_change(&[s.change("B"), s.change("root")], &[], &[]);
+                zanshin_outcome(repo, &result)
+            },
+            |s| vec!["new".to_owned(), s.change_arg("B"), "root()".to_owned()],
+        ),
         Scenario {
             setup: ADVANCE_ALL,
             ..simple(

@@ -4,6 +4,15 @@ import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
 import '../ffi/commit_contents.dart' show CommitContent;
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, EvologEntry, InterdiffView, RevisionRef, ShowEntry;
+import '../ffi/drop_actions.dart'
+    show
+        BookmarkDropSource,
+        ChangeActions,
+        ChangeDropSource,
+        DropActions,
+        DropLocation,
+        DropSource,
+        SelectionDropSource;
 import '../ffi/fetch.dart' show DefaultFetchRefs, DefaultFetchRemotes, FetchRefs, FetchRemotes, GitFetchResult;
 import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, FileSearch;
 import '../ffi/file_ops.dart' show TrackResult, UntrackResult;
@@ -766,6 +775,42 @@ final class RepoHandle {
       keepEmptied: keepEmptied,
       editedDescription: editedDescription,
     );
+  }
+
+  /// Which verbs [source] can run at each of [locations] (Story 9.31) — the
+  /// drop-action capability query, asked BEFORE anything runs. Every row is
+  /// answered by the verb's own plan, so a refusal carries the code and
+  /// `context` the verb itself would fail with.
+  ///
+  /// The rows per location, in order: a [ChangeDropSource] at `onto` —
+  /// `rebaseSource`, `rebaseRevisions`, `squash` (one target only),
+  /// `newMerge`, `duplicate`; at `-A`/`-B` — `rebaseRevisions`. A
+  /// [SelectionDropSource] at `onto` with one target — `squash` with the
+  /// paths; at `-A`/`-B` — `split`. A [BookmarkDropSource] at `onto` with one
+  /// target — `bookmarkMove`. Writes no operation of its own; the warnings are
+  /// the pre-verb snapshot's only.
+  ///
+  /// Throws [ZanshinFfiException] `jj.invalid_input` when a location gives
+  /// `onto` with an insert list, or none of the three; [ArgumentError] for an
+  /// interior NUL; [StateError] after [close].
+  Future<DropActions> dropActions(DropSource source, List<DropLocation> locations) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.dropActions(_handleId, source, locations);
+  }
+
+  /// The card menu's verbs for [changeId] (Story 9.31): `new` onto it,
+  /// `new -A` / `new -B` it, `edit`, `describe`, `squash -r` (into its parent,
+  /// with `combinedDescriptionNeeded`) and `abandon` — each answered by the
+  /// verb's own plan. Writes no operation of its own.
+  ///
+  /// Throws [ArgumentError] for an interior NUL; [StateError] after [close].
+  Future<ChangeActions> changeActions(String changeId) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.changeActions(_handleId, changeId);
   }
 
   /// The description [squash] with the same arguments would have to ask for

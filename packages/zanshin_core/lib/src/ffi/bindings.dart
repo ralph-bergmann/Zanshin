@@ -316,6 +316,38 @@ external ffi.Pointer<ZanshinBuf> zanshin_change(
   ffi.Pointer<ffi.Char> change_id,
 );
 
+/// Preview the card menu's verbs for `change_id`, in the repo identified by `handle` (Story
+/// 9.31): `new` onto it, `new -A` / `new -B` it, `edit`, `describe`, `squash -r` (into its parent,
+/// with `combined_description_needed`) and `abandon` — each answered by the verb's own plan, its
+/// refusal the `FfiError` the verb's wrapper returns.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `ChangeActions` payload on success; every one of
+/// its seven outcomes is present. An id that does not resolve refuses every row with
+/// `jj.change_not_found`. Writes NO operation of its own, only the pre-verb snapshot's.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `change_id` is a null pointer.
+/// - `ffi.utf8_error` — `change_id` is not valid UTF-8.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.config_error` — the pre-verb snapshot could not read the config (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure, a row's included; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `change_id` must be a NUL-terminated UTF-8 C string owned by the caller (Dart allocates via
+/// `toNativeUtf8()` and frees with `calloc.free()` after this call returns — AR-P-5 inbound rule).
+/// Rust only borrows it for the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<ZanshinBuf> zanshin_change_actions(
+  int handle,
+  ffi.Pointer<ffi.Char> change_id,
+);
+
 /// Commit the working-copy commit, in the repo identified by `handle` — the CLI's
 /// `jj commit -m <message> [paths]` (Story 9.49).
 ///
@@ -715,6 +747,54 @@ external ffi.Pointer<ZanshinBuf> zanshin_describe(
 /// `zanshin_buffer_free_token`.
 @ffi.Native<ffi.Pointer<ZanshinBuf> Function()>()
 external ffi.Pointer<ZanshinBuf> zanshin_diagnostics();
+
+/// Preview which verbs a dragged change, path selection or bookmark can run at each drop location,
+/// in the repo identified by `handle` (Story 9.31) — before anything runs, with each verb's own
+/// refusal.
+///
+/// The arguments cross as a `DropActionsRequest` `FlatBuffers` request buffer: the source
+/// (`source_kind` with `change_id`, `paths` or `bookmark`) and the `locations` (each the CLI's
+/// `-o` / `-A` / `-B`). The rows per location, in order: a `Change` at `onto` — `RebaseSource`,
+/// `RebaseRevisions`, `Squash` (only for exactly one target), `NewMerge`, `Duplicate`; at `-A`/`-B`
+/// — `RebaseRevisions`. A `Selection` at `onto` with one target — `Squash` with the paths; at
+/// `-A`/`-B` — `Split`. A `Bookmark` at `onto` with one target — `BookmarkMove`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `DropActions` payload on success: each row's
+/// verb, location index, status (`Available`, `NoOp` — the verb would write no operation — or
+/// `Refused`), the refusal as the `FfiError` the verb's own wrapper returns, and the two flags
+/// (`combined_description_needed`, `allow_backwards_needed`). An id that does not resolve refuses
+/// every row it affects with `jj.change_not_found`. Writes NO operation of its own, only the
+/// pre-verb snapshot's.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `DropActionsRequest` buffer, its `kind`
+/// is not `DropActions`, or its `source_kind` is unknown.
+/// - `jj.invalid_input` — the `change_id` / `bookmark` the source kind needs is absent; or a
+/// location gives `onto` together with `insert_after`/`insert_before` ("--onto cannot be
+/// combined with -A/--insert-after or -B/--insert-before") or none of the three ("expected at
+/// least one of --onto, -A/--insert-after or -B/--insert-before"), checked before anything
+/// resolves; detail in `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.config_error` — the pre-verb snapshot could not read the config (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure, a row's included; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.DropActionsRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_drop_actions(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
 
 /// Switch the working copy to `change_id` without creating a new commit, in the repo
 /// referenced by `handle`.
@@ -2830,6 +2910,14 @@ const int AbsorbResult_VT_SKIPPED_PATHS = 12;
 
 const int AbsorbResult_VT_SOURCE_CHANGE_ID = 8;
 
+const int ActionOutcome_VT_ALLOW_BACKWARDS_NEEDED = 10;
+
+const int ActionOutcome_VT_COMBINED_DESCRIPTION_NEEDED = 8;
+
+const int ActionOutcome_VT_REFUSAL = 6;
+
+const int ActionOutcome_VT_STATUS = 4;
+
 const int AnnotationLine_VT_ORIGINAL_LINE_NUMBER = 8;
 
 const int AnnotationLine_VT_ORIGIN_FOUND = 12;
@@ -2845,6 +2933,20 @@ const int Bookmark_VT_CONFLICTED = 12;
 const int Bookmark_VT_SYNCED = 14;
 
 const int Bookmark_VT_TARGET = 6;
+
+const int ChangeActions_VT_ABANDON = 16;
+
+const int ChangeActions_VT_DESCRIBE = 12;
+
+const int ChangeActions_VT_EDIT = 10;
+
+const int ChangeActions_VT_NEW_INSERT_AFTER = 6;
+
+const int ChangeActions_VT_NEW_INSERT_BEFORE = 8;
+
+const int ChangeActions_VT_NEW_ONTO = 4;
+
+const int ChangeActions_VT_SQUASH_INTO_PARENT = 14;
 
 const int ChangeIdList_VT_CHANGE_IDS = 6;
 
@@ -2922,6 +3024,24 @@ const int ConfigSetResult_VT_WORKING_COPY_AUTHOR = 6;
 
 const int Diagnostics_VT_JJ_LIB_VERSION = 10;
 
+const int DropAction_VT_LOCATION = 6;
+
+const int DropAction_VT_OUTCOME = 8;
+
+const int DropAction_VT_VERB = 4;
+
+const int DropActionsRequest_VT_BOOKMARK = 12;
+
+const int DropActionsRequest_VT_CHANGE_ID = 8;
+
+const int DropActionsRequest_VT_LOCATIONS = 14;
+
+const int DropActionsRequest_VT_SOURCE_KIND = 6;
+
+const int DropActions_VT_ACTIONS = 4;
+
+const int ENUM_MAX_ACTION_STATUS = 2;
+
 const int ENUM_MAX_BOOKMARK_KIND = 1;
 
 const int ENUM_MAX_CHANGE_KIND = 4;
@@ -2931,6 +3051,10 @@ const int ENUM_MAX_CONFIG_SCOPE = 3;
 const int ENUM_MAX_CONFIG_VALUE_SOURCE = 6;
 
 const int ENUM_MAX_CONFLICT_STATE = 1;
+
+const int ENUM_MAX_DROP_SOURCE_KIND = 2;
+
+const int ENUM_MAX_DROP_VERB = 6;
 
 const int ENUM_MAX_FETCH_REFS_MODE = 2;
 
@@ -2960,7 +3084,7 @@ const int ENUM_MAX_REMOTE_REF_KIND = 1;
 
 const int ENUM_MAX_REPO_KIND = 3;
 
-const int ENUM_MAX_REQUEST_KIND = 38;
+const int ENUM_MAX_REQUEST_KIND = 39;
 
 const int ENUM_MAX_REVISION_REF = 2;
 
@@ -2974,6 +3098,8 @@ const int ENUM_MAX_UNTRACKED_REASON = 2;
 
 const int ENUM_MAX_WATCHER_EVENT_KIND = 2;
 
+const int ENUM_MIN_ACTION_STATUS = 0;
+
 const int ENUM_MIN_BOOKMARK_KIND = 0;
 
 const int ENUM_MIN_CHANGE_KIND = 0;
@@ -2983,6 +3109,10 @@ const int ENUM_MIN_CONFIG_SCOPE = 0;
 const int ENUM_MIN_CONFIG_VALUE_SOURCE = 0;
 
 const int ENUM_MIN_CONFLICT_STATE = 0;
+
+const int ENUM_MIN_DROP_SOURCE_KIND = 0;
+
+const int ENUM_MIN_DROP_VERB = 0;
 
 const int ENUM_MIN_FETCH_REFS_MODE = 0;
 
@@ -3232,8 +3362,6 @@ const int Progress_VT_PROGRESS = 8;
 
 const int PushCommitRejection_VT_REASONS = 6;
 
-const int PushCreatedBookmark_VT_CHANGE_ID = 6;
-
 const int PushRef_VT_ACTION = 12;
 
 const int PushRef_VT_AFTER = 10;
@@ -3242,11 +3370,7 @@ const int PushRef_VT_BEFORE = 8;
 
 const int PushRef_VT_EXPLICIT_REFUSAL = 18;
 
-const int PushRef_VT_REFUSAL = 16;
-
 const int PushRef_VT_REJECTION = 20;
-
-const int PushRef_VT_STATUS = 22;
 
 const int PushRef_VT_STATUS_REASON = 24;
 
@@ -3363,8 +3487,6 @@ const int StaleRecovery_VT_CHECKOUT = 8;
 const int StaleRecovery_VT_GIT_HEAD_RESET_OP_ID = 10;
 
 const int StaleRecovery_VT_OP_ID = 14;
-
-const int StaleRecovery_VT_OUTCOME = 4;
 
 const int Status_VT_FILES = 4;
 

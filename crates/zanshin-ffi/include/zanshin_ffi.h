@@ -14,7 +14,7 @@
 
 #define ENUM_MIN_REQUEST_KIND 0
 
-#define ENUM_MAX_REQUEST_KIND 38
+#define ENUM_MAX_REQUEST_KIND 39
 
 #define ENUM_MIN_FETCH_REMOTES_MODE 0
 
@@ -43,6 +43,10 @@
 #define ENUM_MIN_CONFIG_SCOPE 0
 
 #define ENUM_MAX_CONFIG_SCOPE 3
+
+#define ENUM_MIN_DROP_SOURCE_KIND 0
+
+#define ENUM_MAX_DROP_SOURCE_KIND 2
 
 #define ENUM_MIN_CHANGE_KIND 0
 
@@ -79,6 +83,14 @@
 #define ENUM_MIN_TOPOLOGY_REF_KIND 0
 
 #define ENUM_MAX_TOPOLOGY_REF_KIND 1
+
+#define ENUM_MIN_DROP_VERB 0
+
+#define ENUM_MAX_DROP_VERB 6
+
+#define ENUM_MIN_ACTION_STATUS 0
+
+#define ENUM_MAX_ACTION_STATUS 2
 
 #define ENUM_MIN_PUSH_REF_KIND 0
 
@@ -269,6 +281,14 @@ typedef struct {
 
 #define CommitContentsRequest_VT_COMMIT_IDS 8
 
+#define DropActionsRequest_VT_SOURCE_KIND 6
+
+#define DropActionsRequest_VT_CHANGE_ID 8
+
+#define DropActionsRequest_VT_BOOKMARK 12
+
+#define DropActionsRequest_VT_LOCATIONS 14
+
 #define GraphTopologyRequest_VT_PRIORITIZE 8
 
 #define GraphTopologyRequest_VT_SHORT_PREFIXES 10
@@ -435,6 +455,36 @@ typedef struct {
 
 #define SplitResult_VT_REMAINING_CHANGE_ID 8
 
+#define ActionOutcome_VT_STATUS 4
+
+#define ActionOutcome_VT_REFUSAL 6
+
+#define ActionOutcome_VT_COMBINED_DESCRIPTION_NEEDED 8
+
+#define ActionOutcome_VT_ALLOW_BACKWARDS_NEEDED 10
+
+#define DropAction_VT_VERB 4
+
+#define DropAction_VT_LOCATION 6
+
+#define DropAction_VT_OUTCOME 8
+
+#define DropActions_VT_ACTIONS 4
+
+#define ChangeActions_VT_NEW_ONTO 4
+
+#define ChangeActions_VT_NEW_INSERT_AFTER 6
+
+#define ChangeActions_VT_NEW_INSERT_BEFORE 8
+
+#define ChangeActions_VT_EDIT 10
+
+#define ChangeActions_VT_DESCRIBE 12
+
+#define ChangeActions_VT_SQUASH_INTO_PARENT 14
+
+#define ChangeActions_VT_ABANDON 16
+
 #define PushRefusal_VT_HINT 6
 
 #define PushCommitRejection_VT_REASONS 6
@@ -445,21 +495,15 @@ typedef struct {
 
 #define PushRef_VT_ACTION 12
 
-#define PushRef_VT_REFUSAL 16
-
 #define PushRef_VT_EXPLICIT_REFUSAL 18
 
 #define PushRef_VT_REJECTION 20
-
-#define PushRef_VT_STATUS 22
 
 #define PushRef_VT_STATUS_REASON 24
 
 #define PushRemote_VT_ALREADY_MATCHES 8
 
 #define PushRemote_VT_FINISHED 10
-
-#define PushCreatedBookmark_VT_CHANGE_ID 6
 
 #define PushSigning_VT_UPDATED_SIGNATURES 4
 
@@ -540,8 +584,6 @@ typedef struct {
 #define CheckoutStats_VT_UPDATED 6
 
 #define CheckoutStats_VT_REMOVED 8
-
-#define StaleRecovery_VT_OUTCOME 4
 
 #define StaleRecovery_VT_CHECKOUT 8
 
@@ -1262,6 +1304,81 @@ ZanshinBuf *zanshin_config_gc_delete(const uint8_t *data, uintptr_t len);
  * `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_diagnostics(void);
+
+/**
+ * Preview which verbs a dragged change, path selection or bookmark can run at each drop location,
+ * in the repo identified by `handle` (Story 9.31) — before anything runs, with each verb's own
+ * refusal.
+ *
+ * The arguments cross as a `DropActionsRequest` `FlatBuffers` request buffer: the source
+ * (`source_kind` with `change_id`, `paths` or `bookmark`) and the `locations` (each the CLI's
+ * `-o` / `-A` / `-B`). The rows per location, in order: a `Change` at `onto` — `RebaseSource`,
+ * `RebaseRevisions`, `Squash` (only for exactly one target), `NewMerge`, `Duplicate`; at `-A`/`-B`
+ * — `RebaseRevisions`. A `Selection` at `onto` with one target — `Squash` with the paths; at
+ * `-A`/`-B` — `Split`. A `Bookmark` at `onto` with one target — `BookmarkMove`.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `DropActions` payload on success: each row's
+ * verb, location index, status (`Available`, `NoOp` — the verb would write no operation — or
+ * `Refused`), the refusal as the `FfiError` the verb's own wrapper returns, and the two flags
+ * (`combined_description_needed`, `allow_backwards_needed`). An id that does not resolve refuses
+ * every row it affects with `jj.change_not_found`. Writes NO operation of its own, only the
+ * pre-verb snapshot's.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `DropActionsRequest` buffer, its `kind`
+ *   is not `DropActions`, or its `source_kind` is unknown.
+ * - `jj.invalid_input` — the `change_id` / `bookmark` the source kind needs is absent; or a
+ *   location gives `onto` together with `insert_after`/`insert_before` ("--onto cannot be
+ *   combined with -A/--insert-after or -B/--insert-before") or none of the three ("expected at
+ *   least one of --onto, -A/--insert-after or -B/--insert-before"), checked before anything
+ *   resolves; detail in `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.config_error` — the pre-verb snapshot could not read the config (Story 9.26).
+ * - `jj.jj_lib_error` — an underlying jj-lib failure, a row's included; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.DropActionsRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+ * duration of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_drop_actions(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * Preview the card menu's verbs for `change_id`, in the repo identified by `handle` (Story
+ * 9.31): `new` onto it, `new -A` / `new -B` it, `edit`, `describe`, `squash -r` (into its parent,
+ * with `combined_description_needed`) and `abandon` — each answered by the verb's own plan, its
+ * refusal the `FfiError` the verb's wrapper returns.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `ChangeActions` payload on success; every one of
+ * its seven outcomes is present. An id that does not resolve refuses every row with
+ * `jj.change_not_found`. Writes NO operation of its own, only the pre-verb snapshot's.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `change_id` is a null pointer.
+ * - `ffi.utf8_error` — `change_id` is not valid UTF-8.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.config_error` — the pre-verb snapshot could not read the config (Story 9.26).
+ * - `jj.jj_lib_error` — an underlying jj-lib failure, a row's included; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `change_id` must be a NUL-terminated UTF-8 C string owned by the caller (Dart allocates via
+ * `toNativeUtf8()` and frees with `calloc.free()` after this call returns — AR-P-5 inbound rule).
+ * Rust only borrows it for the duration of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_change_actions(uint64_t handle, const char *change_id);
 
 /**
  * Adopt the login shell's environment for every jj environment read (Story 9.36): the app reads

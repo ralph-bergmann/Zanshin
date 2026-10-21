@@ -412,6 +412,50 @@ fn insert_before_the_root_is_refused_as_immutable() {
     );
 }
 
+/// Story 9.31: a merge with the root commit among its parents is refused up front on a Git-backed
+/// repo, with the Git backend's own text — whichever position the root takes — and nothing is
+/// written. A single root parent (`[root, root]` deduplicates to it) stays a plain `new`.
+#[test]
+fn a_merge_with_the_root_is_refused_with_the_git_backend_text() {
+    let mut fx = base();
+    let (b, root) = (fx.b.clone(), root_change(&fx.root));
+
+    for parents in [[b.clone(), root.clone()], [root.clone(), b.clone()]] {
+        let err = refused(&mut fx, &parents, &[], &[]);
+        assert!(
+            matches!(&err, MutateError::InvalidInput { reason } if reason
+                == "The Git backend does not support creating merge commits with the root commit as one of the parents."),
+            "{err:?}"
+        );
+    }
+
+    let result = fx
+        .repo
+        .new_change(&[root.clone(), root.clone()], &[], &[])
+        .expect("new on root");
+    let n = assert_new(&fx, &result);
+    assert_eq!(parents(&fx.root, &n), [root]);
+}
+
+/// Story 9.31: `-B` computes the parents of its targets — `-B A` (a child of the root) together with
+/// `-B E` (a child of D, another lineage) gives `[root, D]`, no loop and no immutable child — and
+/// that root merge is refused up front with the Git backend's text, nothing written.
+#[test]
+fn an_insert_location_yielding_a_root_merge_is_refused_with_the_git_backend_text() {
+    let mut fx = base();
+    let (a, root) = (fx.a.clone(), root_change(&fx.root));
+    let d = described_child(&mut fx, &root, "D\n");
+    let e = described_child(&mut fx, &d, "E\n");
+
+    let err = refused(&mut fx, &[], &[], &[a, e]);
+
+    assert!(
+        matches!(&err, MutateError::InvalidInput { reason } if reason
+            == "The Git backend does not support creating merge commits with the root commit as one of the parents."),
+        "{err:?}"
+    );
+}
+
 /// The CLI names the FIRST commit of `children::parents` as jj-lib streams it — the head of the
 /// range, C here (checked against the pinned `jj new -A C -B A`), not A.
 #[test]

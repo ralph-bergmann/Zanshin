@@ -132,6 +132,62 @@ pub(crate) fn check_rewritable(
 // caller arrives (Story 9.15 dropped §2's, `try_combine_messages`' and
 // `into_commit_selection`'s).
 
+/// [`compute_commit_location`]'s refusal of `--onto` together with `-A`/`-B` — shared with
+/// `drop_actions`' up-front location check (Story 9.31), which must refuse with the same text.
+pub(crate) const ONTO_WITH_INSERT: &str = "--onto cannot be combined with -A/--insert-after or -B/--insert-before";
+
+/// [`compute_commit_location`]'s refusal of a location with none of the three flags — shared as
+/// [`ONTO_WITH_INSERT`] is.
+pub(crate) const NO_LOCATION: &str = "expected at least one of --onto, -A/--insert-after or -B/--insert-before";
+
+/// The CLI's `-o`/`-A`/`-B` destination flags over change ids (`RebaseDestinationArgs` and its
+/// siblings in `duplicate`/`new`/`split`) — an EMPTY slice is a flag that was not given, as clap
+/// cannot pass a flag with no values (Story 9.31).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LocationArgs<'a> {
+    /// `-o/--onto`.
+    pub(crate) onto: &'a [crate::ChangeId],
+    /// `-A/--insert-after`.
+    pub(crate) insert_after: &'a [crate::ChangeId],
+    /// `-B/--insert-before`.
+    pub(crate) insert_before: &'a [crate::ChangeId],
+}
+
+impl LocationArgs<'_> {
+    /// Whether `-A` or `-B` is given — the case whose location rewrites children.
+    pub(crate) fn inserts(&self) -> bool {
+        !self.insert_after.is_empty() || !self.insert_before.is_empty()
+    }
+}
+
+/// The CLI's `compute_commit_location` (`cli_util.rs:3644-3700` @ v0.46.0) WITH its revision
+/// resolution: each list resolved in argument order with duplicates dropped ([`resolve_ordered`]),
+/// `onto` first, then [`compute_commit_location`] against `tx.base_repo()` (Story 9.31).
+///
+/// # Errors
+///
+/// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or divergent.
+/// - Anything [`compute_commit_location`] returns.
+pub(crate) fn resolve_commit_location(
+    tx: &Transaction,
+    immutable: &Arc<ResolvedRevsetExpression>,
+    location: &LocationArgs<'_>,
+    commit_type: &str,
+) -> Result<(Vec<CommitId>, Vec<CommitId>), MutateError> {
+    let given = crate::mutate::given;
+    let onto = resolve_ordered(tx, given(location.onto))?;
+    let after = resolve_ordered(tx, given(location.insert_after))?;
+    let before = resolve_ordered(tx, given(location.insert_before))?;
+    compute_commit_location(
+        tx.base_repo().as_ref(),
+        immutable,
+        onto.as_deref(),
+        after.as_deref(),
+        before.as_deref(),
+        commit_type,
+    )
+}
+
 /// Computes the `(new_parents, new_children)` a commit should be placed between.
 ///
 /// Ports `cli_util.rs:3644` `compute_commit_location` @ v0.46.0 over ALREADY-RESOLVED commit ids:
@@ -209,12 +265,12 @@ pub(crate) fn compute_commit_location(
         // stay verbatim.
         (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
             return Err(MutateError::InvalidInput {
-                reason: "--onto cannot be combined with -A/--insert-after or -B/--insert-before".to_owned(),
+                reason: ONTO_WITH_INSERT.to_owned(),
             })
         }
         (None, None, None) => {
             return Err(MutateError::InvalidInput {
-                reason: "expected at least one of --onto, -A/--insert-after or -B/--insert-before".to_owned(),
+                reason: NO_LOCATION.to_owned(),
             })
         }
     };

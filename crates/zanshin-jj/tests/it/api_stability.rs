@@ -1152,6 +1152,91 @@ fn squash_split_surface_resolves() {
         ) -> Result<zanshin_jj::SplitResult, zanshin_jj::MutateError>;
 }
 
+// drop actions (Story 9.31)
+type _DropSource = zanshin_jj::DropSource;
+type _DropLocation = zanshin_jj::DropLocation;
+type _DropVerb = zanshin_jj::DropVerb;
+type _ActionStatus = zanshin_jj::ActionStatus;
+type _ActionOutcome = zanshin_jj::ActionOutcome;
+type _DropAction = zanshin_jj::DropAction;
+type _DropActions = zanshin_jj::DropActions;
+type _ChangeActions = zanshin_jj::ChangeActions;
+
+/// The Story 9.31 surface: the eight new types named variant by variant and field by field, and
+/// the two `Repo` queries as `fn` pointers.
+#[test]
+fn drop_actions_surface_resolves() {
+    let id = |s: &str| zanshin_jj::ChangeId(s.to_owned());
+    let sources = [
+        zanshin_jj::DropSource::Change(id("s")),
+        zanshin_jj::DropSource::Selection {
+            change: id("s"),
+            paths: vec!["p".to_owned()],
+        },
+        zanshin_jj::DropSource::Bookmark("main".to_owned()),
+    ];
+    assert_eq!(sources.clone(), sources);
+    let location = zanshin_jj::DropLocation {
+        onto: vec![id("t")],
+        insert_after: Vec::new(),
+        insert_before: Vec::new(),
+    };
+    assert_eq!(location.clone(), location);
+    assert!(zanshin_jj::DropLocation::default().onto.is_empty());
+    let verbs = [
+        zanshin_jj::DropVerb::RebaseSource,
+        zanshin_jj::DropVerb::RebaseRevisions,
+        zanshin_jj::DropVerb::Squash,
+        zanshin_jj::DropVerb::NewMerge,
+        zanshin_jj::DropVerb::Duplicate,
+        zanshin_jj::DropVerb::Split,
+        zanshin_jj::DropVerb::BookmarkMove,
+    ];
+    assert_eq!(verbs.len(), 7);
+    let outcome = |status| zanshin_jj::ActionOutcome {
+        status,
+        refusal: None,
+        combined_description_needed: false,
+        allow_backwards_needed: false,
+    };
+    let refused = zanshin_jj::ActionOutcome {
+        status: zanshin_jj::ActionStatus::Refused,
+        refusal: Some(zanshin_jj::MutateError::ChangeNotFound { id: "x".to_owned() }),
+        combined_description_needed: false,
+        allow_backwards_needed: true,
+    };
+    let actions = zanshin_jj::DropActions {
+        actions: vec![zanshin_jj::DropAction {
+            verb: zanshin_jj::DropVerb::Squash,
+            location: 0,
+            outcome: refused,
+        }],
+    };
+    assert_eq!(actions.actions[0].location, 0_usize);
+    let card = zanshin_jj::ChangeActions {
+        new_onto: outcome(zanshin_jj::ActionStatus::Available),
+        new_insert_after: outcome(zanshin_jj::ActionStatus::Available),
+        new_insert_before: outcome(zanshin_jj::ActionStatus::Available),
+        edit: outcome(zanshin_jj::ActionStatus::Available),
+        describe: outcome(zanshin_jj::ActionStatus::Available),
+        squash_into_parent: outcome(zanshin_jj::ActionStatus::NoOp),
+        abandon: outcome(zanshin_jj::ActionStatus::Available),
+    };
+    assert_eq!(card.squash_into_parent.status, zanshin_jj::ActionStatus::NoOp);
+
+    _ = zanshin_jj::Repo::drop_actions
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::DropSource,
+            &[zanshin_jj::DropLocation],
+        ) -> Result<zanshin_jj::DropActions, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::change_actions
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::ChangeId,
+        ) -> Result<zanshin_jj::ChangeActions, zanshin_jj::MutateError>;
+}
+
 // commit (Story 9.49)
 type _CommitOptions = zanshin_jj::CommitOptions;
 

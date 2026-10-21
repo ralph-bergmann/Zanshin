@@ -63,7 +63,7 @@ table FfiError {
 /// named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-/// squash, never a different verb. For the other 34 tables the variant name plus `Request` IS
+/// squash, never a different verb. For the other 35 tables the variant name plus `Request` IS
 /// the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -111,7 +111,8 @@ enum RequestKind : ubyte {
   GitPush,
   RepoClone,
   RepoInit,
-  GitFetch
+  GitFetch,
+  DropActions
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -772,6 +773,40 @@ table CommitContentsRequest {
   commit_ids: [string];
 }
 
+/// What `zanshin_drop_actions` previews as dragged (Story 9.31). Member order IS the wire
+/// value — APPEND only.
+enum DropSourceKind : ubyte { Change, Selection, Bookmark }
+
+/// One location of `zanshin_drop_actions` (Story 9.31) — the CLI's `-o` / `-A` / `-B`, change ids
+/// in jj reverse-hex. ABSENT or EMPTY is the flag not given; `onto` excludes the other two, and at
+/// least one must be given (else `jj.invalid_input` for the whole call).
+table DropLocation {
+  onto: [string];
+  insert_after: [string];
+  insert_before: [string];
+}
+
+/// Arguments of `zanshin_drop_actions` (Story 9.31).
+///
+///   source_kind        `Change` (the change `change_id`), `Selection` (the changes to `paths` —
+///                      repo-relative PREFIXES; empty = every path for the squash row, which the
+///                      split row refuses with split's no-paths text — inside `change_id`) or
+///                      `Bookmark` (the local bookmark named exactly `bookmark`)
+///   change_id          the dragged change (jj reverse-hex); `Change` / `Selection` only
+///   paths              the selected paths; `Selection` only
+///   bookmark           the dragged bookmark's name; `Bookmark` only
+///   locations          the drop locations; each row's `location` is an index into this list
+///
+/// A field the `source_kind` needs that is ABSENT is `jj.invalid_input` "<field> is required".
+table DropActionsRequest {
+  kind: RequestKind;
+  source_kind: DropSourceKind;
+  change_id: string;
+  paths: [string];
+  bookmark: string;
+  locations: [DropLocation];
+}
+
 /// Arguments of `zanshin_graph_topology` (Story 4.12) — the whole revset's index-only topology,
 /// every argument a caller pass-through (FR-JJ-17); Rust bakes in no default.
 /// `revset`, `prioritize` and `short_prefixes` are required: an absent field is `jj.invalid_input`
@@ -820,6 +855,7 @@ table GraphTopologyRequest {
 //   Story 4-12 : GraphTopology ✓ (GraphSlice's Payload slot 11)
 //   Story 9-15 : SquashPlan ✓, SplitResult ✓ (zanshin_squash reuses MutationResult;
 //                SplitResult nests it)
+//   Story 9-31 : DropActions ✓, ChangeActions ✓ (a row's refusal is the shipped FfiError)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -1273,6 +1309,55 @@ table SplitResult {
   mutation: MutationResult;
   selected_change_id: string;
   remaining_change_id: string;
+}
+
+// ── Drop actions (Story 9.31) ───────────────────────────────────────────────────
+// Member order of the two enums below IS the wire value — APPEND only.
+
+/// The verb a `DropAction` row previews (`S` the source, `T…` the location's ids):
+/// `rebase -s S -o T…`, `rebase -r S -o T…` (or `-A`/`-B`), `squash --from S --into T [paths]`,
+/// `new T… S`, `duplicate S -o T…`, `split -r S <paths> -A/-B …`, `bookmark move N --to T`.
+enum DropVerb : ubyte { RebaseSource, RebaseRevisions, Squash, NewMerge, Duplicate, Split, BookmarkMove }
+
+/// Whether a previewed verb would run: write an operation (`Available`), write none (`NoOp` — only
+/// rebase, squash and bookmark move), or refuse (`Refused`).
+enum ActionStatus : ubyte { Available, NoOp, Refused }
+
+/// One previewed verb's answer. `refusal` is present exactly when `status` is `Refused`: the
+/// `FfiError` the verb's own wrapper returns for it (same code, same `context`).
+/// `combined_description_needed` (a squash row) — the squash would combine two or more non-empty
+/// descriptions, the case the CLI opens its editor for (`zanshin_squash_plan` returns the text);
+/// `allow_backwards_needed` (a bookmark row) — the move is not a fast-forward.
+table ActionOutcome {
+  status: ActionStatus;
+  refusal: FfiError;
+  combined_description_needed: bool;
+  allow_backwards_needed: bool;
+}
+
+/// One row of `zanshin_drop_actions`' answer; `location` indexes the request's `locations`.
+table DropAction {
+  verb: DropVerb;
+  location: uint;
+  outcome: ActionOutcome;
+}
+
+/// `zanshin_drop_actions`' answer: every location's rows, in location order.
+table DropActions {
+  actions: [DropAction];
+}
+
+/// `zanshin_change_actions`' answer: the card menu's verbs for one change `X` — `new X`,
+/// `new -A X`, `new -B X`, `edit X`, `describe X`, `squash -r X` (with the combined-description
+/// flag) and `abandon X`. Every field is always present.
+table ChangeActions {
+  new_onto: ActionOutcome;
+  new_insert_after: ActionOutcome;
+  new_insert_before: ActionOutcome;
+  edit: ActionOutcome;
+  describe: ActionOutcome;
+  squash_into_parent: ActionOutcome;
+  abandon: ActionOutcome;
 }
 
 // ── git push (Story 9.20) ───────────────────────────────────────────────────────
@@ -1978,6 +2063,8 @@ union Payload {
   RemoteChanges,
   GitFetchResult,
   GitFetchRemotes,
+  DropActions,
+  ChangeActions,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

@@ -16,6 +16,7 @@ import '../ffi/commit.dart' as repo_ffi_commit;
 import '../ffi/commit_contents.dart' as repo_ffi_commit_contents;
 import '../ffi/commit_views.dart' as repo_ffi_commit_views;
 import '../ffi/config.dart' as repo_ffi_config;
+import '../ffi/drop_actions.dart' as repo_ffi_drop_actions;
 // Alias avoids name collision with handle.dart's RepoHandle wrapper.
 import '../ffi/envelope_zanshin.ffi_generated.dart' as fbs;
 import '../ffi/events.dart'
@@ -1433,6 +1434,52 @@ class ZanshinWorker {
       ),
     );
     return repo_ffi_squash_split.decodeSquashPlanEnvelopeInternal(bytes);
+  }
+
+  /// Which verbs [source] can run at each of [locations], in the repo
+  /// identified by [handleId] (Story 9.31). Writes no operation of its own.
+  ///
+  /// Sends a [DropActionsCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<DropActions>` bytes.
+  ///
+  /// Throws [ArgumentError] (before anything is sent) when an id, path or name
+  /// contains an interior NUL, and [ZanshinFfiException] on FFI errors (e.g.
+  /// `ffi.invalid_handle`, `jj.invalid_input` for a malformed location). Completes
+  /// with a [StateError] after [close]. The close-guard [StateError] is
+  /// delivered synchronously by [RepoHandle.dropActions].
+  Future<repo_ffi_drop_actions.DropActions> dropActions(
+    int handleId,
+    repo_ffi_drop_actions.DropSource source,
+    List<repo_ffi_drop_actions.DropLocation> locations,
+  ) async {
+    repo_ffi_drop_actions.rejectDropActionsNuls(source, locations);
+    final Uint8List bytes = await send(
+      DropActionsCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        source: source,
+        locations: locations,
+      ),
+    );
+    return repo_ffi_drop_actions.decodeDropActionsEnvelopeInternal(bytes);
+  }
+
+  /// The card menu's verbs for [changeId], in the repo identified by
+  /// [handleId] (Story 9.31). Writes no operation of its own.
+  ///
+  /// Sends a [ChangeActionsCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<ChangeActions>` bytes.
+  ///
+  /// Throws [ArgumentError] (before anything is sent) for an interior NUL, and
+  /// [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`). Completes
+  /// with a [StateError] after [close]. The close-guard [StateError] is
+  /// delivered synchronously by [RepoHandle.changeActions].
+  Future<repo_ffi_drop_actions.ChangeActions> changeActions(int handleId, String changeId) async {
+    rejectInteriorNul(changeId, 'changeId');
+    final Uint8List bytes = await send(
+      ChangeActionsCommand(commandId: _correlator.allocateId(), handleId: handleId, changeId: changeId),
+    );
+    return repo_ffi_drop_actions.decodeChangeActionsEnvelopeInternal(bytes);
   }
 
   /// Split a revision in two, in the repo identified by [handleId] (Story
@@ -2934,6 +2981,32 @@ void _workerEntry(_WorkerInit init) {
               useDestinationMessage: useDestinationMessage,
               keepEmptied: keepEmptied,
             );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case DropActionsCommand(
+          :final int handleId,
+          :final repo_ffi_drop_actions.DropSource source,
+          :final List<repo_ffi_drop_actions.DropLocation> locations,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: DropActionsCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_drop_actions.zanshinDropActions(raw, source, locations);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case ChangeActionsCommand(:final int handleId, :final String changeId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: ChangeActionsCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_drop_actions.zanshinChangeActions(raw, changeId);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

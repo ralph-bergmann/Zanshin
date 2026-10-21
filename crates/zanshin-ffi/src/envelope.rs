@@ -816,6 +816,182 @@ pub fn ok_split_result(r: &zanshin_jj::SplitResult, report: &CallReport) -> Vec<
     finish_envelope(b, fbs::Payload::SplitResult, Some(split.as_union_value()), report)
 }
 
+/// One previewed verb's answer with its refusal already mapped onto the AR-P-4 taxonomy (Story
+/// 9.31) — the wire form of `zanshin_jj::ActionOutcome`. The refusal goes through
+/// `map_mutate_err`, the mapping the verb's own wrapper uses, so a row and the verb it previews
+/// carry the same code and `context` by construction.
+#[derive(Debug)]
+pub struct ActionOutcomeObj {
+    /// Whether the verb would run.
+    pub status: fbs::ActionStatus,
+    /// The verb's refusal, present exactly for `ActionStatus::Refused`.
+    pub refusal: Option<FfiErrorObj>,
+    /// A squash row: the squash needs a combined description.
+    pub combined_description_needed: bool,
+    /// A bookmark row: the move is not a fast-forward.
+    pub allow_backwards_needed: bool,
+}
+
+impl From<zanshin_jj::ActionOutcome> for ActionOutcomeObj {
+    fn from(outcome: zanshin_jj::ActionOutcome) -> Self {
+        Self {
+            status: match outcome.status {
+                zanshin_jj::ActionStatus::Available => fbs::ActionStatus::Available,
+                zanshin_jj::ActionStatus::NoOp => fbs::ActionStatus::NoOp,
+                zanshin_jj::ActionStatus::Refused => fbs::ActionStatus::Refused,
+            },
+            refusal: outcome.refusal.map(crate::repo::map_mutate_err),
+            combined_description_needed: outcome.combined_description_needed,
+            allow_backwards_needed: outcome.allow_backwards_needed,
+        }
+    }
+}
+
+/// One row of `zanshin_drop_actions`' answer in wire form (Story 9.31).
+#[derive(Debug)]
+pub struct DropActionObj {
+    /// The previewed verb.
+    pub verb: fbs::DropVerb,
+    /// The index into the request's `locations`; an index above `u32::MAX` saturates (a request
+    /// that large cannot be built).
+    pub location: u32,
+    /// Its answer.
+    pub outcome: ActionOutcomeObj,
+}
+
+impl From<zanshin_jj::DropAction> for DropActionObj {
+    fn from(action: zanshin_jj::DropAction) -> Self {
+        Self {
+            verb: match action.verb {
+                zanshin_jj::DropVerb::RebaseSource => fbs::DropVerb::RebaseSource,
+                zanshin_jj::DropVerb::RebaseRevisions => fbs::DropVerb::RebaseRevisions,
+                zanshin_jj::DropVerb::Squash => fbs::DropVerb::Squash,
+                zanshin_jj::DropVerb::NewMerge => fbs::DropVerb::NewMerge,
+                zanshin_jj::DropVerb::Duplicate => fbs::DropVerb::Duplicate,
+                zanshin_jj::DropVerb::Split => fbs::DropVerb::Split,
+                zanshin_jj::DropVerb::BookmarkMove => fbs::DropVerb::BookmarkMove,
+            },
+            location: u32::try_from(action.location).unwrap_or(u32::MAX),
+            outcome: action.outcome.into(),
+        }
+    }
+}
+
+/// `zanshin_drop_actions`' answer in wire form (Story 9.31): the rows in order.
+#[derive(Debug)]
+pub struct DropActionsObj {
+    /// The rows.
+    pub actions: Vec<DropActionObj>,
+}
+
+impl From<zanshin_jj::DropActions> for DropActionsObj {
+    fn from(actions: zanshin_jj::DropActions) -> Self {
+        Self {
+            actions: actions.actions.into_iter().map(DropActionObj::from).collect(),
+        }
+    }
+}
+
+/// `zanshin_change_actions`' answer in wire form (Story 9.31): the seven card-menu outcomes in
+/// `zanshin_jj::ChangeActions`' field order.
+#[derive(Debug)]
+pub struct ChangeActionsObj {
+    /// `new X`, `new -A X`, `new -B X`, `edit X`, `describe X`, `squash -r X`, `abandon X`.
+    pub outcomes: [ActionOutcomeObj; 7],
+}
+
+impl From<zanshin_jj::ChangeActions> for ChangeActionsObj {
+    fn from(actions: zanshin_jj::ChangeActions) -> Self {
+        Self {
+            outcomes: [
+                actions.new_onto.into(),
+                actions.new_insert_after.into(),
+                actions.new_insert_before.into(),
+                actions.edit.into(),
+                actions.describe.into(),
+                actions.squash_into_parent.into(),
+                actions.abandon.into(),
+            ],
+        }
+    }
+}
+
+/// Builds one `ActionOutcome` table; the refusal, when present, as an `FfiError` table.
+fn build_action_outcome<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    outcome: &ActionOutcomeObj,
+) -> flatbuffers::WIPOffset<fbs::ActionOutcome<'a>> {
+    let refusal = outcome.refusal.as_ref().map(|e| {
+        let code = b.create_string(&e.code);
+        let context = e.context.as_deref().map(|c| b.create_string(c));
+        fbs::FfiError::create(
+            b,
+            &fbs::FfiErrorArgs {
+                code: Some(code),
+                context,
+            },
+        )
+    });
+    fbs::ActionOutcome::create(
+        b,
+        &fbs::ActionOutcomeArgs {
+            status: outcome.status,
+            refusal,
+            combined_description_needed: outcome.combined_description_needed,
+            allow_backwards_needed: outcome.allow_backwards_needed,
+        },
+    )
+}
+
+/// Build a success `Envelope` with a `DropActions` payload and return the finished buffer
+/// (Story 9.31): every row in order, each outcome completed before its `DropAction` opens.
+#[must_use]
+pub fn ok_drop_actions(rows: &DropActionsObj, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(512);
+    let offsets: Vec<_> = rows
+        .actions
+        .iter()
+        .map(|row| {
+            let outcome = build_action_outcome(&mut b, &row.outcome);
+            fbs::DropAction::create(
+                &mut b,
+                &fbs::DropActionArgs {
+                    verb: row.verb,
+                    location: row.location,
+                    outcome: Some(outcome),
+                },
+            )
+        })
+        .collect();
+    let actions = b.create_vector(&offsets);
+    let payload = fbs::DropActions::create(&mut b, &fbs::DropActionsArgs { actions: Some(actions) });
+    finish_envelope(b, fbs::Payload::DropActions, Some(payload.as_union_value()), report)
+}
+
+/// Build a success `Envelope` with a `ChangeActions` payload and return the finished buffer
+/// (Story 9.31); every one of the seven outcomes is written.
+#[must_use]
+pub fn ok_change_actions(actions: &ChangeActionsObj, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(512);
+    let [new_onto, new_insert_after, new_insert_before, edit, describe, squash_into_parent, abandon] = actions
+        .outcomes
+        .each_ref()
+        .map(|outcome| build_action_outcome(&mut b, outcome));
+    let payload = fbs::ChangeActions::create(
+        &mut b,
+        &fbs::ChangeActionsArgs {
+            new_onto: Some(new_onto),
+            new_insert_after: Some(new_insert_after),
+            new_insert_before: Some(new_insert_before),
+            edit: Some(edit),
+            describe: Some(describe),
+            squash_into_parent: Some(squash_into_parent),
+            abandon: Some(abandon),
+        },
+    );
+    finish_envelope(b, fbs::Payload::ChangeActions, Some(payload.as_union_value()), report)
+}
+
 /// Build a success `Envelope` with a `Diagnostics` payload and return the finished buffer.
 ///
 /// Sets `ok = true`, `data_type = Payload::Diagnostics`, and populates the four
@@ -1415,6 +1591,154 @@ mod tests {
             .expect("SquashPlan payload")
             .combined_description()
             .is_none());
+    }
+
+    fn outcome(
+        status: zanshin_jj::ActionStatus,
+        refusal: Option<zanshin_jj::MutateError>,
+    ) -> zanshin_jj::ActionOutcome {
+        zanshin_jj::ActionOutcome {
+            status,
+            refusal,
+            combined_description_needed: false,
+            allow_backwards_needed: false,
+        }
+    }
+
+    /// Story 9.31: every verb and status crosses as its wire value, the location as an index, the
+    /// refusal as the `FfiError` `map_mutate_err` makes of it, and the flags as given.
+    #[test]
+    fn ok_drop_actions_writes_every_row_with_its_mapped_refusal() {
+        use zanshin_jj::{ActionStatus as S, DropVerb as V};
+        let verbs = [
+            (V::RebaseSource, fbs::DropVerb::RebaseSource),
+            (V::RebaseRevisions, fbs::DropVerb::RebaseRevisions),
+            (V::Squash, fbs::DropVerb::Squash),
+            (V::NewMerge, fbs::DropVerb::NewMerge),
+            (V::Duplicate, fbs::DropVerb::Duplicate),
+            (V::Split, fbs::DropVerb::Split),
+            (V::BookmarkMove, fbs::DropVerb::BookmarkMove),
+        ];
+        let mut actions: Vec<zanshin_jj::DropAction> = verbs
+            .iter()
+            .enumerate()
+            .map(|(i, (verb, _))| zanshin_jj::DropAction {
+                verb: *verb,
+                location: i,
+                outcome: outcome(S::Available, None),
+            })
+            .collect();
+        actions[1].outcome = outcome(S::NoOp, None);
+        actions[2].outcome.combined_description_needed = true;
+        actions[3].outcome = outcome(
+            S::Refused,
+            Some(zanshin_jj::MutateError::Immutable {
+                commit_id: "abc".to_owned(),
+            }),
+        );
+        actions[6].outcome.allow_backwards_needed = true;
+        actions.push(zanshin_jj::DropAction {
+            verb: V::Squash,
+            location: usize::MAX,
+            outcome: outcome(S::Refused, Some(zanshin_jj::MutateError::NothingToUndo)),
+        });
+
+        let wire = DropActionsObj::from(zanshin_jj::DropActions { actions });
+        let buf = ok_drop_actions(&wire, &CallReport::default());
+        let env = verified_envelope(&buf);
+        assert_eq!(env.data_type(), fbs::Payload::DropActions);
+        let rows: Vec<_> = env
+            .data_as_drop_actions()
+            .expect("DropActions payload")
+            .actions()
+            .expect("actions")
+            .iter()
+            .collect();
+        assert_eq!(rows.len(), 8);
+        for (i, (_, wire_verb)) in verbs.iter().enumerate() {
+            assert_eq!(rows[i].verb(), *wire_verb);
+            assert_eq!(rows[i].location(), u32::try_from(i).expect("small"));
+        }
+        let status = |i: usize| rows[i].outcome().expect("outcome").status();
+        assert_eq!(status(0), fbs::ActionStatus::Available);
+        assert_eq!(status(1), fbs::ActionStatus::NoOp);
+        assert_eq!(status(3), fbs::ActionStatus::Refused);
+        assert!(rows[2].outcome().expect("outcome").combined_description_needed());
+        assert!(rows[6].outcome().expect("outcome").allow_backwards_needed());
+        assert!(rows[0].outcome().expect("outcome").refusal().is_none());
+        let refusal = rows[3].outcome().expect("outcome").refusal().expect("refusal");
+        assert_eq!((refusal.code(), refusal.context()), (Some(JJ_IMMUTABLE), Some("abc")));
+        assert_eq!(rows[7].location(), u32::MAX, "an index past u32 saturates");
+        let refusal = rows[7].outcome().expect("outcome").refusal().expect("refusal");
+        assert_eq!((refusal.code(), refusal.context()), (Some(JJ_NOTHING_TO_UNDO), None));
+    }
+
+    /// Story 9.31: all seven card-menu outcomes are written, in field order.
+    #[test]
+    fn ok_change_actions_writes_all_seven_outcomes() {
+        use zanshin_jj::ActionStatus as S;
+        let actions = zanshin_jj::ChangeActions {
+            new_onto: outcome(S::Available, None),
+            new_insert_after: outcome(S::NoOp, None),
+            new_insert_before: outcome(
+                S::Refused,
+                Some(zanshin_jj::MutateError::ChangeNotFound { id: "x".to_owned() }),
+            ),
+            edit: outcome(S::Available, None),
+            describe: outcome(
+                S::Refused,
+                Some(zanshin_jj::MutateError::Config { reason: "c".to_owned() }),
+            ),
+            squash_into_parent: zanshin_jj::ActionOutcome {
+                combined_description_needed: true,
+                ..outcome(S::Available, None)
+            },
+            abandon: outcome(
+                S::Refused,
+                Some(zanshin_jj::MutateError::InvalidInput { reason: "r".to_owned() }),
+            ),
+        };
+        let buf = ok_change_actions(&ChangeActionsObj::from(actions), &CallReport::default());
+        let env = verified_envelope(&buf);
+        assert_eq!(env.data_type(), fbs::Payload::ChangeActions);
+        let card = env.data_as_change_actions().expect("ChangeActions payload");
+        let all = [
+            card.new_onto(),
+            card.new_insert_after(),
+            card.new_insert_before(),
+            card.edit(),
+            card.describe(),
+            card.squash_into_parent(),
+            card.abandon(),
+        ]
+        .map(|o| o.expect("present"));
+        let statuses = all.map(|o| o.status());
+        assert_eq!(
+            statuses,
+            [
+                fbs::ActionStatus::Available,
+                fbs::ActionStatus::NoOp,
+                fbs::ActionStatus::Refused,
+                fbs::ActionStatus::Available,
+                fbs::ActionStatus::Refused,
+                fbs::ActionStatus::Available,
+                fbs::ActionStatus::Refused,
+            ]
+        );
+        let codes = all.map(|o| o.refusal().and_then(|e| e.code()));
+        assert_eq!(
+            codes,
+            [
+                None,
+                None,
+                Some(JJ_CHANGE_NOT_FOUND),
+                None,
+                Some(JJ_CONFIG_ERROR),
+                None,
+                Some(JJ_INVALID_INPUT)
+            ]
+        );
+        assert!(all[5].combined_description_needed());
     }
 
     #[test]

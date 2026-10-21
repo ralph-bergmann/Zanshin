@@ -22,7 +22,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 ///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 ///  very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-///  squash, never a different verb. For the other 34 tables the variant name plus `Request` IS
+///  squash, never a different verb. For the other 35 tables the variant name plus `Request` IS
 ///  the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -70,7 +70,8 @@ enum RequestKind {
   GitPush(35),
   RepoClone(36),
   RepoInit(37),
-  GitFetch(38);
+  GitFetch(38),
+  DropActions(39);
 
   final int value;
   const RequestKind(this.value);
@@ -155,6 +156,8 @@ enum RequestKind {
         return RequestKind.RepoInit;
       case 38:
         return RequestKind.GitFetch;
+      case 39:
+        return RequestKind.DropActions;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -163,7 +166,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 38;
+  static const int maxValue = 39;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -470,6 +473,47 @@ class _ConfigScopeReader extends fb.Reader<ConfigScope> {
 
   @override
   ConfigScope read(fb.BufferContext bc, int offset) => ConfigScope.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
+///  What `zanshin_drop_actions` previews as dragged (Story 9.31). Member order IS the wire
+///  value — APPEND only.
+enum DropSourceKind {
+  Change(0),
+  Selection(1),
+  Bookmark(2);
+
+  final int value;
+  const DropSourceKind(this.value);
+
+  factory DropSourceKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return DropSourceKind.Change;
+      case 1:
+        return DropSourceKind.Selection;
+      case 2:
+        return DropSourceKind.Bookmark;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static DropSourceKind? _createOrNull(int? value) => value == null ? null : DropSourceKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<DropSourceKind> reader = _DropSourceKindReader();
+}
+
+class _DropSourceKindReader extends fb.Reader<DropSourceKind> {
+  const _DropSourceKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  DropSourceKind read(fb.BufferContext bc, int offset) =>
+      DropSourceKind.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
 ///  How a working-copy file changed between @- and @.
@@ -835,6 +879,99 @@ class _TopologyRefKindReader extends fb.Reader<TopologyRefKind> {
   @override
   TopologyRefKind read(fb.BufferContext bc, int offset) =>
       TopologyRefKind.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  The verb a `DropAction` row previews (`S` the source, `T…` the location's ids):
+///  `rebase -s S -o T…`, `rebase -r S -o T…` (or `-A`/`-B`), `squash --from S --into T [paths]`,
+///  `new T… S`, `duplicate S -o T…`, `split -r S <paths> -A/-B …`, `bookmark move N --to T`.
+enum DropVerb {
+  RebaseSource(0),
+  RebaseRevisions(1),
+  Squash(2),
+  NewMerge(3),
+  Duplicate(4),
+  Split(5),
+  BookmarkMove(6);
+
+  final int value;
+  const DropVerb(this.value);
+
+  factory DropVerb.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return DropVerb.RebaseSource;
+      case 1:
+        return DropVerb.RebaseRevisions;
+      case 2:
+        return DropVerb.Squash;
+      case 3:
+        return DropVerb.NewMerge;
+      case 4:
+        return DropVerb.Duplicate;
+      case 5:
+        return DropVerb.Split;
+      case 6:
+        return DropVerb.BookmarkMove;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static DropVerb? _createOrNull(int? value) => value == null ? null : DropVerb.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 6;
+  static const fb.Reader<DropVerb> reader = _DropVerbReader();
+}
+
+class _DropVerbReader extends fb.Reader<DropVerb> {
+  const _DropVerbReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  DropVerb read(fb.BufferContext bc, int offset) => DropVerb.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  Whether a previewed verb would run: write an operation (`Available`), write none (`NoOp` — only
+///  rebase, squash and bookmark move), or refuse (`Refused`).
+enum ActionStatus {
+  Available(0),
+  NoOp(1),
+  Refused(2);
+
+  final int value;
+  const ActionStatus(this.value);
+
+  factory ActionStatus.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return ActionStatus.Available;
+      case 1:
+        return ActionStatus.NoOp;
+      case 2:
+        return ActionStatus.Refused;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static ActionStatus? _createOrNull(int? value) => value == null ? null : ActionStatus.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<ActionStatus> reader = _ActionStatusReader();
+}
+
+class _ActionStatusReader extends fb.Reader<ActionStatus> {
+  const _ActionStatusReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  ActionStatus read(fb.BufferContext bc, int offset) => ActionStatus.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
 ///  Whether a pushed ref is a bookmark or a tag.
@@ -1287,7 +1424,9 @@ enum PayloadTypeId {
   GitPushRemotes(42),
   RemoteChanges(43),
   GitFetchResult(44),
-  GitFetchRemotes(45);
+  GitFetchRemotes(45),
+  DropActions(46),
+  ChangeActions(47);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -1386,6 +1525,10 @@ enum PayloadTypeId {
         return PayloadTypeId.GitFetchResult;
       case 45:
         return PayloadTypeId.GitFetchRemotes;
+      case 46:
+        return PayloadTypeId.DropActions;
+      case 47:
+        return PayloadTypeId.ChangeActions;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -1394,7 +1537,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 45;
+  static const int maxValue = 47;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -6071,6 +6214,245 @@ class CommitContentsRequestObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One location of `zanshin_drop_actions` (Story 9.31) — the CLI's `-o` / `-A` / `-B`, change ids
+///  in jj reverse-hex. ABSENT or EMPTY is the flag not given; `onto` excludes the other two, and at
+///  least one must be given (else `jj.invalid_input` for the whole call).
+class DropLocation {
+  DropLocation._(this._bc, this._bcOffset);
+  factory DropLocation(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<DropLocation> reader = _DropLocationReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<String>? get onto => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get insertAfter => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get insertBefore => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'DropLocation{onto: ${onto}, insertAfter: ${insertAfter}, insertBefore: ${insertBefore}}';
+  }
+}
+
+class _DropLocationReader extends fb.TableReader<DropLocation> {
+  const _DropLocationReader();
+
+  @override
+  DropLocation createObject(fb.BufferContext bc, int offset) => DropLocation._(bc, offset);
+}
+
+class DropLocationBuilder {
+  DropLocationBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addOntoOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addInsertAfterOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addInsertBeforeOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class DropLocationObjectBuilder extends fb.ObjectBuilder {
+  final List<String>? _onto;
+  final List<String>? _insertAfter;
+  final List<String>? _insertBefore;
+
+  DropLocationObjectBuilder({
+    List<String>? onto,
+    List<String>? insertAfter,
+    List<String>? insertBefore,
+  }) : _onto = onto,
+       _insertAfter = insertAfter,
+       _insertBefore = insertBefore;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? ontoOffset = _onto == null ? null : fbBuilder.writeList(_onto!.map(fbBuilder.writeString).toList());
+    final int? insertAfterOffset = _insertAfter == null
+        ? null
+        : fbBuilder.writeList(_insertAfter!.map(fbBuilder.writeString).toList());
+    final int? insertBeforeOffset = _insertBefore == null
+        ? null
+        : fbBuilder.writeList(_insertBefore!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, ontoOffset);
+    fbBuilder.addOffset(1, insertAfterOffset);
+    fbBuilder.addOffset(2, insertBeforeOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_drop_actions` (Story 9.31).
+///
+///    source_kind        `Change` (the change `change_id`), `Selection` (the changes to `paths` —
+///                       repo-relative PREFIXES; empty = every path for the squash row, which the
+///                       split row refuses with split's no-paths text — inside `change_id`) or
+///                       `Bookmark` (the local bookmark named exactly `bookmark`)
+///    change_id          the dragged change (jj reverse-hex); `Change` / `Selection` only
+///    paths              the selected paths; `Selection` only
+///    bookmark           the dragged bookmark's name; `Bookmark` only
+///    locations          the drop locations; each row's `location` is an index into this list
+///
+///  A field the `source_kind` needs that is ABSENT is `jj.invalid_input` "<field> is required".
+class DropActionsRequest {
+  DropActionsRequest._(this._bc, this._bcOffset);
+  factory DropActionsRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<DropActionsRequest> reader = _DropActionsRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  DropSourceKind get sourceKind => DropSourceKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 6, 0));
+  String? get changeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  String? get bookmark => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 12);
+  List<DropLocation>? get locations =>
+      const fb.ListReader<DropLocation>(DropLocation.reader).vTableGetNullable(_bc, _bcOffset, 14);
+
+  @override
+  String toString() {
+    return 'DropActionsRequest{kind: ${kind}, sourceKind: ${sourceKind}, changeId: ${changeId}, paths: ${paths}, bookmark: ${bookmark}, locations: ${locations}}';
+  }
+}
+
+class _DropActionsRequestReader extends fb.TableReader<DropActionsRequest> {
+  const _DropActionsRequestReader();
+
+  @override
+  DropActionsRequest createObject(fb.BufferContext bc, int offset) => DropActionsRequest._(bc, offset);
+}
+
+class DropActionsRequestBuilder {
+  DropActionsRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(6);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addSourceKind(DropSourceKind? sourceKind) {
+    fbBuilder.addUint8(1, sourceKind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addBookmarkOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLocationsOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class DropActionsRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final DropSourceKind? _sourceKind;
+  final String? _changeId;
+  final List<String>? _paths;
+  final String? _bookmark;
+  final List<DropLocationObjectBuilder>? _locations;
+
+  DropActionsRequestObjectBuilder({
+    RequestKind? kind,
+    DropSourceKind? sourceKind,
+    String? changeId,
+    List<String>? paths,
+    String? bookmark,
+    List<DropLocationObjectBuilder>? locations,
+  }) : _kind = kind,
+       _sourceKind = sourceKind,
+       _changeId = changeId,
+       _paths = paths,
+       _bookmark = bookmark,
+       _locations = locations;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? changeIdOffset = _changeId == null ? null : fbBuilder.writeString(_changeId!);
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    final int? bookmarkOffset = _bookmark == null ? null : fbBuilder.writeString(_bookmark!);
+    final int? locationsOffset = _locations == null
+        ? null
+        : fbBuilder.writeList(_locations!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(6);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addUint8(1, _sourceKind?.value);
+    fbBuilder.addOffset(2, changeIdOffset);
+    fbBuilder.addOffset(3, pathsOffset);
+    fbBuilder.addOffset(4, bookmarkOffset);
+    fbBuilder.addOffset(5, locationsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Arguments of `zanshin_graph_topology` (Story 4.12) — the whole revset's index-only topology,
 ///  every argument a caller pass-through (FR-JJ-17); Rust bakes in no default.
 ///  `revset`, `prioritize` and `short_prefixes` are required: an absent field is `jj.invalid_input`
@@ -9665,6 +10047,419 @@ class SplitResultObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(0, mutationOffset);
     fbBuilder.addOffset(1, selectedChangeIdOffset);
     fbBuilder.addOffset(2, remainingChangeIdOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One previewed verb's answer. `refusal` is present exactly when `status` is `Refused`: the
+///  `FfiError` the verb's own wrapper returns for it (same code, same `context`).
+///  `combined_description_needed` (a squash row) — the squash would combine two or more non-empty
+///  descriptions, the case the CLI opens its editor for (`zanshin_squash_plan` returns the text);
+///  `allow_backwards_needed` (a bookmark row) — the move is not a fast-forward.
+class ActionOutcome {
+  ActionOutcome._(this._bc, this._bcOffset);
+  factory ActionOutcome(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ActionOutcome> reader = _ActionOutcomeReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  ActionStatus get status => ActionStatus.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  FfiError? get refusal => FfiError.reader.vTableGetNullable(_bc, _bcOffset, 6);
+  bool get combinedDescriptionNeeded => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+  bool get allowBackwardsNeeded => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+
+  @override
+  String toString() {
+    return 'ActionOutcome{status: ${status}, refusal: ${refusal}, combinedDescriptionNeeded: ${combinedDescriptionNeeded}, allowBackwardsNeeded: ${allowBackwardsNeeded}}';
+  }
+}
+
+class _ActionOutcomeReader extends fb.TableReader<ActionOutcome> {
+  const _ActionOutcomeReader();
+
+  @override
+  ActionOutcome createObject(fb.BufferContext bc, int offset) => ActionOutcome._(bc, offset);
+}
+
+class ActionOutcomeBuilder {
+  ActionOutcomeBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addStatus(ActionStatus? status) {
+    fbBuilder.addUint8(0, status?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRefusalOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCombinedDescriptionNeeded(bool? combinedDescriptionNeeded) {
+    fbBuilder.addBool(2, combinedDescriptionNeeded);
+    return fbBuilder.offset;
+  }
+
+  int addAllowBackwardsNeeded(bool? allowBackwardsNeeded) {
+    fbBuilder.addBool(3, allowBackwardsNeeded);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ActionOutcomeObjectBuilder extends fb.ObjectBuilder {
+  final ActionStatus? _status;
+  final FfiErrorObjectBuilder? _refusal;
+  final bool? _combinedDescriptionNeeded;
+  final bool? _allowBackwardsNeeded;
+
+  ActionOutcomeObjectBuilder({
+    ActionStatus? status,
+    FfiErrorObjectBuilder? refusal,
+    bool? combinedDescriptionNeeded,
+    bool? allowBackwardsNeeded,
+  }) : _status = status,
+       _refusal = refusal,
+       _combinedDescriptionNeeded = combinedDescriptionNeeded,
+       _allowBackwardsNeeded = allowBackwardsNeeded;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? refusalOffset = _refusal?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _status?.value);
+    fbBuilder.addOffset(1, refusalOffset);
+    fbBuilder.addBool(2, _combinedDescriptionNeeded);
+    fbBuilder.addBool(3, _allowBackwardsNeeded);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One row of `zanshin_drop_actions`' answer; `location` indexes the request's `locations`.
+class DropAction {
+  DropAction._(this._bc, this._bcOffset);
+  factory DropAction(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<DropAction> reader = _DropActionReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  DropVerb get verb => DropVerb.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  int get location => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  ActionOutcome? get outcome => ActionOutcome.reader.vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'DropAction{verb: ${verb}, location: ${location}, outcome: ${outcome}}';
+  }
+}
+
+class _DropActionReader extends fb.TableReader<DropAction> {
+  const _DropActionReader();
+
+  @override
+  DropAction createObject(fb.BufferContext bc, int offset) => DropAction._(bc, offset);
+}
+
+class DropActionBuilder {
+  DropActionBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addVerb(DropVerb? verb) {
+    fbBuilder.addUint8(0, verb?.value);
+    return fbBuilder.offset;
+  }
+
+  int addLocation(int? location) {
+    fbBuilder.addUint32(1, location);
+    return fbBuilder.offset;
+  }
+
+  int addOutcomeOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class DropActionObjectBuilder extends fb.ObjectBuilder {
+  final DropVerb? _verb;
+  final int? _location;
+  final ActionOutcomeObjectBuilder? _outcome;
+
+  DropActionObjectBuilder({
+    DropVerb? verb,
+    int? location,
+    ActionOutcomeObjectBuilder? outcome,
+  }) : _verb = verb,
+       _location = location,
+       _outcome = outcome;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? outcomeOffset = _outcome?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _verb?.value);
+    fbBuilder.addUint32(1, _location);
+    fbBuilder.addOffset(2, outcomeOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_drop_actions`' answer: every location's rows, in location order.
+class DropActions {
+  DropActions._(this._bc, this._bcOffset);
+  factory DropActions(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<DropActions> reader = _DropActionsReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<DropAction>? get actions =>
+      const fb.ListReader<DropAction>(DropAction.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'DropActions{actions: ${actions}}';
+  }
+}
+
+class _DropActionsReader extends fb.TableReader<DropActions> {
+  const _DropActionsReader();
+
+  @override
+  DropActions createObject(fb.BufferContext bc, int offset) => DropActions._(bc, offset);
+}
+
+class DropActionsBuilder {
+  DropActionsBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addActionsOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class DropActionsObjectBuilder extends fb.ObjectBuilder {
+  final List<DropActionObjectBuilder>? _actions;
+
+  DropActionsObjectBuilder({
+    List<DropActionObjectBuilder>? actions,
+  }) : _actions = actions;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? actionsOffset = _actions == null
+        ? null
+        : fbBuilder.writeList(_actions!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, actionsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_change_actions`' answer: the card menu's verbs for one change `X` — `new X`,
+///  `new -A X`, `new -B X`, `edit X`, `describe X`, `squash -r X` (with the combined-description
+///  flag) and `abandon X`. Every field is always present.
+class ChangeActions {
+  ChangeActions._(this._bc, this._bcOffset);
+  factory ChangeActions(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ChangeActions> reader = _ChangeActionsReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  ActionOutcome? get newOnto => ActionOutcome.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  ActionOutcome? get newInsertAfter => ActionOutcome.reader.vTableGetNullable(_bc, _bcOffset, 6);
+  ActionOutcome? get newInsertBefore => ActionOutcome.reader.vTableGetNullable(_bc, _bcOffset, 8);
+  ActionOutcome? get edit => ActionOutcome.reader.vTableGetNullable(_bc, _bcOffset, 10);
+  ActionOutcome? get describe => ActionOutcome.reader.vTableGetNullable(_bc, _bcOffset, 12);
+  ActionOutcome? get squashIntoParent => ActionOutcome.reader.vTableGetNullable(_bc, _bcOffset, 14);
+  ActionOutcome? get abandon => ActionOutcome.reader.vTableGetNullable(_bc, _bcOffset, 16);
+
+  @override
+  String toString() {
+    return 'ChangeActions{newOnto: ${newOnto}, newInsertAfter: ${newInsertAfter}, newInsertBefore: ${newInsertBefore}, edit: ${edit}, describe: ${describe}, squashIntoParent: ${squashIntoParent}, abandon: ${abandon}}';
+  }
+}
+
+class _ChangeActionsReader extends fb.TableReader<ChangeActions> {
+  const _ChangeActionsReader();
+
+  @override
+  ChangeActions createObject(fb.BufferContext bc, int offset) => ChangeActions._(bc, offset);
+}
+
+class ChangeActionsBuilder {
+  ChangeActionsBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(7);
+  }
+
+  int addNewOntoOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNewInsertAfterOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNewInsertBeforeOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addEditOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addDescribeOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSquashIntoParentOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAbandonOffset(int? offset) {
+    fbBuilder.addOffset(6, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ChangeActionsObjectBuilder extends fb.ObjectBuilder {
+  final ActionOutcomeObjectBuilder? _newOnto;
+  final ActionOutcomeObjectBuilder? _newInsertAfter;
+  final ActionOutcomeObjectBuilder? _newInsertBefore;
+  final ActionOutcomeObjectBuilder? _edit;
+  final ActionOutcomeObjectBuilder? _describe;
+  final ActionOutcomeObjectBuilder? _squashIntoParent;
+  final ActionOutcomeObjectBuilder? _abandon;
+
+  ChangeActionsObjectBuilder({
+    ActionOutcomeObjectBuilder? newOnto,
+    ActionOutcomeObjectBuilder? newInsertAfter,
+    ActionOutcomeObjectBuilder? newInsertBefore,
+    ActionOutcomeObjectBuilder? edit,
+    ActionOutcomeObjectBuilder? describe,
+    ActionOutcomeObjectBuilder? squashIntoParent,
+    ActionOutcomeObjectBuilder? abandon,
+  }) : _newOnto = newOnto,
+       _newInsertAfter = newInsertAfter,
+       _newInsertBefore = newInsertBefore,
+       _edit = edit,
+       _describe = describe,
+       _squashIntoParent = squashIntoParent,
+       _abandon = abandon;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? newOntoOffset = _newOnto?.getOrCreateOffset(fbBuilder);
+    final int? newInsertAfterOffset = _newInsertAfter?.getOrCreateOffset(fbBuilder);
+    final int? newInsertBeforeOffset = _newInsertBefore?.getOrCreateOffset(fbBuilder);
+    final int? editOffset = _edit?.getOrCreateOffset(fbBuilder);
+    final int? describeOffset = _describe?.getOrCreateOffset(fbBuilder);
+    final int? squashIntoParentOffset = _squashIntoParent?.getOrCreateOffset(fbBuilder);
+    final int? abandonOffset = _abandon?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(7);
+    fbBuilder.addOffset(0, newOntoOffset);
+    fbBuilder.addOffset(1, newInsertAfterOffset);
+    fbBuilder.addOffset(2, newInsertBeforeOffset);
+    fbBuilder.addOffset(3, editOffset);
+    fbBuilder.addOffset(4, describeOffset);
+    fbBuilder.addOffset(5, squashIntoParentOffset);
+    fbBuilder.addOffset(6, abandonOffset);
     return fbBuilder.endTable();
   }
 
@@ -15222,6 +16017,10 @@ class Envelope {
         return GitFetchResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 45:
         return GitFetchRemotes.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 46:
+        return DropActions.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 47:
+        return ChangeActions.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }
