@@ -13595,7 +13595,7 @@ pub mod zanshin {
         ///   mutation           the operation the fetch wrote (a no-change fetch writes one too)
         ///   remotes            the remotes fetched from, in remote-name order
         ///   hints              the CLI's hints, verbatim: "Fetching from the only existing remote: <name>"
-        ///   failed_ref_names   the Git refs the import could not read (lossy UTF-8, jj-lib's order) —
+        ///   failed_ref_names   the Git refs the import could not read (lossy UTF-8, sorted by name) —
         ///                      what `jj.git_import_failed` lists
         pub struct GitFetchResult<'a> {
             pub _tab: ::flatbuffers::Table<'a>,

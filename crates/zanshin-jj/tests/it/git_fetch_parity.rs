@@ -736,3 +736,114 @@ fn the_poll_refuses_what_the_fetch_refuses() {
     let err = fx.fetch(&GitFetchArgs::default()).expect_err("no refspec");
     assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
 }
+
+/// Without `remotes.origin.fetch-bookmarks`, the remote's Git fetch refspecs pick the default
+/// branches (`load_default_fetch_bookmarks`) — for the fetch and for the poll alike.
+#[test]
+fn a_narrowed_git_refspec_selects_the_default_branches() {
+    let dir = TempDir::new().unwrap();
+    let origin = Upstream::new(dir.path(), "origin");
+    origin.commit("other", "other");
+    let fx = Fx::new(&[("origin", &origin)]);
+    let git_dir = fx.root.join(".jj").join("repo").join("store").join("git");
+    git(
+        &[
+            "--git-dir",
+            &git_dir.to_string_lossy(),
+            "config",
+            "remote.origin.fetch",
+            "+refs/heads/main:refs/remotes/origin/main",
+        ],
+        fx.tmp.path(),
+    );
+    // A fresh handle, so the Git backend re-reads the edited Git config.
+    let Fx { tmp, root, .. } = fx;
+    let mut fx = Fx {
+        repo: Repo::open(&root).expect("reopen"),
+        tmp,
+        root,
+    };
+    fx.fetch(&GitFetchArgs::default()).expect("fetch");
+    assert!(fx.repo.take_warnings().is_empty());
+    assert_eq!(fx.remote_bookmark("main", "origin"), Some(origin.head("main")));
+    assert_eq!(
+        fx.remote_bookmark("other", "origin"),
+        None,
+        "the refspec excludes other"
+    );
+
+    origin.commit("main", "second").commit("other", "other2");
+    let changes = fx.repo.remote_changes("origin", None).expect("poll");
+    let names: Vec<(&str, RemoteRefChangeKind)> = changes.iter().map(|c| (c.name.as_str(), c.change)).collect();
+    assert_eq!(names, [("main", RemoteRefChangeKind::Moved)], "{changes:?}");
+}
+
+fn branches(names: &[&str], remotes: FetchRemotes) -> GitFetchArgs {
+    GitFetchArgs {
+        remotes,
+        refs: FetchRefs::Patterns {
+            branches: strings(names),
+            tags: Vec::new(),
+        },
+    }
+}
+
+/// `warn_if_branches_not_found`: a name is missing only when NO matched remote has it — one
+/// remote carrying it is enough.
+#[test]
+fn a_branch_name_one_of_several_remotes_has_does_not_warn() {
+    let dir = TempDir::new().unwrap();
+    let (origin, up) = (Upstream::new(dir.path(), "origin"), Upstream::new(dir.path(), "up"));
+    origin.commit("feat", "feature");
+    let mut fx = Fx::new(&[("origin", &origin), ("up", &up)]);
+    let outcome = fx.fetch(&branches(&["feat"], FetchRemotes::All)).expect("fetch");
+    assert_eq!(outcome.remotes, strings(&["origin", "up"]));
+    let warnings = fx.repo.take_warnings();
+    assert!(
+        !warnings.iter().any(|w| w.kind == WarningKind::FetchBranchesUnmatched),
+        "{warnings:?}"
+    );
+    assert_eq!(fx.remote_bookmark("feat", "origin"), Some(origin.head("feat")));
+}
+
+/// `warn_if_branches_not_found` also looks at the base view: a branch deleted upstream since the
+/// last fetch was there, so naming it does not warn.
+#[test]
+fn a_branch_deleted_upstream_since_the_last_fetch_does_not_warn() {
+    let dir = TempDir::new().unwrap();
+    let origin = Upstream::new(dir.path(), "origin");
+    origin.commit("feat", "feature");
+    let mut fx = Fx::new(&[("origin", &origin)]);
+    fx.fetch(&branches(&["feat"], FetchRemotes::Default))
+        .expect("first fetch");
+    assert_eq!(fx.remote_bookmark("feat", "origin"), Some(origin.head("feat")));
+
+    git(&["checkout", "-q", "main"], &origin.work);
+    git(&["branch", "-q", "-D", "feat"], &origin.work);
+    origin.publish();
+    let _ = fx.repo.take_warnings();
+    fx.fetch(&branches(&["feat"], FetchRemotes::Default))
+        .expect("second fetch");
+    let warnings = fx.repo.take_warnings();
+    assert!(
+        !warnings.iter().any(|w| w.kind == WarningKind::FetchBranchesUnmatched),
+        "{warnings:?}"
+    );
+    assert_eq!(fx.remote_bookmark("feat", "origin"), None, "the deletion is imported");
+}
+
+/// `warn_if_branches_not_found` names only the exact names the pattern ACCEPTS: a negated name
+/// is no missing branch.
+#[test]
+fn a_negated_branch_name_does_not_warn() {
+    let dir = TempDir::new().unwrap();
+    let origin = Upstream::new(dir.path(), "origin");
+    let mut fx = Fx::new(&[("origin", &origin)]);
+    fx.fetch(&branches(&["~nope"], FetchRemotes::Default)).expect("fetch");
+    let warnings = fx.repo.take_warnings();
+    assert!(
+        !warnings.iter().any(|w| w.kind == WarningKind::FetchBranchesUnmatched),
+        "{warnings:?}"
+    );
+    assert_eq!(fx.remote_bookmark("main", "origin"), Some(origin.head("main")));
+}

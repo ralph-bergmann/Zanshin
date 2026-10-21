@@ -23,7 +23,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/config.dart';
-import 'package:zanshin_core/src/ffi/fetch.dart' show NamedFetchRemotes;
+import 'package:zanshin_core/src/ffi/fetch.dart' show NamedFetchRemotes, PatternFetchRefs;
 import 'package:zanshin_core/src/ffi/push.dart';
 import 'package:zanshin_core/src/worker/events.dart';
 import 'package:zanshin_core/src/worker/handle.dart';
@@ -238,6 +238,17 @@ void main() {
       // The interior NUL is refused inside the helper isolate (the FFI adapter's guard).
       await expectLater(
         repo.gitFetch(remotes: const NamedFetchRemotes(['a\u0000b'])).result,
+        ffiError('internal.dispatch_error'),
+      );
+      await repo.status();
+    });
+
+    test('a fetch carries its refs through the worker to the helper', () async {
+      final RepoHandle repo = await worker.initRepo('${tempDir.path}/plain', backend: 1, noColocate: true);
+      // Only the branch pattern holds the NUL: a dropped `refs` would reach Rust and refuse
+      // `jj.invalid_input` (the repo has no remote) instead of the helper's guard.
+      await expectLater(
+        repo.gitFetch(refs: const PatternFetchRefs(branches: ['a\u0000b'])).result,
         ffiError('internal.dispatch_error'),
       );
       await repo.status();

@@ -275,7 +275,7 @@ pub struct GitFetchOutcome {
     pub remotes: Vec<String>,
     /// Hints the UI shows verbatim: "Fetching from the only existing remote: <name>".
     pub hints: Vec<String>,
-    /// The Git refs the import could not read, lossy UTF-8, in jj-lib's order — what
+    /// The Git refs the import could not read, lossy UTF-8, sorted by name (jj-lib's order) — what
     /// `jj.git_import_failed` lists.
     pub failed_ref_names: Vec<String>,
 }
