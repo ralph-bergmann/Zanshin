@@ -5,7 +5,7 @@ created: '2026-10-21'
 status: 'done'
 baseline_revision: 'b182577cd1a25a259b1d5134b1f981957524f61f'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-9-context.md'
@@ -255,6 +255,43 @@ The fixture is a Git-backed repo: root → A → B → C, with D a second child 
   - `[low]` `[reject]` (intent) the fixture matrix is sampled, not a full verb × relation × location cross — every relation the plan fns branch on is covered (parent, descendant, itself, root, immutable source/target/child, loop, unknown, two targets); the remaining cells add no branch.
   - `[false]` `[reject]` (intent) no `## Auto Run Result` yet — it is written at finalize, after the review.
 
+### 2026-10-21 — Review pass (follow-up)
+- verdicts: 33 findings — high 0, medium 1, low 28, false 4, maybe-false 0
+- findings:
+  - `[low]` `[reject]` (blind) `change_actions.new_onto` reads Available while `new_change` refuses a malformed `experimental-advance-branches` (parsed after `plan_new`, `mutate.rs:1035-1036`; the CLI reads it before its transaction) — verified; a malformed experimental key is rare, and the fix threads the config into `plan_new`. Same class as the deferred template-fault entry; the verb's refusal stays authoritative.
+  - `[low]` `[reject]` (blind) the new enums have no `Unspecified = 0` — carried: the logged reject (only this diff's builder and encoder produce them); `DropVerb` is the same argument.
+  - `[low]` `[reject]` (blind) nothing enforces refusal ⇔ Refused in the Rust obj or the Dart decoder — carried: the logged reject (one producer, `outcome()`, pairs them by construction).
+  - `[low]` `[patch]` (blind) `zanshin_new_change`'s FFI rustdoc and Dart `RepoHandle.newChange` do not name the up-front root-merge `jj.invalid_input` — verified (`crates/zanshin-ffi/src/repo.rs` `jj.invalid_input` bullet; `handle.dart` newChange). Fixed: both docs name it.
+  - `[low]` `[patch]` (blind) `rebase_is_no_op` builds a `RepoLoader` and loads the operation again for every rebase row — verified: twice per `-o` location. Fixed: `rebase::load_dry_run_head` loads the head ONCE per call with signing dropped, in `with_rows`; every row's transaction starts from it, and `rebase_is_no_op(tx, loc)` applies on the row's own transaction (the spec's "ONE `load_at_head`").
+  - `[low]` `[patch]` (blind) test gaps: no `RebaseRevisions` NoOp witness, no empty-paths Selection squash row, no divergent-duplicate move — verified. Fixed: `a_leaf_dropped_onto_its_parent_is_a_no_op_for_both_rebase_rows` (D onto A) and the empty-paths Squash row in the selection test. Not added: the divergent path, which needs a divergent fixture for a branch that is jj-lib's own `find_duplicate_divergent_commits` passed through.
+  - `[low]` `[reject]` (blind) the hand-ported refusal texts have no parity-oracle scenario — verified true; the texts were checked verbatim against `git -C ../jj show v0.46.0:cli/src/commands/{rebase,duplicate}.rs` (`:462`, `:586`, `:592`, `:124`, "rebased commits"/"duplicated commits") in this pass. An oracle scenario needs an executing Zanshin verb, which 9.16 / 9.9 / 9.19 add with their own scenarios.
+  - `[low]` `[patch]` (blind) stale planning notes: the 9-18 sprint-status NOTE still says 9.31 previews revert; the deferred-work `rebase -s/-b` with `-A`/`-B` entry still asks 9.31 to mirror the verb — verified. Fixed: dated notes on both (9-18 moot, the corner sidestepped by offering no `-s` at `-A`/`-B`, 9.16 still owes its test). The RESOLVED I1/I2 lines keep their original text after the resolution by the ledger's convention — not changed.
+  - `[low]` `[reject]` (blind) `read_drop_actions_request` ignores fields foreign to the source kind, and an absent `paths` reads as every path — the only producer is the Dart builder this diff ships, tested by its decode contract; refusing foreign fields adds validation branches for buffers no caller builds.
+  - `[low]` `[reject]` (blind) the bookmark row's NoOp covers both "already there" and "no such bookmark" — the intent-contract fixes exactly that (NoOp "when the bookmark already points at T, or no local bookmark has that exact name"); changing it edits the spec.
+  - `[false]` `[reject]` (blind) `ChangeActionsObj`'s positional `[ActionOutcomeObj; 7]` can swap rows silently — the envelope unit test (`crates/zanshin-ffi/src/envelope.rs` ~:1680-1720) builds seven DISTINCT outcomes and checks each named field, so any order mismatch between `From` and `ok_change_actions` fails it.
+  - `[low]` `[reject]` (blind) `#[allow(dead_code)]` on `DuplicatePlan` should be `#[expect(dead_code)]` — the workspace has no `#[expect(` anywhere; `#[allow]` + a WHY comment is the established style.
+  - `[low]` `[patch]` (blind) `Repo::new_change` and `plan_new` rustdocs were edited without reflowing — verified. Fixed: reflowed.
+  - `[low]` `[reject]` (edge-case) the Split row at an `-A`/`-B` location whose parents include the root and another commit reads Available while `split` fails at its write — verified (`prepare_split` has no `refuse_git_root_merge`); needs two `-A`/`-B` targets, which no single drop gap produces, and the fix adds a guard to the shipped split verb (changing its error code).
+  - `[low]` `[defer]` (edge-case) every rebase hover writes git commits / keep refs — carried: deferred (Surfaced in Story 9.31).
+  - `[low]` `[defer]` (edge-case) `edit` of the current `@` reads Available — carried: deferred (Story 9.38).
+  - `[low]` `[defer]` (edge-case) the Duplicate row misses a malformed `templates.duplicate_description` — carried: the deferred template-fault entry names `duplicate`.
+  - `[low]` `[reject]` (edge-case) `DropSourceKind` has no `Unspecified` — carried: the logged reject.
+  - `[low]` `[reject]` (edge-case) the Dart decoder accepts a status/refusal mismatch — carried: the logged reject.
+  - `[low]` `[reject]` (edge-case) AC claim: the Split row at `-A root -A X` disagrees with the verb — same root cause and reason as the Split row above.
+  - `[low]` `[patch]` (verification-gap) the precondition's warnings are never shown to survive the query — verified: every test asserts an empty list. Fixed: `the_preconditions_warnings_are_the_queries_warnings` (a bad `revset-aliases` entry: `drop_actions` and `change_actions` each return exactly `status`'s `[ConfigAliasInvalid]`); it fails when `with_rows` drops them (checked by mutation).
+  - `[medium]` `[patch]` (verification-gap) nothing runs the rebase dry run with signing configured — verified. Fixed: `the_rebase_dry_run_never_invokes_the_signer` (`signing.behavior = "force"`, ssh backend with `program = "false"`): the rebase rows answer, and `new_change` on the same repo fails, proving the config is live; it fails when `with_rows` loads the plain head (checked by mutation).
+  - `[low]` `[patch]` (verification-gap) swapping `-A` and `-B` in the FFI reader passes every test — verified. Fixed: `selection_and_bookmark_sources_round_trip` sends `-A root` (Available) and `-B root` (Refused `jj.immutable`); it fails with the reader's two lists swapped (checked by mutation).
+  - `[low]` `[patch]` (intent) the rebase no-op runs on a second, re-loaded transaction, not the row's own one from ONE `load_at_head` — same root cause and fix as the per-row reload above.
+  - `[low]` `[defer]` (intent) the queries are read-only only at the op-log level; the dry run writes store objects — carried: deferred.
+  - `[low]` `[reject]` (intent) the unshipped rows' texts are checked against hand-written strings, not the stock CLI — same as the oracle row above.
+  - `[low]` `[patch]` (intent) I1's "the verb calls the same fn" is unverifiable for the unshipped verbs — carried: the wording was fixed in the first pass; no further action.
+  - `[false]` `[reject]` (intent) the root-merge refusal reaches `plan_duplicate` and the rebase rows beyond the intent's `plan_new` — the CLI refuses those with the same backend text at the write, so they are not Zanshin-only refusals; the first pass's patch, tested.
+  - `[low]` `[reject]` (intent) the location check runs after the pre-verb snapshot, not before it as clap's does — every Zanshin verb's argument checks run inside `with_verb` after its snapshot; the spec promises only "before anything resolves", which `a_malformed_location_fails_the_whole_query_before_resolving` pins.
+  - `[low]` `[patch]` (intent) "the call's warnings are the precondition's only" was tested only with none — same root cause and fix as the precondition-warnings row above.
+  - `[low]` `[defer]` (intent) the conflicted-bookmark fast-forward rule is untested — carried: deferred (Story 9.19).
+  - `[false]` `[reject]` (intent) the FFI refuses a missing `change_id` / `bookmark` (`jj.invalid_input`) and an unknown kind (`ffi.invalid_argument`) without the intent saying so — both are existing codes used as every request reader uses them; no defect.
+  - `[false]` `[reject]` (intent) the tests assert rows the matrix leaves unspecified — additions on the same surface that contradict nothing; no defect.
+
 ## Design Notes
 
 - **Rows = the design's rows (decision (a4); Claude's proposal adopted).** Nothing consumes `rebase -b`, `revert`, `restore`, `absorb` or `interdiff`. I1's extraction duty therefore covers only the shipped verbs whose rows this story answers: `new`, `squash`, `split`, `edit`, `describe` and `abandon`.
@@ -284,6 +321,14 @@ The fixture is a Git-backed repo: root → A → B → C, with D a second child 
 - `packages/zanshin_core`: `cargo make --allow-private test-core` (`dart test`, gate env) — 926 passed; `test-core-analyze` — no issues; `test-core-format` — 0 changed. `dart analyze` in `app/` — no issues.
 - Matrix audit: every I/O-matrix row has a passing test in `crates/zanshin-jj/tests/it/drop_actions.rs` (plus `new_insert.rs::a_merge_with_the_root_is_refused_with_the_git_backend_text`).
 - Coverage not measured (run rule). `duplicate.rs`'s no-location branch is reached by no row.
+
+**Verification notes, follow-up review pass (2026-10-21, same run gate rule), all on the final tree:**
+- `cargo test -p zanshin-jj` — lib 291 passed; `it` 979 passed, 1 ignored (3 new `drop_actions` tests).
+- `cargo test -p zanshin-ffi` — 192 unit + 306 `it` passed.
+- `cargo clippy -p zanshin-jj -p zanshin-ffi --all-targets -- -D warnings` — clean; `cargo fmt --all --check` — exit 0.
+- Mutation checks (each reverted afterwards): `with_rows` on the plain head fails `the_rebase_dry_run_never_invokes_the_signer`; dropping the precondition warnings fails `the_preconditions_warnings_are_the_queries_warnings`; swapping the FFI reader's `insert_after`/`insert_before` fails `selection_and_bookmark_sources_round_trip`.
+- `packages/zanshin_core`: `cargo make --allow-private test-core` — 926 passed; `test-core-analyze` — no issues; `test-core-format` — 0 changed (only a doc comment changed there).
+- Not run: `cargo make codegen` (no schema/FFI surface change), the parity oracle (no verb changed), `cargo make test` / `test-full` / `coverage` (run gate rule).
 
 ## Auto Run Result
 
@@ -364,3 +409,30 @@ Code commit: `708deda60e17ed67d1a68e48ef00e572f2fbf301`.
 - Coverage was not measured (run rule). New files must reach 80% at the loop's final gate.
 - The rebase dry run re-loads the head for every rebase row.
 - The rebase, duplicate and bookmark-move rows have no executing verb to agree with until 9.16 / 9.9 / 9.19.
+
+### Follow-up review pass (2026-10-21)
+
+Status: done. Blocking condition: none.
+
+**Summary.** A fresh review of the whole story (four layers) found 33 findings: medium 1, low 28, false 4, no high. Patched:
+- The rebase dry run no longer re-loads the head per row: `rebase::load_dry_run_head` loads it ONCE per call with `signing.behavior = "drop"` (in `with_rows`), and `rebase_is_no_op` applies on the row's own transaction — the spec's "ONE `load_at_head`".
+- The signing fix is now proven: an integration test with a signer that always fails (`signing.behavior = "force"`).
+- New tests: the precondition's warnings survive both queries; `rebase -r` NoOp (a leaf onto its parent); the empty-paths Selection squash row; the FFI `-A`/`-B` lists cannot be swapped.
+- Docs: `zanshin_new_change` / `RepoHandle.newChange` name the root-merge `jj.invalid_input`; two rustdocs reflowed.
+- Ledger: the 9-18 sprint-status NOTE (no revert row) and the deferred-work `rebase -s/-b` with `-A`/`-B` entry (sidestepped, 9.16 still owes its test).
+
+**Files changed:**
+- `crates/zanshin-jj/src/rebase.rs` — `load_dry_run_head`; `rebase_is_no_op(tx, loc)`.
+- `crates/zanshin-jj/src/drop_actions.rs` — `with_rows` loads the dry-run head once.
+- `crates/zanshin-jj/src/repo.rs`, `mutate.rs` — rustdoc reflow.
+- `crates/zanshin-jj/tests/it/drop_actions.rs` — four new witnesses (three tests plus a row).
+- `crates/zanshin-ffi/src/repo.rs` — `zanshin_new_change` errors doc.
+- `crates/zanshin-ffi/tests/it/drop_actions_ffi.rs` — the `-A`/`-B` wire test.
+- `packages/zanshin_core/lib/src/worker/handle.dart` — `newChange` errors doc.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`, `deferred-work.md` — the two dated notes.
+
+**Review:** patched 1 medium + 7 low entries; deferred nothing new (four carried deferrals unchanged); rejected, each with its reason in the Review Triage Log: the advance-branches parse after `plan_new`, the oracle for hand-ported texts, foreign request fields, the bookmark NoOp's two meanings (intent-mandated), the positional `ChangeActionsObj` (false), `#[expect]`, the split root merge at two `-A`/`-B` targets, the location check's timing, and the carried enum/decoder rejects.
+
+**Follow-up review recommended: false.** This follow-up pass patched no high entry. Patched counts by verdict: medium 1, low 7.
+
+**Residual risks:** coverage not measured (run rule); the dry run's store writes and per-hover cost stay deferred; the split row at two `-A`/`-B` targets including the root reads Available while the split verb fails at its write (rejected as unreachable from one drop gap).
