@@ -3,7 +3,8 @@
 //! `remotes.rs` — configured git-remote list read (FR-JJ-9) and `git fetch` (FR-JJ-13).
 //!
 //! Exposes a `jj_lib`/`gix`-type-free view of the repo's configured git remotes
-//! and their fetch/push URLs, and lets [`crate::Repo::git_fetch`] actually sync with one.
+//! and their fetch/push URLs, and lets [`crate::Repo::git_fetch`] actually sync with them (Story
+//! 9.30: `jj git fetch`'s remote and ref selection).
 //! Re-resolves to the head operation per call (ADR-0002), never shells to the `jj`
 //! CLI (AR-AP-1). A non-git (native) backend has no remotes and yields an empty list
 //! (never an error) from `list_remotes`, or `NotAGitRepo` from `git_fetch`.
@@ -11,21 +12,26 @@
 use std::io;
 
 use gix::remote::Direction;
+use jj_lib::config::StackedConfig;
 use jj_lib::git;
 use jj_lib::git::{
     expand_fetch_refspecs, GitFetch, GitFetchError, GitFetchRefExpression, GitProgress, GitSidebandLineTerminator,
-    GitSubprocessCallback, UnexpectedGitBackendError,
+    GitSubprocessCallback, IgnoredRefspec, IgnoredRefspecs, UnexpectedGitBackendError,
 };
-use jj_lib::ref_name::{RemoteName, RemoteNameBuf};
+use jj_lib::ref_name::{RefName, RemoteName, RemoteNameBuf};
+use jj_lib::refs::LocalAndRemoteRef;
 use jj_lib::repo::Repo as _; // for ReadonlyRepo::store()
 use jj_lib::rewrite::RebaseOptions;
 use jj_lib::settings::UserSettings;
-use jj_lib::str_util::{StringExpression, StringPattern};
+use jj_lib::str_util::StringExpression;
+use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
 
+use crate::config::FetchField;
 use crate::mutate::{self, MutateError, MutationResult};
 use crate::op_support::{resolve_immutable, start_repo_transaction};
 use crate::snapshot::VerbContext;
+use crate::warning::{WarningKind, Warnings};
 
 /// One configured git remote and its fetch/push URLs (FR-JJ-9).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,124 +222,335 @@ impl GitSubprocessCallback for ProgressCallback<'_> {
     }
 }
 
-/// Fetches all branches and tags from `remote_name` and imports them (FR-JJ-13).
-///
-/// Shares its progress forwarding ([`ProgressCallback`]) with [`crate::Repo::clone`]'s fetch
-/// step (Story 9.20), which reports as `"clone"` where this reports as `"fetch"`. The transaction
-/// finishes through [`mutate::finish_verb`] like the CLI's `tx.finish` (Story 9.26): a colocated
-/// workspace exports the fetched refs to Git, and the working copy is checked out at the new
-/// operation — the import may have rebased `@`. A fresh operation is committed even when
-/// nothing changed — NOT CLI parity: the CLI's `WorkspaceCommandTransaction::finish` writes
-/// none when `!has_changes()` (`cli_util.rs:2790-2795` @ v0.44.0); the known, tracked divergence
-/// (deferred-work.md, "`Repo::git_fetch` and `Repo::describe` write an operation when nothing
-/// changed").
-///
-/// The import options are read here, off the repo's EFFECTIVE config
-/// (`crate::config::git_import_options(&ctx.config)`, FR-JJ-17), mirroring
-/// `cli/src/commands/git/fetch.rs:235` @ v0.44.0, which takes both `git.abandon-unreachable-commits` and
-/// `git.record-synthetic-predecessors` off config. Nothing here hardcodes either key.
-///
-/// The returned `abandoned_change_ids` are jj-lib's OWN abandonments — the commits
-/// `import_refs` dropped because they became unreachable in git, which is exactly what
-/// `git.abandon-unreachable-commits` governs. They are read from the `GitImportStats`
-/// `import_refs` returns, through the same [`crate::git::project_abandoned`] helper
-/// [`crate::Repo::git_import`] uses, so the two verbs cannot drift; with the key set to
-/// `false` the list is empty because the stats are empty, not because anything is
-/// hardcoded. `new_change_ids` is always empty — see [`MutationResult::new_change_ids`].
+/// `jj git fetch`'s arguments (Story 9.30) — the CLI's `GitFetchArgs`
+/// (`cli/src/commands/git/fetch.rs:69-133` @ v0.46.0) with its clap conflicts made
+/// unrepresentable: the remotes and the refs are each one either/or. The default is the bare
+/// `jj git fetch`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GitFetchArgs {
+    /// Which remotes to fetch from.
+    pub remotes: FetchRemotes,
+    /// Which refs to fetch from each remote.
+    pub refs: FetchRefs,
+}
+
+/// The remotes a [`crate::Repo::git_fetch`] fetches from (Story 9.30).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum FetchRemotes {
+    /// No `--remote`: `git.fetch` (a list or a string of name patterns), else the only remote,
+    /// else `origin` — [`crate::Repo::git_fetch_remotes`].
+    #[default]
+    Default,
+    /// `--remote` (repeatable): the union of these name patterns; a bare word is a glob.
+    Named(Vec<String>),
+    /// `--all-remotes`: every remote.
+    All,
+}
+
+/// The refs a [`crate::Repo::git_fetch`] fetches from each remote (Story 9.30).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum FetchRefs {
+    /// Neither `--branch`, `--tag` nor `--tracked`: `remotes.<name>.fetch-bookmarks`, else the
+    /// Git config's fetch refspecs; `remotes.<name>.fetch-tags`, else every tag.
+    #[default]
+    Default,
+    /// `--branch` / `--tag` (repeatable; a bare word is a glob): the union of each list, an
+    /// empty list fetching nothing of its kind — the CLI's `specific` group.
+    Patterns {
+        /// The branch name patterns (`-b`).
+        branches: Vec<String>,
+        /// The tag name patterns (`-t`).
+        tags: Vec<String>,
+    },
+    /// `--tracked`: the bookmarks and tags already tracked from each remote, by exact name.
+    Tracked,
+}
+
+/// The outcome of a [`crate::Repo::git_fetch`] (Story 9.30).
+#[derive(Debug)]
+pub struct GitFetchOutcome {
+    /// The shared mutation contract, see [`crate::Repo::git_fetch`].
+    pub mutation: MutationResult,
+    /// The remotes fetched from, in remote-name order.
+    pub remotes: Vec<String>,
+    /// Hints the UI shows verbatim: "Fetching from the only existing remote: <name>".
+    pub hints: Vec<String>,
+    /// The Git refs the import could not read, lossy UTF-8, in jj-lib's order — what
+    /// `jj.git_import_failed` lists.
+    pub failed_ref_names: Vec<String>,
+}
+
+/// The remotes `args` selects (`fetch.rs:142-172` @ v0.46.0), before any transaction.
+fn resolve_fetch_remotes(
+    store: &jj_lib::store::Store,
+    remotes: &FetchRemotes,
+    ctx: &mut VerbContext,
+    hints: &mut Vec<String>,
+) -> Result<Vec<RemoteNameBuf>, MutateError> {
+    let all_remotes = git::get_all_remote_names(store).map_err(|_| MutateError::NotAGitRepo)?;
+    let unmatched = crate::push::FETCH_REMOTES.unmatched;
+    let matching = match remotes {
+        FetchRemotes::All => {
+            crate::push::matching_remotes(&all_remotes, &StringExpression::all(), unmatched, &mut ctx.warnings)
+        }
+        FetchRemotes::Named(texts) => crate::push::matching_remotes(
+            &all_remotes,
+            &crate::bookmark_ops::union_expression(texts)?,
+            unmatched,
+            &mut ctx.warnings,
+        ),
+        FetchRemotes::Default => crate::push::default_remotes(
+            &all_remotes,
+            &ctx.config,
+            crate::push::FETCH_REMOTES,
+            &mut ctx.warnings,
+            hints,
+        )?,
+    };
+    if matching.is_empty() {
+        return Err(MutateError::InvalidInput {
+            reason: "No git remotes to fetch from".to_owned(),
+        });
+    }
+    Ok(matching)
+}
+
+/// The default bookmark and tag expressions of one remote (`fetch.rs:209-229` @ v0.46.0) —
+/// shared by the fetch and the remote-change poll (Story 9.30): `remotes.<name>.fetch-bookmarks`,
+/// else the Git config's fetch refspecs (each refspec jj ignores goes to `ignored`), and
+/// `remotes.<name>.fetch-tags`, else every tag. `bookmarks` / `tags` override either part (the
+/// CLI's `-b` / `-t`); an overridden part reads nothing.
 ///
 /// # Errors
 ///
-/// - [`MutateError::RemoteNotFound`] — `remote_name` has no configured git remote.
-/// - [`MutateError::NotAGitRepo`] — the workspace has no git backend at all, so `git fetch`
-///   cannot run — jj-lib's `UnexpectedGitBackendError`, the only failure `GitFetch::new`
-///   has. The same condition the six `crate::git` verbs already report under this variant.
-/// - [`MutateError::Config`] — a `git.*` / `remotes.<name>.auto-track-bookmarks` import option
-///   is malformed (reached only in a NON-colocated workspace: in a colocated one the caller's
-///   pre-verb refs import reads the same keys first and refuses as
-///   [`MutateError::Precondition`]), or the immutable-set expression could not be resolved
-///   against the transaction's base repo (same fault class `crate::git::git_import` reports).
-/// - [`MutateError::NetworkError`] — the underlying `git` subprocess failed (network,
-///   auth, or transport error). No operation is committed.
-/// - [`MutateError::Cancelled`] — `cancel`'s token was cancelled before or right after the git
-///   work, or git failed after the cancel (Story 9.52). No operation is committed.
-/// - [`MutateError::Backend`] — any other underlying jj-lib failure.
+/// - [`MutateError::Config`] — a `remotes.<name>` entry, or the field read, is malformed.
+/// - [`MutateError::InvalidInput`] — the Git config of the remote does not read (jj-lib's
+///   `GitDefaultRefspecError`, a CLI `user_error`).
+pub(crate) fn remote_fetch_refs(
+    config: &StackedConfig,
+    git_repo: &gix::Repository,
+    remote: &RemoteName,
+    overrides: (Option<&StringExpression>, Option<&StringExpression>),
+    ignored: &mut Vec<IgnoredRefspec>,
+) -> Result<GitFetchRefExpression, MutateError> {
+    let (bookmarks, tags) = overrides;
+    let bookmark = if let Some(expression) = bookmarks {
+        expression.clone()
+    } else if let Some(expression) =
+        crate::config::remote_fetch_expression(config, remote, FetchField::Bookmarks).map_err(mutate::cfg)?
+    {
+        expression
+    } else {
+        let (IgnoredRefspecs(refspecs), expression) =
+            git::load_default_fetch_bookmarks(remote, git_repo).map_err(invalid)?;
+        ignored.extend(refspecs);
+        expression
+    };
+    let tag = if let Some(expression) = tags {
+        expression.clone()
+    } else if let Some(expression) =
+        crate::config::remote_fetch_expression(config, remote, FetchField::Tags).map_err(mutate::cfg)?
+    {
+        expression
+    } else {
+        StringExpression::all()
+    };
+    Ok(GitFetchRefExpression { bookmark, tag })
+}
+
+/// A jj-lib error the CLI turns into a `user_error` with its Display. `pub(crate)` for the poll,
+/// which refuses what the fetch refuses (Story 9.30).
+pub(crate) fn invalid<E: std::fmt::Display>(e: E) -> MutateError {
+    MutateError::InvalidInput { reason: e.to_string() }
+}
+
+/// `--tracked`'s refs of one remote (`fetch.rs:187-206` @ v0.46.0): the exact-name unions of the
+/// bookmarks and tags tracked from it.
+fn tracked_fetch_refs(view: &jj_lib::view::View, remote: &RemoteName) -> GitFetchRefExpression {
+    let tracked = |refs: Vec<(&jj_lib::ref_name::RefName, LocalAndRemoteRef<'_>)>| {
+        StringExpression::union_all(
+            refs.into_iter()
+                .filter(|(_, targets)| targets.remote_ref.is_tracked())
+                .map(|(name, _)| StringExpression::exact(name.as_str()))
+                .collect(),
+        )
+    };
+    GitFetchRefExpression {
+        bookmark: tracked(view.local_remote_bookmarks(remote).collect()),
+        tag: tracked(view.local_remote_tags(remote).collect()),
+    }
+}
+
+/// `warn_ignored_refspecs` (`fetch.rs:323-337` @ v0.46.0): one warning per refspec.
+fn warn_ignored_refspecs(sink: &mut Warnings, remote: &RemoteName, ignored: Vec<IgnoredRefspec>) {
+    for IgnoredRefspec { refspec, reason } in ignored {
+        sink.push(
+            WarningKind::FetchRefspecIgnored,
+            format!("Ignored refspec `{refspec}` from `{}`: {reason}", remote.as_symbol()),
+        );
+    }
+}
+
+/// The fetch's `-b`/`-t` expressions: `None` each without `Patterns` (the CLI's `specific`
+/// group), else the union of the list (`StringExpression::none()` for an empty one).
+fn specific_expressions(refs: &FetchRefs) -> Result<(Option<StringExpression>, Option<StringExpression>), MutateError> {
+    match refs {
+        FetchRefs::Patterns { branches, tags } => Ok((
+            Some(crate::bookmark_ops::union_expression(branches)?),
+            Some(crate::bookmark_ops::union_expression(tags)?),
+        )),
+        FetchRefs::Default | FetchRefs::Tracked => Ok((None, None)),
+    }
+}
+
+/// `warn_if_branches_not_found` (`fetch.rs:292-321` @ v0.46.0): the exact branch names the
+/// matcher accepts that no matched remote has, in the transaction's view or its base.
+fn warn_if_branches_not_found(
+    sink: &mut Warnings,
+    tx: &Transaction,
+    expression: &StringExpression,
+    remotes: &[RemoteNameBuf],
+) {
+    let matcher = expression.to_matcher();
+    let missing: Vec<String> = expression
+        .exact_strings()
+        .filter(|name| matcher.is_match(name))
+        .map(RefName::new)
+        .filter(|name| {
+            remotes.iter().all(|remote| {
+                let symbol = name.to_remote_symbol(remote);
+                tx.repo().view().get_remote_bookmark(symbol).is_absent()
+                    && tx.base_repo().view().get_remote_bookmark(symbol).is_absent()
+            })
+        })
+        .map(|name| name.as_symbol().to_string())
+        .collect();
+    if !missing.is_empty() {
+        sink.push(
+            WarningKind::FetchBranchesUnmatched,
+            format!(
+                "No matching branches found on any specified/configured remote: {}",
+                missing.join(", ")
+            ),
+        );
+    }
+}
+
+/// The operation description (`fetch.rs:255-258` @ v0.46.0): every matched remote as its symbol,
+/// joined by `","`.
+fn fetch_description(remotes: &[RemoteNameBuf]) -> String {
+    let names: Vec<String> = remotes.iter().map(|r| r.as_symbol().to_string()).collect();
+    format!("fetch from git remote(s) {}", names.join(","))
+}
+
+/// Maps one remote's `GitFetch::fetch` failure.
+fn fetch_error(e: GitFetchError, cancel: Option<&crate::cancel::CancelGuard>) -> MutateError {
+    match e {
+        GitFetchError::NoSuchRemote(name) => MutateError::RemoteNotFound {
+            name: name.into_string(),
+        },
+        GitFetchError::Subprocess(_) if crate::cancel::is_cancelled(cancel) => MutateError::Cancelled,
+        GitFetchError::Subprocess(sub) => MutateError::NetworkError {
+            reason: sub.to_string(),
+        },
+        other => mutate::be(other),
+    }
+}
+
+/// `jj git fetch` (FR-JJ-13, Story 9.30) — see [`crate::Repo::git_fetch`] for the contract. A port
+/// of `cmd_git_fetch` (`cli/src/commands/git/fetch.rs:135-264` @ v0.46.0), in its order.
+///
+/// Shares its progress forwarding ([`ProgressCallback`]) with [`crate::Repo::clone`]'s fetch
+/// step (Story 9.20), which reports as `"clone"` where this reports as `"fetch"`. The
+/// transaction finishes through [`mutate::finish_verb`] like the CLI's `tx.finish` (Story 9.26).
+///
+/// # Errors
+///
+/// See [`crate::Repo::git_fetch`].
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn git_fetch(
     workspace: &mut Workspace,
     settings: &UserSettings,
-    remote_name: &str,
+    args: &GitFetchArgs,
     ctx: &mut VerbContext,
     progress: &ProgressFn,
     cancel: Option<&crate::cancel::CancelGuard>,
-) -> Result<MutationResult, MutateError> {
-    let remote_buf: RemoteNameBuf = remote_name.into();
-    let remote: &RemoteName = &remote_buf;
+) -> Result<GitFetchOutcome, MutateError> {
+    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let mut hints = Vec::new();
+    let remotes = resolve_fetch_remotes(readonly.store(), &args.remotes, ctx, &mut hints)?;
+
+    let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
+    // WHY read and discard: the CLI's `tx.settings().remote_settings()?` (`fetch.rs:174`) reads
+    // every `remotes.<name>` entry right after the transaction starts, so a malformed one refuses
+    // whatever `args` select — `--tracked` included.
+    crate::config::every_remote_settings(&ctx.config).map_err(mutate::cfg)?;
+    let (common_bookmarks, common_tags) = specific_expressions(&args.refs)?;
+    let mut expansions = Vec::with_capacity(remotes.len());
+    if args.refs == FetchRefs::Tracked {
+        for remote in &remotes {
+            let expression = tracked_fetch_refs(tx.repo().view(), remote);
+            expansions.push(expand_fetch_refspecs(remote, expression).map_err(invalid)?);
+        }
+    } else {
+        let git_repo = git::get_git_repo(tx.repo().store()).map_err(|_| MutateError::NotAGitRepo)?;
+        for remote in &remotes {
+            let mut ignored = Vec::new();
+            let expression = remote_fetch_refs(
+                &ctx.config,
+                &git_repo,
+                remote,
+                (common_bookmarks.as_ref(), common_tags.as_ref()),
+                &mut ignored,
+            );
+            // The CLI warns them as soon as the refspecs load, before it parses `fetch-tags`.
+            warn_ignored_refspecs(&mut ctx.warnings, remote, ignored);
+            let expression = expression?;
+            expansions.push(expand_fetch_refspecs(remote, expression).map_err(invalid)?);
+        }
+    }
 
     let import_options = crate::config::git_import_options(&ctx.config).map_err(mutate::cfg)?;
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
-    let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
-
     let subprocess_options = crate::environment::git_subprocess_options(settings, cancel).map_err(mutate::be)?;
-
-    // WHY: `GitFetch::new`'s error type IS `UnexpectedGitBackendError` (jj-lib 0.44.0
-    // `git.rs:3032-3047`) — `get_git_backend` is its only fallible step — so the blanket
-    // `map_err` swallows nothing else. "No git backend" is the same condition the six
-    // `crate::git` verbs report as `NotAGitRepo`; an unknown REMOTE is raised later, by
-    // `fetch()`, as `GitFetchError::NoSuchRemote` below. The explicit parameter type is the
-    // GUARD for that premise: a jj-lib bump that widens the error surface stops compiling
-    // here instead of silently reporting unrelated faults as `jj.not_a_git_repo`.
+    // WHY: `GitFetch::new`'s error type IS `UnexpectedGitBackendError` (jj-lib 0.46.0) —
+    // `get_git_backend` is its only fallible step — so the blanket `map_err` swallows nothing
+    // else. The explicit parameter type is the GUARD for that premise: a jj-lib bump that widens
+    // the error surface stops compiling here instead of silently reporting unrelated faults as
+    // `jj.not_a_git_repo`.
     crate::cancel::watch_store(cancel, tx.repo().store());
     let mut fetcher = GitFetch::new(tx.repo_mut(), subprocess_options, &import_options)
         .map_err(|_e: UnexpectedGitBackendError| MutateError::NotAGitRepo)?;
-
-    let expr = GitFetchRefExpression {
-        bookmark: StringExpression::Pattern(Box::new(
-            // WHY: glob("*") selects all remote branches — this signature has no
-            // branch/tag filter param (epics.md's AC only parameterizes remote_name).
-            StringPattern::glob("*").map_err(mutate::be)?,
-        )),
-        tag: StringExpression::Pattern(Box::new(
-            // WHY: glob("*") selects all remote tags, same rationale as above.
-            StringPattern::glob("*").map_err(mutate::be)?,
-        )),
-    };
-    let refspecs = expand_fetch_refspecs(remote, expr).map_err(mutate::be)?;
 
     let mut callback = ProgressCallback {
         operation: "fetch",
         progress,
     };
-    // WHY: `depth: None` = a full (non-shallow) fetch. jj 0.44 dropped `fetch`'s trailing
-    // `fetch_tags_override`, so the 0.42 call's second `None` is the one that went away — the
-    // remaining one is `depth`, unchanged.
+    // WHY: `depth: None` = a full (non-shallow) fetch, as the CLI's `fetch(.., None)`.
     let depth = None;
-    // Story 9.52's checkpoints: before the git work, and after it but before the import, so a
-    // cancelled fetch records nothing. A git that failed after the cancel killed it is the cancel.
-    crate::cancel::checkpoint(cancel)?;
-    fetcher
-        .fetch(remote, refspecs, &mut callback, depth)
-        .map_err(|e| match e {
-            GitFetchError::NoSuchRemote(_) => MutateError::RemoteNotFound {
-                name: remote_name.to_owned(),
-            },
-            GitFetchError::Subprocess(_) if crate::cancel::is_cancelled(cancel) => MutateError::Cancelled,
-            GitFetchError::Subprocess(sub) => MutateError::NetworkError {
-                reason: sub.to_string(),
-            },
-            other => mutate::be(other),
-        })?;
+    // Story 9.52's checkpoints: before each remote's git work, and after the last but before the
+    // import, so a cancelled fetch records nothing. A git that failed after the cancel killed it
+    // is the cancel.
+    for (remote, refspecs) in remotes.iter().zip(expansions) {
+        crate::cancel::checkpoint(cancel)?;
+        fetcher
+            .fetch(remote, refspecs, &mut callback, depth)
+            .map_err(|e| fetch_error(e, cancel))?;
+    }
     crate::cancel::checkpoint(cancel)?;
 
     let stats = pollster::block_on(fetcher.import_refs()).map_err(mutate::be)?;
-    // `print_git_import_stats`, right after the import (`fetch.rs:247-248`, Story 9.32). The
-    // failed ref NAMES have no payload here (deferred to Story 9.30's fetch rework).
+    // `print_git_import_stats`, right after the import (`fetch.rs:247-248`, Story 9.32).
     ctx.warnings.extend(crate::warning::git_import_failed(&stats));
+    let failed_ref_names = crate::git::failed_ref_names(&stats);
     let abandoned_change_ids = crate::git::project_abandoned(&stats);
+    if let Some(expression) = &common_bookmarks {
+        warn_if_branches_not_found(&mut ctx.warnings, &tx, expression, &remotes);
+    }
 
     // A descendant pass BEFORE the commit, because `import_refs` calls
-    // `record_abandoned_commit` (jj-lib `git.rs:796`), which populates `parent_mapping`, and
+    // `record_abandoned_commit` (jj-lib `git.rs`), which populates `parent_mapping`, and
     // `Transaction::write` panics while rewrites are outstanding. This is the CLI's own
-    // `tx.finish` step — `rebase_mutable_descendants` (`cli/src/cli_util.rs` @ v0.44.0) —
+    // `tx.finish` step — `rebase_mutable_descendants` (`cli/src/cli_util.rs` @ v0.46.0) —
     // which likewise resolves the immutable set against `tx.base_repo()`.
     // Resolve first so the shared borrow of `tx` ends before `repo_mut()`.
     let resolved = resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
@@ -343,19 +560,38 @@ pub(crate) fn git_fetch(
     )
     .map_err(mutate::be)?;
 
-    let finish = mutate::finish_verb(workspace, tx, &format!("fetch from git remote(s) {remote_name}"), ctx)?;
+    let finish = mutate::finish_verb(workspace, tx, &fetch_description(&remotes), ctx)?;
     // WHY `new_change_ids` empty: `GitImportStats` has no minted-change concept at all — it
     // reports abandonments, changed remote refs, rewritten commit ids and failed ref names.
     // `git_import` leaves this field empty for the same reason. When `@` itself was abandoned,
     // jj-lib's replacement is already reported via `working_copy_change_id`.
-    mutate::mutation_result(&finish, Vec::new(), abandoned_change_ids)
+    let mutation = mutate::mutation_result(&finish, Vec::new(), abandoned_change_ids)?;
+    Ok(GitFetchOutcome {
+        mutation,
+        remotes: remotes.into_iter().map(RemoteNameBuf::into_string).collect(),
+        hints,
+        failed_ref_names,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use jj_lib::git::GitSubprocessCallback as _;
 
-    use super::{list_remotes, ProgressCallback, ProgressEvent, RemoteError};
+    use super::{fetch_description, list_remotes, ProgressCallback, ProgressEvent, RemoteError};
+
+    /// The description quotes a remote whose name is no plain revset symbol, as the CLI's
+    /// `as_symbol` does, and joins several with `","` (Story 9.30).
+    #[test]
+    fn the_fetch_description_quotes_each_remote_as_a_symbol() {
+        use jj_lib::ref_name::RemoteNameBuf;
+        let remotes: Vec<RemoteNameBuf> = ["origin", "my remote", "up"].map(Into::into).into();
+        assert_eq!(
+            fetch_description(&remotes),
+            "fetch from git remote(s) origin,\"my remote\",up"
+        );
+        assert_eq!(fetch_description(&remotes[..1]), "fetch from git remote(s) origin");
+    }
 
     /// A head that no longer loads is this module's own `Backend` failure. Through
     /// [`crate::Repo`] the pre-verb snapshot (Story 9.26) hits it first, so the module function

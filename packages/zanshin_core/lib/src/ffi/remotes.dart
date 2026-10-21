@@ -28,6 +28,11 @@ Uint8List zanshinRemotes(int rawHandle) => readToken(zanshin_remotes(rawHandle))
 /// without `--remote` would push to. Handle-only, like [zanshinRemotes].
 Uint8List zanshinGitPushRemotes(int rawHandle) => readToken(zanshin_git_push_remotes(rawHandle));
 
+/// Call `zanshin_git_fetch_remotes` with the raw `u64` handle and return the
+/// FlatBuffers `Envelope` bytes (Story 9.30): the remotes `jj git fetch`
+/// without `--remote` would fetch from. Handle-only, like [zanshinRemotes].
+Uint8List zanshinGitFetchRemotes(int rawHandle) => readToken(zanshin_git_fetch_remotes(rawHandle));
+
 /// Call `zanshin_git_remote_changes` with the raw `u64` handle, [remoteName]
 /// and [cancelToken], and return the FlatBuffers `Envelope` bytes (Story 9.24):
 /// the `git ls-remote` poll, diffed against the head view without fetching.
@@ -195,6 +200,33 @@ WarnedList<String> decodeGitPushRemotesEnvelopeInternal(Uint8List bytes) {
   final List<String>? names = payload.names;
   if (names == null) {
     throw const ZanshinFfiException('ffi.unknown', 'GitPushRemotes payload is missing its names');
+  }
+  return WarnedList(names, decodeEnvelopeWarningsInternal(env));
+}
+
+/// Decode a `GitFetchRemotes` `Envelope` buffer into the remote names, in
+/// remote-name order, carrying the call's warnings (Story 9.30).
+///
+/// Exposed for decode-contract tests with synthetic buffers; production calls
+/// go through `ZanshinWorker.gitFetchRemotes`.
+@visibleForTesting
+WarnedList<String> decodeGitFetchRemotesEnvelope(Uint8List bytes) => decodeGitFetchRemotesEnvelopeInternal(bytes);
+
+/// Internal decoder used by production code in `isolate.dart`.
+WarnedList<String> decodeGitFetchRemotesEnvelopeInternal(Uint8List bytes) {
+  final env = fbs.Envelope(bytes);
+  if (!env.ok) {
+    throw decodeEnvelopeErrorInternal(env);
+  }
+  final Object? payload = env.data;
+  if (payload is! fbs.GitFetchRemotes) {
+    throw ZanshinFfiException('ffi.unknown', 'expected GitFetchRemotes payload, got ${env.dataType}');
+  }
+  // Rust always writes the vector, an empty one included — an absent one is a
+  // malformed buffer, not "no remotes".
+  final List<String>? names = payload.names;
+  if (names == null) {
+    throw const ZanshinFfiException('ffi.unknown', 'GitFetchRemotes payload is missing its names');
   }
   return WarnedList(names, decodeEnvelopeWarningsInternal(env));
 }

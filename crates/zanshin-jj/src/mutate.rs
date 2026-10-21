@@ -84,10 +84,11 @@ pub struct MutationResult {
     /// in [`AbsorbResult`]'s fields.
     ///
     /// [`crate::Repo::git_fetch`] and [`crate::Repo::squash`] are the verbs where this is not
-    /// a caller echo: neither has a second result struct, so each reports jj-lib's own
-    /// abandonments here. For `git_fetch` those are the commits the import dropped because they
-    /// became unreachable in git (`git.abandon-unreachable-commits`) — empty when that key is
-    /// `false`, or when the fetch made nothing unreachable. For `squash` (Story 9.15) they are
+    /// a caller echo: neither has a second place for them (a fetch's [`crate::GitFetchOutcome`]
+    /// carries this result unchanged), so each reports jj-lib's own abandonments here. For
+    /// `git_fetch` those are the commits the import dropped because they became unreachable in
+    /// git (`git.abandon-unreachable-commits`) — empty when that key is `false`, or when the
+    /// fetch made nothing unreachable. For `squash` (Story 9.15) they are
     /// the sources it abandoned — every source whose changes all moved, unless
     /// `keep_emptied`.
     pub abandoned_change_ids: Vec<ChangeId>,
@@ -184,8 +185,12 @@ pub enum MutateError {
         /// The workspace the target operation was performed in.
         workspace: String,
     },
-    /// [`crate::Repo::git_fetch`] was called with a remote name that has no
-    /// configured git remote (FR-JJ-13).
+    /// A git remote the verb was about to use has no configuration (FR-JJ-13):
+    /// [`crate::Repo::remote_changes`] with a name no remote carries, or a remote
+    /// [`crate::Repo::git_fetch`] matched that vanished before its fetch (jj-lib's `NoSuchRemote`).
+    /// A fetch whose `--remote` names match no remote is NOT this variant: it warns
+    /// [`crate::WarningKind::FetchRemotesUnmatched`] and refuses [`MutateError::InvalidInput`]
+    /// "No git remotes to fetch from", as the CLI does (Story 9.30).
     ///
     /// A workspace with no git backend at all is NOT this variant — it is
     /// [`MutateError::NotAGitRepo`], the same answer the six `crate::git` verbs give.

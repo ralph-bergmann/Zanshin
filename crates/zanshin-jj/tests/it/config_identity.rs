@@ -227,7 +227,11 @@ fn every_mutating_verb_refreshes_first(tmp: &Path, user_file: &Path) {
         ("edit", repo.edit(id()).map(drop)),
         ("abandon", repo.abandon(&[id()]).map(drop)),
         ("undo", repo.undo(false).map(drop)),
-        ("git_fetch", repo.git_fetch("origin", &progress, None).map(drop)),
+        (
+            "git_fetch",
+            repo.git_fetch(&zanshin_jj::GitFetchArgs::default(), &progress, None)
+                .map(drop),
+        ),
         ("git_import", repo.git_import().map(drop)),
         ("git_export", repo.git_export().map(drop)),
         ("git_remote_add", repo.git_remote_add("x", "file:///x", None).map(drop)),

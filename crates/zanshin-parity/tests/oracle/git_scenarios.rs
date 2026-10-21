@@ -2,11 +2,15 @@
 
 //! Story 9.20's scenarios: `jj git init` / `jj git clone` — creation scenarios, where the call
 //! creates the repo, so there is no shared history — and `jj git push`, table scenarios on the
-//! BASE history against a bare remote beside the repo.
+//! BASE history against a bare remote beside the repo; Story 9.30 adds `jj git fetch` on the same
+//! remotes.
 
 use std::path::Path;
 use std::path::PathBuf;
 
+use zanshin_jj::FetchRefs;
+use zanshin_jj::FetchRemotes;
+use zanshin_jj::GitFetchArgs;
 use zanshin_jj::GitPushArgs;
 use zanshin_jj::ProgressEvent;
 
@@ -827,6 +831,180 @@ pub fn bookmark_auto_track_scenarios() -> Vec<Scenario> {
             ],
             |repo, _, _| create_feature(repo, None),
             |_| strings(&["bookmark", "create", "feature"]),
+        ),
+    ]
+}
+
+// ── jj git fetch (Story 9.30) ────────────────────────────────────────────────
+
+// Every fetch below brings something new: `git --git-dir <remote> branch <name> b-mark` adds a
+// branch on the bare remote at the pushed `b-mark` (a fetch that changes nothing is Story 9.40's
+// divergence, not this story's).
+
+/// [`PUSHED`] plus `n-mark` and `x-mark` new on `origin`.
+const FETCH_PUSHED: &[Step] = &[
+    Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+    Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+    Step::Jj(&["git", "push", "-b", "b-mark"]),
+    Step::Git(&["--git-dir", "../remote.git", "branch", "n-mark", "b-mark"]),
+    Step::Git(&["--git-dir", "../remote.git", "branch", "x-mark", "b-mark"]),
+];
+
+/// Two remotes, `origin` and `up`, each with `b-mark` pushed and `n-mark` new upstream.
+const FETCH_TWO_REMOTES: &[Step] = &[
+    Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+    Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+    Step::Git(&["init", "-q", "--bare", "../remote2.git"]),
+    Step::Jj(&["git", "remote", "add", "up", "../remote2.git"]),
+    Step::Jj(&["git", "push", "--remote", "*", "-b", "b-mark"]),
+    Step::Git(&["--git-dir", "../remote.git", "branch", "n-mark", "b-mark"]),
+    Step::Git(&["--git-dir", "../remote2.git", "branch", "n-mark", "b-mark"]),
+];
+
+/// `Repo::git_fetch` with `args`: a refusal is an error, as the CLI's non-zero exit.
+fn fetch_outcome(repo: &mut zanshin_jj::Repo, args: &GitFetchArgs) -> Outcome {
+    let result = repo.git_fetch(args, &|_: ProgressEvent| {}, None);
+    crate::compare::zanshin_outcome(repo, &result)
+}
+
+/// Every fetch scenario (Story 9.30): the default remotes (`origin`, the only remote, none),
+/// `--remote` with a name no remote carries, `--all-remotes`, `-b`, `--tracked`, `git.fetch` and
+/// `remotes.origin.fetch-bookmarks`. Built like the push scenarios ([`push`]) and read back the
+/// same way ([`push_read_back`]: the bookmarks with their remotes, and the bare remotes' refs).
+#[allow(clippy::too_many_lines)] // WHY: one flat table reads better than nine helper fns
+pub fn fetch_scenarios() -> Vec<Scenario> {
+    vec![
+        push(
+            "fetch_default",
+            FETCH_PUSHED,
+            |repo, _, _| fetch_outcome(repo, &GitFetchArgs::default()),
+            |_| strings(&["git", "fetch"]),
+        ),
+        // The only remote `up`: the CLI hints "Fetching from the only existing remote: up" (a
+        // hint, no warning).
+        push(
+            "fetch_only_remote",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "up", "../remote.git"]),
+                Step::Jj(&["git", "push", "-b", "b-mark"]),
+                Step::Git(&["--git-dir", "../remote.git", "branch", "n-mark", "b-mark"]),
+            ],
+            |repo, _, _| fetch_outcome(repo, &GitFetchArgs::default()),
+            |_| strings(&["git", "fetch"]),
+        ),
+        // No remote at all: "No matching remotes for names: origin", then "No git remotes to
+        // fetch from" — a refusal that writes nothing.
+        push(
+            "fetch_no_remote",
+            &[],
+            |repo, _, _| fetch_outcome(repo, &GitFetchArgs::default()),
+            |_| strings(&["git", "fetch"]),
+        ),
+        push(
+            "fetch_unmatched_remote",
+            FETCH_PUSHED,
+            |repo, _, _| {
+                fetch_outcome(
+                    repo,
+                    &GitFetchArgs {
+                        remotes: FetchRemotes::Named(strings(&["origin", "nope"])),
+                        refs: FetchRefs::Default,
+                    },
+                )
+            },
+            |_| strings(&["git", "fetch", "--remote", "origin", "--remote", "nope"]),
+        ),
+        push(
+            "fetch_all_remotes",
+            FETCH_TWO_REMOTES,
+            |repo, _, _| {
+                fetch_outcome(
+                    repo,
+                    &GitFetchArgs {
+                        remotes: FetchRemotes::All,
+                        refs: FetchRefs::Default,
+                    },
+                )
+            },
+            |_| strings(&["git", "fetch", "--all-remotes"]),
+        ),
+        // `-b n*` fetches `n-mark`, not `x-mark`; `-b nope` warns that no remote has it.
+        push(
+            "fetch_branch_pattern",
+            FETCH_PUSHED,
+            |repo, _, _| {
+                fetch_outcome(
+                    repo,
+                    &GitFetchArgs {
+                        remotes: FetchRemotes::Default,
+                        refs: FetchRefs::Patterns {
+                            branches: strings(&["n*", "nope"]),
+                            tags: Vec::new(),
+                        },
+                    },
+                )
+            },
+            |_| strings(&["git", "fetch", "-b", "n*", "-b", "nope"]),
+        ),
+        // `b-mark@origin` (tracked) moved back to A upstream, `n-mark` (untracked, new) appeared:
+        // `--tracked` fetches only `b-mark`.
+        push(
+            "fetch_tracked",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&["git", "push", "-b", "b-mark"]),
+                Step::Git(&["--git-dir", "../remote.git", "branch", "n-mark", "b-mark"]),
+                Step::Git(&[
+                    "--git-dir",
+                    "../remote.git",
+                    "update-ref",
+                    "refs/heads/b-mark",
+                    "b-mark~1",
+                ]),
+            ],
+            |repo, _, _| {
+                fetch_outcome(
+                    repo,
+                    &GitFetchArgs {
+                        remotes: FetchRemotes::Default,
+                        refs: FetchRefs::Tracked,
+                    },
+                )
+            },
+            |_| strings(&["git", "fetch", "--tracked"]),
+        ),
+        // `git.fetch = "up"` (set through the CLI's repo config): only `up` is fetched.
+        push(
+            "fetch_git_fetch_config",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Git(&["init", "-q", "--bare", "../remote2.git"]),
+                Step::Jj(&["git", "remote", "add", "up", "../remote2.git"]),
+                Step::Jj(&["git", "push", "--remote", "*", "-b", "b-mark"]),
+                Step::Git(&["--git-dir", "../remote.git", "branch", "n-mark", "b-mark"]),
+                Step::Git(&["--git-dir", "../remote2.git", "branch", "n-mark", "b-mark"]),
+                Step::Jj(&["config", "set", "--repo", "git.fetch", "up"]),
+            ],
+            |repo, _, _| fetch_outcome(repo, &GitFetchArgs::default()),
+            |_| strings(&["git", "fetch"]),
+        ),
+        // `remotes.origin.fetch-bookmarks = "n-mark"`: the bare fetch brings `n-mark`, not
+        // `x-mark`.
+        push(
+            "fetch_remote_fetch_bookmarks",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&["git", "push", "-b", "b-mark"]),
+                Step::Git(&["--git-dir", "../remote.git", "branch", "n-mark", "b-mark"]),
+                Step::Git(&["--git-dir", "../remote.git", "branch", "x-mark", "b-mark"]),
+                Step::Jj(&["config", "set", "--repo", "remotes.origin.fetch-bookmarks", "n-mark"]),
+            ],
+            |repo, _, _| fetch_outcome(repo, &GitFetchArgs::default()),
+            |_| strings(&["git", "fetch"]),
         ),
     ]
 }

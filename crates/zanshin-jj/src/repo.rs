@@ -590,7 +590,43 @@ impl Repo {
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_push_remotes(&mut self) -> Result<Vec<String>, crate::MutateError> {
-        self.with_verb(|repo, ctx| crate::push::git_push_remotes(repo.workspace(), &ctx.config, &mut ctx.warnings))
+        self.with_verb(|repo, ctx| {
+            crate::push::default_remote_names(
+                repo.workspace(),
+                &ctx.config,
+                crate::push::PUSH_REMOTES,
+                &mut ctx.warnings,
+            )
+        })
+    }
+
+    /// The remotes `jj git fetch` WITHOUT `--remote` would fetch from (Story 9.30), in
+    /// remote-name order — the CLI's `get_default_fetch_remotes` (`fetch.rs:267-290` @ v0.46.0),
+    /// shared with [`Repo::git_fetch`]'s [`crate::FetchRemotes::Default`]: the remotes `git.fetch`
+    /// names (a name, a list or a pattern), else the single remote, else `origin` — each kept only
+    /// when it exists. An exact name no remote carries warns `jj.fetch_remotes_unmatched`, as the
+    /// fetch does — a `git.fetch` name, and the implicit `origin` too. No match is `Ok(vec![])`
+    /// (the fetch itself refuses "No git remotes to fetch from"), and so is a non-Git (native)
+    /// backend. The only-remote hint the fetch reports is dropped.
+    ///
+    /// The Fetch button's enable rule: enabled when this is not empty. Writes NO operation of its
+    /// own — only the pre-verb snapshot's, like every read.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::Config`] — `git.fetch` is neither a string nor a list of strings.
+    /// - [`crate::MutateError::InvalidInput`] — a `git.fetch` pattern does not parse.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn git_fetch_remotes(&mut self) -> Result<Vec<String>, crate::MutateError> {
+        self.with_verb(|repo, ctx| {
+            crate::push::default_remote_names(
+                repo.workspace(),
+                &ctx.config,
+                crate::push::FETCH_REMOTES,
+                &mut ctx.warnings,
+            )
+        })
     }
 
     /// Returns the effective `jj log` defaults of this repo (Story 4.9): the values the
@@ -1249,25 +1285,37 @@ impl Repo {
         self.with_verb(|repo, ctx| crate::push::git_push(repo, ctx, args, progress, cancel))
     }
 
-    /// Fetches all branches and tags from `remote_name` and imports them (FR-JJ-13).
+    /// `jj git fetch` (FR-JJ-13, Story 9.30): fetches the remotes and refs `args` selects in ONE
+    /// transaction and imports them — `cmd_git_fetch` (`cli/src/commands/git/fetch.rs` @ v0.46.0)
+    /// minus its terminal output.
     ///
-    /// Always fetches ALL branches and tags — there is no branch/tag filter
-    /// parameter (unlike the CLI's `jj git fetch -b`/`--branch`). Mirrors
-    /// [`Repo::clone`]'s own fetch step, but forwards real progress via `progress`
-    /// instead of discarding it. It finishes like the CLI's `tx.finish` (Story 9.26): a
-    /// colocated workspace exports the fetched refs to Git, and the working copy is checked
-    /// out at the new operation. A fresh operation is committed even when nothing changed —
-    /// NOT CLI parity: the CLI's `WorkspaceCommandTransaction::finish` writes none when
-    /// `!has_changes()` (`cli_util.rs:2790-2795` @ v0.44.0); the known, tracked divergence
-    /// (deferred-work.md, "`Repo::git_fetch` and `Repo::describe` write an operation when
-    /// nothing changed").
+    /// - **Remotes** ([`crate::FetchRemotes`]): `Default` is [`Repo::git_fetch_remotes`]'s
+    ///   resolution (`git.fetch`, else the only remote — with the CLI's "Fetching from the only
+    ///   existing remote" hint in [`crate::GitFetchOutcome::hints`] unless it is `origin` — else
+    ///   `origin`); `Named` the union of its name patterns (a bare word is a glob); `All` every
+    ///   remote. An exact name no remote carries warns `jj.fetch_remotes_unmatched`.
+    /// - **Refs per remote** ([`crate::FetchRefs`]): `Patterns` are the CLI's `--branch`/`--tag`
+    ///   (an empty list fetches none of that kind); `Tracked` the remote's tracked bookmarks and
+    ///   tags by exact name; `Default` the remote's `remotes.<name>.fetch-bookmarks`, else the
+    ///   Git config's fetch refspecs (each refspec jj ignores warns `jj.fetch_refspec_ignored`),
+    ///   and `remotes.<name>.fetch-tags`, else every tag.
+    ///
+    /// Then one `import_refs` (its failed refs warn `jj.git_import_failed` and land in
+    /// [`crate::GitFetchOutcome::failed_ref_names`]); with `Patterns`, branch names no matched
+    /// remote has warn `jj.fetch_branches_unmatched`. The operation is `fetch from git remote(s)
+    /// <names joined by ",">`. It finishes like the CLI's `tx.finish` (Story 9.26): a colocated
+    /// workspace exports the fetched refs to Git, and the working copy is checked out at the new
+    /// operation. A fresh operation is committed even when nothing changed — NOT CLI parity: the
+    /// CLI's `WorkspaceCommandTransaction::finish` writes none when `!has_changes()`; the known,
+    /// tracked divergence (deferred-work.md, "`Repo::git_fetch` and `Repo::describe` write an
+    /// operation when nothing changed").
     ///
     /// `git.abandon-unreachable-commits`, `git.record-synthetic-predecessors` and the
     /// per-remote `remotes.<name>.auto-track-bookmarks` are read from the repo's EFFECTIVE
-    /// config per call and never cached (FR-JJ-17), exactly as
-    /// `cli/src/commands/git/fetch.rs:235` @ v0.44.0 takes them off config.
+    /// config per call and never cached (FR-JJ-17), exactly as `fetch.rs:235` takes them off
+    /// config.
     ///
-    /// The result's `abandoned_change_ids` carries the commits jj-lib itself abandoned
+    /// The mutation's `abandoned_change_ids` carries the commits jj-lib itself abandoned
     /// during the import because they became unreachable in git — the effect
     /// `git.abandon-unreachable-commits` governs — read from the import's own stats. This
     /// is the one verb where that field is not a caller echo; see
@@ -1275,32 +1323,36 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::MutateError::RemoteNotFound`] — `remote_name` has no configured git
-    ///   remote.
+    /// - [`crate::MutateError::InvalidInput`] — no remote matched ("No git remotes to fetch
+    ///   from", the CLI's refusal; nothing is written), a name pattern does not parse, or a
+    ///   pattern cannot become a refspec (jj-lib's expansion error).
     /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no git backend at all.
-    /// - [`crate::MutateError::Config`] — the `revset-aliases."immutable_heads()"` alias does
-    ///   not resolve against the repo, or — in a NON-colocated workspace, where the verb reads
-    ///   them — a `git.*` / `remotes.<name>.auto-track-bookmarks` key above is malformed.
+    /// - [`crate::MutateError::Config`] — `git.fetch` is neither a string nor a list of strings; a
+    ///   `remotes.<name>` entry or its `fetch-bookmarks`/`fetch-tags` is malformed (the CLI's
+    ///   ``Invalid `remotes.<name>.<field>`: …``); the `revset-aliases."immutable_heads()"` alias
+    ///   does not resolve against the repo; or — in a NON-colocated workspace, where the verb
+    ///   reads them — a `git.*` / `remotes.<name>.auto-track-bookmarks` key above is malformed.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26),
     ///   including a jj config or alias that does not read or parse, and — in a COLOCATED
     ///   workspace, whose pre-verb refs import reads them first — a malformed key above.
-    /// - [`crate::MutateError::NetworkError`] — the underlying `git` subprocess
-    ///   failed.
-    /// - [`crate::MutateError::Cancelled`] — `cancel`'s token was cancelled before the git work,
-    ///   after it but before the import, or git failed after the cancel (Story 9.52); no
-    ///   operation is committed. Without a token this never happens.
+    /// - [`crate::MutateError::NetworkError`] — the underlying `git` subprocess failed.
+    /// - [`crate::MutateError::Cancelled`] — `cancel`'s token was cancelled before a remote's git
+    ///   work, after the last one but before the import, or git failed after the cancel (Story
+    ///   9.52); no operation is committed. Without a token this never happens.
+    /// - [`crate::MutateError::RemoteNotFound`] — a matched remote vanished between the match and
+    ///   its fetch (jj-lib's `NoSuchRemote`); a name that matches nothing is `InvalidInput` above.
     /// - [`crate::MutateError::Backend`] — any other underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn git_fetch(
         &mut self,
-        remote_name: &str,
+        args: &crate::GitFetchArgs,
         progress: &crate::ProgressFn,
         cancel: Option<&crate::cancel::CancelGuard>,
-    ) -> Result<crate::MutationResult, crate::MutateError> {
+    ) -> Result<crate::GitFetchOutcome, crate::MutateError> {
         // WHY the two fields rather than the accessors: disjoint field borrows, so the
         // workspace can be borrowed mutably next to the settings.
         self.with_verb(|repo, ctx| {
-            crate::remotes::git_fetch(&mut repo.workspace, &repo.settings, remote_name, ctx, progress, cancel)
+            crate::remotes::git_fetch(&mut repo.workspace, &repo.settings, args, ctx, progress, cancel)
         })
     }
 
@@ -1314,6 +1366,11 @@ impl Repo {
     /// refs that moved, are new or were deleted upstream — bookmarks before tags, each by name; an
     /// empty list means a fetch would bring nothing new. Tracked local bookmarks play no part.
     ///
+    /// Only the refs a bare [`Repo::git_fetch`] of the remote would fetch take part (Story 9.30):
+    /// `remotes.<name>.fetch-bookmarks`, else the Git config's fetch refspecs (the ones jj ignores
+    /// are dropped silently — no warning, the poll is no CLI verb), and `remotes.<name>.fetch-tags`,
+    /// else every tag. Both the advertised names and the view's are filtered before the diff.
+    ///
     /// No pre-verb snapshot (a dirty working copy stays unsnapshotted), no transaction, no
     /// operation of its own, no object download: views, bookmarks, Git refs and files are left
     /// untouched. Loading the head the CLI's way may still reconcile divergent operation heads
@@ -1326,7 +1383,10 @@ impl Repo {
     /// # Errors
     ///
     /// - [`crate::MutateError::Config`] — the start-up fix-up failed, the changed config stack no
-    ///   longer reads, or `git.executable-path` does not read.
+    ///   longer reads, `git.executable-path` does not read, or a `remotes.<name>` entry or the
+    ///   remote's `fetch-bookmarks`/`fetch-tags` is malformed.
+    /// - [`crate::MutateError::InvalidInput`] — the remote's Git config does not read, or a
+    ///   `fetch-bookmarks`/`fetch-tags` pattern cannot become a refspec (the fetch refuses it too).
     /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no Git backend; nothing runs.
     /// - [`crate::MutateError::RemoteNotFound`] — no configured git remote is named `remote_name`
     ///   exactly; git never runs.

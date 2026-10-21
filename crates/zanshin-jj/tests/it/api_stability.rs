@@ -89,6 +89,12 @@ type _SkippedPath = zanshin_jj::SkippedPath;
 // remotes: git_fetch progress (Story 6.4a)
 type _ProgressEvent = zanshin_jj::ProgressEvent;
 
+// remotes: git_fetch args and outcome (Story 9.30)
+type _GitFetchArgs = zanshin_jj::GitFetchArgs;
+type _FetchRemotes = zanshin_jj::FetchRemotes;
+type _FetchRefs = zanshin_jj::FetchRefs;
+type _GitFetchOutcome = zanshin_jj::GitFetchOutcome;
+
 // file reads (Story 9.4)
 type _FileEntry = zanshin_jj::FileEntry;
 type _FileType = zanshin_jj::FileType;
@@ -435,13 +441,14 @@ fn api_surface_resolves() {
     // remotes: git_fetch progress callback (Story 6.4a) — pin the callback type and
     // the exact `Repo::git_fetch` signature.
     let _: &zanshin_jj::ProgressFn = &|_: zanshin_jj::ProgressEvent| {};
+    // Story 9.30: the args/outcome pair (the rest of the surface below).
     _ = zanshin_jj::Repo::git_fetch
         as fn(
             &mut zanshin_jj::Repo,
-            &str,
+            &zanshin_jj::GitFetchArgs,
             &zanshin_jj::ProgressFn,
             Option<&zanshin_jj::cancel::CancelGuard>,
-        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+        ) -> Result<zanshin_jj::GitFetchOutcome, zanshin_jj::MutateError>;
     // Story 4.9: the variant `zanshin-ffi::map_topology_err` matches on — pin its shape.
     _ = zanshin_jj::RevsetError::Config(zanshin_jj::ConfigError::Load { reason: String::new() });
 
@@ -1357,7 +1364,7 @@ fn story_9_28_surface_resolves() {
 /// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds;
 /// Story 9.53 the unresolved conflicts; Story 9.51 the template diagnostic; Story 9.54's closing
 /// run the bookmark auto-track warning).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 50] = {
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 53] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -1410,8 +1417,43 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 50] = {
         K::PushSigningSkippedImmutable,
         K::CloneBranchesUnmatched,
         K::TemplateDiagnostic,
+        K::FetchRemotesUnmatched,
+        K::FetchRefspecIgnored,
+        K::FetchBranchesUnmatched,
     ]
 };
+
+/// Story 9.30: `jj git fetch`'s args and outcome, and the default-remote query — every type and
+/// field named by its public path, so a rename breaks this test at compile time.
+#[test]
+fn story_9_30_fetch_surface_resolves() {
+    _ = zanshin_jj::Repo::git_fetch_remotes
+        as fn(&mut zanshin_jj::Repo) -> Result<Vec<String>, zanshin_jj::MutateError>;
+    let args = zanshin_jj::GitFetchArgs {
+        remotes: zanshin_jj::FetchRemotes::Named(vec![String::new()]),
+        refs: zanshin_jj::FetchRefs::Patterns {
+            branches: Vec::new(),
+            tags: Vec::new(),
+        },
+    };
+    _ = (zanshin_jj::FetchRemotes::All, zanshin_jj::FetchRefs::Tracked, args);
+    assert_eq!(
+        zanshin_jj::GitFetchArgs::default(),
+        zanshin_jj::GitFetchArgs {
+            remotes: zanshin_jj::FetchRemotes::Default,
+            refs: zanshin_jj::FetchRefs::Default,
+        }
+    );
+    _ = |outcome: zanshin_jj::GitFetchOutcome| {
+        let zanshin_jj::GitFetchOutcome {
+            mutation,
+            remotes,
+            hints,
+            failed_ref_names,
+        } = outcome;
+        (mutation, remotes, hints, failed_ref_names)
+    };
+}
 
 /// Story 9.32: the warning channel — `Warning`, every `WarningKind` (matched EXHAUSTIVELY, so a
 /// variant added or removed breaks this test at compile time), `Warned`, and
@@ -1481,10 +1523,13 @@ fn story_9_32_warning_surface_resolves() {
             | K::PushBookmarksNotUpdatedLocally
             | K::PushSigningSkippedImmutable
             | K::CloneBranchesUnmatched
-            | K::TemplateDiagnostic => {}
+            | K::TemplateDiagnostic
+            | K::FetchRemotesUnmatched
+            | K::FetchRefspecIgnored
+            | K::FetchBranchesUnmatched => {}
         }
     }
-    assert_eq!(every.len(), 50);
+    assert_eq!(every.len(), 53);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

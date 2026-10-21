@@ -28,6 +28,7 @@ import '../ffi/events.dart'
         closeEventSink,
         registerEventSink,
         unregisterEventSink;
+import '../ffi/fetch.dart' as repo_ffi_fetch;
 import '../ffi/ffi_buffer.dart' show FfiBuffer;
 import '../ffi/file.dart' as repo_ffi_file;
 import '../ffi/file_ops.dart' as repo_ffi_file_ops;
@@ -958,6 +959,27 @@ class ZanshinWorker {
     return repo_ffi_remotes.decodeGitPushRemotesEnvelopeInternal(bytes);
   }
 
+  /// Read the remotes `jj git fetch` without `--remote` would fetch from, for
+  /// the repo identified by [handleId] (Story 9.30): `git.fetch`, else the
+  /// single remote, else `origin` — each only when it exists, in remote-name
+  /// order. Empty when none matches (the Fetch button's enable rule) and on a
+  /// non-Git backend.
+  ///
+  /// Sends a [GitFetchRemotesCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<GitFetchRemotes>` bytes.
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`). Completes with a [StateError] after [close]; the
+  /// close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.gitFetchRemotes].
+  Future<WarnedList<String>> gitFetchRemotes(int handleId) async {
+    final Uint8List bytes = await send(
+      GitFetchRemotesCommand(commandId: _correlator.allocateId(), handleId: handleId),
+    );
+    return repo_ffi_remotes.decodeGitFetchRemotesEnvelopeInternal(bytes);
+  }
+
   /// Read the effective `jj log` defaults for the repo identified by [handleId]
   /// (Story 4.9).
   ///
@@ -1132,20 +1154,23 @@ class ZanshinWorker {
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
-  /// Fetch all branches and tags from [remoteName] and import them, in the repo
-  /// identified by [handleId] (Story 6.5). Never moves `@`.
+  /// Fetch the [remotes] and [refs] selected and import them, in the repo
+  /// identified by [handleId] — the CLI's `jj git fetch` (Stories 6.5, 9.30).
+  /// See [RepoHandle.gitFetch].
   ///
   /// Progress rides [events] as a `ProgressEvent` with this [handleId], demuxed
   /// by the worker's session-id table (same mechanism as watcher events).
   ///
   /// Sends a [GitFetchCommand] via [send] and decodes the returned FlatBuffers
-  /// `Envelope<MutationResult>` bytes into a [repo_ffi_mutate.MutationResult].
+  /// `Envelope<GitFetchResult>` bytes into a [repo_ffi_fetch.GitFetchResult].
   ///
-  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`,
-  /// `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error`). A workspace with no git backend is
-  /// `jj.not_a_git_repo`; `jj.remote_not_found` now means only "no remote of that
-  /// name".
+  /// The `result` throws [ZanshinFfiException] on FFI errors (e.g.
+  /// `ffi.invalid_handle`, `jj.invalid_input` — "No git remotes to fetch from"
+  /// included —, `jj.not_a_git_repo`, `jj.config_error`, `jj.remote_not_found`
+  /// — a matched remote that vanished —, `jj.network_error`, `jj.cancelled`,
+  /// `jj.jj_lib_error`); a pattern with an interior NUL
+  /// (U+0000) is refused inside the helper isolate by the FFI adapter's guard
+  /// and answers `internal.dispatch_error`.
   ///
   /// Returns a [NetworkOperation] (Story 9.52): the fetch runs on a helper
   /// isolate — later commands for [handleId] wait for it, other repos do not —
@@ -1154,15 +1179,19 @@ class ZanshinWorker {
   /// After [close] the `result` completes with a [StateError]; the
   /// closed-handle [StateError] is thrown synchronously by
   /// [RepoHandle.gitFetch].
-  NetworkOperation<repo_ffi_mutate.MutationResult> gitFetch(int handleId, String remoteName) {
+  NetworkOperation<repo_ffi_fetch.GitFetchResult> gitFetch(
+    int handleId, {
+    repo_ffi_fetch.FetchRemotes remotes = const repo_ffi_fetch.DefaultFetchRemotes(),
+    repo_ffi_fetch.FetchRefs refs = const repo_ffi_fetch.DefaultFetchRefs(),
+  }) {
     final int commandId = _correlator.allocateId();
     return _networkOperation(
       commandId: commandId,
       operation: 'fetch',
       handleId: () => _announcedHandles[commandId],
       start: () => send(
-        GitFetchCommand(commandId: commandId, handleId: handleId, remoteName: remoteName),
-      ).then(repo_ffi_mutate.decodeMutationResultEnvelopeInternal),
+        GitFetchCommand(commandId: commandId, handleId: handleId, remotes: remotes, refs: refs),
+      ).then(repo_ffi_fetch.decodeGitFetchResultEnvelopeInternal),
     );
   }
 
@@ -2641,6 +2670,17 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
+        case GitFetchRemotesCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitFetchRemotesCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_remotes.zanshinGitFetchRemotes(raw);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
         case LogDefaultsCommand(:final int handleId):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -2728,7 +2768,8 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
-        case GitFetchCommand(:final int handleId, :final String remoteName):
+        case final GitFetchCommand fetch:
+          final int handleId = fetch.handleId;
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: GitFetchCommand for unknown handleId $handleId');
@@ -2740,7 +2781,7 @@ void _workerEntry(_WorkerInit init) {
               handleId: handleId,
               call: (token) {
                 eventSP.send(_NetworkHandleAnnouncement(commandId, handleId));
-                return _fetchOnHelper(raw, remoteName, token);
+                return _fetchOnHelper(raw, fetch, token);
               },
               reply: (bytes, _) => responseSP.send((commandId, BufferResult(bytes))),
               fail: (e, _) {
@@ -3516,8 +3557,8 @@ final class _NetworkScheduler {
 
 /// The helper-isolate half of a fetch (Story 9.52). Top-level, so the closure
 /// [Isolate.run] sends captures nothing but its arguments.
-Future<Uint8List> _fetchOnHelper(int raw, String remoteName, int token) => Isolate.run(
-  () => repo_ffi_mutate.zanshinGitFetch(raw, remoteName, cancelToken: token),
+Future<Uint8List> _fetchOnHelper(int raw, GitFetchCommand c, int token) => Isolate.run(
+  () => repo_ffi_fetch.zanshinGitFetch(raw, remotes: c.remotes, refs: c.refs, cancelToken: token),
   debugName: 'ZanshinNetwork',
 );
 

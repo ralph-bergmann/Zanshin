@@ -161,6 +161,46 @@ void main() {
     });
   });
 
+  group('decodeGitFetchRemotesEnvelope decode contract (Story 9.30)', () {
+    Uint8List fetchRemotes(List<String>? names) => fbs.EnvelopeObjectBuilder(
+      ok: true,
+      dataType: fbs.PayloadTypeId.GitFetchRemotes,
+      data: fbs.GitFetchRemotesObjectBuilder(names: names),
+    ).toBytes();
+
+    test('decodes the names in order, an empty list included', () {
+      expect(decodeGitFetchRemotesEnvelope(fetchRemotes(['origin', 'up'])), ['origin', 'up']);
+      expect(decodeGitFetchRemotesEnvelope(fetchRemotes([])), isEmpty);
+    });
+
+    test('an absent names vector is refused, not defaulted', () {
+      expect(
+        () => decodeGitFetchRemotesEnvelope(fetchRemotes(null)),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')),
+      );
+    });
+
+    test('throws on an error envelope and ffi.unknown on a wrong payload', () {
+      final Uint8List error = fbs.EnvelopeObjectBuilder(
+        ok: false,
+        error: fbs.FfiErrorObjectBuilder(code: 'jj.config_error', context: 'git.fetch'),
+      ).toBytes();
+      expect(
+        () => decodeGitFetchRemotesEnvelope(error),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.config_error')),
+      );
+      final Uint8List wrong = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.GitPushRemotes,
+        data: fbs.GitPushRemotesObjectBuilder(names: const []),
+      ).toBytes();
+      expect(
+        () => decodeGitFetchRemotesEnvelope(wrong),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')),
+      );
+    });
+  });
+
   group('decodeRemoteChangesEnvelope decode contract (Story 9.24)', () {
     test('decodes every kind and change; an absent new id stays null', () {
       final Uint8List bytes = fbs.EnvelopeObjectBuilder(

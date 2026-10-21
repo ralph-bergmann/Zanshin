@@ -17,8 +17,10 @@
 import 'dart:io';
 
 import 'package:test/test.dart';
+import 'package:zanshin_core/src/ffi/fetch.dart' show NamedFetchRemotes;
 import 'package:zanshin_core/src/ffi/mutate.dart';
 import 'package:zanshin_core/src/ffi/status.dart' show WorkingCopyStatus;
+import 'package:zanshin_core/src/ffi/warning.dart' show WarnedList, ZanshinWarningCode;
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
@@ -234,13 +236,72 @@ void main() {
     // covers the (subprocess-spawn-free) error path instead, still a real
     // cdylib call into `zanshin_git_fetch` for the coverage ratchet's
     // extern-fn credit.
-    test('gitFetch_unknown_remote_surfaces_jj_remote_not_found', () async {
+    //
+    // Story 9.30: a `--remote` that names no remote is the CLI's warning plus its
+    // refusal — `jj.fetch_remotes_unmatched`, then `jj.invalid_input` "No git
+    // remotes to fetch from" — no longer `jj.remote_not_found`.
+    test('gitFetch_unknown_remote_warns_and_surfaces_jj_invalid_input', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
 
       await expectLater(
-        handle.gitFetch('nonexistent').result,
-        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.remote_not_found')),
+        handle.gitFetch(remotes: const NamedFetchRemotes(['nonexistent'])).result,
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having((e) => e.context, 'context', 'No git remotes to fetch from')
+              .having(
+                (e) => e.warnings.map((w) => (w.code, w.message)).toList(),
+                'warnings',
+                contains((ZanshinWarningCode.fetchRemotesUnmatched, 'No matching remotes for names: nonexistent')),
+              ),
+        ),
       );
+
+      await handle.close();
+    });
+
+    // Story 9.30, the Fetch button's enable rule: with remotes `a` and `b`, no
+    // `origin` and no `git.fetch`, `gitFetchRemotes` is empty with the warning
+    // for the implicit `origin`, and the bare `gitFetch` refuses with the same
+    // warning and writes no operation. Neither spawns git.
+    test('gitFetchRemotes_and_gitFetch_agree_when_nothing_matches', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
+      for (final name in ['a', 'b']) {
+        await handle.gitRemoteAdd(name: name, url: '${tempDir.path}/$name.git');
+      }
+      final List<String> before = (await handle.opLog(limit: 1)).map((op) => op.id).toList();
+
+      final WarnedList<String> remotes = await handle.gitFetchRemotes();
+      expect(remotes, isEmpty);
+      const (String, String) unmatched = (
+        ZanshinWarningCode.fetchRemotesUnmatched,
+        'No matching remotes for names: origin',
+      );
+      expect(remotes.warnings.map((w) => (w.code, w.message)), [unmatched]);
+
+      await expectLater(
+        handle.gitFetch().result,
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having((e) => e.context, 'context', 'No git remotes to fetch from')
+              .having((e) => e.warnings.map((w) => (w.code, w.message)).toList(), 'warnings', contains(unmatched)),
+        ),
+      );
+      expect((await handle.opLog(limit: 1)).map((op) => op.id).toList(), before, reason: 'no operation written');
+
+      await handle.close();
+    });
+
+    // Story 9.30: the only remote is the default resolution's answer — read
+    // without spawning git.
+    test('gitFetchRemotes_answers_the_only_remote', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
+      await handle.gitRemoteAdd(name: 'up', url: '${tempDir.path}/up.git');
+
+      final WarnedList<String> remotes = await handle.gitFetchRemotes();
+      expect(remotes, ['up']);
+      expect(remotes.warnings, isEmpty);
 
       await handle.close();
     });
@@ -327,7 +388,7 @@ void main() {
     // The remaining mutation arms' unknown-handle reply. A closed handle is
     // rejected by the worker's own handle-table lookup BEFORE any FFI call — so
     // `gitFetch` here spawns no `git` subprocess and the caveat above
-    // `gitFetch_unknown_remote_surfaces_jj_remote_not_found` does not apply.
+    // `gitFetch_unknown_remote_warns_and_surfaces_jj_invalid_input` does not apply.
     test('describe_on_closed_handle_surfaces_ffi_invalid_handle', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       final int handleId = handle.handleId;
@@ -378,7 +439,7 @@ void main() {
       await handle.close();
 
       await expectLater(
-        worker.gitFetch(handleId, 'origin').result,
+        worker.gitFetch(handleId).result,
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
       );
     });

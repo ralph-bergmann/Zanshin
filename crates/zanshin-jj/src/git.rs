@@ -395,13 +395,19 @@ pub(crate) fn project_import(
         abandoned_change_ids: project_abandoned(stats),
         // Saturating, not wrapping or fallible — see `GitImportResult::num_rewritten`.
         num_rewritten: u32::try_from(stats.rewritten_commit_ids.len()).unwrap_or(u32::MAX),
-        failed_ref_names: stats
-            .failed_ref_names
-            .iter()
-            .map(|n| String::from_utf8_lossy(n).into_owned())
-            .collect(),
+        failed_ref_names: failed_ref_names(stats),
         mutation,
     }
+}
+
+/// The import's failed ref names, lossy UTF-8, in jj-lib's order — shared with
+/// [`crate::Repo::git_fetch`] (Story 9.30), which reports the same fact.
+pub(crate) fn failed_ref_names(stats: &jj_lib::git::GitImportStats) -> Vec<String> {
+    stats
+        .failed_ref_names
+        .iter()
+        .map(|n| String::from_utf8_lossy(n).into_owned())
+        .collect()
 }
 
 // ── git export ───────────────────────────────────────────────────────────────────

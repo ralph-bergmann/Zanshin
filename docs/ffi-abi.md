@@ -378,7 +378,7 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **36** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **37** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
@@ -391,10 +391,11 @@ lists — `jj new -A` / `-B`, Story 9.48 — are read only by `zanshin_new_chang
 `zanshin_abandon` ignores them) and `SquashRequest`
 (`zanshin_squash` and `zanshin_squash_plan`, Story 9.15 — the plan previews the
 squash its caller is about to run, with the same arguments). Every other table has
-exactly one caller, and no table is orphaned. 36 tables + 2 shared reuses = the 38
+exactly one caller, and no table is orphaned. 37 tables + 2 shared reuses = the 39
 request-buffer symbols (Story 9.20 adds `GitPushRequest`, `RepoCloneRequest` and
 `RepoInitRequest` — `zanshin_repo_init` / `zanshin_repo_clone` took two C strings / a string and
-an `int32_t` backend before).
+an `int32_t` backend before; Story 9.30 adds `GitFetchRequest` — `zanshin_git_fetch` took a
+remote name and a cancel token before).
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
 members of the `RevisionRef` union carried by `InterdiffRequest`'s `from`/`to`,
@@ -464,7 +465,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **72** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **73** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -505,6 +506,7 @@ or no `# Errors` block.
 | `zanshin_bookmarks` | `(uint64_t handle)` | — | `Bookmarks` (rows + tracking facts, see § `Bookmarks` payload) | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b, 9.29 |
 | `zanshin_remotes` | `(uint64_t handle)` | — | `Remotes` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
 | `zanshin_git_push_remotes` | `(uint64_t handle)` | — | `GitPushRemotes` (the default push remotes; empty when none matches or on a non-Git backend) | `ffi.invalid_handle`, `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.54 |
+| `zanshin_git_fetch_remotes` | `(uint64_t handle)` | — | `GitFetchRemotes` (the default fetch remotes — the Fetch button's enable rule; empty when none matches or on a non-Git backend) | `ffi.invalid_handle`, `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.30 |
 | `zanshin_workspace_list` | `(uint64_t handle)` | — | `WorkspaceList` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.7 |
 | `zanshin_workspace_root` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceRootRequest` | `WorkspaceRoot` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.workspace_not_found`, `jj.workspace_no_recorded_path`, `jj.jj_lib_error` | 9.7 |
 | `zanshin_workspace_add` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceAddRequest` | `WorkspaceAddResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.workspace_exists`, `jj.destination_not_empty`, `jj.git_worktree_failed`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.jj_lib_error` | 9.23 |
@@ -525,8 +527,8 @@ or no `# Errors` block.
 | `zanshin_file_track` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileTrackRequest` | `TrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_file_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileUntrackRequest` | `UntrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.path_not_ignored`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_snapshot` | `(uint64_t handle)` | — | — (no-payload success; the report is `Envelope.precondition`) | `ffi.invalid_handle`, `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error` | 9.26 |
-| `zanshin_git_fetch` | `(uint64_t handle, const char *remote_name, uint64_t cancel_token)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.network_error`, `jj.cancelled`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (domain side + `Progress`: 6.4a; `cancel_token`: 9.52) |
-| `zanshin_git_remote_changes` | `(uint64_t handle, const char *remote_name, uint64_t cancel_token)` | — | `RemoteChanges` (the refs that moved, are new or were deleted upstream; empty = nothing new) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error` | 9.24 |
+| `zanshin_git_fetch` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitFetchRequest` (+ `cancel_token`, see § Cancel) | `GitFetchResult` (see § `GitFetchResult` payload) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.not_a_git_repo`, `jj.config_error`, `jj.remote_not_found`, `jj.network_error`, `jj.cancelled`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (domain side + `Progress`: 6.4a; `cancel_token`: 9.52; request + `GitFetchResult`: 9.30) |
+| `zanshin_git_remote_changes` | `(uint64_t handle, const char *remote_name, uint64_t cancel_token)` | — | `RemoteChanges` (the refs that moved, are new or were deleted upstream; empty = nothing new) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.invalid_input`, `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error` | 9.24, 9.30 |
 | `zanshin_git_push` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitPushRequest` (+ `cancel_token`, see § Cancel) | `GitPushResult` (see § `GitPushResult` payload; a cancel is `failure.kind = Cancelled`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.push_ref_refused`, `jj.push_commit_rejected`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.20 (+`Progress`) |
 | `zanshin_git_import` | `(uint64_t handle)` | — | `GitImportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_export` | `(uint64_t handle)` | — | `GitExportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
@@ -923,7 +925,7 @@ from Story 6-4a during the 3-10 code review (Ralph, 2026-07-04); Story 6-4a's
 
 The four network calls — `zanshin_git_fetch`, `zanshin_git_push`, `zanshin_repo_clone` and the
 remote-change poll `zanshin_git_remote_changes` (Story 9.24) — take a **cancel token**:
-`zanshin_git_fetch`'s and `zanshin_git_remote_changes`' third argument, the `cancel_token` field of
+`zanshin_git_remote_changes`' third argument, the `cancel_token` field of `GitFetchRequest` /
 `GitPushRequest` / `RepoCloneRequest`. `0` (the absent-field default) is no token: the call is not
 cancellable and never answers `jj.cancelled`.
 
@@ -1513,11 +1515,49 @@ list means a fetch would bring nothing new. No pre-verb snapshot, no transaction
 its own (loading the head may reconcile divergent operation heads, as every jj command does); the
 envelope carries the start-up fix-up's warnings and NO `precondition`. git's failure is
 `jj.network_error` with jj-lib's own text (`External git program failed:` + stderr, or the spawn
-error); output that is not a ref advertisement is `jj.jj_lib_error`. Not yet applied: the CLI
-fetch's per-remote bookmark/tag filters (Story 9.30), so a ref the fetch would skip stays "new";
-a tag of a non-commit object reads "new" on every poll. Dart: `RepoHandle.remoteChanges(remoteName)`
+error); output that is not a ref advertisement is `jj.jj_lib_error`. Only the refs a bare
+`zanshin_git_fetch` of the remote would fetch take part (Story 9.30): the remote's
+`remotes.<name>.fetch-bookmarks`, else its Git fetch refspecs (the ones jj ignores dropped
+silently), and `remotes.<name>.fetch-tags`, else every tag — both the advertised names and the
+view's are filtered, so a malformed setting is `jj.config_error` and an unreadable Git remote
+configuration `jj.invalid_input`. A tag of a non-commit object reads "new" on every poll. Dart: `RepoHandle.remoteChanges(remoteName)`
 → `NetworkOperation<WarnedList<RemoteRefChange>>`, on the worker's helper isolate like a fetch
 (progress operation `remote_changes`, no events).
+
+## `GitFetchResult` payload and `zanshin_git_fetch` (Story 9.30)
+
+`zanshin_git_fetch` is the CLI's `jj git fetch` at v0.46.0 (`cmd_git_fetch`) with its parameters
+passed through as `GitFetchRequest`, whose two enums make the CLI's clap conflicts
+unrepresentable:
+
+| Field | Meaning |
+|-------|---------|
+| `remotes_mode` | `Default` (no `--remote`: `git.fetch` — a list or a string of name patterns —, else the only remote, else `origin`), `Named` (`--remote`: the union of the `remotes` patterns; a bare word is a glob), `All` (`--all-remotes`). |
+| `refs_mode` | `Default` (per remote: `remotes.<name>.fetch-bookmarks`, else the Git config's fetch refspecs; `remotes.<name>.fetch-tags`, else every tag), `Patterns` (`-b` / `-t`: the `branches` / `tags` unions; an absent or empty list fetches none of that kind), `Tracked` (`--tracked`: the bookmarks and tags tracked from each remote, by exact name). |
+| `cancel_token` | See § Cancel. |
+
+An exact remote name no remote carries warns `jj.fetch_remotes_unmatched` ("No matching remotes
+for names: a, b"); no match at all refuses `jj.invalid_input` "No git remotes to fetch from"
+BEFORE any transaction — also for a `Named` miss, which was `jj.remote_not_found` before Story 9.30
+(CLI parity). Then ONE transaction: each remote is fetched (its ignored Git refspecs warn
+`jj.fetch_refspec_ignored`), the refs are imported once (`jj.git_import_failed`), with `Patterns`
+the branch names no matched remote has warn `jj.fetch_branches_unmatched`, and the operation is
+`fetch from git remote(s) <names as symbols joined by ",">` — also when nothing changed (the
+tracked 9.40 divergence). The answer is `GitFetchResult`:
+
+| Field | Meaning |
+|-------|---------|
+| `mutation` | The shared `MutationResult`; `abandoned_change_ids` are the commits the import abandoned (`git.abandon-unreachable-commits`). |
+| `remotes` | The remotes fetched from, in remote-name order. |
+| `hints` | The CLI's hints, verbatim: "Fetching from the only existing remote: R" (when that remote is not `origin`). |
+| `failed_ref_names` | The Git refs the import could not read, lossy UTF-8 — what `jj.git_import_failed` lists. |
+
+`zanshin_git_fetch_remotes(handle)` answers `GitFetchRemotes { names }` with the `Default`
+resolution alone — the Fetch button's enable rule: empty when none matches (warning
+`jj.fetch_remotes_unmatched`, as the fetch warns it) and on a non-Git backend; the hint is not
+reported; no operation of its own. Dart: `RepoHandle.gitFetch({remotes, refs})` →
+`NetworkOperation<GitFetchResult>` (sealed `FetchRemotes` / `FetchRefs`), and
+`RepoHandle.gitFetchRemotes()` → `WarnedList<String>`.
 
 ## `GitPushResult` payload and `zanshin_git_push` (Story 9.20)
 

@@ -18,7 +18,8 @@ use flatbuffers::{FlatBufferBuilder, VerifierOptions};
 use tracing::debug;
 use zanshin_jj::{
     convert_colocated, detect_repo, find_repo_root, Backend, ChangeId, CloneOptions, CreationOutcome, DetectError,
-    InitOptions, MutateError, ObjectHash, Repo, RepoError, RepoKind, RepoRoot,
+    FetchRefs, FetchRemotes, GitFetchArgs, GitFetchOutcome, InitOptions, MutateError, ObjectHash, Repo, RepoError,
+    RepoKind, RepoRoot,
 };
 
 use crate::envelope::{
@@ -1294,39 +1295,120 @@ pub unsafe extern "C" fn zanshin_undo(handle: u64, allow_cross_workspace: bool) 
     vec_into_token(buf)
 }
 
-/// Fetch all branches and tags from `remote_name` and import them, in the repo
-/// referenced by `handle`. Never moves `@` — fetch only updates remote-tracking refs.
+/// Parse a `GitFetchRequest` buffer into owned [`GitFetchArgs`] and its `cancel_token` (Story
+/// 9.52, `0` = none). `Named` reads `remotes` and `Patterns` reads `branches` / `tags` (an absent
+/// list is empty); the other modes ignore them.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `GitFetchRequest`, its `kind` is not
+///   `GitFetch`, or a mode is a value this build does not know.
+fn read_fetch_request(data: *const u8, len: usize) -> Result<(GitFetchArgs, u64), FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only — only OWNED values leave this function.
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::GitFetchRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::GitFetch)?;
+    let list = |v| crate::push::strings(v).unwrap_or_default();
+    let unknown = |field: &str| FfiErrorObj {
+        report: None,
+        code: FFI_INVALID_ARGUMENT.to_owned(),
+        context: Some(format!("GitFetchRequest.{field} is not a known value")),
+    };
+    let remotes = match req.remotes_mode() {
+        fbs::FetchRemotesMode::Default => FetchRemotes::Default,
+        fbs::FetchRemotesMode::Named => FetchRemotes::Named(list(req.remotes())),
+        fbs::FetchRemotesMode::All => FetchRemotes::All,
+        _ => return Err(unknown("remotes_mode")),
+    };
+    let refs = match req.refs_mode() {
+        fbs::FetchRefsMode::Default => FetchRefs::Default,
+        fbs::FetchRefsMode::Patterns => FetchRefs::Patterns {
+            branches: list(req.branches()),
+            tags: list(req.tags()),
+        },
+        fbs::FetchRefsMode::Tracked => FetchRefs::Tracked,
+        _ => return Err(unknown("refs_mode")),
+    };
+    Ok((GitFetchArgs { remotes, refs }, req.cancel_token()))
+}
+
+/// Build a success `Envelope` with a `GitFetchResult` payload (Story 9.30).
+fn ok_git_fetch_result(outcome: &GitFetchOutcome, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(512);
+    let mutation = crate::envelope::build_mutation_result(&mut b, &outcome.mutation);
+    let mut strings = |items: &[String]| {
+        let offsets: Vec<_> = items.iter().map(|item| b.create_string(item)).collect();
+        b.create_vector(&offsets)
+    };
+    let remotes = strings(&outcome.remotes);
+    let hints = strings(&outcome.hints);
+    let failed_ref_names = strings(&outcome.failed_ref_names);
+    let result = fbs::GitFetchResult::create(
+        &mut b,
+        &fbs::GitFetchResultArgs {
+            mutation: Some(mutation),
+            remotes: Some(remotes),
+            hints: Some(hints),
+            failed_ref_names: Some(failed_ref_names),
+        },
+    );
+    finish_envelope(b, fbs::Payload::GitFetchResult, Some(result.as_union_value()), report)
+}
+
+/// Fetch from git remotes and import the fetched refs, in the repo referenced by `handle` — the
+/// CLI's `jj git fetch` (Story 9.30), every parameter passed through.
+///
+/// The arguments cross as a `GitFetchRequest` `FlatBuffers` request buffer: `remotes_mode`
+/// (`Default` = `git.fetch`, else the only remote, else `origin`; `Named` = the `remotes`
+/// patterns; `All` = every remote), `refs_mode` (`Default` = each remote's
+/// `remotes.<name>.fetch-bookmarks`/`fetch-tags`, else its Git refspecs and every tag;
+/// `Patterns` = the `branches` / `tags` patterns, an empty list fetching none of that kind;
+/// `Tracked` = the tracked bookmarks and tags) and `cancel_token`. The working copy is
+/// snapshotted first (Story 9.26); then ONE transaction fetches remote by remote, imports once,
+/// and writes `fetch from git remote(s) <names joined by ",">` — also when nothing changed.
+/// Never moves `@` unless the import abandoned it.
 ///
 /// Progress is dispatched over the SAME process-global event sink `WatcherEvent`
-/// already uses (Story 3.6), tagged with the session's `session_id` — there is no
-/// separate per-op registry; the caller correlates by `session_id`, exactly like a
+/// already uses (Story 3.6), tagged with the session's `session_id` and `operation = "fetch"` —
+/// there is no separate per-op registry; the caller correlates by `session_id`, exactly like a
 /// `WatcherEvent`.
 ///
 /// `cancel_token` (Story 9.52) is `0` (not cancellable) or a token from
 /// `zanshin_network_token`; `zanshin_network_cancel` cancels the fetch, and the token ends with
 /// this call.
 ///
-/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
-/// Its `abandoned_change_ids` carries the commits the import abandoned because they
-/// became unreachable in git (what `git.abandon-unreachable-commits` governs) — jj-lib's
-/// OWN abandonments, not a caller echo, and empty when that key is off or nothing became
-/// unreachable. `new_change_ids` is always empty: a fetch mints nothing.
+/// Returns a `FlatBuffers` `Envelope` carrying a `GitFetchResult` payload on success: the
+/// `MutationResult` (its `abandoned_change_ids` are the commits the import abandoned because
+/// they became unreachable in git — what `git.abandon-unreachable-commits` governs; its
+/// `new_change_ids` always empty), the remotes fetched from, the CLI's hints ("Fetching from the
+/// only existing remote: <name>") and the refs the import could not read. Warnings:
+/// `jj.fetch_remotes_unmatched`, `jj.fetch_refspec_ignored`, `jj.git_import_failed`,
+/// `jj.fetch_branches_unmatched`, then the finish's.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
-/// - `ffi.null_pointer` — `remote_name` is a null pointer.
-/// - `ffi.utf8_error` — `remote_name` is not valid UTF-8.
-/// - `jj.remote_not_found` — `remote_name` has no configured git remote.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `GitFetchRequest` buffer, its `kind` is
+///   not `GitFetch`, or a mode is unknown.
+/// - `jj.invalid_input` — no remote matched ("No git remotes to fetch from", after the
+///   `jj.fetch_remotes_unmatched` warning; nothing is written), a name pattern does not parse, or
+///   a pattern cannot become a refspec; the CLI's text in `context`.
 /// - `jj.not_a_git_repo` — the OPEN WORKSPACE has no git backend at all, so `git fetch`
 ///   cannot run. Carries NO `context` — there is no path to name. Identical to what the
 ///   six `zanshin_git_remote_*`/`_import`/`_export` wrappers report for that condition.
-/// - `jj.config_error` — the repo's effective config could not be read, or
-///   `git.abandon-unreachable-commits`/`git.record-synthetic-predecessors` has a
-///   non-boolean value; both are read per call rather than hardcoded.
+/// - `jj.config_error` — the repo's effective config could not be read; the git.fetch setting is
+///   neither a string nor a list; a `remotes.<name>` entry or its `fetch-bookmarks`/`fetch-tags` is
+///   malformed (the CLI's ``Invalid `remotes.<name>.<field>`: …``); or
+///   `git.abandon-unreachable-commits`/`git.record-synthetic-predecessors` has a non-boolean
+///   value — all read per call rather than hardcoded.
+/// - `jj.remote_not_found` — a matched remote vanished before its fetch (jj-lib's
+///   `NoSuchRemote`); a name that matches nothing is `jj.invalid_input` above.
 /// - `jj.network_error` — the underlying `git` subprocess failed; detail in `context`.
 /// - `jj.cancelled` — `cancel_token` was cancelled (`zanshin_network_cancel`, Story 9.52) before
-///   the git work, after it but before the import, or git failed after the cancel killed it; no
-///   operation is committed. `context` is "Cancelled". Never without a token.
+///   a remote's git work, after the last one but before the import, or git failed after the
+///   cancel killed it; no operation is committed. `context` is "Cancelled". Never without a token.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — any other underlying jj-lib failure; detail in `context`.
@@ -1337,24 +1419,17 @@ pub unsafe extern "C" fn zanshin_undo(handle: u64, allow_cross_workspace: bool) 
 /// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
 /// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
 /// (Story 3.9) makes a stale handle unreachable.
-/// `remote_name` must be a NUL-terminated UTF-8 C string owned by the caller (Dart
-/// allocates via `toNativeUtf8()` and frees with `calloc.free()` after this call
-/// returns — AR-P-5 inbound rule). Rust only borrows it for the duration of the call.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.GitFetchRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the call.
 /// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
 #[no_mangle]
-pub unsafe extern "C" fn zanshin_git_fetch(
-    handle: u64,
-    remote_name: *const c_char,
-    cancel_token: u64,
-) -> *mut ZanshinBuf {
+pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_git_fetch", handle);
     let buf = catch(|| {
-        // Attached first, so a refusal below still ends the token.
+        let (args, cancel_token) = read_fetch_request(data, len)?;
         let cancel = zanshin_jj::cancel::attach(cancel_token);
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        // SAFETY: remote_name is a caller-owned NUL-terminated C string (Dart allocates + frees).
-        let remote_name = unsafe { cstr_to_string(remote_name) }?;
         // Copy the Copy `u64` out BEFORE building the closure — avoids a borrow
         // conflict with the subsequent `session.repo.git_fetch(&mut self, ...)`.
         let session_id = session.session_id;
@@ -1366,8 +1441,8 @@ pub unsafe extern "C" fn zanshin_git_fetch(
                 &e.message,
             ));
         };
-        let result = session.repo.git_fetch(&remote_name, &progress, cancel.as_ref());
-        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
+        let result = session.repo.git_fetch(&args, &progress, cancel.as_ref());
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_git_fetch_result)
     });
     vec_into_token(buf)
 }
@@ -1517,6 +1592,161 @@ mod tests {
     fn verified_envelope(bytes: &[u8]) -> fbs::Envelope<'_> {
         let opts = VerifierOptions::default();
         flatbuffers::root_with_opts::<fbs::Envelope>(&opts, bytes).expect("FlatBuffers Verifier must pass")
+    }
+
+    // ── git fetch (Story 9.30) ─────────────────────────────────────────────────
+
+    /// A `GitFetchRequest` with every field as given; `None` leaves a list absent.
+    fn fetch_request(
+        kind: fbs::RequestKind,
+        remotes_mode: fbs::FetchRemotesMode,
+        remotes: Option<&[&str]>,
+        refs_mode: fbs::FetchRefsMode,
+        branches: Option<&[&str]>,
+        tags: Option<&[&str]>,
+        cancel_token: u64,
+    ) -> Vec<u8> {
+        let mut b = FlatBufferBuilder::new();
+        let mut strings = |items: &[&str]| {
+            let offsets: Vec<_> = items.iter().map(|item| b.create_string(item)).collect();
+            b.create_vector(&offsets)
+        };
+        let remotes = remotes.map(&mut strings);
+        let branches = branches.map(&mut strings);
+        let tags = tags.map(&mut strings);
+        let req = fbs::GitFetchRequest::create(
+            &mut b,
+            &fbs::GitFetchRequestArgs {
+                kind,
+                remotes_mode,
+                remotes,
+                refs_mode,
+                branches,
+                tags,
+                cancel_token,
+            },
+        );
+        b.finish(req, None);
+        b.finished_data().to_vec()
+    }
+
+    fn read(bytes: &[u8]) -> Result<(GitFetchArgs, u64), FfiErrorObj> {
+        read_fetch_request(bytes.as_ptr(), bytes.len())
+    }
+
+    /// Every mode and list reaches the args; a mode's lists are read only by that mode.
+    #[test]
+    fn every_fetch_request_field_reaches_the_args() {
+        use fbs::{FetchRefsMode as Refs, FetchRemotesMode as Remotes, RequestKind as K};
+        let request = fetch_request(
+            K::GitFetch,
+            Remotes::Named,
+            Some(&["origin", "up*"]),
+            Refs::Patterns,
+            Some(&["feat*"]),
+            Some(&["v1"]),
+            7,
+        );
+        let (args, token) = read(&request).expect("reads");
+        assert_eq!(token, 7);
+        assert_eq!(
+            args,
+            GitFetchArgs {
+                remotes: FetchRemotes::Named(vec!["origin".to_owned(), "up*".to_owned()]),
+                refs: FetchRefs::Patterns {
+                    branches: vec!["feat*".to_owned()],
+                    tags: vec!["v1".to_owned()],
+                },
+            }
+        );
+
+        let absent = fetch_request(K::GitFetch, Remotes::Named, None, Refs::Patterns, None, None, 0);
+        assert_eq!(
+            read(&absent).expect("reads").0,
+            GitFetchArgs {
+                remotes: FetchRemotes::Named(Vec::new()),
+                refs: FetchRefs::Patterns {
+                    branches: Vec::new(),
+                    tags: Vec::new(),
+                },
+            },
+            "an absent list is an empty one"
+        );
+
+        let ignored = fetch_request(
+            K::GitFetch,
+            Remotes::All,
+            Some(&["x"]),
+            Refs::Tracked,
+            Some(&["y"]),
+            Some(&["z"]),
+            0,
+        );
+        assert_eq!(
+            read(&ignored).expect("reads").0,
+            GitFetchArgs {
+                remotes: FetchRemotes::All,
+                refs: FetchRefs::Tracked,
+            }
+        );
+        let defaults = fetch_request(K::GitFetch, Remotes::Default, None, Refs::Default, None, None, 0);
+        assert_eq!(read(&defaults).expect("reads").0, GitFetchArgs::default());
+    }
+
+    /// A wrong kind, an unknown mode and a garbage buffer are `ffi.invalid_argument`; a null
+    /// pointer is `ffi.null_pointer`.
+    #[test]
+    fn a_bad_fetch_request_is_refused() {
+        use fbs::{FetchRefsMode as Refs, FetchRemotesMode as Remotes, RequestKind as K};
+        let code = |r: Result<(GitFetchArgs, u64), FfiErrorObj>| r.expect_err("refused").code;
+        let wrong_kind = fetch_request(K::GitPush, Remotes::Default, None, Refs::Default, None, None, 0);
+        assert_eq!(code(read(&wrong_kind)), FFI_INVALID_ARGUMENT);
+        let bad_remotes = fetch_request(K::GitFetch, Remotes(9), None, Refs::Default, None, None, 0);
+        let err = read(&bad_remotes).expect_err("unknown mode");
+        assert_eq!(err.code, FFI_INVALID_ARGUMENT);
+        assert_eq!(
+            err.context.as_deref(),
+            Some("GitFetchRequest.remotes_mode is not a known value")
+        );
+        let bad_refs = fetch_request(K::GitFetch, Remotes::Default, None, Refs(9), None, None, 0);
+        assert_eq!(
+            read(&bad_refs).expect_err("unknown mode").context.as_deref(),
+            Some("GitFetchRequest.refs_mode is not a known value")
+        );
+        assert_eq!(code(read(&[1, 2, 3])), FFI_INVALID_ARGUMENT);
+        assert_eq!(code(read_fetch_request(std::ptr::null(), 0)), crate::FFI_NULL_POINTER);
+    }
+
+    /// Every field of a fetch outcome reaches the wire, read back through the typed accessors.
+    #[test]
+    fn a_fetch_outcome_round_trips_through_the_wire() {
+        let outcome = GitFetchOutcome {
+            mutation: zanshin_jj::MutationResult {
+                new_op_id: zanshin_jj::OperationId("op".to_owned()),
+                new_change_ids: Vec::new(),
+                abandoned_change_ids: vec![ChangeId("zz".to_owned())],
+                working_copy_change_id: ChangeId("wc".to_owned()),
+                finish: None,
+            },
+            remotes: vec!["origin".to_owned(), "up".to_owned()],
+            hints: vec!["Fetching from the only existing remote: up".to_owned()],
+            failed_ref_names: vec!["refs/remotes/git/x".to_owned()],
+        };
+        let bytes = ok_git_fetch_result(&outcome, &CallReport::default());
+        let envelope = verified_envelope(&bytes);
+        assert!(envelope.ok());
+        assert_eq!(envelope.data_type(), fbs::Payload::GitFetchResult);
+        let result = envelope.data_as_git_fetch_result().expect("GitFetchResult");
+        let list = |v: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&str>>>| {
+            v.expect("present").iter().map(ToOwned::to_owned).collect::<Vec<_>>()
+        };
+        let mutation = result.mutation().expect("mutation");
+        assert_eq!(mutation.new_op_id(), Some("op"));
+        assert_eq!(list(mutation.abandoned_change_ids()), ["zz"]);
+        assert_eq!(mutation.working_copy_change_id(), Some("wc"));
+        assert_eq!(list(result.remotes()), ["origin", "up"]);
+        assert_eq!(list(result.hints()), ["Fetching from the only existing remote: up"]);
+        assert_eq!(list(result.failed_ref_names()), ["refs/remotes/git/x"]);
     }
 
     #[test]

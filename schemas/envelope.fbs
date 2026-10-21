@@ -110,7 +110,8 @@ enum RequestKind : ubyte {
   Commit,
   GitPush,
   RepoClone,
-  RepoInit
+  RepoInit,
+  GitFetch
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -271,6 +272,37 @@ table GitPushRequest {
   named: [string];
   dry_run: bool;
   options: [string];
+  cancel_token: uint64;
+}
+
+/// The remotes of `zanshin_git_fetch` (Story 9.30) — the CLI's either/or of `--remote` and
+/// `--all-remotes`. `Default = 0` (the absent-field default) = neither flag: `git.fetch`, else the
+/// only remote, else `origin`. Member order IS the wire value — APPEND only.
+enum FetchRemotesMode : ubyte { Default, Named, All }
+
+/// The refs of `zanshin_git_fetch` (Story 9.30) — the CLI's either/or of `--branch`/`--tag` and
+/// `--tracked`. `Default = 0` (the absent-field default) = none of the three:
+/// `remotes.<name>.fetch-bookmarks`/`fetch-tags`, else the Git config's refspecs and every tag.
+/// Member order IS the wire value — APPEND only.
+enum FetchRefsMode : ubyte { Default, Patterns, Tracked }
+
+/// Arguments of `zanshin_git_fetch` (Story 9.30) — the CLI's `jj git fetch`, passed through
+/// (FR-JJ-17). Names are PATTERNS as in the CLI (a bare word is a glob).
+///
+///   remotes_mode       which remotes; `Named` reads `remotes` (the `--remote` patterns, their
+///                      union), the other two ignore it
+///   refs_mode          which refs per remote; `Patterns` reads `branches` / `tags` (`-b` / `-t`;
+///                      an absent or empty list fetches none of that kind), the other two ignore
+///                      them
+///   cancel_token       Story 9.52: a token from `zanshin_network_token` that
+///                      `zanshin_network_cancel` cancels (`jj.cancelled`); 0 = not cancellable
+table GitFetchRequest {
+  kind: RequestKind;
+  remotes_mode: FetchRemotesMode;
+  remotes: [string];
+  refs_mode: FetchRefsMode;
+  branches: [string];
+  tags: [string];
   cancel_token: uint64;
 }
 
@@ -947,6 +979,29 @@ table Remotes {
 /// single remote, else `origin`, each only when it exists. Empty when none matches and on a
 /// non-Git backend.
 table GitPushRemotes {
+  names: [string];
+}
+
+/// `zanshin_git_fetch`'s answer (Story 9.30): the shared mutation contract and the fetch's own
+/// facts.
+///
+///   mutation           the operation the fetch wrote (a no-change fetch writes one too)
+///   remotes            the remotes fetched from, in remote-name order
+///   hints              the CLI's hints, verbatim: "Fetching from the only existing remote: <name>"
+///   failed_ref_names   the Git refs the import could not read (lossy UTF-8, jj-lib's order) —
+///                      what `jj.git_import_failed` lists
+table GitFetchResult {
+  mutation: MutationResult;
+  remotes: [string];
+  hints: [string];
+  failed_ref_names: [string];
+}
+
+/// `zanshin_git_fetch_remotes`' answer (Story 9.30): the remotes `jj git fetch` without
+/// `--remote` would fetch from, in remote-name order — `git.fetch` (a name, a list or a
+/// pattern), else the single remote, else `origin`, each only when it exists. Empty when none
+/// matches (the Fetch button's enable rule) and on a non-Git backend.
+table GitFetchRemotes {
   names: [string];
 }
 
@@ -1921,6 +1976,8 @@ union Payload {
   GitPushResult,
   GitPushRemotes,
   RemoteChanges,
+  GitFetchResult,
+  GitFetchRemotes,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

@@ -780,6 +780,37 @@ fn register_remote(root: &Path, name: &str, url: &str) {
     git_cmd(&["remote", "add", name, url], &git_dir);
 }
 
+/// A `GitFetchRequest` (Story 9.30): `remotes` as `Named` patterns when given (else `Default`),
+/// the default refs, and `cancel_token`.
+fn fetch_request(remotes: Option<&[&str]>, cancel_token: u64) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
+    let names = remotes.map(|names| {
+        let offsets: Vec<_> = names.iter().map(|name| b.create_string(name)).collect();
+        b.create_vector(&offsets)
+    });
+    let req = fbs::GitFetchRequest::create(
+        &mut b,
+        &fbs::GitFetchRequestArgs {
+            kind: fbs::RequestKind::GitFetch,
+            remotes_mode: if remotes.is_some() {
+                fbs::FetchRemotesMode::Named
+            } else {
+                fbs::FetchRemotesMode::Default
+            },
+            remotes: names,
+            cancel_token,
+            ..Default::default()
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// `zanshin_git_fetch` with `request`, its envelope bytes.
+fn git_fetch(handle: u64, request: &[u8]) -> Vec<u8> {
+    unsafe { read_and_free(zanshin_git_fetch(handle, request.as_ptr(), request.len())) }
+}
+
 #[test]
 fn git_fetch_happy_path_reports_progress_and_returns_mutation_result() {
     test_helpers::own_process!("git_fetch_happy_path_reports_progress_and_returns_mutation_result");
@@ -805,15 +836,15 @@ fn git_fetch_happy_path_reports_progress_and_returns_mutation_result() {
         .handle();
     close_handle(init_handle);
 
-    register_remote(dst.path(), "origin", &bare.to_string_lossy());
+    // The only remote, not `origin`: the default resolution picks it and reports the CLI's hint
+    // (Story 9.30).
+    register_remote(dst.path(), "up", &bare.to_string_lossy());
 
     let (handle, session_id) = open_handle(dst.path());
 
     zanshin_events_register(Some(test_sink));
 
-    let remote_cstr = cstr("origin");
-    let token = unsafe { zanshin_git_fetch(handle, remote_cstr.as_ptr(), 0) };
-    let bytes = unsafe { read_and_free(token) };
+    let bytes = git_fetch(handle, &fetch_request(None, 0));
     let env = parse_envelope(&bytes);
 
     assert!(
@@ -821,10 +852,24 @@ fn git_fetch_happy_path_reports_progress_and_returns_mutation_result() {
         "git_fetch must succeed, error: {:?}",
         env.error().and_then(|e| e.code())
     );
-    let mr = env
-        .data_as_mutation_result()
-        .expect("data_as_mutation_result must succeed");
-    assert!(mr.new_op_id().is_some_and(|s| !s.is_empty()));
+    let result = env
+        .data_as_git_fetch_result()
+        .expect("data_as_git_fetch_result must succeed");
+    let list = |v: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&str>>>| {
+        v.expect("present").iter().map(ToOwned::to_owned).collect::<Vec<_>>()
+    };
+    let new_op_id = result
+        .mutation()
+        .and_then(|m| m.new_op_id())
+        .expect("new_op_id")
+        .to_owned();
+    assert!(!new_op_id.is_empty());
+    assert_eq!(list(result.remotes()), ["up"]);
+    assert_eq!(list(result.hints()), ["Fetching from the only existing remote: up"]);
+    assert!(list(result.failed_ref_names()).is_empty());
+    let head = Repo::open(dst.path()).expect("open").op_log(Some(1)).expect("op log");
+    assert_eq!(head[0].id.0, new_op_id);
+    assert_eq!(head[0].description, "fetch from git remote(s) up");
 
     // Poll briefly: dispatch happens on the calling thread synchronously inside
     // git_fetch's progress closure, but give a generous margin (R7) before failing.
@@ -883,20 +928,20 @@ fn git_fetch_with_a_cancel_token() {
     close_handle(init_env.data_as_repo_handle().expect("RepoHandle").handle());
     register_remote(dst.path(), "origin", &bare.to_string_lossy());
     let (handle, _) = open_handle(dst.path());
-    let remote_cstr = cstr("origin");
 
     let live = zanshin_network_token();
-    let bytes = unsafe { read_and_free(zanshin_git_fetch(handle, remote_cstr.as_ptr(), live)) };
+    let bytes = git_fetch(handle, &fetch_request(None, live));
     let env = parse_envelope(&bytes);
     assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
     let head = env
-        .data_as_mutation_result()
-        .and_then(|r| r.new_op_id())
+        .data_as_git_fetch_result()
+        .and_then(|r| r.mutation())
+        .and_then(|m| m.new_op_id())
         .map(ToOwned::to_owned);
 
     let cancelled = zanshin_network_token();
     zanshin_network_cancel(cancelled);
-    let bytes = unsafe { read_and_free(zanshin_git_fetch(handle, remote_cstr.as_ptr(), cancelled)) };
+    let bytes = git_fetch(handle, &fetch_request(None, cancelled));
     let env = parse_envelope(&bytes);
     assert!(!env.ok());
     assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_CANCELLED));
@@ -910,8 +955,11 @@ fn git_fetch_with_a_cancel_token() {
     close_handle(handle);
 }
 
+/// A `--remote` that names no remote is the CLI's warning plus its refusal (Story 9.30):
+/// `jj.fetch_remotes_unmatched`, then `jj.invalid_input` "No git remotes to fetch from" — no
+/// longer `jj.remote_not_found`.
 #[test]
-fn git_fetch_nonexistent_remote_returns_jj_remote_not_found() {
+fn git_fetch_nonexistent_remote_warns_and_returns_jj_invalid_input() {
     test_helpers::pin_test_env();
     let dst = tempfile::TempDir::new().unwrap();
     let dst_cstr = cstr(dst.path().to_str().unwrap());
@@ -924,15 +972,30 @@ fn git_fetch_nonexistent_remote_returns_jj_remote_not_found() {
         .expect("RepoHandle must be present")
         .handle();
 
-    let remote_cstr = cstr("nonexistent");
-    let token = unsafe { zanshin_git_fetch(handle, remote_cstr.as_ptr(), 0) };
-    let bytes = unsafe { read_and_free(token) };
+    let bytes = git_fetch(handle, &fetch_request(Some(&["nonexistent"]), 0));
     let env = parse_envelope(&bytes);
 
     assert!(!env.ok(), "unknown remote must produce an error envelope");
-    assert_eq!(
-        env.error().and_then(|e| e.code()),
-        Some(zanshin_ffi::JJ_REMOTE_NOT_FOUND)
+    let error = env.error().expect("error");
+    assert_eq!(error.code(), Some(JJ_INVALID_INPUT));
+    assert_eq!(error.context(), Some("No git remotes to fetch from"));
+    let warnings: Vec<(String, String)> = env
+        .warnings()
+        .expect("warnings")
+        .iter()
+        .map(|w| {
+            (
+                w.code().unwrap_or_default().to_owned(),
+                w.message().unwrap_or_default().to_owned(),
+            )
+        })
+        .collect();
+    assert!(
+        warnings.contains(&(
+            zanshin_ffi::JJ_FETCH_REMOTES_UNMATCHED.to_owned(),
+            "No matching remotes for names: nonexistent".to_owned()
+        )),
+        "{warnings:?}"
     );
 
     close_handle(handle);
@@ -957,9 +1020,7 @@ fn git_fetch_on_native_backend_returns_jj_not_a_git_repo() {
         .expect("RepoHandle must be present")
         .handle();
 
-    let remote_cstr = cstr("origin");
-    let token = unsafe { zanshin_git_fetch(handle, remote_cstr.as_ptr(), 0) };
-    let bytes = unsafe { read_and_free(token) };
+    let bytes = git_fetch(handle, &fetch_request(None, 0));
     let env = parse_envelope(&bytes);
 
     assert!(!env.ok(), "a native backend must produce an error envelope");
@@ -1445,8 +1506,10 @@ fn edit_null_change_id_returns_ffi_null_pointer() {
     close_handle(handle);
 }
 
+/// A null request buffer is `ffi.null_pointer`; garbage and a buffer built for another verb are
+/// `ffi.invalid_argument` (Story 9.30).
 #[test]
-fn git_fetch_null_remote_name_returns_ffi_null_pointer() {
+fn git_fetch_null_or_invalid_request_buffer_is_refused() {
     test_helpers::pin_test_env();
     let dst = tempfile::TempDir::new().unwrap();
     let dst_cstr = cstr(dst.path().to_str().unwrap());
@@ -1465,6 +1528,26 @@ fn git_fetch_null_remote_name_returns_ffi_null_pointer() {
 
     assert!(!env.ok());
     assert_eq!(env.error().and_then(|e| e.code()), Some(FFI_NULL_POINTER));
+
+    let garbage = git_fetch(handle, &[0xde, 0xad]);
+    assert_eq!(
+        parse_envelope(&garbage).error().and_then(|e| e.code()),
+        Some(FFI_INVALID_ARGUMENT)
+    );
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
+    let other = fbs::GitFetchRequest::create(
+        &mut b,
+        &fbs::GitFetchRequestArgs {
+            kind: fbs::RequestKind::GitPush,
+            ..Default::default()
+        },
+    );
+    b.finish(other, None);
+    let wrong_kind = git_fetch(handle, b.finished_data());
+    assert_eq!(
+        parse_envelope(&wrong_kind).error().and_then(|e| e.code()),
+        Some(FFI_INVALID_ARGUMENT)
+    );
 
     close_handle(handle);
 }
@@ -1561,7 +1644,6 @@ fn every_wrapper_zero_handle_returns_ffi_invalid_handle() {
     // `every_wrapper_wrong_request_kind_is_refused_before_the_handle`.
     let new_change_req = change_id_list_bytes(fbs::RequestKind::NewChange, &["qpvuntsm"]);
     let abandon_req = change_id_list_bytes(fbs::RequestKind::Abandon, &["qpvuntsm"]);
-    let remote_cstr = cstr("origin");
 
     let describe_token = unsafe { zanshin_describe(0, id_cstr.as_ptr(), desc_cstr.as_ptr()) };
     let describe_bytes = unsafe { read_and_free(describe_token) };
@@ -1583,8 +1665,7 @@ fn every_wrapper_zero_handle_returns_ffi_invalid_handle() {
     let undo_bytes = unsafe { read_and_free(undo_token) };
     assert_invalid_handle(&undo_bytes);
 
-    let git_fetch_token = unsafe { zanshin_git_fetch(0, remote_cstr.as_ptr(), 0) };
-    let git_fetch_bytes = unsafe { read_and_free(git_fetch_token) };
+    let git_fetch_bytes = git_fetch(0, &fetch_request(None, 0));
     assert_invalid_handle(&git_fetch_bytes);
 
     let restore_req = restore_request_bytes(None, Some("qpvuntsm"), None, &[], false);

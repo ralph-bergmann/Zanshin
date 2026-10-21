@@ -339,6 +339,13 @@ pub const JJ_PUSH_SIGNING_SKIPPED_IMMUTABLE: &str = "jj.push_signing_skipped_imm
 pub const JJ_CLONE_BRANCHES_UNMATCHED: &str = "jj.clone_branches_unmatched";
 /// Warning: a template a verb renders (`templates.commit_trailers`, `draft_commit_description`, `new_description`, `git_push_bookmark`) parsed with a diagnostic; it still renders (Story 9.51).
 pub const JJ_TEMPLATE_DIAGNOSTIC: &str = "jj.template_diagnostic";
+/// Warning: `zanshin_git_fetch`'s exact `--remote` / `git.fetch` names (or the implicit `origin`)
+/// that match no git remote (Story 9.30); `zanshin_git_fetch_remotes` warns it as the fetch does.
+pub const JJ_FETCH_REMOTES_UNMATCHED: &str = "jj.fetch_remotes_unmatched";
+/// Warning: a fetch refspec of a remote's Git config that `zanshin_git_fetch` ignores (Story 9.30).
+pub const JJ_FETCH_REFSPEC_IGNORED: &str = "jj.fetch_refspec_ignored";
+/// Warning: `zanshin_git_fetch`'s exact `-b` names no matched remote has (Story 9.30).
+pub const JJ_FETCH_BRANCHES_UNMATCHED: &str = "jj.fetch_branches_unmatched";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -396,6 +403,9 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::PushSigningSkippedImmutable => JJ_PUSH_SIGNING_SKIPPED_IMMUTABLE,
         K::CloneBranchesUnmatched => JJ_CLONE_BRANCHES_UNMATCHED,
         K::TemplateDiagnostic => JJ_TEMPLATE_DIAGNOSTIC,
+        K::FetchRemotesUnmatched => JJ_FETCH_REMOTES_UNMATCHED,
+        K::FetchRefspecIgnored => JJ_FETCH_REFSPEC_IGNORED,
+        K::FetchBranchesUnmatched => JJ_FETCH_BRANCHES_UNMATCHED,
     }
 }
 
@@ -1240,6 +1250,9 @@ mod tests {
             K::PushSigningSkippedImmutable => "jj.push_signing_skipped_immutable",
             K::CloneBranchesUnmatched => "jj.clone_branches_unmatched",
             K::TemplateDiagnostic => "jj.template_diagnostic",
+            K::FetchRemotesUnmatched => "jj.fetch_remotes_unmatched",
+            K::FetchRefspecIgnored => "jj.fetch_refspec_ignored",
+            K::FetchBranchesUnmatched => "jj.fetch_branches_unmatched",
         }
     }
 
@@ -1300,6 +1313,9 @@ mod tests {
             K::PushSigningSkippedImmutable,
             K::CloneBranchesUnmatched,
             K::TemplateDiagnostic,
+            K::FetchRemotesUnmatched,
+            K::FetchRefspecIgnored,
+            K::FetchBranchesUnmatched,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");

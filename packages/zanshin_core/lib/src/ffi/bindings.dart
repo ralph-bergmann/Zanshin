@@ -1160,39 +1160,58 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_export(
   int handle,
 );
 
-/// Fetch all branches and tags from `remote_name` and import them, in the repo
-/// referenced by `handle`. Never moves `@` — fetch only updates remote-tracking refs.
+/// Fetch from git remotes and import the fetched refs, in the repo referenced by `handle` — the
+/// CLI's `jj git fetch` (Story 9.30), every parameter passed through.
+///
+/// The arguments cross as a `GitFetchRequest` `FlatBuffers` request buffer: `remotes_mode`
+/// (`Default` = `git.fetch`, else the only remote, else `origin`; `Named` = the `remotes`
+/// patterns; `All` = every remote), `refs_mode` (`Default` = each remote's
+/// `remotes.<name>.fetch-bookmarks`/`fetch-tags`, else its Git refspecs and every tag;
+/// `Patterns` = the `branches` / `tags` patterns, an empty list fetching none of that kind;
+/// `Tracked` = the tracked bookmarks and tags) and `cancel_token`. The working copy is
+/// snapshotted first (Story 9.26); then ONE transaction fetches remote by remote, imports once,
+/// and writes `fetch from git remote(s) <names joined by ",">` — also when nothing changed.
+/// Never moves `@` unless the import abandoned it.
 ///
 /// Progress is dispatched over the SAME process-global event sink `WatcherEvent`
-/// already uses (Story 3.6), tagged with the session's `session_id` — there is no
-/// separate per-op registry; the caller correlates by `session_id`, exactly like a
+/// already uses (Story 3.6), tagged with the session's `session_id` and `operation = "fetch"` —
+/// there is no separate per-op registry; the caller correlates by `session_id`, exactly like a
 /// `WatcherEvent`.
 ///
 /// `cancel_token` (Story 9.52) is `0` (not cancellable) or a token from
 /// `zanshin_network_token`; `zanshin_network_cancel` cancels the fetch, and the token ends with
 /// this call.
 ///
-/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
-/// Its `abandoned_change_ids` carries the commits the import abandoned because they
-/// became unreachable in git (what `git.abandon-unreachable-commits` governs) — jj-lib's
-/// OWN abandonments, not a caller echo, and empty when that key is off or nothing became
-/// unreachable. `new_change_ids` is always empty: a fetch mints nothing.
+/// Returns a `FlatBuffers` `Envelope` carrying a `GitFetchResult` payload on success: the
+/// `MutationResult` (its `abandoned_change_ids` are the commits the import abandoned because
+/// they became unreachable in git — what `git.abandon-unreachable-commits` governs; its
+/// `new_change_ids` always empty), the remotes fetched from, the CLI's hints ("Fetching from the
+/// only existing remote: <name>") and the refs the import could not read. Warnings:
+/// `jj.fetch_remotes_unmatched`, `jj.fetch_refspec_ignored`, `jj.git_import_failed`,
+/// `jj.fetch_branches_unmatched`, then the finish's.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
-/// - `ffi.null_pointer` — `remote_name` is a null pointer.
-/// - `ffi.utf8_error` — `remote_name` is not valid UTF-8.
-/// - `jj.remote_not_found` — `remote_name` has no configured git remote.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `GitFetchRequest` buffer, its `kind` is
+/// not `GitFetch`, or a mode is unknown.
+/// - `jj.invalid_input` — no remote matched ("No git remotes to fetch from", after the
+/// `jj.fetch_remotes_unmatched` warning; nothing is written), a name pattern does not parse, or
+/// a pattern cannot become a refspec; the CLI's text in `context`.
 /// - `jj.not_a_git_repo` — the OPEN WORKSPACE has no git backend at all, so `git fetch`
 /// cannot run. Carries NO `context` — there is no path to name. Identical to what the
 /// six `zanshin_git_remote_*`/`_import`/`_export` wrappers report for that condition.
-/// - `jj.config_error` — the repo's effective config could not be read, or
-/// `git.abandon-unreachable-commits`/`git.record-synthetic-predecessors` has a
-/// non-boolean value; both are read per call rather than hardcoded.
+/// - `jj.config_error` — the repo's effective config could not be read; the git.fetch setting is
+/// neither a string nor a list; a `remotes.<name>` entry or its `fetch-bookmarks`/`fetch-tags` is
+/// malformed (the CLI's ``Invalid `remotes.<name>.<field>`: …``); or
+/// `git.abandon-unreachable-commits`/`git.record-synthetic-predecessors` has a non-boolean
+/// value — all read per call rather than hardcoded.
+/// - `jj.remote_not_found` — a matched remote vanished before its fetch (jj-lib's
+/// `NoSuchRemote`); a name that matches nothing is `jj.invalid_input` above.
 /// - `jj.network_error` — the underlying `git` subprocess failed; detail in `context`.
 /// - `jj.cancelled` — `cancel_token` was cancelled (`zanshin_network_cancel`, Story 9.52) before
-/// the git work, after it but before the import, or git failed after the cancel killed it; no
-/// operation is committed. `context` is "Cancelled". Never without a token.
+/// a remote's git work, after the last one but before the import, or git failed after the
+/// cancel killed it; no operation is committed. `context` is "Cancelled". Never without a token.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 /// the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — any other underlying jj-lib failure; detail in `context`.
@@ -1203,15 +1222,47 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_export(
 /// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
 /// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
 /// (Story 3.9) makes a stale handle unreachable.
-/// `remote_name` must be a NUL-terminated UTF-8 C string owned by the caller (Dart
-/// allocates via `toNativeUtf8()` and frees with `calloc.free()` after this call
-/// returns — AR-P-5 inbound rule). Rust only borrows it for the duration of the call.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.GitFetchRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the call.
 /// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
-@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Char>, ffi.Uint64)>()
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
 external ffi.Pointer<ZanshinBuf> zanshin_git_fetch(
   int handle,
-  ffi.Pointer<ffi.Char> remote_name,
-  int cancel_token,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// The remotes `jj git fetch` without `--remote` would fetch from, in the repo identified by
+/// `handle` (Story 9.30) — the CLI's default-remote resolution, shared with `zanshin_git_fetch`:
+/// the remotes `git.fetch` names (a name, a list or a pattern), else the single remote, else
+/// `origin`, each only when it exists, in remote-name order. The Fetch button's enable rule:
+/// enabled when this is not empty.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `GitFetchRemotes` payload on success — EMPTY when
+/// none matches (the fetch itself refuses then) and on a non-Git backend. An exact name no remote
+/// carries — a `git.fetch` name, or the implicit `origin` — warns `jj.fetch_remotes_unmatched`, as
+/// the fetch does. The fetch's only-remote hint is not reported. Writes NO operation of its own,
+/// only the pre-verb snapshot's.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.config_error` — the git.fetch setting is neither a string nor a list of strings, or the
+/// pre-verb snapshot (Story 9.26) found the effective jj config unreadable; the key in
+/// `context`.
+/// - `jj.invalid_input` — a git.fetch pattern does not parse; detail in `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
+/// `0` is detected and returned as `ffi.invalid_handle`.
+/// A stale non-zero handle is undefined behaviour; the Dart worker's Model-A
+/// handle table (Story 3.9) makes a stale handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
+external ffi.Pointer<ZanshinBuf> zanshin_git_fetch_remotes(
+  int handle,
 );
 
 /// Import the backing git repo's refs into jj's view, in the repo referenced by `handle` —
@@ -1398,7 +1449,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_remote_add(
 /// Ask `remote_name` what it has now and diff that against the head view, without fetching, in
 /// the repo referenced by `handle` (Story 9.24): `git ls-remote --heads --tags`, run the way
 /// jj-lib runs every git, compared with the view's `<name>@<remote>` bookmarks and tags. An
-/// annotated tag is compared at the commit it peels to.
+/// annotated tag is compared at the commit it peels to. Only the refs a bare `zanshin_git_fetch`
+/// of the remote would fetch take part (Story 9.30): its `remotes.<name>.fetch-bookmarks`, else
+/// its Git fetch refspecs, and its `remotes.<name>.fetch-tags`, else every tag.
 ///
 /// No pre-verb snapshot, no transaction, no operation of its own, no object download; loading
 /// the head may reconcile divergent operation heads, as every jj command does. The envelope
@@ -1419,8 +1472,12 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_remote_add(
 /// - `jj.remote_not_found` — no configured git remote is named `remote_name` exactly; the name in
 /// `context`. git never runs.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
-/// - `jj.config_error` — the start-up fix-up failed, the changed config stack no longer reads, or
-/// `git.executable-path` does not read; detail in `context`.
+/// - `jj.config_error` — the start-up fix-up failed, the changed config stack no longer reads,
+/// `git.executable-path` does not read, or a `remotes.<name>` entry or the remote's
+/// `fetch-bookmarks`/`fetch-tags` is malformed; detail in `context`.
+/// - `jj.invalid_input` — the remote's Git configuration does not read, or a
+/// `fetch-bookmarks`/`fetch-tags` pattern cannot become a refspec (Story 9.30); detail in
+/// `context`. git never runs.
 /// - `jj.network_error` — git could not be spawned or failed (network, authentication,
 /// transport); jj-lib's text in `context`, e.g. `External git program failed:` + git's stderr.
 /// - `jj.cancelled` — `cancel_token` was cancelled before or right after the git work, or git
@@ -2765,8 +2822,6 @@ external ffi.Pointer<ZanshinBuf> zanshin_workspace_update_stale(
   int handle,
 );
 
-const int AbsorbResult_VT_MUTATION = 4;
-
 const int AbsorbResult_VT_NUM_REBASED = 10;
 
 const int AbsorbResult_VT_REWRITTEN_CHANGE_IDS = 6;
@@ -2877,6 +2932,10 @@ const int ENUM_MAX_CONFIG_VALUE_SOURCE = 6;
 
 const int ENUM_MAX_CONFLICT_STATE = 1;
 
+const int ENUM_MAX_FETCH_REFS_MODE = 2;
+
+const int ENUM_MAX_FETCH_REMOTES_MODE = 2;
+
 const int ENUM_MAX_FILE_TYPE = 4;
 
 const int ENUM_MAX_GIT_REF_UPDATE_KIND = 2;
@@ -2901,7 +2960,7 @@ const int ENUM_MAX_REMOTE_REF_KIND = 1;
 
 const int ENUM_MAX_REPO_KIND = 3;
 
-const int ENUM_MAX_REQUEST_KIND = 37;
+const int ENUM_MAX_REQUEST_KIND = 38;
 
 const int ENUM_MAX_REVISION_REF = 2;
 
@@ -2924,6 +2983,10 @@ const int ENUM_MIN_CONFIG_SCOPE = 0;
 const int ENUM_MIN_CONFIG_VALUE_SOURCE = 0;
 
 const int ENUM_MIN_CONFLICT_STATE = 0;
+
+const int ENUM_MIN_FETCH_REFS_MODE = 0;
+
+const int ENUM_MIN_FETCH_REMOTES_MODE = 0;
 
 const int ENUM_MIN_FILE_TYPE = 0;
 
@@ -3005,11 +3068,21 @@ const int GitExportResult_VT_FAILED_BOOKMARKS = 6;
 
 const int GitExportResult_VT_FAILED_TAGS = 8;
 
+const int GitFetchRequest_VT_BRANCHES = 12;
+
+const int GitFetchRequest_VT_REFS_MODE = 10;
+
+const int GitFetchRequest_VT_REMOTES_MODE = 6;
+
+const int GitFetchResult_VT_FAILED_REF_NAMES = 10;
+
+const int GitFetchResult_VT_HINTS = 8;
+
+const int GitFetchResult_VT_MUTATION = 4;
+
 const int GitImportResult_VT_CHANGED_BOOKMARKS = 6;
 
 const int GitImportResult_VT_CHANGED_TAGS = 8;
-
-const int GitImportResult_VT_FAILED_REF_NAMES = 14;
 
 const int GitImportResult_VT_NUM_REWRITTEN = 12;
 
@@ -3157,8 +3230,6 @@ const int Progress_VT_OPERATION = 6;
 
 const int Progress_VT_PROGRESS = 8;
 
-const int PushCommitRejection_VT_HINTS = 10;
-
 const int PushCommitRejection_VT_REASONS = 6;
 
 const int PushCreatedBookmark_VT_CHANGE_ID = 6;
@@ -3200,8 +3271,6 @@ const int RemoteRefChange_VT_CHANGE = 8;
 const int RemoteRefChange_VT_NEW_COMMIT_ID = 12;
 
 const int RemoteRefChange_VT_OLD_COMMIT_IDS = 10;
-
-const int RepoCloneRequest_VT_BRANCHES = 18;
 
 const int RepoCloneRequest_VT_COLOCATE = 12;
 

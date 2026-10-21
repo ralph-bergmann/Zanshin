@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: MIT
 
 //! `zanshin_remotes` — remote-list read FFI wrapper (Story 3.4b, remotes slice) — and
-//! `zanshin_git_push_remotes`, the default push remotes (Story 9.54).
+//! `zanshin_git_push_remotes` / `zanshin_git_fetch_remotes`, the default push and fetch remotes
+//! (Stories 9.54, 9.30).
 //!
 //! `zanshin_remotes` calls `zanshin_jj::Repo::list_remotes()` and serialises the result into a
 //! `FlatBuffers` `Envelope` carrying a `Remotes` payload. The handle is borrowed
 //! (not consumed). Both `url` and `push_url` cross the wire verbatim (no credential
 //! scrubbing); `push_url` is ABSENT when the remote pushes to its fetch URL.
 //! `zanshin_git_push_remotes` calls `zanshin_jj::Repo::git_push_remotes()` into a
-//! `GitPushRemotes` payload. `zanshin_git_remote_changes` (Story 9.24) calls
-//! `zanshin_jj::Repo::remote_changes()` — the `git ls-remote` poll — into a `RemoteChanges`
-//! payload.
+//! `GitPushRemotes` payload, and `zanshin_git_fetch_remotes` (Story 9.30)
+//! `zanshin_jj::Repo::git_fetch_remotes()` into a `GitFetchRemotes` payload.
+//! `zanshin_git_remote_changes` (Story 9.24) calls `zanshin_jj::Repo::remote_changes()` — the
+//! `git ls-remote` poll — into a `RemoteChanges` payload.
 
 use flatbuffers::FlatBufferBuilder;
 use std::ffi::c_char;
@@ -149,6 +151,57 @@ pub unsafe extern "C" fn zanshin_git_push_remotes(handle: u64) -> *mut ZanshinBu
     vec_into_token(buf)
 }
 
+/// Serialise the default fetch remotes into a finished `Envelope<GitFetchRemotes>` buffer.
+fn fetch_remotes_to_envelope(names: &[String], report: &crate::envelope::CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(256);
+    let offsets: Vec<_> = names.iter().map(|name| b.create_string(name)).collect();
+    let names = b.create_vector(&offsets);
+    let payload = fbs::GitFetchRemotes::create(&mut b, &fbs::GitFetchRemotesArgs { names: Some(names) });
+    finish_envelope(b, fbs::Payload::GitFetchRemotes, Some(payload.as_union_value()), report)
+}
+
+/// The remotes `jj git fetch` without `--remote` would fetch from, in the repo identified by
+/// `handle` (Story 9.30) — the CLI's default-remote resolution, shared with `zanshin_git_fetch`:
+/// the remotes `git.fetch` names (a name, a list or a pattern), else the single remote, else
+/// `origin`, each only when it exists, in remote-name order. The Fetch button's enable rule:
+/// enabled when this is not empty.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `GitFetchRemotes` payload on success — EMPTY when
+/// none matches (the fetch itself refuses then) and on a non-Git backend. An exact name no remote
+/// carries — a `git.fetch` name, or the implicit `origin` — warns `jj.fetch_remotes_unmatched`, as
+/// the fetch does. The fetch's only-remote hint is not reported. Writes NO operation of its own,
+/// only the pre-verb snapshot's.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.config_error` — the git.fetch setting is neither a string nor a list of strings, or the
+///   pre-verb snapshot (Story 9.26) found the effective jj config unreadable; the key in
+///   `context`.
+/// - `jj.invalid_input` — a git.fetch pattern does not parse; detail in `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an unclassified jj-lib error; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, or `zanshin_repo_clone` that has not been closed.
+/// `0` is detected and returned as `ffi.invalid_handle`.
+/// A stale non-zero handle is undefined behaviour; the Dart worker's Model-A
+/// handle table (Story 3.9) makes a stale handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_git_fetch_remotes(handle: u64) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_git_fetch_remotes", handle);
+    let buf = catch(|| {
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let names = session.repo.git_fetch_remotes();
+        precondition_envelope(&mut session.repo, names, map_mutate_err, |v, p| {
+            fetch_remotes_to_envelope(v, p)
+        })
+    });
+    vec_into_token(buf)
+}
+
 /// Serialise the remote-change poll's answer into a finished `Envelope<RemoteChanges>` buffer.
 /// `new_commit_id` stays ABSENT for a deleted ref, never `""`.
 fn remote_changes_to_envelope(changes: &[RemoteRefChange], report: &crate::envelope::CallReport) -> Vec<u8> {
@@ -185,7 +238,9 @@ fn remote_changes_to_envelope(changes: &[RemoteRefChange], report: &crate::envel
 /// Ask `remote_name` what it has now and diff that against the head view, without fetching, in
 /// the repo referenced by `handle` (Story 9.24): `git ls-remote --heads --tags`, run the way
 /// jj-lib runs every git, compared with the view's `<name>@<remote>` bookmarks and tags. An
-/// annotated tag is compared at the commit it peels to.
+/// annotated tag is compared at the commit it peels to. Only the refs a bare `zanshin_git_fetch`
+/// of the remote would fetch take part (Story 9.30): its `remotes.<name>.fetch-bookmarks`, else
+/// its Git fetch refspecs, and its `remotes.<name>.fetch-tags`, else every tag.
 ///
 /// No pre-verb snapshot, no transaction, no operation of its own, no object download; loading
 /// the head may reconcile divergent operation heads, as every jj command does. The envelope
@@ -206,8 +261,12 @@ fn remote_changes_to_envelope(changes: &[RemoteRefChange], report: &crate::envel
 /// - `jj.remote_not_found` — no configured git remote is named `remote_name` exactly; the name in
 ///   `context`. git never runs.
 /// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
-/// - `jj.config_error` — the start-up fix-up failed, the changed config stack no longer reads, or
-///   `git.executable-path` does not read; detail in `context`.
+/// - `jj.config_error` — the start-up fix-up failed, the changed config stack no longer reads,
+///   `git.executable-path` does not read, or a `remotes.<name>` entry or the remote's
+///   `fetch-bookmarks`/`fetch-tags` is malformed; detail in `context`.
+/// - `jj.invalid_input` — the remote's Git configuration does not read, or a
+///   `fetch-bookmarks`/`fetch-tags` pattern cannot become a refspec (Story 9.30); detail in
+///   `context`. git never runs.
 /// - `jj.network_error` — git could not be spawned or failed (network, authentication,
 ///   transport); jj-lib's text in `context`, e.g. `External git program failed:` + git's stderr.
 /// - `jj.cancelled` — `cancel_token` was cancelled before or right after the git work, or git

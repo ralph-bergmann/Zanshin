@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! Integration tests for `zanshin_git_push_remotes` (Story 9.54): the remotes `jj git push`
-//! without `--remote` would push to.
+//! Integration tests for `zanshin_git_push_remotes` (Story 9.54) and `zanshin_git_fetch_remotes`
+//! (Story 9.30): the remotes `jj git push` / `jj git fetch` without `--remote` would use.
 //!
 //! Every buffer is read through the `FlatBuffers` generated typed accessors and the Verifier;
 //! every token is freed via `zanshin_buffer_free_token`. Remotes are added in-test with fake
@@ -13,9 +13,9 @@ use std::path::PathBuf;
 use flatbuffers::root as fb_root;
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
-use zanshin_ffi::remotes::zanshin_git_push_remotes;
+use zanshin_ffi::remotes::{zanshin_git_fetch_remotes, zanshin_git_push_remotes};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
-use zanshin_ffi::{FFI_INVALID_HANDLE, JJ_CONFIG_ERROR};
+use zanshin_ffi::{FFI_INVALID_HANDLE, JJ_CONFIG_ERROR, JJ_FETCH_REMOTES_UNMATCHED};
 use zanshin_jj::{Backend, ConfigScope, ConfigTarget, Repo};
 
 /// Copy bytes out of a `ZanshinBuf` token and free the token.
@@ -124,4 +124,58 @@ fn an_invalid_handle_is_refused() {
     let bytes = unsafe { read_and_free(zanshin_git_push_remotes(0)) };
     let env = parse_envelope(&bytes);
     assert_eq!(env.error().and_then(|e| e.code()), Some(FFI_INVALID_HANDLE));
+}
+
+/// Story 9.30: `zanshin_git_fetch_remotes` answers the fetch's default resolution — the Fetch
+/// button's enable rule. `origin` among several; the only remote; with several and no `origin`
+/// nothing, with `jj.fetch_remotes_unmatched` for the implicit `origin`.
+#[test]
+fn the_default_fetch_remotes_cross_the_wire() {
+    let fetch_names = |fx: &Fx| -> (Vec<String>, Vec<(String, String)>) {
+        // SAFETY: `fx.handle` is open.
+        let bytes = unsafe { read_and_free(zanshin_git_fetch_remotes(fx.handle)) };
+        let env = parse_envelope(&bytes);
+        assert!(env.ok(), "{:?}", env.error().and_then(|e| e.code()));
+        assert_eq!(env.data_type(), fbs::Payload::GitFetchRemotes);
+        let names = env
+            .data_as_git_fetch_remotes()
+            .expect("GitFetchRemotes payload")
+            .names()
+            .map(|v| v.iter().map(ToOwned::to_owned).collect())
+            .unwrap_or_default();
+        let warnings = env
+            .warnings()
+            .map(|v| {
+                v.iter()
+                    .map(|w| {
+                        (
+                            w.code().unwrap_or_default().to_owned(),
+                            w.message().unwrap_or_default().to_owned(),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        (names, warnings)
+    };
+    assert_eq!(
+        fetch_names(&repo_with(&["origin", "upstream"])),
+        (vec!["origin".to_owned()], vec![])
+    );
+    assert_eq!(fetch_names(&repo_with(&["fork"])), (vec!["fork".to_owned()], vec![]));
+    let (names, warnings) = fetch_names(&repo_with(&["a", "b"]));
+    assert!(names.is_empty());
+    assert_eq!(
+        warnings,
+        [(
+            JJ_FETCH_REMOTES_UNMATCHED.to_owned(),
+            "No matching remotes for names: origin".to_owned()
+        )]
+    );
+    // SAFETY: handle 0 is detected and refused.
+    let bytes = unsafe { read_and_free(zanshin_git_fetch_remotes(0)) };
+    assert_eq!(
+        parse_envelope(&bytes).error().and_then(|e| e.code()),
+        Some(FFI_INVALID_HANDLE)
+    );
 }

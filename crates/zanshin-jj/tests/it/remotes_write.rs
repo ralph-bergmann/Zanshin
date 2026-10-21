@@ -203,7 +203,9 @@ fn git_fetch_happy_path_imports_commits_and_reports_progress() {
     let progress_log = Arc::new(Mutex::new(Vec::<ProgressEvent>::new()));
     let progress_log_for_cb = Arc::clone(&progress_log);
     let cb = move |e: ProgressEvent| progress_log_for_cb.lock().expect("progress_log mutex").push(e);
-    let result = repo.git_fetch("origin", &cb, None).expect("git_fetch should succeed");
+    let result = repo
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &cb, None)
+        .expect("git_fetch should succeed");
     let events = progress_log.lock().expect("progress_log mutex").clone();
 
     assert!(!events.is_empty(), "expected at least one progress event");
@@ -218,7 +220,7 @@ fn git_fetch_happy_path_imports_commits_and_reports_progress() {
 
     let after = repo.op_log(None).unwrap();
     assert_eq!(after.len(), before + 1, "fetch must commit exactly one new op");
-    assert_eq!(after[0].id, result.new_op_id);
+    assert_eq!(after[0].id, result.mutation.new_op_id);
     assert_eq!(after[0].description, "fetch from git remote(s) origin");
 
     let dst_git_dir = dst.path().join(".jj").join("repo").join("store").join("git");
@@ -247,7 +249,7 @@ fn git_fetch_happy_path_imports_commits_and_reports_progress() {
 
     let status = repo.status().unwrap();
     assert_eq!(
-        status.working_copy_change_id, result.working_copy_change_id,
+        status.working_copy_change_id, result.mutation.working_copy_change_id,
         "git_fetch must never move @"
     );
 }
@@ -278,7 +280,7 @@ fn git_fetch_honours_remote_auto_track_bookmarks() {
     write_repo_config(dst.path(), "[remotes.origin]\nauto-track-bookmarks = \"exact:main\"\n");
 
     let mut repo = Repo::open(dst.path()).unwrap();
-    repo.git_fetch("origin", &|_| {}, None)
+    repo.git_fetch(&zanshin_jj::GitFetchArgs::default(), &|_| {}, None)
         .expect("git_fetch should succeed");
 
     let bookmarks = repo.list_bookmarks().expect("list_bookmarks");
@@ -322,14 +324,16 @@ fn git_fetch_twice_with_no_new_commits_still_commits_fresh_op_each_time() {
     let no_op = |_: ProgressEvent| {};
 
     let before = repo.op_log(None).unwrap().len();
-    let first = repo.git_fetch("origin", &no_op, None).expect("first fetch");
+    let first = repo
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &no_op, None)
+        .expect("first fetch");
     let after_first = repo.op_log(None).unwrap();
     assert_eq!(after_first.len(), before + 1);
     assert_eq!(after_first[0].description, "fetch from git remote(s) origin");
 
     // Nothing changed on the remote between the two fetches.
     let second = repo
-        .git_fetch("origin", &no_op, None)
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &no_op, None)
         .expect("second fetch, nothing new");
     let after_second = repo.op_log(None).unwrap();
     assert_eq!(
@@ -339,19 +343,23 @@ fn git_fetch_twice_with_no_new_commits_still_commits_fresh_op_each_time() {
     );
     assert_eq!(after_second[0].description, "fetch from git remote(s) origin");
     assert_ne!(
-        first.new_op_id, second.new_op_id,
+        first.mutation.new_op_id, second.mutation.new_op_id,
         "each fetch commits a distinct operation"
     );
     assert_eq!(
-        first.working_copy_change_id, second.working_copy_change_id,
+        first.mutation.working_copy_change_id, second.mutation.working_copy_change_id,
         "git_fetch never moves @, so it must be identical across both calls"
     );
 }
 
 // ── Remote absent ──────────────────────────────────────────────────────────────
 
+/// A `--remote` that names no remote is the CLI's warning plus its refusal (Story 9.30): "No
+/// matching remotes for names: nonexistent", then `InvalidInput` "No git remotes to fetch from",
+/// with no operation written. (`RemoteNotFound` stays only for a remote that vanishes between the
+/// match and its fetch.)
 #[test]
-fn git_fetch_nonexistent_remote_returns_remote_not_found() {
+fn git_fetch_nonexistent_remote_warns_and_refuses_invalid_input() {
     test_helpers::pin_test_env();
     let dst = TempDir::new().unwrap();
     Repo::init(&zanshin_jj::InitOptions {
@@ -367,10 +375,22 @@ fn git_fetch_nonexistent_remote_returns_remote_not_found() {
     let before = repo.op_log(None).unwrap().len();
 
     let no_op = |_: ProgressEvent| {};
-    let err = repo.git_fetch("nonexistent", &no_op, None).expect_err("no such remote");
+    let args = zanshin_jj::GitFetchArgs {
+        remotes: zanshin_jj::FetchRemotes::Named(vec!["nonexistent".to_owned()]),
+        ..Default::default()
+    };
+    let err = repo.git_fetch(&args, &no_op, None).expect_err("no such remote");
     assert!(
-        matches!(err, MutateError::RemoteNotFound { ref name } if name == "nonexistent"),
-        "expected RemoteNotFound{{name: \"nonexistent\"}}, got {err:?}"
+        matches!(err, MutateError::InvalidInput { ref reason } if reason == "No git remotes to fetch from"),
+        "expected InvalidInput, got {err:?}"
+    );
+    let warnings = repo.take_warnings();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.kind == zanshin_jj::WarningKind::FetchRemotesUnmatched
+                && w.message == "No matching remotes for names: nonexistent"),
+        "{warnings:?}"
     );
 
     let after = repo.op_log(None).unwrap().len();
@@ -398,7 +418,7 @@ fn git_fetch_on_native_backend_returns_not_a_git_repo() {
     let mut repo = Repo::open(dst.path()).unwrap();
     let no_op = |_: ProgressEvent| {};
     let err = repo
-        .git_fetch("origin", &no_op, None)
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &no_op, None)
         .expect_err("native backend has no git backend to fetch into");
     assert!(
         matches!(err, MutateError::NotAGitRepo),
@@ -445,7 +465,7 @@ fn prune_fixture() -> PruneFixture {
     let no_op = |_: ProgressEvent| {};
     let repo = {
         let mut repo = Repo::open(dst.path()).unwrap();
-        repo.git_fetch("origin", &no_op, None)
+        repo.git_fetch(&zanshin_jj::GitFetchArgs::default(), &no_op, None)
             .expect("first fetch imports feature");
         repo
     };
@@ -485,7 +505,9 @@ fn git_fetch_honours_abandon_unreachable_commits_false() {
     write_repo_config(fx.dst.path(), "[git]\nabandon-unreachable-commits = false\n");
     let no_op = |_: ProgressEvent| {};
     let mut repo = Repo::open(fx.dst.path()).expect("reopen with the new repo config");
-    let result = repo.git_fetch("origin", &no_op, None).expect("second, pruning fetch");
+    let result = repo
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &no_op, None)
+        .expect("second, pruning fetch");
 
     assert_eq!(
         remote_bookmark_commit_hex(fx.dst.path(), "feature", "origin"),
@@ -501,9 +523,9 @@ fn git_fetch_honours_abandon_unreachable_commits_false() {
     // reads jj-lib's OWN import stats, so turning the key off empties the list. A hardcoded
     // `Vec::new()` would pass here and fail there; a hardcoded echo would fail here.
     assert!(
-        result.abandoned_change_ids.is_empty(),
+        result.mutation.abandoned_change_ids.is_empty(),
         "nothing was abandoned, so the reported list must be empty; got {:?}",
-        result.abandoned_change_ids
+        result.mutation.abandoned_change_ids
     );
 }
 
@@ -524,7 +546,7 @@ fn git_fetch_with_the_default_config_abandons_unreachable_commits() {
     let no_op = |_: ProgressEvent| {};
     let mut repo = Repo::open(fx.dst.path()).expect("open with no repo config written");
     let result = repo
-        .git_fetch("origin", &no_op, None)
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &no_op, None)
         .expect("the pruning fetch must return, not panic");
 
     assert_eq!(
@@ -543,14 +565,14 @@ fn git_fetch_with_the_default_config_abandons_unreachable_commits() {
     // unreachable, so a projection that echoed every commit it saw would satisfy `contains`
     // while reporting nonsense.
     assert_eq!(
-        result.abandoned_change_ids,
+        result.mutation.abandoned_change_ids,
         vec![fx.b_change.clone()],
         "exactly the one now-unreachable change must be reported in the MutationResult"
     );
     assert!(
-        result.new_change_ids.is_empty(),
+        result.mutation.new_change_ids.is_empty(),
         "a fetch mints nothing — GitImportStats has no minted-change concept; got {:?}",
-        result.new_change_ids
+        result.mutation.new_change_ids
     );
 }
 
@@ -585,14 +607,14 @@ fn git_fetch_with_a_non_boolean_config_value_refuses_as_config() {
 
     let mut repo = Repo::open(dst.path()).unwrap();
     let no_op = |_: ProgressEvent| {};
-    repo.git_fetch("origin", &no_op, None)
+    repo.git_fetch(&zanshin_jj::GitFetchArgs::default(), &no_op, None)
         .expect("the fixture's remote is real and reachable");
 
     let before = repo.op_log(None).unwrap();
 
     write_repo_config(dst.path(), "[git]\nabandon-unreachable-commits = \"yes\"\n");
     let err = repo
-        .git_fetch("origin", &no_op, None)
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &no_op, None)
         .expect_err("a wrong-typed value must refuse");
 
     assert!(
@@ -690,7 +712,7 @@ fn amend_fixture() -> AmendFixture {
 
     let no_op = |_: ProgressEvent| {};
     let mut repo = Repo::open(dst.path()).unwrap();
-    repo.git_fetch("origin", &no_op, None)
+    repo.git_fetch(&zanshin_jj::GitFetchArgs::default(), &no_op, None)
         .expect("first fetch imports the pre-amend commit");
     assert_eq!(
         remote_bookmark_commit_hex(dst.path(), "main", "origin").as_deref(),
@@ -744,7 +766,8 @@ fn git_fetch_records_synthetic_predecessors_by_default() {
 
     let no_op = |_: ProgressEvent| {};
     let mut repo = Repo::open(fx.dst.path()).expect("open with no repo config written");
-    repo.git_fetch("origin", &no_op, None).expect("the force-push fetch");
+    repo.git_fetch(&zanshin_jj::GitFetchArgs::default(), &no_op, None)
+        .expect("the force-push fetch");
     assert_eq!(
         remote_bookmark_commit_hex(fx.dst.path(), "main", "origin").as_deref(),
         Some(new_commit.as_str()),
@@ -771,7 +794,8 @@ fn git_fetch_honours_record_synthetic_predecessors_false() {
     write_repo_config(fx.dst.path(), "[git]\nrecord-synthetic-predecessors = false\n");
     let no_op = |_: ProgressEvent| {};
     let mut repo = Repo::open(fx.dst.path()).expect("reopen with the new repo config");
-    repo.git_fetch("origin", &no_op, None).expect("the force-push fetch");
+    repo.git_fetch(&zanshin_jj::GitFetchArgs::default(), &no_op, None)
+        .expect("the force-push fetch");
     assert_eq!(
         remote_bookmark_commit_hex(fx.dst.path(), "main", "origin").as_deref(),
         Some(new_commit.as_str()),
@@ -785,10 +809,14 @@ fn git_fetch_honours_record_synthetic_predecessors_false() {
     );
 }
 
-// ── Reserved remote name falls through to the generic Backend mapping ─────────────
+// ── Reserved remote name matches no remote ─────────────────────────────────────
 
+/// "git" is jj-lib's reserved pseudo-remote name for the colocated local git repo
+/// (`REMOTE_NAME_FOR_LOCAL_GIT_REPO`), so no configured remote carries it: like any name that
+/// matches nothing, it warns and refuses `InvalidInput` (Story 9.30) — the CLI never reaches
+/// `GitFetch::fetch`'s own `validate_remote_name`.
 #[test]
-fn git_fetch_reserved_remote_name_returns_backend_error() {
+fn git_fetch_reserved_remote_name_matches_no_remote() {
     test_helpers::pin_test_env();
     let dst = TempDir::new().unwrap();
     Repo::init(&zanshin_jj::InitOptions {
@@ -802,15 +830,25 @@ fn git_fetch_reserved_remote_name_returns_backend_error() {
 
     let mut repo = Repo::open(dst.path()).unwrap();
     let no_op = |_: ProgressEvent| {};
-    // "git" is jj-lib's reserved pseudo-remote name for the colocated local git repo
-    // (`REMOTE_NAME_FOR_LOCAL_GIT_REPO`). `GitFetch::fetch`'s own `validate_remote_name`
-    // rejects it before ever checking whether a remote by that name is configured,
-    // producing `GitFetchError::RemoteName` — which falls through `git_fetch`'s error
-    // mapping to the generic `MutateError::Backend` arm (not `RemoteNotFound`).
+    let args = zanshin_jj::GitFetchArgs {
+        remotes: zanshin_jj::FetchRemotes::Named(vec!["git".to_owned()]),
+        ..Default::default()
+    };
     let err = repo
-        .git_fetch("git", &no_op, None)
+        .git_fetch(&args, &no_op, None)
         .expect_err("\"git\" is a reserved remote name");
-    assert!(matches!(err, MutateError::Backend(_)), "expected Backend, got {err:?}");
+    assert!(
+        matches!(err, MutateError::InvalidInput { ref reason } if reason == "No git remotes to fetch from"),
+        "expected InvalidInput, got {err:?}"
+    );
+    let warnings = repo.take_warnings();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.kind == zanshin_jj::WarningKind::FetchRemotesUnmatched
+                && w.message == "No matching remotes for names: git"),
+        "{warnings:?}"
+    );
 }
 
 // ── Subprocess / network failure ───────────────────────────────────────────────
@@ -837,7 +875,7 @@ fn git_fetch_unreachable_remote_returns_network_error() {
 
     let no_op = |_: ProgressEvent| {};
     let err = repo
-        .git_fetch("origin", &no_op, None)
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &no_op, None)
         .expect_err("remote path does not exist");
     assert!(
         matches!(err, MutateError::NetworkError { .. }),

@@ -165,7 +165,13 @@ impl World {
     }
 
     fn fetch(&mut self, guard: &CancelGuard) -> Result<zanshin_jj::MutationResult, MutateError> {
-        self.repo.git_fetch("origin", &|_: ProgressEvent| {}, Some(guard))
+        self.repo
+            .git_fetch(
+                &zanshin_jj::GitFetchArgs::default(),
+                &|_: ProgressEvent| {},
+                Some(guard),
+            )
+            .map(|outcome| outcome.mutation)
     }
 
     /// Adds a bare copy of the remote as `name`, with `main@name` tracked at the remote's `main`.
@@ -330,7 +336,11 @@ fn a_non_network_error_while_cancelled_passes_through() {
     let id = token();
     cancel::cancel(id);
     let guard = cancel::attach(id).expect("attaches");
-    let fetched = repo.git_fetch("origin", &|_: ProgressEvent| {}, Some(&guard));
+    let fetched = repo.git_fetch(
+        &zanshin_jj::GitFetchArgs::default(),
+        &|_: ProgressEvent| {},
+        Some(&guard),
+    );
     assert!(matches!(fetched, Err(MutateError::NotAGitRepo)), "{fetched:?}");
 
     let git_ws = TempDir::new().unwrap();
@@ -457,7 +467,7 @@ fn the_token_rides_gits_environment_only_for_a_call_that_carries_one() {
 
     fs::remove_file(w.marker("env")).unwrap();
     w.repo
-        .git_fetch("origin", &|_: ProgressEvent| {}, None)
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &|_: ProgressEvent| {}, None)
         .expect("fetch without a token");
     let without = fs::read_to_string(w.marker("env")).expect("the wrapper ran");
     assert!(!without.contains("ZANSHIN_CANCEL_TOKEN"), "{without}");

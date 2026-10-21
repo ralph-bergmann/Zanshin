@@ -790,9 +790,14 @@ fn resolve_remotes(
 ) -> Result<Vec<RemoteNameBuf>, MutateError> {
     let all_remotes = jj_lib::git::get_all_remote_names(base.store()).map_err(|_| MutateError::NotAGitRepo)?;
     let matching = if let Some(texts) = &args.remotes {
-        matching_remotes(&all_remotes, &crate::bookmark_ops::union_expression(texts)?, sink)
+        matching_remotes(
+            &all_remotes,
+            &crate::bookmark_ops::union_expression(texts)?,
+            PUSH_REMOTES.unmatched,
+            sink,
+        )
     } else {
-        default_push_remotes(&all_remotes, config, sink, hints)?
+        default_remotes(&all_remotes, config, PUSH_REMOTES, sink, hints)?
     };
     if matching.is_empty() {
         return Err(MutateError::InvalidInput {
@@ -802,41 +807,72 @@ fn resolve_remotes(
     Ok(matching)
 }
 
-/// The remotes a push WITHOUT `--remote` goes to (`push.rs:294-323`'s default arm,
-/// `get_default_push_remotes` `:1107-1130`), out of `all_remotes` in their order: the remotes
-/// `git.push` names (a name, a list or a pattern), else the single remote (with the CLI's "Pushing
-/// to the only existing remote" hint into `hints` unless it is `origin`), else `origin`. An exact
-/// name no remote carries warns [`WarningKind::PushRemotesUnmatched`]; matching none is `[]` — the
-/// push verb refuses that, [`git_push_remotes`] reports it. Shared by both (Story 9.54).
+/// One verb's default-remote resolution (Story 9.30): push and fetch resolve their remotes the
+/// same way — `get_default_push_remotes` (`push.rs:1107-1130` @ v0.46.0) and
+/// `get_default_fetch_remotes` (`fetch.rs:267-290`) differ only in the key they read, the verb in
+/// their only-remote hint and the warning an unmatched name raises.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RemoteDefaults {
+    /// Reads the verb's `git.push` / `git.fetch`.
+    configured: fn(&StackedConfig) -> Result<Option<Vec<String>>, crate::ConfigError>,
+    /// The only-remote hint before the remote's name.
+    only_remote_hint: &'static str,
+    /// What an exact name no remote carries warns.
+    pub(crate) unmatched: WarningKind,
+}
+
+/// `jj git push`'s default-remote resolution.
+pub(crate) const PUSH_REMOTES: RemoteDefaults = RemoteDefaults {
+    configured: crate::config::git_push_remotes,
+    only_remote_hint: "Pushing to the only existing remote",
+    unmatched: WarningKind::PushRemotesUnmatched,
+};
+
+/// `jj git fetch`'s default-remote resolution (Story 9.30).
+pub(crate) const FETCH_REMOTES: RemoteDefaults = RemoteDefaults {
+    configured: crate::config::git_fetch_remotes,
+    only_remote_hint: "Fetching from the only existing remote",
+    unmatched: WarningKind::FetchRemotesUnmatched,
+};
+
+/// The remotes a push or fetch WITHOUT `--remote` goes to (`push.rs:294-323`'s default arm,
+/// `get_default_push_remotes` `:1107-1130`; `get_default_fetch_remotes`, `fetch.rs:267-290` @
+/// v0.46.0), out of `all_remotes` in their order: the remotes the verb's key (`git.push` /
+/// `git.fetch`) names (a name, a list or a pattern), else the single remote (with the CLI's
+/// only-remote hint into `hints` unless it is `origin`), else `origin`. An exact name no remote
+/// carries warns `defaults.unmatched`; matching none is `[]` — the verb refuses that,
+/// [`default_remote_names`] reports it. Shared by both verbs and both queries (Stories 9.54, 9.30).
 ///
 /// # Errors
 ///
-/// - [`MutateError::Config`] — `git.push` is neither a string nor a list of strings.
-/// - [`MutateError::InvalidInput`] — a `git.push` pattern does not parse.
-fn default_push_remotes(
+/// - [`MutateError::Config`] — the key is neither a string nor a list of strings.
+/// - [`MutateError::InvalidInput`] — one of its patterns does not parse.
+pub(crate) fn default_remotes(
     all_remotes: &[RemoteNameBuf],
     config: &StackedConfig,
+    defaults: RemoteDefaults,
     sink: &mut Warnings,
     hints: &mut Vec<String>,
 ) -> Result<Vec<RemoteNameBuf>, MutateError> {
-    let expression = if let Some(texts) = crate::config::git_push_remotes(config).map_err(cfg)? {
+    let expression = if let Some(texts) = (defaults.configured)(config).map_err(cfg)? {
         crate::bookmark_ops::union_expression(&texts)?
     } else if let [single] = all_remotes {
         if single.as_str() != "origin" {
-            hints.push(format!("Pushing to the only existing remote: {}", single.as_symbol()));
+            hints.push(format!("{}: {}", defaults.only_remote_hint, single.as_symbol()));
         }
         StringExpression::exact(single.as_str())
     } else {
         StringExpression::exact("origin")
     };
-    Ok(matching_remotes(all_remotes, &expression, sink))
+    Ok(matching_remotes(all_remotes, &expression, defaults.unmatched, sink))
 }
 
 /// The remotes of `all_remotes` `expression` matches, in their order; each exact name no remote
-/// carries warns [`WarningKind::PushRemotesUnmatched`] (`push.rs:309-321`).
-fn matching_remotes(
+/// carries warns `unmatched` (`push.rs:309-321`, `fetch.rs:150-169` @ v0.46.0).
+pub(crate) fn matching_remotes(
     all_remotes: &[RemoteNameBuf],
     expression: &StringExpression,
+    unmatched: WarningKind,
     sink: &mut Warnings,
 ) -> Vec<RemoteNameBuf> {
     let matcher = expression.to_matcher();
@@ -845,35 +881,37 @@ fn matching_remotes(
         .filter(|remote| matcher.is_match(remote.as_str()))
         .cloned()
         .collect();
-    let unmatched: Vec<String> = expression
+    let missing: Vec<String> = expression
         .exact_strings()
         .filter(|name| all_remotes.iter().all(|remote| remote.as_str() != *name))
         .map(|name| RemoteName::new(name).as_symbol().to_string())
         .collect();
-    if !unmatched.is_empty() {
+    if !missing.is_empty() {
         sink.push(
-            WarningKind::PushRemotesUnmatched,
-            format!("No matching remotes for names: {}", unmatched.join(", ")),
+            unmatched,
+            format!("No matching remotes for names: {}", missing.join(", ")),
         );
     }
     matching
 }
 
-/// The remotes `jj git push` without `--remote` would push to (Story 9.54) — see
-/// [`crate::Repo::git_push_remotes`]. A non-Git backend has none.
+/// The remotes `jj git push` / `jj git fetch` without `--remote` would use (Stories 9.54, 9.30)
+/// — see [`crate::Repo::git_push_remotes`] and [`crate::Repo::git_fetch_remotes`]. A non-Git
+/// backend has none; the only-remote hint is dropped.
 ///
 /// # Errors
 ///
-/// See [`default_push_remotes`].
-pub(crate) fn git_push_remotes(
+/// See [`default_remotes`].
+pub(crate) fn default_remote_names(
     workspace: &jj_lib::workspace::Workspace,
     config: &StackedConfig,
+    defaults: RemoteDefaults,
     sink: &mut Warnings,
 ) -> Result<Vec<String>, MutateError> {
     let Ok(all_remotes) = jj_lib::git::get_all_remote_names(workspace.repo_loader().store()) else {
         return Ok(Vec::new());
     };
-    let remotes = default_push_remotes(&all_remotes, config, sink, &mut Vec::new())?;
+    let remotes = default_remotes(&all_remotes, config, defaults, sink, &mut Vec::new())?;
     Ok(remotes.into_iter().map(RemoteNameBuf::into_string).collect())
 }
 

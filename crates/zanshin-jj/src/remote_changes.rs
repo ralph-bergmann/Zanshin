@@ -8,6 +8,9 @@
 //! written. jj-lib has no public ls-remote (its `GitSubprocessContext` is `pub(crate)`), so the
 //! `git` is spawned here exactly as jj-lib spawns its own (`git_subprocess.rs:102-160` @ v0.46.0):
 //! same executable, flags, environment and error texts. Never shells to the `jj` CLI (AR-AP-1).
+//!
+//! Only the refs a bare `jj git fetch` of the remote would fetch take part (Story 9.30): the
+//! advertised names and the view's names both pass the remote's default fetch filters first.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -19,6 +22,7 @@ use jj_lib::op_store::RefTarget;
 use jj_lib::ref_name::RemoteName;
 use jj_lib::repo::Repo as _;
 use jj_lib::settings::UserSettings;
+use jj_lib::str_util::StringMatcher;
 use jj_lib::workspace::Workspace;
 
 use crate::cancel::CancelGuard;
@@ -79,7 +83,11 @@ struct Advertisement {
 /// - [`MutateError::Precondition`] — the head could not be loaded.
 /// - [`MutateError::NotAGitRepo`] — the workspace has no Git backend.
 /// - [`MutateError::RemoteNotFound`] — no configured remote is named `remote_name`.
-/// - [`MutateError::Config`] — `git.executable-path` does not read.
+/// - [`MutateError::Config`] — `git.executable-path` does not read, or a `remotes.<name>` entry or
+///   the remote's `fetch-bookmarks`/`fetch-tags` is malformed.
+/// - [`MutateError::InvalidInput`] — the remote's Git config does not read (jj-lib's
+///   `load_default_fetch_bookmarks`), or a filter cannot become a refspec (jj-lib's
+///   `expand_fetch_refspecs`, as the fetch refuses it).
 /// - [`MutateError::Cancelled`] — `cancel`'s token was cancelled.
 /// - [`MutateError::NetworkError`] — `git` could not run or failed.
 /// - [`MutateError::Backend`] — `git` printed something that is not a ref advertisement.
@@ -98,6 +106,19 @@ pub(crate) fn remote_changes(
             name: remote_name.to_owned(),
         });
     }
+    let remote = RemoteName::new(remote_name);
+    // The bare fetch's filters (Story 9.30); its ignored refspecs are dropped silently — the poll
+    // is no CLI verb, so it has no warning of the CLI's to report them with.
+    let filters = crate::remotes::remote_fetch_refs(
+        settings.config(),
+        &backend.git_repo(),
+        remote,
+        (None, None),
+        &mut Vec::new(),
+    )?;
+    // Refused as the fetch refuses it: a pattern that cannot become a refspec.
+    jj_lib::git::expand_fetch_refspecs(remote, filters.clone()).map_err(crate::remotes::invalid)?;
+    let (bookmark_matcher, tag_matcher) = (filters.bookmark.to_matcher(), filters.tag.to_matcher());
     let options = crate::environment::git_subprocess_options(settings, cancel).map_err(mutate::cfg)?;
     crate::cancel::watch_store(cancel, store);
     crate::cancel::checkpoint(cancel)?;
@@ -112,15 +133,16 @@ pub(crate) fn remote_changes(
 
     let advertised = parse_advertisement(&stdout)?;
     let view = repo.view();
-    let remote = RemoteName::new(remote_name);
     let mut changes = diff_against_view(
         RemoteRefKind::Bookmark,
+        &bookmark_matcher,
         &advertised.bookmarks,
         view.remote_bookmarks(remote)
             .map(|(name, remote_ref)| (name.as_str(), &remote_ref.target)),
     );
     changes.extend(diff_against_view(
         RemoteRefKind::Tag,
+        &tag_matcher,
         &advertised.tags,
         view.remote_tags(remote)
             .map(|(name, remote_ref)| (name.as_str(), &remote_ref.target)),
@@ -218,16 +240,20 @@ fn parse_advertisement(stdout: &[u8]) -> Result<Advertisement, MutateError> {
 }
 
 /// The changes of one ref kind: every advertised name and every name with a present view
-/// target, by name (byte order).
+/// target that `matcher` accepts, by name (byte order).
 fn diff_against_view<'a>(
     kind: RemoteRefKind,
+    matcher: &StringMatcher,
     advertised: &BTreeMap<String, String>,
     view: impl Iterator<Item = (&'a str, &'a RefTarget)>,
 ) -> Vec<RemoteRefChange> {
-    let view: BTreeMap<&str, &RefTarget> = view.filter(|(_, target)| target.is_present()).collect();
+    let view: BTreeMap<&str, &RefTarget> = view
+        .filter(|(name, target)| target.is_present() && matcher.is_match(name))
+        .collect();
     let names: BTreeSet<&str> = advertised
         .keys()
         .map(String::as_str)
+        .filter(|name| matcher.is_match(name))
         .chain(view.keys().copied())
         .collect();
     names
@@ -264,6 +290,7 @@ mod tests {
     use jj_lib::backend::CommitId as JjCommitId;
     use jj_lib::git::GitSubprocessOptions;
     use jj_lib::op_store::RefTarget;
+    use jj_lib::str_util::{StringExpression, StringMatcher};
 
     use super::{
         diff_against_view, ls_remote, parse_advertisement, Advertisement, RemoteRefChange, RemoteRefChangeKind,
@@ -368,7 +395,12 @@ mod tests {
         let advertised = map(&[("main", B), ("feature", C), ("same", A)]);
         let (main, same, gone, absent) = (target(A), target(A), target(C), RefTarget::absent());
         let view = [("gone", &gone), ("main", &main), ("same", &same), ("absent", &absent)];
-        let changes = diff_against_view(RemoteRefKind::Bookmark, &advertised, view.into_iter());
+        let changes = diff_against_view(
+            RemoteRefKind::Bookmark,
+            &StringMatcher::all(),
+            &advertised,
+            view.into_iter(),
+        );
         assert_eq!(
             changes,
             [
@@ -386,7 +418,12 @@ mod tests {
             [JjCommitId::from_hex(A), JjCommitId::from_hex(B)],
         );
         let advertised = map(&[("main", A)]);
-        let changes = diff_against_view(RemoteRefKind::Tag, &advertised, [("main", &conflicted)].into_iter());
+        let changes = diff_against_view(
+            RemoteRefKind::Tag,
+            &StringMatcher::all(),
+            &advertised,
+            [("main", &conflicted)].into_iter(),
+        );
         assert_eq!(
             changes,
             [change(
@@ -397,6 +434,34 @@ mod tests {
                 Some(A)
             )]
         );
+    }
+
+    /// Story 9.30: a name the filter rejects takes no part — neither advertised nor in the view —
+    /// so a new, moved or deleted ref outside the bare fetch's refs is not reported.
+    #[test]
+    fn names_the_filter_rejects_are_left_out_on_both_sides() {
+        use RemoteRefChangeKind::{Deleted, Moved};
+        let matcher = StringExpression::exact("main")
+            .union(StringExpression::exact("gone"))
+            .to_matcher();
+        let advertised = map(&[("main", B), ("other", C), ("moved", B)]);
+        let (main, moved, gone, stale) = (target(A), target(A), target(C), target(C));
+        let view = [("gone", &gone), ("main", &main), ("moved", &moved), ("stale", &stale)];
+        let changes = diff_against_view(RemoteRefKind::Bookmark, &matcher, &advertised, view.into_iter());
+        assert_eq!(
+            changes,
+            [
+                change(RemoteRefKind::Bookmark, "gone", Deleted, &[C], None),
+                change(RemoteRefKind::Bookmark, "main", Moved, &[A], Some(B)),
+            ]
+        );
+        let none = diff_against_view(
+            RemoteRefKind::Tag,
+            &StringExpression::none().to_matcher(),
+            &advertised,
+            view.into_iter(),
+        );
+        assert!(none.is_empty(), "{none:?}");
     }
 
     fn options(executable: &str) -> GitSubprocessOptions {

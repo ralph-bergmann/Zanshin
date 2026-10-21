@@ -178,6 +178,18 @@ pub enum WarningKind {
     /// `print_parse_diagnostics(ui, "In template expression", …)` after `template_builder::parse`
     /// (`cli/src/cli_util.rs:1180-1195` @ v0.46.0; Story 9.51). The template still renders.
     TemplateDiagnostic,
+    /// `git fetch --remote` (or `git.fetch`, or the implicit `origin`) with exact names that match
+    /// no git remote (`cli/src/commands/git/fetch.rs:162-168` @ v0.46.0; Story 9.30). The fetch
+    /// goes on with the remotes that did match; [`crate::Repo::git_fetch_remotes`] warns it as the
+    /// fetch does.
+    FetchRemotesUnmatched,
+    /// A fetch refspec of the remote's Git config that jj ignores — not a forced
+    /// `refs/heads/*` → `refs/remotes/<remote>/*` mapping (`warn_ignored_refspecs`,
+    /// `fetch.rs:323-337` @ v0.46.0; Story 9.30). The fetch goes on without it.
+    FetchRefspecIgnored,
+    /// `git fetch -b` with exact names no matched remote has (`warn_if_branches_not_found`,
+    /// `fetch.rs:292-321` @ v0.46.0; Story 9.30).
+    FetchBranchesUnmatched,
 }
 
 /// One warning a call produced (Story 9.32).

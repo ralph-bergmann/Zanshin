@@ -92,7 +92,9 @@ pub use push::{
     PushRef, PushRefKind, PushRefName, PushRefStatus, PushRefusal, PushRemote, PushSigning,
 };
 pub use remote_changes::{RemoteRefChange, RemoteRefChangeKind, RemoteRefKind};
-pub use remotes::{ProgressEvent, ProgressFn, Remote, RemoteError};
+pub use remotes::{
+    FetchRefs, FetchRemotes, GitFetchArgs, GitFetchOutcome, ProgressEvent, ProgressFn, Remote, RemoteError,
+};
 pub use repo::{Backend, CreationOutcome, Repo, RepoError};
 pub use revset::{resolve_revset, RevsetError, DEFAULT_LOG_REVSET};
 pub use snapshot::{FinishFacts, Precondition, PreconditionError, StaleCause};

@@ -169,7 +169,9 @@ fn an_advanced_upstream_branch_is_moved_and_the_view_is_untouched() {
     assert_eq!(w.head_op(), before, "no operation");
     assert_eq!(w.poll("origin").expect("poll again"), expected, "main@origin unchanged");
 
-    w.repo.git_fetch("origin", &|_: ProgressEvent| {}, None).expect("fetch");
+    w.repo
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &|_: ProgressEvent| {}, None)
+        .expect("fetch");
     assert_eq!(w.poll("origin").expect("poll after the fetch"), []);
 }
 
@@ -210,7 +212,9 @@ fn fetched_tags_are_compared_at_their_peeled_commits() {
     git(&["tag", "t1"], &w.src);
     git(&["tag", "-a", "v1", "-m", "release"], &w.src);
     git(&["push", "origin", "--tags"], &w.src);
-    w.repo.git_fetch("origin", &|_: ProgressEvent| {}, None).expect("fetch");
+    w.repo
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &|_: ProgressEvent| {}, None)
+        .expect("fetch");
     assert_eq!(w.poll("origin").expect("poll after the fetch"), []);
 
     let second = commit(&w.src, "second.txt", "second");
@@ -231,7 +235,9 @@ fn fetched_tags_are_compared_at_their_peeled_commits() {
         ]
     );
 
-    w.repo.git_fetch("origin", &|_: ProgressEvent| {}, None).expect("fetch");
+    w.repo
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &|_: ProgressEvent| {}, None)
+        .expect("fetch");
     assert_eq!(
         w.poll("origin").expect("poll after the second fetch"),
         [],
@@ -256,7 +262,9 @@ fn a_branch_removed_upstream_is_deleted() {
         )]
     );
 
-    w.repo.git_fetch("origin", &|_: ProgressEvent| {}, None).expect("fetch");
+    w.repo
+        .git_fetch(&zanshin_jj::GitFetchArgs::default(), &|_: ProgressEvent| {}, None)
+        .expect("fetch");
     assert_eq!(
         w.poll("origin").expect("poll after the fetch"),
         [],

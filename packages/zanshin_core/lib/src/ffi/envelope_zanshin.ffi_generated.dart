@@ -69,7 +69,8 @@ enum RequestKind {
   Commit(34),
   GitPush(35),
   RepoClone(36),
-  RepoInit(37);
+  RepoInit(37),
+  GitFetch(38);
 
   final int value;
   const RequestKind(this.value);
@@ -152,6 +153,8 @@ enum RequestKind {
         return RequestKind.RepoClone;
       case 37:
         return RequestKind.RepoInit;
+      case 38:
+        return RequestKind.GitFetch;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -160,7 +163,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 37;
+  static const int maxValue = 38;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -172,6 +175,91 @@ class _RequestKindReader extends fb.Reader<RequestKind> {
 
   @override
   RequestKind read(fb.BufferContext bc, int offset) => RequestKind.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  The remotes of `zanshin_git_fetch` (Story 9.30) — the CLI's either/or of `--remote` and
+///  `--all-remotes`. `Default = 0` (the absent-field default) = neither flag: `git.fetch`, else the
+///  only remote, else `origin`. Member order IS the wire value — APPEND only.
+enum FetchRemotesMode {
+  Default(0),
+  Named(1),
+  All(2);
+
+  final int value;
+  const FetchRemotesMode(this.value);
+
+  factory FetchRemotesMode.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return FetchRemotesMode.Default;
+      case 1:
+        return FetchRemotesMode.Named;
+      case 2:
+        return FetchRemotesMode.All;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static FetchRemotesMode? _createOrNull(int? value) => value == null ? null : FetchRemotesMode.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<FetchRemotesMode> reader = _FetchRemotesModeReader();
+}
+
+class _FetchRemotesModeReader extends fb.Reader<FetchRemotesMode> {
+  const _FetchRemotesModeReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  FetchRemotesMode read(fb.BufferContext bc, int offset) =>
+      FetchRemotesMode.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  The refs of `zanshin_git_fetch` (Story 9.30) — the CLI's either/or of `--branch`/`--tag` and
+///  `--tracked`. `Default = 0` (the absent-field default) = none of the three:
+///  `remotes.<name>.fetch-bookmarks`/`fetch-tags`, else the Git config's refspecs and every tag.
+///  Member order IS the wire value — APPEND only.
+enum FetchRefsMode {
+  Default(0),
+  Patterns(1),
+  Tracked(2);
+
+  final int value;
+  const FetchRefsMode(this.value);
+
+  factory FetchRefsMode.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return FetchRefsMode.Default;
+      case 1:
+        return FetchRefsMode.Patterns;
+      case 2:
+        return FetchRefsMode.Tracked;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static FetchRefsMode? _createOrNull(int? value) => value == null ? null : FetchRefsMode.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<FetchRefsMode> reader = _FetchRefsModeReader();
+}
+
+class _FetchRefsModeReader extends fb.Reader<FetchRefsMode> {
+  const _FetchRefsModeReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  FetchRefsMode read(fb.BufferContext bc, int offset) =>
+      FetchRefsMode.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
 ///  The object hash of a new Git repository — the CLI's `--object-hash` (Story 9.20).
@@ -1197,7 +1285,9 @@ enum PayloadTypeId {
   SplitResult(40),
   GitPushResult(41),
   GitPushRemotes(42),
-  RemoteChanges(43);
+  RemoteChanges(43),
+  GitFetchResult(44),
+  GitFetchRemotes(45);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -1292,6 +1382,10 @@ enum PayloadTypeId {
         return PayloadTypeId.GitPushRemotes;
       case 43:
         return PayloadTypeId.RemoteChanges;
+      case 44:
+        return PayloadTypeId.GitFetchResult;
+      case 45:
+        return PayloadTypeId.GitFetchRemotes;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -1300,7 +1394,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 43;
+  static const int maxValue = 45;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -2483,6 +2577,154 @@ class GitPushRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addBool(13, _dryRun);
     fbBuilder.addOffset(14, optionsOffset);
     fbBuilder.addUint64(15, _cancelToken);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_git_fetch` (Story 9.30) — the CLI's `jj git fetch`, passed through
+///  (FR-JJ-17). Names are PATTERNS as in the CLI (a bare word is a glob).
+///
+///    remotes_mode       which remotes; `Named` reads `remotes` (the `--remote` patterns, their
+///                       union), the other two ignore it
+///    refs_mode          which refs per remote; `Patterns` reads `branches` / `tags` (`-b` / `-t`;
+///                       an absent or empty list fetches none of that kind), the other two ignore
+///                       them
+///    cancel_token       Story 9.52: a token from `zanshin_network_token` that
+///                       `zanshin_network_cancel` cancels (`jj.cancelled`); 0 = not cancellable
+class GitFetchRequest {
+  GitFetchRequest._(this._bc, this._bcOffset);
+  factory GitFetchRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitFetchRequest> reader = _GitFetchRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  FetchRemotesMode get remotesMode =>
+      FetchRemotesMode.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 6, 0));
+  List<String>? get remotes => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  FetchRefsMode get refsMode => FetchRefsMode.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 10, 0));
+  List<String>? get branches => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 12);
+  List<String>? get tags => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 14);
+  int get cancelToken => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 16, 0);
+
+  @override
+  String toString() {
+    return 'GitFetchRequest{kind: ${kind}, remotesMode: ${remotesMode}, remotes: ${remotes}, refsMode: ${refsMode}, branches: ${branches}, tags: ${tags}, cancelToken: ${cancelToken}}';
+  }
+}
+
+class _GitFetchRequestReader extends fb.TableReader<GitFetchRequest> {
+  const _GitFetchRequestReader();
+
+  @override
+  GitFetchRequest createObject(fb.BufferContext bc, int offset) => GitFetchRequest._(bc, offset);
+}
+
+class GitFetchRequestBuilder {
+  GitFetchRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(7);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRemotesMode(FetchRemotesMode? remotesMode) {
+    fbBuilder.addUint8(1, remotesMode?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRemotesOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRefsMode(FetchRefsMode? refsMode) {
+    fbBuilder.addUint8(3, refsMode?.value);
+    return fbBuilder.offset;
+  }
+
+  int addBranchesOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTagsOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCancelToken(int? cancelToken) {
+    fbBuilder.addUint64(6, cancelToken);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitFetchRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final FetchRemotesMode? _remotesMode;
+  final List<String>? _remotes;
+  final FetchRefsMode? _refsMode;
+  final List<String>? _branches;
+  final List<String>? _tags;
+  final int? _cancelToken;
+
+  GitFetchRequestObjectBuilder({
+    RequestKind? kind,
+    FetchRemotesMode? remotesMode,
+    List<String>? remotes,
+    FetchRefsMode? refsMode,
+    List<String>? branches,
+    List<String>? tags,
+    int? cancelToken,
+  }) : _kind = kind,
+       _remotesMode = remotesMode,
+       _remotes = remotes,
+       _refsMode = refsMode,
+       _branches = branches,
+       _tags = tags,
+       _cancelToken = cancelToken;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? remotesOffset = _remotes == null
+        ? null
+        : fbBuilder.writeList(_remotes!.map(fbBuilder.writeString).toList());
+    final int? branchesOffset = _branches == null
+        ? null
+        : fbBuilder.writeList(_branches!.map(fbBuilder.writeString).toList());
+    final int? tagsOffset = _tags == null ? null : fbBuilder.writeList(_tags!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(7);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addUint8(1, _remotesMode?.value);
+    fbBuilder.addOffset(2, remotesOffset);
+    fbBuilder.addUint8(3, _refsMode?.value);
+    fbBuilder.addOffset(4, branchesOffset);
+    fbBuilder.addOffset(5, tagsOffset);
+    fbBuilder.addUint64(6, _cancelToken);
     return fbBuilder.endTable();
   }
 
@@ -7439,6 +7681,198 @@ class GitPushRemotesObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _names;
 
   GitPushRemotesObjectBuilder({
+    List<String>? names,
+  }) : _names = names;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, namesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_git_fetch`'s answer (Story 9.30): the shared mutation contract and the fetch's own
+///  facts.
+///
+///    mutation           the operation the fetch wrote (a no-change fetch writes one too)
+///    remotes            the remotes fetched from, in remote-name order
+///    hints              the CLI's hints, verbatim: "Fetching from the only existing remote: <name>"
+///    failed_ref_names   the Git refs the import could not read (lossy UTF-8, jj-lib's order) —
+///                       what `jj.git_import_failed` lists
+class GitFetchResult {
+  GitFetchResult._(this._bc, this._bcOffset);
+  factory GitFetchResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitFetchResult> reader = _GitFetchResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  MutationResult? get mutation => MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get remotes => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get hints => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get failedRefNames =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'GitFetchResult{mutation: ${mutation}, remotes: ${remotes}, hints: ${hints}, failedRefNames: ${failedRefNames}}';
+  }
+}
+
+class _GitFetchResultReader extends fb.TableReader<GitFetchResult> {
+  const _GitFetchResultReader();
+
+  @override
+  GitFetchResult createObject(fb.BufferContext bc, int offset) => GitFetchResult._(bc, offset);
+}
+
+class GitFetchResultBuilder {
+  GitFetchResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addMutationOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemotesOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addHintsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFailedRefNamesOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitFetchResultObjectBuilder extends fb.ObjectBuilder {
+  final MutationResultObjectBuilder? _mutation;
+  final List<String>? _remotes;
+  final List<String>? _hints;
+  final List<String>? _failedRefNames;
+
+  GitFetchResultObjectBuilder({
+    MutationResultObjectBuilder? mutation,
+    List<String>? remotes,
+    List<String>? hints,
+    List<String>? failedRefNames,
+  }) : _mutation = mutation,
+       _remotes = remotes,
+       _hints = hints,
+       _failedRefNames = failedRefNames;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? mutationOffset = _mutation?.getOrCreateOffset(fbBuilder);
+    final int? remotesOffset = _remotes == null
+        ? null
+        : fbBuilder.writeList(_remotes!.map(fbBuilder.writeString).toList());
+    final int? hintsOffset = _hints == null ? null : fbBuilder.writeList(_hints!.map(fbBuilder.writeString).toList());
+    final int? failedRefNamesOffset = _failedRefNames == null
+        ? null
+        : fbBuilder.writeList(_failedRefNames!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, mutationOffset);
+    fbBuilder.addOffset(1, remotesOffset);
+    fbBuilder.addOffset(2, hintsOffset);
+    fbBuilder.addOffset(3, failedRefNamesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_git_fetch_remotes`' answer (Story 9.30): the remotes `jj git fetch` without
+///  `--remote` would fetch from, in remote-name order — `git.fetch` (a name, a list or a
+///  pattern), else the single remote, else `origin`, each only when it exists. Empty when none
+///  matches (the Fetch button's enable rule) and on a non-Git backend.
+class GitFetchRemotes {
+  GitFetchRemotes._(this._bc, this._bcOffset);
+  factory GitFetchRemotes(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitFetchRemotes> reader = _GitFetchRemotesReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'GitFetchRemotes{names: ${names}}';
+  }
+}
+
+class _GitFetchRemotesReader extends fb.TableReader<GitFetchRemotes> {
+  const _GitFetchRemotesReader();
+
+  @override
+  GitFetchRemotes createObject(fb.BufferContext bc, int offset) => GitFetchRemotes._(bc, offset);
+}
+
+class GitFetchRemotesBuilder {
+  GitFetchRemotesBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addNamesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitFetchRemotesObjectBuilder extends fb.ObjectBuilder {
+  final List<String>? _names;
+
+  GitFetchRemotesObjectBuilder({
     List<String>? names,
   }) : _names = names;
 
@@ -14784,6 +15218,10 @@ class Envelope {
         return GitPushRemotes.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 43:
         return RemoteChanges.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 44:
+        return GitFetchResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 45:
+        return GitFetchRemotes.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

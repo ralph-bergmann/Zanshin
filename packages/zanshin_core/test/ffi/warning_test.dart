@@ -425,9 +425,12 @@ void main() {
         'jj.push_signing_skipped_immutable',
         'jj.clone_branches_unmatched',
         'jj.template_diagnostic',
+        'jj.fetch_remotes_unmatched',
+        'jj.fetch_refspec_ignored',
+        'jj.fetch_branches_unmatched',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(51), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(54), reason: 'no code is registered twice');
     });
   });
 

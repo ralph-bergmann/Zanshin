@@ -4,6 +4,7 @@ import '../ffi/bookmarks.dart' show Bookmark;
 import '../ffi/change.dart' show Change;
 import '../ffi/commit_contents.dart' show CommitContent;
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, EvologEntry, InterdiffView, RevisionRef, ShowEntry;
+import '../ffi/fetch.dart' show DefaultFetchRefs, DefaultFetchRemotes, FetchRefs, FetchRemotes, GitFetchResult;
 import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, FileSearch;
 import '../ffi/file_ops.dart' show TrackResult, UntrackResult;
 import '../ffi/git.dart' show GitExportResult, GitImportResult;
@@ -313,6 +314,28 @@ final class RepoHandle {
     return _worker.gitPushRemotes(_handleId);
   }
 
+  /// Read the remotes `jj git fetch` without `--remote` would fetch from (Story
+  /// 9.30) — the CLI's `get_default_fetch_remotes`: the remotes `git.fetch`
+  /// names (a name, a list or a pattern), else the single remote, else
+  /// `origin`, each only when it exists, in remote-name order. Empty when none
+  /// matches and on a non-Git backend; an exact name no remote carries (a
+  /// `git.fetch` name, or the implicit `origin`) warns
+  /// `jj.fetch_remotes_unmatched`, as the fetch does.
+  ///
+  /// The Fetch button's enable rule: enabled when this is not empty — then a
+  /// [gitFetch] with no arguments fetches from exactly these remotes.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
+  Future<WarnedList<String>> gitFetchRemotes() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.gitFetchRemotes(_handleId);
+  }
+
   /// Read the effective `jj log` defaults for this repository (Story 4.9) —
   /// what the user's own `jj` CLI would apply after their config overrides.
   ///
@@ -459,36 +482,59 @@ final class RepoHandle {
     return _worker.undo(_handleId, allowCrossWorkspace: allowCrossWorkspace);
   }
 
-  /// Fetch all branches and tags from [remoteName] and import them
-  /// (Story 6.5). Never moves `@` — fetch only updates remote-tracking refs.
+  /// `jj git fetch` (Stories 6.5, 9.30): fetch the [remotes] and [refs]
+  /// selected in ONE operation and import them — the CLI's parameters passed
+  /// through as two either/ors.
+  ///
+  /// [remotes]: [DefaultFetchRemotes] (what [gitFetchRemotes] answers —
+  /// `git.fetch`, else the only remote with the CLI's "Fetching from the only
+  /// existing remote" hint in `hints` unless it is `origin`, else `origin`),
+  /// `NamedFetchRemotes` (`--remote` patterns; a bare word is a glob) or
+  /// `AllFetchRemotes` (`--all-remotes`). An exact name no remote carries warns
+  /// `jj.fetch_remotes_unmatched`; when nothing matches, the `result` throws
+  /// `jj.invalid_input` "No git remotes to fetch from" and nothing is written.
+  ///
+  /// [refs]: [DefaultFetchRefs] (`remotes.<name>.fetch-bookmarks`, else the
+  /// Git config's fetch refspecs — the ones jj ignores warn
+  /// `jj.fetch_refspec_ignored` —; `remotes.<name>.fetch-tags`, else every
+  /// tag), `PatternFetchRefs` (`-b` / `-t`; with branch names no remote has
+  /// warning `jj.fetch_branches_unmatched`) or `TrackedFetchRefs`
+  /// (`--tracked`).
   ///
   /// Progress rides `ZanshinWorker.events` as a `ProgressEvent` carrying this
-  /// handle's [handleId].
+  /// handle's [handleId]. `git.abandon-unreachable-commits` and
+  /// `git.record-synthetic-predecessors` are read from the repo's effective
+  /// config per call, never hardcoded. The operation is
+  /// `fetch from git remote(s) <names joined by ",">`, written even when
+  /// nothing changed.
   ///
-  /// `git.abandon-unreachable-commits` and `git.record-synthetic-predecessors` are
-  /// read from the repo's effective config per call, never hardcoded.
+  /// The result's `mutation.abandonedChangeIds` carries the commits the import
+  /// abandoned because they became unreachable in git — jj-lib's OWN
+  /// abandonments, not a caller echo, and empty when
+  /// `git.abandon-unreachable-commits` is off. `mutation.newChangeIds` is
+  /// always empty: a fetch mints nothing.
   ///
-  /// The result's `abandonedChangeIds` carries the commits the import abandoned
-  /// because they became unreachable in git — jj-lib's OWN abandonments, not a
-  /// caller echo, and empty when `git.abandon-unreachable-commits` is off.
-  /// `newChangeIds` is always empty: a fetch mints nothing.
-  ///
-  /// Throws [StateError] synchronously if the handle is already [_closed].
-  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`,
-  /// `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error`). A workspace with no git backend is
-  /// `jj.not_a_git_repo` — not `jj.remote_not_found`, which now means only
-  /// "no remote of that name".
+  /// Throws [StateError] synchronously if the handle is already [_closed]. The
+  /// `result` throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.not_a_git_repo`, `jj.config_error`,
+  /// `jj.remote_not_found` — a matched remote that vanished before its fetch —,
+  /// `jj.network_error`, `jj.cancelled`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`), and with `internal.dispatch_error` when a pattern
+  /// contains an interior NUL (U+0000), refused by the FFI adapter on the
+  /// helper isolate.
   ///
   /// Returns a [NetworkOperation] (Story 9.52): the fetch runs on a helper
   /// isolate, so its `progress` arrives while `result` is pending, and
   /// `cancel()` stops it (`jj.cancelled`, nothing written). Later calls on
   /// this handle — [close] included — wait for it; other repos do not.
-  NetworkOperation<MutationResult> gitFetch(String remoteName) {
+  NetworkOperation<GitFetchResult> gitFetch({
+    FetchRemotes remotes = const DefaultFetchRemotes(),
+    FetchRefs refs = const DefaultFetchRefs(),
+  }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
-    return _worker.gitFetch(_handleId, remoteName);
+    return _worker.gitFetch(_handleId, remotes: remotes, refs: refs);
   }
 
   /// Asks [remoteName] what it has now and diffs that against the head view,

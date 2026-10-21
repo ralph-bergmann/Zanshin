@@ -13,6 +13,7 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/envelope_zanshin.ffi_generated.dart' as fbs;
+import 'package:zanshin_core/src/ffi/fetch.dart';
 import 'package:zanshin_core/src/ffi/mutate.dart';
 import 'package:zanshin_core/src/ffi/warning.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
@@ -281,11 +282,11 @@ void main() {
       );
     });
 
-    test('zanshinGitFetch_rejects_interior_nul_in_remoteName', () {
-      expect(
-        () => zanshinGitFetch(0, 'origin${String.fromCharCode(0)}x'),
-        throwsArgumentError,
-      );
+    test('zanshinGitFetch_rejects_interior_nul_in_every_pattern', () {
+      final nul = 'x${String.fromCharCode(0)}y';
+      expect(() => zanshinGitFetch(0, remotes: NamedFetchRemotes([nul])), throwsArgumentError);
+      expect(() => zanshinGitFetch(0, refs: PatternFetchRefs(branches: [nul])), throwsArgumentError);
+      expect(() => zanshinGitFetch(0, refs: PatternFetchRefs(tags: [nul])), throwsArgumentError);
     });
 
     test('zanshinRestore_rejects_interior_nul_in_from', () {

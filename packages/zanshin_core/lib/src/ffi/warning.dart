@@ -213,6 +213,19 @@ abstract final class ZanshinWarningCode {
   /// with a diagnostic; it still renders (Story 9.51).
   static const templateDiagnostic = 'jj.template_diagnostic';
 
+  /// `gitFetch` named remotes (`NamedFetchRemotes`, `git.fetch`, or the
+  /// implicit `origin`) that match no configured remote ("No matching remotes
+  /// for names: …"); `gitFetchRemotes` warns it as the fetch does (Story 9.30).
+  static const fetchRemotesUnmatched = 'jj.fetch_remotes_unmatched';
+
+  /// A fetch refspec of a remote's Git config that `gitFetch` ignores; the
+  /// fetch goes on without it (Story 9.30).
+  static const fetchRefspecIgnored = 'jj.fetch_refspec_ignored';
+
+  /// `gitFetch`'s exact `branches` names match no branch on any fetched remote
+  /// (Story 9.30).
+  static const fetchBranchesUnmatched = 'jj.fetch_branches_unmatched';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -271,6 +284,9 @@ abstract final class ZanshinWarningCode {
     pushSigningSkippedImmutable,
     cloneBranchesUnmatched,
     templateDiagnostic,
+    fetchRemotesUnmatched,
+    fetchRefspecIgnored,
+    fetchBranchesUnmatched,
     loginShellUnresolved,
   ];
 }

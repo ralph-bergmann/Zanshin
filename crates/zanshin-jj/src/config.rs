@@ -1408,8 +1408,10 @@ pub(crate) fn remote_auto_track_bookmarks_for_new_bookmarks(
 }
 
 /// jj-lib's `RemoteSettings::table_from_settings` read off the stack directly, in the stack's
-/// key order: one `(remote, settings)` per `remotes.<name>` entry.
-fn every_remote_settings(
+/// key order: one `(remote, settings)` per `remotes.<name>` entry. `pub(crate)` since Story 9.30,
+/// whose fetch reads every entry right after its transaction starts, as the CLI's
+/// `remote_settings()` does.
+pub(crate) fn every_remote_settings(
     config: &StackedConfig,
 ) -> Result<Vec<(jj_lib::ref_name::RemoteNameBuf, jj_lib::settings::RemoteSettings)>, ConfigError> {
     let names: Vec<String> = config.table_keys("remotes").map(str::to_owned).collect();
@@ -1603,14 +1605,67 @@ pub(crate) fn revsets_short_prefixes(config: &StackedConfig) -> Result<String, C
 ///
 /// - [`ConfigError::Load`] — the value is neither a list of strings nor a string.
 pub(crate) fn git_push_remotes(config: &StackedConfig) -> Result<Option<Vec<String>>, ConfigError> {
-    if let Ok(list) = config.get::<Vec<String>>("git.push") {
+    remote_name_patterns(config, "git.push")
+}
+
+/// Reads the effective `git.fetch` (Story 9.30) the way the CLI's `get_default_fetch_remotes`
+/// does (`cli/src/commands/git/fetch.rs:267-290` @ v0.46.0): a list of name patterns, else one
+/// pattern string, else `None` (the key is unset; the CLI then falls back to the single remote,
+/// then `origin`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is neither a list of strings nor a string.
+pub(crate) fn git_fetch_remotes(config: &StackedConfig) -> Result<Option<Vec<String>>, ConfigError> {
+    remote_name_patterns(config, "git.fetch")
+}
+
+/// `settings.get::<Vec<String>>(key)`, else `get_string(key).optional()` — the shared read of
+/// `git.push` and `git.fetch`.
+fn remote_name_patterns(config: &StackedConfig, key: &'static str) -> Result<Option<Vec<String>>, ConfigError> {
+    if let Ok(list) = config.get::<Vec<String>>(key) {
         return Ok(Some(list));
     }
-    match config.get::<String>("git.push") {
+    match config.get::<String>(key) {
         Ok(text) => Ok(Some(vec![text])),
         Err(jj_lib::config::ConfigGetError::NotFound { .. }) => Ok(None),
         Err(e) => Err(value_error(&e)),
     }
+}
+
+/// Which per-remote fetch setting [`remote_fetch_expression`] reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FetchField {
+    /// `remotes.<name>.fetch-bookmarks`.
+    Bookmarks,
+    /// `remotes.<name>.fetch-tags`.
+    Tags,
+}
+
+/// The CLI's `parse_remote_fetch_bookmarks` / `parse_remote_fetch_tags`
+/// (`cli/src/revset_util.rs:478-502` @ v0.46.0) over [`remote_settings`] (Story 9.30): `remote`'s
+/// `fetch-bookmarks` or `fetch-tags` parsed as a string expression, `None` when it is unset.
+///
+/// Returns a `jj_lib` type, which is why it is `pub(crate)` (FR-JJ-16).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — a `remotes.<name>` entry is not a table of the known string keys, or
+///   the value does not parse (the CLI's ``Invalid `remotes.<remote>.fetch-bookmarks`: …``).
+pub(crate) fn remote_fetch_expression(
+    config: &StackedConfig,
+    remote: &jj_lib::ref_name::RemoteName,
+    field: FetchField,
+) -> Result<Option<jj_lib::str_util::StringExpression>, ConfigError> {
+    let Some(settings) = remote_settings(config, remote.as_str())? else {
+        return Ok(None);
+    };
+    let (text, name) = match field {
+        FetchField::Bookmarks => (settings.fetch_bookmarks, "fetch-bookmarks"),
+        FetchField::Tags => (settings.fetch_tags, "fetch-tags"),
+    };
+    text.map(|text| parse_remote_string_expression(remote, &text, name))
+        .transpose()
 }
 
 /// The effective `remotes.<remote>` settings (Story 9.20) — jj-lib's
@@ -3776,6 +3831,71 @@ fetch-bookmarks = \"main\"
         assert_eq!(super::git_push_remotes(&text).unwrap(), Some(vec!["up".to_owned()]));
         let wrong = stack_with("git.push = 1\n");
         assert!(super::git_push_remotes(&wrong).is_err());
+    }
+
+    // ── Story 9.30 readers ───────────────────────────────────────────────────
+
+    #[test]
+    fn git_fetch_remotes_reads_a_list_a_string_or_nothing() {
+        let unset = load_with(&bare_env(), None).expect("the bare stack loads");
+        assert_eq!(super::git_fetch_remotes(&unset).unwrap(), None);
+        let list = stack_with("git.fetch = [\"up\", \"origin\"]\n");
+        assert_eq!(
+            super::git_fetch_remotes(&list).unwrap(),
+            Some(vec!["up".to_owned(), "origin".to_owned()])
+        );
+        let text = stack_with("git.fetch = \"up\"\n");
+        assert_eq!(super::git_fetch_remotes(&text).unwrap(), Some(vec!["up".to_owned()]));
+        let wrong = stack_with("git.fetch = 1\n");
+        assert!(super::git_fetch_remotes(&wrong).is_err());
+        assert_eq!(
+            super::git_push_remotes(&text).unwrap(),
+            None,
+            "git.fetch is not git.push"
+        );
+    }
+
+    #[test]
+    fn remote_fetch_expression_parses_the_named_field_or_reports_none() {
+        use super::{remote_fetch_expression, FetchField};
+        use jj_lib::ref_name::RemoteName;
+
+        let config = stack_with("[remotes.origin]\nfetch-bookmarks = \"main | feat*\"\nfetch-tags = \"v*\"\n");
+        let origin = RemoteName::new("origin");
+        let bookmarks = remote_fetch_expression(&config, origin, FetchField::Bookmarks)
+            .unwrap()
+            .expect("set")
+            .to_matcher();
+        assert!(bookmarks.is_match("main") && bookmarks.is_match("feat1") && !bookmarks.is_match("other"));
+        let tags = remote_fetch_expression(&config, origin, FetchField::Tags)
+            .unwrap()
+            .expect("set")
+            .to_matcher();
+        assert!(tags.is_match("v1") && !tags.is_match("x1"));
+        assert!(
+            remote_fetch_expression(&config, RemoteName::new("up"), FetchField::Tags)
+                .unwrap()
+                .is_none()
+        );
+        let only_tags = stack_with("[remotes.origin]\nfetch-tags = \"v*\"\n");
+        assert!(remote_fetch_expression(&only_tags, origin, FetchField::Bookmarks)
+            .unwrap()
+            .is_none());
+
+        let broken = stack_with("[remotes.origin]\nfetch-bookmarks = \"glob:(\"\n");
+        match remote_fetch_expression(&broken, origin, FetchField::Bookmarks) {
+            Err(super::ConfigError::Load { reason }) => {
+                assert!(
+                    reason.starts_with("Invalid `remotes.origin.fetch-bookmarks`: "),
+                    "{reason}"
+                );
+            }
+            other => panic!("expected a Load error, got {other:?}"),
+        }
+        assert!(
+            remote_fetch_expression(&broken, origin, FetchField::Tags).is_ok(),
+            "only the field asked for is parsed"
+        );
     }
 
     #[test]

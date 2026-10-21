@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 37;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 38;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 38] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 39] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -62,6 +62,7 @@ pub mod zanshin {
             RequestKind::GitPush,
             RequestKind::RepoClone,
             RequestKind::RepoInit,
+            RequestKind::GitFetch,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -131,9 +132,10 @@ pub mod zanshin {
             pub const GitPush: Self = Self(35);
             pub const RepoClone: Self = Self(36);
             pub const RepoInit: Self = Self(37);
+            pub const GitFetch: Self = Self(38);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 37;
+            pub const ENUM_MAX: u8 = 38;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -173,6 +175,7 @@ pub mod zanshin {
                 Self::GitPush,
                 Self::RepoClone,
                 Self::RepoInit,
+                Self::GitFetch,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -215,6 +218,7 @@ pub mod zanshin {
                     Self::GitPush => Some("GitPush"),
                     Self::RepoClone => Some("RepoClone"),
                     Self::RepoInit => Some("RepoInit"),
+                    Self::GitFetch => Some("GitFetch"),
                     _ => None,
                 }
             }
@@ -270,6 +274,198 @@ pub mod zanshin {
         }
 
         impl ::flatbuffers::SimpleToVerifyInSlice for RequestKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_FETCH_REMOTES_MODE: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_FETCH_REMOTES_MODE: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_FETCH_REMOTES_MODE: [FetchRemotesMode; 3] = [
+            FetchRemotesMode::Default,
+            FetchRemotesMode::Named,
+            FetchRemotesMode::All,
+        ];
+
+        /// The remotes of `zanshin_git_fetch` (Story 9.30) — the CLI's either/or of `--remote` and
+        /// `--all-remotes`. `Default = 0` (the absent-field default) = neither flag: `git.fetch`, else the
+        /// only remote, else `origin`. Member order IS the wire value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct FetchRemotesMode(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl FetchRemotesMode {
+            pub const Default: Self = Self(0);
+            pub const Named: Self = Self(1);
+            pub const All: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Default, Self::Named, Self::All];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Default => Some("Default"),
+                    Self::Named => Some("Named"),
+                    Self::All => Some("All"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for FetchRemotesMode {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for FetchRemotesMode {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for FetchRemotesMode {
+            type Output = FetchRemotesMode;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for FetchRemotesMode {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for FetchRemotesMode {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for FetchRemotesMode {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_FETCH_REFS_MODE: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_FETCH_REFS_MODE: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_FETCH_REFS_MODE: [FetchRefsMode; 3] =
+            [FetchRefsMode::Default, FetchRefsMode::Patterns, FetchRefsMode::Tracked];
+
+        /// The refs of `zanshin_git_fetch` (Story 9.30) — the CLI's either/or of `--branch`/`--tag` and
+        /// `--tracked`. `Default = 0` (the absent-field default) = none of the three:
+        /// `remotes.<name>.fetch-bookmarks`/`fetch-tags`, else the Git config's refspecs and every tag.
+        /// Member order IS the wire value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct FetchRefsMode(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl FetchRefsMode {
+            pub const Default: Self = Self(0);
+            pub const Patterns: Self = Self(1);
+            pub const Tracked: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Default, Self::Patterns, Self::Tracked];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Default => Some("Default"),
+                    Self::Patterns => Some("Patterns"),
+                    Self::Tracked => Some("Tracked"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for FetchRefsMode {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for FetchRefsMode {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for FetchRefsMode {
+            type Output = FetchRefsMode;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for FetchRefsMode {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for FetchRefsMode {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for FetchRefsMode {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -2528,13 +2724,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 43;
+        pub const ENUM_MAX_PAYLOAD: u8 = 45;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 44] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 46] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -2579,6 +2775,8 @@ pub mod zanshin {
             Payload::GitPushResult,
             Payload::GitPushRemotes,
             Payload::RemoteChanges,
+            Payload::GitFetchResult,
+            Payload::GitFetchRemotes,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -2630,9 +2828,11 @@ pub mod zanshin {
             pub const GitPushResult: Self = Self(41);
             pub const GitPushRemotes: Self = Self(42);
             pub const RemoteChanges: Self = Self(43);
+            pub const GitFetchResult: Self = Self(44);
+            pub const GitFetchRemotes: Self = Self(45);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 43;
+            pub const ENUM_MAX: u8 = 45;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -2678,6 +2878,8 @@ pub mod zanshin {
                 Self::GitPushResult,
                 Self::GitPushRemotes,
                 Self::RemoteChanges,
+                Self::GitFetchResult,
+                Self::GitFetchRemotes,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -2726,6 +2928,8 @@ pub mod zanshin {
                     Self::GitPushResult => Some("GitPushResult"),
                     Self::GitPushRemotes => Some("GitPushRemotes"),
                     Self::RemoteChanges => Some("RemoteChanges"),
+                    Self::GitFetchResult => Some("GitFetchResult"),
+                    Self::GitFetchRemotes => Some("GitFetchRemotes"),
                     _ => None,
                 }
             }
@@ -4854,6 +5058,268 @@ pub mod zanshin {
                 ds.field("named", &self.named());
                 ds.field("dry_run", &self.dry_run());
                 ds.field("options", &self.options());
+                ds.field("cancel_token", &self.cancel_token());
+                ds.finish()
+            }
+        }
+        pub enum GitFetchRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_git_fetch` (Story 9.30) — the CLI's `jj git fetch`, passed through
+        /// (FR-JJ-17). Names are PATTERNS as in the CLI (a bare word is a glob).
+        ///
+        ///   remotes_mode       which remotes; `Named` reads `remotes` (the `--remote` patterns, their
+        ///                      union), the other two ignore it
+        ///   refs_mode          which refs per remote; `Patterns` reads `branches` / `tags` (`-b` / `-t`;
+        ///                      an absent or empty list fetches none of that kind), the other two ignore
+        ///                      them
+        ///   cancel_token       Story 9.52: a token from `zanshin_network_token` that
+        ///                      `zanshin_network_cancel` cancels (`jj.cancelled`); 0 = not cancellable
+        pub struct GitFetchRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitFetchRequest<'a> {
+            type Inner = GitFetchRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitFetchRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REMOTES_MODE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REMOTES: ::flatbuffers::VOffsetT = 8;
+            pub const VT_REFS_MODE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_BRANCHES: ::flatbuffers::VOffsetT = 12;
+            pub const VT_TAGS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_CANCEL_TOKEN: ::flatbuffers::VOffsetT = 16;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitFetchRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitFetchRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitFetchRequest<'bldr>> {
+                let mut builder = GitFetchRequestBuilder::new(_fbb);
+                builder.add_cancel_token(args.cancel_token);
+                if let Some(x) = args.tags {
+                    builder.add_tags(x);
+                }
+                if let Some(x) = args.branches {
+                    builder.add_branches(x);
+                }
+                if let Some(x) = args.remotes {
+                    builder.add_remotes(x);
+                }
+                builder.add_refs_mode(args.refs_mode);
+                builder.add_remotes_mode(args.remotes_mode);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(GitFetchRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn remotes_mode(&self) -> FetchRemotesMode {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<FetchRemotesMode>(GitFetchRequest::VT_REMOTES_MODE, Some(FetchRemotesMode::Default))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn remotes(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitFetchRequest::VT_REMOTES, None)
+                }
+            }
+            #[inline]
+            pub fn refs_mode(&self) -> FetchRefsMode {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<FetchRefsMode>(GitFetchRequest::VT_REFS_MODE, Some(FetchRefsMode::Default))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn branches(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitFetchRequest::VT_BRANCHES, None)
+                }
+            }
+            #[inline]
+            pub fn tags(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitFetchRequest::VT_TAGS, None)
+                }
+            }
+            #[inline]
+            pub fn cancel_token(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(GitFetchRequest::VT_CANCEL_TOKEN, Some(0)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitFetchRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<FetchRemotesMode>("remotes_mode", Self::VT_REMOTES_MODE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("remotes", Self::VT_REMOTES, false)?
+     .visit_field::<FetchRefsMode>("refs_mode", Self::VT_REFS_MODE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("branches", Self::VT_BRANCHES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("tags", Self::VT_TAGS, false)?
+     .visit_field::<u64>("cancel_token", Self::VT_CANCEL_TOKEN, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct GitFetchRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub remotes_mode: FetchRemotesMode,
+            pub remotes:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub refs_mode: FetchRefsMode,
+            pub branches:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub tags:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub cancel_token: u64,
+        }
+        impl<'a> Default for GitFetchRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitFetchRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    remotes_mode: FetchRemotesMode::Default,
+                    remotes: None,
+                    refs_mode: FetchRefsMode::Default,
+                    branches: None,
+                    tags: None,
+                    cancel_token: 0,
+                }
+            }
+        }
+
+        pub struct GitFetchRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitFetchRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(GitFetchRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_remotes_mode(&mut self, remotes_mode: FetchRemotesMode) {
+                self.fbb_.push_slot::<FetchRemotesMode>(
+                    GitFetchRequest::VT_REMOTES_MODE,
+                    remotes_mode,
+                    FetchRemotesMode::Default,
+                );
+            }
+            #[inline]
+            pub fn add_remotes(
+                &mut self,
+                remotes: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitFetchRequest::VT_REMOTES, remotes);
+            }
+            #[inline]
+            pub fn add_refs_mode(&mut self, refs_mode: FetchRefsMode) {
+                self.fbb_
+                    .push_slot::<FetchRefsMode>(GitFetchRequest::VT_REFS_MODE, refs_mode, FetchRefsMode::Default);
+            }
+            #[inline]
+            pub fn add_branches(
+                &mut self,
+                branches: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitFetchRequest::VT_BRANCHES, branches);
+            }
+            #[inline]
+            pub fn add_tags(
+                &mut self,
+                tags: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitFetchRequest::VT_TAGS, tags);
+            }
+            #[inline]
+            pub fn add_cancel_token(&mut self, cancel_token: u64) {
+                self.fbb_
+                    .push_slot::<u64>(GitFetchRequest::VT_CANCEL_TOKEN, cancel_token, 0);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitFetchRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitFetchRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitFetchRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitFetchRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitFetchRequest");
+                ds.field("kind", &self.kind());
+                ds.field("remotes_mode", &self.remotes_mode());
+                ds.field("remotes", &self.remotes());
+                ds.field("refs_mode", &self.refs_mode());
+                ds.field("branches", &self.branches());
+                ds.field("tags", &self.tags());
                 ds.field("cancel_token", &self.cancel_token());
                 ds.finish()
             }
@@ -13116,6 +13582,321 @@ pub mod zanshin {
         impl ::core::fmt::Debug for GitPushRemotes<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("GitPushRemotes");
+                ds.field("names", &self.names());
+                ds.finish()
+            }
+        }
+        pub enum GitFetchResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_git_fetch`'s answer (Story 9.30): the shared mutation contract and the fetch's own
+        /// facts.
+        ///
+        ///   mutation           the operation the fetch wrote (a no-change fetch writes one too)
+        ///   remotes            the remotes fetched from, in remote-name order
+        ///   hints              the CLI's hints, verbatim: "Fetching from the only existing remote: <name>"
+        ///   failed_ref_names   the Git refs the import could not read (lossy UTF-8, jj-lib's order) —
+        ///                      what `jj.git_import_failed` lists
+        pub struct GitFetchResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitFetchResult<'a> {
+            type Inner = GitFetchResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitFetchResult<'a> {
+            pub const VT_MUTATION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REMOTES: ::flatbuffers::VOffsetT = 6;
+            pub const VT_HINTS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_FAILED_REF_NAMES: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitFetchResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitFetchResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitFetchResult<'bldr>> {
+                let mut builder = GitFetchResultBuilder::new(_fbb);
+                if let Some(x) = args.failed_ref_names {
+                    builder.add_failed_ref_names(x);
+                }
+                if let Some(x) = args.hints {
+                    builder.add_hints(x);
+                }
+                if let Some(x) = args.remotes {
+                    builder.add_remotes(x);
+                }
+                if let Some(x) = args.mutation {
+                    builder.add_mutation(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn mutation(&self) -> Option<MutationResult<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<MutationResult>>(GitFetchResult::VT_MUTATION, None)
+                }
+            }
+            #[inline]
+            pub fn remotes(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitFetchResult::VT_REMOTES, None)
+                }
+            }
+            #[inline]
+            pub fn hints(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitFetchResult::VT_HINTS, None)
+                }
+            }
+            #[inline]
+            pub fn failed_ref_names(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitFetchResult::VT_FAILED_REF_NAMES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitFetchResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<MutationResult>>("mutation", Self::VT_MUTATION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("remotes", Self::VT_REMOTES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("hints", Self::VT_HINTS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("failed_ref_names", Self::VT_FAILED_REF_NAMES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct GitFetchResultArgs<'a> {
+            pub mutation: Option<::flatbuffers::WIPOffset<MutationResult<'a>>>,
+            pub remotes:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub hints:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub failed_ref_names:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for GitFetchResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitFetchResultArgs {
+                    mutation: None,
+                    remotes: None,
+                    hints: None,
+                    failed_ref_names: None,
+                }
+            }
+        }
+
+        pub struct GitFetchResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitFetchResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_mutation(&mut self, mutation: ::flatbuffers::WIPOffset<MutationResult<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<MutationResult>>(
+                    GitFetchResult::VT_MUTATION,
+                    mutation,
+                );
+            }
+            #[inline]
+            pub fn add_remotes(
+                &mut self,
+                remotes: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitFetchResult::VT_REMOTES, remotes);
+            }
+            #[inline]
+            pub fn add_hints(
+                &mut self,
+                hints: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitFetchResult::VT_HINTS, hints);
+            }
+            #[inline]
+            pub fn add_failed_ref_names(
+                &mut self,
+                failed_ref_names: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    GitFetchResult::VT_FAILED_REF_NAMES,
+                    failed_ref_names,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitFetchResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitFetchResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitFetchResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitFetchResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitFetchResult");
+                ds.field("mutation", &self.mutation());
+                ds.field("remotes", &self.remotes());
+                ds.field("hints", &self.hints());
+                ds.field("failed_ref_names", &self.failed_ref_names());
+                ds.finish()
+            }
+        }
+        pub enum GitFetchRemotesOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_git_fetch_remotes`' answer (Story 9.30): the remotes `jj git fetch` without
+        /// `--remote` would fetch from, in remote-name order — `git.fetch` (a name, a list or a
+        /// pattern), else the single remote, else `origin`, each only when it exists. Empty when none
+        /// matches (the Fetch button's enable rule) and on a non-Git backend.
+        pub struct GitFetchRemotes<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitFetchRemotes<'a> {
+            type Inner = GitFetchRemotes<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitFetchRemotes<'a> {
+            pub const VT_NAMES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitFetchRemotes { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitFetchRemotesArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitFetchRemotes<'bldr>> {
+                let mut builder = GitFetchRemotesBuilder::new(_fbb);
+                if let Some(x) = args.names {
+                    builder.add_names(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn names(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitFetchRemotes::VT_NAMES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitFetchRemotes<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("names", Self::VT_NAMES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct GitFetchRemotesArgs<'a> {
+            pub names:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for GitFetchRemotesArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitFetchRemotesArgs { names: None }
+            }
+        }
+
+        pub struct GitFetchRemotesBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitFetchRemotesBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_names(
+                &mut self,
+                names: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitFetchRemotes::VT_NAMES, names);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitFetchRemotesBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitFetchRemotesBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitFetchRemotes<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitFetchRemotes<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitFetchRemotes");
                 ds.field("names", &self.names());
                 ds.finish()
             }
@@ -25902,6 +26683,36 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_git_fetch_result(&self) -> Option<GitFetchResult<'a>> {
+                if self.data_type() == Payload::GitFetchResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { GitFetchResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_git_fetch_remotes(&self) -> Option<GitFetchRemotes<'a>> {
+                if self.data_type() == Payload::GitFetchRemotes {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { GitFetchRemotes::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -25958,6 +26769,8 @@ pub mod zanshin {
           Payload::GitPushResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitPushResult>>("Payload::GitPushResult", pos),
           Payload::GitPushRemotes => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitPushRemotes>>("Payload::GitPushRemotes", pos),
           Payload::RemoteChanges => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<RemoteChanges>>("Payload::RemoteChanges", pos),
+          Payload::GitFetchResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitFetchResult>>("Payload::GitFetchResult", pos),
+          Payload::GitFetchRemotes => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitFetchRemotes>>("Payload::GitFetchRemotes", pos),
           _ => Ok(()),
         }
      })?
@@ -26350,6 +27163,20 @@ pub mod zanshin {
                     }
                     Payload::RemoteChanges => {
                         if let Some(x) = self.data_as_remote_changes() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::GitFetchResult => {
+                        if let Some(x) = self.data_as_git_fetch_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::GitFetchRemotes => {
+                        if let Some(x) = self.data_as_git_fetch_remotes() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

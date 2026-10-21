@@ -23,6 +23,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/config.dart';
+import 'package:zanshin_core/src/ffi/fetch.dart' show NamedFetchRemotes;
 import 'package:zanshin_core/src/ffi/push.dart';
 import 'package:zanshin_core/src/worker/events.dart';
 import 'package:zanshin_core/src/worker/handle.dart';
@@ -104,7 +105,7 @@ void main() {
       await slowGit('a', slowAfterGit);
       final String before = await headOp(repo);
 
-      final NetworkOperation<Object?> fetch = repo.gitFetch('origin');
+      final NetworkOperation<Object?> fetch = repo.gitFetch();
       var resultDone = false;
       unawaited(fetch.result.then((_) => resultDone = true, onError: (Object _) => resultDone = true));
       final ProgressEvent first = await fetch.progress.first.timeout(const Duration(seconds: 20));
@@ -126,7 +127,7 @@ void main() {
       await slowGit('a', slowAfterGit);
 
       final order = <String>[];
-      final NetworkOperation<Object?> fetch = a.gitFetch('origin');
+      final NetworkOperation<Object?> fetch = a.gitFetch();
       final Future<void> fetched = fetch.result.then(
         (_) => order.add('fetch'),
         onError: (Object _) => order.add('fetch'),
@@ -145,10 +146,10 @@ void main() {
     test('closing the worker during a fetch cancels it and a queued one, and acks within its window', () async {
       final RepoHandle repo = await repoWithOrigin('a');
       await slowGit('a', slowAfterGit);
-      final NetworkOperation<Object?> fetch = repo.gitFetch('origin');
+      final NetworkOperation<Object?> fetch = repo.gitFetch();
       final Future<Object?> outcome = fetch.result.then<Object?>((value) => value, onError: (Object e) => e);
       await fetch.progress.first.timeout(const Duration(seconds: 20));
-      final NetworkOperation<Object?> queued = repo.gitFetch('origin');
+      final NetworkOperation<Object?> queued = repo.gitFetch();
       final Future<Object?> queuedOutcome = queued.result.then<Object?>((value) => value, onError: (Object e) => e);
       final Future<void> closed = repo.close();
 
@@ -169,8 +170,8 @@ void main() {
     test('a fetch queued behind another on the same handle takes none of its events', () async {
       final RepoHandle repo = await repoWithOrigin('a');
       await slowGit('a', slowAfterGit);
-      final NetworkOperation<Object?> first = repo.gitFetch('origin');
-      final NetworkOperation<Object?> second = repo.gitFetch('origin');
+      final NetworkOperation<Object?> first = repo.gitFetch();
+      final NetworkOperation<Object?> second = repo.gitFetch();
       var firstDone = false;
       final Future<void> firstSettled = first.result.then(
         (_) => firstDone = true,
@@ -194,9 +195,9 @@ void main() {
     test('a fetch queued behind another and cancelled starts cancelled', () async {
       final RepoHandle repo = await repoWithOrigin('a');
       await slowGit('a', slowAfterGit);
-      final NetworkOperation<Object?> first = repo.gitFetch('origin');
+      final NetworkOperation<Object?> first = repo.gitFetch();
       await first.progress.first.timeout(const Duration(seconds: 20));
-      final NetworkOperation<Object?> queued = repo.gitFetch('origin');
+      final NetworkOperation<Object?> queued = repo.gitFetch();
       await queued.cancel();
       await first.cancel();
       await expectLater(first.result, ffiError('jj.cancelled'));
@@ -206,7 +207,7 @@ void main() {
     test('a remote-change poll queued behind a fetch and cancelled starts cancelled (Story 9.24)', () async {
       final RepoHandle repo = await repoWithOrigin('a');
       await slowGit('a', slowAfterGit);
-      final NetworkOperation<Object?> fetch = repo.gitFetch('origin');
+      final NetworkOperation<Object?> fetch = repo.gitFetch();
       await fetch.progress.first.timeout(const Duration(seconds: 20));
       final NetworkOperation<Object?> queued = repo.remoteChanges('origin');
       await queued.cancel();
@@ -235,7 +236,10 @@ void main() {
     test('a network call whose helper throws answers internal.dispatch_error and frees its handle', () async {
       final RepoHandle repo = await worker.initRepo('${tempDir.path}/plain', backend: 1, noColocate: true);
       // The interior NUL is refused inside the helper isolate (the FFI adapter's guard).
-      await expectLater(repo.gitFetch('a\u0000b').result, ffiError('internal.dispatch_error'));
+      await expectLater(
+        repo.gitFetch(remotes: const NamedFetchRemotes(['a\u0000b'])).result,
+        ffiError('internal.dispatch_error'),
+      );
       await repo.status();
     });
 
@@ -246,7 +250,7 @@ void main() {
       await repo.bookmarkCreate(const ['main']);
       await slowGit('a', slowAfterGit);
 
-      final NetworkOperation<Object?> fetch = repo.gitFetch('origin');
+      final NetworkOperation<Object?> fetch = repo.gitFetch();
       await fetch.progress.first.timeout(const Duration(seconds: 20));
       final NetworkOperation<GitPushResult> push = repo.gitPush(bookmarks: const ['main']);
       await push.cancel();
@@ -311,8 +315,8 @@ void main() {
 
     test('a cancel after the call completed, or after the worker closed, is a no-op', () async {
       final RepoHandle repo = await worker.initRepo('${tempDir.path}/plain', backend: 1, noColocate: true);
-      final NetworkOperation<Object?> fetch = repo.gitFetch('nonexistent');
-      await expectLater(fetch.result, ffiError('jj.remote_not_found'));
+      final NetworkOperation<Object?> fetch = repo.gitFetch(remotes: const NamedFetchRemotes(['nonexistent']));
+      await expectLater(fetch.result, ffiError('jj.invalid_input'));
       await fetch.cancel();
       await expectLater(fetch.progress.toList(), completion(isEmpty), reason: 'progress closed with the result');
 
@@ -320,10 +324,10 @@ void main() {
       await expectLater(push.result, ffiError('jj.invalid_input'));
       final RepoHandle other = await worker.initRepo('${tempDir.path}/other', backend: 1, noColocate: true);
       await other.close();
-      expect(() => other.gitFetch('origin'), throwsStateError, reason: 'the closed-handle guard stays synchronous');
+      expect(other.gitFetch, throwsStateError, reason: 'the closed-handle guard stays synchronous');
       await worker.close();
       await push.cancel();
-      await expectLater(repo.gitFetch('origin').result, throwsStateError, reason: 'a closed worker fails the result');
+      await expectLater(repo.gitFetch().result, throwsStateError, reason: 'a closed worker fails the result');
     });
   });
 }

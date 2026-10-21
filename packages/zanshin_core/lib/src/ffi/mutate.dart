@@ -113,25 +113,6 @@ Uint8List zanshinAbandon(int rawHandle, List<String> changeIds) => _withChangeId
 Uint8List zanshinUndo(int rawHandle, {bool allowCrossWorkspace = false}) =>
     readToken(zanshin_undo(rawHandle, allowCrossWorkspace));
 
-/// Call `zanshin_git_fetch` with the raw `u64` handle, [remoteName] and
-/// [cancelToken], and return the FlatBuffers `Envelope` bytes.
-///
-/// Progress rides the same process-global event sink `WatcherEvent` already
-/// uses (Story 3.6), tagged with the handle's `session_id` — register a
-/// `zanshin_events_register` sink and demux by `session_id` to observe it.
-/// [cancelToken] (Story 9.52) is `0` (not cancellable) or a token from
-/// `zanshinNetworkToken`; `zanshinNetworkCancel` cancels the fetch
-/// (`jj.cancelled`).
-Uint8List zanshinGitFetch(int rawHandle, String remoteName, {int cancelToken = 0}) {
-  rejectInteriorNul(remoteName, 'remoteName');
-  final ffi.Pointer<Utf8> p = remoteName.toNativeUtf8();
-  try {
-    return readToken(zanshin_git_fetch(rawHandle, p.cast(), cancelToken));
-  } finally {
-    calloc.free(p); // outer: free the C string we allocated
-  }
-}
-
 /// Call `zanshin_restore` with the raw `u64` handle and a `RestoreRequest`
 /// request buffer, and return the FlatBuffers `Envelope` bytes.
 ///
@@ -218,7 +199,8 @@ final class MutationResult {
 
   /// The change ids `abandon`'s caller passed in, echoed verbatim. Always empty
   /// for every other mutation EXCEPT `git_fetch` and `squash`, which have no
-  /// second result struct and so report jj-lib's OWN abandonments here: for
+  /// second place for them (a fetch's `GitFetchResult` nests this result) and
+  /// so report jj-lib's OWN abandonments here: for
   /// `git_fetch` the commits the import dropped because they became unreachable
   /// in git (what `git.abandon-unreachable-commits` governs) — empty when that
   /// key is off, or when the fetch made nothing unreachable; for `squash` the

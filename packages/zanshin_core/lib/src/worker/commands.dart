@@ -2,6 +2,7 @@
 
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 import '../ffi/config.dart' show ConfigScope, ConfigTarget;
+import '../ffi/fetch.dart' show FetchRefs, FetchRemotes;
 import '../ffi/repo.dart' show ObjectHash;
 import '../ffi/workspace.dart' show SparseInheritance;
 import '../graph_layout/layout_request.dart' show LaneOrder, LayoutMode;
@@ -173,6 +174,20 @@ final class RemotesCommand extends WorkerCommand implements HandleScopedCommand 
 /// `BufferResult` carrying the FlatBuffers `Envelope<GitPushRemotes>` bytes.
 final class GitPushRemotesCommand extends WorkerCommand implements HandleScopedCommand {
   const GitPushRemotesCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+}
+
+/// Read the remotes `jj git fetch` without `--remote` would fetch from, for
+/// the repo identified by [handleId] (Story 9.30).
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshin_git_fetch_remotes(handle)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<GitFetchRemotes>` bytes.
+final class GitFetchRemotesCommand extends WorkerCommand implements HandleScopedCommand {
+  const GitFetchRemotesCommand({required super.commandId, required this.handleId});
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
   @override
@@ -487,29 +502,33 @@ final class UndoCommand extends WorkerCommand implements HandleScopedCommand {
   final bool allowCrossWorkspace;
 }
 
-/// Fetch all branches and tags from [remoteName] and import them, in the repo
-/// identified by [handleId] (Story 6.5). Never moves `@`.
+/// Fetch the [remotes] and [refs] selected, and import them, in the repo
+/// identified by [handleId] — the CLI's `jj git fetch` (Stories 6.5, 9.30).
 ///
 /// The worker looks up the raw handle in its Model-A table (read — never
-/// remove), runs `zanshinGitFetch(raw, remoteName, cancelToken: …)` on a helper
-/// isolate (Story 9.52) while later commands for the same handle wait, and
-/// replies with a `BufferResult` carrying the FlatBuffers
-/// `Envelope<MutationResult>` bytes.
+/// remove), runs `zanshinGitFetch(raw, remotes: …, refs: …, cancelToken: …)`
+/// on a helper isolate (Story 9.52) while later commands for the same handle
+/// wait, and replies with a `BufferResult` carrying the FlatBuffers
+/// `Envelope<GitFetchResult>` bytes.
 /// Progress rides the same process-global event sink `WatcherEvent` already
 /// uses, tagged with the handle's `session_id`.
 final class GitFetchCommand extends WorkerCommand implements HandleScopedCommand {
   const GitFetchCommand({
     required super.commandId,
     required this.handleId,
-    required this.remoteName,
+    required this.remotes,
+    required this.refs,
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
   @override
   final int handleId;
 
-  /// Name of the configured git remote to fetch from.
-  final String remoteName;
+  /// Which remotes to fetch from.
+  final FetchRemotes remotes;
+
+  /// Which refs to fetch from each remote.
+  final FetchRefs refs;
 }
 
 /// Ask [remoteName] what it has now and diff that against the head view,

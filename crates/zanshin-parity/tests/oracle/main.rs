@@ -208,6 +208,15 @@ parity!(
     bookmark_create_auto_track_existing,
     bookmark_create_auto_track_broken,
     bookmark_create_auto_track_union,
+    fetch_default,
+    fetch_only_remote,
+    fetch_no_remote,
+    fetch_unmatched_remote,
+    fetch_all_remotes,
+    fetch_branch_pattern,
+    fetch_tracked,
+    fetch_git_fetch_config,
+    fetch_remote_fetch_bookmarks,
 );
 
 /// Every scenario id the table and the creation list define.
@@ -222,7 +231,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 172);
+    assert_eq!(SCENARIO_IDS.len(), 181);
 }
 
 #[test]

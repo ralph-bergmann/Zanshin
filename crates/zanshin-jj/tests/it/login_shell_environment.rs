@@ -127,7 +127,7 @@ fn the_adopted_login_shell_environment_reaches_the_config_stack_and_git() {
     );
     // …its PATH picks the `git` a fetch and a clone run, with the shell's variables minus the
     // locale jj-lib pins. Both fail (the fake git exits 1); only the environment matters.
-    let _ = repo.git_fetch("origin", &|_: ProgressEvent| {}, None);
+    let _ = repo.git_fetch(&zanshin_jj::GitFetchArgs::default(), &|_: ProgressEvent| {}, None);
     git_saw_the_shell_environment(&git_env, "git_fetch");
     fs::write(&git_env, "").expect("truncate the git log");
     let clone = tmp.path().join("clone");
