@@ -90,10 +90,6 @@
 #
 #   Backend aus Epic 9. Jede dieser Stories kann sofort starten, wenn nichts anderes dabeisteht.
 #   Sortiert danach, welche UI-Story sie zuerst braucht:
-#     (9.23, 9.15, 9.49, 9.48, 9.29 und 9.20 sind seit dem Story-Loop vom 2026-10-19 fertig.)
-#     (9.53, 9.52 und 9.51 sind seit dem Story-Loop vom 2026-10-20 fertig.)
-#     9.54   Bearbeiteter Editor-Text für squash/split (ohne erneute Trailer), "ahead" nur für Push-Ziele, config() mit
-#            allen jj-cli-Defaults, zweite Start-Umgebung bei workspace add. Muss vor 10.25 fertig sein.
 #     9.24   Abfrage entfernter Änderungen. Für 11.8.
 #     9.30   fetch wie die CLI. Für 11.8. Am besten zusammen mit 9.40, weil beide den Fetch anfassen.
 #     9.31   Drop-Aktionen abfragen. Für 10.10.
