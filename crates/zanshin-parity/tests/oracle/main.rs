@@ -56,6 +56,11 @@ parity!(
     snapshot_modified_file,
     snapshot_then_describe,
     describe_immutable,
+    new_unresolvable_immutable,
+    bookmark_create_unresolvable_immutable,
+    undo_unresolvable_immutable,
+    new_unresolvable_trunk,
+    bookmark_create_unresolvable_trunk,
     describe_root,
     describe_no_change,
     describe_commit_trailers,
@@ -232,7 +237,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 182);
+    assert_eq!(SCENARIO_IDS.len(), 187);
 }
 
 #[test]

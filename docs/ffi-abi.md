@@ -66,12 +66,30 @@ Envelope {
   warnings:     [Warning]?     // the call's CLI warnings (Story 9.32), ok OR error
 }
 
+FfiError { code: string; context: string?; hints: [string]?; }
 Warning { code: string; message: string; }
 ```
 
 **Success:** `ok = true`, `data` holds the concrete payload variant.  
 **Error:** `ok = false`, `error.code` holds the dotted AR-P-4 code, `error.context`
-holds human-readable detail. See `docs/rust-error-codes.md` for the full registry.
+holds human-readable detail, `error.hints` the CLI's hint lines. See
+`docs/rust-error-codes.md` for the full registry.
+
+### `FfiError.hints` — the CLI's hint lines for a refusal (Story 9.56)
+
+An error carries the jj CLI @ v0.46.0's `Hint:` lines for the same refusal in `hints`: verbatim
+(a line may itself hold newlines, exactly as the CLI's `add_hint` text — e.g. `file untrack`'s
+two-line hint is ONE entry), without the `Hint: ` heading, in the CLI's order. The vector is
+**absent** when the refusal has no hint — every reader treats that as an empty list — so a
+hint-less error, and `PANIC_FALLBACK_ENVELOPE`, keep their bytes. `context` never holds in-band
+`Hint:` text. The same `FfiError` table is a drop-action row's `refusal` (`ActionOutcome`), so a
+refused row carries the hints its verb's own call fails with. Warnings carry no hints (`Warning`
+stays code + message); the CLI's `Config error` footer ("For help, see …") is printed by its
+error printer, not a hint, and is not carried. Which codes carry hints, and which texts, is noted
+per code in `docs/rust-error-codes.md`. On the Dart side the thrown `ZanshinFfiException.hints`
+(`List<String>`, unmodifiable, `[]` when absent) and `ActionRefusal.hints` carry them; one helper
+decodes both. A hint the UI shows as part of a successful verb's result travels in its payload
+instead (e.g. `GitFetchResult.hints`, `GitPushResult.hints`).
 
 ### `warnings` — the CLI's `Warning:` blocks as coded facts (Story 9.32)
 
@@ -99,6 +117,10 @@ exposing them as `warnings`; a refused creation throws `ZanshinFfiException` exp
 as its `warnings` (e.g. `jj.clone_cleanup_failed`, which only an error envelope carries).
 On every error envelope — handle-scoped, handle-less or creation — Dart reads the warnings
 the same way: the thrown `ZanshinFfiException.warnings` (Story 9.35).
+Every verb that runs the pre-verb snapshot may warn `jj.trunk_alias_unresolved` right after the
+start-up environment's warnings (Story 9.56): a `trunk()` alias that parses but does not resolve
+at the head makes the call run with `trunk()` = `root()`, as the CLI's `load_from_workspace` —
+its immutable set, templates and every revset it parses, a graph walk's `builtin_log()` included.
 `zanshin_commit_contents` (Story 4.10) never carries the vector, on the ok or the error
 envelope: the op-pinned read loads no config and runs no snapshot, so it has nothing to warn
 about (Dart still returns a `WarnedList`, always empty).
@@ -1561,8 +1583,11 @@ tracked 9.40 divergence). The answer is `GitFetchResult`:
 a malformed one refuses `jj.config_error` even on a non-Git backend, and never refuses `Named` /
 `All`. An unparsable `Named` pattern is likewise refused (`jj.invalid_input`) before the backend
 check. A remote name jj cannot use (a Git remote named `git`) refuses `jj.invalid_input` with
-jj-lib's text and the CLI's ``Hint: Run `jj git remote rename` to give a different name.`` as the
-last line of `context`; a ref update Git rejects is `jj.invalid_input` "Failed to update refs: …".
+jj-lib's text as `context` and the CLI's ``Run `jj git remote rename` to give a different name.``
+in `FfiError.hints` (Story 9.56); a ref expression that cannot become refspecs (a positive
+intersection) refuses `jj.invalid_input` with the CLI's ``Specify patterns in `(positive | ...) &
+~(negative | ...)` form.`` hint — the remote-change poll refuses it alike; a ref update Git rejects
+is `jj.invalid_input` "Failed to update refs: …".
 Neither writes an operation, though on a multi-remote fetch the earlier remotes' Git
 remote-tracking refs are already updated in the backing Git repo.
 
@@ -1614,11 +1639,16 @@ as `zanshin_interdiff`'s. The absorb row's `T` is resolved like every location i
 takes a revset, which refuses an unknown symbol `jj.revset_resolution_error` instead).
 
 A row's `refusal` is the `FfiError` the verb's own wrapper returns, mapped through the same
-`map_mutate_err` — same code, same `context` (`jj.invalid_input`, `jj.change_not_found` for an id
-that does not resolve, `jj.immutable`, `jj.config_error`). A jj-lib failure in any row fails the
-whole call `jj.jj_lib_error`. Dart: `RepoHandle.dropActions(source, locations)` → `DropActions`
-(sealed `DropSource`: `ChangeDropSource` / `SelectionDropSource` / `BookmarkDropSource`; a refusal
-is an `ActionRefusal(code, context)`), `RepoHandle.changeActions(changeId)` → `ChangeActions`.
+`map_mutate_err` — same code, same `context`, same `hints` (`jj.invalid_input`,
+`jj.change_not_found` for an id that does not resolve, `jj.immutable`, `jj.config_error`). Since
+Story 9.56 every verb that writes resolves the immutable set in its finish, as the CLI's
+`tx.finish` does, so an unresolvable `immutable_heads()` alias refuses the unguarded rows too —
+the merge `new`, `duplicate`, `revert`, the card's `new` and a fast-forward or backwards
+`bookmark move` read Refused `jj.config_error`; a move that changes nothing stays `NoOp`. A
+jj-lib failure in any row fails the whole call `jj.jj_lib_error`. Dart:
+`RepoHandle.dropActions(source, locations)` → `DropActions` (sealed `DropSource`:
+`ChangeDropSource` / `SelectionDropSource` / `BookmarkDropSource`; a refusal is an
+`ActionRefusal(code, context, hints)`), `RepoHandle.changeActions(changeId)` → `ChangeActions`.
 
 ## `GitPushResult` payload and `zanshin_git_push` (Story 9.20)
 

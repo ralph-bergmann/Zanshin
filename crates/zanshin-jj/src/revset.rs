@@ -635,6 +635,30 @@ pub(crate) fn immutable_expression(
         .ancestors())
 }
 
+/// The CLI's `revset_util::try_resolve_trunk_alias` (`cli/src/revset_util.rs:220-241` @ v0.46.0)
+/// as `load_from_workspace` consumes it (Story 9.56): the resolution error of the `trunk()`
+/// alias's definition against `repo`, or `None` when it resolves — or does not even parse (the CLI
+/// then leaves it to the commands that use it).
+pub(crate) fn trunk_resolution_error(
+    workspace: &Workspace,
+    parse_config: &RevsetConfig,
+    repo: &dyn jj_lib::repo::Repo,
+) -> Option<String> {
+    let (_, _, definition, _) = parse_config.aliases_map.get_function("trunk", 0)?;
+    let expression = parse_revset_in(
+        (workspace.workspace_root(), workspace.workspace_name()),
+        parse_config,
+        definition,
+        &[],
+        &mut RevsetDiagnostics::new(),
+    )
+    .ok()?;
+    match resolve_expression(repo, &expression) {
+        Err(RevsetError::ResolutionError { reason }) => Some(reason),
+        _ => None,
+    }
+}
+
 /// The `immutable_heads()` expression alone — the CLI's `immutable_heads_expression()`
 /// (`cli/src/cli_util.rs` @ v0.46.0), which [`immutable_expression`] widens to the immutable SET
 /// and `jj git push`'s commit checks use as it is (Story 9.20). Its diagnostics are recorded once

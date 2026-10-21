@@ -22,6 +22,7 @@ fn map_bookmarks_err(e: BookmarkError) -> FfiErrorObj {
         BookmarkError::Precondition(e) => map_precondition_err(e),
         BookmarkError::Backend(reason) => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },

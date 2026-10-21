@@ -390,7 +390,7 @@ fn abandon_empty_slice_returns_invalid_input() {
 
     assert!(matches!(
         result,
-        Err(MutateError::InvalidInput { reason }) if reason == "abandon requires at least one change id"
+        Err(MutateError::InvalidInput { reason, .. }) if reason == "abandon requires at least one change id"
     ));
 }
 

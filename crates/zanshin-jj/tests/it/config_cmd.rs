@@ -195,10 +195,17 @@ fn workspace_scope_and_the_editor_halves() {
         .unwrap();
     assert_eq!(rows[0].source, ConfigValueSource::Workspace);
     assert_eq!(config_get(Some(&root), "revsets.log").result.unwrap(), "root()");
-    assert!(matches!(
-        config_file_write(Some(&root), &root.join("x.toml"), "").result,
-        Err(ConfigCmdError::UnrecognizedFile { .. })
-    ));
+    let unrecognized = config_file_write(Some(&root), &root.join("x.toml"), "").result;
+    assert!(matches!(unrecognized, Err(ConfigCmdError::UnrecognizedFile { .. })));
+    // Story 9.56: the CLI's hint (`cli/src/config.rs:737-741` @ v0.46.0).
+    assert_eq!(
+        unrecognized.err().map(|e| e.hints()),
+        Some(vec![
+            "Valid config locations include user configs (`~/.config/jj/config.toml` or `conf.d/*.toml`), \
+             repo/workspace configs, or files loaded with the global flag `--config-file <PATH>`."
+                .to_owned()
+        ])
+    );
 
     // `--file` naming the workspace file the scope picked reaches the same file.
     let named = config_file_read(Some(&root), &ConfigTarget::File(read.path.clone()))

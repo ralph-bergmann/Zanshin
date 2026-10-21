@@ -24,11 +24,13 @@ fn map_status_err(e: StatusError) -> FfiErrorObj {
         StatusError::Precondition(e) => map_precondition_err(e),
         StatusError::NoWorkingCopy => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_NO_WORKING_COPY.to_owned(),
             context: None,
         },
         StatusError::Backend(reason) => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },

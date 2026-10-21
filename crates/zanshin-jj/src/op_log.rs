@@ -191,9 +191,10 @@ pub(crate) fn undo(
         Ok([parent]) => parent,
         Err(parents) if parents.is_empty() => return Err(MutateError::NothingToUndo),
         Err(_) => {
-            return Err(MutateError::InvalidInput {
-                reason: "cannot undo a merge operation".to_owned(),
-            })
+            return Err(MutateError::invalid_hinted(
+                "Cannot undo a merge operation",
+                "Consider using `jj op restore` instead",
+            ))
         }
     };
     let target_parent = through_undo(

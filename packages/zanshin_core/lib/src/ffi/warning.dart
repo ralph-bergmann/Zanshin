@@ -226,6 +226,11 @@ abstract final class ZanshinWarningCode {
   /// (Story 9.30).
   static const fetchBranchesUnmatched = 'jj.fetch_branches_unmatched';
 
+  /// The `trunk()` alias does not resolve at the start of the call (e.g. it
+  /// names a remote bookmark that does not exist yet); the call runs with
+  /// `trunk()` = `root()`, as the jj CLI does (Story 9.56).
+  static const trunkAliasUnresolved = 'jj.trunk_alias_unresolved';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -287,6 +292,7 @@ abstract final class ZanshinWarningCode {
     fetchRemotesUnmatched,
     fetchRefspecIgnored,
     fetchBranchesUnmatched,
+    trunkAliasUnresolved,
     loginShellUnresolved,
   ];
 }

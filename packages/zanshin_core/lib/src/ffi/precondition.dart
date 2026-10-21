@@ -176,10 +176,11 @@ Precondition? decodeEnvelopePreconditionInternal(Uint8List bytes) =>
 /// stands for — the ONE place an exception is built from an `FfiError`, which
 /// every decoder's `!env.ok` branch throws (Story 9.35).
 ///
-/// The code and context come from the envelope's `error` (`ffi.unknown` and
-/// `null` when it is absent); the report — the PARTIAL pre-verb snapshot report
-/// and the warnings — rides along exactly as on an ok envelope, `null` / empty
-/// when the envelope has none.
+/// The code, context and hints come from the envelope's `error` (`ffi.unknown`,
+/// `null` and `[]` when it is absent; absent `hints` read as `[]`, Story 9.56);
+/// the report — the PARTIAL pre-verb snapshot report and the warnings — rides
+/// along exactly as on an ok envelope, `null` / empty when the envelope has
+/// none.
 ZanshinFfiException decodeEnvelopeErrorInternal(fbs.Envelope env) {
   final fbs.FfiError? e = env.error;
   return ZanshinFfiException.withReport(
@@ -187,7 +188,20 @@ ZanshinFfiException decodeEnvelopeErrorInternal(fbs.Envelope env) {
     e?.context,
     precondition: decodePreconditionInternal(env.precondition),
     warnings: decodeEnvelopeWarningsInternal(env),
+    hints: decodeErrorHintsInternal(e),
   );
+}
+
+/// Decode an `FfiError`'s `hints` (Story 9.56): absent (or `error` itself
+/// absent) reads as `[]`; the list is unmodifiable and keeps the wire order
+/// (the CLI's order). Shared with the drop-action refusals, whose `refusal` is
+/// the same table.
+List<String> decodeErrorHintsInternal(fbs.FfiError? error) {
+  final List<String>? hints = error?.hints;
+  if (hints == null || hints.isEmpty) {
+    return const [];
+  }
+  return List.unmodifiable(hints);
 }
 
 /// Decode a `zanshin_snapshot` `Envelope` buffer into its [Precondition].

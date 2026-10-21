@@ -128,6 +128,9 @@ pub enum MutateError {
     InvalidInput {
         /// Human-readable reason the input was rejected.
         reason: String,
+        /// The CLI's hint lines for this refusal (Story 9.56) — they depend on the emitting site
+        /// (fetch, undo, squash, push), so they ride the variant. Empty for most refusals.
+        hints: Vec<String>,
     },
     /// The target is inside the repo's immutable set — `::(immutable_heads() | root())`,
     /// as the repo's EFFECTIVE config defines it — so jj refuses to rewrite it (CLI
@@ -148,6 +151,10 @@ pub enum MutateError {
     Immutable {
         /// Hex commit id of the first target found inside the immutable set.
         commit_id: String,
+        /// The CLI's hints (Story 9.56, `cli_util.rs:2049-2083` @ v0.46.0): "Could not modify
+        /// commit: <summary>", why immutable commits exist, where to read more, and how many
+        /// immutable commits the operation would rewrite. Empty for the root commit, as in the CLI.
+        hints: Vec<String>,
     },
     /// The repo's effective jj config could not be read, or its
     /// `revset-aliases."immutable_heads()"` does not parse or resolve — so the
@@ -159,9 +166,11 @@ pub enum MutateError {
     /// silent fall-back to the builtin immutable set: a config the user cannot see the
     /// effect of must not silently widen — or narrow — what a rewrite may touch.
     ///
-    /// The REWRITING verbs (`describe`/`edit`/`abandon`, …) raise it for the immutable set.
-    /// `new_change` raises it for a malformed `experimental-advance-branches` key (one
-    /// positional parent) and, with `-A`/`-B`, for an unresolvable `immutable_heads()` alias.
+    /// The REWRITING verbs (`describe`/`edit`/`abandon`, …) raise it for the immutable set, and —
+    /// since Story 9.56 — every verb that writes raises it from its finish, where the CLI's
+    /// `tx.finish` resolves the set for a transaction with changes ([`finish_verb`]).
+    /// `new_change` also raises it for a malformed `experimental-advance-branches` key (one
+    /// positional parent).
     #[error("config error: {reason}")]
     Config {
         /// Human-readable reason, naming the offending file or alias.
@@ -281,6 +290,9 @@ pub enum MutateError {
     BookmarkExists {
         /// The bookmark name that is already taken.
         name: String,
+        /// The CLI's hint (Story 9.56) — `bookmark create`'s "Use `jj bookmark set` to update
+        /// it." or `git push --named`'s "Use 'jj bookmark move' …"; it depends on the verb.
+        hints: Vec<String>,
     },
     /// [`crate::Repo::bookmark_create`] was called with a name whose LOCAL bookmark is
     /// absent but which still has at least one TRACKED remote bookmark (Story 9.8) — the
@@ -348,6 +360,8 @@ pub enum MutateError {
     PushRefRefused {
         /// The CLI's refusal, e.g. "Bookmark main is conflicted".
         message: String,
+        /// The CLI's hint for it, when it has one (Story 9.56) — the plan's `refusal.hint`.
+        hints: Vec<String>,
     },
     /// [`crate::Repo::git_push`] with an explicitly named ref that would push a commit that is not
     /// ready — no description, no author/committer, conflicts, private (Story 9.20, `push.rs:762-775`
@@ -357,6 +371,8 @@ pub enum MutateError {
     PushCommitRejected {
         /// The CLI's refusal.
         message: String,
+        /// The CLI's hints for it (Story 9.56) — the plan's `rejection.hints`.
+        hints: Vec<String>,
     },
     /// The pre-verb snapshot failed (Story 9.26) — the verb itself never ran. See
     /// [`crate::PreconditionError`]; the partial facts ride [`crate::Repo::take_precondition`].
@@ -429,6 +445,63 @@ pub struct SkippedPath {
     pub reason: String,
 }
 
+/// `file untrack`'s hint for [`MutateError::PathsNotIgnored`] (`cli/src/commands/file/untrack.rs:
+/// 95-98` @ v0.46.0), its embedded newline included.
+const PATHS_NOT_IGNORED_HINT: &str =
+    "Files that are not ignored will be added back by the next command.\nMake sure they're ignored, then try again.";
+
+/// `undo`'s hint for [`MutateError::UndoCrossWorkspace`] (`cli/src/commands/undo.rs:129-132`).
+const UNDO_CROSS_WORKSPACE_HINT: &str =
+    "Use `--allow-cross-workspace` to undo it anyway, or use `jj op revert` to revert a specific operation";
+
+impl MutateError {
+    /// An [`MutateError::InvalidInput`] without hints — what most refusals are.
+    #[must_use]
+    pub fn invalid(reason: impl Into<String>) -> Self {
+        Self::InvalidInput {
+            reason: reason.into(),
+            hints: Vec::new(),
+        }
+    }
+
+    /// An [`MutateError::InvalidInput`] carrying the CLI's one hint line.
+    #[must_use]
+    pub fn invalid_hinted(reason: impl Into<String>, hint: impl Into<String>) -> Self {
+        Self::InvalidInput {
+            reason: reason.into(),
+            hints: vec![hint.into()],
+        }
+    }
+
+    /// The jj CLI's hint lines for this refusal, verbatim and in the CLI's order (Story 9.56) —
+    /// empty when the CLI prints none. The site-dependent ones ride their variant; the rest are
+    /// derived from the variant and its data.
+    #[must_use]
+    pub fn hints(&self) -> Vec<String> {
+        match self {
+            Self::InvalidInput { hints, .. }
+            | Self::Immutable { hints, .. }
+            | Self::BookmarkExists { hints, .. }
+            | Self::PushRefRefused { hints, .. }
+            | Self::PushCommitRejected { hints, .. } => hints.clone(),
+            Self::BookmarkTrackedRemoteExists { name } => vec![tracked_remote_bookmarks_hint(name)],
+            Self::PathsNotIgnored { .. } => vec![PATHS_NOT_IGNORED_HINT.to_owned()],
+            Self::UndoCrossWorkspace { .. } => vec![UNDO_CROSS_WORKSPACE_HINT.to_owned()],
+            Self::Precondition(inner) => inner.hints(),
+            _ => Vec::new(),
+        }
+    }
+}
+
+/// The hint `bookmark create` and `git push --named` both give for a deleted bookmark whose
+/// tracked remote bookmarks remain (`create.rs:77-81`, `push.rs:1269-1272` @ v0.46.0).
+fn tracked_remote_bookmarks_hint(name: &str) -> String {
+    let symbol = jj_lib::ref_name::RefName::new(name).as_symbol();
+    format!(
+        "Use `jj bookmark set` to recreate the local bookmark. Run `jj bookmark untrack {symbol}` to disassociate them."
+    )
+}
+
 /// Converts any jj-lib error to [`MutateError::Backend`]. `pub(crate)` so
 /// [`crate::op_log::undo`] can reuse it instead of duplicating an identical helper.
 pub(crate) fn be<E: std::fmt::Display>(e: E) -> MutateError {
@@ -482,7 +555,7 @@ pub(crate) fn res(e: ResolveError, id: Option<&ChangeId>) -> MutateError {
 ///   trailing `/`, or a `//`), or its `..` components leave the repository (the CLI's
 ///   `Path "../x" is not in the repo "."`).
 pub(crate) fn build_matcher(paths: &[String]) -> Result<Box<dyn Matcher>, MutateError> {
-    crate::op_support::build_matcher(paths).map_err(|reason| MutateError::InvalidInput { reason })
+    crate::op_support::build_matcher(paths).map_err(MutateError::invalid)
 }
 
 /// Records `print_unmatched_explicit_paths` over `trees` for the explicit `paths` (Story 9.32).
@@ -498,7 +571,7 @@ pub(crate) fn warn_unmatched(
     paths: &[String],
     trees: &[&jj_lib::merged_tree::MergedTree],
 ) -> Result<(), MutateError> {
-    let explicit = crate::op_support::parse_prefixes(paths).map_err(|reason| MutateError::InvalidInput { reason })?;
+    let explicit = crate::op_support::parse_prefixes(paths).map_err(MutateError::invalid)?;
     warning::warn_unmatched_paths(sink, workspace.workspace_root(), &explicit, trees).map_err(be)
 }
 
@@ -740,19 +813,36 @@ pub(crate) fn finish_transaction(
     })
 }
 
-/// Takes the Git import/export lock and finishes `tx` — `WorkspaceCommandTransaction::finish`'s
-/// tail (`cli/src/cli_util.rs:2800-2805` @ v0.44.0), which takes the lock right before
-/// `finish_transaction` so the Git HEAD export is atomic with the commit.
+/// Finishes `tx` as the CLI's `WorkspaceCommandTransaction::finish` does
+/// (`cli/src/cli_util.rs:2849-2864` @ v0.46.0): a transaction with changes first resolves the
+/// immutable set against `tx.base_repo()` and rebases the mutable descendants
+/// (`rebase_mutable_descendants`, `:2986-3002`; Story 9.56), then takes the Git import/export
+/// lock right before [`finish_transaction`] so the Git HEAD export is atomic with the commit.
+///
+/// A transaction WITHOUT changes skips the resolution — the CLI returns "Nothing changed." before
+/// it — and is still committed here: callers that must write no operation drop it themselves
+/// ([`finish_or_no_op_at`]).
 ///
 /// # Errors
 ///
-/// Anything [`lock_git_import_export`] or [`finish_transaction`] returns.
+/// - [`MutateError::Config`] — the transaction has changes and `immutable_heads()` does not
+///   resolve; nothing is written, as in the CLI.
+/// - Anything [`lock_git_import_export`] or [`finish_transaction`] returns.
 pub(crate) fn finish_verb(
     workspace: &mut Workspace,
-    tx: Transaction,
+    mut tx: Transaction,
     description: &str,
     ctx: &mut VerbContext,
 ) -> Result<Finish, MutateError> {
+    if tx.repo().has_changes() {
+        let immutable = resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
+        pollster::block_on(tx.repo_mut().rebase_descendants_with_options(
+            &immutable,
+            &RebaseOptions::default(),
+            |_, _| {},
+        ))
+        .map_err(be)?;
+    }
     let lock = lock_git_import_export(workspace, ctx.colocated)?;
     finish_transaction(
         workspace,
@@ -815,9 +905,7 @@ pub(crate) fn plan_describe(
     // immutability guard: root would otherwise be reported as immutable (as the CLI does),
     // changing a shipped error code and making these lines unreachable.
     if commit.id() == tx.repo().store().root_commit_id() {
-        return Err(MutateError::InvalidInput {
-            reason: "cannot describe the root commit".to_owned(),
-        });
+        return Err(MutateError::invalid("cannot describe the root commit".to_owned()));
     }
     guard_rewritable(tx, immutable, std::slice::from_ref(commit.id()))?;
     Ok(commit)
@@ -895,9 +983,10 @@ pub(crate) struct NewLocation {
 /// duplicates dropped (`resolve_revsets_ordered`'s `IndexSet`), `parents` first, then
 /// `insert_after`, then `insert_before`.
 ///
-/// - Positional `parents` only: they are the new commit's parents, nothing is rebased and the
-///   immutable set is NOT resolved — a plain `new` on an immutable parent is allowed, as in the
-///   CLI.
+/// - Positional `parents` only: they are the new commit's parents and nothing is rebased — a
+///   plain `new` on an immutable parent is allowed, as in the CLI. The immutable set is still
+///   resolved, last, against `tx.base_repo()`: the CLI's `tx.finish` resolves it for every
+///   transaction with changes, and a `new` always has some (Story 9.56).
 /// - `-A`/`-B`: the immutable set (`immutable`, resolved against `tx.base_repo()`) and
 ///   [`crate::op_support::compute_commit_location`] with the CLI's noun `"new commit"` give the
 ///   parents and the children to rebase: `-A` alone takes the targets' children, `-B` alone
@@ -922,8 +1011,8 @@ pub(crate) struct NewLocation {
 /// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or divergent.
 /// - [`MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is immutable; the first
 ///   offender's hex.
-/// - [`MutateError::Config`] — (`-A`/`-B`) the `revset-aliases."immutable_heads()"` alias does
-///   not resolve against the repo.
+/// - [`MutateError::Config`] — the `revset-aliases."immutable_heads()"` alias does not resolve
+///   against the repo.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 pub(crate) fn plan_new(
     tx: &Transaction,
@@ -934,20 +1023,21 @@ pub(crate) fn plan_new(
 ) -> Result<NewLocation, MutateError> {
     let insert = !insert_after.is_empty() || !insert_before.is_empty();
     if !parents.is_empty() && insert {
-        return Err(MutateError::InvalidInput {
-            reason: "parent revisions cannot be combined with --insert-after or --insert-before".to_owned(),
-        });
+        return Err(MutateError::invalid(
+            "parent revisions cannot be combined with --insert-after or --insert-before".to_owned(),
+        ));
     }
     if parents.is_empty() && !insert {
-        return Err(MutateError::InvalidInput {
-            reason: "new_change requires at least one parent, --insert-after or --insert-before revision".to_owned(),
-        });
+        return Err(MutateError::invalid(
+            "new_change requires at least one parent, --insert-after or --insert-before revision".to_owned(),
+        ));
     }
     let destination = resolve_ordered(tx, given(parents))?;
     let after = resolve_ordered(tx, given(insert_after))?;
     let before = resolve_ordered(tx, given(insert_before))?;
     if let Some(parents) = destination {
         refuse_git_root_merge(tx.repo().store(), &parents)?;
+        resolve_immutable(tx.base_repo().as_ref(), immutable)?;
         return Ok(NewLocation {
             parents,
             children: Vec::new(),
@@ -976,9 +1066,7 @@ pub(crate) fn refuse_git_root_merge(
 ) -> Result<(), MutateError> {
     let is_git = store.backend().name() == jj_lib::git_backend::GitBackend::NAME;
     if is_git && parents.len() > 1 && parents.contains(store.root_commit_id()) {
-        return Err(MutateError::InvalidInput {
-            reason: GIT_ROOT_MERGE.to_owned(),
-        });
+        return Err(MutateError::invalid(GIT_ROOT_MERGE.to_owned()));
     }
     Ok(())
 }
@@ -1011,8 +1099,9 @@ pub(crate) fn given(ids: &[ChangeId]) -> Option<&[ChangeId]> {
 ///   `experimental-advance-branches` pattern does not parse.
 /// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or divergent.
 /// - [`MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is immutable.
-/// - [`MutateError::Config`] — (`-A`/`-B`) the `immutable_heads()` alias does not resolve; or
-///   (advance case) an `experimental-advance-branches` key is not a list of strings.
+/// - [`MutateError::Config`] — the `immutable_heads()` alias does not resolve (with `-A`/`-B` in
+///   the plan, without them where the CLI's `tx.finish` resolves it; Story 9.56); or (advance
+///   case) an `experimental-advance-branches` key is not a list of strings.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn new_change(
@@ -1082,12 +1171,9 @@ pub(crate) fn new_change(
     if let Some((bookmarks, target)) = advance {
         advance_bookmarks(tx.repo_mut(), bookmarks, &target)?;
     }
-    // edit() may have just recorded the previous `@` as abandoned (if it was
-    // discardable — empty description, no diff from its parent), which leaves an
-    // un-rebased entry in the transaction that would trip tx.commit()'s
-    // has_rewrites() assertion. The CLI clears it via an unconditional final
-    // rebase_descendants() in finish_transaction; do the same here.
-    pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
+    // edit() may have just recorded the previous `@` as abandoned (if it was discardable —
+    // empty description, no diff from its parent); the shared finish's rebase of the mutable
+    // descendants clears it, as the CLI's `tx.finish` does (Story 9.56).
     let new_change_id = ChangeId(new_commit.change_id().reverse_hex());
     let finish = finish_verb(workspace, tx, "new empty commit", ctx)?;
     mutation_result(&finish, vec![new_change_id], Vec::new())
@@ -1176,9 +1262,7 @@ pub(crate) fn plan_abandon(
         // root commit rather than returning an error — guard explicitly so a caller
         // gets a normal `MutateError` instead of a process-crashing panic.
         if commit.id() == tx.repo().store().root_commit_id() {
-            return Err(MutateError::InvalidInput {
-                reason: "cannot abandon the root commit".to_owned(),
-            });
+            return Err(MutateError::invalid("cannot abandon the root commit".to_owned()));
         }
         commits.push(commit);
     }
@@ -1213,9 +1297,9 @@ pub(crate) fn abandon(
     change_ids: &[ChangeId],
 ) -> Result<MutationResult, MutateError> {
     if change_ids.is_empty() {
-        return Err(MutateError::InvalidInput {
-            reason: "abandon requires at least one change id".to_owned(),
-        });
+        return Err(MutateError::invalid(
+            "abandon requires at least one change id".to_owned(),
+        ));
     }
 
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
@@ -1643,9 +1727,9 @@ pub(crate) fn restore(
     // (`restore.rs:78`), so the combination never reaches the command body there. Refuse
     // before touching the repo, so no operation can be written either.
     if changes_in.is_some() && (from.is_some() || into.is_some()) {
-        return Err(MutateError::InvalidInput {
-            reason: "`changes_in` cannot be combined with `from`/`into`".to_owned(),
-        });
+        return Err(MutateError::invalid(
+            "`changes_in` cannot be combined with `from`/`into`".to_owned(),
+        ));
     }
 
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
@@ -1873,6 +1957,67 @@ mod tests {
     use crate::op_support::ResolveError;
     use crate::{ChangeId, RevsetError};
 
+    /// Story 9.56: `hints()` is the site's list where the variant carries one, the CLI's constant
+    /// or data-derived hint for the others (a name the CLI quotes as a symbol is quoted), the
+    /// precondition's own for a wrapped precondition, and empty for everything else.
+    #[test]
+    fn hints_follow_the_variant() {
+        let carried = vec!["a".to_owned(), "b".to_owned()];
+        for e in [
+            MutateError::InvalidInput {
+                reason: String::new(),
+                hints: carried.clone(),
+            },
+            MutateError::Immutable {
+                commit_id: String::new(),
+                hints: carried.clone(),
+            },
+            MutateError::BookmarkExists {
+                name: String::new(),
+                hints: carried.clone(),
+            },
+            MutateError::PushRefRefused {
+                message: String::new(),
+                hints: carried.clone(),
+            },
+            MutateError::PushCommitRejected {
+                message: String::new(),
+                hints: carried.clone(),
+            },
+        ] {
+            assert_eq!(e.hints(), carried, "{e:?}");
+        }
+        assert_eq!(
+            MutateError::invalid_hinted("r", "h").hints(),
+            ["h"],
+            "the one-hint constructor"
+        );
+        assert!(MutateError::invalid("r").hints().is_empty());
+        assert_eq!(
+            MutateError::BookmarkTrackedRemoteExists { name: "my feature".into() }.hints(),
+            ["Use `jj bookmark set` to recreate the local bookmark. Run `jj bookmark untrack \"my feature\"` to disassociate them."]
+        );
+        assert_eq!(MutateError::PathsNotIgnored { paths: Vec::new() }.hints().len(), 1);
+        assert_eq!(
+            MutateError::UndoCrossWorkspace {
+                operation: String::new(),
+                workspace: String::new(),
+            }
+            .hints()
+            .len(),
+            1
+        );
+        let stale = crate::PreconditionError::StaleWorkingCopy {
+            cause: crate::StaleCause::Stale,
+            working_copy_op_id: "0".repeat(128),
+            repo_op_id: "1".repeat(128),
+        };
+        let expected = stale.hints();
+        assert_eq!(MutateError::Precondition(stale).hints(), expected);
+        assert!(MutateError::NothingToUndo.hints().is_empty());
+        assert!(MutateError::Backend(String::new()).hints().is_empty());
+    }
+
     /// A `#[source]`-carrying error must render as the whole chain, joined by `": "` —
     /// the projection `cli/src/git_util.rs:475-478` prints. The top-level Display of
     /// jj-lib's `FailedRefExportReason::FailedToSet` is only "Failed to set", so dropping
@@ -2057,7 +2202,7 @@ mod tests {
     fn build_matcher_refuses_a_malformed_path() {
         let err = build_matcher(&["/absolute.txt".to_owned()]).expect_err("a leading slash is not a repo path");
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason.contains("invalid path")),
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("invalid path")),
             "unexpected error: {err:?}"
         );
     }

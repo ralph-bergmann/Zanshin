@@ -71,6 +71,7 @@ fn read_drop_actions_request(data: *const u8, len: usize) -> Result<(DropSource,
         other => {
             return Err(FfiErrorObj {
                 report: None,
+                hints: Vec::new(),
                 code: FFI_INVALID_ARGUMENT.to_owned(),
                 context: Some(format!("unknown drop source kind: {other:?}")),
             })

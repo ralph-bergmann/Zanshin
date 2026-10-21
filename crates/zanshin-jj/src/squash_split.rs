@@ -238,19 +238,17 @@ pub(crate) fn plan_squash(
     options: &SquashOptions,
 ) -> Result<PlannedSquash, MutateError> {
     if options.revision.is_some() && (!options.from.is_empty() || options.into.is_some()) {
-        return Err(MutateError::InvalidInput {
-            reason: "--revision cannot be used with --from or --into".to_owned(),
-        });
+        return Err(MutateError::invalid(
+            "--revision cannot be used with --from or --into".to_owned(),
+        ));
     }
     if options.message.is_some() && options.use_destination_message {
-        return Err(MutateError::InvalidInput {
-            reason: "--message cannot be used with --use-destination-message".to_owned(),
-        });
+        return Err(MutateError::invalid(
+            "--message cannot be used with --use-destination-message".to_owned(),
+        ));
     }
     if options.message.is_some() && options.edited_description.is_some() {
-        return Err(MutateError::InvalidInput {
-            reason: EDITED_WITH_MESSAGE.to_owned(),
-        });
+        return Err(MutateError::invalid(EDITED_WITH_MESSAGE.to_owned()));
     }
 
     let (sources, destination) = resolve_squash(tx, workspace, options)?;
@@ -335,9 +333,10 @@ fn resolve_squash(
     let source = resolve_or_wc(tx.repo(), workspace_name, options.revision.as_ref())?;
     let parents = pollster::block_on(source.parents()).map_err(be)?;
     let Ok([destination]) = <[Commit; 1]>::try_from(parents) else {
-        return Err(MutateError::InvalidInput {
-            reason: "Cannot squash merge commits without a specified destination".to_owned(),
-        });
+        return Err(MutateError::invalid_hinted(
+            "Cannot squash merge commits without a specified destination",
+            "Use `--into` to specify which parent to squash into",
+        ));
     };
     Ok((vec![source], destination))
 }
@@ -592,25 +591,23 @@ pub(crate) fn prepare_split(
         &options.edited_remaining_description,
     ];
     if options.message.is_some() && edited.iter().any(|text| text.is_some()) {
-        return Err(MutateError::InvalidInput {
-            reason: EDITED_WITH_MESSAGE.to_owned(),
-        });
+        return Err(MutateError::invalid(EDITED_WITH_MESSAGE.to_owned()));
     }
     if edited[0].is_some() != edited[1].is_some() {
-        return Err(MutateError::InvalidInput {
-            reason: "an edited split needs both descriptions: the selected and the remaining".to_owned(),
-        });
+        return Err(MutateError::invalid(
+            "an edited split needs both descriptions: the selected and the remaining".to_owned(),
+        ));
     }
     let use_move_flags = options.onto.is_some() || options.insert_after.is_some() || options.insert_before.is_some();
     if options.parallel && use_move_flags {
-        return Err(MutateError::InvalidInput {
-            reason: "--parallel cannot be used with --onto, --insert-after or --insert-before".to_owned(),
-        });
+        return Err(MutateError::invalid(
+            "--parallel cannot be used with --onto, --insert-after or --insert-before".to_owned(),
+        ));
     }
     if options.onto.is_some() && (options.insert_after.is_some() || options.insert_before.is_some()) {
-        return Err(MutateError::InvalidInput {
-            reason: "--onto cannot be combined with -A/--insert-after or -B/--insert-before".to_owned(),
-        });
+        return Err(MutateError::invalid(
+            "--onto cannot be combined with -A/--insert-after or -B/--insert-before".to_owned(),
+        ));
     }
 
     let target = resolve_or_wc(tx.repo(), workspace.workspace_name(), options.revision.as_ref())?;
@@ -643,11 +640,11 @@ pub(crate) fn prepare_split(
     )?;
 
     if options.paths.is_empty() {
-        return Err(MutateError::InvalidInput {
-            reason: "split needs at least one path: the interactive selection the CLI opens without paths is not \
+        return Err(MutateError::invalid(
+            "split needs at least one path: the interactive selection the CLI opens without paths is not \
                      supported"
                 .to_owned(),
-        });
+        ));
     }
     let labels = Diff::new(
         pollster::block_on(target.parents_conflict_label()).map_err(be)?,

@@ -22,6 +22,7 @@ fn map_op_log_err(e: OpLogError) -> FfiErrorObj {
         OpLogError::Precondition(e) => map_precondition_err(e),
         OpLogError::Backend(reason) => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },

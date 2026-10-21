@@ -267,7 +267,7 @@ fn an_empty_revision_set_refuses_after_the_workspace_exists() {
         .expect_err("empty");
 
     assert!(
-        matches!(&err, MutateError::InvalidInput { reason } if reason == "Empty revision set"),
+        matches!(&err, MutateError::InvalidInput { reason, .. } if reason == "Empty revision set"),
         "{err:?}"
     );
     assert!(
@@ -525,4 +525,29 @@ fn a_colocated_workspace_on_root_gets_an_unborn_head() {
     let tertiary = fx.sibling("tertiary");
     assert_eq!(git(&["symbolic-ref", "HEAD"], &tertiary), "refs/jj/root");
     assert!(!tertiary.join("README.md").exists());
+}
+
+/// Story 9.56: the new workspace's finish resolves its immutable set, as the CLI's `tx.finish`
+/// does (`rebase_mutable_descendants`, `cli/src/cli_util.rs:2986-3002` @ v0.46.0) — this pins that
+/// an unresolvable `immutable_heads()` alias refuses `Config` AFTER jj-lib's "add workspace"
+/// operation: the workspace exists on jj-lib's initial `@` and no second operation is written.
+/// The CLI's resulting state was read from the v0.46.0 source and checked by hand against the
+/// pinned `jj` when this was written; no oracle scenario covers it.
+#[test]
+fn an_unresolvable_alias_refuses_after_the_workspace_exists() {
+    let fx = init(
+        Some(Backend::Git),
+        "[revset-aliases]\n\"immutable_heads()\" = \"nonexistent_symbol_xyz\"\n",
+    );
+    let mut repo = Repo::open(&fx.root).expect("open");
+
+    let err = add(&mut repo, "../ws2").expect_err("unresolvable");
+
+    assert!(matches!(err, MutateError::Config { .. }), "{err:?}");
+    assert!(
+        fx.sibling("ws2").join(".jj").is_dir(),
+        "the workspace exists (CLI order)"
+    );
+    assert_eq!(descriptions(&fx.root)[0], "add workspace 'ws2'", "no second operation");
+    assert!(wc_of(&fx.root, "ws2").description().is_empty(), "jj-lib's initial @");
 }

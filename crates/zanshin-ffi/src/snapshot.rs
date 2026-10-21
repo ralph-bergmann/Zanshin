@@ -359,7 +359,7 @@ mod tests {
         assert_full_precondition(&env.precondition().expect("ok-arm precondition"));
         assert!(env.warnings().is_none(), "no warnings: absent");
 
-        let err = err_with_report("jj.config_error", Some("k"), Some(&report));
+        let err = err_with_report("jj.config_error", Some("k"), &[], Some(&report));
         let env = envelope(&err);
         assert!(!env.ok());
         assert_eq!(env.error().and_then(|e| e.code()), Some("jj.config_error"));

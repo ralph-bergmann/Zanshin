@@ -554,7 +554,7 @@ fn a_path_that_leaves_the_repo_is_refused_before_the_transaction() {
     let mut fx = base();
     let err = assert_refused_without_an_operation(&mut fx, &options(&["../x"], &["first"]));
     assert!(
-        matches!(&err, MutateError::InvalidInput { reason } if reason == r#"invalid path: Path "../x" is not in the repo ".""#),
+        matches!(&err, MutateError::InvalidInput { reason, .. } if reason == r#"invalid path: Path "../x" is not in the repo ".""#),
         "{err:?}"
     );
 }

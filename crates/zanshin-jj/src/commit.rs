@@ -30,14 +30,13 @@ use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::RefTarget;
 use jj_lib::ref_name::RefNameBuf;
 use jj_lib::repo::{MutableRepo, Repo as _};
-use jj_lib::rewrite::RebaseOptions;
 use jj_lib::str_util::StringMatcher;
 use jj_lib::view::View;
 use jj_lib::workspace::Workspace;
 
 use crate::bookmark_ops::union_expression;
 use crate::mutate::{be, build_matcher, cfg, finish_verb, mutation_result, MutateError, MutationResult};
-use crate::op_support::{join_message_paragraphs, resolve_immutable, start_repo_transaction, SelectedTree};
+use crate::op_support::{join_message_paragraphs, start_repo_transaction, SelectedTree};
 use crate::snapshot::VerbContext;
 use crate::template::Templates;
 use crate::warning::WarningKind;
@@ -197,16 +196,9 @@ pub(crate) fn commit(
         pollster::block_on(tx.repo_mut().edit(name, &new_wc_commit)).map_err(be)?;
     }
 
-    // `tx.finish`'s `rebase_mutable_descendants` (`cli_util.rs:2855` @ v0.46.0): immutable
-    // descendants stay where they are. `commit` has no rewritability guard, so an immutable `@`
-    // CAN have immutable descendants here (unlike the guarded verbs); the set is resolved
-    // against `tx.base_repo()`, as the CLI does.
-    let resolved = resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
-    pollster::block_on(
-        tx.repo_mut()
-            .rebase_descendants_with_options(&resolved, &RebaseOptions::default(), |_, _| {}),
-    )
-    .map_err(be)?;
+    // The shared finish runs `tx.finish`'s `rebase_mutable_descendants` (`cli_util.rs:2855` @
+    // v0.46.0): immutable descendants stay where they are. `commit` has no rewritability guard, so
+    // an immutable `@` CAN have immutable descendants here (unlike the guarded verbs).
     let description = format!("commit {}", wc_commit.id().hex());
     let finish = finish_verb(workspace, tx, &description, ctx)?;
     mutation_result(

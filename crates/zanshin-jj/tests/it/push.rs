@@ -273,8 +273,15 @@ fn skip_versus_abort_for_a_commit_without_description() {
         .expect_err("an explicit ref with a rejected commit refuses");
     let message = format!("Won't push commit {} since it has no description", short(&bad));
     assert!(
-        matches!(&err, MutateError::PushCommitRejected { message: m } if *m == message),
+        matches!(&err, MutateError::PushCommitRejected { message: m, .. } if *m == message),
         "{err:?}"
+    );
+    // Story 9.56: the CLI's "Rejected commit: <summary>" hint (`push.rs:768-773` @ v0.46.0).
+    let hints = err.hints();
+    assert_eq!(hints.len(), 1, "{hints:?}");
+    assert!(
+        hints[0].starts_with("Rejected commit: ") && hints[0].contains(&short(&bad)[..8]),
+        "{hints:?}"
     );
     assert_eq!(w.head_op(), before, "a refusal before the network writes nothing");
     let plan = w
@@ -371,8 +378,13 @@ fn refused_refs_carry_the_cli_message_and_hint() {
         })
         .expect_err("a conflicted explicit bookmark refuses");
     assert!(
-        matches!(&err, MutateError::PushRefRefused { message } if message == "Bookmark main is conflicted"),
+        matches!(&err, MutateError::PushRefRefused { message, .. } if message == "Bookmark main is conflicted"),
         "{err:?}"
+    );
+    // Story 9.56: the refusal's hint (`push.rs:1148-1153` @ v0.46.0).
+    assert_eq!(
+        err.hints(),
+        ["Run `jj bookmark list` to inspect, and use `jj bookmark set` to fix it up."]
     );
     let plan = w
         .push(&GitPushArgs {
@@ -551,9 +563,11 @@ fn change_and_named_create_their_bookmarks() {
             })
             .expect_err("a malformed --named refuses");
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason == expected),
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason == expected),
             "{err:?}"
         );
+        // Story 9.56: `parse_named_bookmark`'s hint (`push.rs:1278-1297` @ v0.46.0).
+        assert_eq!(err.hints(), ["For example, `--named myfeature=@` is valid syntax"]);
     }
     let err = w
         .push(&GitPushArgs {
@@ -562,8 +576,33 @@ fn change_and_named_create_their_bookmarks() {
         })
         .expect_err("an existing name refuses");
     assert!(
-        matches!(&err, MutateError::BookmarkExists { name } if name == "feat"),
+        matches!(&err, MutateError::BookmarkExists { name, .. } if name == "feat"),
         "{err:?}"
+    );
+    // Story 9.56: `ensure_new_bookmark_name`'s hint (`push.rs:1260-1262` @ v0.46.0).
+    assert_eq!(
+        err.hints(),
+        ["Use 'jj bookmark move' to move it, and 'jj git push -b feat' to push it"]
+    );
+
+    // Deleted locally while `feat@origin` stays tracked: the tracked-remote refusal and its hint
+    // (`push.rs:1264-1272` @ v0.46.0).
+    w.repo
+        .bookmark_delete(&["feat".to_owned()])
+        .expect("delete the local bookmark");
+    let err = w
+        .push(&GitPushArgs {
+            named: vec!["feat=@-".to_owned()],
+            ..Default::default()
+        })
+        .expect_err("a tracked remote bookmark refuses");
+    assert!(
+        matches!(&err, MutateError::BookmarkTrackedRemoteExists { name } if name == "feat"),
+        "{err:?}"
+    );
+    assert_eq!(
+        err.hints(),
+        ["Use `jj bookmark set` to recreate the local bookmark. Run `jj bookmark untrack feat` to disassociate them."]
     );
 }
 
@@ -580,7 +619,7 @@ fn remotes_resolve_like_the_cli() {
         })
         .expect_err("no matching remote");
     assert!(
-        matches!(&err, MutateError::InvalidInput { reason } if reason == "No git remotes to push to"),
+        matches!(&err, MutateError::InvalidInput { reason, .. } if reason == "No git remotes to push to"),
         "{err:?}"
     );
     assert!(w.warnings().contains(&(
@@ -882,7 +921,7 @@ fn commit_checks_have_their_overrides() {
         ..Default::default()
     };
     let rejected = |err: &MutateError| match err {
-        MutateError::PushCommitRejected { message } => message.clone(),
+        MutateError::PushCommitRejected { message, .. } => message.clone(),
         other => panic!("{other:?}"),
     };
 
@@ -944,7 +983,7 @@ fn private_commits_are_rejected_unless_allowed() {
     };
     let err = w.push(&main_only).expect_err("a private commit is rejected");
     assert!(
-        matches!(&err, MutateError::PushCommitRejected { message: m } if *m == message),
+        matches!(&err, MutateError::PushCommitRejected { message: m, .. } if *m == message),
         "{err:?}"
     );
     let plan = w

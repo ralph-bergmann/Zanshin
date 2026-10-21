@@ -167,6 +167,22 @@ void main() {
       expect(e.code, 'jj.repo_not_found');
       expect(e.precondition, isNull);
       expect(e.warnings, isEmpty);
+      expect(e.hints, isEmpty, reason: 'a hint-less error carries no hints (Story 9.56)');
+    });
+
+    // Story 9.56: the CLI's hint lines ride the error envelope's `FfiError.hints` through the
+    // worker onto the thrown exception — never inside its context.
+    test('a_refusal_carries_the_clis_hints', () async {
+      await initGit();
+      final RepoHandle handle = await worker.openRepo(root);
+      await handle.bookmarkCreate(['taken']);
+
+      final ZanshinFfiException e = await _thrown(handle.bookmarkCreate(['taken']));
+
+      expect(e.code, 'jj.bookmark_exists');
+      expect(e.context, 'taken');
+      expect(e.hints, ['Use `jj bookmark set` to update it.']);
+      await handle.close();
     });
   });
 }

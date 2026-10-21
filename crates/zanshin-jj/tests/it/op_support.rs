@@ -93,7 +93,7 @@ fn head_op_id(repo: &mut Repo) -> String {
 
 fn assert_immutable(err: &MutateError, expected_commit_hex: &str) {
     assert!(
-        matches!(err, MutateError::Immutable { commit_id } if commit_id == expected_commit_hex),
+        matches!(err, MutateError::Immutable { commit_id, .. } if commit_id == expected_commit_hex),
         "expected Immutable({expected_commit_hex}), got {err:?}"
     );
 }
@@ -200,7 +200,7 @@ fn abandon_names_exactly_one_immutable_target_when_several_are() {
     // jj-lib's revset stream order, which is not a promised contract — pinning `Commit 3`
     // here would turn an upstream index change into a red test with no behaviour regression.
     // The contract is "one of the immutable targets, and only one".
-    let MutateError::Immutable { commit_id } = &err else {
+    let MutateError::Immutable { commit_id, .. } = &err else {
         panic!("expected Immutable, got {err:?}");
     };
     assert!(

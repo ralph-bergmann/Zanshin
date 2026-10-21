@@ -96,7 +96,7 @@ fn repo_clone_into_an_uncreatable_destination_returns_clone_failed() {
     )
     .result;
     match result {
-        Err(RepoError::CloneFailed { reason }) => assert!(
+        Err(RepoError::CloneFailed { reason, .. }) => assert!(
             reason.starts_with("Failed to create /nonexistent/zanshin-test-abc123: "),
             "the reason must be the CLI's, naming the destination, got: {reason}"
         ),

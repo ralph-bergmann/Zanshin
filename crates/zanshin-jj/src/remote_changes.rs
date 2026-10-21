@@ -117,7 +117,7 @@ pub(crate) fn remote_changes(
         &mut Vec::new(),
     )?;
     // Refused as the fetch refuses it: a pattern that cannot become a refspec.
-    jj_lib::git::expand_fetch_refspecs(remote, filters.clone()).map_err(crate::remotes::invalid)?;
+    jj_lib::git::expand_fetch_refspecs(remote, filters.clone()).map_err(|e| crate::remotes::expansion_error(&e))?;
     let (bookmark_matcher, tag_matcher) = (filters.bookmark.to_matcher(), filters.tag.to_matcher());
     let options = crate::environment::git_subprocess_options(settings, cancel).map_err(mutate::cfg)?;
     crate::cancel::watch_store(cancel, store);

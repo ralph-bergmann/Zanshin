@@ -747,7 +747,7 @@ fn an_edited_text_conflicts_with_message_and_split_needs_both() {
     };
     let invalid = |err: MutateError, text: &str| {
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason == text),
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason == text),
             "{err:?}"
         );
     };

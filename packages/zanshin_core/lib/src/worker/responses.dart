@@ -99,21 +99,23 @@ final class GraphLayoutResult extends WorkerResponse {
 /// have written operations; this is where the facts the jj CLI would have
 /// printed land when the command itself failed.
 final class ZanshinFfiException implements Exception {
-  /// An exception without a report: [precondition] is `null` and [warnings]
-  /// empty. For failures Dart detects in a buffer (a corrupt or mismatched
-  /// payload), not for error envelopes.
-  const ZanshinFfiException(this.code, [this.context]) : precondition = null, warnings = const [];
+  /// An exception without a report: [precondition] is `null`, [warnings] and
+  /// [hints] empty. For failures Dart detects in a buffer (a corrupt or
+  /// mismatched payload), not for error envelopes.
+  const ZanshinFfiException(this.code, [this.context]) : precondition = null, warnings = const [], hints = const [];
 
   /// An exception with a report — the shape every error envelope decodes to,
   /// the worker-built ones (`ffi.invalid_handle`, `internal.dispatch_error`)
   /// included: [precondition] `null` when the envelope carries none, [warnings]
-  /// in wire order (the CLI's print order), empty when there were none. Keeps
-  /// the [warnings] list it is given as is.
+  /// in wire order (the CLI's print order), empty when there were none, and
+  /// the error's [hints] (Story 9.56), empty when it has none. Keeps the
+  /// [warnings] and [hints] lists it is given as is.
   const ZanshinFfiException.withReport(
     this.code,
     this.context, {
     required this.precondition,
     required this.warnings,
+    this.hints = const [],
   });
 
   /// Machine-readable error code, e.g. `jj.repo_not_found`.
@@ -136,11 +138,20 @@ final class ZanshinFfiException implements Exception {
   /// given).
   final List<ZanshinWarning> warnings;
 
+  /// The jj CLI's hint lines for this error (Story 9.56) — verbatim (a line
+  /// may hold newlines) and in the CLI's order, for the UI to show as they
+  /// are; empty when the CLI prints none. Never part of [context].
+  /// Unmodifiable on an exception decoded from an error envelope.
+  final List<String> hints;
+
   @override
   String toString() {
     final buf = StringBuffer('ZanshinFfiException($code');
     if (context != null) {
       buf.write(': $context');
+    }
+    if (hints.isNotEmpty) {
+      buf.write('; hints: ${hints.join(' | ')}');
     }
     buf.write(')');
     return buf.toString();

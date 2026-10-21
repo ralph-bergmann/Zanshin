@@ -113,19 +113,18 @@ fn destination_and_name(workspace_root: &Path, args: &AddArgs<'_>) -> Result<(Pa
         Some(name) => name.to_owned(),
         None => destination
             .file_name()
-            .ok_or_else(|| MutateError::InvalidInput {
-                reason: format!("Destination path {:?} has no final component", args.destination),
+            .ok_or_else(|| {
+                MutateError::invalid(format!(
+                    "Destination path {:?} has no final component",
+                    args.destination
+                ))
             })?
             .to_str()
-            .ok_or_else(|| MutateError::InvalidInput {
-                reason: "Destination path is not valid UTF-8".to_owned(),
-            })?
+            .ok_or_else(|| MutateError::invalid("Destination path is not valid UTF-8".to_owned()))?
             .to_owned(),
     };
     if name.is_empty() {
-        return Err(MutateError::InvalidInput {
-            reason: "New workspace name cannot be empty".to_owned(),
-        });
+        return Err(MutateError::invalid("New workspace name cannot be empty".to_owned()));
     }
     Ok((destination, WorkspaceNameBuf::from(name)))
 }
@@ -214,8 +213,16 @@ pub(crate) fn add(
     let new_wc_commit = pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
     pollster::block_on(tx.repo_mut().edit(name.clone(), &new_wc_commit)).map_err(be)?;
     // `edit` abandons the discardable initial working-copy commit jj-lib created; `tx.finish`'s
-    // `rebase_mutable_descendants` (`cli_util.rs:2855`) settles that rewrite before the commit.
-    pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
+    // `rebase_mutable_descendants` (`cli_util.rs:2855`) settles that rewrite before the commit —
+    // resolving the new workspace's immutable set against `tx.base_repo()`, so an unresolvable
+    // alias refuses here, after jj-lib's "add workspace" operation, as in the CLI (Story 9.56).
+    let immutable = crate::op_support::resolve_immutable(tx.base_repo().as_ref(), &new_env.immutable)?;
+    pollster::block_on(tx.repo_mut().rebase_descendants_with_options(
+        &immutable,
+        &jj_lib::rewrite::RebaseOptions::default(),
+        |_, _| {},
+    ))
+    .map_err(be)?;
 
     let lock = lock_git_import_export(&new_workspace, new_colocated)?;
     let finish = mutate::finish_transaction(
@@ -315,9 +322,7 @@ fn resolve_some_revsets(
         })?;
     }
     if ids.is_empty() {
-        return Err(MutateError::InvalidInput {
-            reason: "Empty revision set".to_owned(),
-        });
+        return Err(MutateError::invalid("Empty revision set".to_owned()));
     }
     Ok(ids)
 }
@@ -354,7 +359,7 @@ mod tests {
     fn an_empty_name_or_no_final_component_refuses() {
         assert!(matches!(
             destination_and_name(Path::new("/r"), &args("x", Some(""))),
-            Err(MutateError::InvalidInput { reason }) if reason == "New workspace name cannot be empty"
+            Err(MutateError::InvalidInput { reason, .. }) if reason == "New workspace name cannot be empty"
         ));
         assert!(matches!(
             destination_and_name(Path::new("/r"), &args("x/..", None)),
@@ -372,7 +377,7 @@ mod tests {
         let root = Path::new(std::ffi::OsStr::from_bytes(b"/r/\xff"));
         assert!(matches!(
             destination_and_name(root, &args("", None)),
-            Err(MutateError::InvalidInput { reason }) if reason == "Destination path is not valid UTF-8"
+            Err(MutateError::InvalidInput { reason, .. }) if reason == "Destination path is not valid UTF-8"
         ));
     }
 

@@ -308,9 +308,11 @@ fn squash_of_a_merge_or_the_root_commit_refuses() {
         };
         let err = assert_refused_without_an_operation(&mut fx, |repo| repo.squash(&options).map(drop));
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason == "Cannot squash merge commits without a specified destination"),
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason == "Cannot squash merge commits without a specified destination"),
             "{err:?}"
         );
+        // Story 9.56: `squash`'s hint (`squash.rs:243-244` @ v0.46.0).
+        assert_eq!(err.hints(), ["Use `--into` to specify which parent to squash into"]);
         let err = assert_refused_without_an_operation(&mut fx, |repo| repo.squash_plan(&options).map(drop));
         assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
     }
@@ -499,14 +501,14 @@ fn squash_refuses_conflicting_flags_before_anything_else() {
         ..SquashOptions::default()
     };
     let err = assert_refused_without_an_operation(&mut fx, |repo| repo.squash(&both).map(drop));
-    assert!(matches!(&err, MutateError::InvalidInput { reason } if reason.contains("--use-destination-message")));
+    assert!(matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("--use-destination-message")));
     let revision_and_into = SquashOptions {
         revision: Some(fx.c.clone()),
         into: Some(fx.a.clone()),
         ..SquashOptions::default()
     };
     let err = assert_refused_without_an_operation(&mut fx, |repo| repo.squash(&revision_and_into).map(drop));
-    assert!(matches!(&err, MutateError::InvalidInput { reason } if reason.contains("--revision")));
+    assert!(matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("--revision")));
     let bad_path = SquashOptions {
         paths: vec!["/abs".to_owned()],
         ..SquashOptions::default()
@@ -530,7 +532,7 @@ fn squash_into_an_immutable_destination_refuses() {
     let err = assert_refused_without_an_operation(&mut fx, |repo| repo.squash(&SquashOptions::default()).map(drop));
 
     assert!(
-        matches!(&err, MutateError::Immutable { commit_id } if *commit_id == b_hex),
+        matches!(&err, MutateError::Immutable { commit_id, .. } if *commit_id == b_hex),
         "{err:?}"
     );
 }
@@ -789,7 +791,7 @@ fn split_location_refusals_come_from_compute_commit_location() {
     };
     let err = assert_refused_without_an_operation(&mut fx, |repo| repo.split(&loop_).map(drop));
     assert!(
-        matches!(&err, MutateError::InvalidInput { reason } if reason.contains("split-out commit")),
+        matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("split-out commit")),
         "{err:?}"
     );
 
@@ -798,7 +800,9 @@ fn split_location_refusals_come_from_compute_commit_location() {
         ..split_c(&["c.txt"], None)
     };
     let err = assert_refused_without_an_operation(&mut fx, |repo| repo.split(&no_parent).map(drop));
-    assert!(matches!(&err, MutateError::InvalidInput { reason } if reason == "No revisions found to use as parent"));
+    assert!(
+        matches!(&err, MutateError::InvalidInput { reason, .. } if reason == "No revisions found to use as parent")
+    );
 }
 
 #[test]
@@ -843,7 +847,7 @@ fn split_warns_when_everything_or_nothing_is_selected_and_still_splits() {
 fn split_refusals_write_nothing() {
     let mut fx = base();
     let err = assert_refused_without_an_operation(&mut fx, |repo| repo.split(&split_c(&[], None)).map(drop));
-    assert!(matches!(&err, MutateError::InvalidInput { reason } if reason.contains("at least one path")));
+    assert!(matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("at least one path")));
 
     let parallel_and_location = SplitOptions {
         parallel: true,
@@ -851,7 +855,7 @@ fn split_refusals_write_nothing() {
         ..split_c(&["c.txt"], None)
     };
     let err = assert_refused_without_an_operation(&mut fx, |repo| repo.split(&parallel_and_location).map(drop));
-    assert!(matches!(&err, MutateError::InvalidInput { reason } if reason.contains("--parallel")));
+    assert!(matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("--parallel")));
 
     let onto_and_after = SplitOptions {
         onto: Some(vec![fx.a.clone()]),
@@ -859,7 +863,7 @@ fn split_refusals_write_nothing() {
         ..split_c(&["c.txt"], None)
     };
     let err = assert_refused_without_an_operation(&mut fx, |repo| repo.split(&onto_and_after).map(drop));
-    assert!(matches!(&err, MutateError::InvalidInput { reason } if reason.contains("--onto")));
+    assert!(matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("--onto")));
 
     let b_hex = commit(&fx.root, &fx.b).id().hex();
     test_helpers::set_tag(&fx.root, "v1", &[&b_hex]);

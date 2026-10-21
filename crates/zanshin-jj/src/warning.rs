@@ -190,6 +190,11 @@ pub enum WarningKind {
     /// `git fetch -b` with exact names no matched remote has (`warn_if_branches_not_found`,
     /// `fetch.rs:292-321` @ v0.46.0; Story 9.30).
     FetchBranchesUnmatched,
+    /// The `revset-aliases."trunk()"` alias parses but does not resolve at the head (e.g. it names
+    /// a remote bookmark that does not exist yet), so the call runs with `trunk()` = `root()` —
+    /// the start-up fallback of the CLI's `load_from_workspace` (`cli/src/cli_util.rs:540-562` @
+    /// v0.46.0; Story 9.56).
+    TrunkAliasUnresolved,
 }
 
 /// One warning a call produced (Story 9.32).

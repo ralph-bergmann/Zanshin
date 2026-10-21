@@ -1003,12 +1003,47 @@ pub(crate) fn resolve_raw(
 
 /// Loads `repo`'s effective jj config stack. Re-read on every call — never cached.
 ///
+/// While the call runs with the start-up `trunk()` fallback (Story 9.56, see
+/// [`crate::Repo`]'s precondition), the stack carries one more, topmost layer setting
+/// `revset-aliases."trunk()"` to `root()` — the CLI's `revset_aliases_map.insert("trunk()",
+/// "root()")` (`cli/src/cli_util.rs:558-561` @ v0.46.0), so every revset, immutable set and
+/// template the call parses sees it.
+///
 /// # Errors
 ///
 /// - [`ConfigError::Load`] — a config file is unreadable or not valid TOML, a `config-id`
 ///   is malformed, or a `--when`/`[[--scope]]` condition has the wrong type.
 pub(crate) fn load(repo: &Repo) -> Result<StackedConfig, ConfigError> {
-    load_for_workspace(repo.workspace())
+    let mut config = load_for_workspace(repo.workspace())?;
+    if repo.trunk_fallback() {
+        config.add_layer(trunk_fallback_layer());
+    }
+    Ok(config)
+}
+
+/// The topmost layer of a call with the `trunk()` fallback: `trunk()` = `root()`.
+fn trunk_fallback_layer() -> ConfigLayer {
+    let mut layer = ConfigLayer::empty(ConfigSource::CommandArg);
+    // WHY no error path: the name is a literal two-segment key and the value a plain string.
+    let _ = layer.set_value(["revset-aliases", "trunk()"], "root()");
+    layer
+}
+
+/// Whether a non-default layer of `config` defines `revset-aliases."trunk()"` — the only way the
+/// alias can fail to resolve: the builtin one is a `latest(… | root())` of `remote_bookmarks()`,
+/// which always resolves. Lets the precondition skip the `trunk()` check's head load otherwise.
+pub(crate) fn trunk_alias_redefined(config: &StackedConfig) -> bool {
+    config
+        .layers()
+        .iter()
+        .filter(|layer| layer.source != ConfigSource::Default)
+        .any(|layer| {
+            layer
+                .look_up_table("revset-aliases")
+                .ok()
+                .flatten()
+                .is_some_and(|table| table.contains_key("trunk()"))
+        })
 }
 
 /// Turns a resolved stack into the `UserSettings` jj-lib signs commits and operations with.

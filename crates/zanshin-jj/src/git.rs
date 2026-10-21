@@ -63,11 +63,9 @@ use jj_lib::git::{self, GitExportError, GitImportError, GitImportRefUpdate, GitR
 use jj_lib::op_store::RemoteRefState;
 use jj_lib::ref_name::RemoteNameBuf;
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
-use jj_lib::rewrite::RebaseOptions;
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, flatten_chain, MutateError, MutationResult};
-use crate::op_support::resolve_immutable;
 use crate::snapshot::VerbContext;
 use crate::ChangeId;
 
@@ -196,9 +194,7 @@ fn map_remote_mgmt_err(e: GitRemoteManagementError) -> MutateError {
         GitRemoteManagementError::RemoteAlreadyExists(name) => MutateError::RemoteExists {
             name: name.as_str().to_owned(),
         },
-        GitRemoteManagementError::RemoteName(inner) => MutateError::InvalidInput {
-            reason: inner.to_string(),
-        },
+        GitRemoteManagementError::RemoteName(inner) => MutateError::invalid(inner.to_string()),
         GitRemoteManagementError::NonstandardConfiguration(name) => MutateError::RemoteNonstandardConfig {
             name: name.as_str().to_owned(),
         },
@@ -329,18 +325,12 @@ pub(crate) fn git_import(workspace: &mut Workspace, ctx: &mut VerbContext) -> Re
         });
     }
     let import_options = crate::config::git_import_options(&ctx.config).map_err(mutate::cfg)?;
-    let immutable = Arc::clone(&ctx.immutable);
+    // The descendants `import_refs` leaves to rebase are rebased by the shared finish, which
+    // resolves the immutable set only when the import changed something — a no-op import says
+    // "Nothing changed." without resolving it, as the CLI's `tx.finish` (Story 9.56).
     let finished = mutate::finish_or_no_op(workspace, "import git refs", ctx, |tx, sink| {
         let stats = pollster::block_on(git::import_refs(tx.repo_mut(), &import_options)).map_err(map_import_err)?;
         sink.extend(crate::warning::git_import_failed(&stats));
-        // Resolve first so the shared borrow of `tx` ends before `repo_mut()`.
-        let resolved = resolve_immutable(tx.base_repo().as_ref(), &immutable)?;
-        pollster::block_on(tx.repo_mut().rebase_descendants_with_options(
-            &resolved,
-            &RebaseOptions::default(),
-            |_, _| {},
-        ))
-        .map_err(mutate::be)?;
         Ok(stats)
     })?;
     Ok(project_import(
@@ -708,7 +698,7 @@ mod tests {
         assert!(
             matches!(
                 map_remote_mgmt_err(E::RemoteName(GitRemoteNameError::ReservedForLocalGitRepo)),
-                MutateError::InvalidInput { ref reason } if reason.contains("reserved")
+                MutateError::InvalidInput { ref reason, .. } if reason.contains("reserved")
             ),
             "jj-lib's own reason must be forwarded verbatim"
         );

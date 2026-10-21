@@ -240,7 +240,7 @@ fn assert_refused(fx: &mut Fx, args: &GitFetchArgs, unmatched: &str) {
     let err = fx.fetch(args).expect_err("nothing to fetch from");
     let warnings = fx.repo.take_warnings();
     assert!(
-        matches!(&err, MutateError::InvalidInput { reason } if reason == "No git remotes to fetch from"),
+        matches!(&err, MutateError::InvalidInput { reason, .. } if reason == "No git remotes to fetch from"),
         "{err:?}"
     );
     assert!(
@@ -747,11 +747,33 @@ fn the_poll_refuses_what_the_fetch_refuses() {
         "{err:?}"
     );
 
+    // `InvalidBranchPattern`: no hint, as the CLI (`command_error.rs:604-609` @ v0.46.0).
     fx.set("remotes.origin.fetch-bookmarks", "'glob:\"a?b\"'");
     let err = fx.repo.remote_changes("origin", None).expect_err("no refspec");
-    assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
+    assert!(
+        matches!(&err, MutateError::InvalidInput { hints, .. } if hints.is_empty()),
+        "{err:?}"
+    );
     let err = fx.fetch(&GitFetchArgs::default()).expect_err("no refspec");
-    assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
+    assert!(
+        matches!(&err, MutateError::InvalidInput { hints, .. } if hints.is_empty()),
+        "{err:?}"
+    );
+
+    // `Expression` (a positive intersection): the CLI's pattern hint, on the poll and the fetch.
+    fx.set("remotes.origin.fetch-bookmarks", "'a & b'");
+    let hint = ["Specify patterns in `(positive | ...) & ~(negative | ...)` form."];
+    let err = fx.repo.remote_changes("origin", None).expect_err("not refspec-shaped");
+    assert!(
+        matches!(&err, MutateError::InvalidInput { reason, hints }
+            if reason == "Cannot use `&` for positive expressions" && *hints == hint),
+        "{err:?}"
+    );
+    let err = fx.fetch(&GitFetchArgs::default()).expect_err("not refspec-shaped");
+    assert!(
+        matches!(&err, MutateError::InvalidInput { hints, .. } if *hints == hint),
+        "{err:?}"
+    );
 }
 
 /// Without `remotes.origin.fetch-bookmarks`, the remote's Git fetch refspecs pick the default
@@ -981,8 +1003,8 @@ fn an_unparsable_remote_pattern_refuses_before_the_backend_check() {
 }
 
 /// A Git remote named `git` — reserved by jj, so no Zanshin verb adds one — refuses its fetch
-/// with jj-lib's reason and the CLI's hint (`command_error.rs:586-588` @ v0.46.0), and writes
-/// no operation.
+/// with jj-lib's reason as the context and the CLI's hint as the error's hint (Story 9.56,
+/// `command_error.rs:586-588` @ v0.46.0), and writes no operation.
 #[test]
 fn a_remote_named_git_refuses_with_the_rename_hint() {
     let dir = TempDir::new().unwrap();
@@ -1010,10 +1032,93 @@ fn a_remote_named_git_refuses_with_the_rename_hint() {
     let (before, _) = fx.head_op();
     let err = fx.fetch(&named(&["git"])).expect_err("reserved name");
     assert!(
-        matches!(&err, MutateError::InvalidInput { reason }
-            if reason == "Git remote named 'git' is reserved for local Git repository\n\
-                          Hint: Run `jj git remote rename` to give a different name."),
+        matches!(&err, MutateError::InvalidInput { reason, .. }
+            if reason == "Git remote named 'git' is reserved for local Git repository"),
         "{err:?}"
     );
+    assert_eq!(err.hints(), ["Run `jj git remote rename` to give a different name."]);
     assert_eq!(fx.head_op().0, before, "a refusal writes no operation");
+}
+
+/// Story 9.56: a fetch with nothing new changes nothing, so its finish does not resolve the
+/// immutable set — the CLI's `tx.finish` says "Nothing changed." first — and an unresolvable
+/// `immutable_heads()` alias does not refuse it.
+#[test]
+fn a_fetch_with_nothing_new_does_not_resolve_the_immutable_set() {
+    let dir = TempDir::new().unwrap();
+    let origin = Upstream::new(dir.path(), "origin");
+    let mut fx = Fx::new(&[("origin", &origin)]);
+    fx.fetch(&GitFetchArgs::default()).expect("first fetch");
+    fx.set("revset-aliases.\"immutable_heads()\"", "'nonexistent_symbol_xyz'");
+
+    let result = fx.fetch(&GitFetchArgs::default());
+
+    assert!(result.is_ok(), "{result:?}");
+}
+
+/// Writes, in the Git repo at `git_dir`, a copy of `commit` with its message replaced by
+/// `message` — every header kept, jj's `change-id` header included — and returns its id. The
+/// "same change, rewritten upstream" a force-push of an amended jj commit produces.
+fn rewrite_keeping_change_id(git_dir: &Path, commit: &str, message: &str) -> String {
+    let text = git(&["cat-file", "commit", commit], git_dir);
+    let (headers, _) = text.split_once("\n\n").expect("a commit has a message");
+    assert!(
+        headers.contains("\nchange-id "),
+        "a jj-written commit carries its change id: {headers}"
+    );
+    let mut hash = Command::new("git")
+        .args(["hash-object", "-t", "commit", "-w", "--stdin"])
+        .current_dir(git_dir)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("git spawns");
+    std::io::Write::write_all(
+        hash.stdin.as_mut().expect("stdin"),
+        format!("{headers}\n\n{message}").as_bytes(),
+    )
+    .expect("write the commit");
+    let out = hash.wait_with_output().expect("git hash-object");
+    assert!(
+        out.status.success(),
+        "hash-object: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).trim().to_owned()
+}
+
+/// Story 9.56 / the 9.30 follow-up: a fetch that brings in a same-change-id rewrite of a commit
+/// the repo has a local child of counts it in `num_rewritten` (jj-lib's
+/// `record_synthetic_predecessors`, the CLI's "Updated 1 rewritten commits.") and rebases the
+/// child onto the rewrite. A plain `git commit --amend` carries no `change-id` header and is an
+/// abandonment instead — which is why every other fetch here reports 0.
+#[test]
+fn a_fetched_same_change_id_rewrite_counts_and_rebases_the_local_child() {
+    let dir = TempDir::new().unwrap();
+    let origin = Upstream::new(dir.path(), "origin");
+    let mut fx = Fx::new(&[("origin", &origin)]);
+    let x = test_helpers::add_commit_off_root(&fx.root, "X");
+    let x_change = zanshin_jj::resolve_revset(&fx.repo, &x)
+        .expect("X resolves")
+        .swap_remove(0);
+    fx.repo.new_change(&[x_change], &[], &[]).expect("a local child of X");
+    let store = fx.root.join(".jj").join("repo").join("store").join("git");
+    git(&["push", "-q", &origin.url(), &format!("{x}:refs/heads/feat")], &store);
+    let first = fx.fetch(&GitFetchArgs::default()).expect("first fetch");
+    assert_eq!(first.num_rewritten, 0, "X is already known");
+
+    let rewritten = rewrite_keeping_change_id(&origin.bare, &x, "X, amended upstream\n");
+    git(&["update-ref", "refs/heads/feat", &rewritten], &origin.bare);
+    let second = fx.fetch(&GitFetchArgs::default()).expect("second fetch");
+
+    assert_eq!(second.num_rewritten, 1);
+    let mut parents = Vec::new();
+    let _ = fx
+        .repo
+        .eval_revset("@-", |change| {
+            parents.push(change.commit_id.0);
+            std::ops::ControlFlow::Continue(())
+        })
+        .expect("eval");
+    assert_eq!(parents, [rewritten], "the local child sits on the rewrite");
 }

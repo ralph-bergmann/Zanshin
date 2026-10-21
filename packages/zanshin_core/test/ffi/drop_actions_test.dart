@@ -230,6 +230,35 @@ void main() {
       expect(card.warnings, isEmpty);
     });
 
+    test("a refusal's hints decode in order; absent hints are []", () {
+      final ChangeActions card = decodeChangeActionsEnvelope(
+        fbs.EnvelopeObjectBuilder(
+          ok: true,
+          dataType: fbs.PayloadTypeId.ChangeActions,
+          data: fbs.ChangeActionsObjectBuilder(
+            newOnto: outcome(fbs.ActionStatus.Available),
+            newInsertAfter: outcome(fbs.ActionStatus.Available),
+            newInsertBefore: outcome(fbs.ActionStatus.Available),
+            edit: outcome(fbs.ActionStatus.Refused, refusal: fbs.FfiErrorObjectBuilder(code: 'jj.immutable')),
+            describe: outcome(
+              fbs.ActionStatus.Refused,
+              refusal: fbs.FfiErrorObjectBuilder(
+                code: 'jj.immutable',
+                context: 'abc',
+                hints: ['Could not modify commit: x', 'For more information, see:\n      - y'],
+              ),
+            ),
+            squashIntoParent: outcome(fbs.ActionStatus.Available),
+            abandon: outcome(fbs.ActionStatus.Available),
+          ),
+        ).toBytes(),
+      );
+
+      expect(card.describe.refusal?.hints, ['Could not modify commit: x', 'For more information, see:\n      - y']);
+      expect(card.edit.refusal?.hints, isEmpty, reason: 'an absent hints vector is no hints');
+      expect(() => card.describe.refusal!.hints.add('z'), throwsUnsupportedError);
+    });
+
     test('a missing outcome is malformed', () {
       expect(
         () => decodeChangeActionsEnvelope(

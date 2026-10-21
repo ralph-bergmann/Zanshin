@@ -39,6 +39,25 @@ pub const BASE: &[Step] = &[
     Step::Jj(&["bookmark", "create", "b-mark", "-r", "@-"]),
 ];
 
+/// An `immutable_heads()` alias naming no revision: it parses, but does not resolve (Story 9.56).
+const UNRESOLVABLE_IMMUTABLE: &[Step] = &[Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "revset-aliases.'immutable_heads()'",
+    "nonexistent_symbol_xyz",
+])];
+
+/// A `trunk()` alias naming a remote bookmark that does not exist: the start-up fallback sets it
+/// to `root()` for the call, with a warning (Story 9.56).
+const UNRESOLVABLE_TRUNK: &[Step] = &[Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "revset-aliases.'trunk()'",
+    "main@origin",
+])];
+
 /// How both repos are created; the CLI's default is colocated.
 pub const GIT_INIT: &[&str] = &["git", "init"];
 
@@ -832,6 +851,64 @@ pub fn scenarios() -> Vec<Scenario> {
                         "nope".to_owned(),
                     ]
                 },
+            )
+        },
+        // Story 9.56: the shared finish resolves the immutable set for every write with changes,
+        // as the CLI's `tx.finish` does — so verbs without a rewritability guard refuse an
+        // unresolvable alias too, with no operation.
+        Scenario {
+            setup: UNRESOLVABLE_IMMUTABLE,
+            ..simple(
+                "new_unresolvable_immutable",
+                |repo, _, s| {
+                    let result = repo.new_change(&[s.change("@")], &[], &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["new"]),
+            )
+        },
+        Scenario {
+            setup: UNRESOLVABLE_IMMUTABLE,
+            ..simple(
+                "bookmark_create_unresolvable_immutable",
+                |repo, _, _| {
+                    let result = repo.bookmark_create(&["feature".to_owned()], None);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["bookmark", "create", "feature"]),
+            )
+        },
+        Scenario {
+            setup: UNRESOLVABLE_IMMUTABLE,
+            ..simple(
+                "undo_unresolvable_immutable",
+                |repo, _, _| {
+                    let result = repo.undo(false);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["undo"]),
+            )
+        },
+        Scenario {
+            setup: UNRESOLVABLE_TRUNK,
+            ..simple(
+                "new_unresolvable_trunk",
+                |repo, _, s| {
+                    let result = repo.new_change(&[s.change("@")], &[], &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["new"]),
+            )
+        },
+        Scenario {
+            setup: UNRESOLVABLE_TRUNK,
+            ..simple(
+                "bookmark_create_unresolvable_trunk",
+                |repo, _, _| {
+                    let result = repo.bookmark_create(&["feature".to_owned()], None);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["bookmark", "create", "feature"]),
             )
         },
         simple(

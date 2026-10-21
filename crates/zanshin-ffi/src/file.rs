@@ -37,6 +37,7 @@ fn map_file_err(e: FileError) -> FfiErrorObj {
     };
     FfiErrorObj {
         report: None,
+        hints: Vec::new(),
         code: code.to_owned(),
         context: Some(context),
     }

@@ -23,9 +23,14 @@ namespace zanshin.ffi;
 ///   <domain>.<reason>  (e.g. "jj.repo_not_found", "internal.panic")
 /// Registry: docs/rust-error-codes.md.
 /// Never put user data (paths, IDs) in code — those go in context.
+///
+/// hints (Story 9.56): the jj CLI's hint lines for this refusal, verbatim (a line may itself
+/// hold newlines, as the CLI's `add_hint` text does) and in the CLI's order. Absent = none —
+/// an error without hints writes no field. context never holds in-band "Hint:" text.
 table FfiError {
   code: string;
   context: string;
+  hints: [string];
 }
 
 // ── Request-only tables ─────────────────────────────────────────────────────────

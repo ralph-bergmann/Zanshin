@@ -345,7 +345,7 @@ fn restore_refuses_changes_in_combined_with_from_or_into() {
             .restore(from, into, Some(chain.c.clone()), &[], false)
             .expect_err("the CLI's clap refuses this combination");
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason.contains("cannot be combined")),
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("cannot be combined")),
             "unexpected error: {err:?}"
         );
     }
@@ -366,7 +366,7 @@ fn restore_into_the_root_commit_is_refused_as_immutable() {
         .expect_err("root is always inside `::(immutable_heads() | root())`");
 
     assert!(
-        matches!(&err, MutateError::Immutable { commit_id } if *commit_id == root_hex),
+        matches!(&err, MutateError::Immutable { commit_id, .. } if *commit_id == root_hex),
         "unexpected error: {err:?}"
     );
     assert_eq!(head_op_id(&mut repo), before_op);
@@ -442,7 +442,7 @@ fn restore_with_a_malformed_path_is_refused_and_writes_no_operation() {
         .expect_err("a leading slash is not a repo path");
 
     assert!(
-        matches!(&err, MutateError::InvalidInput { reason } if reason.contains("invalid path")),
+        matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("invalid path")),
         "unexpected error: {err:?}"
     );
     assert_eq!(head_op_id(&mut repo), before_op);
@@ -804,7 +804,7 @@ fn absorb_into_an_immutable_destination_is_refused_and_writes_no_operation() {
         .expect_err("A is tagged, hence immutable");
 
     assert!(
-        matches!(&err, MutateError::Immutable { commit_id } if *commit_id == a_hex),
+        matches!(&err, MutateError::Immutable { commit_id, .. } if *commit_id == a_hex),
         "unexpected error: {err:?}"
     );
     assert_eq!(head_op_id(&mut repo), before_op);
@@ -876,7 +876,7 @@ fn absorb_with_a_malformed_path_is_refused_and_writes_no_operation() {
         .expect_err("a trailing slash is not a repo path");
 
     assert!(
-        matches!(&err, MutateError::InvalidInput { reason } if reason.contains("invalid path")),
+        matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("invalid path")),
         "unexpected error: {err:?}"
     );
     assert_eq!(head_op_id(&mut repo), before_op);

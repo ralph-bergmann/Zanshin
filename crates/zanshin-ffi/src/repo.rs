@@ -42,21 +42,33 @@ use crate::watcher::{Watcher, WatcherError, WatcherEvent};
 
 // ── Error mapping ─────────────────────────────────────────────────────────────
 
+/// Maps a [`RepoError`] onto the AR-P-4 taxonomy, carrying its CLI hints (Story 9.56).
 fn map_repo_err(e: RepoError) -> FfiErrorObj {
+    let hints = e.hints();
+    FfiErrorObj {
+        hints,
+        ..map_repo_err_code(e)
+    }
+}
+
+fn map_repo_err_code(e: RepoError) -> FfiErrorObj {
     match e {
         RepoError::PathNotFound { path } => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_PATH_NOT_FOUND.to_owned(),
             context: Some(path.display().to_string()),
         },
         RepoError::NotARepo { path } => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_REPO_NOT_FOUND.to_owned(),
             context: Some(path.display().to_string()),
         },
-        RepoError::InitFailed { reason } | RepoError::CloneFailed { reason } | RepoError::Backend(reason) => {
+        RepoError::InitFailed { reason } | RepoError::CloneFailed { reason, .. } | RepoError::Backend(reason) => {
             FfiErrorObj {
                 report: None,
+                hints: Vec::new(),
                 code: JJ_JJ_LIB_ERROR.to_owned(),
                 context: Some(reason),
             }
@@ -65,42 +77,50 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
         // `jj.network_error` `zanshin_git_fetch` reports for the same jj-lib failure.
         RepoError::NetworkError { reason } => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_NETWORK_ERROR.to_owned(),
             context: Some(reason),
         },
         // Story 9.52: the clone's cancel token was cancelled.
         RepoError::Cancelled => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_CANCELLED.to_owned(),
             context: Some("Cancelled".to_owned()),
         },
         RepoError::ConvertFailed { reason } => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_CONVERT_FAILED.to_owned(),
             context: Some(reason),
         },
         RepoError::DestinationNotEmpty { path } => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_DESTINATION_NOT_EMPTY.to_owned(),
             context: Some(path.display().to_string()),
         },
         RepoError::GitRepoExists { path } => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_GIT_REPO_EXISTS.to_owned(),
             context: Some(path.display().to_string()),
         },
         RepoError::InvalidInput { reason } => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_INVALID_INPUT.to_owned(),
             context: Some(reason),
         },
         RepoError::AlreadyJjRepo { path } => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_ALREADY_JJ_REPO.to_owned(),
             context: Some(path.display().to_string()),
         },
         RepoError::NotAGitRepo { path } => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_NOT_A_GIT_REPO.to_owned(),
             context: Some(path.display().to_string()),
         },
@@ -108,6 +128,7 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
         // not be read — the same `jj.config_error` every read verb already reports.
         RepoError::Config { reason } => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_CONFIG_ERROR.to_owned(),
             context: Some(reason),
         },
@@ -144,11 +165,12 @@ fn map_repo_err(e: RepoError) -> FfiErrorObj {
 /// `jj.git_worktree_failed`. Story 9.20's `zanshin_git_push` adds `jj.push_ref_refused` and
 /// `jj.push_commit_rejected`.
 pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
+    let hints = e.hints();
     let (code, context) = match e {
         MutateError::Precondition(e) => return map_precondition_err(e),
         MutateError::ChangeNotFound { id } => (JJ_CHANGE_NOT_FOUND, Some(id)),
-        MutateError::InvalidInput { reason } => (JJ_INVALID_INPUT, Some(reason)),
-        MutateError::Immutable { commit_id } => (JJ_IMMUTABLE, Some(commit_id)),
+        MutateError::InvalidInput { reason, .. } => (JJ_INVALID_INPUT, Some(reason)),
+        MutateError::Immutable { commit_id, .. } => (JJ_IMMUTABLE, Some(commit_id)),
         MutateError::Config { reason } => (JJ_CONFIG_ERROR, Some(reason)),
         MutateError::NothingToUndo => (JJ_NOTHING_TO_UNDO, None),
         MutateError::UndoCrossWorkspace { operation, workspace } => {
@@ -164,7 +186,7 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         MutateError::NotAGitRepo => (JJ_NOT_A_GIT_REPO, None),
         MutateError::RevsetParseError { reason } => (JJ_REVSET_PARSE_ERROR, Some(reason)),
         MutateError::RevsetResolutionError { reason } => (JJ_REVSET_RESOLUTION_ERROR, Some(reason)),
-        MutateError::BookmarkExists { name } => (JJ_BOOKMARK_EXISTS, Some(name)),
+        MutateError::BookmarkExists { name, .. } => (JJ_BOOKMARK_EXISTS, Some(name)),
         MutateError::BookmarkTrackedRemoteExists { name } => (JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, Some(name)),
         MutateError::NoWorkingCopy => (JJ_NO_WORKING_COPY, None),
         MutateError::ConcurrentWorkingCopy => (JJ_CONCURRENT_WORKING_COPY, None),
@@ -172,12 +194,13 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         MutateError::WorkspaceExists { name } => (JJ_WORKSPACE_EXISTS, Some(name)),
         MutateError::DestinationNotEmpty => (JJ_DESTINATION_NOT_EMPTY, None),
         MutateError::GitWorktree(reason) => (JJ_GIT_WORKTREE_FAILED, Some(reason)),
-        MutateError::PushRefRefused { message } => (JJ_PUSH_REF_REFUSED, Some(message)),
-        MutateError::PushCommitRejected { message } => (JJ_PUSH_COMMIT_REJECTED, Some(message)),
+        MutateError::PushRefRefused { message, .. } => (JJ_PUSH_REF_REFUSED, Some(message)),
+        MutateError::PushCommitRejected { message, .. } => (JJ_PUSH_COMMIT_REJECTED, Some(message)),
         MutateError::Backend(reason) => (JJ_JJ_LIB_ERROR, Some(reason)),
     };
     FfiErrorObj {
         report: None,
+        hints,
         code: code.to_owned(),
         context,
     }
@@ -336,6 +359,7 @@ fn colocation(colocate: bool, no_colocate: bool) -> Result<Option<bool>, FfiErro
     match (colocate, no_colocate) {
         (true, true) => Err(FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_INVALID_INPUT.to_owned(),
             context: Some("colocate and no_colocate cannot be used together".to_owned()),
         }),
@@ -353,6 +377,7 @@ fn object_hash(value: fbs::ObjectHash) -> Result<Option<ObjectHash>, FfiErrorObj
         fbs::ObjectHash::Sha256 => Ok(Some(ObjectHash::Sha256)),
         other => Err(FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: FFI_INVALID_ARGUMENT.to_owned(),
             context: Some(format!("unknown object_hash {other:?}")),
         }),
@@ -380,6 +405,7 @@ fn read_init_request(data: *const u8, len: usize) -> Result<InitOptions, FfiErro
         other => {
             return Err(FfiErrorObj {
                 report: None,
+                hints: Vec::new(),
                 code: FFI_INVALID_ARGUMENT.to_owned(),
                 context: Some(format!("unknown backend {other:?}")),
             })
@@ -425,6 +451,7 @@ fn read_clone_request(data: *const u8, len: usize) -> Result<(CloneOptions, u64)
 fn map_detect_err(e: &DetectError) -> FfiErrorObj {
     FfiErrorObj {
         report: None,
+        hints: Vec::new(),
         code: JJ_DETECT_FAILED.to_owned(),
         context: Some(e.to_string()),
     }
@@ -510,6 +537,7 @@ impl RepoSession {
 fn map_watcher_err(e: &WatcherError) -> FfiErrorObj {
     FfiErrorObj {
         report: None,
+        hints: Vec::new(),
         code: WATCHER_IO_ERROR.to_owned(),
         context: Some(e.to_string()),
     }
@@ -893,6 +921,7 @@ pub unsafe extern "C" fn zanshin_repo_close(handle: u64) -> *mut ZanshinBuf {
         if handle == 0 {
             return Err(FfiErrorObj {
                 report: None,
+                hints: Vec::new(),
                 code: FFI_INVALID_HANDLE.to_owned(),
                 context: None,
             });
@@ -1316,6 +1345,7 @@ fn read_fetch_request(data: *const u8, len: usize) -> Result<(GitFetchArgs, u64)
     let list = |v| crate::push::strings(v).unwrap_or_default();
     let unknown = |field: &str| FfiErrorObj {
         report: None,
+        hints: Vec::new(),
         code: FFI_INVALID_ARGUMENT.to_owned(),
         context: Some(format!("GitFetchRequest.{field} is not a known value")),
     };
@@ -1405,10 +1435,11 @@ fn ok_git_fetch_result(outcome: &GitFetchOutcome, report: &CallReport) -> Vec<u8
 /// - `jj.invalid_input` — no remote matched ("No git remotes to fetch from", after the
 ///   `jj.fetch_remotes_unmatched` warning; nothing is written), a name pattern does not parse
 ///   (a `Named` remote pattern is parsed before the backend is checked, so it precedes
-///   `jj.not_a_git_repo`), a pattern cannot become a refspec, a matched remote's name is one jj
-///   cannot use (e.g. a Git remote named `git`; `context` ends in the CLI's ``Hint: Run `jj git
-///   remote rename` to give a different name.`` line), or Git rejected a ref update ("Failed to
-///   update refs: …"); the CLI's text in `context`. No operation is written.
+///   `jj.not_a_git_repo`), a pattern cannot become a refspec (an `Expression` one with the CLI's
+///   pattern hint in `hints`), a matched remote's name is one jj cannot use (e.g. a Git remote
+///   named `git`; the CLI's ``Run `jj git remote rename` to give a different name.`` in `hints`),
+///   or Git rejected a ref update ("Failed to update refs: …"); the CLI's text in `context`. No
+///   operation is written.
 /// - `jj.not_a_git_repo` — the OPEN WORKSPACE has no git backend at all, so `git fetch`
 ///   cannot run. Carries NO `context` — there is no path to name. Identical to what the
 ///   six `zanshin_git_remote_*`/`_import`/`_export` wrappers report for that condition.
@@ -1829,6 +1860,7 @@ mod tests {
     fn map_repo_err_clone_failed_maps_to_jj_lib_error() {
         let e = map_repo_err(RepoError::CloneFailed {
             reason: "bad url".into(),
+            hints: Vec::new(),
         });
         assert_eq!(e.code, JJ_JJ_LIB_ERROR);
     }
@@ -1893,9 +1925,7 @@ mod tests {
 
     #[test]
     fn map_mutate_err_invalid_input_maps_to_jj_invalid_input() {
-        let e = map_mutate_err(MutateError::InvalidInput {
-            reason: "empty list".to_owned(),
-        });
+        let e = map_mutate_err(MutateError::invalid("empty list".to_owned()));
         assert_eq!(e.code, JJ_INVALID_INPUT);
         assert_eq!(e.context.unwrap(), "empty list");
     }
@@ -1905,6 +1935,7 @@ mod tests {
     fn story_9_20_errors_map_to_their_codes() {
         let e = map_mutate_err(MutateError::PushRefRefused {
             message: "refused".to_owned(),
+            hints: Vec::new(),
         });
         assert_eq!(
             (e.code.as_str(), e.context.as_deref()),
@@ -1912,6 +1943,7 @@ mod tests {
         );
         let e = map_mutate_err(MutateError::PushCommitRejected {
             message: "rejected".to_owned(),
+            hints: Vec::new(),
         });
         assert_eq!(
             (e.code.as_str(), e.context.as_deref()),
@@ -1935,9 +1967,52 @@ mod tests {
     fn map_mutate_err_immutable_maps_to_jj_immutable() {
         let e = map_mutate_err(MutateError::Immutable {
             commit_id: "deadbeef".to_owned(),
+            hints: vec!["Could not modify commit: x".to_owned()],
         });
         assert_eq!(e.code, JJ_IMMUTABLE);
         assert_eq!(e.context.unwrap(), "deadbeef");
+        assert_eq!(
+            e.hints,
+            ["Could not modify commit: x"],
+            "Story 9.56: the hints ride along"
+        );
+    }
+
+    /// Story 9.56: every mapper carries the error's `hints()` — the data-derived ones too, and a
+    /// wrapped precondition's — and a hint-less error none.
+    #[test]
+    fn the_mappers_carry_the_errors_hints() {
+        let tracked = map_mutate_err(MutateError::BookmarkTrackedRemoteExists { name: "foo".to_owned() });
+        assert_eq!(
+            tracked.hints,
+            ["Use `jj bookmark set` to recreate the local bookmark. Run `jj bookmark untrack foo` to disassociate them."]
+        );
+        let stale = map_mutate_err(MutateError::Precondition(
+            zanshin_jj::PreconditionError::StaleWorkingCopy {
+                cause: zanshin_jj::StaleCause::OperationNotFound,
+                working_copy_op_id: "0".repeat(128),
+                repo_op_id: "1".repeat(128),
+            },
+        ));
+        assert_eq!(stale.code, crate::JJ_STALE_WORKING_COPY);
+        assert_eq!(stale.hints.len(), 1);
+        assert!(map_mutate_err(MutateError::NotAGitRepo).hints.is_empty());
+        let exists = map_repo_err(RepoError::GitRepoExists { path: "/x".into() });
+        assert_eq!(exists.code, JJ_GIT_REPO_EXISTS);
+        assert_eq!(
+            exists.hints,
+            ["To create a repo backed by the existing Git repo, run `jj git init --colocate` instead."]
+        );
+        let clone = map_repo_err(RepoError::CloneFailed {
+            reason: "r".into(),
+            hints: vec!["h".to_owned()],
+        });
+        assert_eq!(
+            (clone.code.as_str(), clone.hints),
+            (JJ_JJ_LIB_ERROR, vec!["h".to_owned()])
+        );
+        let file = crate::config::map_config_cmd_err(zanshin_jj::ConfigCmdError::UnrecognizedFile { path: "x".into() });
+        assert_eq!(file.hints.len(), 1);
     }
 
     #[test]
@@ -2123,6 +2198,7 @@ mod tests {
         let outcome = CreationOutcome {
             result: Err(RepoError::CloneFailed {
                 reason: "fetch failed".to_owned(),
+                hints: Vec::new(),
             }),
             precondition: Some(zanshin_jj::Precondition::default()),
             warnings: vec![warning(

@@ -35,6 +35,9 @@ pub enum RepoError {
     CloneFailed {
         /// Human-readable failure reason from jj-lib.
         reason: String,
+        /// The CLI's hint lines for it (Story 9.56) — a remote name jj refuses, or a ref pattern
+        /// that cannot become refspecs, carry the fetch's hints; empty otherwise.
+        hints: Vec<String>,
     },
     /// [`Repo::clone`]'s `git` subprocess failed (Story 9.20 closing run) — the fetch or the
     /// default-branch query could not reach, authenticate against or talk to the source:
@@ -102,6 +105,23 @@ pub enum RepoError {
     Backend(String),
 }
 
+impl RepoError {
+    /// The jj CLI's hint lines for this refusal, verbatim and in the CLI's order (Story 9.56) —
+    /// `init`'s existing-Git-repo hint (`cli/src/commands/git/init.rs:233-236` @ v0.46.0) and a
+    /// clone's fetch hints; empty otherwise. `NotARepo` carries none: it does not tell a `.git`
+    /// directory apart, so the CLI's "It looks like this is a git repo." hint is not ported.
+    #[must_use]
+    pub fn hints(&self) -> Vec<String> {
+        match self {
+            Self::GitRepoExists { .. } => vec![
+                "To create a repo backed by the existing Git repo, run `jj git init --colocate` instead.".to_owned(),
+            ],
+            Self::CloneFailed { hints, .. } => hints.clone(),
+            _ => Vec::new(),
+        }
+    }
+}
+
 impl From<crate::ConfigError> for RepoError {
     fn from(e: crate::ConfigError) -> Self {
         let crate::ConfigError::Load { reason } = e;
@@ -167,6 +187,10 @@ pub struct Repo {
     /// The last verb's warnings, until [`Repo::take_warnings`] takes them. Reset at the start of
     /// every verb that runs the precondition.
     pending_warnings: crate::warning::Warnings,
+    /// Whether the current call runs with `trunk()` = `root()` because the `trunk()` alias did not
+    /// resolve at its start (Story 9.56, see [`Repo::start_call`]); [`crate::config::load`] then
+    /// adds the overriding layer. Decided afresh at the start of every call that snapshots.
+    trunk_fallback: bool,
 }
 
 impl std::fmt::Debug for Repo {
@@ -242,7 +266,13 @@ impl Repo {
             stack_fingerprint,
             pending_precondition: None,
             pending_warnings: crate::warning::Warnings::default(),
+            trunk_fallback: false,
         })
+    }
+
+    /// Whether the current call runs with the start-up `trunk()` fallback (Story 9.56).
+    pub(crate) fn trunk_fallback(&self) -> bool {
+        self.trunk_fallback
     }
 
     /// Re-derives the settings — and reloads the workspace, whose `RepoLoader` and working
@@ -351,8 +381,9 @@ impl Repo {
     /// The start of every call that snapshots — the pre-verb precondition and
     /// [`Repo::workspace_update_stale`]: [`Repo::refresh_settings`] (its fix-up warnings the
     /// call's first, also when it fails), a fresh report and warning collector, the effective
-    /// config, the colocation check and the start-up environment
-    /// ([`crate::snapshot::CommandEnv`], built before any lock is taken).
+    /// config, the colocation check, the start-up environment
+    /// ([`crate::snapshot::CommandEnv`], built before any lock is taken), then the `trunk()`
+    /// fallback ([`Repo::fall_back_on_trunk`]).
     ///
     /// # Errors
     ///
@@ -360,6 +391,7 @@ impl Repo {
     fn start_call(
         &mut self,
     ) -> Result<(jj_lib::config::StackedConfig, bool, crate::snapshot::CommandEnv), crate::PreconditionError> {
+        self.trunk_fallback = false;
         let mut fix_ups = Vec::new();
         let refreshed = self.refresh_settings(&mut fix_ups);
         self.pending_precondition = Some(crate::Precondition::default());
@@ -370,7 +402,59 @@ impl Repo {
         let colocated = crate::wc_ops::is_colocated_git_workspace(&self.workspace)
             .map_err(|e| crate::PreconditionError::Backend(crate::mutate::flatten_chain(&e)))?;
         let env = crate::snapshot::CommandEnv::load(&self.workspace, &config, &mut self.pending_warnings)?;
+        let (config, env) = self.fall_back_on_trunk(config, env)?;
         Ok((config, colocated, env))
+    }
+
+    /// The CLI's `trunk()` fallback in `load_from_workspace` (`cli/src/cli_util.rs:540-562` @
+    /// v0.46.0; Story 9.56): when the `trunk()` alias parses but does not resolve at the head, the
+    /// call warns [`crate::WarningKind::TrunkAliasUnresolved`] ("Failed to resolve
+    /// `revset-aliases.trunk()`: <error>" + "The `trunk()` alias is temporarily set to
+    /// `root()`."; the CLI's hint line is dropped, as on every warning) and runs with `trunk()` =
+    /// `root()` — the config re-read with the overriding layer and the start-up environment
+    /// (immutable set, short-prefixes) re-parsed from it, the CLI's `reload_revset_expressions`.
+    /// Every later [`crate::config::load`] of the call carries the layer, so the verb's own
+    /// revsets (a graph walk's `builtin_log()`, a user's `trunk()`) see it too.
+    ///
+    /// Only a `trunk()` a non-default layer defines can fail; otherwise nothing is loaded.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::PreconditionError::Backend`] — the head could not be loaded (as the snapshot's
+    ///   own head load reports it).
+    /// - [`crate::PreconditionError::Config`] — the re-read config or environment fails.
+    fn fall_back_on_trunk(
+        &mut self,
+        config: jj_lib::config::StackedConfig,
+        env: crate::snapshot::CommandEnv,
+    ) -> Result<(jj_lib::config::StackedConfig, crate::snapshot::CommandEnv), crate::PreconditionError> {
+        if !crate::config::trunk_alias_redefined(&config) {
+            return Ok((config, env));
+        }
+        let head = crate::snapshot::load_head(&self.workspace)?;
+        // The alias tables' warnings are the environment's, already recorded once for the call.
+        let revset = crate::revset::revset_config(&config, &mut crate::warning::Warnings::default())?;
+        let Some(reason) = crate::revset::trunk_resolution_error(&self.workspace, &revset, head.as_ref()) else {
+            return Ok((config, env));
+        };
+        self.pending_warnings.push(
+            crate::WarningKind::TrunkAliasUnresolved,
+            format!(
+                "Failed to resolve `revset-aliases.trunk()`: {reason}\n\
+                 The `trunk()` alias is temporarily set to `root()`."
+            ),
+        );
+        self.trunk_fallback = true;
+        let reloaded = crate::config::load(self)
+            .map_err(crate::PreconditionError::from)
+            .and_then(|config| {
+                let env = crate::snapshot::CommandEnv::load(&self.workspace, &config, &mut self.pending_warnings)?;
+                Ok((config, env))
+            });
+        if reloaded.is_err() {
+            self.trunk_fallback = false;
+        }
+        reloaded
     }
 
     /// Runs the precondition, then `verb` with its context — and keeps the call's warnings for
@@ -389,9 +473,17 @@ impl Repo {
         warn_stats: bool,
         verb: impl FnOnce(&mut Self, &mut crate::snapshot::VerbContext) -> Result<T, E>,
     ) -> Result<T, E> {
-        let mut ctx = self.precondition(warn_stats)?;
-        let result = verb(self, &mut ctx);
-        self.pending_warnings = std::mem::take(&mut ctx.warnings);
+        let result = match self.precondition(warn_stats) {
+            Ok(mut ctx) => {
+                let result = verb(self, &mut ctx);
+                self.pending_warnings = std::mem::take(&mut ctx.warnings);
+                result
+            }
+            Err(e) => Err(e.into()),
+        };
+        // The `trunk()` fallback is the call's alone (Story 9.56): a later load outside a call —
+        // `log_defaults` — must not see its layer.
+        self.trunk_fallback = false;
         result
     }
 
@@ -1120,8 +1212,9 @@ impl Repo {
     ///   divergent.
     /// - [`crate::MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is inside the repo's
     ///   effective immutable set; the first offender's hex.
-    /// - [`crate::MutateError::Config`] — (`-A`/`-B`) the `revset-aliases."immutable_heads()"`
-    ///   alias does not resolve against the repo; (one positional parent) an
+    /// - [`crate::MutateError::Config`] — the `revset-aliases."immutable_heads()"` alias does not
+    ///   resolve against the repo (with or without `-A`/`-B`: the CLI's `tx.finish` resolves it
+    ///   for every write, Story 9.56); (one positional parent) an
     ///   `experimental-advance-branches` key is not a list of strings; or a template fault
     ///   (Story 9.51): a non-empty `templates.new_description` — or, for a non-empty description,
     ///   `templates.commit_trailers` — that does not parse or render (the CLI's texts, see
@@ -1332,10 +1425,11 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — no remote matched ("No git remotes to fetch
     ///   from", the CLI's refusal; nothing is written), a name pattern does not parse (a
     ///   `--remote` one is parsed before the remotes are listed, so even without a Git backend), a
-    ///   pattern cannot become a refspec (jj-lib's expansion error), a matched remote's name is
-    ///   one jj cannot use (jj-lib's `RemoteName`, e.g. a Git remote named `git`; the reason ends
-    ///   in the CLI's ``Hint: Run `jj git remote rename` to give a different name.`` line), or Git
-    ///   rejected a ref update ("Failed to update refs: …"). No operation is written.
+    ///   pattern cannot become a refspec (jj-lib's expansion error; an `Expression` one carries
+    ///   the CLI's pattern hint), a matched remote's name is one jj cannot use (jj-lib's
+    ///   `RemoteName`, e.g. a Git remote named `git`, with the CLI's ``Run `jj git remote rename`
+    ///   to give a different name.`` hint), or Git rejected a ref update ("Failed to update refs:
+    ///   …"). No operation is written. Hints ride [`crate::MutateError::hints`] (Story 9.56).
     /// - [`crate::MutateError::Config`] — `git.fetch` (read only without `--remote` /
     ///   `--all-remotes`, and before the remotes are listed — so even without a Git backend) is
     ///   neither a string nor a list of strings; a `remotes.<name>` entry or its
@@ -1973,18 +2067,23 @@ impl Repo {
     /// - [`crate::MutateError::Precondition`] wrapping [`crate::PreconditionError::Backend`] —
     ///   the workspace has no `@`, or any underlying jj-lib failure.
     pub fn workspace_update_stale(&mut self) -> Result<crate::StaleRecovery, crate::MutateError> {
-        let (config, colocated, env) = self.start_call()?;
-        let mut report = crate::Precondition::default();
-        let result = crate::stale::run(
-            &mut self.workspace,
-            &config,
-            &env,
-            colocated,
-            &mut report,
-            &mut self.pending_warnings,
-        );
-        self.pending_precondition = Some(report);
-        let (recovery, stats) = result?;
+        let started = self.start_call();
+        let result = started.map(|(config, colocated, env)| {
+            let mut report = crate::Precondition::default();
+            let result = crate::stale::run(
+                &mut self.workspace,
+                &config,
+                &env,
+                colocated,
+                &mut report,
+                &mut self.pending_warnings,
+            );
+            self.pending_precondition = Some(report);
+            result
+        });
+        // The `trunk()` fallback is the call's alone (Story 9.56).
+        self.trunk_fallback = false;
+        let (recovery, stats) = result??;
         self.pending_warnings
             .extend(crate::warning::snapshot_stats(self.workspace.workspace_root(), &stats));
         Ok(recovery)
@@ -2834,6 +2933,67 @@ mod tests {
 
     use super::{Repo, RepoError};
     use crate::MutateError;
+
+    /// Story 9.56: the `trunk()` fallback lasts one call — a verb that fell back leaves it off
+    /// afterwards, so a later config load outside a call (`log_defaults`) sees no override.
+    #[test]
+    fn the_trunk_fallback_ends_with_its_call() {
+        test_helpers::pin_test_env();
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let mut repo = Repo::init(&crate::InitOptions {
+            path: tmp.path().to_path_buf(),
+            backend: Some(crate::Backend::Git),
+            colocate: Some(false),
+            ..Default::default()
+        })
+        .result
+        .expect("init");
+        std::fs::write(
+            repo.workspace_root().join(".jj").join("repo").join("config.toml"),
+            "[revset-aliases]\n'trunk()' = 'main@origin'\n",
+        )
+        .expect("repo config");
+        let _ = repo.take_warnings();
+
+        let _ = repo
+            .eval_revset("trunk()", |_| std::ops::ControlFlow::Continue(()))
+            .expect("falls back");
+
+        assert!(
+            repo.take_warnings()
+                .iter()
+                .any(|w| w.kind == crate::WarningKind::TrunkAliasUnresolved),
+            "the call fell back"
+        );
+        assert!(!repo.trunk_fallback(), "and the fallback ended with it");
+        let _ = repo.workspace_update_stale();
+        assert!(
+            repo.take_warnings()
+                .iter()
+                .any(|w| w.kind == crate::WarningKind::TrunkAliasUnresolved),
+            "workspace_update_stale fell back too"
+        );
+        assert!(!repo.trunk_fallback(), "and ended it");
+    }
+
+    /// Story 9.56: `init`'s existing-Git-repo refusal carries the CLI's hint, a clone failure its
+    /// own list, and the rest none.
+    #[test]
+    fn repo_error_hints_follow_the_variant() {
+        assert_eq!(
+            RepoError::GitRepoExists { path: "/x".into() }.hints(),
+            ["To create a repo backed by the existing Git repo, run `jj git init --colocate` instead."]
+        );
+        assert_eq!(
+            RepoError::CloneFailed {
+                reason: String::new(),
+                hints: vec!["h".to_owned()],
+            }
+            .hints(),
+            ["h"]
+        );
+        assert!(RepoError::NotARepo { path: "/x".into() }.hints().is_empty());
+    }
 
     fn open_fixture() -> (FixtureHandle, Repo) {
         test_helpers::pin_test_env();

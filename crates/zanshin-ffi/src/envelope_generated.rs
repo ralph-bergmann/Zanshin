@@ -3338,6 +3338,10 @@ pub mod zanshin {
         ///   <domain>.<reason>  (e.g. "jj.repo_not_found", "internal.panic")
         /// Registry: docs/rust-error-codes.md.
         /// Never put user data (paths, IDs) in code — those go in context.
+        ///
+        /// hints (Story 9.56): the jj CLI's hint lines for this refusal, verbatim (a line may itself
+        /// hold newlines, as the CLI's `add_hint` text does) and in the CLI's order. Absent = none —
+        /// an error without hints writes no field. context never holds in-band "Hint:" text.
         pub struct FfiError<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -3355,6 +3359,7 @@ pub mod zanshin {
         impl<'a> FfiError<'a> {
             pub const VT_CODE: ::flatbuffers::VOffsetT = 4;
             pub const VT_CONTEXT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_HINTS: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -3366,6 +3371,9 @@ pub mod zanshin {
                 args: &'args FfiErrorArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<FfiError<'bldr>> {
                 let mut builder = FfiErrorBuilder::new(_fbb);
+                if let Some(x) = args.hints {
+                    builder.add_hints(x);
+                }
                 if let Some(x) = args.context {
                     builder.add_context(x);
                 }
@@ -3395,6 +3403,17 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(FfiError::VT_CONTEXT, None)
                 }
             }
+            #[inline]
+            pub fn hints(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(FfiError::VT_HINTS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for FfiError<'_> {
@@ -3404,15 +3423,18 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("code", Self::VT_CODE, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("context", Self::VT_CONTEXT, false)?
-                    .finish();
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("code", Self::VT_CODE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("context", Self::VT_CONTEXT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("hints", Self::VT_HINTS, false)?
+     .finish();
                 Ok(())
             }
         }
         pub struct FfiErrorArgs<'a> {
             pub code: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub context: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub hints:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
         }
         impl<'a> Default for FfiErrorArgs<'a> {
             #[inline]
@@ -3420,6 +3442,7 @@ pub mod zanshin {
                 FfiErrorArgs {
                     code: None,
                     context: None,
+                    hints: None,
                 }
             }
         }
@@ -3438,6 +3461,14 @@ pub mod zanshin {
             pub fn add_context(&mut self, context: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(FfiError::VT_CONTEXT, context);
+            }
+            #[inline]
+            pub fn add_hints(
+                &mut self,
+                hints: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FfiError::VT_HINTS, hints);
             }
             #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FfiErrorBuilder<'a, 'b, A> {
@@ -3459,6 +3490,7 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("FfiError");
                 ds.field("code", &self.code());
                 ds.field("context", &self.context());
+                ds.field("hints", &self.hints());
                 ds.finish()
             }
         }

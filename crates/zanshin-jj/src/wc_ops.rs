@@ -379,22 +379,19 @@ pub(crate) fn is_colocated_git_workspace(workspace: &Workspace) -> Result<bool, 
 /// bare-glob form is fileset DSL, which ADR-0003 replaces rather than ports.
 fn parse_paths(workspace: &Workspace, paths: &[String], verb: &str) -> Result<Vec<RepoPathBuf>, MutateError> {
     if paths.is_empty() {
-        return Err(MutateError::InvalidInput {
-            reason: format!("{verb} requires at least one path"),
-        });
+        return Err(MutateError::invalid(format!("{verb} requires at least one path")));
     }
     let root = workspace.workspace_root();
     paths
         .iter()
         .map(|entry| {
             if entry.is_empty() {
-                return Err(MutateError::InvalidInput {
-                    reason: "invalid path: an empty path is not a path".to_owned(),
-                });
+                return Err(MutateError::invalid(
+                    "invalid path: an empty path is not a path".to_owned(),
+                ));
             }
-            parse_fs_path(root, root, entry).map_err(|e| MutateError::InvalidInput {
-                reason: format!("invalid path: {}", flatten_chain(&e)),
-            })
+            parse_fs_path(root, root, entry)
+                .map_err(|e| MutateError::invalid(format!("invalid path: {}", flatten_chain(&e))))
         })
         .collect()
 }

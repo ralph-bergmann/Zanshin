@@ -292,9 +292,11 @@ fn create_refuses_a_name_that_already_exists_without_writing_an_operation() {
     let err = repo.bookmark_create(&["feature".to_owned()], None).unwrap_err();
 
     assert!(
-        matches!(&err, MutateError::BookmarkExists { name } if name == "feature"),
+        matches!(&err, MutateError::BookmarkExists { name, .. } if name == "feature"),
         "unexpected error: {err:?}"
     );
+    // Story 9.56: `bookmark create`'s hint (`create.rs:70` @ v0.46.0).
+    assert_eq!(err.hints(), ["Use `jj bookmark set` to update it."]);
     assert_eq!(head_op(&mut repo).0, before, "a refusal writes no operation");
 }
 
@@ -315,7 +317,7 @@ fn create_is_fail_fast_so_an_offending_second_name_creates_nothing() {
         .unwrap_err();
 
     assert!(
-        matches!(&err, MutateError::BookmarkExists { name } if name == "existing"),
+        matches!(&err, MutateError::BookmarkExists { name, .. } if name == "existing"),
         "unexpected error: {err:?}"
     );
     assert_eq!(
@@ -342,6 +344,11 @@ fn create_refuses_a_name_whose_remote_is_tracked_with_its_own_code() {
     assert!(
         matches!(&err, MutateError::BookmarkTrackedRemoteExists { name } if name == "foo"),
         "unexpected error: {err:?}"
+    );
+    // Story 9.56: `bookmark create`'s hint (`create.rs:77-81` @ v0.46.0).
+    assert_eq!(
+        err.hints(),
+        ["Use `jj bookmark set` to recreate the local bookmark. Run `jj bookmark untrack foo` to disassociate them."]
     );
     assert!(local_bookmark_names(&fx.path).is_empty());
     assert_eq!(head_op(&mut repo).0, before);
@@ -512,7 +519,7 @@ fn delete_refuses_a_malformed_pattern_and_an_empty_pattern_list() {
     assert!(
         matches!(
             &malformed,
-            MutateError::InvalidInput { reason }
+            MutateError::InvalidInput { reason, .. }
                 if reason == "failed to parse name pattern: Invalid string pattern: \
                               Invalid string pattern kind `nosuchkind:`"
         ),
@@ -872,7 +879,7 @@ fn create_guards_refuse_before_a_broken_auto_track_pattern() {
     let err = repo.bookmark_create(&["feature".to_owned()], None).unwrap_err();
 
     assert!(
-        matches!(&err, MutateError::BookmarkExists { name } if name == "feature"),
+        matches!(&err, MutateError::BookmarkExists { name, .. } if name == "feature"),
         "unexpected error: {err:?}"
     );
     assert_eq!(head_op(&mut repo).0, before);

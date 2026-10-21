@@ -161,7 +161,8 @@ fn before(ids: &[&ChangeId]) -> DropLocation {
     }
 }
 
-/// An outcome in comparable form: status, the refusal's `Debug`, the two flags.
+/// An outcome in comparable form: status, the refusal's `Debug` without its hints (Story 9.56 —
+/// [`a_refused_row_carries_the_verbs_hints`] pins those), the two flags.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Row {
     status: ActionStatus,
@@ -170,10 +171,25 @@ struct Row {
     backwards: bool,
 }
 
+/// `e`'s `Debug` with the site-computed hints of `Immutable` / `InvalidInput` left out.
+fn sans_hints(e: &MutateError) -> String {
+    match e {
+        MutateError::Immutable { commit_id, .. } => format!(
+            "{:?}",
+            MutateError::Immutable {
+                commit_id: commit_id.clone(),
+                hints: Vec::new(),
+            }
+        ),
+        MutateError::InvalidInput { reason, .. } => format!("{:?}", invalid(reason.clone())),
+        other => format!("{other:?}"),
+    }
+}
+
 fn row(outcome: &ActionOutcome) -> Row {
     Row {
         status: outcome.status,
-        refusal: outcome.refusal.as_ref().map(|e| format!("{e:?}")),
+        refusal: outcome.refusal.as_ref().map(sans_hints),
         combined: outcome.combined_description_needed,
         backwards: outcome.allow_backwards_needed,
     }
@@ -218,12 +234,16 @@ fn refused(e: &MutateError) -> Row {
 }
 
 fn invalid(reason: impl Into<String>) -> MutateError {
-    MutateError::InvalidInput { reason: reason.into() }
+    MutateError::InvalidInput {
+        reason: reason.into(),
+        hints: Vec::new(),
+    }
 }
 
 fn imm(fx: &Fx, id: &ChangeId) -> MutateError {
     MutateError::Immutable {
         commit_id: hex(&fx.root, id),
+        hints: Vec::new(),
     }
 }
 
@@ -1002,7 +1022,7 @@ fn agree(fx: &mut Fx, expected: &Row, verb: impl FnOnce(&mut Repo) -> Result<(),
         }
         ActionStatus::Refused => {
             let err = result.expect_err("a Refused row refuses");
-            assert_eq!(Some(format!("{err:?}")), expected.refusal);
+            assert_eq!(Some(sans_hints(&err)), expected.refusal);
             assert_eq!(head_op(&fx.root), before, "a refusal writes no operation");
         }
     }
@@ -1262,5 +1282,95 @@ fn interdiff_rows_agree_with_interdiff() {
             ActionStatus::Refused,
             ActionStatus::Refused
         ]
+    );
+}
+
+// ── Story 9.56: the shared finish resolves the immutable set ─────────────────────
+
+/// Whether `row` is a `Config` refusal (an unresolvable `immutable_heads()` alias).
+fn is_config_refusal(row: &Row) -> bool {
+    row.status == ActionStatus::Refused && row.refusal.as_deref().is_some_and(|r| r.starts_with("Config {"))
+}
+
+/// An unresolvable `immutable_heads()` alias refuses every row whose verb writes, guarded or not:
+/// the CLI's `tx.finish` resolves the set for every transaction with changes
+/// (`rebase_mutable_descendants`, `cli/src/cli_util.rs:2986-3002` @ v0.46.0). The merge `new`,
+/// `duplicate`, `revert` onto, the card's `new` and a fast-forward `bookmark move` read Refused
+/// `Config`; a bookmark move that would change nothing stays a no-op, as the CLI's "Nothing
+/// changed." skips the resolution. The merge `new` itself refuses alike, writing nothing.
+#[test]
+fn an_unresolvable_alias_refuses_the_unguarded_rows() {
+    let mut fx = base(None);
+    let (b, c, d) = (fx.b.clone(), fx.c.clone(), fx.d.clone());
+    fx.repo
+        .bookmark_create(&["mark".to_owned()], Some(&b))
+        .expect("bookmark");
+    fs::write(
+        fx.root.join(".jj").join("repo").join("config.toml"),
+        "[revset-aliases]\n\"immutable_heads()\" = \"nonexistent_symbol_xyz\"\n",
+    )
+    .expect("repo config");
+    fx.repo = Repo::open(&fx.root).expect("reopen");
+    let _ = fx.repo.take_warnings();
+
+    let rows = query(&mut fx, &change(&d), &[onto(&[&c])]);
+    for verb in [DropVerb::NewMerge, DropVerb::Duplicate, DropVerb::Revert] {
+        let (_, _, row) = rows.iter().find(|(v, _, _)| *v == verb).expect("the row");
+        assert!(is_config_refusal(row), "{verb:?}: {row:?}");
+    }
+    let [new_onto, ..] = card(&mut fx, &c);
+    assert!(is_config_refusal(&new_onto), "{new_onto:?}");
+
+    let mark = DropSource::Bookmark("mark".to_owned());
+    let rows = query(&mut fx, &mark, &[onto(&[&c]), onto(&[&b])]);
+    assert!(is_config_refusal(&rows[0].2), "fast-forward: {:?}", rows[0]);
+    assert_eq!(rows[1], (DropVerb::BookmarkMove, 1, no_op()));
+
+    let expected = the_row(&mut fx, &change(&d), onto(&[&c]), DropVerb::NewMerge);
+    agree(&mut fx, &expected, |repo| {
+        repo.new_change(&[c.clone(), d.clone()], &[], &[]).map(drop)
+    });
+}
+
+/// A refused row carries the hints its verb's own refusal carries (Story 9.56): the card's
+/// `describe` of an immutable change and `describe` itself give the CLI's four immutable hints.
+#[test]
+fn a_refused_row_carries_the_verbs_hints() {
+    let mut fx = base(Some(|fx| &fx.b));
+    let b = fx.b.clone();
+    let actions = fx.repo.change_actions(&b).expect("change_actions");
+    let row_hints = actions.describe.refusal.as_ref().expect("refused").hints();
+    let err = fx.repo.describe(b, "described\n").expect_err("immutable");
+    assert_eq!(row_hints, err.hints());
+    assert_eq!(row_hints.len(), 4, "{row_hints:?}");
+    assert!(row_hints[0].starts_with("Could not modify commit: "), "{row_hints:?}");
+    assert!(
+        row_hints[0].ends_with(" B"),
+        "the summary ends with the subject: {row_hints:?}"
+    );
+    assert_eq!(row_hints[1], "Immutable commits are used to protect shared history.");
+    assert_eq!(
+        row_hints[2],
+        "For more information, see:\n      - https://docs.jj-vcs.dev/latest/config/#set-of-immutable-commits\n      - `jj help -k config`, \"Set of immutable commits\""
+    );
+    // `::B` meets B's descendants (B, C) in B alone.
+    assert_eq!(row_hints[3], "This operation would rewrite 1 immutable commits.");
+}
+
+/// The count hint counts the immutable descendants too: with `immutable_heads()` = C, rewriting
+/// B would rewrite B and C. The root commit's immutable refusal carries no hints, as in the CLI.
+#[test]
+fn the_immutable_hint_counts_immutable_descendants_and_the_root_has_none() {
+    let mut fx = base(Some(|fx| &fx.c));
+    let (b, zero) = (fx.b.clone(), fx.zero.clone());
+    let err = fx.repo.describe(b, "described\n").expect_err("immutable");
+    assert_eq!(
+        err.hints().last().map(String::as_str),
+        Some("This operation would rewrite 2 immutable commits.")
+    );
+    let err = fx.repo.edit(zero).expect_err("the root is immutable");
+    assert!(
+        matches!(&err, MutateError::Immutable { hints, .. } if hints.is_empty()),
+        "{err:?}"
     );
 }

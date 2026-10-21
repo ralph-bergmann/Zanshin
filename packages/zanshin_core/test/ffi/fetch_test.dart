@@ -107,6 +107,27 @@ void main() {
       expect(() => decodeGitFetchResultEnvelope(noMutation), unknown('mutation'));
     });
 
+    // Story 9.56: a reserved remote name's refusal keeps jj-lib's text as context and carries
+    // the CLI's rename hint as `hints`.
+    test("a reserved remote's refusal carries the rename hint", () {
+      final Uint8List error = fbs.EnvelopeObjectBuilder(
+        ok: false,
+        error: fbs.FfiErrorObjectBuilder(
+          code: 'jj.invalid_input',
+          context: "Git remote named 'git' is reserved for local Git repository",
+          hints: ['Run `jj git remote rename` to give a different name.'],
+        ),
+      ).toBytes();
+      expect(
+        () => decodeGitFetchResultEnvelope(error),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.context, 'context', "Git remote named 'git' is reserved for local Git repository")
+              .having((e) => e.hints, 'hints', ['Run `jj git remote rename` to give a different name.']),
+        ),
+      );
+    });
+
     test('throws the error envelope with its warnings, and ffi.unknown on a wrong payload', () {
       final Uint8List error = fbs.EnvelopeObjectBuilder(
         ok: false,

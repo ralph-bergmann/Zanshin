@@ -193,7 +193,7 @@ fn git_remote_add_refuses_every_invalid_name() {
         .git_remote_add("git", &url, None)
         .expect_err("`git` is reserved for the local git repo");
     assert!(
-        matches!(&reserved, MutateError::InvalidInput { reason } if reason.contains("reserved")),
+        matches!(&reserved, MutateError::InvalidInput { reason, .. } if reason.contains("reserved")),
         "jj-lib's own reason must be forwarded: {reserved:?}"
     );
 
@@ -367,7 +367,7 @@ fn git_remote_rename_checks_the_new_name_before_the_old_ones_existence() {
         .expect_err("the reserved new name must refuse");
 
     assert!(
-        matches!(&err, MutateError::InvalidInput { reason } if reason.contains("reserved")),
+        matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("reserved")),
         "the NEW name is validated first, so this is not RemoteNotFound: {err:?}"
     );
 }
@@ -548,7 +548,7 @@ fn git_remote_set_url_refuses_a_missing_remote_and_the_reserved_name() {
         .git_remote_set_url("git", Some(&url), None)
         .expect_err("the reserved name must refuse");
     assert!(
-        matches!(&reserved, MutateError::InvalidInput { reason } if reason.contains("reserved")),
+        matches!(&reserved, MutateError::InvalidInput { reason, .. } if reason.contains("reserved")),
         "unexpected error: {reserved:?}"
     );
 
@@ -725,10 +725,16 @@ fn rename_moves_the_repo_config_section_and_repoints_the_trunk_alias() {
         "the alias keeps its bookmark and names the new remote: {after:?}"
     );
 
-    let refusal = eval_trunk(&mut repo).expect_err("`main@upstream` names no remote bookmark");
+    // `main@upstream` names no remote bookmark, so the read falls back to `trunk()` = `root()`
+    // (Story 9.56) — and its warning names the RE-POINTED alias's target.
+    let _ = repo.take_warnings();
+    assert_eq!(eval_trunk(&mut repo), Ok(1));
+    let warnings = repo.take_warnings();
     assert!(
-        refusal.contains("upstream"),
-        "the reloaded session must read the RE-POINTED alias, got: {refusal}"
+        warnings
+            .iter()
+            .any(|w| w.kind == zanshin_jj::WarningKind::TrunkAliasUnresolved && w.message.contains("main@upstream")),
+        "the reloaded session must read the RE-POINTED alias, got: {warnings:?}"
     );
 }
 
@@ -997,4 +1003,39 @@ fn a_failed_reload_is_surfaced_only_when_the_verb_itself_succeeded() {
         out, url,
         "the mutation landed despite the Err — that is the documented trap"
     );
+}
+
+/// Story 9.56: under an unresolvable `immutable_heads()` alias, this pins that `git remote add`
+/// refuses `Config` in its finish (`tx.finish` resolves the set for a transaction with changes) —
+/// after jj-lib's own Git-config edit, which stays, and writing no operation — while a `rename` /
+/// `remove` that changes no view ("Nothing changed.") succeeds without resolving it. The CLI's
+/// behaviour was read from the v0.46.0 source and checked by hand against the pinned `jj` when
+/// this was written; no oracle scenario covers it.
+#[test]
+fn an_unresolvable_alias_refuses_an_add_with_changes_only() {
+    pin_env();
+    let (tmp, _remote_dir, url) = git_workspace();
+    write_repo_config(
+        tmp.path(),
+        "[revset-aliases]\n\"immutable_heads()\" = \"nonexistent_symbol_xyz\"\n",
+    );
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    let before = head_op_id(&mut repo);
+
+    let err = repo
+        .git_remote_add("origin", &url, None)
+        .expect_err("refused in the finish");
+    assert!(matches!(err, MutateError::Config { .. }), "{err:?}");
+    assert_eq!(head_op_id(&mut repo), before, "a refusal writes no operation");
+    assert_eq!(
+        remote_names(&mut repo),
+        ["origin"],
+        "jj-lib's Git-config edit stays, as in the CLI"
+    );
+
+    repo.git_remote_rename("origin", "up")
+        .expect("no view change, no resolution");
+    repo.git_remote_remove("up").expect("no view change, no resolution");
+    assert_eq!(head_op_id(&mut repo), before, "neither writes an operation");
+    assert!(remote_names(&mut repo).is_empty());
 }

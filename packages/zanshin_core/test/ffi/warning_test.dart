@@ -428,9 +428,10 @@ void main() {
         'jj.fetch_remotes_unmatched',
         'jj.fetch_refspec_ignored',
         'jj.fetch_branches_unmatched',
+        'jj.trunk_alias_unresolved',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(54), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(55), reason: 'no code is registered twice');
     });
   });
 
@@ -584,6 +585,52 @@ void main() {
 
       expect(e.precondition, isNull);
       expect(e.warnings, isEmpty);
+      expect(e.hints, isEmpty);
+      expect(e.toString(), 'ZanshinFfiException(ffi.unknown: corrupt)');
+    });
+
+    test('toString names the hints when there are some (Story 9.56)', () {
+      const e = ZanshinFfiException.withReport(
+        'jj.invalid_input',
+        'reserved',
+        precondition: null,
+        warnings: [],
+        hints: ['first', 'second'],
+      );
+
+      expect(e.toString(), 'ZanshinFfiException(jj.invalid_input: reserved; hints: first | second)');
+    });
+
+    // Story 9.56: the error's hints ride the exception — absent reads as [], order and embedded
+    // newlines are kept, the list is unmodifiable.
+    test("an error envelope's hints reach the exception", () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: false,
+        error: fbs.FfiErrorObjectBuilder(
+          code: 'jj.invalid_input',
+          context: "Git remote named 'git' is reserved for local Git repository",
+          hints: ['Run `jj git remote rename` to give a different name.', 'second\nline'],
+        ),
+      ).toBytes();
+
+      expect(
+        () => decodeStatusEnvelope(bytes),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.context, 'context', "Git remote named 'git' is reserved for local Git repository")
+              .having((e) => e.hints, 'hints', ['Run `jj git remote rename` to give a different name.', 'second\nline'])
+              .having(
+                (e) =>
+                    () => e.hints.add('x'),
+                'hints.add',
+                throwsUnsupportedError,
+              ),
+        ),
+      );
+      expect(
+        () => decodeStatusEnvelope(_error()),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.hints, 'hints', isEmpty)),
+      );
     });
   });
 }

@@ -46,6 +46,7 @@ pub unsafe fn cstr_to_string(ptr: *const c_char) -> Result<String, FfiErrorObj> 
     if ptr.is_null() {
         return Err(FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: FFI_NULL_POINTER.to_owned(),
             context: None,
         });
@@ -54,6 +55,7 @@ pub unsafe fn cstr_to_string(ptr: *const c_char) -> Result<String, FfiErrorObj> 
     let cstr = unsafe { CStr::from_ptr(ptr) };
     cstr.to_str().map(ToOwned::to_owned).map_err(|_| FfiErrorObj {
         report: None,
+        hints: Vec::new(),
         code: FFI_UTF8_ERROR.to_owned(),
         context: None,
     })

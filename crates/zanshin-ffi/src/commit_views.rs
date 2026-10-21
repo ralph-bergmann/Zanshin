@@ -47,6 +47,7 @@ fn map_commit_view_err(e: CommitViewError) -> FfiErrorObj {
     };
     FfiErrorObj {
         report: None,
+        hints: Vec::new(),
         code: code.to_owned(),
         context: Some(context),
     }
@@ -115,6 +116,7 @@ fn read_revision_ref(
         )))),
         other => Err(FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: FFI_INVALID_ARGUMENT.to_owned(),
             context: Some(format!("unknown {field} revision ref: {other:?}")),
         }),

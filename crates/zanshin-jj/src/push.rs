@@ -48,7 +48,6 @@ use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::revset::{
     ResolvedRevsetExpression, RevsetContainingFn, RevsetExpression, RevsetStreamExt as _, UserRevsetExpression,
 };
-use jj_lib::rewrite::RebaseOptions;
 use jj_lib::settings::SignBehavior;
 use jj_lib::str_util::{StringExpression, StringMatcher};
 use jj_lib::transaction::Transaction;
@@ -472,8 +471,9 @@ impl Rejected {
     }
 }
 
-/// A commit's one-line summary for the "Rejected commit:" hint (see the module doc).
-fn commit_summary(repo: &dyn jj_lib::repo::Repo, commit: &Commit) -> String {
+/// A commit's one-line summary for the "Rejected commit:" hint (see the module doc) — and, since
+/// Story 9.56, for the immutable refusal's "Could not modify commit:" hint.
+pub(crate) fn commit_summary(repo: &dyn jj_lib::repo::Repo, commit: &Commit) -> String {
     let mut parts = vec![
         commit.change_id().reverse_hex()[..8].to_owned(),
         commit.id().hex()[..8].to_owned(),
@@ -761,9 +761,9 @@ fn check_flags(args: &GitPushArgs) -> Result<(), MutateError> {
     ];
     let given_specific = specific.iter().find(|(_, given)| *given).map(|(flag, _)| *flag);
     let conflict = |a: &str, b: &str| {
-        Err(MutateError::InvalidInput {
-            reason: format!("the argument '{a}' cannot be used with '{b}'"),
-        })
+        Err(MutateError::invalid(format!(
+            "the argument '{a}' cannot be used with '{b}'"
+        )))
     };
     if args.all && args.tracked {
         return conflict("--all", "--tracked");
@@ -781,6 +781,9 @@ fn check_flags(args: &GitPushArgs) -> Result<(), MutateError> {
 }
 
 /// The remotes the push goes to (`push.rs:294-322`, `get_default_push_remotes` `:1107-1130`).
+/// The remote expression — `--remote`'s patterns, else `git.push`'s — is built BEFORE the remotes
+/// are listed, in the CLI's order (Story 9.56, as the fetch's): a malformed `git.push` or an
+/// unparsable `--remote` refuses even without a Git backend.
 fn resolve_remotes(
     base: &ReadonlyRepo,
     args: &GitPushArgs,
@@ -788,22 +791,17 @@ fn resolve_remotes(
     sink: &mut Warnings,
     hints: &mut Vec<String>,
 ) -> Result<Vec<RemoteNameBuf>, MutateError> {
+    let (given, configured) = match &args.remotes {
+        Some(texts) => (Some(crate::bookmark_ops::union_expression(texts)?), None),
+        None => (None, configured_remotes(config, PUSH_REMOTES)?),
+    };
     let all_remotes = jj_lib::git::get_all_remote_names(base.store()).map_err(|_| MutateError::NotAGitRepo)?;
-    let matching = if let Some(texts) = &args.remotes {
-        matching_remotes(
-            &all_remotes,
-            &crate::bookmark_ops::union_expression(texts)?,
-            PUSH_REMOTES.unmatched,
-            sink,
-        )
-    } else {
-        let configured = configured_remotes(config, PUSH_REMOTES)?;
-        default_remotes(&all_remotes, configured, PUSH_REMOTES, sink, hints)
+    let matching = match given {
+        Some(expression) => matching_remotes(&all_remotes, &expression, PUSH_REMOTES.unmatched, sink),
+        None => default_remotes(&all_remotes, configured, PUSH_REMOTES, sink, hints),
     };
     if matching.is_empty() {
-        return Err(MutateError::InvalidInput {
-            reason: "No git remotes to push to".to_owned(),
-        });
+        return Err(MutateError::invalid("No git remotes to push to".to_owned()));
     }
     Ok(matching)
 }
@@ -933,7 +931,8 @@ pub(crate) fn default_remote_names(
 
 /// The CLI's `parse_named_bookmark` (`push.rs:1277-1300`).
 fn parse_named(argument: &str) -> Result<(RefNameBuf, &str), MutateError> {
-    let invalid = |reason: String| MutateError::InvalidInput { reason };
+    let invalid =
+        |reason: String| MutateError::invalid_hinted(reason, "For example, `--named myfeature=@` is valid syntax");
     let Some((name, revision)) = argument.split_once('=') else {
         return Err(invalid(format!(
             "Argument '{argument}' must include '=' and have the form NAME=REVISION"
@@ -956,8 +955,12 @@ fn parse_named(argument: &str) -> Result<(RefNameBuf, &str), MutateError> {
 /// The CLI's `ensure_new_bookmark_name` (`push.rs:1256-1275`).
 fn ensure_new_bookmark_name(repo: &dyn jj_lib::repo::Repo, name: &RefName) -> Result<(), MutateError> {
     if repo.view().get_local_bookmark(name).is_present() {
+        let symbol = name.as_symbol();
         return Err(MutateError::BookmarkExists {
             name: name.as_str().to_owned(),
+            hints: vec![format!(
+                "Use 'jj bookmark move' to move it, and 'jj git push -b {symbol}' to push it"
+            )],
         });
     }
     if has_tracked_remote(repo, PushRefKind::Bookmark, name) {
@@ -1004,9 +1007,7 @@ fn create_bookmarks(
             }
         }
         if ids.is_empty() {
-            return Err(MutateError::InvalidInput {
-                reason: "Empty revision set".to_owned(),
-            });
+            return Err(MutateError::invalid("Empty revision set".to_owned()));
         }
         let commits: Vec<Commit> = ids
             .iter()
@@ -1221,6 +1222,7 @@ fn classify_explicit(
             if planner.stop_on_abort {
                 return Err(MutateError::PushRefRefused {
                     message: refusal.message,
+                    hints: refusal.hint.into_iter().collect(),
                 });
             }
             abort.get_or_insert_with(|| PushFailure {
@@ -1269,6 +1271,7 @@ fn validate_explicit(
     if stop_on_abort {
         return Err(MutateError::PushCommitRejected {
             message: rejection.message,
+            hints: rejection.hints,
         });
     }
     abort.get_or_insert_with(|| PushFailure {
@@ -1717,8 +1720,7 @@ fn stats_hints(stats: &GitPushStats, hints: &mut Vec<String>) {
 /// The CLI's text for a `GitPushError` (`command_error.rs:614-625` @ v0.46.0): the error and,
 /// for an unusable remote name, the rename hint.
 fn push_error(e: &GitPushError) -> PushFailure {
-    let hint = matches!(e, GitPushError::RemoteName(_))
-        .then(|| "Run `jj git remote rename` to give a different name.".to_owned());
+    let hint = matches!(e, GitPushError::RemoteName(_)).then(|| crate::remotes::REMOTE_RENAME_HINT.to_owned());
     PushFailure {
         kind: PushFailureKind::PushError,
         message: crate::mutate::flatten_chain(e),
@@ -1878,20 +1880,14 @@ pub(crate) fn git_push(
     Ok(outcome)
 }
 
-/// The record step (`push.rs:622-655`): descendants rebased, then the push's operation written
-/// with `description`. Returns the new operation's id.
+/// The record step (`push.rs:622-655`): the push's operation written with `description` — the
+/// shared finish rebases the descendants, as the CLI's `tx.finish`. Returns the new operation's id.
 fn record_push(
     repo: &mut Repo,
     ctx: &mut VerbContext,
-    mut tx: Transaction,
+    tx: Transaction,
     description: &str,
 ) -> Result<String, MutateError> {
-    let immutable = crate::op_support::resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
-    pollster::block_on(
-        tx.repo_mut()
-            .rebase_descendants_with_options(&immutable, &RebaseOptions::default(), |_, _| {}),
-    )
-    .map_err(be)?;
     let finish = crate::mutate::finish_verb(repo.workspace_mut(), tx, description, ctx)?;
     Ok(finish.repo.op_id().hex())
 }

@@ -1282,10 +1282,11 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_export(
 /// - `jj.invalid_input` — no remote matched ("No git remotes to fetch from", after the
 /// `jj.fetch_remotes_unmatched` warning; nothing is written), a name pattern does not parse
 /// (a `Named` remote pattern is parsed before the backend is checked, so it precedes
-/// `jj.not_a_git_repo`), a pattern cannot become a refspec, a matched remote's name is one jj
-/// cannot use (e.g. a Git remote named `git`; `context` ends in the CLI's ``Hint: Run `jj git
-/// remote rename` to give a different name.`` line), or Git rejected a ref update ("Failed to
-/// update refs: …"); the CLI's text in `context`. No operation is written.
+/// `jj.not_a_git_repo`), a pattern cannot become a refspec (an `Expression` one with the CLI's
+/// pattern hint in `hints`), a matched remote's name is one jj cannot use (e.g. a Git remote
+/// named `git`; the CLI's ``Run `jj git remote rename` to give a different name.`` in `hints`),
+/// or Git rejected a ref update ("Failed to update refs: …"); the CLI's text in `context`. No
+/// operation is written.
 /// - `jj.not_a_git_repo` — the OPEN WORKSPACE has no git backend at all, so `git fetch`
 /// cannot run. Carries NO `context` — there is no path to name. Identical to what the
 /// six `zanshin_git_remote_*`/`_import`/`_export` wrappers report for that condition.
@@ -3177,6 +3178,8 @@ const int EnvironmentAdoptRequest_VT_VARIABLES = 6;
 
 const int EvologEntry_VT_PREDECESSOR_COMMIT_IDS = 6;
 
+const int FfiError_VT_HINTS = 8;
+
 const int FileAnnotation_VT_LINES = 4;
 
 const int FileChange_VT_FROM_PATH = 8;
@@ -3222,8 +3225,6 @@ const int GitFetchResult_VT_CHANGED_BOOKMARKS = 12;
 const int GitFetchResult_VT_CHANGED_TAGS = 14;
 
 const int GitFetchResult_VT_FAILED_REF_NAMES = 10;
-
-const int GitFetchResult_VT_HINTS = 8;
 
 const int GitFetchResult_VT_MUTATION = 4;
 

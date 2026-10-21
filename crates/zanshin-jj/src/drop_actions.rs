@@ -34,7 +34,7 @@ use crate::duplicate::plan_duplicate;
 use crate::mutate::{
     given, plan_abandon, plan_absorb, plan_describe, plan_edit, plan_new, plan_restore, resolve_commit, MutateError,
 };
-use crate::op_support::{start_repo_transaction, LocationArgs, NO_LOCATION, ONTO_WITH_INSERT};
+use crate::op_support::{resolve_immutable, start_repo_transaction, LocationArgs, NO_LOCATION, ONTO_WITH_INSERT};
 use crate::rebase::{
     load_dry_run_head, plan_rebase_branch, plan_rebase_revisions, plan_rebase_source, rebase_is_no_op,
 };
@@ -220,9 +220,7 @@ fn check_location(location: &DropLocation) -> Result<(), MutateError> {
         (true, false) => NO_LOCATION,
         _ => return Ok(()),
     };
-    Err(MutateError::InvalidInput {
-        reason: reason.to_owned(),
-    })
+    Err(MutateError::invalid(reason.to_owned()))
 }
 
 /// The three forms of `jj rebase` a row previews.
@@ -242,7 +240,7 @@ fn view_err(e: CommitViewError) -> MutateError {
     match e {
         CommitViewError::Precondition(inner) => MutateError::Precondition(inner),
         CommitViewError::ChangeNotFound { id } => MutateError::ChangeNotFound { id },
-        CommitViewError::InvalidInput { reason } => MutateError::InvalidInput { reason },
+        CommitViewError::InvalidInput { reason } => MutateError::invalid(reason),
         CommitViewError::RevsetParseError { reason } => MutateError::RevsetParseError { reason },
         CommitViewError::RevsetResolutionError { reason } => MutateError::RevsetResolutionError { reason },
         CommitViewError::Config { reason } => MutateError::Config { reason },
@@ -452,9 +450,15 @@ impl Rows<'_> {
             }
             DropSource::Bookmark(name) => {
                 if let Some(target) = onto_one {
-                    let bookmark = self.row(ctx, |tx, _ctx| {
+                    let bookmark = self.row(ctx, |tx, ctx| {
                         let target = resolve_commit(tx.repo(), target)?;
-                        Ok(match plan_bookmark_move(tx.repo(), name, target.id())? {
+                        let plan = plan_bookmark_move(tx.repo(), name, target.id())?;
+                        // A move that writes resolves the immutable set in the CLI's `tx.finish`
+                        // (Story 9.56); a no-op never reaches it.
+                        if plan != BookmarkMovePlan::NoOp {
+                            resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
+                        }
+                        Ok(match plan {
                             BookmarkMovePlan::NoOp => Planned {
                                 no_op: true,
                                 ..Planned::AVAILABLE
@@ -587,7 +591,7 @@ mod tests {
         let result = check_location(location);
         let as_expected = match expected {
             None => result.is_ok(),
-            Some(text) => matches!(&result, Err(MutateError::InvalidInput { reason }) if reason == text),
+            Some(text) => matches!(&result, Err(MutateError::InvalidInput { reason, .. }) if reason == text),
         };
         assert!(as_expected, "{location:?}: expected {expected:?}, got {result:?}");
     }
@@ -647,9 +651,10 @@ mod tests {
 
         for refusal in [
             MutateError::ChangeNotFound { id: "z".to_owned() },
-            MutateError::InvalidInput { reason: "r".to_owned() },
+            MutateError::invalid("r".to_owned()),
             MutateError::Immutable {
                 commit_id: "c".to_owned(),
+                hints: Vec::new(),
             },
             MutateError::Config { reason: "c".to_owned() },
         ] {
@@ -685,10 +690,7 @@ mod tests {
                 CommitViewError::ChangeNotFound { id: r() },
                 MutateError::ChangeNotFound { id: r() },
             ),
-            (
-                CommitViewError::InvalidInput { reason: r() },
-                MutateError::InvalidInput { reason: r() },
-            ),
+            (CommitViewError::InvalidInput { reason: r() }, MutateError::invalid(r())),
             (
                 CommitViewError::RevsetParseError { reason: r() },
                 MutateError::RevsetParseError { reason: r() },

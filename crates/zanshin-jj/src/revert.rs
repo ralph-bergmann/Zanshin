@@ -35,9 +35,10 @@ pub(crate) struct RevertPlan {
 
 /// `jj revert -r <revisions> <location>`'s plan: the revisions resolved and evaluated in reverse
 /// topological order — none is the CLI's "No revisions to revert." (`Ok(None)`, the verb writes
-/// no operation) — then the location (`"reverted commits"`). The immutable set is resolved only
-/// for `-A`/`-B`, whose children the location rewrites; the reverted commits themselves are never
-/// rewritten. Two or more location parents with the root among them refuse up front on a
+/// no operation) — then the location (`"reverted commits"`). The immutable set is resolved for
+/// `-A`/`-B` with the location, whose children it rewrites (the reverted commits themselves are
+/// never rewritten); otherwise last, where the CLI's `tx.finish` resolves it for a revert that
+/// writes (Story 9.56). Two or more location parents with the root among them refuse up front on a
 /// Git-backed store, with the backend's own text — the CLI reaches it at the first reverted
 /// commit's write.
 ///
@@ -47,7 +48,8 @@ pub(crate) struct RevertPlan {
 /// - [`MutateError::InvalidInput`] — a location refusal of `compute_commit_location` (the loop
 ///   text among them), or (Git backend) a root merge as the location's parents.
 /// - [`MutateError::Immutable`] — (`-A`/`-B`) a child the location would rewrite is immutable.
-/// - [`MutateError::Config`] — (`-A`/`-B`) the `immutable_heads()` alias does not resolve.
+/// - [`MutateError::Config`] — the `immutable_heads()` alias does not resolve (never for "No
+///   revisions to revert.").
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 pub(crate) fn plan_revert(
     tx: &Transaction,
@@ -72,6 +74,9 @@ pub(crate) fn plan_revert(
     // The Git backend refuses the first reverted commit's write for a root merge; refused up
     // front so the preview and the verb agree (Story 9.31).
     refuse_git_root_merge(tx.repo().store(), &new_parent_ids)?;
+    if !location.inserts() {
+        resolve_immutable(tx.base_repo().as_ref(), immutable)?;
+    }
     Ok(Some(RevertPlan {
         to_revert,
         new_parent_ids,

@@ -44,6 +44,7 @@ fn map_topology_err(e: RevsetError) -> FfiErrorObj {
     };
     FfiErrorObj {
         report: None,
+        hints: Vec::new(),
         code: code.to_owned(),
         context: Some(context),
     }

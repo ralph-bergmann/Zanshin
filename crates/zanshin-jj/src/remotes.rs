@@ -15,13 +15,12 @@ use gix::remote::Direction;
 use jj_lib::config::StackedConfig;
 use jj_lib::git;
 use jj_lib::git::{
-    expand_fetch_refspecs, GitFetch, GitFetchError, GitFetchRefExpression, GitProgress, GitSidebandLineTerminator,
-    GitSubprocessCallback, IgnoredRefspec, IgnoredRefspecs, UnexpectedGitBackendError,
+    expand_fetch_refspecs, GitFetch, GitFetchError, GitFetchRefExpression, GitProgress, GitRefExpansionError,
+    GitSidebandLineTerminator, GitSubprocessCallback, IgnoredRefspec, IgnoredRefspecs, UnexpectedGitBackendError,
 };
 use jj_lib::ref_name::{RefName, RemoteName, RemoteNameBuf};
 use jj_lib::refs::LocalAndRemoteRef;
 use jj_lib::repo::Repo as _; // for ReadonlyRepo::store()
-use jj_lib::rewrite::RebaseOptions;
 use jj_lib::settings::UserSettings;
 use jj_lib::str_util::StringExpression;
 use jj_lib::transaction::Transaction;
@@ -29,7 +28,7 @@ use jj_lib::workspace::Workspace;
 
 use crate::config::FetchField;
 use crate::mutate::{self, MutateError, MutationResult};
-use crate::op_support::{resolve_immutable, start_repo_transaction};
+use crate::op_support::start_repo_transaction;
 use crate::snapshot::VerbContext;
 use crate::warning::{WarningKind, Warnings};
 
@@ -316,9 +315,7 @@ fn resolve_fetch_remotes(
         None => crate::push::default_remotes(&all_remotes, configured, defaults, &mut ctx.warnings, hints),
     };
     if matching.is_empty() {
-        return Err(MutateError::InvalidInput {
-            reason: "No git remotes to fetch from".to_owned(),
-        });
+        return Err(MutateError::invalid("No git remotes to fetch from".to_owned()));
     }
     Ok(matching)
 }
@@ -369,7 +366,33 @@ pub(crate) fn remote_fetch_refs(
 /// A jj-lib error the CLI turns into a `user_error` with its Display. `pub(crate)` for the poll,
 /// which refuses what the fetch refuses (Story 9.30).
 pub(crate) fn invalid<E: std::fmt::Display>(e: E) -> MutateError {
-    MutateError::InvalidInput { reason: e.to_string() }
+    MutateError::invalid(e.to_string())
+}
+
+/// The CLI's hint for a remote name jj reserves or refuses (`GitFetchError::RemoteName`,
+/// `cli/src/command_error.rs:587-588` @ v0.46.0).
+pub(crate) const REMOTE_RENAME_HINT: &str = "Run `jj git remote rename` to give a different name.";
+
+/// The CLI's hint for a ref expression that cannot become refspecs
+/// (`GitRefExpansionError::Expression`, `cli/src/command_error.rs:604-609` @ v0.46.0).
+pub(crate) const REFSPEC_PATTERN_HINT: &str = "Specify patterns in `(positive | ...) & ~(negative | ...)` form.";
+
+/// The CLI's hints for a failed `expand_fetch_refspecs` (`From<GitRefExpansionError>`): the
+/// pattern hint for `Expression`, none for `InvalidBranchPattern`.
+pub(crate) fn expansion_hints(e: &GitRefExpansionError) -> Vec<String> {
+    match e {
+        GitRefExpansionError::Expression(_) => vec![REFSPEC_PATTERN_HINT.to_owned()],
+        GitRefExpansionError::InvalidBranchPattern(_) => Vec::new(),
+    }
+}
+
+/// A failed `expand_fetch_refspecs` as the fetch and the remote-change poll refuse it: invalid
+/// input, carrying the CLI's hints.
+pub(crate) fn expansion_error(e: &GitRefExpansionError) -> MutateError {
+    MutateError::InvalidInput {
+        reason: e.to_string(),
+        hints: expansion_hints(e),
+    }
 }
 
 /// `--tracked`'s refs of one remote (`fetch.rs:187-206` @ v0.46.0): the exact-name unions of the
@@ -453,16 +476,13 @@ fn fetch_description(remotes: &[RemoteNameBuf]) -> String {
 
 /// Maps one remote's `GitFetch::fetch` failure — exhaustive, in the CLI's classification
 /// (`From<GitFetchError>`, `cli/src/command_error.rs:583-593` @ v0.46.0): every variant is a
-/// `user_error`; `RemoteName` carries the CLI's hint as a last `Hint:` line of the reason, since
-/// errors have no hint channel of their own.
+/// `user_error`; `RemoteName` carries the CLI's hint (Story 9.56).
 fn fetch_error(e: GitFetchError, cancel: Option<&crate::cancel::CancelGuard>) -> MutateError {
     match e {
         GitFetchError::NoSuchRemote(name) => MutateError::RemoteNotFound {
             name: name.into_string(),
         },
-        GitFetchError::RemoteName(e) => MutateError::InvalidInput {
-            reason: format!("{e}\nHint: Run `jj git remote rename` to give a different name."),
-        },
+        GitFetchError::RemoteName(e) => MutateError::invalid_hinted(e.to_string(), REMOTE_RENAME_HINT),
         rejected @ GitFetchError::RejectedUpdates(_) => invalid(rejected),
         GitFetchError::Subprocess(_) if crate::cancel::is_cancelled(cancel) => MutateError::Cancelled,
         GitFetchError::Subprocess(sub) => MutateError::NetworkError {
@@ -504,7 +524,7 @@ pub(crate) fn git_fetch(
     if args.refs == FetchRefs::Tracked {
         for remote in &remotes {
             let expression = tracked_fetch_refs(tx.repo().view(), remote);
-            expansions.push(expand_fetch_refspecs(remote, expression).map_err(invalid)?);
+            expansions.push(expand_fetch_refspecs(remote, expression).map_err(|e| expansion_error(&e))?);
         }
     } else {
         let git_repo = git::get_git_repo(tx.repo().store()).map_err(|_| MutateError::NotAGitRepo)?;
@@ -520,7 +540,7 @@ pub(crate) fn git_fetch(
             // The CLI warns them as soon as the refspecs load, before it parses `fetch-tags`.
             warn_ignored_refspecs(&mut ctx.warnings, remote, ignored);
             let expression = expression?;
-            expansions.push(expand_fetch_refspecs(remote, expression).map_err(invalid)?);
+            expansions.push(expand_fetch_refspecs(remote, expression).map_err(|e| expansion_error(&e))?);
         }
     }
 
@@ -559,19 +579,9 @@ pub(crate) fn git_fetch(
         warn_if_branches_not_found(&mut ctx.warnings, &tx, expression, &remotes);
     }
 
-    // A descendant pass BEFORE the commit, because `import_refs` calls
-    // `record_abandoned_commit` (jj-lib `git.rs`), which populates `parent_mapping`, and
-    // `Transaction::write` panics while rewrites are outstanding. This is the CLI's own
-    // `tx.finish` step — `rebase_mutable_descendants` (`cli/src/cli_util.rs` @ v0.46.0) —
-    // which likewise resolves the immutable set against `tx.base_repo()`.
-    // Resolve first so the shared borrow of `tx` ends before `repo_mut()`.
-    let resolved = resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
-    pollster::block_on(
-        tx.repo_mut()
-            .rebase_descendants_with_options(&resolved, &RebaseOptions::default(), |_, _| {}),
-    )
-    .map_err(mutate::be)?;
-
+    // `import_refs` calls `record_abandoned_commit` (jj-lib `git.rs`), which populates
+    // `parent_mapping`; the shared finish rebases those descendants — the CLI's own `tx.finish`
+    // step, `rebase_mutable_descendants` — against the immutable set of `tx.base_repo()`.
     let finish = mutate::finish_verb(workspace, tx, &fetch_description(&remotes), ctx)?;
     // WHY `new_change_ids` empty: `GitImportStats` has no minted-change concept at all — it
     // reports abandonments, changed remote refs, rewritten commit ids and failed ref names.
@@ -597,6 +607,24 @@ mod tests {
     use jj_lib::git::GitSubprocessCallback as _;
 
     use super::{fetch_description, list_remotes, ProgressCallback, ProgressEvent, RemoteError};
+
+    /// Story 9.56: an `Expression` failure carries the CLI's pattern hint, an
+    /// `InvalidBranchPattern` none (`command_error.rs:604-609` @ v0.46.0).
+    #[test]
+    fn only_an_expression_failure_carries_the_pattern_hint() {
+        use jj_lib::git::{GitRefExpansionError, GitRefExpressionError};
+        use jj_lib::str_util::StringPattern;
+
+        let e = super::expansion_error(&GitRefExpansionError::Expression(
+            GitRefExpressionError::PositiveIntersection,
+        ));
+        assert_eq!(
+            e.hints(),
+            ["Specify patterns in `(positive | ...) & ~(negative | ...)` form."]
+        );
+        let e = super::expansion_error(&GitRefExpansionError::InvalidBranchPattern(StringPattern::exact("a?b")));
+        assert!(e.hints().is_empty(), "{e:?}");
+    }
 
     /// The description quotes a remote whose name is no plain revset symbol, as the CLI's
     /// `as_symbol` does, and joins several with `","` (Story 9.30).
@@ -631,8 +659,9 @@ mod tests {
         );
         let rejected = fetch_error(GitFetchError::RejectedUpdates(vec!["refs/heads/main".into()]), None);
         assert!(
-            matches!(&rejected, MutateError::InvalidInput { reason }
-                if reason.starts_with("Failed to update refs: ") && reason.contains("refs/heads/main")),
+            matches!(&rejected, MutateError::InvalidInput { reason, hints }
+                if reason.starts_with("Failed to update refs: ") && reason.contains("refs/heads/main")
+                    && hints.is_empty()),
             "{rejected:?}"
         );
         let reserved = fetch_error(
@@ -640,9 +669,9 @@ mod tests {
             None,
         );
         assert!(
-            matches!(&reserved, MutateError::InvalidInput { reason }
-                if reason.starts_with(&GitRemoteNameError::ReservedForLocalGitRepo.to_string())
-                    && reason.ends_with("\nHint: Run `jj git remote rename` to give a different name.")),
+            matches!(&reserved, MutateError::InvalidInput { reason, hints }
+                if *reason == GitRemoteNameError::ReservedForLocalGitRepo.to_string()
+                    && *hints == ["Run `jj git remote rename` to give a different name."]),
             "{reserved:?}"
         );
     }

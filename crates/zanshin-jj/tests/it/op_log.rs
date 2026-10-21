@@ -535,9 +535,17 @@ fn undo_refuses_an_operation_of_another_workspace_unless_allowed() {
     let mut repo = Repo::open(&fx.path).unwrap();
     let before = repo.op_log(None).unwrap().len();
     match repo.undo(false) {
-        Err(MutateError::UndoCrossWorkspace { operation, workspace }) => {
-            assert_eq!(operation, op[..12], "the CLI's 12-digit short id");
+        Err(err @ MutateError::UndoCrossWorkspace { .. }) => {
+            let MutateError::UndoCrossWorkspace { operation, workspace } = &err else {
+                unreachable!()
+            };
+            assert_eq!(*operation, op[..12], "the CLI's 12-digit short id");
             assert_eq!(workspace, "second");
+            // Story 9.56: `undo`'s hint (`undo.rs:129-132` @ v0.46.0).
+            assert_eq!(
+                err.hints(),
+                ["Use `--allow-cross-workspace` to undo it anyway, or use `jj op revert` to revert a specific operation"]
+            );
         }
         other => panic!("expected UndoCrossWorkspace, got: {other:?}"),
     }
@@ -712,11 +720,13 @@ fn undo_on_merge_op_returns_invalid_input() {
     // synchronously persists a "reconcile divergent operations" merge op as the new
     // sole head, and undo()'s parent-count guard refuses it.
     let mut repo_c = Repo::open(&fx.path).unwrap();
+    // Story 9.56: the CLI's casing and its hint (`cli/src/commands/undo.rs:161-163` @ v0.46.0).
     match repo_c.undo(false) {
-        Err(MutateError::InvalidInput { reason }) => {
-            assert_eq!(reason, "cannot undo a merge operation");
+        Err(MutateError::InvalidInput { reason, hints }) => {
+            assert_eq!(reason, "Cannot undo a merge operation");
+            assert_eq!(hints, ["Consider using `jj op restore` instead"]);
         }
-        other => panic!("expected InvalidInput{{reason: \"cannot undo a merge operation\"}}, got: {other:?}"),
+        other => panic!("expected InvalidInput{{reason: \"Cannot undo a merge operation\"}}, got: {other:?}"),
     }
 }
 

@@ -406,6 +406,18 @@ fn assert_stale(err: &PreconditionError, expected: StaleCause) {
             if *cause == expected && working_copy_op_id.len() == 128 && repo_op_id.len() == 128),
         "expected {expected:?}, got {err:?}"
     );
+    // Story 9.56: the CLI's hint per cause (`cli/src/cli_util.rs:3046-3074` @ v0.46.0).
+    let see = "See https://docs.jj-vcs.dev/latest/working-copy/#stale-working-copy for more information.";
+    let hint = match (expected, err) {
+        (StaleCause::Stale, _) => format!("Run `jj workspace update-stale` to update it.\n{see}"),
+        (StaleCause::SiblingOperation, PreconditionError::StaleWorkingCopy { working_copy_op_id, .. }) => format!(
+            "Run `jj op integrate {}` to add the working copy's operation to the operation log.",
+            &working_copy_op_id[..12]
+        ),
+        (StaleCause::OperationNotFound, _) => format!("Run `jj workspace update-stale` to recover.\n{see}"),
+        (cause, _) => panic!("unexpected cause {cause:?}"),
+    };
+    assert_eq!(err.hints(), [hint]);
 }
 
 /// "Stale WC": `@` rewritten by another writer that never checked it out.
@@ -712,4 +724,83 @@ fn workspace_list_sees_an_on_disk_edit() {
 
     assert_ne!(listed[0].wc_commit_id.0, before, "the listed @ is the snapshotted one");
     assert_eq!(listed[0].wc_commit_id.0, at_commit(&fx.root).id().hex());
+}
+
+// ── The start-up `trunk()` fallback (Story 9.56) ─────────────────────────────────
+
+/// A repo-level `trunk()` pinned to a remote bookmark that does not exist yet.
+const UNRESOLVABLE_TRUNK: &str = "[revset-aliases]\n'trunk()' = 'main@origin'\n";
+
+/// The CLI's warning block for it (`cli/src/cli_util.rs:546-553` @ v0.46.0), hint line dropped.
+const TRUNK_WARNING: &str = "Failed to resolve `revset-aliases.trunk()`: Revision `main@origin` doesn't exist\n\
+                             The `trunk()` alias is temporarily set to `root()`.";
+
+fn trunk_warnings(repo: &mut Repo) -> Vec<String> {
+    repo.take_warnings()
+        .into_iter()
+        .filter(|w| w.kind == WarningKind::TrunkAliasUnresolved)
+        .map(|w| w.message)
+        .collect()
+}
+
+/// The commit ids `revset` evaluates to, newest first.
+fn commit_ids(repo: &mut Repo, revset: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+    let _ = repo
+        .eval_revset(revset, |change| {
+            ids.push(change.commit_id.0);
+            std::ops::ControlFlow::Continue(())
+        })
+        .expect("eval");
+    ids
+}
+
+/// Like the CLI's `load_from_workspace`, an unresolvable `trunk()` makes every call warn once and
+/// run with `trunk()` = `root()`: the writes resolve their immutable set (whose builtin heads
+/// contain `trunk()`) and succeed instead of refusing `Config`, and the call's own revsets — a
+/// user's `trunk()`, the default log's `builtin_log()` — resolve too.
+#[test]
+fn an_unresolvable_trunk_alias_falls_back_to_root_and_warns() {
+    let fx = git_fx(UNRESOLVABLE_TRUNK);
+    let mut repo = Repo::open(&fx.root).expect("open");
+    let at = ChangeId(at_commit(&fx.root).change_id().reverse_hex());
+
+    repo.new_change(&[at], &[], &[]).expect("a plain new succeeds");
+    assert_eq!(trunk_warnings(&mut repo), [TRUNK_WARNING]);
+    repo.bookmark_create(&["feature".to_owned()], None)
+        .expect("bookmark create succeeds");
+    assert_eq!(trunk_warnings(&mut repo), [TRUNK_WARNING], "decided afresh per call");
+
+    assert_eq!(commit_ids(&mut repo, "trunk()"), ["0".repeat(40)], "trunk() is root()");
+    assert_eq!(trunk_warnings(&mut repo), [TRUNK_WARNING]);
+    assert!(
+        !commit_ids(&mut repo, "builtin_log()").is_empty(),
+        "the default log revset resolves"
+    );
+}
+
+/// No warning and no fallback for the builtin `trunk()` or a redefined one that resolves. One
+/// that does not even parse is no fallback case either: the builtin `immutable_heads()` that uses
+/// it refuses the start-up environment as `Config`, as the pinned CLI refuses every command.
+#[test]
+fn a_resolvable_or_unparsable_trunk_alias_does_not_fall_back() {
+    for config in ["", "[revset-aliases]\n'trunk()' = 'root()'\n"] {
+        let fx = git_fx(config);
+        let mut repo = Repo::open(&fx.root).expect("open");
+        let at = ChangeId(at_commit(&fx.root).change_id().reverse_hex());
+        repo.new_change(&[at], &[], &[]).expect("new");
+        assert!(trunk_warnings(&mut repo).is_empty(), "{config:?}");
+    }
+    let fx = git_fx("[revset-aliases]\n'trunk()' = '('\n");
+    let mut repo = Repo::open(&fx.root).expect("open");
+    let at = ChangeId(at_commit(&fx.root).change_id().reverse_hex());
+    let err = repo.new_change(&[at], &[], &[]).expect_err("unparsable");
+    assert!(
+        matches!(
+            err,
+            zanshin_jj::MutateError::Precondition(PreconditionError::Config { .. })
+        ),
+        "{err:?}"
+    );
+    assert!(trunk_warnings(&mut repo).is_empty());
 }

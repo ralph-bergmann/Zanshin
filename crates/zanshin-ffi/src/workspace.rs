@@ -47,6 +47,7 @@ fn map_workspace_err(e: WorkspaceError) -> FfiErrorObj {
     };
     FfiErrorObj {
         report: None,
+        hints: Vec::new(),
         code: code.to_owned(),
         context: Some(context),
     }
@@ -119,6 +120,7 @@ fn read_workspace_add_request(data: *const u8, len: usize) -> Result<WorkspaceAd
         (true, true) => {
             return Err(FfiErrorObj {
                 report: None,
+                hints: Vec::new(),
                 code: JJ_INVALID_INPUT.to_owned(),
                 context: Some("colocate and no_colocate cannot be used together".to_owned()),
             })
@@ -134,6 +136,7 @@ fn read_workspace_add_request(data: *const u8, len: usize) -> Result<WorkspaceAd
         other => {
             return Err(FfiErrorObj {
                 report: None,
+                hints: Vec::new(),
                 code: crate::envelope::FFI_INVALID_ARGUMENT.to_owned(),
                 context: Some(format!("unknown sparse_patterns {other:?}")),
             })

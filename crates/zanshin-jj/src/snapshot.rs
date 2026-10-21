@@ -213,6 +213,30 @@ pub enum PreconditionError {
     Backend(String),
 }
 
+impl PreconditionError {
+    /// The jj CLI's hint lines for this refusal, verbatim and in the CLI's order (Story 9.56):
+    /// a stale working copy's remedy (`cli/src/cli_util.rs:3046-3074` @ v0.46.0); none otherwise.
+    #[must_use]
+    pub fn hints(&self) -> Vec<String> {
+        const SEE: &str = "See https://docs.jj-vcs.dev/latest/working-copy/#stale-working-copy for more information.";
+        match self {
+            Self::StaleWorkingCopy {
+                cause,
+                working_copy_op_id,
+                ..
+            } => vec![match cause {
+                StaleCause::Stale => format!("Run `jj workspace update-stale` to update it.\n{SEE}"),
+                StaleCause::SiblingOperation => {
+                    let short: String = working_copy_op_id.chars().take(12).collect();
+                    format!("Run `jj op integrate {short}` to add the working copy's operation to the operation log.")
+                }
+                StaleCause::OperationNotFound => format!("Run `jj workspace update-stale` to recover.\n{SEE}"),
+            }],
+            Self::Config { .. } | Self::ConcurrentWorkingCopy | Self::Backend(_) => Vec::new(),
+        }
+    }
+}
+
 impl From<MutateError> for PreconditionError {
     fn from(e: MutateError) -> Self {
         match e {
@@ -866,6 +890,31 @@ mod tests {
     use super::{FinishFacts, PreconditionError, StaleCause};
     use crate::git::GitExportFailure;
     use crate::mutate::MutateError;
+
+    /// Story 9.56: only a stale working copy carries a hint — one per cause, the sibling one
+    /// naming the working copy's operation by its 12-digit short id.
+    #[test]
+    fn only_a_stale_working_copy_carries_a_hint() {
+        let stale = |cause| PreconditionError::StaleWorkingCopy {
+            cause,
+            working_copy_op_id: format!("abcdef012345{}", "0".repeat(116)),
+            repo_op_id: "1".repeat(128),
+        };
+        assert!(stale(StaleCause::Stale).hints()[0].starts_with("Run `jj workspace update-stale` to update it.\nSee "));
+        assert_eq!(
+            stale(StaleCause::SiblingOperation).hints(),
+            ["Run `jj op integrate abcdef012345` to add the working copy's operation to the operation log."]
+        );
+        assert!(stale(StaleCause::OperationNotFound).hints()[0]
+            .starts_with("Run `jj workspace update-stale` to recover.\nSee "));
+        for e in [
+            PreconditionError::Config { reason: String::new() },
+            PreconditionError::ConcurrentWorkingCopy,
+            PreconditionError::Backend(String::new()),
+        ] {
+            assert!(e.hints().is_empty(), "{e:?}");
+        }
+    }
 
     fn failure(name: &str) -> GitExportFailure {
         GitExportFailure {

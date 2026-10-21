@@ -535,6 +535,7 @@ fn api_surface_resolves() {
     // op_support immutable guard (Story 9.1)
     _ = zanshin_jj::MutateError::Immutable {
         commit_id: String::new(),
+        hints: Vec::new(),
     };
     _ = zanshin_jj::MutateError::Config { reason: String::new() };
 
@@ -904,6 +905,7 @@ fn workspace_surface_resolves() {
 fn bookmark_ops_surface_resolves() {
     let exists = zanshin_jj::MutateError::BookmarkExists {
         name: "feature".to_owned(),
+        hints: Vec::new(),
     };
     assert_eq!(exists.to_string(), "bookmark already exists: feature");
     let tracked = zanshin_jj::MutateError::BookmarkTrackedRemoteExists { name: "foo".to_owned() };
@@ -1455,7 +1457,7 @@ fn story_9_28_surface_resolves() {
 /// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds;
 /// Story 9.53 the unresolved conflicts; Story 9.51 the template diagnostic; Story 9.54's closing
 /// run the bookmark auto-track warning).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 53] = {
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 54] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -1511,6 +1513,7 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 53] = {
         K::FetchRemotesUnmatched,
         K::FetchRefspecIgnored,
         K::FetchBranchesUnmatched,
+        K::TrunkAliasUnresolved,
     ]
 };
 
@@ -1622,10 +1625,11 @@ fn story_9_32_warning_surface_resolves() {
             | K::TemplateDiagnostic
             | K::FetchRemotesUnmatched
             | K::FetchRefspecIgnored
-            | K::FetchBranchesUnmatched => {}
+            | K::FetchBranchesUnmatched
+            | K::TrunkAliasUnresolved => {}
         }
     }
-    assert_eq!(every.len(), 53);
+    assert_eq!(every.len(), 54);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 
@@ -1659,7 +1663,10 @@ fn story_9_33_creation_outcome_resolves() {
     // Story 9.37: open reports its start-up secure-config fix-up in the same shape.
     _ = zanshin_jj::Repo::open_with_report as fn(&Path) -> zanshin_jj::CreationOutcome;
     let outcome = zanshin_jj::CreationOutcome {
-        result: Err(zanshin_jj::RepoError::CloneFailed { reason: String::new() }),
+        result: Err(zanshin_jj::RepoError::CloneFailed {
+            reason: String::new(),
+            hints: Vec::new(),
+        }),
         precondition: Some(zanshin_jj::Precondition::default()),
         warnings: vec![zanshin_jj::Warning {
             kind: zanshin_jj::WarningKind::CloneCleanupFailed,
@@ -1697,8 +1704,14 @@ fn story_9_20_push_clone_init_resolves() {
     _ = zanshin_jj::RepoError::InvalidInput { reason: String::new() };
     // Story 9.20 closing run: the clone's `git` subprocess failure is typed.
     _ = zanshin_jj::RepoError::NetworkError { reason: String::new() };
-    _ = zanshin_jj::MutateError::PushRefRefused { message: String::new() };
-    _ = zanshin_jj::MutateError::PushCommitRejected { message: String::new() };
+    _ = zanshin_jj::MutateError::PushRefRefused {
+        message: String::new(),
+        hints: Vec::new(),
+    };
+    _ = zanshin_jj::MutateError::PushCommitRejected {
+        message: String::new(),
+        hints: Vec::new(),
+    };
     // Story 9.54: the default push remotes, for the GUI's "ahead" rule.
     _ = zanshin_jj::Repo::git_push_remotes as fn(&mut zanshin_jj::Repo) -> Result<Vec<String>, zanshin_jj::MutateError>;
     _ = zanshin_jj::Repo::git_push

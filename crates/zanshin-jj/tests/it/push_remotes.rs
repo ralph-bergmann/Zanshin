@@ -133,3 +133,51 @@ fn a_native_backend_has_none() {
     .expect("init");
     assert!(repo.git_push_remotes().expect("remotes").is_empty());
 }
+
+/// A native-backend repo the push's remote resolution runs against (Story 9.56).
+fn native_repo() -> (TempDir, PathBuf, Repo) {
+    test_helpers::pin_test_env();
+    let tmp = TempDir::new().expect("tempdir");
+    let repo = Repo::init(&zanshin_jj::InitOptions {
+        path: tmp.path().to_path_buf(),
+        ..Default::default()
+    })
+    .result
+    .expect("init");
+    let root = repo.workspace_root().to_owned();
+    (tmp, root, repo)
+}
+
+fn push(repo: &mut Repo, args: &zanshin_jj::GitPushArgs) -> Result<zanshin_jj::GitPushOutcome, MutateError> {
+    repo.git_push(args, &|_: zanshin_jj::ProgressEvent| {}, None)
+}
+
+/// Story 9.56: `git.push` is read before the remotes are listed, as the CLI reads it
+/// (`push.rs:294-301` @ v0.46.0) — the fetch's order: without a Git backend a malformed one still
+/// refuses as `Config`, not `NotAGitRepo`.
+#[test]
+fn a_malformed_git_push_setting_refuses_before_the_backend_check() {
+    let (_tmp, root, mut repo) = native_repo();
+    set_git_push(&root, "1");
+    let err = push(&mut repo, &zanshin_jj::GitPushArgs::default()).expect_err("malformed");
+    assert!(
+        matches!(&err, MutateError::Config { reason } if reason.contains("git.push")),
+        "{err:?}"
+    );
+}
+
+/// Story 9.56: `--remote` patterns are parsed before the remotes are listed: without a Git
+/// backend an unparsable one still refuses as `InvalidInput`, not `NotAGitRepo`; a parsable one
+/// reaches the backend check.
+#[test]
+fn an_unparsable_push_remote_pattern_refuses_before_the_backend_check() {
+    let (_tmp, _root, mut repo) = native_repo();
+    let args = |pattern: &str| zanshin_jj::GitPushArgs {
+        remotes: Some(vec![pattern.to_owned()]),
+        ..zanshin_jj::GitPushArgs::default()
+    };
+    let err = push(&mut repo, &args("regex:(")).expect_err("unparsable");
+    assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
+    let err = push(&mut repo, &args("origin")).expect_err("no Git backend");
+    assert!(matches!(err, MutateError::NotAGitRepo), "{err:?}");
+}

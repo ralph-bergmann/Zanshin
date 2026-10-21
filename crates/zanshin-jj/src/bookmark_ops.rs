@@ -63,14 +63,12 @@ use crate::ChangeId;
 /// `Expected non-empty string`, which no spelling of the CLI argument can get around).
 fn validate_names(names: &[String]) -> Result<Vec<RefNameBuf>, MutateError> {
     if names.is_empty() {
-        return Err(MutateError::InvalidInput {
-            reason: "bookmark create requires at least one name".to_owned(),
-        });
+        return Err(MutateError::invalid(
+            "bookmark create requires at least one name".to_owned(),
+        ));
     }
     if names.iter().any(String::is_empty) {
-        return Err(MutateError::InvalidInput {
-            reason: "bookmark name must not be empty".to_owned(),
-        });
+        return Err(MutateError::invalid("bookmark name must not be empty".to_owned()));
     }
     Ok(names.iter().map(RefNameBuf::from).collect())
 }
@@ -134,9 +132,8 @@ pub(crate) fn union_expression(patterns: &[String]) -> Result<StringExpression, 
     let mut diagnostics = RevsetDiagnostics::new();
     let mut expressions = Vec::with_capacity(patterns.len());
     for pattern in patterns {
-        let expression = parse_string_expression(&mut diagnostics, pattern).map_err(|e| MutateError::InvalidInput {
-            reason: describe_pattern_parse_error(&e),
-        })?;
+        let expression = parse_string_expression(&mut diagnostics, pattern)
+            .map_err(|e| MutateError::invalid(describe_pattern_parse_error(&e)))?;
         expressions.push(expression);
     }
     Ok(StringExpression::union_all(expressions))
@@ -235,6 +232,7 @@ pub(crate) fn create(
             if repo.view().get_local_bookmark(name).is_present() {
                 return Err(MutateError::BookmarkExists {
                     name: name.as_str().to_owned(),
+                    hints: vec!["Use `jj bookmark set` to update it.".to_owned()],
                 });
             }
             if has_tracked_remote_bookmarks(repo, name) {
@@ -313,9 +311,9 @@ pub(crate) fn delete(
     patterns: &[String],
 ) -> Result<MutationResult, MutateError> {
     if patterns.is_empty() {
-        return Err(MutateError::InvalidInput {
-            reason: "bookmark delete requires at least one name pattern".to_owned(),
-        });
+        return Err(MutateError::invalid(
+            "bookmark delete requires at least one name pattern".to_owned(),
+        ));
     }
     let expression = union_expression(patterns)?;
     let matcher = expression.to_matcher();
@@ -433,12 +431,12 @@ mod tests {
     fn validate_names_refuses_the_two_clap_level_arities() {
         let empty_list = validate_names(&[]).expect_err("clap's required = true");
         assert!(
-            matches!(&empty_list, MutateError::InvalidInput { reason } if reason.contains("at least one name")),
+            matches!(&empty_list, MutateError::InvalidInput { reason, .. } if reason.contains("at least one name")),
             "unexpected error: {empty_list:?}"
         );
         let empty_name = validate_names(&["ok".to_owned(), String::new()]).expect_err("parse_symbol rejects it");
         assert!(
-            matches!(&empty_name, MutateError::InvalidInput { reason } if reason.contains("must not be empty")),
+            matches!(&empty_name, MutateError::InvalidInput { reason, .. } if reason.contains("must not be empty")),
             "unexpected error: {empty_name:?}"
         );
         let ok = validate_names(&["a".to_owned(), "b".to_owned()]).expect("two ordinary names");
@@ -466,7 +464,7 @@ mod tests {
         assert!(
             matches!(
                 &bad_glob,
-                MutateError::InvalidInput { reason }
+                MutateError::InvalidInput { reason, .. }
                     if reason == "failed to parse name pattern: Invalid string pattern: \
                                   error parsing glob '[': unclosed character class; missing ']'"
             ),
@@ -477,7 +475,7 @@ mod tests {
         assert!(
             matches!(
                 &bad_kind,
-                MutateError::InvalidInput { reason }
+                MutateError::InvalidInput { reason, .. }
                     if reason == "failed to parse name pattern: Invalid string pattern: \
                                   Invalid string pattern kind `bogus:`"
             ),
@@ -490,7 +488,7 @@ mod tests {
         assert!(
             matches!(
                 &bad_syntax,
-                MutateError::InvalidInput { reason } if reason == "failed to parse name pattern: Syntax error"
+                MutateError::InvalidInput { reason, .. } if reason == "failed to parse name pattern: Syntax error"
             ),
             "unexpected error: {bad_syntax:?}"
         );

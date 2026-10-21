@@ -322,6 +322,22 @@ pub enum ConfigCmdError {
     },
 }
 
+impl ConfigCmdError {
+    /// The jj CLI's hint lines for this refusal, verbatim (Story 9.56): where config files may
+    /// live, for an unrecognized `--file` (`cli/src/config.rs:737-741` @ v0.46.0); none otherwise.
+    #[must_use]
+    pub fn hints(&self) -> Vec<String> {
+        match self {
+            Self::UnrecognizedFile { .. } => vec![
+                "Valid config locations include user configs (`~/.config/jj/config.toml` or `conf.d/*.toml`), \
+                 repo/workspace configs, or files loaded with the global flag `--config-file <PATH>`."
+                    .to_owned(),
+            ],
+            _ => Vec::new(),
+        }
+    }
+}
+
 impl From<crate::ConfigError> for ConfigCmdError {
     fn from(e: crate::ConfigError) -> Self {
         let crate::ConfigError::Load { reason } = e;
@@ -1158,6 +1174,13 @@ mod tests {
     use crate::config::{self, ConfigEnv};
 
     const HEADER: &str = "#:schema https://docs.jj-vcs.dev/latest/config-schema.json\n\n";
+
+    /// Story 9.56: only an unrecognized `--file` carries a hint.
+    #[test]
+    fn only_an_unrecognized_file_carries_a_hint() {
+        assert_eq!(ConfigCmdError::UnrecognizedFile { path: "x".into() }.hints().len(), 1);
+        assert!(ConfigCmdError::Config { reason: String::new() }.hints().is_empty());
+    }
 
     // The verb bodies take the call's warning sink (Story 9.37); these adapters keep the rows
     // below at the pre-sink shape — `list_with` hands its sink back as a `Warned`.

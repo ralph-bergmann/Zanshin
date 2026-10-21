@@ -375,6 +375,31 @@ fn an_unparsable_branch_pattern_is_refused() {
     assert!(dst.is_dir() && fs::read_dir(&dst).unwrap().count() == 0);
 }
 
+/// Story 9.56: a `-b` expression that cannot become refspecs (a positive intersection) refuses
+/// the clone's fetch with jj-lib's text and the CLI's pattern hint (`command_error.rs:604-609` @
+/// v0.46.0) — before any network access, so the source needs no repository.
+#[test]
+fn a_branch_expression_that_is_not_refspec_shaped_carries_the_pattern_hint() {
+    let src = TempDir::new().unwrap();
+    source_repo(src.path());
+    let parent = TempDir::new().unwrap();
+    let outcome = clone(&CloneOptions {
+        source: file_url(src.path()),
+        destination: parent.path().join("dst"),
+        branches: Some(vec!["main & other".to_owned()]),
+        ..Default::default()
+    });
+    let err = outcome.result.expect_err("refused");
+    assert!(
+        matches!(&err, RepoError::CloneFailed { reason, .. } if reason == "Cannot use `&` for positive expressions"),
+        "{err:?}"
+    );
+    assert_eq!(
+        err.hints(),
+        ["Specify patterns in `(positive | ...) & ~(negative | ...)` form."]
+    );
+}
+
 /// `-t` given with nothing (and an explicit object hash): no tag and no bookmark is fetched, and
 /// both fetch presets read `~*` (`join_string_expressions`, `mod.rs:276-281` @ v0.46.0).
 #[test]
@@ -511,6 +536,13 @@ fn init_over_an_existing_repository_follows_the_cli_modes() {
         matches!(outcome.result, Err(RepoError::GitRepoExists { .. })),
         "{:?}",
         outcome.result
+    );
+    // Story 9.56: the CLI's hint (`cli/src/commands/git/init.rs:233-236` @ v0.46.0).
+    assert_eq!(
+        outcome.result.as_ref().err().map(RepoError::hints),
+        Some(vec![
+            "To create a repo backed by the existing Git repo, run `jj git init --colocate` instead.".to_owned()
+        ])
     );
     assert!(!dir.path().join(".jj").exists());
 

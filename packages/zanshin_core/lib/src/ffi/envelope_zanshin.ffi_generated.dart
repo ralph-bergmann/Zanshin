@@ -1577,6 +1577,10 @@ class _PayloadTypeIdReader extends fb.Reader<PayloadTypeId> {
 ///    <domain>.<reason>  (e.g. "jj.repo_not_found", "internal.panic")
 ///  Registry: docs/rust-error-codes.md.
 ///  Never put user data (paths, IDs) in code — those go in context.
+///
+///  hints (Story 9.56): the jj CLI's hint lines for this refusal, verbatim (a line may itself
+///  hold newlines, as the CLI's `add_hint` text does) and in the CLI's order. Absent = none —
+///  an error without hints writes no field. context never holds in-band "Hint:" text.
 class FfiError {
   FfiError._(this._bc, this._bcOffset);
   factory FfiError(List<int> bytes) {
@@ -1591,10 +1595,11 @@ class FfiError {
 
   String? get code => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
   String? get context => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get hints => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
 
   @override
   String toString() {
-    return 'FfiError{code: ${code}, context: ${context}}';
+    return 'FfiError{code: ${code}, context: ${context}, hints: ${hints}}';
   }
 }
 
@@ -1611,7 +1616,7 @@ class FfiErrorBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
   }
 
   int addCodeOffset(int? offset) {
@@ -1624,6 +1629,11 @@ class FfiErrorBuilder {
     return fbBuilder.offset;
   }
 
+  int addHintsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -1632,21 +1642,26 @@ class FfiErrorBuilder {
 class FfiErrorObjectBuilder extends fb.ObjectBuilder {
   final String? _code;
   final String? _context;
+  final List<String>? _hints;
 
   FfiErrorObjectBuilder({
     String? code,
     String? context,
+    List<String>? hints,
   }) : _code = code,
-       _context = context;
+       _context = context,
+       _hints = hints;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? codeOffset = _code == null ? null : fbBuilder.writeString(_code!);
     final int? contextOffset = _context == null ? null : fbBuilder.writeString(_context!);
-    fbBuilder.startTable(2);
+    final int? hintsOffset = _hints == null ? null : fbBuilder.writeList(_hints!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
     fbBuilder.addOffset(0, codeOffset);
     fbBuilder.addOffset(1, contextOffset);
+    fbBuilder.addOffset(2, hintsOffset);
     return fbBuilder.endTable();
   }
 

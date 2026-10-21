@@ -41,6 +41,7 @@ fn map_commit_content_err(e: CommitContentError) -> FfiErrorObj {
     };
     FfiErrorObj {
         report: None,
+        hints: Vec::new(),
         code: code.to_owned(),
         context: Some(context),
     }

@@ -93,9 +93,11 @@ pub(crate) fn resolve_immutable(
 ///
 /// Ports `cli_util.rs:2011` `check_rewritable_expr`: intersect the immutable set with the
 /// targets, stream the result, and refuse on the FIRST element. The CLI takes `try_next`,
-/// never a list, so the refusal names one offender even when several are immutable — the
-/// GUI gets the same "here is what blocks you" signal, and the extra hints the CLI prints
-/// (a commit summary, doc links, an estimated blast radius) are presentation, not behavior.
+/// never a list, so the refusal names one offender even when several are immutable. Since
+/// Story 9.56 the refusal carries the CLI's hints for a non-root offender (`cli_util.rs:2049-2083`
+/// @ v0.46.0), in its order: the offender's summary, why immutable commits exist, where to read
+/// more, and how many immutable commits the rewrite would touch (`count_estimate` of the
+/// immutable set within the targets' descendants, " or more" when inexact). Root gets none.
 ///
 /// The root commit is reported as immutable by the CLI. `describe`/`abandon` guard it
 /// explicitly BEFORE calling this — see `mutate.rs` — so root keeps refusing with
@@ -115,12 +117,41 @@ pub(crate) fn check_rewritable(
     let to_rewrite = RevsetExpression::commits(commit_ids.to_vec());
     let set = immutable.intersection(&to_rewrite).evaluate(repo).map_err(be)?;
     let mut stream = set.stream();
-    match pollster::block_on(stream.try_next()).map_err(be)? {
-        None => Ok(()),
-        Some(commit_id) => Err(MutateError::Immutable {
-            commit_id: commit_id.hex(),
-        }),
-    }
+    let Some(commit_id) = pollster::block_on(stream.try_next()).map_err(be)? else {
+        return Ok(());
+    };
+    let hints = if commit_id == *repo.store().root_commit_id() {
+        Vec::new()
+    } else {
+        immutable_hints(repo, immutable, &to_rewrite, &commit_id)?
+    };
+    Err(MutateError::Immutable {
+        commit_id: commit_id.hex(),
+        hints,
+    })
+}
+
+/// The CLI's hints for an immutable non-root offender (`cli_util.rs:2061-2083` @ v0.46.0).
+fn immutable_hints(
+    repo: &dyn jj_lib::repo::Repo,
+    immutable: &Arc<ResolvedRevsetExpression>,
+    to_rewrite: &Arc<ResolvedRevsetExpression>,
+    commit_id: &CommitId,
+) -> Result<Vec<String>, MutateError> {
+    let commit = repo.store().get_commit(commit_id).map_err(be)?;
+    let (lower, upper) = immutable
+        .intersection(&to_rewrite.descendants())
+        .evaluate(repo)
+        .map_err(be)?
+        .count_estimate()
+        .map_err(be)?;
+    let or_more = if upper == Some(lower) { "" } else { " or more" };
+    Ok(vec![
+        format!("Could not modify commit: {}", crate::push::commit_summary(repo, &commit)),
+        "Immutable commits are used to protect shared history.".to_owned(),
+        "For more information, see:\n      - https://docs.jj-vcs.dev/latest/config/#set-of-immutable-commits\n      - `jj help -k config`, \"Set of immutable commits\"".to_owned(),
+        format!("This operation would rewrite {lower}{or_more} immutable commits."),
+    ])
 }
 
 // ── §2 Insert-location resolution ─────────────────────────────────────────────────
@@ -263,16 +294,8 @@ pub(crate) fn compute_commit_location(
         // names the user-facing flags instead. The CLI's genuinely user-facing refusals
         // below ("No revisions found to use as parent", "Refusing to create a loop: …")
         // stay verbatim.
-        (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
-            return Err(MutateError::InvalidInput {
-                reason: ONTO_WITH_INSERT.to_owned(),
-            })
-        }
-        (None, None, None) => {
-            return Err(MutateError::InvalidInput {
-                reason: NO_LOCATION.to_owned(),
-            })
-        }
+        (Some(_), Some(_), _) | (Some(_), _, Some(_)) => return Err(MutateError::invalid(ONTO_WITH_INSERT.to_owned())),
+        (None, None, None) => return Err(MutateError::invalid(NO_LOCATION.to_owned())),
     };
 
     if !new_child_ids.is_empty() {
@@ -286,9 +309,7 @@ pub(crate) fn compute_commit_location(
     }
 
     if new_parent_ids.is_empty() {
-        return Err(MutateError::InvalidInput {
-            reason: "No revisions found to use as parent".to_owned(),
-        });
+        return Err(MutateError::invalid("No revisions found to use as parent".to_owned()));
     }
 
     Ok((new_parent_ids, new_child_ids))
@@ -307,12 +328,10 @@ fn ensure_no_commit_loop(
     let set = children.dag_range_to(parents).evaluate(repo).map_err(be)?;
     let mut stream = set.stream();
     if let Some(commit_id) = pollster::block_on(stream.try_next()).map_err(be)? {
-        return Err(MutateError::InvalidInput {
-            reason: format!(
-                "Refusing to create a loop: commit {commit_id:.12} would be both an ancestor and a descendant \
+        return Err(MutateError::invalid(format!(
+            "Refusing to create a loop: commit {commit_id:.12} would be both an ancestor and a descendant \
                  of the {commit_type}"
-            ),
-        });
+        )));
     }
     Ok(())
 }
@@ -542,9 +561,8 @@ impl SelectedTree {
     // it, and an unfulfilled expectation is itself a warning.
     #[allow(dead_code)]
     pub(crate) fn from_tree_id(store: &Arc<Store>, tree_id_hex: &str) -> Result<Self, MutateError> {
-        let tree_id = TreeId::try_from_hex(tree_id_hex).ok_or_else(|| MutateError::InvalidInput {
-            reason: format!("malformed tree id: {tree_id_hex}"),
-        })?;
+        let tree_id = TreeId::try_from_hex(tree_id_hex)
+            .ok_or_else(|| MutateError::invalid(format!("malformed tree id: {tree_id_hex}")))?;
         pollster::block_on(store.get_tree(RepoPathBuf::root(), &tree_id)).map_err(be)?;
         Ok(Self(MergedTree::new(
             store.clone(),
@@ -970,7 +988,7 @@ mod tests {
         let err = check_rewritable(readonly.as_ref(), &immutable, std::slice::from_ref(&ancestor))
             .expect_err("Commit 1 is an ancestor of the tagged Commit 2");
         assert!(
-            matches!(&err, MutateError::Immutable { commit_id } if *commit_id == ancestor.hex()),
+            matches!(&err, MutateError::Immutable { commit_id, .. } if *commit_id == ancestor.hex()),
             "unexpected error: {err:?}"
         );
     }
@@ -1096,7 +1114,7 @@ mod tests {
         )
         .expect_err("the CLI panics here; a library must refuse");
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason.contains("cannot be combined with")),
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("cannot be combined with")),
             "unexpected error: {err:?}"
         );
     }
@@ -1118,7 +1136,7 @@ mod tests {
         )
         .expect_err("the CLI panics here; a library must refuse");
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason.contains("cannot be combined with")),
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("cannot be combined with")),
             "unexpected error: {err:?}"
         );
     }
@@ -1132,7 +1150,7 @@ mod tests {
         let err = compute_commit_location(readonly.as_ref(), &immutable, None, None, None, "commit")
             .expect_err("the CLI panics here; a library must refuse");
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason.contains("at least one of")),
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("at least one of")),
             "unexpected error: {err:?}"
         );
     }
@@ -1157,7 +1175,7 @@ mod tests {
         )
         .expect_err("this location is a cycle");
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason.contains("Refusing to create a loop")),
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("Refusing to create a loop")),
             "unexpected error: {err:?}"
         );
     }
@@ -1199,7 +1217,7 @@ mod tests {
         let err = compute_commit_location(readonly.as_ref(), &immutable, None, Some(&[]), None, "commit")
             .expect_err("no parents is refused");
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason == "No revisions found to use as parent"),
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason == "No revisions found to use as parent"),
             "unexpected error: {err:?}"
         );
     }
@@ -1397,7 +1415,7 @@ mod tests {
 
         let err = SelectedTree::from_tree_id(readonly.store(), "nothex").expect_err("not valid hex");
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason.contains("malformed tree id")),
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("malformed tree id")),
             "unexpected error: {err:?}"
         );
     }

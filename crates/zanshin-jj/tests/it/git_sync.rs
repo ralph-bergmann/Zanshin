@@ -598,3 +598,81 @@ fn both_sync_verbs_find_nothing_left_in_a_colocated_workspace() {
         "nothing was left to export, so no operation was written"
     );
 }
+
+/// Story 9.56 / the 9.30 follow-up: `git import` of a same-change-id rewrite — the backing Git
+/// ref moved to a copy of a jj commit that keeps its `change-id` header — counts it in
+/// `num_rewritten` (jj-lib's `record_synthetic_predecessors`) and rebases `@`, a child of the
+/// old commit, onto the rewrite.
+#[test]
+fn git_import_counts_a_same_change_id_rewrite_and_rebases_the_child() {
+    test_helpers::pin_test_env();
+    let (tmp, x) = git_repo_with_one_commit();
+    let store = git_store(tmp.path());
+    git_cmd(&["update-ref", "refs/heads/feat", &x], &store);
+    let mut repo = Repo::open(tmp.path()).expect("reopen so the backend sees the new ref");
+    assert_eq!(repo.git_import().expect("first import").num_rewritten, 0);
+    let x_change = change_id_of(&repo, &x);
+    repo.new_change(&[x_change], &[], &[]).expect("a child of X");
+
+    let (ok, text) = git_try(&["cat-file", "commit", &x], &store);
+    assert!(ok, "cat-file");
+    let (headers, _) = text.split_once("\n\n").expect("a commit has a message");
+    assert!(
+        headers.contains("\nchange-id "),
+        "a jj-written commit carries its change id: {headers}"
+    );
+    let mut hash = std::process::Command::new("git")
+        .args(["hash-object", "-t", "commit", "-w", "--stdin"])
+        .current_dir(&store)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("git spawns");
+    std::io::Write::write_all(
+        hash.stdin.as_mut().expect("stdin"),
+        format!("{headers}\n\nX, rewritten\n").as_bytes(),
+    )
+    .expect("write the commit");
+    let out = hash.wait_with_output().expect("git hash-object");
+    assert!(out.status.success(), "hash-object");
+    let rewritten = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+    git_cmd(&["update-ref", "refs/heads/feat", &rewritten], &store);
+
+    let mut repo = Repo::open(tmp.path()).expect("reopen so the backend sees the moved ref");
+    let result = repo.git_import().expect("import");
+
+    assert_eq!(result.num_rewritten, 1);
+    let mut parents = Vec::new();
+    let _ = repo
+        .eval_revset("@-", |change| {
+            parents.push(change.commit_id.0);
+            std::ops::ControlFlow::Continue(())
+        })
+        .expect("eval");
+    assert_eq!(parents, [rewritten], "@ sits on the rewrite");
+}
+
+/// Story 9.56: a `git import` with nothing to import says "Nothing changed." without resolving
+/// the immutable set, as the CLI's `tx.finish` — an unresolvable `immutable_heads()` alias does
+/// not refuse it — while an import that changes something refuses `Config`, writing nothing.
+#[test]
+fn git_import_resolves_the_immutable_set_only_when_it_changes_something() {
+    test_helpers::pin_test_env();
+    let (tmp, commit) = git_repo_with_one_commit();
+    write_repo_config(
+        tmp.path(),
+        "[revset-aliases]\n\"immutable_heads()\" = \"nonexistent_symbol_xyz\"\n",
+    );
+    let mut repo = Repo::open(tmp.path()).expect("open");
+    let before = head_op_id(&mut repo);
+    let idle = repo.git_import().expect("a no-op import succeeds");
+    assert_eq!(idle.mutation.new_op_id.0, before, "and writes nothing");
+    let idle = repo.git_export().expect("a no-op export succeeds");
+    assert_eq!(idle.mutation.new_op_id.0, before, "and writes nothing");
+
+    git_cmd(&["update-ref", "refs/heads/feature", &commit], &git_store(tmp.path()));
+    let mut repo = Repo::open(tmp.path()).expect("reopen so the backend sees the new ref");
+    let err = repo.git_import().expect_err("an import with changes resolves the set");
+    assert!(matches!(err, MutateError::Config { .. }), "{err:?}");
+    assert_eq!(head_op_id(&mut repo), before, "a refusal writes no operation");
+}

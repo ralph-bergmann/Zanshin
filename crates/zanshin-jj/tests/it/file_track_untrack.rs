@@ -476,6 +476,11 @@ fn untrack_not_ignored_path_refuses_and_writes_nothing() {
         matches!(&err, MutateError::PathsNotIgnored { paths } if *paths == strings(&["d.txt"])),
         "{err:?}"
     );
+    // Story 9.56: `file untrack`'s hint, its newline included (`untrack.rs:95-98` @ v0.46.0).
+    assert_eq!(
+        err.hints(),
+        ["Files that are not ignored will be added back by the next command.\nMake sure they're ignored, then try again."]
+    );
     assert_eq!(head_op_id(&mut repo), op_before, "no operation");
     assert_eq!(at_hex(&fx.root), at_before);
     assert_eq!(
@@ -556,7 +561,7 @@ fn paths_normalise_like_the_cli_and_escaping_paths_are_refused() {
         .file_untrack(&strings(&["../outside.txt"]))
         .expect_err("escapes the workspace");
     assert!(
-        matches!(&err, MutateError::InvalidInput { reason } if reason.contains("invalid path")),
+        matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("invalid path")),
         "{err:?}"
     );
     assert_eq!(head_op_id(&mut repo), before);
@@ -759,7 +764,7 @@ fn an_empty_path_entry_is_refused_by_both_verbs() {
 
     for err in [&track, &untrack] {
         assert!(
-            matches!(err, MutateError::InvalidInput { reason } if reason.starts_with("invalid path:")),
+            matches!(err, MutateError::InvalidInput { reason, .. } if reason.starts_with("invalid path:")),
             "{err:?}"
         );
     }
@@ -777,11 +782,11 @@ fn empty_paths_are_refused_by_both_verbs() {
     let untrack = repo.file_untrack(&[]).expect_err("empty");
 
     assert!(
-        matches!(&track, MutateError::InvalidInput { reason } if reason.contains("file track")),
+        matches!(&track, MutateError::InvalidInput { reason, .. } if reason.contains("file track")),
         "{track:?}"
     );
     assert!(
-        matches!(&untrack, MutateError::InvalidInput { reason } if reason.contains("file untrack")),
+        matches!(&untrack, MutateError::InvalidInput { reason, .. } if reason.contains("file untrack")),
         "{untrack:?}"
     );
     assert_eq!(head_op_id(&mut repo), before);
@@ -795,7 +800,7 @@ fn a_malformed_path_is_refused() {
     let err = repo.file_track(&strings(&["/abs"]), false).expect_err("leading slash");
 
     assert!(
-        matches!(&err, MutateError::InvalidInput { reason } if reason.contains("invalid path")),
+        matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("invalid path")),
         "{err:?}"
     );
 }

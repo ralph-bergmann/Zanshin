@@ -167,9 +167,10 @@ pub(crate) fn check_rebase_destinations(
             return Err(onto_itself(commit.id()));
         }
         if pollster::block_on(repo.index().is_ancestor(commit.id(), parent_id)).map_err(be)? {
-            return Err(MutateError::InvalidInput {
-                reason: format!("Cannot rebase {:.12} onto descendant {parent_id:.12}", commit.id()),
-            });
+            return Err(MutateError::invalid(format!(
+                "Cannot rebase {:.12} onto descendant {parent_id:.12}",
+                commit.id()
+            )));
         }
     }
     Ok(())
@@ -177,9 +178,7 @@ pub(crate) fn check_rebase_destinations(
 
 /// The CLI's `Cannot rebase <12 hex> onto itself`.
 fn onto_itself(id: &CommitId) -> MutateError {
-    MutateError::InvalidInput {
-        reason: format!("Cannot rebase {id:.12} onto itself"),
-    }
+    MutateError::invalid(format!("Cannot rebase {id:.12} onto itself"))
 }
 
 /// Whether the rebase `loc` plans would write no operation: an empty target is the CLI's "No
@@ -261,7 +260,7 @@ pub(crate) fn dry_run_settings(settings: &UserSettings) -> Result<UserSettings, 
 /// jj-lib failure.
 fn unsupported(e: BackendError) -> MutateError {
     match e {
-        BackendError::Unsupported(reason) => MutateError::InvalidInput { reason },
+        BackendError::Unsupported(reason) => MutateError::invalid(reason),
         e => be(e),
     }
 }
@@ -355,7 +354,7 @@ mod tests {
 
             let refused = plan(&tx, &immutable, &[change(&at)], &location);
             assert!(
-                matches!(&refused, Err(MutateError::Immutable { commit_id }) if *commit_id == c2.id().hex()),
+                matches!(&refused, Err(MutateError::Immutable { commit_id, .. }) if *commit_id == c2.id().hex()),
                 "{flag}: {refused:?}"
             );
         }
@@ -367,7 +366,7 @@ mod tests {
 
         use crate::mutate::MutateError;
         let refused = super::unsupported(BackendError::Unsupported("no".to_owned()));
-        assert!(matches!(refused, MutateError::InvalidInput { reason } if reason == "no"));
+        assert!(matches!(refused, MutateError::InvalidInput { reason, .. } if reason == "no"));
         let other = super::unsupported(BackendError::Other("x".into()));
         assert!(matches!(other, MutateError::Backend(_)));
     }

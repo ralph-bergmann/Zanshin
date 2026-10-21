@@ -27,11 +27,13 @@ fn map_change_err(e: ChangeError) -> FfiErrorObj {
         ChangeError::Precondition(e) => map_precondition_err(e),
         ChangeError::NotFound { id } => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_CHANGE_NOT_FOUND.to_owned(),
             context: Some(id),
         },
         ChangeError::Backend(reason) => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_JJ_LIB_ERROR.to_owned(),
             context: Some(reason),
         },

@@ -9,7 +9,7 @@ import 'package:meta/meta.dart';
 import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
-import 'precondition.dart' show decodeEnvelopeErrorInternal;
+import 'precondition.dart' show decodeEnvelopeErrorInternal, decodeErrorHintsInternal;
 import 'request_bytes.dart';
 import 'warning.dart';
 
@@ -201,17 +201,22 @@ enum ActionStatus {
   refused,
 }
 
-/// A previewed verb's refusal: the code and `context` the verb's own call
-/// fails with (`jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+/// A previewed verb's refusal: the code, `context` and hints the verb's own
+/// call fails with (`jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
 /// `jj.config_error`, …).
 final class ActionRefusal {
-  const ActionRefusal(this.code, this.context);
+  const ActionRefusal(this.code, this.context, [this.hints = const []]);
 
   /// Machine-readable error code, e.g. `jj.immutable`.
   final String code;
 
   /// The detail the verb's error carries; `null` when it carries none.
   final String? context;
+
+  /// The jj CLI's hint lines for the refusal (Story 9.56), verbatim and in the
+  /// CLI's order — the same `ZanshinFfiException.hints` the verb's own call
+  /// would carry; empty when it has none.
+  final List<String> hints;
 }
 
 /// One previewed verb's answer (mirrors `zanshin_jj::ActionOutcome`).
@@ -373,6 +378,7 @@ ActionOutcome _outcome(fbs.ActionOutcome? outcome) {
         : ActionRefusal(
             refusal.code ?? (throw const ZanshinFfiException('ffi.unknown', 'a refusal is missing its code')),
             refusal.context,
+            decodeErrorHintsInternal(refusal),
           ),
     combinedDescriptionNeeded: outcome.combinedDescriptionNeeded,
     allowBackwardsNeeded: outcome.allowBackwardsNeeded,

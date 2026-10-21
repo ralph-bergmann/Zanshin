@@ -22,6 +22,7 @@ fn map_config_err(e: ConfigError) -> FfiErrorObj {
     match e {
         ConfigError::Load { reason } => FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_CONFIG_ERROR.to_owned(),
             context: Some(reason),
         },

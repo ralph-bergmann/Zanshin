@@ -709,6 +709,12 @@ fn undo_cross_workspace_refuses_unless_allowed() {
     let (operation, workspace) = context.split_once('\n').expect("two lines");
     assert_eq!(operation.len(), 12, "the CLI's short operation id");
     assert_eq!(workspace, "second");
+    // Story 9.56: the CLI's hint rides `FfiError.hints`.
+    let hints: Vec<&str> = error.hints().expect("hints").iter().collect();
+    assert_eq!(
+        hints,
+        ["Use `--allow-cross-workspace` to undo it anyway, or use `jj op revert` to revert a specific operation"]
+    );
 
     let allowed = unsafe { read_and_free(zanshin_undo(handle, true)) };
     assert!(parse_envelope(&allowed).ok(), "allowed, it is undone");
@@ -964,6 +970,44 @@ fn git_fetch_with_a_cancel_token() {
     close_handle(handle);
 }
 
+/// Story 9.56: a fetch from a Git remote named `git` — reserved by jj — refuses `jj.invalid_input`
+/// with jj-lib's reason alone in `context` and the CLI's rename hint in `FfiError.hints`
+/// (`command_error.rs:586-588` @ v0.46.0).
+#[test]
+fn git_fetch_from_a_remote_named_git_carries_the_rename_hint() {
+    test_helpers::pin_test_env();
+    let src = tempfile::TempDir::new().unwrap();
+    init_git_repo_with_commit(src.path());
+    let parent = tempfile::TempDir::new().unwrap();
+    let bare = git_bare_clone(src.path(), parent.path());
+    let dst = tempfile::TempDir::new().unwrap();
+    let dst_cstr = cstr(dst.path().to_str().unwrap());
+    let init_bytes = unsafe { read_and_free(repo_init(&dst_cstr, 1)) };
+    let init_handle = parse_envelope(&init_bytes)
+        .data_as_repo_handle()
+        .expect("RepoHandle must be present")
+        .handle();
+    close_handle(init_handle);
+    register_remote(dst.path(), "git", &bare.to_string_lossy());
+    let (handle, _) = open_handle(dst.path());
+
+    let bytes = git_fetch(handle, &fetch_request(Some(&["git"]), 0));
+    let env = parse_envelope(&bytes);
+
+    assert!(!env.ok(), "a reserved remote name refuses");
+    let error = env.error().expect("error");
+    assert_eq!(error.code(), Some(JJ_INVALID_INPUT));
+    assert_eq!(
+        error.context(),
+        Some("Git remote named 'git' is reserved for local Git repository"),
+        "no in-band hint text"
+    );
+    let hints: Vec<&str> = error.hints().expect("hints").iter().collect();
+    assert_eq!(hints, ["Run `jj git remote rename` to give a different name."]);
+
+    close_handle(handle);
+}
+
 /// A `--remote` that names no remote is the CLI's warning plus its refusal (Story 9.30):
 /// `jj.fetch_remotes_unmatched`, then `jj.invalid_input` "No git remotes to fetch from" — no
 /// longer `jj.remote_not_found`.
@@ -988,6 +1032,10 @@ fn git_fetch_nonexistent_remote_warns_and_returns_jj_invalid_input() {
     let error = env.error().expect("error");
     assert_eq!(error.code(), Some(JJ_INVALID_INPUT));
     assert_eq!(error.context(), Some("No git remotes to fetch from"));
+    assert!(
+        error.hints().is_none(),
+        "a hint-less refusal writes no `hints` (Story 9.56)"
+    );
     let warnings: Vec<(String, String)> = env
         .warnings()
         .expect("warnings")

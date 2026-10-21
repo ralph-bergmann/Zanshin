@@ -59,6 +59,7 @@ fn read_target(scope: fbs::ConfigScope, path: Option<&str>) -> Result<ConfigTarg
         (scope, None) => required_scope(scope).map(ConfigTarget::Scope),
         (_, Some(_)) => Err(FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_INVALID_INPUT.to_owned(),
             context: Some("a scope cannot be used with a path".to_owned()),
         }),
@@ -96,6 +97,7 @@ fn read_list_request(data: *const u8, len: usize) -> Result<ListReq, FfiErrorObj
     if scope.is_some() && req.include_defaults() {
         return Err(FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: JJ_INVALID_INPUT.to_owned(),
             context: Some("include_defaults cannot be used with a scope".to_owned()),
         });
@@ -251,6 +253,7 @@ fn read_gc_delete_request(data: *const u8, len: usize) -> Result<Vec<PathBuf>, F
 
 /// Maps a [`ConfigCmdError`] onto the AR-P-4 taxonomy (Story 9.28).
 pub(crate) fn map_config_cmd_err(e: ConfigCmdError) -> FfiErrorObj {
+    let hints = e.hints();
     let (code, context) = match e {
         ConfigCmdError::Config { reason } => (JJ_CONFIG_ERROR, reason),
         ConfigCmdError::PathNotFound { path } => (JJ_PATH_NOT_FOUND, path.to_string_lossy().into_owned()),
@@ -267,6 +270,7 @@ pub(crate) fn map_config_cmd_err(e: ConfigCmdError) -> FfiErrorObj {
     };
     FfiErrorObj {
         report: None,
+        hints,
         code: code.to_owned(),
         context: Some(context),
     }

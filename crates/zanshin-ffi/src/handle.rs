@@ -51,6 +51,7 @@ pub fn validate_handle<T>(ptr: *mut c_void) -> Result<*mut T, FfiErrorObj> {
     if ptr.is_null() {
         return Err(FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: FFI_INVALID_HANDLE.to_owned(),
             context: None,
         });

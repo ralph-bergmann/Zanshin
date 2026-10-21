@@ -32,10 +32,11 @@ pub(crate) struct DuplicatePlan {
 
 /// `jj duplicate <revisions> [<location>]`'s plan: the revisions resolved in reverse topological
 /// order, the root refusal (`Cannot duplicate the root commit`, when the last — the oldest — is
-/// the root), then the location (`"duplicated commits"`). The immutable set is resolved only for
-/// `-A`/`-B`, whose children the location rewrites; `-o` alone never reads it, as in the CLI. Two
-/// or more location parents with the root among them refuse up front on a Git-backed store, with
-/// the backend's own text — the CLI reaches it at the duplicates' write.
+/// the root), then the location (`"duplicated commits"`). The immutable set is resolved for
+/// `-A`/`-B` with the location, whose children it rewrites; otherwise last, where the CLI's
+/// `tx.finish` resolves it — every duplicate writes (Story 9.56). Two or more location parents
+/// with the root among them refuse up front on a Git-backed store, with the backend's own text —
+/// the CLI reaches it at the duplicates' write.
 ///
 /// # Errors
 ///
@@ -43,7 +44,7 @@ pub(crate) struct DuplicatePlan {
 /// - [`MutateError::InvalidInput`] — the root commit is among the revisions, a location refusal
 ///   of `compute_commit_location`, or (Git backend) a root merge as the location's parents.
 /// - [`MutateError::Immutable`] — (`-A`/`-B`) a child the location would rewrite is immutable.
-/// - [`MutateError::Config`] — (`-A`/`-B`) the `immutable_heads()` alias does not resolve.
+/// - [`MutateError::Config`] — the `immutable_heads()` alias does not resolve.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 pub(crate) fn plan_duplicate(
     tx: &Transaction,
@@ -57,13 +58,12 @@ pub(crate) fn plan_duplicate(
         .map_err(be)?;
     let to_duplicate: Vec<CommitId> = pollster::block_on(set.stream().try_collect()).map_err(be)?;
     if to_duplicate.last() == Some(tx.base_repo().store().root_commit_id()) {
-        return Err(MutateError::InvalidInput {
-            reason: "Cannot duplicate the root commit".to_owned(),
-        });
+        return Err(MutateError::invalid("Cannot duplicate the root commit".to_owned()));
     }
-    let has_location = !location.onto.is_empty() || location.inserts();
+    let inserts = location.inserts();
+    let has_location = !location.onto.is_empty() || inserts;
     let location = if has_location {
-        let resolved: Arc<ResolvedRevsetExpression> = if location.inserts() {
+        let resolved: Arc<ResolvedRevsetExpression> = if inserts {
             resolve_immutable(tx.base_repo().as_ref(), immutable)?
         } else {
             RevsetExpression::none()
@@ -76,5 +76,8 @@ pub(crate) fn plan_duplicate(
     } else {
         None
     };
+    if !inserts {
+        resolve_immutable(tx.base_repo().as_ref(), immutable)?;
+    }
     Ok(DuplicatePlan { to_duplicate, location })
 }

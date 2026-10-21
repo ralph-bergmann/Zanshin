@@ -259,7 +259,10 @@ pub(crate) fn clone(options: &CloneOptions, progress: &ProgressFn, cancel: Optio
 
 /// A clone failure.
 fn clone_failed(reason: impl Into<String>) -> RepoError {
-    RepoError::CloneFailed { reason: reason.into() }
+    RepoError::CloneFailed {
+        reason: reason.into(),
+        hints: Vec::new(),
+    }
 }
 
 /// A failure of the clone's `git` subprocess (`git fetch`, `git remote show`) is a network error,
@@ -270,6 +273,10 @@ fn fetch_error(e: GitFetchError, cancel: Option<&CancelGuard>) -> RepoError {
         GitFetchError::Subprocess(_) if crate::cancel::is_cancelled(cancel) => RepoError::Cancelled,
         GitFetchError::Subprocess(_) => RepoError::NetworkError {
             reason: mutate::flatten_chain(&e),
+        },
+        GitFetchError::RemoteName(_) => RepoError::CloneFailed {
+            reason: e.to_string(),
+            hints: vec![crate::remotes::REMOTE_RENAME_HINT.to_owned()],
         },
         other => clone_failed(other.to_string()),
     }
@@ -559,7 +566,10 @@ fn fetch_new_remote(
         crate::cancel::watch_store(plan.cancel, tx.repo().store());
         let mut fetcher = GitFetch::new(tx.repo_mut(), subprocess_options, &import_options)
             .map_err(|e| clone_failed(e.to_string()))?;
-        let refspecs = expand_fetch_refspecs(remote, ref_expr).map_err(|e| clone_failed(e.to_string()))?;
+        let refspecs = expand_fetch_refspecs(remote, ref_expr).map_err(|e| RepoError::CloneFailed {
+            reason: e.to_string(),
+            hints: crate::remotes::expansion_hints(&e),
+        })?;
         let mut callback = ProgressCallback {
             operation: "clone",
             progress: plan.progress,
@@ -711,12 +721,25 @@ mod tests {
         ));
         assert!(matches!(
             add_remote_error(GitRemoteManagementError::InternalGitError("boom".into())),
-            RepoError::CloneFailed { reason } if reason == "Unexpected Git error when managing remotes"
+            RepoError::CloneFailed { reason, hints } if reason == "Unexpected Git error when managing remotes" && hints.is_empty()
         ));
         assert!(matches!(
             fetch_error(GitFetchError::NoSuchRemote("origin".into()), None),
-            RepoError::CloneFailed { reason } if reason == "No git remote named 'origin'"
+            RepoError::CloneFailed { reason, hints } if reason == "No git remote named 'origin'" && hints.is_empty()
         ));
+        let reserved = fetch_error(
+            GitFetchError::RemoteName(GitRemoteNameError::ReservedForLocalGitRepo),
+            None,
+        );
+        assert_eq!(
+            reserved.hints(),
+            ["Run `jj git remote rename` to give a different name."]
+        );
+        assert!(
+            matches!(&reserved, RepoError::CloneFailed { reason, .. }
+                if *reason == GitRemoteNameError::ReservedForLocalGitRepo.to_string()),
+            "{reserved:?}"
+        );
         // A cancel turns only a git failure into the cancel; any other failure passes through.
         let token = u64::MAX - 1;
         crate::cancel::register(token);

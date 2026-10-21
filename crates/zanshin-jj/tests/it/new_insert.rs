@@ -376,14 +376,16 @@ fn insert_after_refuses_an_immutable_child() {
     let err = refused(&mut fx, &[], std::slice::from_ref(&a), &[]);
 
     assert!(
-        matches!(&err, MutateError::Immutable { commit_id } if *commit_id == b_hex),
+        matches!(&err, MutateError::Immutable { commit_id, .. } if *commit_id == b_hex),
         "{err:?}"
     );
 }
 
-/// A plain `new` never resolves the immutable set: an unresolvable alias refuses `-A` only.
+/// Story 9.56: a plain `new` resolves the immutable set too — in the CLI's `tx.finish`
+/// (`rebase_mutable_descendants`, `cli_util.rs:2855` @ v0.46.0) — so an unresolvable alias refuses
+/// `-A` and a positional `new` alike, both with no operation (`refused` checks the op log).
 #[test]
-fn only_insert_resolves_the_immutable_set() {
+fn every_new_resolves_the_immutable_set() {
     let mut fx = base();
     let (b, c) = (fx.b.clone(), fx.c.clone());
     set_repo_config(&mut fx, "[revset-aliases]\n\"immutable_heads()\" = \"no-such-mark\"\n");
@@ -391,12 +393,8 @@ fn only_insert_resolves_the_immutable_set() {
     let err = refused(&mut fx, &[], std::slice::from_ref(&b), &[]);
     assert!(matches!(err, MutateError::Config { .. }), "{err:?}");
 
-    let result = fx
-        .repo
-        .new_change(std::slice::from_ref(&c), &[], &[])
-        .expect("plain new");
-    let n = assert_new(&fx, &result);
-    assert_eq!(parents(&fx.root, &n), [c]);
+    let err = refused(&mut fx, std::slice::from_ref(&c), &[], &[]);
+    assert!(matches!(err, MutateError::Config { .. }), "plain new: {err:?}");
 }
 
 /// `-A` on a leaf (no child to rewrite) still refuses an unresolvable alias, as `jj new -A` does:
@@ -421,7 +419,7 @@ fn insert_before_the_root_is_refused_as_immutable() {
     let err = refused(&mut fx, &[], &[], std::slice::from_ref(&root));
 
     assert!(
-        matches!(&err, MutateError::Immutable { commit_id } if *commit_id == hex),
+        matches!(&err, MutateError::Immutable { commit_id, .. } if *commit_id == hex),
         "{err:?}"
     );
 }
@@ -437,7 +435,7 @@ fn a_merge_with_the_root_is_refused_with_the_git_backend_text() {
     for parents in [[b.clone(), root.clone()], [root.clone(), b.clone()]] {
         let err = refused(&mut fx, &parents, &[], &[]);
         assert!(
-            matches!(&err, MutateError::InvalidInput { reason } if reason
+            matches!(&err, MutateError::InvalidInput { reason, .. } if reason
                 == "The Git backend does not support creating merge commits with the root commit as one of the parents."),
             "{err:?}"
         );
@@ -464,7 +462,7 @@ fn an_insert_location_yielding_a_root_merge_is_refused_with_the_git_backend_text
     let err = refused(&mut fx, &[], &[], &[a, e]);
 
     assert!(
-        matches!(&err, MutateError::InvalidInput { reason } if reason
+        matches!(&err, MutateError::InvalidInput { reason, .. } if reason
             == "The Git backend does not support creating merge commits with the root commit as one of the parents."),
         "{err:?}"
     );
@@ -480,7 +478,7 @@ fn a_loop_is_refused_with_the_cli_text() {
 
     let err = refused(&mut fx, &[], std::slice::from_ref(&c), std::slice::from_ref(&a));
 
-    let MutateError::InvalidInput { reason } = &err else {
+    let MutateError::InvalidInput { reason, .. } = &err else {
         panic!("{err:?}");
     };
     assert_eq!(

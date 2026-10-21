@@ -346,6 +346,9 @@ pub const JJ_FETCH_REMOTES_UNMATCHED: &str = "jj.fetch_remotes_unmatched";
 pub const JJ_FETCH_REFSPEC_IGNORED: &str = "jj.fetch_refspec_ignored";
 /// Warning: `zanshin_git_fetch`'s exact `-b` names no matched remote has (Story 9.30).
 pub const JJ_FETCH_BRANCHES_UNMATCHED: &str = "jj.fetch_branches_unmatched";
+/// Warning: the `trunk()` alias does not resolve at the start of the call, which runs with
+/// `trunk()` = `root()` (Story 9.56) — every verb that runs the pre-verb snapshot.
+pub const JJ_TRUNK_ALIAS_UNRESOLVED: &str = "jj.trunk_alias_unresolved";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -406,6 +409,7 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::FetchRemotesUnmatched => JJ_FETCH_REMOTES_UNMATCHED,
         K::FetchRefspecIgnored => JJ_FETCH_REFSPEC_IGNORED,
         K::FetchBranchesUnmatched => JJ_FETCH_BRANCHES_UNMATCHED,
+        K::TrunkAliasUnresolved => JJ_TRUNK_ALIAS_UNRESOLVED,
     }
 }
 
@@ -458,11 +462,14 @@ impl CallReport {
 /// `report` — the precondition report and warnings of the verb that failed (Stories 9.26 and
 /// 9.32), written as `Envelope.precondition` / `Envelope.warnings` on the error envelope; `None`
 /// everywhere else. Boxed so the `Err` side of every wrapper's `Result` stays small.
+/// `hints` — the CLI's hint lines for the refusal, verbatim and in the CLI's order (Story 9.56),
+/// written as `FfiError.hints`; empty (no field on the wire) for an error without hints.
 #[derive(Debug)]
 pub struct FfiErrorObj {
     pub code: String,
     pub context: Option<String>,
     pub report: Option<Box<CallReport>>,
+    pub hints: Vec<String>,
 }
 
 impl FfiErrorObj {
@@ -481,6 +488,7 @@ impl FfiErrorObj {
 /// `map_mutate_err` reports the same condition.
 pub(crate) fn map_precondition_err(e: zanshin_jj::PreconditionError) -> FfiErrorObj {
     use zanshin_jj::PreconditionError as P;
+    let hints = e.hints();
     let (code, context) = match e {
         P::StaleWorkingCopy {
             cause,
@@ -496,6 +504,7 @@ pub(crate) fn map_precondition_err(e: zanshin_jj::PreconditionError) -> FfiError
                 code: JJ_CONCURRENT_WORKING_COPY.to_owned(),
                 context: None,
                 report: None,
+                hints: Vec::new(),
             }
         }
         P::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
@@ -504,6 +513,7 @@ pub(crate) fn map_precondition_err(e: zanshin_jj::PreconditionError) -> FfiError
         code: code.to_owned(),
         context: Some(context),
         report: None,
+        hints,
     }
 }
 
@@ -541,6 +551,7 @@ pub(crate) fn reject_null_request(data: *const u8) -> Result<(), FfiErrorObj> {
     if data.is_null() {
         return Err(FfiErrorObj {
             report: None,
+            hints: Vec::new(),
             code: FFI_NULL_POINTER.to_owned(),
             context: None,
         });
@@ -552,6 +563,7 @@ pub(crate) fn reject_null_request(data: *const u8) -> Result<(), FfiErrorObj> {
 pub(crate) fn invalid_request(e: &flatbuffers::InvalidFlatbuffer) -> FfiErrorObj {
     FfiErrorObj {
         report: None,
+        hints: Vec::new(),
         code: FFI_INVALID_ARGUMENT.to_owned(),
         context: Some(e.to_string()),
     }
@@ -583,6 +595,7 @@ pub(crate) fn expect_request_kind(actual: fbs::RequestKind, expected: fbs::Reque
     }
     Err(FfiErrorObj {
         report: None,
+        hints: Vec::new(),
         code: FFI_INVALID_ARGUMENT.to_owned(),
         context: Some(format!("request kind mismatch: expected {expected:?}, got {actual:?}")),
     })
@@ -598,6 +611,7 @@ pub(crate) fn expect_request_kind(actual: fbs::RequestKind, expected: fbs::Reque
 pub(crate) fn missing_field(field: &str) -> FfiErrorObj {
     FfiErrorObj {
         report: None,
+        hints: Vec::new(),
         code: JJ_INVALID_INPUT.to_owned(),
         context: Some(format!("{field} is required")),
     }
@@ -631,6 +645,7 @@ pub(crate) unsafe fn session_from_handle<'a>(handle: u64) -> Result<&'a mut Repo
     // (AD-2) guarantees no concurrent access.
     unsafe { handle_from_raw::<RepoSession>(handle as *mut RepoSession) }.ok_or_else(|| FfiErrorObj {
         report: None,
+        hints: Vec::new(),
         code: FFI_INVALID_HANDLE.to_owned(),
         context: None,
     })
@@ -926,17 +941,10 @@ fn build_action_outcome<'a>(
     b: &mut FlatBufferBuilder<'a>,
     outcome: &ActionOutcomeObj,
 ) -> flatbuffers::WIPOffset<fbs::ActionOutcome<'a>> {
-    let refusal = outcome.refusal.as_ref().map(|e| {
-        let code = b.create_string(&e.code);
-        let context = e.context.as_deref().map(|c| b.create_string(c));
-        fbs::FfiError::create(
-            b,
-            &fbs::FfiErrorArgs {
-                code: Some(code),
-                context,
-            },
-        )
-    });
+    let refusal = outcome
+        .refusal
+        .as_ref()
+        .map(|e| build_ffi_error(b, &e.code, e.context.as_deref(), &e.hints));
     fbs::ActionOutcome::create(
         b,
         &fbs::ActionOutcomeArgs {
@@ -1096,33 +1104,52 @@ fn build_warnings<'a>(
     Some(b.create_vector(&offsets))
 }
 
+/// Builds one `FfiError` table. `hints` empty writes no `hints` vector (Story 9.56: absent =
+/// none), so a hint-less error keeps its pre-9.56 bytes — [`PANIC_FALLBACK_ENVELOPE`] included.
+fn build_ffi_error<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    code: &str,
+    context: Option<&str>,
+    hints: &[String],
+) -> flatbuffers::WIPOffset<fbs::FfiError<'a>> {
+    let code = b.create_string(code);
+    let context = context.map(|c| b.create_string(c));
+    let hints = if hints.is_empty() {
+        None
+    } else {
+        let offsets: Vec<_> = hints.iter().map(|h| b.create_string(h)).collect();
+        Some(b.create_vector(&offsets))
+    };
+    fbs::FfiError::create(
+        b,
+        &fbs::FfiErrorArgs {
+            code: Some(code),
+            context,
+            hints,
+        },
+    )
+}
+
 /// Build an error `Envelope` and return the finished buffer.
 ///
 /// Sets `ok = false`, `data_type = Payload::NONE`, and populates `FfiError { code, context }`.
 /// `code` must be a dotted `<domain>.<reason>` string (see `docs/rust-error-codes.md`).
-/// User-visible detail belongs in `context`, never in `code`. Writes no `precondition` and no
-/// `warnings` — see [`err_with_report`].
+/// User-visible detail belongs in `context`, never in `code`. Writes no `hints`, no
+/// `precondition` and no `warnings` — see [`err_with_report`].
 #[must_use]
 pub fn err(code: &str, context: Option<&str>) -> Vec<u8> {
-    err_with_report(code, context, None)
+    err_with_report(code, context, &[], None)
 }
 
-/// [`err`] carrying the report of the verb that failed — its (partial) pre-verb snapshot report
-/// as `Envelope.precondition` (Story 9.26) and its warnings as `Envelope.warnings` (Story 9.32).
-/// With `None` (or an empty report) it builds exactly [`err`]'s bytes — which is what keeps
+/// [`err`] carrying the CLI's hint lines as `FfiError.hints` (Story 9.56) and the report of the
+/// verb that failed — its (partial) pre-verb snapshot report as `Envelope.precondition` (Story
+/// 9.26) and its warnings as `Envelope.warnings` (Story 9.32). With no hints and `None` (or an
+/// empty report) it builds exactly [`err`]'s bytes — which is what keeps
 /// [`PANIC_FALLBACK_ENVELOPE`] byte-identical.
 #[must_use]
-pub fn err_with_report(code: &str, context: Option<&str>, report: Option<&CallReport>) -> Vec<u8> {
+pub fn err_with_report(code: &str, context: Option<&str>, hints: &[String], report: Option<&CallReport>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
-    let code_off = b.create_string(code);
-    let ctx_off = context.map(|c| b.create_string(c));
-    let error = fbs::FfiError::create(
-        &mut b,
-        &fbs::FfiErrorArgs {
-            code: Some(code_off),
-            context: ctx_off,
-        },
-    );
+    let error = build_ffi_error(&mut b, code, context, hints);
     let precondition = report
         .and_then(|r| r.precondition.as_ref())
         .map(|p| crate::snapshot::build_precondition(&mut b, p));
@@ -1169,8 +1196,8 @@ where
 {
     match catch_unwind(f) {
         Ok(Ok(buf)) => buf,
-        Ok(Err(e)) => err_never_unwind(&e.code, e.context.as_deref(), e.report.as_deref()),
-        Err(panic) => err_never_unwind(INTERNAL_PANIC, Some(&panic_message(panic.as_ref())), None),
+        Ok(Err(e)) => err_never_unwind(&e.code, e.context.as_deref(), &e.hints, e.report.as_deref()),
+        Err(panic) => err_never_unwind(INTERNAL_PANIC, Some(&panic_message(panic.as_ref())), &[], None),
     }
 }
 
@@ -1181,9 +1208,9 @@ where
 /// `err` ever panics, fall back to the pre-serialised [`PANIC_FALLBACK_ENVELOPE`]. The only
 /// remaining failure mode is allocation failure, which aborts the process rather than
 /// unwinding — so no panic can cross the C ABI through this path.
-fn err_never_unwind(code: &str, context: Option<&str>, report: Option<&CallReport>) -> Vec<u8> {
+fn err_never_unwind(code: &str, context: Option<&str>, hints: &[String], report: Option<&CallReport>) -> Vec<u8> {
     let report = std::panic::AssertUnwindSafe(report);
-    catch_unwind(|| err_with_report(code, context, *report)).unwrap_or_else(|_| PANIC_FALLBACK_ENVELOPE.to_vec())
+    catch_unwind(|| err_with_report(code, context, hints, *report)).unwrap_or_else(|_| PANIC_FALLBACK_ENVELOPE.to_vec())
 }
 
 fn panic_message(p: &(dyn Any + Send)) -> String {
@@ -1346,6 +1373,7 @@ mod tests {
         let buf = catch(|| {
             Err(FfiErrorObj {
                 report: None,
+                hints: Vec::new(),
                 code: JJ_IMMUTABLE.to_owned(),
                 context: Some("abc".to_owned()),
             }
@@ -1371,7 +1399,7 @@ mod tests {
     #[test]
     fn an_empty_report_writes_no_warnings_field() {
         assert_eq!(
-            err_with_report("jj.x", None, Some(&CallReport::default())),
+            err_with_report("jj.x", None, &[], Some(&CallReport::default())),
             err("jj.x", None)
         );
     }
@@ -1434,6 +1462,7 @@ mod tests {
             K::FetchRemotesUnmatched => "jj.fetch_remotes_unmatched",
             K::FetchRefspecIgnored => "jj.fetch_refspec_ignored",
             K::FetchBranchesUnmatched => "jj.fetch_branches_unmatched",
+            K::TrunkAliasUnresolved => "jj.trunk_alias_unresolved",
         }
     }
 
@@ -1497,6 +1526,7 @@ mod tests {
             K::FetchRemotesUnmatched,
             K::FetchRefspecIgnored,
             K::FetchBranchesUnmatched,
+            K::TrunkAliasUnresolved,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");
@@ -1644,6 +1674,7 @@ mod tests {
             S::Refused,
             Some(zanshin_jj::MutateError::Immutable {
                 commit_id: "abc".to_owned(),
+                hints: vec!["first".to_owned(), "second\nline".to_owned()],
             }),
         );
         actions[6].outcome.allow_backwards_needed = true;
@@ -1678,10 +1709,14 @@ mod tests {
         assert!(rows[0].outcome().expect("outcome").refusal().is_none());
         let refusal = rows[3].outcome().expect("outcome").refusal().expect("refusal");
         assert_eq!((refusal.code(), refusal.context()), (Some(JJ_IMMUTABLE), Some("abc")));
+        // Story 9.56: a refusal's hints ride its `FfiError`, in order, embedded newlines kept.
+        let hints: Vec<&str> = refusal.hints().expect("hints").iter().collect();
+        assert_eq!(hints, ["first", "second\nline"]);
         let last = verbs.len();
         assert_eq!(rows[last].location(), u32::MAX, "an index past u32 saturates");
         let refusal = rows[last].outcome().expect("outcome").refusal().expect("refusal");
         assert_eq!((refusal.code(), refusal.context()), (Some(JJ_NOTHING_TO_UNDO), None));
+        assert!(refusal.hints().is_none(), "a hint-less refusal writes no field");
     }
 
     /// Story 9.31: all seven card-menu outcomes are written, in field order.
@@ -1704,10 +1739,7 @@ mod tests {
                 combined_description_needed: true,
                 ..outcome(S::Available, None)
             },
-            abandon: outcome(
-                S::Refused,
-                Some(zanshin_jj::MutateError::InvalidInput { reason: "r".to_owned() }),
-            ),
+            abandon: outcome(S::Refused, Some(zanshin_jj::MutateError::invalid("r".to_owned()))),
         };
         let buf = ok_change_actions(&ChangeActionsObj::from(actions), &CallReport::default());
         let env = verified_envelope(&buf);
@@ -1826,6 +1858,7 @@ mod tests {
         let buf = catch(|| {
             Err(FfiErrorObj {
                 report: None,
+                hints: Vec::new(),
                 code: "ffi.invalid_handle".to_owned(),
                 context: Some("handle was zero".to_owned()),
             })
@@ -1888,10 +1921,44 @@ mod tests {
         assert!(env.warnings().is_none(), "the panic fallback never carries warnings");
     }
 
+    /// Story 9.56: hints are written in order, verbatim; none writes no `hints` field, so a
+    /// hint-less error keeps exactly `err`'s bytes.
+    #[test]
+    fn err_with_report_writes_hints_only_when_there_are_some() {
+        assert_eq!(err_with_report("jj.x", Some("c"), &[], None), err("jj.x", Some("c")));
+        let buf = err_with_report("jj.x", Some("c"), &["one".to_owned(), "two\nlines".to_owned()], None);
+        let env = verified_envelope(&buf);
+        let error = env.error().expect("error");
+        assert_eq!((error.code(), error.context()), (Some("jj.x"), Some("c")));
+        let hints: Vec<&str> = error.hints().expect("hints").iter().collect();
+        assert_eq!(hints, ["one", "two\nlines"]);
+        assert!(verified_envelope(&err("jj.x", None))
+            .error()
+            .expect("error")
+            .hints()
+            .is_none());
+    }
+
+    /// `catch` writes an `FfiErrorObj`'s hints on its error envelope (Story 9.56).
+    #[test]
+    fn catch_writes_the_errors_hints() {
+        let buf = catch(|| {
+            Err(FfiErrorObj {
+                code: "jj.x".to_owned(),
+                context: None,
+                report: None,
+                hints: vec!["h".to_owned()],
+            })
+        });
+        let env = verified_envelope(&buf);
+        let hints: Vec<&str> = env.error().expect("error").hints().expect("hints").iter().collect();
+        assert_eq!(hints, ["h"]);
+    }
+
     #[test]
     fn err_never_unwind_matches_err_on_normal_input() {
         assert_eq!(
-            err_never_unwind("jj.repo_not_found", Some("/x"), None),
+            err_never_unwind("jj.repo_not_found", Some("/x"), &[], None),
             err("jj.repo_not_found", Some("/x"))
         );
     }

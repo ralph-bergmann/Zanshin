@@ -381,7 +381,7 @@ fn git_fetch_nonexistent_remote_warns_and_refuses_invalid_input() {
     };
     let err = repo.git_fetch(&args, &no_op, None).expect_err("no such remote");
     assert!(
-        matches!(err, MutateError::InvalidInput { ref reason } if reason == "No git remotes to fetch from"),
+        matches!(err, MutateError::InvalidInput { ref reason, .. } if reason == "No git remotes to fetch from"),
         "expected InvalidInput, got {err:?}"
     );
     let warnings = repo.take_warnings();
@@ -838,7 +838,7 @@ fn git_fetch_reserved_remote_name_matches_no_remote() {
         .git_fetch(&args, &no_op, None)
         .expect_err("\"git\" is a reserved remote name");
     assert!(
-        matches!(err, MutateError::InvalidInput { ref reason } if reason == "No git remotes to fetch from"),
+        matches!(err, MutateError::InvalidInput { ref reason, .. } if reason == "No git remotes to fetch from"),
         "expected InvalidInput, got {err:?}"
     );
     let warnings = repo.take_warnings();
