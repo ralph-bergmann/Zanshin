@@ -911,8 +911,9 @@ pub(crate) struct NewLocation {
 /// - [`MutateError::InvalidInput`] — `parents` together with `insert_after`/`insert_before`
 ///   (clap's `conflicts_with = "revisions"`); all three lists empty (Zanshin has no `@`
 ///   default, the caller passes it); (Git backend) two or more parents — positional or computed
-///   by `-A`/`-B` — including the root commit ([`GIT_ROOT_MERGE`]); or the location would create a loop (`Refusing to create
-///   a loop: commit <12 hex> would be both an ancestor and a descendant of the new commit`).
+///   by `-A`/`-B` — including the root commit ([`GIT_ROOT_MERGE`]); or the location would
+///   create a loop (`Refusing to create a loop: commit <12 hex> would be both an ancestor and a
+///   descendant of the new commit`).
 ///   `compute_commit_location`'s `No revisions found to use as parent` cannot happen here:
 ///   `-A` keeps its non-empty targets as parents, and `-B` finds none only for the root, which
 ///   the rewritability check refuses first as [`MutateError::Immutable`].

@@ -1111,12 +1111,11 @@ impl Repo {
     ///
     /// - [`crate::MutateError::InvalidInput`] — `parents` combined with an insert list; all three
     ///   lists empty; (Git backend) two or more parents — positional, or computed by `-A`/`-B` —
-    ///   including the root commit — the Git
-    ///   backend's own text, "The Git backend does not support creating merge commits with the
-    ///   root commit as one of the parents." (Story 9.31); (`-A`/`-B`) the location would create a loop (`Refusing to create a loop:
-    ///   commit <12 hex> would be both an ancestor and a descendant of the new commit`); or (one
-    ///   positional parent) an
-    ///   `experimental-advance-branches` pattern does not parse.
+    ///   including the root commit, with the Git backend's own text, "The Git backend does not
+    ///   support creating merge commits with the root commit as one of the parents." (Story
+    ///   9.31); (`-A`/`-B`) the location would create a loop (`Refusing to create a loop: commit
+    ///   <12 hex> would be both an ancestor and a descendant of the new commit`); or (one
+    ///   positional parent) an `experimental-advance-branches` pattern does not parse.
     /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or
     ///   divergent.
     /// - [`crate::MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is inside the repo's

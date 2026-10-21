@@ -1107,10 +1107,13 @@ pub unsafe extern "C" fn zanshin_describe(
 ///   is not `NewChange`. The two wrappers that read this ONE table carry different kinds, so an
 ///   `Abandon`-tagged buffer is refused here rather than treated as `parents`.
 /// - `jj.invalid_input` — `parents` combined with `insert_after` / `insert_before`; all three
-///   lists empty; (`-A`/`-B`) the location would create a loop (`Refusing to create a loop:
-///   commit <12 hex> would be both an ancestor and a descendant of the new commit`) — Story
-///   9.48; or (one parent) an
-///   `experimental-advance-branches` pattern does not parse (Story 9.49 closing run).
+///   lists empty; (Git backend) two or more parents — positional, or computed by `-A`/`-B` —
+///   including the root commit, refused up front with the Git backend's own text ("The Git
+///   backend does not support creating merge commits with the root commit as one of the
+///   parents.") — Story 9.31; (`-A`/`-B`) the location would create a loop (`Refusing to create
+///   a loop: commit <12 hex> would be both an ancestor and a descendant of the new commit`) —
+///   Story 9.48; or (one parent) an `experimental-advance-branches` pattern does not parse
+///   (Story 9.49 closing run).
 /// - `jj.change_not_found` — an id in any list is malformed, absent, only-hidden, or divergent.
 /// - `jj.immutable` — (`-A`/`-B`) a commit to rebase is inside the repo's effective immutable
 ///   set; the first offender's hex commit id in `context` (Story 9.48).

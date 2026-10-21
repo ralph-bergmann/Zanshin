@@ -26,9 +26,9 @@ use jj_lib::workspace::Workspace;
 
 use crate::bookmark_ops::{plan_bookmark_move, BookmarkMovePlan};
 use crate::duplicate::plan_duplicate;
-use crate::mutate::{be, given, plan_abandon, plan_describe, plan_edit, plan_new, resolve_commit, MutateError};
+use crate::mutate::{given, plan_abandon, plan_describe, plan_edit, plan_new, resolve_commit, MutateError};
 use crate::op_support::{start_repo_transaction, LocationArgs, NO_LOCATION, ONTO_WITH_INSERT};
-use crate::rebase::{plan_rebase_revisions, plan_rebase_source, rebase_is_no_op};
+use crate::rebase::{load_dry_run_head, plan_rebase_revisions, plan_rebase_source, rebase_is_no_op};
 use crate::snapshot::VerbContext;
 use crate::squash_split::{combined_description_needed, plan_squash, prepare_split};
 use crate::{ChangeId, SplitOptions, SquashOptions};
@@ -238,7 +238,7 @@ impl Rows<'_> {
                 plan_rebase_revisions(tx, &ctx.immutable, changes, location)?
             };
             Ok(Planned {
-                no_op: rebase_is_no_op(&self.readonly, self.workspace.workspace_name(), &loc)?,
+                no_op: rebase_is_no_op(tx, &loc)?,
                 ..Planned::AVAILABLE
             })
         })
@@ -360,14 +360,16 @@ fn squash_into(change: &ChangeId, target: &ChangeId, paths: &[String]) -> Squash
     }
 }
 
-/// Runs `query` with the call's head loaded, then puts the precondition's warnings back as the
-/// call's only ones — whatever the rows recorded is dropped, on every path.
+/// Runs `query` with the call's head loaded once — with signing dropped
+/// ([`load_dry_run_head`]), since the rebase rows' dry run writes commits it throws away — then
+/// puts the precondition's warnings back as the call's only ones: whatever the rows recorded is
+/// dropped, on every path.
 fn with_rows<T>(
     workspace: &Workspace,
     ctx: &mut VerbContext,
     query: impl FnOnce(&Rows<'_>, &mut VerbContext) -> Result<T, MutateError>,
 ) -> Result<T, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = load_dry_run_head(workspace.repo_loader())?;
     let precondition_warnings = ctx.warnings.take();
     let result = query(&Rows { workspace, readonly }, ctx);
     let _row_warnings = ctx.warnings.take();

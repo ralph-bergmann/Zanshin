@@ -428,7 +428,8 @@ final class RepoHandle {
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] if a [parents] / [insertAfter] / [insertBefore]
   /// entry contains an interior NUL (U+0000); throws [ZanshinFfiException] on FFI errors
-  /// (`ffi.invalid_handle`, `jj.invalid_input` — incl. the CLI's loop refusal,
+  /// (`ffi.invalid_handle`, `jj.invalid_input` — incl. the CLI's loop refusal
+  /// and, on a Git-backed repo, a merge with the root commit among its parents,
   /// `jj.change_not_found`, `jj.immutable`, `jj.config_error`,
   /// `jj.stale_working_copy`, `jj.jj_lib_error`).
   Future<MutationResult> newChange(

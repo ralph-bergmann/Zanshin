@@ -17,7 +17,6 @@ use futures::TryStreamExt as _;
 use jj_lib::backend::{BackendError, CommitId};
 use jj_lib::commit::Commit;
 use jj_lib::config::{ConfigLayer, ConfigSource};
-use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoader};
 use jj_lib::revset::{RevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::{
@@ -28,7 +27,7 @@ use jj_lib::settings::UserSettings;
 use jj_lib::transaction::Transaction;
 
 use crate::mutate::{be, guard_rewritable, MutateError};
-use crate::op_support::{resolve_commit_location, resolve_ordered, start_repo_transaction, LocationArgs};
+use crate::op_support::{resolve_commit_location, resolve_ordered, LocationArgs};
 use crate::ChangeId;
 
 /// The noun `compute_commit_location`'s loop refusal names for every rebase form.
@@ -143,9 +142,9 @@ fn onto_itself(id: &CommitId) -> MutateError {
 /// abandon (no `--keep-divergent`), and `apply` with the CLI's default options. Exact by
 /// construction: it is the move the verb runs.
 ///
-/// The move runs on a transaction of its own, started from `base`'s operation re-loaded with
-/// [`dry_run_settings`] (`signing.behavior = "drop"`), and dropped — a preview must never invoke
-/// the user's signer for commits it throws away.
+/// The move is applied to `tx`, which the caller drops afterwards. `tx` must start from a head
+/// loaded by [`load_dry_run_head`] (`signing.behavior = "drop"`): a preview must never invoke the
+/// user's signer for commits it throws away.
 ///
 /// # Errors
 ///
@@ -153,23 +152,7 @@ fn onto_itself(id: &CommitId) -> MutateError {
 ///   (the Git backend's "…merge commits with the root commit as one of the parents."), its text
 ///   verbatim: the CLI reports it as a user error.
 /// - [`MutateError::Backend`] — any other jj-lib failure.
-pub(crate) fn rebase_is_no_op(
-    base: &Arc<ReadonlyRepo>,
-    workspace_name: &WorkspaceName,
-    loc: &MoveCommitsLocation,
-) -> Result<bool, MutateError> {
-    let loader = base.loader();
-    let preview = RepoLoader::new(
-        dry_run_settings(base.settings())?,
-        loader.store().clone(),
-        loader.workspace_store().clone(),
-        loader.op_store().clone(),
-        loader.op_heads_store().clone(),
-        loader.index_store().clone(),
-        loader.submodule_store().clone(),
-    );
-    let repo = pollster::block_on(preview.load_at(base.operation())).map_err(be)?;
-    let mut tx = start_repo_transaction(&repo, workspace_name);
+pub(crate) fn rebase_is_no_op(tx: &mut Transaction, loc: &MoveCommitsLocation) -> Result<bool, MutateError> {
     let mut computed = pollster::block_on(compute_move_commits(tx.repo(), loc)).map_err(unsupported)?;
     let divergent = pollster::block_on(find_duplicate_divergent_commits(
         tx.repo(),
@@ -187,6 +170,25 @@ pub(crate) fn rebase_is_no_op(
     };
     pollster::block_on(computed.apply(tx.repo_mut(), &options)).map_err(unsupported)?;
     Ok(!tx.repo().has_changes())
+}
+
+/// The repo's head operation loaded through `loader`'s stores with [`dry_run_settings`], once
+/// per query: every transaction started from it writes its commits unsigned.
+///
+/// # Errors
+///
+/// - [`MutateError::Backend`] — the settings could not be built or the head could not be loaded.
+pub(crate) fn load_dry_run_head(loader: &RepoLoader) -> Result<Arc<ReadonlyRepo>, MutateError> {
+    let preview = RepoLoader::new(
+        dry_run_settings(loader.settings())?,
+        loader.store().clone(),
+        loader.workspace_store().clone(),
+        loader.op_store().clone(),
+        loader.op_heads_store().clone(),
+        loader.index_store().clone(),
+        loader.submodule_store().clone(),
+    );
+    pollster::block_on(preview.load_at_head()).map_err(be)
 }
 
 /// `settings` with `signing.behavior = "drop"` layered on top, so `sign_settings().should_sign`

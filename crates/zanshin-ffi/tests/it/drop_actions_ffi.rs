@@ -323,6 +323,25 @@ fn selection_and_bookmark_sources_round_trip() {
             ok(V::BookmarkMove, 2, S::NoOp),
         ]
     );
+    // `-A root` is a gap above the root; `-B root` would rebase the immutable root: the two
+    // lists answer differently, so a reader that swapped them fails here.
+    let root = "z".repeat(32);
+    let req = request(
+        fbs::RequestKind::DropActions,
+        &Source::Change(&fx.c),
+        &[(&[], &[&root], &[]), (&[], &[], &[&root])],
+    );
+    let statuses: Vec<_> = rows(&call(fx.handle, &req))
+        .into_iter()
+        .map(|(verb, location, status, code, ..)| (verb, location, status, code))
+        .collect();
+    assert_eq!(
+        statuses,
+        vec![
+            (V::RebaseRevisions, 0, S::Available, None),
+            (V::RebaseRevisions, 1, S::Refused, Some(JJ_IMMUTABLE.to_owned())),
+        ]
+    );
     let req = request(
         fbs::RequestKind::DropActions,
         &Source::Change(UNKNOWN),

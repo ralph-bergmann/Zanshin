@@ -266,6 +266,25 @@ fn a_change_dropped_onto_its_parent() {
     );
 }
 
+/// `D` is a leaf on `A`: `-r` moves nothing either (no children to rebase), so both rebase rows
+/// are no-ops.
+#[test]
+fn a_leaf_dropped_onto_its_parent_is_a_no_op_for_both_rebase_rows() {
+    let mut fx = base(None);
+    let (a, d) = (fx.a.clone(), fx.d.clone());
+    let rows = query(&mut fx, &change(&d), &[onto(&[&a])]);
+    assert_eq!(
+        rows,
+        vec![
+            (DropVerb::RebaseSource, 0, no_op()),
+            (DropVerb::RebaseRevisions, 0, no_op()),
+            (DropVerb::Squash, 0, combined()),
+            (DropVerb::NewMerge, 0, available()),
+            (DropVerb::Duplicate, 0, available()),
+        ]
+    );
+}
+
 #[test]
 fn a_change_dropped_onto_its_descendant() {
     let mut fx = base(None);
@@ -415,6 +434,65 @@ fn a_rows_plan_warnings_are_discarded_but_the_verb_reports_them() {
     assert!(kinds.contains(&zanshin_jj::WarningKind::SplitAllSelected), "{kinds:?}");
 }
 
+/// A bad revset-alias entry warns in the precondition; both queries return exactly that warning,
+/// while the rows that resolve the immutable set again record nothing more.
+#[test]
+fn the_preconditions_warnings_are_the_queries_warnings() {
+    let mut fx = base(None);
+    fs::write(
+        fx.root.join(".jj").join("repo").join("config.toml"),
+        "[revset-aliases]\n'bad(' = 'x'\n",
+    )
+    .expect("repo config");
+    fx.repo = Repo::open(&fx.root).expect("reopen");
+    let _ = fx.repo.take_warnings();
+    let kinds = |repo: &mut Repo| -> Vec<_> { repo.take_warnings().into_iter().map(|w| w.kind).collect() };
+    let (a, b) = (fx.a.clone(), fx.b.clone());
+
+    fx.repo.status().expect("status");
+    let expected = kinds(&mut fx.repo);
+    assert_eq!(expected, [zanshin_jj::WarningKind::ConfigAliasInvalid]);
+    fx.repo
+        .drop_actions(&change(&b), &[onto(&[&a]), after(&[&a])])
+        .expect("drop_actions");
+    assert_eq!(kinds(&mut fx.repo), expected);
+    fx.repo.change_actions(&b).expect("change_actions");
+    assert_eq!(kinds(&mut fx.repo), expected);
+}
+
+/// With a signer that always fails, a rebase row's dry run still answers: the query's head
+/// drops signing, while the verbs themselves sign (and fail) as configured.
+#[test]
+fn the_rebase_dry_run_never_invokes_the_signer() {
+    let mut fx = base(None);
+    fs::write(
+        fx.root.join(".jj").join("repo").join("config.toml"),
+        "[signing]\nbehavior = \"force\"\nbackend = \"ssh\"\nkey = \"none\"\n\n[signing.backends.ssh]\nprogram = \"false\"\n",
+    )
+    .expect("repo config");
+    fx.repo = Repo::open(&fx.root).expect("reopen");
+    let _ = fx.repo.take_warnings();
+    let (a, b, d) = (fx.a.clone(), fx.b.clone(), fx.d.clone());
+
+    let rows = query(&mut fx, &change(&b), &[onto(&[&d]), onto(&[&a])]);
+    assert_eq!(
+        rows.iter()
+            .filter(|(verb, _, _)| matches!(verb, DropVerb::RebaseSource | DropVerb::RebaseRevisions))
+            .map(|(verb, index, row)| (*verb, *index, row.status))
+            .collect::<Vec<_>>(),
+        [
+            (DropVerb::RebaseSource, 0, ActionStatus::Available),
+            (DropVerb::RebaseRevisions, 0, ActionStatus::Available),
+            (DropVerb::RebaseSource, 1, ActionStatus::NoOp),
+            (DropVerb::RebaseRevisions, 1, ActionStatus::Available),
+        ]
+    );
+    assert!(
+        fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).is_err(),
+        "the signing config is live: a verb's write fails"
+    );
+}
+
 #[test]
 fn a_change_dropped_onto_two_targets_has_no_squash_row() {
     let mut fx = base(None);
@@ -551,8 +629,15 @@ fn a_selection_squashes_onto_one_target_and_splits_at_an_insert_location() {
         change: b,
         paths: Vec::new(),
     };
-    let rows = query(&mut fx, &everything, &[after(&[&a])]);
-    assert_eq!(rows, vec![(DropVerb::Split, 0, refused(&invalid(SPLIT_NO_PATHS)))]);
+    let rows = query(&mut fx, &everything, &[after(&[&a]), onto(&[&a])]);
+    assert_eq!(
+        rows,
+        vec![
+            (DropVerb::Split, 0, refused(&invalid(SPLIT_NO_PATHS))),
+            // No paths squashes every path, as `--from B --into A` without paths does.
+            (DropVerb::Squash, 1, combined()),
+        ]
+    );
 }
 
 #[test]
