@@ -512,6 +512,18 @@ fn a_malformed_remote_fetch_setting_is_a_config_error() {
 }
 
 #[test]
+fn a_malformed_git_fetch_setting_is_a_config_error() {
+    let dir = TempDir::new().unwrap();
+    let origin = Upstream::new(dir.path(), "origin");
+    let mut fx = Fx::new(&[("origin", &origin)]);
+    fx.set("git.fetch", "1");
+    let (before, _) = fx.head_op();
+    let err = fx.fetch(&GitFetchArgs::default()).expect_err("malformed");
+    assert!(matches!(&err, MutateError::Config { .. }), "{err:?}");
+    assert_eq!(fx.head_op().0, before);
+}
+
+#[test]
 fn a_native_backend_is_not_a_git_repo() {
     test_helpers::pin_test_env();
     let tmp = TempDir::new().expect("tempdir");

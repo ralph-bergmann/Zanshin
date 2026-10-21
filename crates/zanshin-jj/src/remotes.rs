@@ -593,6 +593,29 @@ mod tests {
         assert_eq!(fetch_description(&remotes[..1]), "fetch from git remote(s) origin");
     }
 
+    /// A remote gone before its fetch is `RemoteNotFound`; a failure without its own mapping
+    /// is a `Backend` error carrying jj-lib's Display. Neither is reachable through a fetch
+    /// fixture (the remotes are resolved from the store just before), so the mapping is called
+    /// directly.
+    #[test]
+    fn fetch_failures_map_to_their_mutate_errors() {
+        use super::fetch_error;
+        use crate::MutateError;
+        use jj_lib::git::GitFetchError;
+
+        let gone = fetch_error(GitFetchError::NoSuchRemote("gone".into()), None);
+        assert!(
+            matches!(&gone, MutateError::RemoteNotFound { name } if name == "gone"),
+            "{gone:?}"
+        );
+        let rejected = fetch_error(GitFetchError::RejectedUpdates(vec!["refs/heads/main".into()]), None);
+        assert!(
+            matches!(&rejected, MutateError::Backend(reason)
+                if reason.starts_with("Failed to update refs: ") && reason.contains("refs/heads/main")),
+            "{rejected:?}"
+        );
+    }
+
     /// A head that no longer loads is this module's own `Backend` failure. Through
     /// [`crate::Repo`] the pre-verb snapshot (Story 9.26) hits it first, so the module function
     /// is called directly.

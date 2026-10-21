@@ -3883,15 +3883,12 @@ fetch-bookmarks = \"main\"
             .is_none());
 
         let broken = stack_with("[remotes.origin]\nfetch-bookmarks = \"glob:(\"\n");
-        match remote_fetch_expression(&broken, origin, FetchField::Bookmarks) {
-            Err(super::ConfigError::Load { reason }) => {
-                assert!(
-                    reason.starts_with("Invalid `remotes.origin.fetch-bookmarks`: "),
-                    "{reason}"
-                );
-            }
-            other => panic!("expected a Load error, got {other:?}"),
-        }
+        let result = remote_fetch_expression(&broken, origin, FetchField::Bookmarks);
+        assert!(
+            matches!(&result, Err(super::ConfigError::Load { reason })
+                if reason.starts_with("Invalid `remotes.origin.fetch-bookmarks`: ")),
+            "{result:?}"
+        );
         assert!(
             remote_fetch_expression(&broken, origin, FetchField::Tags).is_ok(),
             "only the field asked for is parsed"
@@ -3950,26 +3947,22 @@ fetch-bookmarks = \"main\"
     #[test]
     fn new_bookmark_matchers_refuse_a_broken_field_with_the_cli_text() {
         let created = stack_with("[remotes.origin]\nauto-track-created-bookmarks = \"(\"\n");
-        let Err(crate::ConfigError::Load { reason }) = super::remote_auto_track_bookmarks_for_new_bookmarks(&created)
-        else {
-            panic!("a broken auto-track-created-bookmarks refuses");
-        };
+        let result = super::remote_auto_track_bookmarks_for_new_bookmarks(&created);
         assert!(
-            reason.starts_with("Invalid `remotes.origin.auto-track-created-bookmarks`: "),
-            "{reason}"
+            matches!(&result, Err(crate::ConfigError::Load { reason })
+                if reason.starts_with("Invalid `remotes.origin.auto-track-created-bookmarks`: ")),
+            "a broken auto-track-created-bookmarks refuses: {result:?}"
         );
         assert!(
             git_import_options(&created).is_ok(),
             "the import options never read auto-track-created-bookmarks"
         );
         let plain = stack_with("[remotes.origin]\nauto-track-bookmarks = \"(\"\n");
-        let Err(crate::ConfigError::Load { reason }) = super::remote_auto_track_bookmarks_for_new_bookmarks(&plain)
-        else {
-            panic!("a broken auto-track-bookmarks refuses");
-        };
+        let result = super::remote_auto_track_bookmarks_for_new_bookmarks(&plain);
         assert!(
-            reason.starts_with("Invalid `remotes.origin.auto-track-bookmarks`: "),
-            "{reason}"
+            matches!(&result, Err(crate::ConfigError::Load { reason })
+                if reason.starts_with("Invalid `remotes.origin.auto-track-bookmarks`: ")),
+            "a broken auto-track-bookmarks refuses: {result:?}"
         );
         let entry = stack_with("[remotes]\norigin = 1\n");
         assert!(super::remote_auto_track_bookmarks_for_new_bookmarks(&entry).is_err());
