@@ -1740,3 +1740,17 @@ Spec: spec-loop-9-24-9-31-fixup-coverage-config-remotes (commits 492220f, 1141db
 - **Never-run `panic!` fallbacks in the loop's new tests keep `remote_changes.rs` (99.31) and `drop_actions.rs` (99.32) below 100% in the baseline.** Low.
   - `crates/zanshin-jj/src/remote_changes.rs:319`, `:477`; `crates/zanshin-jj/src/drop_actions.rs:463`. The fix-up rewrote the same pattern in `config.rs` as `assert!(matches!(…))`.
   - **Follow-up:** same rewrite there; the gate then raises both entries.
+
+## Surfaced in the cleanup run after the story loop 9.24/9.30/9.31 (bmad-build-auto, 2026-10-21)
+
+Spec: spec-loop-9-24-9-31-cleanup-fetch-stats-errors-git-isolation.
+
+- **`git push` still lists the remotes before it parses `--remote` / `git.push`; the CLI builds the remote expression first.** Low.
+  - `cmd_git_push` (`cli/src/commands/git/push.rs:294-301` @ v0.46.0) parses first; `crates/zanshin-jj/src/push.rs` `resolve_remotes` (~:784) lists first, so a non-Git backend with a malformed `git.push` or an unparsable `--remote` answers `jj.not_a_git_repo` where the CLI reports the config / pattern error. The same gap the cleanup run fixed for fetch.
+  - **Follow-up:** build the expression with `configured_remotes` / `union_expression` before `get_all_remote_names` in `resolve_remotes`, plus a native-backend test.
+- **Errors have no hint channel: fetch's `RemoteName` refusal carries the CLI's rename hint as the reason's last `Hint:` line, and `GitRefExpansionError::Expression`'s CLI hint is dropped.** Low.
+  - `MutateError::InvalidInput` has only `reason`, the FFI error envelope only `code` + `context`; `crates/zanshin-jj/src/remotes.rs` `fetch_error` appends the hint in-band, `expand_fetch_refspecs(..).map_err(invalid)` loses "Specify patterns in `(positive | ...) & ~(negative | ...)` form." (`command_error.rs` ~:604-609 @ v0.46.0).
+  - **Follow-up:** if the UI should show CLI hints apart from the message, Ralph decides on a structured hint field for refusals (Rust error, FFI envelope, Dart exception).
+- **`num_rewritten` is only ever observed as 0 through a real fetch or import.** Low.
+  - `crates/zanshin-jj/tests/it/git_fetch_parity.rs` `the_fetch_reports_the_remote_refs_it_changed` and `tests/it/git_sync.rs` (`git_import`) assert 0; the FFI / Dart tests feed a synthetic count, so a projection reading the wrong stats would pass.
+  - **Follow-up:** a fixture where the import rewrites commits (upstream force-push leaving descendants to rebase), asserted for both verbs.
