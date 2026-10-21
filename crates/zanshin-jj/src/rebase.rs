@@ -327,7 +327,8 @@ mod tests {
                 Some(commit)
             })
             .find(|commit| commit.description().trim_end() == description)
-            .expect("a commit with that description")
+            .ok_or(description)
+            .expect("no commit described")
         };
         let change = |commit: &jj_lib::commit::Commit| crate::ChangeId(commit.change_id().reverse_hex());
         let (c1, c2) = (by_description("Commit 1"), by_description("Commit 2"));
