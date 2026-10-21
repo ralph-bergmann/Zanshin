@@ -1014,6 +1014,7 @@ table WatcherEvent {
 
 /// Progress notification for a long-running operation (FR-FFI-8): `git fetch` (Story 6-4a),
 /// `git clone` and `git push` (Story 9.20) — `operation` is `"fetch"`, `"clone"` or `"push"`.
+/// The remote-change poll (Story 9.24, `"remote_changes"` in Dart) never emits one.
 /// Dispatched over the same process-global event sink as `WatcherEvent`, correlated by
 /// `session_id` (same never-reused id as WatcherEvent — see RepoHandle.session_id). A clone's
 /// events carry the session id its new handle will get (allocated before the clone runs).

@@ -203,6 +203,35 @@ void main() {
       await expectLater(queued.result, ffiError('jj.cancelled'));
     });
 
+    test('a remote-change poll queued behind a fetch and cancelled starts cancelled (Story 9.24)', () async {
+      final RepoHandle repo = await repoWithOrigin('a');
+      await slowGit('a', slowAfterGit);
+      final NetworkOperation<Object?> fetch = repo.gitFetch('origin');
+      await fetch.progress.first.timeout(const Duration(seconds: 20));
+      final NetworkOperation<Object?> queued = repo.remoteChanges('origin');
+      await queued.cancel();
+      await fetch.cancel();
+      await expectLater(fetch.result, ffiError('jj.cancelled'));
+      await expectLater(queued.result, ffiError('jj.cancelled'));
+    });
+
+    test('a remote-change poll cancelled while its git runs is killed and refuses (Story 9.24)', () async {
+      final RepoHandle repo = await repoWithOrigin('a');
+      final marker = File('${tempDir.path}/listed');
+      // ls-remote sends no progress: the wrapper's marker says git is running.
+      await slowGit('a', '"\$GIT" "\$@"; s=\$?; touch \'${marker.path}\'; sleep 30; exit \$s');
+      final NetworkOperation<Object?> poll = repo.remoteChanges('origin');
+      final DateTime deadline = DateTime.now().add(const Duration(seconds: 20));
+      while (!marker.existsSync() && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(marker.existsSync(), isTrue, reason: 'the poll reached git');
+      final stopwatch = Stopwatch()..start();
+      await poll.cancel();
+      await expectLater(poll.result, ffiError('jj.cancelled'));
+      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 10)), reason: 'the cancel killed the slow git');
+    });
+
     test('a network call whose helper throws answers internal.dispatch_error and frees its handle', () async {
       final RepoHandle repo = await worker.initRepo('${tempDir.path}/plain', backend: 1, noColocate: true);
       // The interior NUL is refused inside the helper isolate (the FFI adapter's guard).

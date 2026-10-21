@@ -201,6 +201,37 @@ fn new_branches_and_tags_are_new_and_an_annotated_tag_is_peeled() {
     );
 }
 
+/// Fetched tags are compared as the view holds them — an annotated tag at its peeled commit: right
+/// after the fetch nothing is new; a moved lightweight tag is moved, a removed annotated tag deleted.
+#[test]
+fn fetched_tags_are_compared_at_their_peeled_commits() {
+    let mut w = world();
+    let first = w.upstream("main");
+    git(&["tag", "t1"], &w.src);
+    git(&["tag", "-a", "v1", "-m", "release"], &w.src);
+    git(&["push", "origin", "--tags"], &w.src);
+    w.repo.git_fetch("origin", &|_: ProgressEvent| {}, None).expect("fetch");
+    assert_eq!(w.poll("origin").expect("poll after the fetch"), []);
+
+    let second = commit(&w.src, "second.txt", "second");
+    git(&["tag", "-f", "t1"], &w.src);
+    git(&["push", "--force", "origin", "t1"], &w.src);
+    git(&["push", "origin", "--delete", "v1"], &w.src);
+    assert_eq!(
+        w.poll("origin").expect("poll"),
+        [
+            change(
+                RemoteRefKind::Tag,
+                "t1",
+                RemoteRefChangeKind::Moved,
+                &[&first],
+                Some(&second)
+            ),
+            change(RemoteRefKind::Tag, "v1", RemoteRefChangeKind::Deleted, &[&first], None),
+        ]
+    );
+}
+
 /// A branch removed upstream is deleted.
 #[test]
 fn a_branch_removed_upstream_is_deleted() {

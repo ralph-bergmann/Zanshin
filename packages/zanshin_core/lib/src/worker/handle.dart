@@ -507,10 +507,10 @@ final class RepoHandle {
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `ffi.null_pointer`, `ffi.invalid_argument` — an interior NUL in
-  /// [remoteName] —, `jj.remote_not_found` — no remote of exactly that name,
-  /// git never runs —, `jj.not_a_git_repo`, `jj.config_error`,
-  /// `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error`).
+  /// `jj.remote_not_found` — no remote of exactly that name, git never runs —,
+  /// `jj.not_a_git_repo`, `jj.config_error`, `jj.network_error`,
+  /// `jj.cancelled`, `jj.jj_lib_error`); an interior NUL in [remoteName] is
+  /// refused in the helper isolate as `internal.dispatch_error`.
   ///
   /// Returns a [NetworkOperation] like [gitFetch]: the poll runs on a helper
   /// isolate, later calls on this handle — [close] included — wait for it, and

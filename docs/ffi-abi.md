@@ -857,9 +857,10 @@ forward, so a push may report none. `zanshin_repo_clone` has no session yet whil
 allocates the session id BEFORE the clone and tags its events with it, so they carry the id the
 returned `RepoHandle.session_id` names.
 
-**Live delivery (Story 9.52).** `events::dispatch` runs on the calling thread, which for the three
-network verbs is no longer the worker's: the worker hands each fetch, push and clone to a
-short-lived helper isolate (`Isolate.run`) and keeps serving, so the worker-owned
+**Live delivery (Story 9.52).** `events::dispatch` runs on the calling thread, which for the four
+network calls is no longer the worker's: the worker hands each fetch, push, clone and remote-change
+poll (Story 9.24; its Dart progress operation `remote_changes` never emits, git sends no progress
+for `ls-remote`) to a short-lived helper isolate (`Isolate.run`) and keeps serving, so the worker-owned
 `NativeCallable.listener` receives the events while the call runs and forwards them to main
 before the call's reply (one message queue per isolate). A clone is passed a non-zero
 `cancel_token` (see *Cancel* below), which IS its session id: the worker maps that id to the handle

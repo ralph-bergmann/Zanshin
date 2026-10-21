@@ -3383,9 +3383,10 @@ final class _NetworkHandleAnnouncement {
 
 /// The worker's serialization of network calls (Story 9.52).
 ///
-/// A network call — fetch, push, clone — runs on a short-lived helper isolate
-/// ([Isolate.run]) so the worker's event loop keeps forwarding progress and
-/// serving other repos. While a fetch or push holds handle H, every
+/// A network call — fetch, push, clone, remote-change poll — runs on a
+/// short-lived helper isolate ([Isolate.run]) so the worker's event loop keeps
+/// forwarding progress and serving other repos. While a fetch, poll or push
+/// holds handle H, every
 /// [HandleScopedCommand] for H — [CloseRepoCommand] included — waits in
 /// arrival order and runs after it, so the helper is the only isolate that
 /// touches H's raw session (AD-2: Rust adds no handle locking). Calls on other

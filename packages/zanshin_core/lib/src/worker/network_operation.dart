@@ -2,11 +2,12 @@
 
 import 'events.dart';
 
-/// One running network call — a fetch, clone or push (Story 9.52).
+/// One running network call — a fetch, clone or push (Story 9.52), or a
+/// remote-change poll (Story 9.24), whose [progress] never emits.
 ///
 /// The worker runs the call on a helper isolate, so [progress] delivers the
 /// call's [ProgressEvent]s while [result] is still pending, and [cancel] can
-/// stop it: a cancelled fetch or clone refuses with `jj.cancelled`
+/// stop it: a cancelled fetch, clone or poll refuses with `jj.cancelled`
 /// (`ZanshinFfiException`), a cancelled push reports it as data
 /// (`GitPushResult.failure` with `PushFailureKind.cancelled`). A cancel that
 /// arrives after the call's last checkpoint changes nothing — the call ends
