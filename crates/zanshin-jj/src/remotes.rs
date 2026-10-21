@@ -594,8 +594,9 @@ mod tests {
     }
 
     /// A remote gone before its fetch is `RemoteNotFound`; a failure without its own mapping
-    /// is a `Backend` error carrying jj-lib's Display. Neither is reachable through a fetch
-    /// fixture (the remotes are resolved from the store just before), so the mapping is called
+    /// is a `Backend` error carrying jj-lib's Display. `NoSuchRemote` is not reachable through a
+    /// fetch fixture (the remotes are resolved from the store just before); `RejectedUpdates`
+    /// stands in for any jj-lib fetch failure without its own mapping. So the mapping is called
     /// directly.
     #[test]
     fn fetch_failures_map_to_their_mutate_errors() {

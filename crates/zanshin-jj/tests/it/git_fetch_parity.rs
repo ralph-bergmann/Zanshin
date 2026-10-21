@@ -519,7 +519,10 @@ fn a_malformed_git_fetch_setting_is_a_config_error() {
     fx.set("git.fetch", "1");
     let (before, _) = fx.head_op();
     let err = fx.fetch(&GitFetchArgs::default()).expect_err("malformed");
-    assert!(matches!(&err, MutateError::Config { .. }), "{err:?}");
+    assert!(
+        matches!(&err, MutateError::Config { reason } if reason.contains("git.fetch")),
+        "{err:?}"
+    );
     assert_eq!(fx.head_op().0, before);
 }
 
