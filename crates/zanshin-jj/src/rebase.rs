@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-//! `rebase.rs` — the plan phase of `jj rebase -r` and `jj rebase -s` (Story 9.31), ported from
-//! `plan_rebase_revisions` / `plan_rebase_source` / `check_rebase_destinations`
-//! (`cli/src/commands/rebase.rs:431-599` @ v0.46.0), plus the CLI's "Nothing changed." answer for
-//! a planned move ([`rebase_is_no_op`]).
+//! `rebase.rs` — the plan phase of `jj rebase -r`, `-s` and `-b` (Story 9.31), ported from
+//! `plan_rebase_revisions` / `plan_rebase_source` / `plan_rebase_branch` /
+//! `check_rebase_destinations` (`cli/src/commands/rebase.rs:431-599` @ v0.46.0), plus the CLI's
+//! "No revisions to rebase." / "Nothing changed." answer for a planned move
+//! ([`rebase_is_no_op`]).
 //!
 //! The fns are pure: they resolve, check and return the `MoveCommitsLocation` jj-lib's
-//! `compute_move_commits` takes, and write nothing. `drop_actions`' two rebase rows call them
+//! `compute_move_commits` takes, and write nothing. `drop_actions`' three rebase rows call them
 //! today; the rebase verb (Story 9.16) is meant to call the same fns. Every refusal is the CLI's
 //! `user_error` text as [`MutateError::InvalidInput`]; the commit ids in it are the CLI's
 //! `short_commit_hash`, 12 hex digits.
@@ -27,7 +28,7 @@ use jj_lib::settings::UserSettings;
 use jj_lib::transaction::Transaction;
 
 use crate::mutate::{be, guard_rewritable, MutateError};
-use crate::op_support::{resolve_commit_location, resolve_ordered, LocationArgs};
+use crate::op_support::{resolve_commit_location, resolve_immutable, resolve_ordered, LocationArgs};
 use crate::ChangeId;
 
 /// The noun `compute_commit_location`'s loop refusal names for every rebase form.
@@ -103,6 +104,51 @@ pub(crate) fn plan_rebase_source(
     })
 }
 
+/// `jj rebase -b <branch> <location>`'s plan (`rebase.rs:514-561` @ v0.46.0): the branch
+/// revisions resolved in argument order, the location computed (`"rebased commits"`), then the
+/// roots of `new_parents..branch` — the commits the move rebases — checked rewritable and, with
+/// `-o`, [`check_rebase_destinations`] for every root. The roots may be EMPTY (the branch is
+/// already on the destination): the CLI's "No revisions to rebase.", which [`rebase_is_no_op`]
+/// answers. The immutable set is resolved for the location only with `-A`/`-B`, whose children
+/// the location rewrites. An empty `branch` plans an empty target: the CLI's `-b` default `@` is
+/// the caller's to resolve and pass, as the rebase verb (Story 9.16) must.
+///
+/// # Errors
+///
+/// As [`plan_rebase_source`]: the roots take the sources' place.
+pub(crate) fn plan_rebase_branch(
+    tx: &Transaction,
+    immutable: &Arc<UserRevsetExpression>,
+    branch: &[ChangeId],
+    location: &LocationArgs<'_>,
+) -> Result<MoveCommitsLocation, MutateError> {
+    let branch_ids = resolve_ordered(tx, Some(branch))?.unwrap_or_default();
+    let resolved = if location.inserts() {
+        resolve_immutable(tx.base_repo().as_ref(), immutable)?
+    } else {
+        RevsetExpression::none()
+    };
+    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, &resolved, location, REBASED_COMMITS)?;
+    let roots = RevsetExpression::commits(new_parent_ids.clone())
+        .range(&RevsetExpression::commits(branch_ids))
+        .roots()
+        .evaluate(tx.base_repo().as_ref())
+        .map_err(be)?;
+    let root_ids: Vec<CommitId> = pollster::block_on(roots.stream().try_collect()).map_err(be)?;
+    guard_rewritable(tx, immutable, &root_ids)?;
+    if !location.onto.is_empty() {
+        for id in &root_ids {
+            let commit = tx.base_repo().store().get_commit(id).map_err(be)?;
+            check_rebase_destinations(tx.base_repo().as_ref(), &new_parent_ids, &commit)?;
+        }
+    }
+    Ok(MoveCommitsLocation {
+        new_parent_ids,
+        new_child_ids,
+        target: MoveCommitsTarget::Roots(root_ids),
+    })
+}
+
 /// Refuses a new parent that is `commit` itself or one of its descendants
 /// (`rebase.rs:565-585` @ v0.46.0), in `new_parents` order.
 ///
@@ -136,8 +182,10 @@ fn onto_itself(id: &CommitId) -> MutateError {
     }
 }
 
-/// Whether the rebase `loc` plans would write no operation — the CLI's "Nothing changed." guard
-/// (`cli_util.rs:2851`) after `cmd_rebase`'s move (`rebase.rs:403-424` @ v0.46.0): jj-lib's
+/// Whether the rebase `loc` plans would write no operation: an empty target is the CLI's "No
+/// revisions to rebase." (`cmd_rebase`, `rebase.rs:395-399` @ v0.46.0), answered before anything
+/// is computed; otherwise the CLI's "Nothing changed." guard (`cli_util.rs:2851`) after
+/// `cmd_rebase`'s move (`rebase.rs:403-424` @ v0.46.0): jj-lib's
 /// `compute_move_commits`, the divergent duplicates already in the destination recorded to
 /// abandon (no `--keep-divergent`), and `apply` with the CLI's default options. Exact by
 /// construction: it is the move the verb runs.
@@ -153,6 +201,10 @@ fn onto_itself(id: &CommitId) -> MutateError {
 ///   verbatim: the CLI reports it as a user error.
 /// - [`MutateError::Backend`] — any other jj-lib failure.
 pub(crate) fn rebase_is_no_op(tx: &mut Transaction, loc: &MoveCommitsLocation) -> Result<bool, MutateError> {
+    let (MoveCommitsTarget::Commits(target_ids) | MoveCommitsTarget::Roots(target_ids)) = &loc.target;
+    if target_ids.is_empty() {
+        return Ok(true);
+    }
     let mut computed = pollster::block_on(compute_move_commits(tx.repo(), loc)).map_err(unsupported)?;
     let divergent = pollster::block_on(find_duplicate_divergent_commits(
         tx.repo(),
@@ -233,6 +285,63 @@ mod tests {
 
         let dry = dry_run_settings(&own).expect("dry-run settings");
         assert_eq!(dry.sign_settings().behavior, SignBehavior::Drop);
+    }
+
+    /// `-b` with `-A`: the only arm that resolves the immutable set for the location (the drop
+    /// rows use `-b` at `onto` only). The fixture is `root → Commit 1 → Commit 2 → Commit 3` plus
+    /// an empty `@` off the root; `-b @ -A "Commit 1"` inserts `@` above Commit 2, unless Commit 2
+    /// is immutable.
+    #[test]
+    fn plan_rebase_branch_with_an_insert_location_checks_the_children() {
+        use jj_lib::backend::CommitId;
+        use jj_lib::object_id::ObjectId as _;
+        use jj_lib::repo::Repo as _;
+        use jj_lib::revset::RevsetExpression;
+        use jj_lib::rewrite::MoveCommitsTarget;
+
+        use crate::mutate::MutateError;
+        use crate::op_support::LocationArgs;
+
+        test_helpers::pin_test_env();
+        let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture");
+        let repo = crate::Repo::open(&fixture.path).expect("open");
+        let name = repo.workspace().workspace_name().to_owned();
+        let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("head");
+        let store = readonly.store();
+        let by_description = |description: &str| -> jj_lib::commit::Commit {
+            let mut pending: Vec<CommitId> = readonly.view().heads().iter().cloned().collect();
+            while let Some(id) = pending.pop() {
+                let commit = store.get_commit(&id).expect("commit");
+                if commit.description().trim_end() == description {
+                    return commit;
+                }
+                pending.extend(commit.parent_ids().iter().cloned());
+            }
+            panic!("no commit described {description:?}");
+        };
+        let change = |commit: &jj_lib::commit::Commit| crate::ChangeId(commit.change_id().reverse_hex());
+        let (c1, c2) = (by_description("Commit 1"), by_description("Commit 2"));
+        let wc_id = readonly.view().get_wc_commit_id(&name).expect("@").clone();
+        let at = store.get_commit(&wc_id).expect("@ commit");
+        let after = [change(&c1)];
+        let location = LocationArgs {
+            onto: &[],
+            insert_after: &after,
+            insert_before: &[],
+        };
+        let tx = crate::op_support::start_repo_transaction(&readonly, &name);
+
+        let loc = super::plan_rebase_branch(&tx, &RevsetExpression::root(), &[change(&at)], &location).expect("plan");
+        assert_eq!(loc.new_parent_ids, [c1.id().clone()]);
+        assert_eq!(loc.new_child_ids, [c2.id().clone()]);
+        assert!(matches!(&loc.target, MoveCommitsTarget::Roots(roots) if roots == &[at.id().clone()]));
+
+        let immutable = RevsetExpression::commits(vec![c2.id().clone()]);
+        let refused = super::plan_rebase_branch(&tx, &immutable, &[change(&at)], &location);
+        assert!(
+            matches!(&refused, Err(MutateError::Immutable { commit_id }) if *commit_id == c2.id().hex()),
+            "{refused:?}"
+        );
     }
 
     #[test]

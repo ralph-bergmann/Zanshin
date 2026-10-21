@@ -6,12 +6,15 @@
 //!
 //! Nothing here decides a rule of its own. Every row is answered by the verb's pure plan fn —
 //! [`crate::mutate::plan_new`], [`crate::mutate::plan_edit`], [`crate::mutate::plan_describe`],
-//! [`crate::mutate::plan_abandon`], [`crate::squash_split::plan_squash`],
-//! [`crate::squash_split::prepare_split`], [`crate::rebase::plan_rebase_source`],
-//! [`crate::rebase::plan_rebase_revisions`], [`crate::duplicate::plan_duplicate`] and
-//! [`crate::bookmark_ops::plan_bookmark_move`] — the same fn the verb runs (or, for the verbs not
-//! shipped yet, is meant to run) before its first write. So a row's refusal is exactly the
-//! [`MutateError`] the verb returns: same variant, same text.
+//! [`crate::mutate::plan_abandon`], [`crate::mutate::plan_restore`],
+//! [`crate::mutate::plan_absorb`], [`crate::commit_views::plan_interdiff`],
+//! [`crate::squash_split::plan_squash`], [`crate::squash_split::prepare_split`],
+//! [`crate::rebase::plan_rebase_source`], [`crate::rebase::plan_rebase_revisions`],
+//! [`crate::rebase::plan_rebase_branch`], [`crate::revert::plan_revert`],
+//! [`crate::duplicate::plan_duplicate`] and [`crate::bookmark_ops::plan_bookmark_move`] — the same
+//! fn the verb runs (or, for the verbs not shipped yet, is meant to run) before its first write.
+//! So a row's refusal is exactly the [`MutateError`] the verb returns: same variant, same text
+//! (interdiff's [`CommitViewError`] mapped variant for variant).
 //!
 //! Both queries run after the pre-verb snapshot, like every verb, and write no operation of their
 //! own: each row plans on its own transaction, started from ONE head the call loads, and drops it.
@@ -21,17 +24,24 @@
 use std::sync::Arc;
 
 use jj_lib::repo::ReadonlyRepo;
+use jj_lib::revset::RevsetExpression;
 use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
 
 use crate::bookmark_ops::{plan_bookmark_move, BookmarkMovePlan};
+use crate::commit_views::plan_interdiff;
 use crate::duplicate::plan_duplicate;
-use crate::mutate::{given, plan_abandon, plan_describe, plan_edit, plan_new, resolve_commit, MutateError};
+use crate::mutate::{
+    given, plan_abandon, plan_absorb, plan_describe, plan_edit, plan_new, plan_restore, resolve_commit, MutateError,
+};
 use crate::op_support::{start_repo_transaction, LocationArgs, NO_LOCATION, ONTO_WITH_INSERT};
-use crate::rebase::{load_dry_run_head, plan_rebase_revisions, plan_rebase_source, rebase_is_no_op};
+use crate::rebase::{
+    load_dry_run_head, plan_rebase_branch, plan_rebase_revisions, plan_rebase_source, rebase_is_no_op,
+};
+use crate::revert::plan_revert;
 use crate::snapshot::VerbContext;
 use crate::squash_split::{combined_description_needed, plan_squash, prepare_split};
-use crate::{ChangeId, SplitOptions, SquashOptions};
+use crate::{ChangeId, CommitViewError, RevisionRef, SplitOptions, SquashOptions};
 
 /// What is dragged (Story 9.31).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,15 +90,28 @@ pub enum DropVerb {
     Split,
     /// `jj bookmark move N --to T`.
     BookmarkMove,
+    /// `jj rebase -b S -o T…`.
+    RebaseBranch,
+    /// `jj revert -r S -o T…`, or with `-A`/`-B`.
+    Revert,
+    /// `jj restore --from S --into T` with no paths: T's WHOLE tree becomes S's.
+    Restore,
+    /// `jj absorb --from S --into T`.
+    Absorb,
+    /// `jj interdiff --from S --to T` — a read: never `NoOp`, and Available for any two changes
+    /// that resolve.
+    Interdiff,
 }
 
 /// Whether a previewed verb would run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionStatus {
-    /// It would run and write an operation.
+    /// It would run — writing an operation, except [`DropVerb::Interdiff`], which only reads.
     Available,
     /// It would run and write NO operation — the CLI's "Nothing changed." / "No bookmarks to
-    /// update." Only `rebase`, `squash` and `bookmark move` report it.
+    /// update." / "No revisions to rebase." / "No revisions to revert." (unreachable through
+    /// `drop_actions`: a row always names one change). Only `rebase`, `squash`, `bookmark move`,
+    /// `revert`, `restore` and `absorb` report it.
     NoOp,
     /// It would refuse; [`ActionOutcome::refusal`] says why.
     Refused,
@@ -202,6 +225,31 @@ fn check_location(location: &DropLocation) -> Result<(), MutateError> {
     })
 }
 
+/// The three forms of `jj rebase` a row previews.
+#[derive(Debug, Clone, Copy)]
+enum RebaseForm {
+    /// `-s`.
+    Source,
+    /// `-r`.
+    Revisions,
+    /// `-b`.
+    Branch,
+}
+
+/// Interdiff's refusal as the [`MutateError`] a row carries, variant for variant — the FFI maps
+/// both types' same-named variants to the same code. A row reaches only `ChangeNotFound`.
+fn view_err(e: CommitViewError) -> MutateError {
+    match e {
+        CommitViewError::Precondition(inner) => MutateError::Precondition(inner),
+        CommitViewError::ChangeNotFound { id } => MutateError::ChangeNotFound { id },
+        CommitViewError::InvalidInput { reason } => MutateError::InvalidInput { reason },
+        CommitViewError::RevsetParseError { reason } => MutateError::RevsetParseError { reason },
+        CommitViewError::RevsetResolutionError { reason } => MutateError::RevsetResolutionError { reason },
+        CommitViewError::Config { reason } => MutateError::Config { reason },
+        CommitViewError::Backend(reason) => MutateError::Backend(reason),
+    }
+}
+
 /// The head every row plans on, and the workspace the plans read.
 struct Rows<'a> {
     workspace: &'a Workspace,
@@ -222,20 +270,20 @@ impl Rows<'_> {
         outcome(planned)
     }
 
-    /// `jj rebase -s S <location>` / `-r S <location>` (`source == true` for `-s`).
+    /// `jj rebase -s S <location>` / `-r S <location>` / `-b S <location>`.
     fn rebase(
         &self,
         ctx: &mut VerbContext,
-        source: bool,
+        form: RebaseForm,
         change: &ChangeId,
         location: &LocationArgs<'_>,
     ) -> Result<ActionOutcome, MutateError> {
         self.row(ctx, |tx, ctx| {
             let changes = std::slice::from_ref(change);
-            let loc = if source {
-                plan_rebase_source(tx, &ctx.immutable, changes, location)?
-            } else {
-                plan_rebase_revisions(tx, &ctx.immutable, changes, location)?
+            let loc = match form {
+                RebaseForm::Source => plan_rebase_source(tx, &ctx.immutable, changes, location)?,
+                RebaseForm::Revisions => plan_rebase_revisions(tx, &ctx.immutable, changes, location)?,
+                RebaseForm::Branch => plan_rebase_branch(tx, &ctx.immutable, changes, location)?,
             };
             Ok(Planned {
                 no_op: rebase_is_no_op(tx, &loc)?,
@@ -257,6 +305,63 @@ impl Rows<'_> {
         })
     }
 
+    /// `jj revert -r S <location>`: no-op when there is nothing to revert.
+    fn revert(
+        &self,
+        ctx: &mut VerbContext,
+        change: &ChangeId,
+        location: &LocationArgs<'_>,
+    ) -> Result<ActionOutcome, MutateError> {
+        self.row(ctx, |tx, ctx| {
+            let plan = plan_revert(tx, &ctx.immutable, std::slice::from_ref(change), location)?;
+            Ok(Planned {
+                no_op: plan.is_none(),
+                ..Planned::AVAILABLE
+            })
+        })
+    }
+
+    /// The rows only a one-target `onto` has besides squash: `jj restore --from S --into T`
+    /// (no-op on the same tree), `jj absorb --from S --into T` (no-op when nothing is
+    /// absorbable; `T` resolved like every location id) and `jj interdiff --from S --to T`.
+    fn one_target_rows(
+        &self,
+        ctx: &mut VerbContext,
+        change: &ChangeId,
+        target: &ChangeId,
+    ) -> Result<[(DropVerb, ActionOutcome); 3], MutateError> {
+        let restore = self.row(ctx, |tx, ctx| {
+            let plan = plan_restore(tx, self.workspace, ctx, Some(change), Some(target), None, &[])?;
+            Ok(Planned {
+                no_op: plan.restored.is_none(),
+                ..Planned::AVAILABLE
+            })
+        })?;
+        let absorb = self.row(ctx, |tx, ctx| {
+            let into = |repo: &jj_lib::repo::MutableRepo| {
+                Ok(RevsetExpression::commits(vec![resolve_commit(repo, target)?
+                    .id()
+                    .clone()]))
+            };
+            let plan = plan_absorb(tx, self.workspace, ctx, Some(change), into, &[])?;
+            Ok(Planned {
+                no_op: plan.target_commits.is_empty(),
+                ..Planned::AVAILABLE
+            })
+        })?;
+        let interdiff = self.row(ctx, |tx, _ctx| {
+            let from = RevisionRef::ChangeId(change.clone());
+            let to = RevisionRef::ChangeId(target.clone());
+            plan_interdiff(tx.repo(), self.workspace.workspace_name(), Some(&from), Some(&to)).map_err(view_err)?;
+            Ok(Planned::AVAILABLE)
+        })?;
+        Ok([
+            (DropVerb::Restore, restore),
+            (DropVerb::Absorb, absorb),
+            (DropVerb::Interdiff, interdiff),
+        ])
+    }
+
     /// `jj new` with the three lists of [`plan_new`].
     fn new_change(
         &self,
@@ -271,7 +376,8 @@ impl Rows<'_> {
         })
     }
 
-    /// The rows of `source` at one location, in the design's order.
+    /// The rows of `source` at one location: the design's rows in its order, then the rows added
+    /// after it (Story 9.31 follow-on) — appended, so no earlier row moves.
     fn location_rows(
         &self,
         ctx: &mut VerbContext,
@@ -290,8 +396,14 @@ impl Rows<'_> {
         let mut rows = Vec::new();
         match source {
             DropSource::Change(change) if !location.onto.is_empty() => {
-                rows.push((DropVerb::RebaseSource, self.rebase(ctx, true, change, &args)?));
-                rows.push((DropVerb::RebaseRevisions, self.rebase(ctx, false, change, &args)?));
+                rows.push((
+                    DropVerb::RebaseSource,
+                    self.rebase(ctx, RebaseForm::Source, change, &args)?,
+                ));
+                rows.push((
+                    DropVerb::RebaseRevisions,
+                    self.rebase(ctx, RebaseForm::Revisions, change, &args)?,
+                ));
                 if let Some(target) = onto_one {
                     rows.push((DropVerb::Squash, self.squash(ctx, &squash_into(change, target, &[]))?));
                 }
@@ -303,9 +415,21 @@ impl Rows<'_> {
                     Ok(Planned::AVAILABLE)
                 })?;
                 rows.push((DropVerb::Duplicate, duplicate));
+                rows.push((
+                    DropVerb::RebaseBranch,
+                    self.rebase(ctx, RebaseForm::Branch, change, &args)?,
+                ));
+                rows.push((DropVerb::Revert, self.revert(ctx, change, &args)?));
+                if let Some(target) = onto_one {
+                    rows.extend(self.one_target_rows(ctx, change, target)?);
+                }
             }
             DropSource::Change(change) => {
-                rows.push((DropVerb::RebaseRevisions, self.rebase(ctx, false, change, &args)?));
+                rows.push((
+                    DropVerb::RebaseRevisions,
+                    self.rebase(ctx, RebaseForm::Revisions, change, &args)?,
+                ));
+                rows.push((DropVerb::Revert, self.revert(ctx, change, &args)?));
             }
             DropSource::Selection { change, paths } if !location.onto.is_empty() => {
                 if let Some(target) = onto_one {
@@ -447,10 +571,11 @@ pub(crate) fn change_actions(
 
 #[cfg(test)]
 mod tests {
-    use super::{check_location, outcome, ActionStatus, DropLocation, Planned};
+    use super::{check_location, outcome, view_err, ActionStatus, DropLocation, Planned};
     use crate::mutate::MutateError;
     use crate::op_support::{NO_LOCATION, ONTO_WITH_INSERT};
     use crate::ChangeId;
+    use crate::CommitViewError;
 
     fn ids(list: &[&str]) -> Vec<ChangeId> {
         list.iter().map(|s| ChangeId((*s).to_owned())).collect()
@@ -545,5 +670,41 @@ mod tests {
             )))),
             Err(MutateError::Precondition(_))
         ));
+    }
+
+    #[test]
+    fn view_err_maps_every_commit_view_error_to_the_same_named_mutate_error() {
+        let precondition = || crate::PreconditionError::Backend("p".to_owned());
+        let r = || "r".to_owned();
+        let cases = [
+            (
+                CommitViewError::Precondition(precondition()),
+                MutateError::Precondition(precondition()),
+            ),
+            (
+                CommitViewError::ChangeNotFound { id: r() },
+                MutateError::ChangeNotFound { id: r() },
+            ),
+            (
+                CommitViewError::InvalidInput { reason: r() },
+                MutateError::InvalidInput { reason: r() },
+            ),
+            (
+                CommitViewError::RevsetParseError { reason: r() },
+                MutateError::RevsetParseError { reason: r() },
+            ),
+            (
+                CommitViewError::RevsetResolutionError { reason: r() },
+                MutateError::RevsetResolutionError { reason: r() },
+            ),
+            (
+                CommitViewError::Config { reason: r() },
+                MutateError::Config { reason: r() },
+            ),
+            (CommitViewError::Backend(r()), MutateError::Backend(r())),
+        ];
+        for (view, expected) in cases {
+            assert_eq!(format!("{:?}", view_err(view)), format!("{expected:?}"));
+        }
     }
 }

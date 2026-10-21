@@ -89,21 +89,36 @@ void main() {
 
       expect(actions.warnings, isEmpty);
       final List<Row> rows = actions.actions.map(row).toList();
-      expect(rows.sublist(0, 5), [
+      expect(rows.sublist(0, 10), [
         (DropVerb.rebaseSource, 0, ActionStatus.noOp, null, null, false, false),
         (DropVerb.rebaseRevisions, 0, ActionStatus.noOp, null, null, false, false),
         (DropVerb.squash, 0, ActionStatus.available, null, null, true, false),
         (DropVerb.newMerge, 0, ActionStatus.available, null, null, false, false),
         (DropVerb.duplicate, 0, ActionStatus.available, null, null, false, false),
+        (DropVerb.rebaseBranch, 0, ActionStatus.noOp, null, null, false, false),
+        (DropVerb.revert, 0, ActionStatus.available, null, null, false, false),
+        (DropVerb.restore, 0, ActionStatus.available, null, null, false, false),
+        (DropVerb.absorb, 0, ActionStatus.noOp, null, null, false, false),
+        (DropVerb.interdiff, 0, ActionStatus.available, null, null, false, false),
       ]);
-      expect(rows[5].$1, DropVerb.rebaseSource);
-      expect(rows[5].$2, 1);
-      expect(rows[5].$3, ActionStatus.refused);
-      expect(rows[5].$4, 'jj.invalid_input');
-      expect(rows[5].$5, matches(RegExp(r'^Cannot rebase [0-9a-f]{12} onto itself$')));
-      expect(rows[7], (DropVerb.squash, 1, ActionStatus.noOp, null, null, false, false));
-      expect(rows.last, (DropVerb.rebaseRevisions, 2, ActionStatus.available, null, null, false, false));
-      expect(rows, hasLength(11));
+      expect(rows[10].$1, DropVerb.rebaseSource);
+      expect(rows[10].$2, 1);
+      expect(rows[10].$3, ActionStatus.refused);
+      expect(rows[10].$4, 'jj.invalid_input');
+      expect(rows[10].$5, matches(RegExp(r'^Cannot rebase [0-9a-f]{12} onto itself$')));
+      expect(rows[12], (DropVerb.squash, 1, ActionStatus.noOp, null, null, false, false));
+      expect(rows.sublist(15, 20), [
+        (DropVerb.rebaseBranch, 1, ActionStatus.noOp, null, null, false, false),
+        (DropVerb.revert, 1, ActionStatus.available, null, null, false, false),
+        (DropVerb.restore, 1, ActionStatus.noOp, null, null, false, false),
+        (DropVerb.absorb, 1, ActionStatus.noOp, null, null, false, false),
+        (DropVerb.interdiff, 1, ActionStatus.available, null, null, false, false),
+      ]);
+      expect(rows.sublist(20), [
+        (DropVerb.rebaseRevisions, 2, ActionStatus.available, null, null, false, false),
+        (DropVerb.revert, 2, ActionStatus.available, null, null, false, false),
+      ]);
+      expect(rows, hasLength(22));
     });
 
     test('selection_and_bookmark_sources_cross_the_buffer', () async {
@@ -132,6 +147,7 @@ void main() {
       ]);
       expect(missing.actions.map(row), [
         (DropVerb.rebaseRevisions, 0, ActionStatus.refused, 'jj.change_not_found', unknown, false, false),
+        (DropVerb.revert, 0, ActionStatus.refused, 'jj.change_not_found', unknown, false, false),
       ]);
     });
 

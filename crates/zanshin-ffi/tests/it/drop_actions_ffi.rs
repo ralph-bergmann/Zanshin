@@ -271,6 +271,12 @@ fn drop_actions_round_trips_every_row_and_writes_nothing() {
             (V::Squash, 0, S::Available, None, None, true, false),
             ok(V::NewMerge, 0, S::Available),
             ok(V::Duplicate, 0, S::Available),
+            // The Story 9.31 follow-on's rows: C already sits on B; it only adds files.
+            ok(V::RebaseBranch, 0, S::NoOp),
+            ok(V::Revert, 0, S::Available),
+            ok(V::Restore, 0, S::Available),
+            ok(V::Absorb, 0, S::NoOp),
+            ok(V::Interdiff, 0, S::Available),
             (
                 V::RebaseSource,
                 1,
@@ -292,7 +298,13 @@ fn drop_actions_round_trips_every_row_and_writes_nothing() {
             ok(V::Squash, 1, S::NoOp),
             ok(V::NewMerge, 1, S::Available),
             ok(V::Duplicate, 1, S::Available),
+            ok(V::RebaseBranch, 1, S::NoOp),
+            ok(V::Revert, 1, S::Available),
+            ok(V::Restore, 1, S::NoOp),
+            ok(V::Absorb, 1, S::NoOp),
+            ok(V::Interdiff, 1, S::Available),
             ok(V::RebaseRevisions, 2, S::Available),
+            ok(V::Revert, 2, S::Available),
         ]
     );
     assert_eq!(head_op(&fx.root), before, "the query writes no operation");
@@ -339,7 +351,9 @@ fn selection_and_bookmark_sources_round_trip() {
         statuses,
         vec![
             (V::RebaseRevisions, 0, S::Available, None),
+            (V::Revert, 0, S::Available, None),
             (V::RebaseRevisions, 1, S::Refused, Some(JJ_IMMUTABLE.to_owned())),
+            (V::Revert, 1, S::Refused, Some(JJ_IMMUTABLE.to_owned())),
         ]
     );
     let req = request(
@@ -347,18 +361,33 @@ fn selection_and_bookmark_sources_round_trip() {
         &Source::Change(UNKNOWN),
         &[(&[], &[&fx.a], &[])],
     );
-    assert_eq!(
-        rows(&call(fx.handle, &req)),
-        vec![(
-            V::RebaseRevisions,
+    let not_found = |verb| {
+        (
+            verb,
             0,
             S::Refused,
             Some(JJ_CHANGE_NOT_FOUND.to_owned()),
             Some(UNKNOWN.to_owned()),
             false,
-            false
-        )]
+            false,
+        )
+    };
+    assert_eq!(
+        rows(&call(fx.handle, &req)),
+        vec![not_found(V::RebaseRevisions), not_found(V::Revert)]
     );
+    // The interdiff row's refusal (a `CommitViewError` in the verb) crosses as the same code and
+    // context as every other row's.
+    let req = request(
+        fbs::RequestKind::DropActions,
+        &Source::Change(UNKNOWN),
+        &[(&[&fx.a], &[], &[])],
+    );
+    let interdiff: Vec<_> = rows(&call(fx.handle, &req))
+        .into_iter()
+        .filter(|row| row.0 == V::Interdiff)
+        .collect();
+    assert_eq!(interdiff, vec![not_found(V::Interdiff)]);
 }
 
 #[test]

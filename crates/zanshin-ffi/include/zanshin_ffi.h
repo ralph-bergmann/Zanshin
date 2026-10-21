@@ -86,7 +86,7 @@
 
 #define ENUM_MIN_DROP_VERB 0
 
-#define ENUM_MAX_DROP_VERB 6
+#define ENUM_MAX_DROP_VERB 11
 
 #define ENUM_MIN_ACTION_STATUS 0
 
@@ -1313,9 +1313,11 @@ ZanshinBuf *zanshin_diagnostics(void);
  * The arguments cross as a `DropActionsRequest` `FlatBuffers` request buffer: the source
  * (`source_kind` with `change_id`, `paths` or `bookmark`) and the `locations` (each the CLI's
  * `-o` / `-A` / `-B`). The rows per location, in order: a `Change` at `onto` — `RebaseSource`,
- * `RebaseRevisions`, `Squash` (only for exactly one target), `NewMerge`, `Duplicate`; at `-A`/`-B`
- * — `RebaseRevisions`. A `Selection` at `onto` with one target — `Squash` with the paths; at
- * `-A`/`-B` — `Split`. A `Bookmark` at `onto` with one target — `BookmarkMove`.
+ * `RebaseRevisions`, `Squash` (only for exactly one target), `NewMerge`, `Duplicate`,
+ * `RebaseBranch`, `Revert`, then `Restore`, `Absorb` and `Interdiff` (only for exactly one
+ * target); at `-A`/`-B` — `RebaseRevisions`, `Revert`. A `Selection` at `onto` with one target —
+ * `Squash` with the paths; at `-A`/`-B` — `Split`. A `Bookmark` at `onto` with one target —
+ * `BookmarkMove`.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `DropActions` payload on success: each row's
  * verb, location index, status (`Available`, `NoOp` — the verb would write no operation — or
@@ -1348,7 +1350,9 @@ ZanshinBuf *zanshin_diagnostics(void);
  * duration of the call.
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
-ZanshinBuf *zanshin_drop_actions(uint64_t handle, const uint8_t *data, uintptr_t len);
+ZanshinBuf *zanshin_drop_actions(uint64_t handle,
+                                 const uint8_t *data,
+                                 uintptr_t len);
 
 /**
  * Preview the card menu's verbs for `change_id`, in the repo identified by `handle` (Story

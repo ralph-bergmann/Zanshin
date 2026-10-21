@@ -98,9 +98,11 @@ fn read_drop_actions_request(data: *const u8, len: usize) -> Result<(DropSource,
 /// The arguments cross as a `DropActionsRequest` `FlatBuffers` request buffer: the source
 /// (`source_kind` with `change_id`, `paths` or `bookmark`) and the `locations` (each the CLI's
 /// `-o` / `-A` / `-B`). The rows per location, in order: a `Change` at `onto` — `RebaseSource`,
-/// `RebaseRevisions`, `Squash` (only for exactly one target), `NewMerge`, `Duplicate`; at `-A`/`-B`
-/// — `RebaseRevisions`. A `Selection` at `onto` with one target — `Squash` with the paths; at
-/// `-A`/`-B` — `Split`. A `Bookmark` at `onto` with one target — `BookmarkMove`.
+/// `RebaseRevisions`, `Squash` (only for exactly one target), `NewMerge`, `Duplicate`,
+/// `RebaseBranch`, `Revert`, then `Restore`, `Absorb` and `Interdiff` (only for exactly one
+/// target); at `-A`/`-B` — `RebaseRevisions`, `Revert`. A `Selection` at `onto` with one target —
+/// `Squash` with the paths; at `-A`/`-B` — `Split`. A `Bookmark` at `onto` with one target —
+/// `BookmarkMove`.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `DropActions` payload on success: each row's
 /// verb, location index, status (`Available`, `NoOp` — the verb would write no operation — or

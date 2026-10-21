@@ -1903,13 +1903,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_DROP_VERB: u8 = 6;
+        pub const ENUM_MAX_DROP_VERB: u8 = 11;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_DROP_VERB: [DropVerb; 7] = [
+        pub const ENUM_VALUES_DROP_VERB: [DropVerb; 12] = [
             DropVerb::RebaseSource,
             DropVerb::RebaseRevisions,
             DropVerb::Squash,
@@ -1917,11 +1917,19 @@ pub mod zanshin {
             DropVerb::Duplicate,
             DropVerb::Split,
             DropVerb::BookmarkMove,
+            DropVerb::RebaseBranch,
+            DropVerb::Revert,
+            DropVerb::Restore,
+            DropVerb::Absorb,
+            DropVerb::Interdiff,
         ];
 
         /// The verb a `DropAction` row previews (`S` the source, `T…` the location's ids):
         /// `rebase -s S -o T…`, `rebase -r S -o T…` (or `-A`/`-B`), `squash --from S --into T [paths]`,
-        /// `new T… S`, `duplicate S -o T…`, `split -r S <paths> -A/-B …`, `bookmark move N --to T`.
+        /// `new T… S`, `duplicate S -o T…`, `split -r S <paths> -A/-B …`, `bookmark move N --to T`,
+        /// `rebase -b S -o T…`, `revert -r S -o T…` (or `-A`/`-B`), `restore --from S --into T` (no
+        /// paths: T's WHOLE tree becomes S's), `absorb --from S --into T`, `interdiff --from S --to T` (a
+        /// read: never `NoOp`).
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
         pub struct DropVerb(pub u8);
@@ -1934,9 +1942,14 @@ pub mod zanshin {
             pub const Duplicate: Self = Self(4);
             pub const Split: Self = Self(5);
             pub const BookmarkMove: Self = Self(6);
+            pub const RebaseBranch: Self = Self(7);
+            pub const Revert: Self = Self(8);
+            pub const Restore: Self = Self(9);
+            pub const Absorb: Self = Self(10);
+            pub const Interdiff: Self = Self(11);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 6;
+            pub const ENUM_MAX: u8 = 11;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::RebaseSource,
                 Self::RebaseRevisions,
@@ -1945,6 +1958,11 @@ pub mod zanshin {
                 Self::Duplicate,
                 Self::Split,
                 Self::BookmarkMove,
+                Self::RebaseBranch,
+                Self::Revert,
+                Self::Restore,
+                Self::Absorb,
+                Self::Interdiff,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -1956,6 +1974,11 @@ pub mod zanshin {
                     Self::Duplicate => Some("Duplicate"),
                     Self::Split => Some("Split"),
                     Self::BookmarkMove => Some("BookmarkMove"),
+                    Self::RebaseBranch => Some("RebaseBranch"),
+                    Self::Revert => Some("Revert"),
+                    Self::Restore => Some("Restore"),
+                    Self::Absorb => Some("Absorb"),
+                    Self::Interdiff => Some("Interdiff"),
                     _ => None,
                 }
             }
@@ -2029,8 +2052,10 @@ pub mod zanshin {
         pub const ENUM_VALUES_ACTION_STATUS: [ActionStatus; 3] =
             [ActionStatus::Available, ActionStatus::NoOp, ActionStatus::Refused];
 
-        /// Whether a previewed verb would run: write an operation (`Available`), write none (`NoOp` — only
-        /// rebase, squash and bookmark move), or refuse (`Refused`).
+        /// Whether a previewed verb would run (`Available` — writing an operation, except `Interdiff`,
+        /// which only reads), run and write none (`NoOp` — only rebase, squash, bookmark move, revert,
+        /// restore and absorb; revert's "No revisions to revert." is unreachable through
+        /// `zanshin_drop_actions`, whose rows always name one change), or refuse (`Refused`).
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
         #[repr(transparent)]
         pub struct ActionStatus(pub u8);

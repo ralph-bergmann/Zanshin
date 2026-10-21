@@ -2,8 +2,10 @@
 
 //! Story 9.31 — `Repo::drop_actions` / `Repo::change_actions`: the I/O matrix of the spec, one
 //! test per row, plus the agreement witnesses — for every row of a SHIPPED verb (squash, the merge
-//! `new`, split and the seven card-menu rows), the verb run right after the query on the same
-//! fixture answers exactly as the row said.
+//! `new`, split, the seven card-menu rows, and since the follow-on restore, absorb and interdiff),
+//! the verb run right after the query on the same fixture answers exactly as the row said. The
+//! follow-on's rows (`rebase -b`, `revert`, `restore`, `absorb`, `interdiff`) follow the shipped
+//! ones at every location.
 //!
 //! The fixture is a non-colocated Git-backed repo built in-test with Zanshin's own verbs:
 //! `root → A (a.txt) → B (b.txt, f) → C (c.txt)`, and `D (d.txt)` a second child of `A` (`@`),
@@ -263,6 +265,12 @@ fn a_change_dropped_onto_its_parent() {
             (DropVerb::Squash, 0, combined()),
             (DropVerb::NewMerge, 0, available()),
             (DropVerb::Duplicate, 0, available()),
+            (DropVerb::RebaseBranch, 0, no_op()),
+            (DropVerb::Revert, 0, available()),
+            (DropVerb::Restore, 0, available()),
+            // B only adds files, which have no destination to absorb into.
+            (DropVerb::Absorb, 0, no_op()),
+            (DropVerb::Interdiff, 0, available()),
         ]
     );
 }
@@ -282,6 +290,11 @@ fn a_leaf_dropped_onto_its_parent_is_a_no_op_for_both_rebase_rows() {
             (DropVerb::Squash, 0, combined()),
             (DropVerb::NewMerge, 0, available()),
             (DropVerb::Duplicate, 0, available()),
+            (DropVerb::RebaseBranch, 0, no_op()),
+            (DropVerb::Revert, 0, available()),
+            (DropVerb::Restore, 0, available()),
+            (DropVerb::Absorb, 0, no_op()),
+            (DropVerb::Interdiff, 0, available()),
         ]
     );
 }
@@ -304,6 +317,12 @@ fn a_change_dropped_onto_its_descendant() {
             (DropVerb::Squash, 0, combined()),
             (DropVerb::NewMerge, 0, available()),
             (DropVerb::Duplicate, 0, available()),
+            // `C..B` is empty: no revisions to rebase.
+            (DropVerb::RebaseBranch, 0, no_op()),
+            (DropVerb::Revert, 0, available()),
+            (DropVerb::Restore, 0, available()),
+            (DropVerb::Absorb, 0, no_op()),
+            (DropVerb::Interdiff, 0, available()),
         ]
     );
 }
@@ -322,6 +341,12 @@ fn a_change_dropped_onto_itself() {
             (DropVerb::Squash, 0, no_op()),
             (DropVerb::NewMerge, 0, available()),
             (DropVerb::Duplicate, 0, available()),
+            (DropVerb::RebaseBranch, 0, no_op()),
+            (DropVerb::Revert, 0, available()),
+            // The same tree: nothing to restore.
+            (DropVerb::Restore, 0, no_op()),
+            (DropVerb::Absorb, 0, no_op()),
+            (DropVerb::Interdiff, 0, available()),
         ]
     );
 }
@@ -340,6 +365,12 @@ fn a_change_dropped_onto_the_root() {
             (DropVerb::Squash, 0, refused(&root_imm)),
             (DropVerb::NewMerge, 0, refused(&invalid(GIT_ROOT_MERGE))),
             (DropVerb::Duplicate, 0, available()),
+            // `roots(root..B)` is A, already on the root.
+            (DropVerb::RebaseBranch, 0, no_op()),
+            (DropVerb::Revert, 0, available()),
+            (DropVerb::Restore, 0, refused(&root_imm)),
+            (DropVerb::Absorb, 0, no_op()),
+            (DropVerb::Interdiff, 0, available()),
         ]
     );
 }
@@ -358,6 +389,12 @@ fn an_immutable_change_dropped_elsewhere() {
             (DropVerb::Squash, 0, refused(&a_imm)),
             (DropVerb::NewMerge, 0, available()),
             (DropVerb::Duplicate, 0, available()),
+            // `D..A` is empty: A is already an ancestor of D.
+            (DropVerb::RebaseBranch, 0, no_op()),
+            (DropVerb::Revert, 0, available()),
+            (DropVerb::Restore, 0, available()),
+            (DropVerb::Absorb, 0, no_op()),
+            (DropVerb::Interdiff, 0, available()),
         ]
     );
 }
@@ -380,6 +417,11 @@ fn the_root_dropped_onto_a_change() {
                 0,
                 refused(&invalid("Cannot duplicate the root commit"))
             ),
+            (DropVerb::RebaseBranch, 0, no_op()),
+            (DropVerb::Revert, 0, available()),
+            (DropVerb::Restore, 0, available()),
+            (DropVerb::Absorb, 0, no_op()),
+            (DropVerb::Interdiff, 0, available()),
         ]
     );
 }
@@ -398,7 +440,9 @@ fn a_change_dropped_onto_the_root_and_another_change_refuses_the_root_merge() {
             (DropVerb::RebaseSource, 0, root_merge.clone()),
             (DropVerb::RebaseRevisions, 0, root_merge.clone()),
             (DropVerb::NewMerge, 0, root_merge.clone()),
-            (DropVerb::Duplicate, 0, root_merge),
+            (DropVerb::Duplicate, 0, root_merge.clone()),
+            (DropVerb::RebaseBranch, 0, root_merge.clone()),
+            (DropVerb::Revert, 0, root_merge),
         ]
     );
 }
@@ -478,14 +522,19 @@ fn the_rebase_dry_run_never_invokes_the_signer() {
     let rows = query(&mut fx, &change(&b), &[onto(&[&d]), onto(&[&a])]);
     assert_eq!(
         rows.iter()
-            .filter(|(verb, _, _)| matches!(verb, DropVerb::RebaseSource | DropVerb::RebaseRevisions))
+            .filter(|(verb, _, _)| matches!(
+                verb,
+                DropVerb::RebaseSource | DropVerb::RebaseRevisions | DropVerb::RebaseBranch
+            ))
             .map(|(verb, index, row)| (*verb, *index, row.status))
             .collect::<Vec<_>>(),
         [
             (DropVerb::RebaseSource, 0, ActionStatus::Available),
             (DropVerb::RebaseRevisions, 0, ActionStatus::Available),
+            (DropVerb::RebaseBranch, 0, ActionStatus::Available),
             (DropVerb::RebaseSource, 1, ActionStatus::NoOp),
             (DropVerb::RebaseRevisions, 1, ActionStatus::Available),
+            (DropVerb::RebaseBranch, 1, ActionStatus::NoOp),
         ]
     );
     assert!(
@@ -495,26 +544,34 @@ fn the_rebase_dry_run_never_invokes_the_signer() {
 }
 
 #[test]
-fn a_change_dropped_onto_two_targets_has_no_squash_row() {
+fn a_change_dropped_onto_two_targets_has_no_one_target_rows() {
     let mut fx = base(None);
     let (b, c, d) = (fx.b.clone(), fx.c.clone(), fx.d.clone());
-    let verbs: Vec<DropVerb> = query(&mut fx, &change(&c), &[onto(&[&b, &d])])
-        .into_iter()
-        .map(|(verb, _, _)| verb)
-        .collect();
+    let rows = query(&mut fx, &change(&c), &[onto(&[&b, &d])]);
+    let verbs: Vec<DropVerb> = rows.iter().map(|(verb, _, _)| *verb).collect();
     assert_eq!(
         verbs,
         [
             DropVerb::RebaseSource,
             DropVerb::RebaseRevisions,
             DropVerb::NewMerge,
-            DropVerb::Duplicate
+            DropVerb::Duplicate,
+            DropVerb::RebaseBranch,
+            DropVerb::Revert,
+        ]
+    );
+    // `roots((B | D)..C)` is C, which gains D as a parent.
+    assert_eq!(
+        added(&rows),
+        [
+            (DropVerb::RebaseBranch, 0, available()),
+            (DropVerb::Revert, 0, available())
         ]
     );
 }
 
 #[test]
-fn insert_locations_answer_one_rebase_revisions_row_each() {
+fn insert_locations_answer_a_rebase_revisions_and_a_revert_row_each() {
     let mut fx = base(None);
     let (a, b, c) = (fx.a.clone(), fx.b.clone(), fx.c.clone());
     let both = DropLocation {
@@ -527,8 +584,11 @@ fn insert_locations_answer_one_rebase_revisions_row_each() {
         rows,
         vec![
             (DropVerb::RebaseRevisions, 0, available()),
+            (DropVerb::Revert, 0, available()),
             (DropVerb::RebaseRevisions, 1, available()),
+            (DropVerb::Revert, 1, available()),
             (DropVerb::RebaseRevisions, 2, available()),
+            (DropVerb::Revert, 2, available()),
         ]
     );
 }
@@ -539,7 +599,13 @@ fn an_insert_location_with_an_immutable_child_or_a_loop_refuses() {
     let (a, b, c) = (fx.a.clone(), fx.b.clone(), fx.c.clone());
     let b_imm = imm(&fx, &b);
     let rows = query(&mut fx, &change(&c), &[after(&[&a])]);
-    assert_eq!(rows, vec![(DropVerb::RebaseRevisions, 0, refused(&b_imm))]);
+    assert_eq!(
+        rows,
+        vec![
+            (DropVerb::RebaseRevisions, 0, refused(&b_imm)),
+            (DropVerb::Revert, 0, refused(&b_imm)),
+        ]
+    );
 
     let mut fx = base(None);
     let (a, b, c) = (fx.a.clone(), fx.b.clone(), fx.c.clone());
@@ -549,16 +615,18 @@ fn an_insert_location_with_an_immutable_child_or_a_loop_refuses() {
         ..DropLocation::default()
     };
     let rows = query(&mut fx, &change(&c), &[looping]);
-    let [(DropVerb::RebaseRevisions, 0, Row { status, refusal, .. })] = rows.as_slice() else {
-        panic!("one rebase row: {rows:?}");
+    let [(DropVerb::RebaseRevisions, 0, rebase), (DropVerb::Revert, 0, revert)] = rows.as_slice() else {
+        panic!("a rebase and a revert row: {rows:?}");
     };
-    assert_eq!(*status, ActionStatus::Refused);
-    let refusal = refusal.as_deref().expect("refusal");
-    assert!(
-        refusal.contains("Refusing to create a loop: commit ")
-            && refusal.contains(" would be both an ancestor and a descendant of the rebased commits"),
-        "{refusal}"
-    );
+    for (row, noun) in [(rebase, "rebased commits"), (revert, "reverted commits")] {
+        assert_eq!(row.status, ActionStatus::Refused);
+        let refusal = row.refusal.as_deref().expect("refusal");
+        assert!(
+            refusal.contains("Refusing to create a loop: commit ")
+                && refusal.contains(&format!(" would be both an ancestor and a descendant of the {noun}")),
+            "{refusal}"
+        );
+    }
 }
 
 #[test]
@@ -567,12 +635,24 @@ fn an_unknown_change_refuses_every_row_as_not_found() {
     let a = fx.a.clone();
     let unknown = ChangeId(UNKNOWN.to_owned());
     let rows = query(&mut fx, &change(&unknown), &[onto(&[&a])]);
-    assert_eq!(rows.len(), 5);
+    assert_eq!(rows.len(), 10);
     for (verb, _, row) in rows {
         assert_eq!(row, refused(&not_found(UNKNOWN)), "{verb:?}");
     }
     let rows = query(&mut fx, &change(&a), &[after(&[&unknown])]);
-    assert_eq!(rows, vec![(DropVerb::RebaseRevisions, 0, refused(&not_found(UNKNOWN)))]);
+    assert_eq!(
+        rows,
+        vec![
+            (DropVerb::RebaseRevisions, 0, refused(&not_found(UNKNOWN))),
+            (DropVerb::Revert, 0, refused(&not_found(UNKNOWN))),
+        ]
+    );
+    // An unknown target: the one-target rows resolve it like every location id.
+    let rows = query(&mut fx, &change(&a), &[onto(&[&unknown])]);
+    assert_eq!(rows.len(), 10);
+    for (verb, _, row) in rows {
+        assert_eq!(row, refused(&not_found(UNKNOWN)), "{verb:?}");
+    }
 }
 
 #[test]
@@ -611,6 +691,92 @@ fn a_malformed_location_fails_the_whole_query_before_resolving() {
     assert_eq!(head_op(&fx.root), before_op);
     let none = fx.repo.drop_actions(&change(&a), &[]).expect("no locations");
     assert!(none.actions.is_empty());
+}
+
+/// The rows the follow-on added (`rebase -b`, `revert`, `restore`, `absorb`, `interdiff`), in
+/// order.
+fn added(rows: &[(DropVerb, usize, Row)]) -> Vec<(DropVerb, usize, Row)> {
+    rows.iter()
+        .filter(|(verb, _, _)| {
+            matches!(
+                verb,
+                DropVerb::RebaseBranch | DropVerb::Revert | DropVerb::Restore | DropVerb::Absorb | DropVerb::Interdiff
+            )
+        })
+        .cloned()
+        .collect()
+}
+
+/// `C` onto its unrelated `D`: `roots(D..C)` is B, which moves onto D.
+#[test]
+fn a_change_dropped_onto_an_unrelated_change() {
+    let mut fx = base(None);
+    let (c, d) = (fx.c.clone(), fx.d.clone());
+    let rows = query(&mut fx, &change(&c), &[onto(&[&d])]);
+    assert_eq!(
+        added(&rows),
+        vec![
+            (DropVerb::RebaseBranch, 0, available()),
+            (DropVerb::Revert, 0, available()),
+            (DropVerb::Restore, 0, available()),
+            (DropVerb::Absorb, 0, no_op()),
+            (DropVerb::Interdiff, 0, available()),
+        ]
+    );
+}
+
+/// `C` onto the root with A immutable: `roots(root..C)` is A, which `-b` would rebase.
+#[test]
+fn a_branch_whose_root_is_immutable_refuses_rebase_b() {
+    let mut fx = base(Some(|fx| &fx.a));
+    let (a, c, zero) = (fx.a.clone(), fx.c.clone(), fx.zero.clone());
+    let (a_imm, root_imm) = (imm(&fx, &a), imm(&fx, &zero));
+    let rows = query(&mut fx, &change(&c), &[onto(&[&zero])]);
+    assert_eq!(
+        added(&rows),
+        vec![
+            (DropVerb::RebaseBranch, 0, refused(&a_imm)),
+            (DropVerb::Revert, 0, available()),
+            (DropVerb::Restore, 0, refused(&root_imm)),
+            (DropVerb::Absorb, 0, no_op()),
+            (DropVerb::Interdiff, 0, available()),
+        ]
+    );
+}
+
+/// Adds `E`, a child of C that rewrites b.txt's one line — a hunk B last modified — as `@`, and
+/// returns it.
+fn absorbable(fx: &mut Fx) -> ChangeId {
+    let c = fx.c.clone();
+    fx.repo.new_change(std::slice::from_ref(&c), &[], &[]).expect("new");
+    fs::write(fx.root.join("b.txt"), "rewritten\n").expect("write");
+    let e = wc(&fx.root);
+    fx.repo.describe(e.clone(), "E\n").expect("describe");
+    let _ = fx.repo.take_warnings();
+    e
+}
+
+/// E's hunk goes into B; with only A as the destination nothing is absorbable; with B immutable
+/// the split's target refuses.
+#[test]
+fn an_absorbable_hunk_absorbs_into_the_commit_that_last_changed_it() {
+    let mut fx = base(None);
+    let (a, b) = (fx.a.clone(), fx.b.clone());
+    let e = absorbable(&mut fx);
+    assert_eq!(
+        the_row(&mut fx, &change(&e), onto(&[&b]), DropVerb::Absorb),
+        available()
+    );
+    assert_eq!(the_row(&mut fx, &change(&e), onto(&[&a]), DropVerb::Absorb), no_op());
+
+    let mut fx = base(Some(|fx| &fx.b));
+    let b = fx.b.clone();
+    let b_imm = imm(&fx, &b);
+    let e = absorbable(&mut fx);
+    assert_eq!(
+        the_row(&mut fx, &change(&e), onto(&[&b]), DropVerb::Absorb),
+        refused(&b_imm)
+    );
 }
 
 #[test]
@@ -979,4 +1145,122 @@ fn change_actions_rows_agree_with_their_verbs() {
             agree(&mut fx, &expected, |repo| verb(repo, x));
         }
     }
+}
+
+#[test]
+fn restore_rows_agree_with_restore() {
+    type Case = fn(&Fx) -> (ChangeId, ChangeId);
+    let cases: [Case; 6] = [
+        |fx| (fx.b.clone(), fx.a.clone()),
+        |fx| (fx.b.clone(), fx.b.clone()),
+        |fx| (fx.b.clone(), fx.zero.clone()),
+        |fx| (fx.zero.clone(), fx.a.clone()),
+        |fx| (ChangeId(UNKNOWN.to_owned()), fx.a.clone()),
+        |fx| (fx.b.clone(), ChangeId(UNKNOWN.to_owned())),
+    ];
+    let mut statuses = Vec::new();
+    for case in cases {
+        let mut fx = base(None);
+        let (source, target) = case(&fx);
+        let expected = the_row(&mut fx, &change(&source), onto(&[&target]), DropVerb::Restore);
+        statuses.push(expected.status);
+        agree(&mut fx, &expected, |repo| {
+            repo.restore(Some(source), Some(target), None, &[], false).map(drop)
+        });
+    }
+    assert_eq!(
+        statuses,
+        [
+            ActionStatus::Available,
+            ActionStatus::NoOp,
+            ActionStatus::Refused,
+            ActionStatus::Available,
+            ActionStatus::Refused,
+            ActionStatus::Refused
+        ]
+    );
+}
+
+#[test]
+fn absorb_rows_agree_with_absorb() {
+    type Case = (Option<fn(&Fx) -> &ChangeId>, fn(&mut Fx) -> (ChangeId, ChangeId));
+    let cases: [Case; 5] = [
+        (None, |fx| (fx.b.clone(), fx.a.clone())),
+        (None, |fx| (absorbable(fx), fx.b.clone())),
+        (None, |fx| (absorbable(fx), fx.a.clone())),
+        (Some(|fx| &fx.b), |fx| (absorbable(fx), fx.b.clone())),
+        (None, |fx| (ChangeId(UNKNOWN.to_owned()), fx.a.clone())),
+    ];
+    let mut statuses = Vec::new();
+    for (immutable, case) in cases {
+        let mut fx = base(immutable);
+        let (source, target) = case(&mut fx);
+        let expected = the_row(&mut fx, &change(&source), onto(&[&target]), DropVerb::Absorb);
+        statuses.push(expected.status);
+        // The verb's `--into` is a revset; `T`'s change id names exactly the row's destination.
+        agree(&mut fx, &expected, |repo| {
+            repo.absorb(Some(source), Some(&target.0), &[]).map(drop)
+        });
+    }
+    assert_eq!(
+        statuses,
+        [
+            ActionStatus::NoOp,
+            ActionStatus::Available,
+            ActionStatus::NoOp,
+            ActionStatus::Refused,
+            ActionStatus::Refused
+        ]
+    );
+}
+
+/// Interdiff reads: an Available row is an `Ok` diff and writes nothing; a Refused row is the
+/// verb's `ChangeNotFound` for the same id.
+#[test]
+fn interdiff_rows_agree_with_interdiff() {
+    type Case = fn(&Fx) -> (ChangeId, ChangeId);
+    let cases: [Case; 5] = [
+        |fx| (fx.b.clone(), fx.a.clone()),
+        |fx| (fx.b.clone(), fx.b.clone()),
+        |fx| (fx.b.clone(), fx.zero.clone()),
+        |fx| (ChangeId(UNKNOWN.to_owned()), fx.a.clone()),
+        |fx| (fx.b.clone(), ChangeId(UNKNOWN.to_owned())),
+    ];
+    let mut statuses = Vec::new();
+    for case in cases {
+        let mut fx = base(None);
+        let (source, target) = case(&fx);
+        let expected = the_row(&mut fx, &change(&source), onto(&[&target]), DropVerb::Interdiff);
+        statuses.push(expected.status);
+        let before = head_op(&fx.root);
+        let result = fx.repo.interdiff(
+            Some(zanshin_jj::RevisionRef::ChangeId(source)),
+            Some(zanshin_jj::RevisionRef::ChangeId(target)),
+            &[],
+        );
+        assert_eq!(head_op(&fx.root), before, "interdiff writes no operation");
+        match expected.status {
+            ActionStatus::Available => {
+                result.expect("an Available row diffs");
+            }
+            ActionStatus::Refused => {
+                let err = result.expect_err("a Refused row refuses");
+                let zanshin_jj::CommitViewError::ChangeNotFound { id } = err else {
+                    panic!("{err:?}");
+                };
+                assert_eq!(expected.refusal, Some(format!("{:?}", not_found(&id))));
+            }
+            ActionStatus::NoOp => panic!("interdiff is never a no-op"),
+        }
+    }
+    assert_eq!(
+        statuses,
+        [
+            ActionStatus::Available,
+            ActionStatus::Available,
+            ActionStatus::Available,
+            ActionStatus::Refused,
+            ActionStatus::Refused
+        ]
+    );
 }

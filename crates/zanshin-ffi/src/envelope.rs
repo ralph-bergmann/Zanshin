@@ -870,6 +870,11 @@ impl From<zanshin_jj::DropAction> for DropActionObj {
                 zanshin_jj::DropVerb::Duplicate => fbs::DropVerb::Duplicate,
                 zanshin_jj::DropVerb::Split => fbs::DropVerb::Split,
                 zanshin_jj::DropVerb::BookmarkMove => fbs::DropVerb::BookmarkMove,
+                zanshin_jj::DropVerb::RebaseBranch => fbs::DropVerb::RebaseBranch,
+                zanshin_jj::DropVerb::Revert => fbs::DropVerb::Revert,
+                zanshin_jj::DropVerb::Restore => fbs::DropVerb::Restore,
+                zanshin_jj::DropVerb::Absorb => fbs::DropVerb::Absorb,
+                zanshin_jj::DropVerb::Interdiff => fbs::DropVerb::Interdiff,
             },
             location: u32::try_from(action.location).unwrap_or(u32::MAX),
             outcome: action.outcome.into(),
@@ -1618,6 +1623,11 @@ mod tests {
             (V::Duplicate, fbs::DropVerb::Duplicate),
             (V::Split, fbs::DropVerb::Split),
             (V::BookmarkMove, fbs::DropVerb::BookmarkMove),
+            (V::RebaseBranch, fbs::DropVerb::RebaseBranch),
+            (V::Revert, fbs::DropVerb::Revert),
+            (V::Restore, fbs::DropVerb::Restore),
+            (V::Absorb, fbs::DropVerb::Absorb),
+            (V::Interdiff, fbs::DropVerb::Interdiff),
         ];
         let mut actions: Vec<zanshin_jj::DropAction> = verbs
             .iter()
@@ -1654,7 +1664,7 @@ mod tests {
             .expect("actions")
             .iter()
             .collect();
-        assert_eq!(rows.len(), 8);
+        assert_eq!(rows.len(), verbs.len() + 1);
         for (i, (_, wire_verb)) in verbs.iter().enumerate() {
             assert_eq!(rows[i].verb(), *wire_verb);
             assert_eq!(rows[i].location(), u32::try_from(i).expect("small"));
@@ -1668,8 +1678,9 @@ mod tests {
         assert!(rows[0].outcome().expect("outcome").refusal().is_none());
         let refusal = rows[3].outcome().expect("outcome").refusal().expect("refusal");
         assert_eq!((refusal.code(), refusal.context()), (Some(JJ_IMMUTABLE), Some("abc")));
-        assert_eq!(rows[7].location(), u32::MAX, "an index past u32 saturates");
-        let refusal = rows[7].outcome().expect("outcome").refusal().expect("refusal");
+        let last = verbs.len();
+        assert_eq!(rows[last].location(), u32::MAX, "an index past u32 saturates");
+        let refusal = rows[last].outcome().expect("outcome").refusal().expect("refusal");
         assert_eq!((refusal.code(), refusal.context()), (Some(JJ_NOTHING_TO_UNDO), None));
     }
 

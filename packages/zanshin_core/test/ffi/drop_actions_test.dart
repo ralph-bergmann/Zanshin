@@ -55,6 +55,11 @@ void main() {
         (fbs.DropVerb.Duplicate, DropVerb.duplicate),
         (fbs.DropVerb.Split, DropVerb.split),
         (fbs.DropVerb.BookmarkMove, DropVerb.bookmarkMove),
+        (fbs.DropVerb.RebaseBranch, DropVerb.rebaseBranch),
+        (fbs.DropVerb.Revert, DropVerb.revert),
+        (fbs.DropVerb.Restore, DropVerb.restore),
+        (fbs.DropVerb.Absorb, DropVerb.absorb),
+        (fbs.DropVerb.Interdiff, DropVerb.interdiff),
       ];
       final List<fbs.ActionOutcomeObjectBuilder> outcomes = [
         outcome(fbs.ActionStatus.NoOp),
@@ -67,6 +72,14 @@ void main() {
         outcome(fbs.ActionStatus.Refused, refusal: fbs.FfiErrorObjectBuilder(code: 'jj.not_a_git_repo')),
         outcome(fbs.ActionStatus.Available),
         outcome(fbs.ActionStatus.Available, backwards: true),
+        outcome(fbs.ActionStatus.NoOp),
+        outcome(fbs.ActionStatus.Available),
+        outcome(fbs.ActionStatus.NoOp),
+        outcome(fbs.ActionStatus.NoOp),
+        outcome(
+          fbs.ActionStatus.Refused,
+          refusal: fbs.FfiErrorObjectBuilder(code: 'jj.change_not_found', context: 'zzzz'),
+        ),
       ];
       final DropActions actions = decodeDropActionsEnvelope(
         fbs.EnvelopeObjectBuilder(
@@ -83,7 +96,7 @@ void main() {
       );
 
       expect(actions.actions.map((a) => a.verb), verbs.map((v) => v.$2));
-      expect(actions.actions.map((a) => a.location), [0, 1, 2, 3, 4, 5, 6]);
+      expect(actions.actions.map((a) => a.location), [for (var i = 0; i < verbs.length; i++) i]);
       expect(actions.actions.map((a) => a.outcome.status), [
         ActionStatus.noOp,
         ActionStatus.refused,
@@ -92,7 +105,14 @@ void main() {
         ActionStatus.refused,
         ActionStatus.available,
         ActionStatus.available,
+        ActionStatus.noOp,
+        ActionStatus.available,
+        ActionStatus.noOp,
+        ActionStatus.noOp,
+        ActionStatus.refused,
       ]);
+      expect(actions.actions[11].outcome.refusal?.code, 'jj.change_not_found');
+      expect(actions.actions[11].outcome.refusal?.context, 'zzzz');
       expect(actions.actions[0].outcome.refusal, isNull);
       expect(actions.actions[1].outcome.refusal?.code, 'jj.invalid_input');
       expect(actions.actions[1].outcome.refusal?.context, 'Cannot rebase x onto itself');

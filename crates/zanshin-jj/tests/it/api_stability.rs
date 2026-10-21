@@ -1191,8 +1191,14 @@ fn drop_actions_surface_resolves() {
         zanshin_jj::DropVerb::Duplicate,
         zanshin_jj::DropVerb::Split,
         zanshin_jj::DropVerb::BookmarkMove,
+        // The Story 9.31 follow-on's rows, appended.
+        zanshin_jj::DropVerb::RebaseBranch,
+        zanshin_jj::DropVerb::Revert,
+        zanshin_jj::DropVerb::Restore,
+        zanshin_jj::DropVerb::Absorb,
+        zanshin_jj::DropVerb::Interdiff,
     ];
-    assert_eq!(verbs.len(), 7);
+    assert_eq!(verbs.len(), 12);
     let outcome = |status| zanshin_jj::ActionOutcome {
         status,
         refusal: None,

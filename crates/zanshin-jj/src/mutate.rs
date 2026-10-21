@@ -22,6 +22,7 @@
 //! locked-working-copy lifecycle — [`lock_working_copy`] and [`commit_with_locked_wc`] (Story
 //! 9.22) — is the raw-transaction shape `file track`/`file untrack` use instead.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -30,6 +31,7 @@ use jj_lib::commit::{conflict_label_for_commits, Commit};
 use jj_lib::git;
 use jj_lib::matchers::Matcher;
 use jj_lib::merge::Diff;
+use jj_lib::merged_tree_builder::MergedTreeBuilder;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{MutableRepo, ReadonlyRepo, Repo as _};
@@ -1526,6 +1528,64 @@ where
     ))
 }
 
+/// What [`plan_restore`] decided.
+pub(crate) struct RestorePlan {
+    /// The destination commit.
+    pub(crate) to_commit: Commit,
+    /// The destination's tree with the selected paths restored, or `None` when it equals the
+    /// destination's own tree (the CLI writes no operation).
+    pub(crate) restored: Option<SelectedTree>,
+}
+
+/// `jj restore`'s plan (`restore.rs:119-185` @ v0.46.0), shared by [`restore`] and
+/// `drop_actions`' restore row (Story 9.31 follow-on): `into` then `from` resolved with the
+/// CLI's defaults (see [`restore`]), the rewritability guard on the destination, the matcher,
+/// the selected tree, the unmatched-paths warning, and the same-tree check. Writes nothing.
+///
+/// # Errors
+///
+/// As [`restore`], less its up-front `changes_in` refusal.
+pub(crate) fn plan_restore(
+    tx: &Transaction,
+    workspace: &Workspace,
+    ctx: &mut VerbContext,
+    from: Option<&ChangeId>,
+    into: Option<&ChangeId>,
+    changes_in: Option<&ChangeId>,
+    paths: &[String],
+) -> Result<RestorePlan, MutateError> {
+    let workspace_name = workspace.workspace_name();
+    let (to_commit, from_tree, from_commits) = if from.is_some() || into.is_some() {
+        let to_commit = resolve_or_wc(tx.repo(), workspace_name, into)?;
+        let from_commit = resolve_or_wc(tx.repo(), workspace_name, from)?;
+        let from_tree = from_commit.tree();
+        (to_commit, from_tree, vec![from_commit])
+    } else {
+        let to_commit = resolve_or_wc(tx.repo(), workspace_name, changes_in)?;
+        let from_tree = pollster::block_on(to_commit.parent_tree(tx.repo())).map_err(be)?;
+        let from_commits = pollster::block_on(to_commit.parents()).map_err(be)?;
+        (to_commit, from_tree, from_commits)
+    };
+    // CLI parity (`restore.rs:138`): the rewritability guard runs BEFORE any matcher or
+    // tree work, so an immutable destination costs no diffing and writes no blobs.
+    guard_rewritable(tx, &ctx.immutable, std::slice::from_ref(to_commit.id()))?;
+
+    let matcher = build_matcher(paths)?;
+    let to_tree = to_commit.tree();
+    // `Diff::new(before, after)` with the DESTINATION first: `SelectedTree::from_paths`
+    // owns the inversion into jj-lib's source-first `restore_tree` (Story 9.1). The two
+    // conflict labels are load-bearing strings embedded into conflict markers, not
+    // cosmetics.
+    let selected = SelectedTree::from_paths(
+        Diff::new(&to_tree, &from_tree),
+        Diff::new(to_commit.conflict_label(), conflict_label_for_commits(&from_commits)),
+        matcher.as_ref(),
+    )?;
+    warn_unmatched(workspace, &mut ctx.warnings, paths, &[&to_tree, &from_tree])?;
+    let restored = (selected.tree().tree_ids() != to_commit.tree_ids()).then_some(selected);
+    Ok(RestorePlan { to_commit, restored })
+}
+
 /// Gives the paths matching `paths` in the destination commit the content they have in the
 /// source commit (Story 9.3) — the CLI's `jj restore`, whole-file only.
 ///
@@ -1592,37 +1652,11 @@ pub(crate) fn restore(
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    let (to_commit, from_tree, from_commits) = if from.is_some() || into.is_some() {
-        let to_commit = resolve_or_wc(tx.repo(), &workspace_name, into)?;
-        let from_commit = resolve_or_wc(tx.repo(), &workspace_name, from)?;
-        let from_tree = from_commit.tree();
-        (to_commit, from_tree, vec![from_commit])
-    } else {
-        let to_commit = resolve_or_wc(tx.repo(), &workspace_name, changes_in)?;
-        let from_tree = pollster::block_on(to_commit.parent_tree(tx.repo())).map_err(be)?;
-        let from_commits = pollster::block_on(to_commit.parents()).map_err(be)?;
-        (to_commit, from_tree, from_commits)
-    };
-    // CLI parity (`restore.rs:138`): the rewritability guard runs BEFORE any matcher or
-    // tree work, so an immutable destination costs no diffing and writes no blobs.
-    guard_rewritable(&tx, &ctx.immutable, std::slice::from_ref(to_commit.id()))?;
-
-    let matcher = build_matcher(paths)?;
-    let to_tree = to_commit.tree();
-    // `Diff::new(before, after)` with the DESTINATION first: `SelectedTree::from_paths`
-    // owns the inversion into jj-lib's source-first `restore_tree` (Story 9.1). The two
-    // conflict labels are load-bearing strings embedded into conflict markers, not
-    // cosmetics.
-    let selected = SelectedTree::from_paths(
-        Diff::new(&to_tree, &from_tree),
-        Diff::new(to_commit.conflict_label(), conflict_label_for_commits(&from_commits)),
-        matcher.as_ref(),
-    )?;
-    warn_unmatched(workspace, &mut ctx.warnings, paths, &[&to_tree, &from_tree])?;
-    if selected.tree().tree_ids() == to_commit.tree_ids() {
+    let RestorePlan { to_commit, restored } = plan_restore(&tx, workspace, ctx, from, into, changes_in, paths)?;
+    let Some(selected) = restored else {
         drop(tx);
         return no_op_result(&workspace_name, &readonly);
-    }
+    };
 
     pollster::block_on(
         tx.repo_mut()
@@ -1646,6 +1680,82 @@ pub(crate) fn restore(
         ctx,
     )?;
     mutation_result(&finish, Vec::new(), Vec::new())
+}
+
+/// What [`plan_absorb`] decided.
+pub(crate) struct AbsorbPlan {
+    /// The source commit with its parent tree, as `absorb_hunks` takes it.
+    pub(crate) source: AbsorbSource,
+    /// The commits the hunks go into, each with its tree to merge — EMPTY when nothing is
+    /// absorbable (the verb then writes no operation; a non-empty set always changes the repo,
+    /// since `absorb_hunks` rewrites every target).
+    pub(crate) target_commits: HashMap<jj_lib::backend::CommitId, MergedTreeBuilder>,
+    /// The paths jj-lib refused to split.
+    pub(crate) skipped_paths: Vec<SkippedPath>,
+}
+
+/// `jj absorb`'s plan (`absorb.rs:94-163` @ v0.46.0), shared by [`absorb`] and `drop_actions`'
+/// absorb row (Story 9.31 follow-on): the source resolved (`from`, default `@`), then the
+/// destination set (`destinations` resolves it), the matcher, the unmatched-paths warning, the
+/// split, one `jj.absorb_path_skipped` warning per skipped path, and the rewritability guard on
+/// the split's TARGETS. Writes nothing but the split's content blobs (see [`absorb`]).
+///
+/// # Errors
+///
+/// As [`absorb`], with whatever `destinations` returns in place of its revset refusal.
+pub(crate) fn plan_absorb(
+    tx: &Transaction,
+    workspace: &Workspace,
+    ctx: &mut VerbContext,
+    from: Option<&ChangeId>,
+    destinations: impl FnOnce(&MutableRepo) -> Result<Arc<ResolvedRevsetExpression>, MutateError>,
+    paths: &[String],
+) -> Result<AbsorbPlan, MutateError> {
+    let source_commit = resolve_or_wc(tx.repo(), workspace.workspace_name(), from)?;
+    let resolved_destinations = destinations(tx.repo())?;
+    let matcher = build_matcher(paths)?;
+    warn_unmatched(workspace, &mut ctx.warnings, paths, &[&source_commit.tree()])?;
+
+    // The CLI splits BEFORE opening its transaction. Splitting inside a transaction that is
+    // dropped on refusal is observably identical (nothing is committed either way); the
+    // content blobs `split_hunks_to_trees` writes to the store are harmless orphans in both
+    // designs.
+    let source = pollster::block_on(AbsorbSource::from_commit(tx.repo(), source_commit)).map_err(be)?;
+    let selected = pollster::block_on(split_hunks_to_trees(
+        tx.repo(),
+        &source,
+        &resolved_destinations,
+        matcher.as_ref(),
+    ))
+    .map_err(be)?;
+    let skipped_paths: Vec<SkippedPath> = selected
+        .skipped_paths
+        .iter()
+        .map(|(path, reason)| SkippedPath {
+            path: path.as_internal_file_string().to_owned(),
+            reason: reason.clone(),
+        })
+        .collect();
+    for (path, reason) in &selected.skipped_paths {
+        ctx.warnings.push(
+            WarningKind::AbsorbPathSkipped,
+            format!(
+                "Skipping {}: {reason}",
+                warning::ui_path(workspace.workspace_root(), path)
+            ),
+        );
+    }
+    // CLI parity (`absorb.rs:160-162`): the guard runs over the split's TARGETS, which are
+    // discovered by annotation — not over anything the caller named. An empty target set is
+    // trivially rewritable: nothing is absorbable, and the verb writes no operation.
+    let target_ids: Vec<jj_lib::backend::CommitId> = selected.target_commits.keys().cloned().collect();
+    guard_rewritable(tx, &ctx.immutable, &target_ids)?;
+
+    Ok(AbsorbPlan {
+        source,
+        target_commits: selected.target_commits,
+        skipped_paths,
+    })
 }
 
 /// Moves each hunk of the source commit into the closest commit in `destinations` where the
@@ -1697,47 +1807,20 @@ pub(crate) fn absorb(
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    let source_commit = resolve_or_wc(tx.repo(), &workspace_name, from)?;
-    let resolved_destinations = resolve_expression(tx.repo(), destinations).map_err(rev)?;
-    let matcher = build_matcher(paths)?;
-    warn_unmatched(workspace, &mut ctx.warnings, paths, &[&source_commit.tree()])?;
+    let AbsorbPlan {
+        source,
+        target_commits,
+        skipped_paths,
+    } = plan_absorb(
+        &tx,
+        workspace,
+        ctx,
+        from,
+        |repo| resolve_expression(repo, destinations).map_err(rev),
+        paths,
+    )?;
 
-    // The CLI splits BEFORE opening its transaction. Splitting inside a transaction that is
-    // dropped on refusal is observably identical (nothing is committed either way); the
-    // content blobs `split_hunks_to_trees` writes to the store are harmless orphans in both
-    // designs.
-    let source = pollster::block_on(AbsorbSource::from_commit(tx.repo(), source_commit)).map_err(be)?;
-    let selected = pollster::block_on(split_hunks_to_trees(
-        tx.repo(),
-        &source,
-        &resolved_destinations,
-        matcher.as_ref(),
-    ))
-    .map_err(be)?;
-    let skipped_paths: Vec<SkippedPath> = selected
-        .skipped_paths
-        .iter()
-        .map(|(path, reason)| SkippedPath {
-            path: path.as_internal_file_string().to_owned(),
-            reason: reason.clone(),
-        })
-        .collect();
-    for (path, reason) in &selected.skipped_paths {
-        ctx.warnings.push(
-            WarningKind::AbsorbPathSkipped,
-            format!(
-                "Skipping {}: {reason}",
-                warning::ui_path(workspace.workspace_root(), path)
-            ),
-        );
-    }
-    // CLI parity (`absorb.rs:160-162`): the guard runs over the split's TARGETS, which are
-    // discovered by annotation — not over anything the caller named. An empty target set is
-    // trivially rewritable and falls through to the no-op path below.
-    let target_ids: Vec<jj_lib::backend::CommitId> = selected.target_commits.keys().cloned().collect();
-    guard_rewritable(&tx, &ctx.immutable, &target_ids)?;
-
-    let stats = pollster::block_on(absorb_hunks(tx.repo_mut(), &source, selected.target_commits)).map_err(be)?;
+    let stats = pollster::block_on(absorb_hunks(tx.repo_mut(), &source, target_commits)).map_err(be)?;
     // `absorb_hunks` transforms descendants but leaves `parent_mapping` populated, so this
     // pass is what clears it — without it `tx.commit` would panic on `has_rewrites()`.
     pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;

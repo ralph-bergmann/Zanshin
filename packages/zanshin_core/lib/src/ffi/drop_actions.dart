@@ -168,14 +168,33 @@ enum DropVerb {
 
   /// `jj bookmark move N --to T`.
   bookmarkMove,
+
+  /// `jj rebase -b S -o T…`.
+  rebaseBranch,
+
+  /// `jj revert -r S -o T…`, or with `-A`/`-B`.
+  revert,
+
+  /// `jj restore --from S --into T` with no paths: T's WHOLE tree becomes
+  /// S's.
+  restore,
+
+  /// `jj absorb --from S --into T`.
+  absorb,
+
+  /// `jj interdiff --from S --to T` — a read: never [ActionStatus.noOp].
+  interdiff,
 }
 
 /// Whether a previewed verb would run (mirrors `zanshin_jj::ActionStatus`).
 enum ActionStatus {
-  /// It would run and write an operation.
+  /// It would run — writing an operation, except [DropVerb.interdiff], which
+  /// only reads.
   available,
 
-  /// It would run and write NO operation (rebase, squash, bookmark move only).
+  /// It would run and write NO operation (rebase, squash, bookmark move,
+  /// revert, restore and absorb only; revert's "No revisions to revert." is
+  /// unreachable here, as a row always names one change).
   noOp,
 
   /// It would refuse; [ActionOutcome.refusal] says why.
@@ -368,6 +387,11 @@ DropVerb _verb(fbs.DropVerb verb) => switch (verb) {
   fbs.DropVerb.Duplicate => DropVerb.duplicate,
   fbs.DropVerb.Split => DropVerb.split,
   fbs.DropVerb.BookmarkMove => DropVerb.bookmarkMove,
+  fbs.DropVerb.RebaseBranch => DropVerb.rebaseBranch,
+  fbs.DropVerb.Revert => DropVerb.revert,
+  fbs.DropVerb.Restore => DropVerb.restore,
+  fbs.DropVerb.Absorb => DropVerb.absorb,
+  fbs.DropVerb.Interdiff => DropVerb.interdiff,
 };
 
 /// Parse [bytes] as an `Envelope` and throw [ZanshinFfiException] when it is not ok.

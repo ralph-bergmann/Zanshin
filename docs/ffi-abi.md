@@ -1597,12 +1597,21 @@ own, only the pre-verb snapshot's, and the envelope's warnings are the precondit
 
 The rows per location (`DropVerb`, append-only): a `Change` at `onto` — `RebaseSource`
 (`rebase -s S -o T…`), `RebaseRevisions` (`rebase -r S -o T…`), `Squash` (`squash --from S --into
-T`, only for exactly one target), `NewMerge` (`new T… S`), `Duplicate` (`duplicate S -o T…`); a
-`Change` at `-A`/`-B` — `RebaseRevisions`. A `Selection` at `onto` with one target — `Squash` with
-the paths; at `-A`/`-B` — `Split` (`split -r S <paths> -A/-B …`). A `Bookmark` at `onto` with one
-target — `BookmarkMove` (`bookmark move N --to T`). `NoOp` means the verb would write no
-operation (a rebase whose planned move changes nothing, a squash with nothing to squash, a
-bookmark already at the target or of a name no local bookmark has); only those three report it.
+T`, only for exactly one target), `NewMerge` (`new T… S`), `Duplicate` (`duplicate S -o T…`),
+`RebaseBranch` (`rebase -b S -o T…`), `Revert` (`revert -r S -o T…`), then — only for exactly one
+target — `Restore` (`restore --from S --into T` with no paths: T's whole tree becomes S's), `Absorb` (`absorb --from S --into T`) and
+`Interdiff` (`interdiff --from S --to T`); a `Change` at `-A`/`-B` — `RebaseRevisions`, `Revert`.
+A `Selection` at `onto` with one target — `Squash` with the paths; at `-A`/`-B` — `Split`
+(`split -r S <paths> -A/-B …`). A `Bookmark` at `onto` with one target — `BookmarkMove`
+(`bookmark move N --to T`). The rows added after the first design (`RebaseBranch` … `Interdiff`,
+Story 9.31 follow-on) follow its rows, so no earlier row moves. `NoOp` means the verb would write
+no operation: a rebase with no revisions to move or whose planned move changes nothing, a squash
+with nothing to squash, a bookmark already at the target or of a name no local bookmark has, a
+revert with no revisions (unreachable here: a row always names one change), a restore whose tree is already the destination's, an absorb with no
+hunk to absorb; only those six report it. `Interdiff` is a read — never `NoOp`, `Available` for
+any two changes that resolve; its refusal (`jj.change_not_found`) has the same code and `context`
+as `zanshin_interdiff`'s. The absorb row's `T` is resolved like every location id (`zanshin_absorb`
+takes a revset, which refuses an unknown symbol `jj.revset_resolution_error` instead).
 
 A row's `refusal` is the `FfiError` the verb's own wrapper returns, mapped through the same
 `map_mutate_err` — same code, same `context` (`jj.invalid_input`, `jj.change_not_found` for an id

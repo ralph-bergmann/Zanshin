@@ -287,6 +287,27 @@ fn resolve_side(
     }
 }
 
+/// `jj interdiff`'s plan, shared by [`interdiff`] and `drop_actions`' interdiff row (Story 9.31
+/// follow-on): `from`, then `to`, resolved by [`resolve_side`]. The CLI refuses no pair — the root,
+/// an immutable commit and `from == to` all diff — so the sides resolving is the whole plan.
+///
+/// # Errors
+///
+/// - [`CommitViewError::ChangeNotFound`] / [`CommitViewError::RevsetResolutionError`] /
+///   [`CommitViewError::InvalidInput`] / [`CommitViewError::Backend`] — as [`resolve_side`] maps a
+///   side's resolution failure (see [`interdiff`]).
+pub(crate) fn plan_interdiff(
+    repo: &dyn jj_lib::repo::Repo,
+    workspace_name: &jj_lib::ref_name::WorkspaceName,
+    from: Option<&RevisionRef>,
+    to: Option<&RevisionRef>,
+) -> Result<(Commit, Commit), CommitViewError> {
+    Ok((
+        resolve_side(repo, workspace_name, from)?,
+        resolve_side(repo, workspace_name, to)?,
+    ))
+}
+
 /// Converts a `RepoPath` to a `PathBuf`.
 ///
 /// Infallible: jj-lib enforces UTF-8 on all repo paths (`RepoPathBuf` wraps `String`). A local
@@ -539,9 +560,7 @@ pub(crate) fn interdiff(
 
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
-    let name = workspace.workspace_name();
-    let from_commit = resolve_side(repo_dyn, name, from)?;
-    let to_commit = resolve_side(repo_dyn, name, to)?;
+    let (from_commit, to_commit) = plan_interdiff(repo_dyn, workspace.workspace_name(), from, to)?;
     let explicit =
         crate::op_support::parse_prefixes(paths).map_err(|reason| CommitViewError::InvalidInput { reason })?;
     let parent_trees = pollster::block_on(async {

@@ -54,6 +54,7 @@ pub(crate) mod rebase;
 pub(crate) mod remote_changes;
 pub(crate) mod remotes;
 mod repo;
+pub(crate) mod revert;
 pub(crate) mod revset;
 pub(crate) mod snapshot;
 pub(crate) mod squash_split;
