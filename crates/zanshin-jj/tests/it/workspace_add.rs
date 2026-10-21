@@ -185,6 +185,43 @@ fn add_default_creates_a_sibling_workspace_on_ats_parents() {
     assert_eq!(fs::canonicalize(recorded).expect("recorded root exists"), ws2);
 }
 
+/// Without an `@` in the current workspace (forgotten through jj-lib, as `status.rs`'s
+/// `remove_working_copy`), the new `@` goes onto the root — the CLI's `else { vec![root_commit] }`
+/// (`add.rs` @ v0.46.0).
+#[test]
+fn a_workspace_without_at_adds_on_the_root() {
+    let fx = init(Some(Backend::Git), "");
+    {
+        let mut repo = Repo::open(&fx.root).expect("open");
+        fs::write(fx.root.join("p.txt"), "p").expect("write");
+        let _ = repo.snapshot().expect("snapshot");
+        let p = wc_of(&fx.root, "default");
+        repo.new_change(&[change_id(&p)], &[], &[]).expect("new");
+    }
+    let (workspace, head) = load(&fx.root);
+    let mut tx = head.start_transaction();
+    pollster::block_on(tx.repo_mut().remove_workspace(workspace.workspace_name())).expect("remove @");
+    pollster::block_on(tx.repo_mut().rebase_descendants()).expect("rebase");
+    pollster::block_on(tx.commit("test: remove working-copy commit")).expect("commit");
+
+    let mut repo = Repo::open(&fx.root).expect("reopen");
+    add(&mut repo, "../ws2").expect("add");
+
+    let (_workspace, head) = load(&fx.root);
+    assert_eq!(
+        wc_of(&fx.root, "ws2").parent_ids(),
+        [head.store().root_commit_id().clone()]
+    );
+    assert!(!fx.sibling("ws2").join("p.txt").exists(), "p.txt absent in ws2");
+    assert_eq!(
+        &descriptions(&fx.root)[..2],
+        [
+            "create initial working-copy commit in workspace ws2",
+            "add workspace 'ws2'"
+        ]
+    );
+}
+
 /// `revisions` are evaluated in the CURRENT workspace's context: `@` is this workspace's `@`.
 #[test]
 fn revisions_resolve_in_the_current_workspaces_context() {

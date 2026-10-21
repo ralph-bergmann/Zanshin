@@ -42,7 +42,7 @@ use jj_lib::file_util;
 use jj_lib::git;
 use jj_lib::ref_name::{WorkspaceName, WorkspaceNameBuf};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
-use jj_lib::rewrite::merge_commit_trees;
+use jj_lib::rewrite::{merge_commit_trees, RebaseOptions};
 use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
 
@@ -217,11 +217,10 @@ pub(crate) fn add(
     // resolving the new workspace's immutable set against `tx.base_repo()`, so an unresolvable
     // alias refuses here, after jj-lib's "add workspace" operation, as in the CLI (Story 9.56).
     let immutable = crate::op_support::resolve_immutable(tx.base_repo().as_ref(), &new_env.immutable)?;
-    pollster::block_on(tx.repo_mut().rebase_descendants_with_options(
-        &immutable,
-        &jj_lib::rewrite::RebaseOptions::default(),
-        |_, _| {},
-    ))
+    pollster::block_on(
+        tx.repo_mut()
+            .rebase_descendants_with_options(&immutable, &RebaseOptions::default(), |_, _| {}),
+    )
     .map_err(be)?;
 
     let lock = lock_git_import_export(&new_workspace, new_colocated)?;
