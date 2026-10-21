@@ -7663,6 +7663,29 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Related:** 9.20, 9.30, 9.31, 9.32; deferred-work "Surfaced in the cleanup run after the story loop 9.24/9.30/9.31", "Surfaced in the closing run of the Story 9.31 matrix-rows run".
 
+### Story 9.57: `convert` leaves on disk what the CLI leaves — no own rollback, refuses under a broken `immutable_heads()` [M/bridge]
+*(Added 2026-10-21, Ralph — console session after Story 9.56: decided on 9.56's `convert` deferral.)*
+
+**Motivation.** Both convert verbs roll back on any failure: `convert_colocated` runs `remove_dir_all(<root>/.jj)` (`crates/zanshin-jj/src/convert.rs` ~:217), `convert_import` removes the whole destination when it did not exist before, else its `.jj/` (~:328-335). Ralph: an own rollback risks deleting what we did not create — the "did we create it" check (`detect_repo` before the work) and the delete are apart in time, so a `.jj/` another process (e.g. a parallel `jj git init`) created meanwhile would be deleted; `convert_import` deletes a whole directory. The rollback is also incomplete (the secure-config directory `<config_dir>/jj/repos/<id>/` stays orphaned). The CLI's `jj git init` cleans up nothing beyond jj-lib's own `.jj` removal when the backend fails (`init_with_factories`); Zanshin's `init_over_git_dir` (9.20) already follows that.
+
+**Scope.**
+1. **No own rollback** in `convert_colocated` and `convert_import`, for every failure: what stays on disk is what the CLI's `jj git init` (`--colocate` over an existing `.git`, `--git-repo=<src> <dest>`) leaves for the same failure (`cli/src/commands/git/init.rs` @ v0.46.0). jj-lib's own cleanup stays. The working copy and `.git/` stay untouched, as today.
+2. **`convert` refuses like the CLI under an unresolvable `immutable_heads()`**: its "import git head" finish goes through the shared finish that resolves the immutable set (9.56), so it fails there with `jj.config_error`, at the point the CLI does, leaving `.jj/` as the CLI does (9.56 deferral "`convert`'s import git head finish does not resolve the immutable set").
+3. **The UI can tell a half-converted state.** The error result says that a partial `.jj/` (and the destination directory, for `convert_import`) was left behind, so the UI can offer what to do; the backend deletes nothing (Ralph: don't patronize, offer the decision). Shape: a warning code on the error envelope (9.32's channel) or a typed field — the spec decides, in the existing style.
+4. **Docs follow:** the rustdoc and module docs of `convert.rs`, the FFI/Dart docs and `docs/rust-error-codes.md` state the new failure contract ("convert never touches the working copy; on failure the disk is as the CLI leaves it") in place of "rollback removes `.jj/` only".
+
+**Non-goals.** UI. Changing what a successful convert writes.
+
+**Depends on.** 9.20, 9.33, 9.56 (done).
+
+**Witnesses.**
+- Per failure point the tests already force (blocked `.jj/.gitignore`, failing alias write, failing import, failing re-open): the file system after the failure equals the CLI's for the same failure (parity oracle where the CLI can be driven into it, else a test citing the CLI code path).
+- An unresolvable `immutable_heads()` alias: convert refuses `jj.config_error` after `.jj/` exists, as the CLI (oracle).
+- `convert_import` into a directory that did not exist: the directory is left as the CLI leaves it.
+- The error result carries the "partial state left" fact.
+
+**Related:** 2.12, 2.13, 9.20, 9.33, 9.56; deferred-work "Surfaced in Story 9.56".
+
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 
