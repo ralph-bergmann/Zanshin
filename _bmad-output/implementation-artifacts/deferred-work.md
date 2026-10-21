@@ -1713,3 +1713,23 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 - **The original matrix rows `rebase -b`, `revert`, `restore`, `absorb` and `interdiff` are not built.** Low.
   - epics.md Story 9.31's 2026-10-14 design update: "(Claude's proposal) The matrix shrinks to these rows, because nothing consumes the others"; the story adopted the proposal (spec Design Notes).
   - **Follow-up:** none unless Ralph wants those rows; their plan fns would then follow the same pattern.
+
+## Surfaced in the loop 9.24/9.30/9.31 fix-up (bmad-build-auto, 2026-10-21)
+
+Spec: spec-loop-9-24-9-31-fixup-coverage-config-remotes (commits 492220f, 1141db4). All pre-existing; the fix-up only added tests.
+
+- **`fetch_error` maps `GitFetchError::RejectedUpdates` to `MutateError::Backend`; the CLI treats it as a user error.** Medium.
+  - jj-cli v0.46.0 `cli/src/command_error.rs:590` (`RejectedUpdates(_) | Subprocess(_) => user_error`); `crates/zanshin-jj/src/remotes.rs` `fetch_error` sends every unmapped variant to `mutate::be`. The fix-up's `fetch_failures_map_to_their_mutate_errors` witnesses today's mapping.
+  - **Follow-up:** map `RejectedUpdates` to `InvalidInput` (CLI user_error) and update that test.
+- **`fetch_error`'s `RemoteName` arm drops the CLI's "Run `jj git remote rename` to give a different name." hint.** Low.
+  - CLI `command_error.rs:587-588`; `push_error` (`crates/zanshin-jj/src/push.rs:1703-1705`) keeps it for the same jj-lib variant.
+  - **Follow-up:** mirror `push_error`'s arm in `fetch_error`.
+- **A malformed `git.fetch` is read after the remote listing; the CLI reads it first.** Low.
+  - `cmd_git_fetch` (`fetch.rs:142-150` @ v0.46.0) builds the remote expression before `get_all_remote_names`; `resolve_fetch_remotes` (`remotes.rs:290`) lists first, so a non-Git backend with a malformed `git.fetch` answers `jj.not_a_git_repo` where the CLI reports the config error.
+  - **Follow-up:** resolve the expression before listing.
+- **Untested: a malformed `git.fetch` is ignored under `--remote` / `--all-remotes`, and `Repo::git_fetch_remotes` refuses it.** Low.
+  - Code is correct (only `FetchRemotes::Default` reads `git.fetch`); nothing pins it.
+  - **Follow-up:** two assertions next to `git_fetch_parity::a_malformed_git_fetch_setting_is_a_config_error`.
+- **Never-run `panic!` fallbacks in the loop's new tests keep `remote_changes.rs` (99.31) and `drop_actions.rs` (99.32) below 100% in the baseline.** Low.
+  - `crates/zanshin-jj/src/remote_changes.rs:319`, `:477`; `crates/zanshin-jj/src/drop_actions.rs:463`. The fix-up rewrote the same pattern in `config.rs` as `assert!(matches!(…))`.
+  - **Follow-up:** same rewrite there; the gate then raises both entries.
