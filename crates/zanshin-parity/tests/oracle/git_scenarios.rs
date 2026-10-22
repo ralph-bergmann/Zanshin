@@ -272,6 +272,17 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
         zanshin: |dir| zanshin_jj::convert_colocated(dir),
         user_config: Some(BROKEN_AUTO_TRACK),
     },
+    // ── Story 9.57 closing run: the clone's finish refuses an unresolvable alias ──
+    // The first finish with changes (`add git remote origin`) refuses `Config error` inside the
+    // clean-up scope, which removes the destination the clone created — on both sides.
+    CreationScenario {
+        id: "clone_unresolvable_immutable",
+        prep: SOURCE,
+        target: "dest",
+        cli: &["git", "clone", "src", "dest"],
+        zanshin: |dir| clone(&clone_options(dir, "src")),
+        user_config: Some(UNRESOLVABLE_IMMUTABLE),
+    },
 ];
 
 /// A user config whose `remotes.origin.auto-track-bookmarks` does not parse.

@@ -2918,7 +2918,12 @@ impl Repo {
     /// - [`RepoError::Config`] — the start-up or the new workspace's config cannot be read, or a
     ///   key the clone reads (`git.colocate`, `git.object-hash`, `git.*` import options,
     ///   `remotes.<name>.*`, `git.track-default-bookmark-on-clone`) is malformed; or the presets
-    ///   could not be written.
+    ///   could not be written; or `revset-aliases."immutable_heads()"` does not resolve — the
+    ///   first finish with changes (`add git remote <name>`) resolves the immutable set as the
+    ///   CLI's `tx.finish` does and refuses inside the clean-up scope, so what the clone created
+    ///   is removed and no operation survives; a refusal at a finish outside that scope (the
+    ///   checkout's `check out git remote's branch`) keeps the workspace, as the CLI's. The reason
+    ///   names the unresolved symbol (Story 9.57 closing run).
     /// - [`RepoError::NetworkError`] — the fetch's or the default-branch query's `git` subprocess
     ///   failed (an unreachable source, an authentication failure, `git` not runnable); the reason
     ///   is the git failure (jj-lib's message with its cause).

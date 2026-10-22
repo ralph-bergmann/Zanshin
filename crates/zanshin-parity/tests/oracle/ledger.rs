@@ -125,6 +125,18 @@ pub const LEDGER: &[Expected] = &[
         cli: "7",
     },
     Expected {
+        scenario: "clone_unresolvable_immutable",
+        aspect: "warnings",
+        reason: "the CLI parses its terminal templates (commit summaries) at start-up, and each \
+                 `shortest()` warns \"Failed to load short-prefixes index\" because the default \
+                 short-prefixes revset contains the unresolvable immutable_heads(); Zanshin renders \
+                 no terminal template — both refuse `Config error` at the `add git remote origin` \
+                 finish and remove the destination the clone created",
+        reference: "Story 9.57 closing run",
+        zanshin: "0",
+        cli: "7",
+    },
+    Expected {
         scenario: "describe_gui_text",
         aspect: "descriptions",
         reason: "Repo::describe stores the caller's text verbatim; the CLI's -m ends it with a newline",

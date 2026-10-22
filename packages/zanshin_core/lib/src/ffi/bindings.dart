@@ -2138,7 +2138,11 @@ external ffi.Pointer<ZanshinBuf> zanshin_remotes(
 /// - `jj.config_error` — the effective jj config cannot be read, or a key the clone reads is
 /// malformed (`git.colocate`, `git.object-hash`, the import options, `remotes.<name>.*`,
 /// `git.track-default-bookmark-on-clone`), or the presets cannot be written. `context` names the
-/// offending KEY or FILE PATH.
+/// offending KEY or FILE PATH. Also when `revset-aliases."immutable_heads()"` does not resolve:
+/// the first finish with changes (`add git remote <name>`) refuses as the CLI's `tx.finish`,
+/// inside the clean-up scope, so what the clone created is removed; a refusal at a finish
+/// outside that scope (the checkout's `check out git remote's branch`) keeps the workspace, as
+/// the CLI's (Story 9.57 closing run). `context` names the unresolved symbol.
 /// - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
 /// no handle is returned rather than one for an unwatched repo. It runs AFTER the clone
 /// has SUCCEEDED, so the cloned workspace persists and a retry sees a non-empty destination.

@@ -146,6 +146,8 @@ fn creation_paths_report_what_the_cli_prints() {
     a_bad_immutable_heads_alias_fails_before_the_conversion_snapshot(tmp.path());
     an_unresolvable_immutable_heads_alias_refuses_the_import_at_its_head_finish(tmp.path());
     an_unresolvable_immutable_heads_alias_does_not_refuse_a_colocated_conversion(tmp.path());
+    an_unresolvable_immutable_heads_alias_refuses_a_clone_into_a_new_destination(tmp.path());
+    an_unresolvable_immutable_heads_alias_refuses_a_colocated_clone_into_an_empty_directory(tmp.path());
     a_wrong_typed_snapshot_knob_fails_inside_the_import_snapshot(tmp.path());
     a_late_failure_keeps_the_report(tmp.path(), &xdg);
     a_clone_failing_after_the_fetch_keeps_the_workspace(tmp.path(), &xdg);
@@ -680,6 +682,81 @@ fn an_unresolvable_immutable_heads_alias_does_not_refuse_a_colocated_conversion(
 
     assert!(outcome.result.is_ok(), "{:?}", outcome.result);
     assert!(outcome.left_behind.is_empty(), "{:?}", outcome.left_behind);
+}
+
+/// Points `JJ_CONFIG` at a user config whose `immutable_heads()` parses but does not resolve,
+/// clones a one-commit Git source into `destination` and restores `JJ_CONFIG` to `""`.
+fn clone_with_an_unresolvable_immutable_heads_alias(
+    tmp: &Path,
+    file: &str,
+    destination: &Path,
+    colocate: Option<bool>,
+) -> CreationOutcome {
+    let user = tmp.join(file);
+    fs::write(
+        &user,
+        "[revset-aliases]\n'immutable_heads()' = 'nonexistent_symbol_xyz'\n",
+    )
+    .unwrap();
+    set_env("JJ_CONFIG", Some(user.to_str().unwrap()));
+    let src = TempDir::new().unwrap();
+    git_with_commit(src.path());
+    let outcome = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: file_url(src.path()),
+            destination: destination.to_owned(),
+            colocate,
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+        None,
+    );
+    set_env("JJ_CONFIG", Some(""));
+    outcome
+}
+
+/// The clone's refusal for [`clone_with_an_unresolvable_immutable_heads_alias`]: the CLI's config
+/// error naming the symbol, nothing left behind and no warning.
+fn assert_clone_refused_by_the_alias(outcome: &CreationOutcome) {
+    let Err(RepoError::Config { reason }) = &outcome.result else {
+        panic!(
+            "an unresolvable immutable_heads() refuses the clone's first finish: {:?}",
+            outcome.result
+        );
+    };
+    assert!(reason.contains("nonexistent_symbol_xyz"), "{reason}");
+    assert!(outcome.left_behind.is_empty(), "{:?}", outcome.left_behind);
+    assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
+}
+
+/// Story 9.57 closing run: the clone's first finish with changes (`add git remote origin`)
+/// resolves the immutable set as the CLI's `tx.finish` does (`cli_util.rs:2986-3002` @ v0.46.0)
+/// and refuses with its config error inside the clean-up scope (`clone.rs:262-284`): the
+/// destination the clone created is removed.
+fn an_unresolvable_immutable_heads_alias_refuses_a_clone_into_a_new_destination(tmp: &Path) {
+    let parent = TempDir::new().unwrap();
+    let dst = parent.path().join("dst");
+    let outcome =
+        clone_with_an_unresolvable_immutable_heads_alias(tmp, "unresolvable-immutable-clone.toml", &dst, Some(false));
+
+    assert_clone_refused_by_the_alias(&outcome);
+    assert!(!dst.exists(), "the clean-up removes the destination the clone created");
+}
+
+/// The same refusal for a colocated clone into an existing empty directory: the clean-up removes
+/// `.jj` and `.git` and keeps the directory, empty.
+fn an_unresolvable_immutable_heads_alias_refuses_a_colocated_clone_into_an_empty_directory(tmp: &Path) {
+    let dst = TempDir::new().unwrap();
+    let outcome = clone_with_an_unresolvable_immutable_heads_alias(
+        tmp,
+        "unresolvable-immutable-colocated-clone.toml",
+        dst.path(),
+        Some(true),
+    );
+
+    assert_clone_refused_by_the_alias(&outcome);
+    let entries: Vec<_> = fs::read_dir(dst.path()).unwrap().collect();
+    assert!(entries.is_empty(), "the existing destination stays, empty: {entries:?}");
 }
 
 /// Story 9.34, the non-colocated arm: `convert_import`'s snapshot (no Git head import there)

@@ -111,10 +111,14 @@ fn run_creation(scenario: &CreationScenario) -> Vec<Divergence> {
     compare(&aspects_a, &aspects_b)
 }
 
-/// The created workspace's aspects plus the `extra` read-back, or only `extra` (its files)
-/// when no workspace was created.
+/// The created workspace's aspects plus the `extra` read-back, or only `extra` (its files, or
+/// that the target is gone — a clone's clean-up removes a destination it created) when no
+/// workspace was created.
 fn created(dir: &std::path::Path, target: &str) -> std::collections::BTreeMap<&'static str, String> {
     let target = dir.join(target);
+    if !target.exists() {
+        return std::collections::BTreeMap::from([("extra", "no target".to_owned())]);
+    }
     if !target.join(".jj").is_dir() {
         let files = crate::state::disk_files(&target);
         return std::collections::BTreeMap::from([("extra", format!("no workspace; files={files}"))]);

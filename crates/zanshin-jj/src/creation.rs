@@ -39,7 +39,7 @@ use crate::op_support::start_repo_transaction;
 use crate::remotes::ProgressCallback;
 use crate::repo::{creation_error, CreationOutcome};
 use crate::warning::{self, WarningKind, Warnings};
-use crate::{config, mutate, snapshot, Backend, ProgressFn, Repo, RepoError};
+use crate::{config, mutate, snapshot, Backend, MutateError, ProgressFn, Repo, RepoError};
 
 /// The object hash of a new Git repository — the CLI's `--object-hash`, whose default is the
 /// `git.object-hash` config (Story 9.20).
@@ -485,8 +485,8 @@ fn finish(cloned: &mut Cloned, mut tx: Transaction, description: &str, sink: &mu
     if !tx.repo().has_changes() {
         return Ok(());
     }
-    let immutable = crate::op_support::resolve_immutable(tx.base_repo().as_ref(), &cloned.env.immutable)
-        .map_err(|e| clone_failed(e.to_string()))?;
+    let immutable =
+        crate::op_support::resolve_immutable(tx.base_repo().as_ref(), &cloned.env.immutable).map_err(finish_error)?;
     pollster::block_on(
         tx.repo_mut()
             .rebase_descendants_with_options(&immutable, &RebaseOptions::default(), |_, _| {}),
@@ -503,6 +503,17 @@ fn finish(cloned: &mut Cloned, mut tx: Transaction, description: &str, sink: &mu
         .map_err(|e| clone_failed(e.to_string()))?;
     cloned.repo = finish.repo;
     Ok(())
+}
+
+/// A failure resolving the clone finish's immutable set: an unresolvable `immutable_heads()` is
+/// the CLI's config error (`rebase_mutable_descendants`, `cli_util.rs:2986-3002`, →
+/// `resolve_immutable_expression`, `cli_util.rs:1146-1167` @ v0.46.0), everything else fails the
+/// clone.
+fn finish_error(e: MutateError) -> RepoError {
+    match e {
+        MutateError::Config { reason } => RepoError::Config { reason },
+        other => clone_failed(other.to_string()),
+    }
 }
 
 /// The CLI's `configure_remote` (`clone.rs:343-366`): `add git remote <name>` finished, then the
@@ -659,8 +670,8 @@ fn check_out_working_branch(
 mod tests {
     use std::path::Path;
 
-    use super::{add_remote_error, clean_up, fetch_error};
-    use crate::RepoError;
+    use super::{add_remote_error, clean_up, fetch_error, finish_error};
+    use crate::{MutateError, RepoError};
 
     /// The CLI's `clean_up_dirs` (`clone.rs:262-284` @ v0.46.0): `.jj` and — colocated — `.git`
     /// removed (an absent one counts as removed), the destination removed iff the clone created
@@ -750,6 +761,22 @@ mod tests {
         assert!(matches!(
             fetch_error(GitFetchError::NoSuchRemote("origin".into()), Some(&guard)),
             RepoError::CloneFailed { .. }
+        ));
+    }
+
+    /// Story 9.57 closing run: an unresolvable `immutable_heads()` at a clone finish is the CLI's
+    /// config error (`cli_util.rs:2986-3002` → `:1146-1167` @ v0.46.0, propagated by
+    /// `clone.rs:262-284` after its clean-up); any other failure stays a clone failure with its
+    /// text.
+    #[test]
+    fn clone_finish_failures_map_onto_the_repo_error_taxonomy() {
+        assert!(matches!(
+            finish_error(MutateError::Config { reason: "alias".to_owned() }),
+            RepoError::Config { reason } if reason == "alias"
+        ));
+        assert!(matches!(
+            finish_error(MutateError::Backend("b".to_owned())),
+            RepoError::CloneFailed { reason, hints } if reason.contains('b') && hints.is_empty()
         ));
     }
 }
