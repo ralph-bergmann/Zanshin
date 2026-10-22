@@ -1840,6 +1840,14 @@ Spec: spec-9-58-init-left-behind-one-level-immutable-text.
 - **A failed NEW colocated `Repo::init` (no `.git` before the call) also leaves the `.git/` jj-lib's `init_colocated_git` created; `left_behind` lists only the destination and `.jj`, as Story 9.58 scopes it.** Low.
   - `crates/zanshin-jj/src/creation.rs` `init_steps` colocated arm: jj-lib 0.46.0 `GitBackend::init_colocated` creates `<root>/.git` (its `init_with_factories` cleanup removes only `.jj`); `workable_env` / `add_gitignore` / `Repo::open` can then fail (e.g. a bad `immutable_heads()` alias). With a created destination the `.git/` lies inside the listed directory; into an existing empty directory it is not named.
   - **Follow-up:** Ralph decides whether `left_behind` also lists a `.git/` the call created (then `Created` records it after `init_colocated_git` returns `Ok`), or the documented non-listing stays.
-- **An `immutable_heads()` alias that does not PARSE still refuses with jj-lib's bare parse error, while the CLI prefixes that case with "Invalid `revset-aliases.immutable_heads()`" too; Story 9.58 prefixed only the resolve failure.** Low.
+- ~~**An `immutable_heads()` alias that does not PARSE still refuses with jj-lib's bare parse error, while the CLI prefixes that case with "Invalid `revset-aliases.immutable_heads()`" too; Story 9.58 prefixed only the resolve failure.** Low.~~ — RESOLVED 2026-10-22 (spec-9-58-closing-immutable-heads-parse-prefix, commit 593f6c9): `immutable_heads_expression` returns `ConfigError::Load` with the CLI's prefix + jj-lib's parse error; the start-up environment and `git push`'s planner pass the reason through unchanged.
   - CLI v0.46.0 `cli/src/cli_util.rs:1115` (`load_immutable_heads_expression` → `config_error_with_message`); Zanshin `crates/zanshin-jj/src/revset.rs` `immutable_heads_expression` returns `RevsetError::ParseError` unprefixed, its callers map it with `cfg`. Pre-existing; found in this story's review.
-  - **Follow-up:** prefix the parse failure the same way in one place (`immutable_heads_expression`), adjusting the witnesses that assert its text.
+  - **Follow-up:** Done (spec-9-58-closing-immutable-heads-parse-prefix).
+
+## Surfaced in the closing run of Story 9.58 (bmad-build-auto, 2026-10-22)
+
+Spec: spec-9-58-closing-immutable-heads-parse-prefix.
+
+- **Every revset parse error Zanshin reports drops jj-lib's source chain (e.g. an `immutable_heads()` whose definition calls a broken user alias loses the "In alias …" cause), while the CLI prints that chain as "Caused by:".** Low.
+  - `crates/zanshin-jj/src/revset.rs:464` `parse_revset_in` maps with `e.to_string()`; jj-lib 0.46.0 `RevsetParseError` displays only `{pest_error}`, its `source` separate (`revset_parser.rs:155-161`). Pre-existing, shared by every revset parse in the crate; found in this run's review.
+  - **Follow-up:** render the parse error with its source chain (`flatten_chain`) in `parse_revset_in`, adjusting the witnesses that assert parse-error text.
