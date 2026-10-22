@@ -3437,7 +3437,7 @@ fetch-tags = \"none\"
     //
     // Unit rows only: every assertion here is about the FILE and the `config-id` indirection,
     // which plain temp dirs reproduce exactly. The rows that need a real conversion (which
-    // remote wins, what `trunk()` then evaluates to, the rollback) live in
+    // remote wins, what `trunk()` then evaluates to, a failed alias write) live in
     // `tests/it/convert.rs` and `tests/it/convert_alias_write_failure.rs`.
 
     /// What `ConfigFile::load_or_empty` puts at the top of a file it had to invent.

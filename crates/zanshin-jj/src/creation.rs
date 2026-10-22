@@ -153,6 +153,7 @@ pub(crate) fn init(options: &InitOptions) -> CreationOutcome {
         result,
         precondition,
         warnings: sink.take(),
+        left_behind: Vec::new(),
     }
 }
 
@@ -197,8 +198,8 @@ fn init_steps(
     let settings = config::user_settings_for_new_workspace(&root)?;
     if colocate && git_dir.exists() {
         // `GitInitMode::External(.git)`: the convert-colocated steps (`init.rs:249-282`), which
-        // report into the outcome — without the conversion's rollback (`init` never cleans up
-        // beyond jj-lib's own `.jj` removal).
+        // report into the outcome — and, like `jj git init`, clean up nothing beyond jj-lib's own
+        // `.jj` removal.
         // `symlink_metadata`, not `exists`: a dangling `.jj` symlink is taken too (jj-lib's
         // `create_dir` refuses it as `DestinationExists`).
         if root.join(".jj").symlink_metadata().is_ok() {
@@ -254,6 +255,7 @@ pub(crate) fn clone(options: &CloneOptions, progress: &ProgressFn, cancel: Optio
         result,
         precondition: None,
         warnings: sink.take(),
+        left_behind: Vec::new(),
     }
 }
 

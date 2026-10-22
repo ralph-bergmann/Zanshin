@@ -21,16 +21,31 @@ mod scenarios;
 mod state;
 
 /// One `#[test]` per scenario id, so they run in parallel and fail individually. The same id
-/// list also yields `SCENARIO_IDS`, so a table entry without a test cannot slip through.
+/// lists also yield `SCENARIO_IDS`, so a table entry without a test cannot slip through.
+///
+/// The ids after `own_process:` change the process environment (a creation scenario's user
+/// config, Story 9.57), so each runs as the only test of a child process of this binary
+/// (`test_helpers::reran_in_own_process` — `own_process!` takes a literal, not `stringify!`).
 macro_rules! parity {
-    ($($id:ident),* $(,)?) => {
-        const SCENARIO_IDS: &[&str] = &[$(stringify!($id)),*];
+    ($($id:ident),* $(,)?; own_process: $($own:ident),* $(,)?) => {
+        const SCENARIO_IDS: &[&str] = &[$(stringify!($id),)* $(stringify!($own)),*];
         $(
             #[test]
             fn $id() {
                 test_helpers::pin_test_env();
                 let found = harness::run(stringify!($id));
                 ledger::assert_matches_ledger(stringify!($id), &found);
+            }
+        )*
+        $(
+            #[test]
+            fn $own() {
+                if test_helpers::reran_in_own_process(module_path!(), stringify!($own)) {
+                    return;
+                }
+                test_helpers::pin_test_env();
+                let found = harness::run(stringify!($own));
+                ledger::assert_matches_ledger(stringify!($own), &found);
             }
         )*
     };
@@ -224,6 +239,14 @@ parity!(
     fetch_tracked,
     fetch_git_fetch_config,
     fetch_remote_fetch_bookmarks,
+    convert_colocated_default,
+    convert_import_default,
+    convert_import_invalid_source;
+    own_process:
+    convert_import_unresolvable_immutable,
+    convert_colocated_unresolvable_immutable,
+    convert_import_refs_step_config_fault,
+    convert_colocated_refs_step_config_fault,
 );
 
 /// Every scenario id the table and the creation list define.
@@ -238,7 +261,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 187);
+    assert_eq!(SCENARIO_IDS.len(), 194);
 }
 
 #[test]

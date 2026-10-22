@@ -740,29 +740,33 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
         .status()
         .expect("git init spawns");
     assert!(status.success());
-    let err = convert_colocated(git_repo.path())
-        .result
-        .expect_err("a wrong-typed git key must refuse");
+    let outcome = convert_colocated(git_repo.path());
+    let err = outcome.result.expect_err("a wrong-typed git key must refuse");
     assert!(
         matches!(&err, RepoError::Config { reason } if reason.contains("abandon-unreachable-commits")),
         "unexpected error: {err:?}"
     );
+    // Story 9.57: the git backend's own read fails inside `init_external_git`, whose jj-lib
+    // cleanup removes the `.jj` it started — nothing is left, and nothing is reported.
     assert!(
         !git_repo.path().join(".jj").exists(),
-        "the failed conversion rolled back"
+        "jj-lib removed the .jj it started"
     );
+    assert!(outcome.left_behind.is_empty(), "{:?}", outcome.left_behind);
     let import_dest = tmp.join("import-dest");
-    let err = convert_import(git_repo.path(), &import_dest)
+    let outcome = convert_import(git_repo.path(), &import_dest);
+    let err = outcome
         .result
         .expect_err("a wrong-typed git key must refuse the import");
     assert!(
         matches!(&err, RepoError::Config { reason } if reason.contains("abandon-unreachable-commits")),
         "unexpected error: {err:?}"
     );
-    assert!(
-        !import_dest.exists(),
-        "the destination created for the import is rolled back"
-    );
+    // Story 9.57: the destination the call created stays, as the CLI's `create_or_reuse_dir`
+    // leaves it; jj-lib removed its own `.jj`.
+    assert!(import_dest.is_dir(), "the created destination stays, as in the CLI");
+    assert!(!import_dest.join(".jj").exists(), "jj-lib removed the .jj it started");
+    assert_eq!(outcome.left_behind, std::slice::from_ref(&import_dest));
 
     set_jj_config(user_file);
     let mut created = Repo::init(&zanshin_jj::InitOptions {

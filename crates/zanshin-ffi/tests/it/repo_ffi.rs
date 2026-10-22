@@ -744,6 +744,8 @@ fn convert_empty_dir_returns_not_a_git_repo_error() {
 
     assert!(!env.ok());
     assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_NOT_A_GIT_REPO));
+    // Story 9.57: a refusal that wrote nothing leaves nothing behind — no field on the wire.
+    assert!(env.error().expect("error").left_behind().is_none());
 }
 
 /// Create a git repo with a single commit so `convert_colocated` accepts it.
@@ -862,7 +864,9 @@ fn convert_with_a_big_new_file_reports_the_snapshot_and_the_refusal() {
 }
 
 /// A conversion whose own snapshot fails (a new file it cannot open, mode `0o000`): the ERROR
-/// envelope carries the refs step's warning and the partial snapshot report on the wire.
+/// envelope carries the refs step's warning and the partial snapshot report on the wire — and,
+/// since Story 9.57, the `.jj/` the failure left as `jj git init` leaves it, named in
+/// `FfiError.left_behind`.
 #[test]
 fn convert_whose_snapshot_fails_reports_on_the_error_envelope() {
     use std::os::unix::fs::PermissionsExt as _;
@@ -895,6 +899,15 @@ fn convert_whose_snapshot_fails_reports_on_the_error_envelope() {
         precondition.git_head_imported(),
         "the head import ran before the snapshot failed"
     );
+    let jj_dir = tmp.path().canonicalize().expect("canonical root").join(".jj");
+    let left: Vec<&str> = env
+        .error()
+        .and_then(|e| e.left_behind())
+        .expect("left_behind on the error")
+        .iter()
+        .collect();
+    assert_eq!(left, [jj_dir.to_str().expect("UTF-8 path")]);
+    assert!(jj_dir.is_dir(), "nothing is deleted");
 }
 
 /// `zanshin_repo_init` over a `RepoInitRequest` (Story 9.20): `backend` 0 = native, 1 = git — a git

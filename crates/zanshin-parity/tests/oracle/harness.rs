@@ -80,9 +80,10 @@ fn run_scenario(scenario: &Scenario) -> Vec<Divergence> {
     compare(&aspects_a, &aspects_b)
 }
 
-/// A creation (`jj git init` / `jj git clone`, Story 9.20) through Zanshin in one temp dir
-/// against the CLI in another, both prepared alike. A side whose call created no workspace
-/// contributes only its outcome and its files — there is no repo to capture.
+/// A creation (`jj git init` / `jj git clone`, Story 9.20; the conversions, Story 9.57) through
+/// Zanshin in one temp dir against the CLI in another, both prepared alike — under the
+/// scenario's user config when it has one. A side whose call created no workspace contributes
+/// only its outcome and its files — there is no repo to capture.
 fn run_creation(scenario: &CreationScenario) -> Vec<Divergence> {
     let (dir_a, dir_b) = (empty_dir(), empty_dir());
     // WHY canonical: macOS's temp dir is a symlink (`/var` → `/private/var`); both sides must
@@ -93,8 +94,16 @@ fn run_creation(scenario: &CreationScenario) -> Vec<Divergence> {
     );
     prepare(&dir_a.0, scenario.prep);
     prepare(&dir_b.0, scenario.prep);
+    let config_dir = empty_dir();
+    if let Some(text) = scenario.user_config {
+        set_user_config(&config_dir.path().join("user.toml"), text);
+    }
     let zanshin = init_outcome(&(scenario.zanshin)(&dir_a.0));
     let cli = cli_outcome(&jj(&dir_b.0, scenario.cli));
+    if scenario.user_config.is_some() {
+        // The read-back runs under the pinned empty config, as every other scenario's.
+        set_jj_config(std::ffi::OsStr::new(""));
+    }
     let mut aspects_a = created(&dir_a.0, scenario.target);
     let mut aspects_b = created(&dir_b.0, scenario.target);
     aspects_a.extend(outcome_aspects(&zanshin));
@@ -113,6 +122,27 @@ fn created(dir: &std::path::Path, target: &str) -> std::collections::BTreeMap<&'
     let mut aspects = capture(&target, None).aspects;
     aspects.insert("extra", creation_read_back(dir, &target));
     aspects
+}
+
+/// Writes `text` to `path` and points `JJ_CONFIG` at it, for both sides (the driver passes the
+/// process's `JJ_CONFIG` through).
+///
+/// # Panics
+/// Panics outside a process of its own (`main.rs`'s `own_process` list): changing the
+/// environment of the shared process would race every other scenario.
+fn set_user_config(path: &std::path::Path, text: &str) {
+    assert!(
+        std::env::var_os(test_helpers::OWN_PROCESS_VAR).is_some(),
+        "a scenario with a user config runs in a process of its own"
+    );
+    std::fs::write(path, text).expect("write the user config");
+    set_jj_config(path.as_os_str());
+}
+
+fn set_jj_config(value: &std::ffi::OsStr) {
+    // SAFETY: only in a process of its own (`set_user_config` asserts it), which runs this one
+    // scenario on one thread at a time — nothing else reads the environment concurrently.
+    unsafe { std::env::set_var("JJ_CONFIG", value) };
 }
 
 fn empty_dir() -> tempfile::TempDir {

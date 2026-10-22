@@ -157,7 +157,11 @@ void main() {
       ]);
       expect(e.precondition, isNotNull, reason: 'the partial snapshot report rides the error envelope');
       expect(e.precondition!.gitHeadImported, isTrue, reason: 'the head import ran before the snapshot failed');
-      expect(Directory('$root/.jj').existsSync(), isFalse, reason: 'the failed conversion rolled back');
+      // Story 9.57: nothing is rolled back — the disk is as `jj git init` leaves it — and the
+      // exception names the `.jj/` the failure left, at the canonical root.
+      expect(Directory('$root/.jj').existsSync(), isTrue, reason: 'the failed conversion leaves its .jj/');
+      expect(e.leftBehind, ['$root/.jj']);
+      expect(() => e.leftBehind.add('x'), throwsUnsupportedError, reason: 'decoded lists are unmodifiable');
     });
 
     test('an_error_without_a_report_carries_none', () async {
@@ -168,6 +172,7 @@ void main() {
       expect(e.precondition, isNull);
       expect(e.warnings, isEmpty);
       expect(e.hints, isEmpty, reason: 'a hint-less error carries no hints (Story 9.56)');
+      expect(e.leftBehind, isEmpty, reason: 'only a failed conversion leaves something behind (Story 9.57)');
     });
 
     // Story 9.56: the CLI's hint lines ride the error envelope's `FfiError.hints` through the

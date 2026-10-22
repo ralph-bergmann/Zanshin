@@ -172,7 +172,9 @@ Uint8List zanshinRepoDetect(String path) {
 ///
 /// Returns the raw FlatBuffers `Envelope<RepoHandle>` bytes.
 ///
-/// Errors: `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`.
+/// Errors: `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`. A
+/// failure is not rolled back (the disk is as `jj git init` leaves it); the
+/// error's `FfiError.left_behind` names the `.jj/` it left (Story 9.57).
 Uint8List zanshinRepoConvert(String path) {
   final ffi.Pointer<Utf8> p = path.toNativeUtf8();
   try {

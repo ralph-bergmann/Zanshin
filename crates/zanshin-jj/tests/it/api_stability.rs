@@ -1672,6 +1672,8 @@ fn story_9_33_creation_outcome_resolves() {
             kind: zanshin_jj::WarningKind::CloneCleanupFailed,
             message: String::new(),
         }],
+        // Story 9.57: what a failed conversion created and left on disk.
+        left_behind: vec![std::path::PathBuf::new()],
     };
     assert!(outcome.result.is_err());
 }

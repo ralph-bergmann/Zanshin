@@ -23,7 +23,7 @@
 
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use tempfile::TempDir;
@@ -66,6 +66,19 @@ fn git_with_commit(dir: &Path) {
 
 fn file_url(dir: &Path) -> String {
     format!("file://{}", dir.display())
+}
+
+/// Story 9.57: a failed colocated conversion leaves its `.jj/` as the CLI leaves it (`do_init`
+/// propagates every error with `?`), `.git/` untouched, and reports the canonical `.jj/` as left
+/// behind.
+fn assert_left_jj(left_behind: &[PathBuf], root: &Path) {
+    assert!(
+        root.join(".jj").is_dir(),
+        "the failed conversion leaves its .jj/, as the CLI"
+    );
+    assert!(root.join(".git").is_dir(), ".git/ is never touched");
+    let root = root.canonicalize().unwrap();
+    assert_eq!(left_behind, [root.join(".jj")]);
 }
 
 /// The outcome's warnings as `(kind, message)` pairs, in order.
@@ -131,6 +144,8 @@ fn creation_paths_report_what_the_cli_prints() {
     a_refs_step_failure_reports_no_snapshot(tmp.path());
     a_wrong_typed_snapshot_knob_fails_inside_the_conversion_snapshot(tmp.path());
     a_bad_immutable_heads_alias_fails_before_the_conversion_snapshot(tmp.path());
+    an_unresolvable_immutable_heads_alias_refuses_the_import_at_its_head_finish(tmp.path());
+    an_unresolvable_immutable_heads_alias_does_not_refuse_a_colocated_conversion(tmp.path());
     a_wrong_typed_snapshot_knob_fails_inside_the_import_snapshot(tmp.path());
     a_late_failure_keeps_the_report(tmp.path(), &xdg);
     a_clone_failing_after_the_fetch_keeps_the_workspace(tmp.path(), &xdg);
@@ -498,8 +513,9 @@ fn a_jjconflict_entry_is_reported_by_the_colocated_conversion() {
 
 /// A conversion whose own snapshot fails — a new file it cannot open (mode `0o000`): the error
 /// keeps the refs step's warning and the PARTIAL snapshot report (the head import ran before the
-/// snapshot failed, and the snapshot's refs import never ran), although the rollback removed
-/// `.jj/`.
+/// snapshot failed, and the snapshot's refs import never ran), and — as the CLI's `do_init`, which
+/// propagates the snapshot error with `?` (`git/init.rs` @ v0.46.0) — the `.jj/` stays and is
+/// reported as left behind (Story 9.57).
 fn a_snapshot_failure_keeps_a_partial_report() {
     use std::os::unix::fs::PermissionsExt as _;
 
@@ -517,7 +533,7 @@ fn a_snapshot_failure_keeps_a_partial_report() {
         "{:?}",
         outcome.result
     );
-    assert!(!dir.path().join(".jj").exists(), "the failed conversion is rolled back");
+    assert_left_jj(&outcome.left_behind, dir.path());
     assert_eq!(warnings(&outcome), [(WarningKind::GitImportFailed, STOLEN)]);
     let precondition = outcome.precondition.expect("the snapshot started");
     assert!(
@@ -529,7 +545,7 @@ fn a_snapshot_failure_keeps_a_partial_report() {
 
 /// A conversion whose `import git refs` step cannot read its import options (the CLI's
 /// `load_git_import_options` in `init_git_refs`, `git/init.rs:300`) fails BEFORE the snapshot
-/// starts: no snapshot report, nothing warned, `.jj/` rolled back.
+/// starts: no snapshot report, nothing warned, `.jj/` left as the CLI leaves it (Story 9.57).
 fn a_refs_step_failure_reports_no_snapshot(tmp: &Path) {
     let user = tmp.join("bad-auto-track.toml");
     fs::write(&user, "[remotes.origin]\nauto-track-bookmarks = \"glob:(\"\n").unwrap();
@@ -551,13 +567,13 @@ fn a_refs_step_failure_reports_no_snapshot(tmp: &Path) {
     );
     assert!(outcome.precondition.is_none(), "the snapshot never started");
     assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
-    assert!(!dir.path().join(".jj").exists(), "the failed conversion is rolled back");
+    assert_left_jj(&outcome.left_behind, dir.path());
 }
 
 /// Story 9.34: the conversion reads its snapshot knobs where the CLI does — inside
 /// `maybe_snapshot`'s snapshot step (`cli_util.rs:2065-2070`), after the colocated
 /// `import git head` — so a wrong-typed `snapshot.max-new-file-size` fails with the PARTIAL
-/// snapshot report naming that operation, and the rollback removes `.jj/`.
+/// snapshot report naming that operation, and `.jj/` stays as the CLI leaves it (Story 9.57).
 fn a_wrong_typed_snapshot_knob_fails_inside_the_conversion_snapshot(tmp: &Path) {
     let user = tmp.join("bad-size.toml");
     fs::write(&user, "snapshot.max-new-file-size = true\n").unwrap();
@@ -579,12 +595,12 @@ fn a_wrong_typed_snapshot_knob_fails_inside_the_conversion_snapshot(tmp: &Path) 
     assert!(precondition.was_snapshot_taken, "the head import moved the head");
     assert!(precondition.git_refs.is_none(), "the snapshot's refs import never ran");
     assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
-    assert!(!dir.path().join(".jj").exists(), "the failed conversion is rolled back");
+    assert_left_jj(&outcome.left_behind, dir.path());
 }
 
 /// Story 9.34: the conversion's start-up environment stays at the CLI's `for_workable_repo`
 /// point (`git/init.rs:252`), BEFORE `maybe_snapshot`: a bad `immutable_heads()` alias fails with
-/// no snapshot report, and `.jj/` is rolled back.
+/// no snapshot report, and `.jj/` stays as the CLI leaves it (Story 9.57).
 fn a_bad_immutable_heads_alias_fails_before_the_conversion_snapshot(tmp: &Path) {
     let user = tmp.join("bad-immutable.toml");
     fs::write(&user, "[revset-aliases]\n'immutable_heads()' = 'bogus_function()'\n").unwrap();
@@ -602,12 +618,74 @@ fn a_bad_immutable_heads_alias_fails_before_the_conversion_snapshot(tmp: &Path) 
     };
     assert!(reason.contains("bogus_function"), "{reason}");
     assert!(outcome.precondition.is_none(), "the snapshot never started");
-    assert!(!dir.path().join(".jj").exists(), "the failed conversion is rolled back");
+    assert_left_jj(&outcome.left_behind, dir.path());
+}
+
+/// Story 9.57: an `immutable_heads()` alias that PARSES but does not resolve passes the start-up
+/// environment and the snapshot; the non-colocated `import git head` finish then resolves the
+/// immutable set, as the CLI's `tx.finish` does (`cli_util.rs:2849-2866`, `:2986-3002` @ v0.46.0),
+/// and refuses with the CLI's config error — after `.jj/` exists, with the ops `add workspace` and
+/// `import git refs` written, the destination and its `.jj/` left behind.
+fn an_unresolvable_immutable_heads_alias_refuses_the_import_at_its_head_finish(tmp: &Path) {
+    let user = tmp.join("unresolvable-immutable-import.toml");
+    fs::write(
+        &user,
+        "[revset-aliases]\n'immutable_heads()' = 'nonexistent_symbol_xyz'\n",
+    )
+    .unwrap();
+    set_env("JJ_CONFIG", Some(user.to_str().unwrap()));
+    let src = TempDir::new().unwrap();
+    git_with_commit(src.path());
+    let parent = TempDir::new().unwrap();
+    let dst = parent.path().join("dst");
+    let outcome = convert_import(src.path(), &dst);
+    set_env("JJ_CONFIG", Some(""));
+
+    let Err(RepoError::Config { reason }) = &outcome.result else {
+        panic!(
+            "an unresolvable immutable_heads() refuses the head finish: {:?}",
+            outcome.result
+        );
+    };
+    assert!(reason.contains("nonexistent_symbol_xyz"), "{reason}");
+    assert!(
+        dst.join(".jj").is_dir(),
+        "the refusal comes after .jj/ exists, as in the CLI"
+    );
+    assert_eq!(outcome.left_behind, [dst.clone(), dst.join(".jj")]);
+    let mut repo = Repo::open(&dst).expect("the left-behind workspace opens");
+    let ops: Vec<String> = repo
+        .op_log(None)
+        .unwrap()
+        .into_iter()
+        .map(|op| op.description)
+        .collect();
+    assert_eq!(ops[..2], ["import git refs", "add workspace 'default'"], "{ops:?}");
+}
+
+/// Story 9.57: the colocated conversion runs no `tx.finish` (its head import is the snapshot's
+/// own commit), so the same unresolvable alias does not refuse it — as `jj git init --colocate`.
+fn an_unresolvable_immutable_heads_alias_does_not_refuse_a_colocated_conversion(tmp: &Path) {
+    let user = tmp.join("unresolvable-immutable-colocated.toml");
+    fs::write(
+        &user,
+        "[revset-aliases]\n'immutable_heads()' = 'nonexistent_symbol_xyz'\n",
+    )
+    .unwrap();
+    set_env("JJ_CONFIG", Some(user.to_str().unwrap()));
+    let dir = TempDir::new().unwrap();
+    git_with_commit(dir.path());
+    let outcome = convert_colocated(dir.path());
+    set_env("JJ_CONFIG", Some(""));
+
+    assert!(outcome.result.is_ok(), "{:?}", outcome.result);
+    assert!(outcome.left_behind.is_empty(), "{:?}", outcome.left_behind);
 }
 
 /// Story 9.34, the non-colocated arm: `convert_import`'s snapshot (no Git head import there)
 /// reads its knobs inside the snapshot step too, so a wrong-typed `snapshot.max-new-file-size`
-/// fails with a PARTIAL report that records no operation, and the rollback removes `.jj/`.
+/// fails with a PARTIAL report that records no operation, and the created destination and its
+/// `.jj/` stay as the CLI leaves them (Story 9.57).
 fn a_wrong_typed_snapshot_knob_fails_inside_the_import_snapshot(tmp: &Path) {
     let user = tmp.join("bad-size-import.toml");
     fs::write(&user, "snapshot.max-new-file-size = true\n").unwrap();
@@ -632,12 +710,16 @@ fn a_wrong_typed_snapshot_knob_fails_inside_the_import_snapshot(tmp: &Path) {
         !precondition.was_snapshot_taken,
         "nothing was written before the failure"
     );
-    assert!(!dst.join(".jj").exists(), "the failed conversion is rolled back");
+    assert!(
+        dst.join(".jj").is_dir(),
+        "the failed conversion leaves its .jj/, as the CLI"
+    );
+    assert_eq!(outcome.left_behind, [dst.clone(), dst.join(".jj")]);
 }
 
 /// A conversion that fails AFTER its snapshot (the `trunk()` alias cannot be written, as in
 /// `tests/it/convert_alias_write_failure.rs`) still reports the snapshot and every warning so far,
-/// although the rollback has removed `.jj/`.
+/// and the `.jj/` they describe stays, as the CLI leaves it (Story 9.57).
 fn a_late_failure_keeps_the_report(tmp: &Path, xdg: &Path) {
     let src = TempDir::new().unwrap();
     git_with_commit(src.path());
@@ -662,7 +744,7 @@ fn a_late_failure_keeps_the_report(tmp: &Path, xdg: &Path) {
         "{:?}",
         outcome.result
     );
-    assert!(!work.join(".jj").exists(), "the failed conversion is rolled back");
+    assert_left_jj(&outcome.left_behind, &work);
     assert_eq!(
         warnings(&outcome),
         [

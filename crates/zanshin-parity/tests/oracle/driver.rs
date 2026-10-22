@@ -32,18 +32,23 @@ impl CliRun {
 /// - the test binary's `XDG_CONFIG_HOME`, so the CLI's secure per-repo config lands in the
 ///   test's temp dir, never in `~/.config/jj`. WHY `pin_test_env()` here too: a test that
 ///   forgets to call it must not fall back to the developer's real config (it is idempotent);
+/// - the test binary's `JJ_CONFIG` in place of the pinned `""` — identical in the shared
+///   process, and the user config a creation scenario runs under in a process of its own
+///   (Story 9.57), the same file `zanshin-jj` then reads in-process;
 /// - `LLVM_PROFILE_FILE=/dev/null`: under `cargo llvm-cov` this binary is instrumented too, and
 ///   every one of the oracle's hundreds of `jj` exits would otherwise merge a profile into
 ///   `target/`. Its coverage is not measured anyway (`crates/zanshin-parity/` is excluded).
 pub fn command(cwd: &Path, args: &[&str]) -> Command {
     test_helpers::pin_test_env();
     let xdg = std::env::var_os("XDG_CONFIG_HOME").expect("pin_test_env() sets XDG_CONFIG_HOME");
+    let user_config = std::env::var_os("JJ_CONFIG").expect("pin_test_env() sets JJ_CONFIG");
     let mut command = Command::new(env!("CARGO_BIN_EXE_jj"));
     command
         .args(args)
         .current_dir(cwd)
         .stdin(Stdio::null())
         .envs(test_helpers::TEST_ENV)
+        .env("JJ_CONFIG", user_config)
         .env("XDG_CONFIG_HOME", xdg)
         .env("LLVM_PROFILE_FILE", "/dev/null");
     command

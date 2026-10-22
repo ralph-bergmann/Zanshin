@@ -176,9 +176,10 @@ Precondition? decodeEnvelopePreconditionInternal(Uint8List bytes) =>
 /// stands for — the ONE place an exception is built from an `FfiError`, which
 /// every decoder's `!env.ok` branch throws (Story 9.35).
 ///
-/// The code, context and hints come from the envelope's `error` (`ffi.unknown`,
-/// `null` and `[]` when it is absent; absent `hints` read as `[]`, Story 9.56);
-/// the report — the PARTIAL pre-verb snapshot report and the warnings — rides
+/// The code, context, hints and left-behind paths come from the envelope's
+/// `error` (`ffi.unknown`, `null`, `[]` and `[]` when it is absent; absent
+/// `hints` read as `[]`, Story 9.56, and so does an absent `left_behind`, Story
+/// 9.57); the report — the PARTIAL pre-verb snapshot report and the warnings — rides
 /// along exactly as on an ok envelope, `null` / empty when the envelope has
 /// none.
 ZanshinFfiException decodeEnvelopeErrorInternal(fbs.Envelope env) {
@@ -189,6 +190,7 @@ ZanshinFfiException decodeEnvelopeErrorInternal(fbs.Envelope env) {
     precondition: decodePreconditionInternal(env.precondition),
     warnings: decodeEnvelopeWarningsInternal(env),
     hints: decodeErrorHintsInternal(e),
+    leftBehind: _decodeStrings(e?.leftBehind),
   );
 }
 
@@ -196,12 +198,16 @@ ZanshinFfiException decodeEnvelopeErrorInternal(fbs.Envelope env) {
 /// absent) reads as `[]`; the list is unmodifiable and keeps the wire order
 /// (the CLI's order). Shared with the drop-action refusals, whose `refusal` is
 /// the same table.
-List<String> decodeErrorHintsInternal(fbs.FfiError? error) {
-  final List<String>? hints = error?.hints;
-  if (hints == null || hints.isEmpty) {
+List<String> decodeErrorHintsInternal(fbs.FfiError? error) => _decodeStrings(error?.hints);
+
+/// Decode an `FfiError` `[string]` field — `hints` (Story 9.56) or
+/// `left_behind` (Story 9.57): absent reads as `[]`; the list is unmodifiable
+/// and keeps the wire order.
+List<String> _decodeStrings(List<String>? strings) {
+  if (strings == null || strings.isEmpty) {
     return const [];
   }
-  return List.unmodifiable(hints);
+  return List.unmodifiable(strings);
 }
 
 /// Decode a `zanshin_snapshot` `Envelope` buffer into its [Precondition].

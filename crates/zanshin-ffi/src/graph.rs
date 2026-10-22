@@ -828,6 +828,7 @@ mod tests {
                 kind: WarningKind::ShortPrefixesFailed,
                 message: "index".to_owned(),
             }],
+            left_behind: Vec::new(),
         };
         let buf = envelope(&topology(), false, &report);
         let (env, _) = verified(&buf);

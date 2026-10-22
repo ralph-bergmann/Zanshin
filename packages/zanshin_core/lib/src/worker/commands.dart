@@ -377,6 +377,8 @@ final class DetectRepoCommand extends WorkerCommand {
 ///
 /// Handle-free: the worker calls `zanshinRepoConvert` and, on success, stores
 /// the returned handle in its Model-A table and replies with a `HandleResult`.
+/// A failed conversion is not rolled back; its error names what it left
+/// (Story 9.57).
 final class ConvertRepoCommand extends WorkerCommand {
   const ConvertRepoCommand({required super.commandId, required this.path});
 

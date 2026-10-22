@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! The one convert row that needs a BROKEN `$XDG_CONFIG_HOME`: a `trunk()` alias the
-//! repo-level config file cannot be created for must fail the conversion and roll it back.
+//! repo-level config file cannot be created for must fail the conversion and leave it as the CLI
+//! leaves it (Story 9.57).
 //!
 //! # WHY its own process
 //!
@@ -28,15 +29,16 @@ fn git(args: &[&str], dir: &Path) {
     assert!(status.success(), "git {args:?} failed in {}", dir.display());
 }
 
-/// A conversion whose alias step cannot create `<config_dir>/jj/repos/` fails, and the
-/// failure rolls back exactly what 2.12 promises: `.jj/` is gone, `.git/` is untouched.
+/// A conversion whose alias step cannot create `<config_dir>/jj/repos/` fails, and — as the
+/// CLI's `do_init`, which propagates the error with `?` and cleans up nothing
+/// (`cli/src/commands/git/init.rs` @ v0.46.0) — the `.jj/` written up to the failure stays,
+/// `.git/` is untouched, and `left_behind` names the `.jj/`.
 ///
-/// The alias step is the LAST thing both verbs do, so this is also the only row that
-/// exercises rollback after a fully successful jj-side conversion — every other failure
-/// fixture in `tests/it/convert.rs` fails inside `init_external_git`, which self-cleans.
+/// The alias step comes after a fully successful jj-side conversion — every failure fixture in
+/// `tests/it/convert.rs` that fails inside `init_external_git` self-cleans.
 #[test]
-fn an_uncreatable_repo_config_fails_the_conversion_and_rolls_it_back() {
-    test_helpers::own_process!("an_uncreatable_repo_config_fails_the_conversion_and_rolls_it_back");
+fn an_uncreatable_repo_config_fails_the_conversion_and_leaves_its_jj() {
+    test_helpers::own_process!("an_uncreatable_repo_config_fails_the_conversion_and_leaves_its_jj");
     let xdg = TempDir::new().expect("xdg tempdir");
     // `<xdg>/jj` as a regular FILE: `SecureConfig::load_config` then cannot create
     // `<xdg>/jj/repos/<config-id>/`, which is the only failure the alias step can raise
@@ -70,14 +72,17 @@ fn an_uncreatable_repo_config_fails_the_conversion_and_rolls_it_back() {
         parent.path(),
     );
 
-    let result = convert_colocated(&work).result;
+    let outcome = convert_colocated(&work);
     assert!(
-        matches!(result, Err(RepoError::ConvertFailed { .. })),
-        "an uncreatable repo config must fail the conversion, got: {result:?}"
+        matches!(outcome.result, Err(RepoError::ConvertFailed { .. })),
+        "an uncreatable repo config must fail the conversion, got: {:?}",
+        outcome.result
     );
     assert!(
-        !work.join(".jj").exists(),
-        "the failed conversion must roll back — no partial .jj/ may remain"
+        work.join(".jj").is_dir(),
+        "the failed conversion leaves its .jj/, as the CLI"
     );
-    assert!(work.join(".git").is_dir(), ".git/ must never be touched by a rollback");
+    assert!(work.join(".git").is_dir(), ".git/ is never touched");
+    let root = work.canonicalize().expect("canonical root");
+    assert_eq!(outcome.left_behind, [root.join(".jj")]);
 }

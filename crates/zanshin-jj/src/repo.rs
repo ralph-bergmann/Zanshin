@@ -86,7 +86,8 @@ pub enum RepoError {
         /// The path that is neither a Git repo nor exists.
         path: PathBuf,
     },
-    /// Colocated conversion failed; the partially-created `.jj/` has been rolled back.
+    /// A conversion failed; what it wrote up to the failure stays on disk, as the CLI leaves it,
+    /// and [`CreationOutcome::left_behind`] names what it created.
     #[error("convert failed: {reason}")]
     ConvertFailed {
         /// Human-readable failure reason from jj-lib or `detect_repo`.
@@ -146,11 +147,21 @@ pub struct CreationOutcome {
     pub result: Result<Repo, RepoError>,
     /// The conversion's implicit snapshot report (`do_init`'s `maybe_snapshot`): `Some` iff that
     /// snapshot started — only the two conversions run it — and PARTIAL when a step of it failed.
-    /// On a conversion that failed before its re-open it describes state the rollback has since
-    /// removed; a failed re-open leaves `.jj/` in place.
+    /// The state it describes stays on disk: no creation path rolls a conversion back.
     pub precondition: Option<crate::Precondition>,
     /// The call's warnings in the CLI's print order, including those recorded before a failure.
     pub warnings: Vec<crate::Warning>,
+    /// What a FAILED conversion ([`crate::convert_colocated`], [`crate::convert_import`]) created
+    /// and left on disk, outermost first (Story 9.57): the topmost directory an import created on
+    /// the way to its destination, then the workspace's `.jj/` (only when the call created it) —
+    /// each only when it still exists after the failure. A later entry may lie inside an earlier
+    /// one (an import lists the created destination and its `.jj/`). An import's paths are
+    /// spelled as the caller passed `workspace_path`; a colocated conversion's are canonical.
+    /// Nothing is deleted; the UI may offer the decision. A failure after the `trunk()` alias
+    /// step also leaves the secure-config directory `<config_dir>/jj/repos/<config-id>/`, as the
+    /// CLI does — it is not listed here. Empty on success, on every refusal that wrote nothing,
+    /// and for every other creation path.
+    pub left_behind: Vec<PathBuf>,
 }
 
 /// Selects the jj backend for a new workspace.
@@ -2784,6 +2795,7 @@ impl Repo {
             result,
             precondition: None,
             warnings,
+            left_behind: Vec::new(),
         }
     }
 
@@ -2832,8 +2844,8 @@ impl Repo {
     ///    hash is `object_hash`, else `git.object-hash`;
     /// 4. over an existing `.git/`: colocated, the External flow — the steps
     ///    [`crate::convert_colocated`] runs (`import git refs`, the snapshot, `.jj/.gitignore`, the
-    ///    `trunk()` alias; their report in [`CreationOutcome::precondition`] and the warnings) but
-    ///    WITHOUT its rollback; not colocated, the CLI's refusal; otherwise a colocated workspace
+    ///    `trunk()` alias; their report in [`CreationOutcome::precondition`] and the warnings);
+    ///    not colocated, the CLI's refusal; otherwise a colocated workspace
     ///    (its start-up environment built, `.jj/.gitignore` = `/*`) or an internal one. No
     ///    operation beyond jj-lib's `add workspace` is written outside the External flow.
     ///

@@ -141,6 +141,8 @@ typedef struct {
 
 #define FfiError_VT_HINTS 8
 
+#define FfiError_VT_LEFT_BEHIND 10
+
 #define ChangeIdList_VT_KIND 4
 
 #define ChangeIdList_VT_CHANGE_IDS 6
@@ -2436,7 +2438,7 @@ ZanshinBuf *zanshin_repo_open(const char *path);
  * (`Native` — Zanshin-only, the path must exist and no Git flag applies — or `Git`), `colocate` /
  * `no_colocate` (the CLI's two flags; neither = `git.colocate`), `object_hash` (`Unspecified` =
  * `git.object-hash`). Over an existing `.git/` a colocated init runs the CLI's External flow (the
- * steps `zanshin_repo_convert` runs, without its rollback); `--no-colocate` there is refused.
+ * steps `zanshin_repo_convert` runs; neither rolls back); `--no-colocate` there is refused.
  *
  * Returns a `RepoHandle` envelope on success.
  *
@@ -2615,19 +2617,27 @@ ZanshinBuf *zanshin_repo_detect(const char *path);
  * just imported and, when the snapshot recorded changes, resets the Git index to `@`'s
  * parent (HEAD itself stays where it was), so no user-visible ref and no HEAD is moved.
  *
- * If the operation fails, `.jj/` is rolled back, leaving the Git repo intact
- * (no-data-loss invariant) — the rollback never deletes or rewrites `.git/`. A failure
- * after the alias step can leave the created secure-config directory behind.
+ * The conversion never touches the working copy or `.git/` beyond those steps. If it fails,
+ * the disk is as `jj git init` leaves it (Story 9.57): nothing is deleted beyond jj-lib's own
+ * `.jj` removal when the workspace creation itself fails, and the error envelope's
+ * `FfiError.left_behind` names the canonical `<root>/.jj` when the call created it and it still
+ * exists (a failed re-open included), so the UI can offer to delete it. Every other error writes
+ * no `left_behind`. A failure after the `trunk()` alias step also leaves the secure-config
+ * directory `<config_dir>/jj/repos/<config-id>/` it created, as the CLI does; it is not listed
+ * in `left_behind`.
  *
  * # Errors
  * - `jj.already_jj_repo` — the path already has a `.jj/` directory.
  * - `jj.not_a_git_repo` — the path has no `.git/` or does not exist.
  * - `jj.convert_failed` — a jj-lib, config-write or `detect_repo` I/O error during
- *   conversion; detail in `context`.
+ *   conversion; detail in `context`, what it wrote in `FfiError.left_behind`.
  * - `jj.config_error` — the jj config stack the workspace is created with cannot be read
  *   (the user-level stack first, as the CLI's start-up, then the stack resolved for the new
- *   workspace's paths; refused before anything is written), or the converted workspace's own
- *   stack cannot when it is opened. `context` names the path or key.
+ *   workspace's paths; such a fault refuses before anything is written), a later config fault
+ *   (the start-up environment, e.g. a bad `immutable_heads()`; the refs step's import options;
+ *   the snapshot knobs — these leave `.jj/` as the CLI does and name it in
+ *   `FfiError.left_behind`), or the converted workspace's own stack cannot when it is opened.
+ *   `context` names the path or key.
  * - `ffi.null_pointer` — `path` is a null pointer.
  * - `ffi.utf8_error` — `path` contains invalid UTF-8.
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
@@ -2638,9 +2648,8 @@ ZanshinBuf *zanshin_repo_detect(const char *path);
  * # Warnings
  * Both envelopes — ok AND error — carry the conversion's report (Story 9.33):
  * `Envelope.precondition` is the report of the CLI's implicit snapshot the conversion runs,
- * present iff that snapshot started (PARTIAL when it failed; on an error envelope from a failure
- * before the re-open it describes state the rollback removed — a failed re-open or watcher
- * arming leaves `.jj/` in place). `Envelope.warnings` holds, in the CLI's order:
+ * present iff that snapshot started (PARTIAL when it failed; the state it describes stays on
+ * disk). `Envelope.warnings` holds, in the CLI's order:
  * `jj.git_import_failed` / `jj.git_export_failed` from the refs step; the config-load warnings
  * (`jj.config_alias_invalid`, `jj.config_alias_redefined`, `jj.revset_diagnostic`); the
  * snapshot's own (as every verb's precondition reports them — an unreadable ref a second

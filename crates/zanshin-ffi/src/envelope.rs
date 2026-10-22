@@ -426,14 +426,18 @@ const PANIC_FALLBACK_ENVELOPE: &[u8] = &[
 
 /// The call-level facts every verb envelope carries beside its payload or its error: the
 /// (possibly partial) pre-verb snapshot report (Story 9.26) and the call's warnings in the CLI's
-/// print order (Story 9.32), written as `Envelope.precondition` / `Envelope.warnings`. The
-/// `Default` is a call with neither — both fields then stay ABSENT on the wire.
+/// print order (Story 9.32), written as `Envelope.precondition` / `Envelope.warnings`, and what a
+/// failed conversion left on disk (Story 9.57), written as `FfiError.left_behind` by the error
+/// writer only. The `Default` is a call with none — every field then stays ABSENT on the wire.
 #[derive(Debug, Default)]
 pub struct CallReport {
     /// The pre-verb snapshot report; `None` for a symbol that runs no precondition.
     pub precondition: Option<zanshin_jj::Precondition>,
     /// The call's warnings; empty writes no `warnings` vector.
     pub warnings: Vec<zanshin_jj::Warning>,
+    /// The paths a failed conversion created and left, outermost first; empty (every other call)
+    /// writes no `left_behind` vector.
+    pub left_behind: Vec<String>,
 }
 
 impl CallReport {
@@ -441,8 +445,8 @@ impl CallReport {
     #[must_use]
     pub fn warnings(warnings: Vec<zanshin_jj::Warning>) -> Self {
         Self {
-            precondition: None,
             warnings,
+            ..Self::default()
         }
     }
 
@@ -451,6 +455,7 @@ impl CallReport {
         Self {
             precondition: repo.take_precondition(),
             warnings: repo.take_warnings(),
+            left_behind: Vec::new(),
         }
     }
 }
@@ -944,7 +949,7 @@ fn build_action_outcome<'a>(
     let refusal = outcome
         .refusal
         .as_ref()
-        .map(|e| build_ffi_error(b, &e.code, e.context.as_deref(), &e.hints));
+        .map(|e| build_ffi_error(b, &e.code, e.context.as_deref(), &e.hints, &[]));
     fbs::ActionOutcome::create(
         b,
         &fbs::ActionOutcomeArgs {
@@ -1105,29 +1110,40 @@ fn build_warnings<'a>(
 }
 
 /// Builds one `FfiError` table. `hints` empty writes no `hints` vector (Story 9.56: absent =
-/// none), so a hint-less error keeps its pre-9.56 bytes — [`PANIC_FALLBACK_ENVELOPE`] included.
+/// none) and `left_behind` empty no `left_behind` vector (Story 9.57), so an error with neither
+/// keeps its pre-9.56 bytes — [`PANIC_FALLBACK_ENVELOPE`] included.
 fn build_ffi_error<'a>(
     b: &mut FlatBufferBuilder<'a>,
     code: &str,
     context: Option<&str>,
     hints: &[String],
+    left_behind: &[String],
 ) -> flatbuffers::WIPOffset<fbs::FfiError<'a>> {
     let code = b.create_string(code);
     let context = context.map(|c| b.create_string(c));
-    let hints = if hints.is_empty() {
-        None
-    } else {
-        let offsets: Vec<_> = hints.iter().map(|h| b.create_string(h)).collect();
-        Some(b.create_vector(&offsets))
-    };
+    let hints = build_strings(b, hints);
+    let left_behind = build_strings(b, left_behind);
     fbs::FfiError::create(
         b,
         &fbs::FfiErrorArgs {
             code: Some(code),
             context,
             hints,
+            left_behind,
         },
     )
+}
+
+/// A `[string]` vector of `strings`, in order; `None` (no field) when there are none.
+fn build_strings<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    strings: &[String],
+) -> Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<&'a str>>>> {
+    if strings.is_empty() {
+        return None;
+    }
+    let offsets: Vec<_> = strings.iter().map(|s| b.create_string(s)).collect();
+    Some(b.create_vector(&offsets))
 }
 
 /// Build an error `Envelope` and return the finished buffer.
@@ -1143,13 +1159,15 @@ pub fn err(code: &str, context: Option<&str>) -> Vec<u8> {
 
 /// [`err`] carrying the CLI's hint lines as `FfiError.hints` (Story 9.56) and the report of the
 /// verb that failed — its (partial) pre-verb snapshot report as `Envelope.precondition` (Story
-/// 9.26) and its warnings as `Envelope.warnings` (Story 9.32). With no hints and `None` (or an
-/// empty report) it builds exactly [`err`]'s bytes — which is what keeps
-/// [`PANIC_FALLBACK_ENVELOPE`] byte-identical.
+/// 9.26), its warnings as `Envelope.warnings` (Story 9.32) and what a failed conversion left on
+/// disk as `FfiError.left_behind` (Story 9.57). With no hints and `None` (or an empty report) it
+/// builds exactly [`err`]'s bytes — which is what keeps [`PANIC_FALLBACK_ENVELOPE`]
+/// byte-identical.
 #[must_use]
 pub fn err_with_report(code: &str, context: Option<&str>, hints: &[String], report: Option<&CallReport>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
-    let error = build_ffi_error(&mut b, code, context, hints);
+    let left_behind = report.map_or(&[][..], |r| r.left_behind.as_slice());
+    let error = build_ffi_error(&mut b, code, context, hints, left_behind);
     let precondition = report
         .and_then(|r| r.precondition.as_ref())
         .map(|p| crate::snapshot::build_precondition(&mut b, p));
@@ -1264,6 +1282,7 @@ mod tests {
                 warning(zanshin_jj::WarningKind::SnapshotFilesRefused, "refused"),
                 warning(zanshin_jj::WarningKind::IdentityMissing, "identity"),
             ],
+            left_behind: Vec::new(),
         };
         let buf = ok_repo_handle(1, 2, &report);
         let env = verified_envelope(&buf);
@@ -1353,6 +1372,7 @@ mod tests {
                 warning(zanshin_jj::WarningKind::ConfigAliasInvalid, "first"),
                 warning(zanshin_jj::WarningKind::IdentityMissing, "second"),
             ],
+            left_behind: Vec::new(),
         };
         let buf = ok_mutation_result(&sample_mutation_result(), &report);
         let env = verified_envelope(&buf);
@@ -1937,6 +1957,38 @@ mod tests {
             .expect("error")
             .hints()
             .is_none());
+    }
+
+    /// Story 9.57: a report's `left_behind` is written as `FfiError.left_behind`, in order; a
+    /// report without one writes no field, so the error keeps exactly `err`'s bytes — and the
+    /// panic fallback with them.
+    #[test]
+    fn err_with_report_writes_left_behind_only_when_there_is_some() {
+        let empty = CallReport::default();
+        assert_eq!(
+            err_with_report("jj.x", Some("c"), &[], Some(&empty)),
+            err("jj.x", Some("c"))
+        );
+        assert_eq!(
+            err_with_report(INTERNAL_PANIC, None, &[], Some(&empty)),
+            PANIC_FALLBACK_ENVELOPE
+        );
+        assert!(verified_envelope(PANIC_FALLBACK_ENVELOPE)
+            .error()
+            .expect("error")
+            .left_behind()
+            .is_none());
+
+        let report = CallReport {
+            left_behind: vec!["/w".to_owned(), "/w/.jj".to_owned()],
+            ..CallReport::default()
+        };
+        let buf = err_with_report("jj.convert_failed", Some("c"), &["h".to_owned()], Some(&report));
+        let error = verified_envelope(&buf).error().expect("error");
+        let left: Vec<&str> = error.left_behind().expect("left_behind").iter().collect();
+        assert_eq!(left, ["/w", "/w/.jj"]);
+        let hints: Vec<&str> = error.hints().expect("hints").iter().collect();
+        assert_eq!(hints, ["h"], "the hints ride beside it untouched");
     }
 
     /// `catch` writes an `FfiErrorObj`'s hints on its error envelope (Story 9.56).

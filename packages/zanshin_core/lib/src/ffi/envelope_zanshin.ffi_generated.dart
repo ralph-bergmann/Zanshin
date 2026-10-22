@@ -1581,6 +1581,16 @@ class _PayloadTypeIdReader extends fb.Reader<PayloadTypeId> {
 ///  hints (Story 9.56): the jj CLI's hint lines for this refusal, verbatim (a line may itself
 ///  hold newlines, as the CLI's `add_hint` text does) and in the CLI's order. Absent = none —
 ///  an error without hints writes no field. context never holds in-band "Hint:" text.
+///
+///  left_behind (Story 9.57): the paths a FAILED conversion (`zanshin_repo_convert`) created and
+///  left on disk, outermost first — the topmost directory an import created on the way to its
+///  destination, then the workspace's `.jj/` (only when the call created it), each only when it
+///  still exists. A later entry may lie inside an earlier one (an import lists the created
+///  destination and its `.jj/`). An import's paths are spelled as the caller passed the
+///  destination; a colocated conversion's are canonical. Nothing is deleted on a failure (the
+///  disk is as `jj git init` leaves it); the UI may offer the decision. A failure after the
+///  `trunk()` alias step also leaves `<config_dir>/jj/repos/<config-id>/`, which is not listed.
+///  Absent = none — every other error, and the `internal.panic` fallback, writes no field.
 class FfiError {
   FfiError._(this._bc, this._bcOffset);
   factory FfiError(List<int> bytes) {
@@ -1596,10 +1606,11 @@ class FfiError {
   String? get code => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
   String? get context => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
   List<String>? get hints => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get leftBehind => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
 
   @override
   String toString() {
-    return 'FfiError{code: ${code}, context: ${context}, hints: ${hints}}';
+    return 'FfiError{code: ${code}, context: ${context}, hints: ${hints}, leftBehind: ${leftBehind}}';
   }
 }
 
@@ -1616,7 +1627,7 @@ class FfiErrorBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(4);
   }
 
   int addCodeOffset(int? offset) {
@@ -1634,6 +1645,11 @@ class FfiErrorBuilder {
     return fbBuilder.offset;
   }
 
+  int addLeftBehindOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -1643,14 +1659,17 @@ class FfiErrorObjectBuilder extends fb.ObjectBuilder {
   final String? _code;
   final String? _context;
   final List<String>? _hints;
+  final List<String>? _leftBehind;
 
   FfiErrorObjectBuilder({
     String? code,
     String? context,
     List<String>? hints,
+    List<String>? leftBehind,
   }) : _code = code,
        _context = context,
-       _hints = hints;
+       _hints = hints,
+       _leftBehind = leftBehind;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -1658,10 +1677,14 @@ class FfiErrorObjectBuilder extends fb.ObjectBuilder {
     final int? codeOffset = _code == null ? null : fbBuilder.writeString(_code!);
     final int? contextOffset = _context == null ? null : fbBuilder.writeString(_context!);
     final int? hintsOffset = _hints == null ? null : fbBuilder.writeList(_hints!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(3);
+    final int? leftBehindOffset = _leftBehind == null
+        ? null
+        : fbBuilder.writeList(_leftBehind!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(4);
     fbBuilder.addOffset(0, codeOffset);
     fbBuilder.addOffset(1, contextOffset);
     fbBuilder.addOffset(2, hintsOffset);
+    fbBuilder.addOffset(3, leftBehindOffset);
     return fbBuilder.endTable();
   }
 
@@ -15977,9 +16000,8 @@ class WarningObjectBuilder extends fb.ObjectBuilder {
 ///  `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
 ///  working-copy check ran the snapshot (Story 9.28). `zanshin_repo_convert` carries the
 ///  conversion's snapshot report (`jj git init`'s `maybe_snapshot`, Story 9.33) iff that snapshot
-///  started — on its ok envelope and on its error envelope (after a failure before the re-open it
-///  describes state the rollback removed; a failed re-open or watcher arming leaves `.jj/` in
-///  place). `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
+///  started — on its ok envelope and on its error envelope (the state it describes stays on disk:
+///  a conversion is never rolled back, Story 9.57). `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
 ///  `zanshin_workspace_update_stale` runs no pre-verb snapshot — it IS the recovery — and carries
 ///  the recovery's TRAILING snapshot report (Story 9.23), on its ok and its error envelope.
 ///

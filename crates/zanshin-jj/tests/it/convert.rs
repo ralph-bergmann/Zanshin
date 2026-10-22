@@ -264,31 +264,27 @@ fn convert_dirty_tree_preserves_uncommitted_changes() {
     );
 }
 
-// ── AC-9 case 7: rollback on failure ─────────────────────────────────────────
+// ── AC-9 case 7: an early failure leaves what jj-lib leaves ──────────────────
 
+/// Story 9.57: an empty `.git` directory is classified `Git`, but `init_external_git` fails (no
+/// HEAD/objects) and jj-lib's own init cleanup (`init_with_factories`) removes the `.jj/` it just
+/// created — the only cleanup `jj git init` has. Zanshin deletes nothing, so nothing is left
+/// behind.
 #[test]
-fn convert_failure_rolls_back_partial_jj() {
+fn convert_failure_in_init_external_git_leaves_no_jj() {
     pin_env();
     let tmp = TempDir::new().expect("tempdir");
-    // An empty `.git` directory: detect_repo classifies it `Git` (dir exists),
-    // but Workspace::init_external_git fails (no HEAD/objects). NOTE: in this EARLY
-    // failure path jj-lib's own init cleanup (`init_with_factories` inspect_err)
-    // removes the just-created `.jj/`, so this test pins the ConvertFailed *mapping*,
-    // not convert's own rollback line. A mutation-sensitive test of that rollback line
-    // would need a post-init failure, which jj-lib's graceful degradation on git
-    // corruption makes non-deterministic without a fault-injection seam (see the
-    // story's Review Findings).
     fs::create_dir(tmp.path().join(".git")).expect("create empty .git dir");
 
-    let result = convert_colocated(tmp.path()).result;
+    let outcome = convert_colocated(tmp.path());
     assert!(
-        matches!(result, Err(RepoError::ConvertFailed { .. })),
-        "expected ConvertFailed for invalid .git, got: {result:?}"
+        matches!(outcome.result, Err(RepoError::ConvertFailed { .. })),
+        "expected ConvertFailed for invalid .git, got: {:?}",
+        outcome.result
     );
-    assert!(
-        !tmp.path().join(".jj").exists(),
-        "failed convert must roll back — no partial .jj/ may remain"
-    );
+    assert!(!tmp.path().join(".jj").exists(), "jj-lib removed the .jj/ it created");
+    assert!(outcome.left_behind.is_empty(), "{:?}", outcome.left_behind);
+    assert!(tmp.path().join(".git").is_dir(), ".git/ is untouched");
 }
 
 // ── AC-9 case 8: bare repo → NotAGitRepo (reconciled D7) ─────────────────────
@@ -651,10 +647,13 @@ fn convert_import_bare_unborn_source_succeeds() {
     );
 }
 
-// ── Test 9: rollback on failure — created_dir removed ────────────────────────
+// ── Test 9: a failure leaves the created destination ─────────────────────────
 
+/// Story 9.57: the CLI's `create_or_reuse_dir` leaves a destination it created when `do_init`
+/// fails (`cli/src/commands/git/init.rs` @ v0.46.0 propagates with `?`); jj-lib removes only its
+/// own `.jj/`. The destination is reported as left behind.
 #[test]
-fn convert_import_failure_rolls_back() {
+fn convert_import_failure_leaves_the_created_destination() {
     pin_env();
     // Source: empty `.git` dir — detect_repo classifies as Git (child dir exists),
     // but Workspace::init_external_git fails (no HEAD/objects). Dest is fresh.
@@ -664,15 +663,33 @@ fn convert_import_failure_rolls_back() {
     let dst_parent = TempDir::new().expect("tempdir dst");
     let dst = dst_parent.path().join("workspace");
 
-    let result = convert_import(src.path(), &dst).result;
+    let outcome = convert_import(src.path(), &dst);
     assert!(
-        matches!(result, Err(RepoError::ConvertFailed { .. })),
-        "expected ConvertFailed for invalid source, got: {result:?}"
+        matches!(outcome.result, Err(RepoError::ConvertFailed { .. })),
+        "expected ConvertFailed for invalid source, got: {:?}",
+        outcome.result
     );
-    assert!(
-        !dst.exists(),
-        "failed convert must roll back — created dest dir must be removed"
-    );
+    assert!(dst.is_dir(), "the created destination stays, as in the CLI");
+    assert!(!dst.join(".jj").exists(), "jj-lib removed the .jj/ it created");
+    assert_eq!(outcome.left_behind, [dst]);
+}
+
+/// Story 9.57: a destination nested under missing directories is created with its parents
+/// (`create_dir_all`, the bridge's documented liberalization); the topmost one created is what
+/// the failure reports first.
+#[test]
+fn convert_import_failure_reports_the_topmost_created_directory() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    fs::create_dir(src.path().join(".git")).expect("create empty .git dir");
+
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("a").join("b");
+
+    let outcome = convert_import(src.path(), &dst);
+    assert!(outcome.result.is_err(), "{:?}", outcome.result);
+    assert!(dst.is_dir(), "the nested destination stays");
+    assert_eq!(outcome.left_behind, [dst_parent.path().join("a")]);
 }
 
 // ── Test 10: detect_repo I/O error → ConvertFailed ───────────────────────────
@@ -738,10 +755,12 @@ fn convert_import_dest_detect_io_error_returns_convert_failed() {
     );
 }
 
-// ── Test 14: failure with pre-existing dest → only .jj/ rolled back ──────────
+// ── Test 14: failure with pre-existing dest → nothing left behind ────────────
 
+/// Story 9.57: a destination that existed before the call is not the call's; jj-lib removed its
+/// own `.jj/`, so nothing the call created is left.
 #[test]
-fn convert_import_failure_with_pre_existing_dest_removes_jj_only() {
+fn convert_import_failure_with_pre_existing_dest_leaves_nothing_behind() {
     pin_env();
     // Source: empty `.git` dir (init_external_git fails; no commits/objects).
     let src = TempDir::new().expect("tempdir src");
@@ -752,14 +771,55 @@ fn convert_import_failure_with_pre_existing_dest_removes_jj_only() {
     let dst = dst_parent.path().join("workspace");
     fs::create_dir(&dst).expect("create pre-existing dest");
 
-    let result = convert_import(src.path(), &dst).result;
+    let outcome = convert_import(src.path(), &dst);
     assert!(
-        matches!(result, Err(RepoError::ConvertFailed { .. })),
-        "expected ConvertFailed for invalid source, got: {result:?}"
+        matches!(outcome.result, Err(RepoError::ConvertFailed { .. })),
+        "expected ConvertFailed for invalid source, got: {:?}",
+        outcome.result
     );
-    // Pre-existing dir survives; only .jj/ (if created) is removed.
-    assert!(dst.exists(), "pre-existing dest dir must survive rollback");
-    assert!(!dst.join(".jj").exists(), "no partial .jj/ after rollback");
+    assert!(dst.exists(), "the pre-existing destination stays");
+    assert!(!dst.join(".jj").exists(), "jj-lib removed the .jj/ it created");
+    assert!(outcome.left_behind.is_empty(), "{:?}", outcome.left_behind);
+}
+
+/// Story 9.57: a dangling `.jj` symlink beside `.git/` is not a jj workspace to `detect_repo`,
+/// but `init_external_git` refuses it as existing (`DestinationExists`) — that `.jj` is the
+/// user's, not the call's, so it is untouched and never named in `left_behind`.
+#[test]
+fn convert_failure_over_a_pre_existing_jj_symlink_leaves_nothing_behind() {
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo_with_commit(tmp.path());
+    std::os::unix::fs::symlink(tmp.path().join("nowhere"), tmp.path().join(".jj")).expect("symlink");
+
+    let outcome = convert_colocated(tmp.path());
+    assert!(
+        matches!(outcome.result, Err(RepoError::ConvertFailed { .. })),
+        "{:?}",
+        outcome.result
+    );
+    let link = fs::read_link(tmp.path().join(".jj")).expect("the symlink is untouched");
+    assert_eq!(link, tmp.path().join("nowhere"));
+    assert!(outcome.left_behind.is_empty(), "{:?}", outcome.left_behind);
+}
+
+/// Story 9.57: an import into an existing destination that holds a `.jj` regular FILE fails, and
+/// that file — the user's — is untouched and never named in `left_behind`.
+#[test]
+fn convert_import_failure_over_a_pre_existing_jj_file_leaves_nothing_behind() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+    let dst = TempDir::new().expect("tempdir dst");
+    fs::write(dst.path().join(".jj"), "the user's file").expect("write .jj file");
+
+    let outcome = convert_import(src.path(), dst.path());
+    assert!(outcome.result.is_err(), "{:?}", outcome.result);
+    assert_eq!(
+        fs::read_to_string(dst.path().join(".jj")).expect("read .jj"),
+        "the user's file"
+    );
+    assert!(outcome.left_behind.is_empty(), "{:?}", outcome.left_behind);
 }
 
 // ── Test 15: git_repo_path ending in .git is accepted (resolve_git_repo_path) ─

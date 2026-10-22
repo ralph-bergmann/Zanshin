@@ -66,14 +66,33 @@ Envelope {
   warnings:     [Warning]?     // the call's CLI warnings (Story 9.32), ok OR error
 }
 
-FfiError { code: string; context: string?; hints: [string]?; }
+FfiError { code: string; context: string?; hints: [string]?; left_behind: [string]?; }
 Warning { code: string; message: string; }
 ```
 
 **Success:** `ok = true`, `data` holds the concrete payload variant.  
 **Error:** `ok = false`, `error.code` holds the dotted AR-P-4 code, `error.context`
-holds human-readable detail, `error.hints` the CLI's hint lines. See
-`docs/rust-error-codes.md` for the full registry.
+holds human-readable detail, `error.hints` the CLI's hint lines, `error.left_behind` what a
+failed conversion left on disk. See `docs/rust-error-codes.md` for the full registry.
+
+### `FfiError.left_behind` — what a failed conversion left on disk (Story 9.57)
+
+A failed `zanshin_repo_convert` deletes nothing: the disk is as `jj git init` leaves it (the
+CLI's `do_init` propagates every error with `?`; the only cleanup is jj-lib's own `.jj` removal
+when the workspace creation itself fails). Its error envelope names, in `left_behind`, the paths
+the call created that still exist after the failure, outermost first — the canonical
+`<root>/.jj`, only when the call created it (a `.jj` the workspace creation refused as existing is
+the user's and never listed). (`zanshin_jj::convert_import`, which has no FFI symbol yet, reports
+the topmost directory it created on the way to its destination before the destination's `.jj/`
+— a later entry may lie inside an earlier one — spelled as the caller passed the destination.) A
+failure after the `trunk()` alias step also leaves `<config_dir>/jj/repos/<config-id>/`, which is
+not listed. The vector
+is **absent** on every other error and on a refusal that wrote nothing — every reader treats that
+as an empty list — so every other error, and `PANIC_FALLBACK_ENVELOPE`, keeps its bytes. It is
+sourced from the call's report (the FFI `CallReport.left_behind`) and written by the error writer
+only. This is not a warning: the CLI prints nothing about a half-initialised repo, so no warning
+code exists for it. On the Dart side the thrown `ZanshinFfiException.leftBehind`
+(`List<String>`, unmodifiable, `[]` when absent) carries it, so the UI can offer to remove it.
 
 ### `FfiError.hints` — the CLI's hint lines for a refusal (Story 9.56)
 
@@ -166,9 +185,8 @@ init, clone, detect, close, `zanshin_log_defaults`,
 the call was refused before the verb ran (`ffi.null_pointer`, `ffi.invalid_handle`,
 a request buffer that fails validation). `zanshin_repo_convert` (Story 9.33) carries
 the conversion's snapshot report — `jj git init`'s `maybe_snapshot` — iff that snapshot
-started, on the ok and the error envelope (after a failure before the re-open it
-describes state the rollback removed; a failed re-open or watcher arming leaves `.jj/`
-in place); Dart exposes it as `CreatedRepoHandle.precondition`, never as
+started, on the ok and the error envelope (the state it describes stays on disk: a
+conversion is never rolled back, Story 9.57); Dart exposes it as `CreatedRepoHandle.precondition`, never as
 `lastPrecondition`, because a creation is not a verb on the handle — and a refused
 conversion's as the thrown `ZanshinFfiException.precondition`. Every error envelope's
 report reaches Dart that way (Story 9.35): the exception's `precondition` (`null` when
@@ -676,8 +694,19 @@ snapshot recorded changes, adds intent-to-add entries for the new files to
 `.git/index` (`@` is mutable after the conversion, so the snapshot takes the
 CLI's `export_working_copy_changes_to_git` branch; the HEAD/index reset happens
 only for an immutable `@`) — so no
-user-visible ref and no HEAD is moved, and a rollback never deletes or rewrites
-`.git/`.
+user-visible ref and no HEAD is moved.
+
+**What a failure leaves (Story 9.57).** The conversion never touches the working copy or
+`.git/` beyond those steps, and it has no rollback of its own: on failure the disk is as `jj git
+init` leaves it — only jj-lib removes the `.jj/` it started when the workspace creation itself
+fails. The error envelope's `FfiError.left_behind` names the canonical `<root>/.jj` when the call
+created it and it still exists (a failed re-open included), so the UI can offer to delete it. A
+failure after the `trunk()` alias step also leaves the secure-config directory
+`<config_dir>/jj/repos/<config-id>/` it created, as the CLI does; it is not listed in
+`left_behind`. A config fault of the user-level stack or of the stack resolved for the new
+workspace refuses before anything is written; the later config faults (the start-up environment,
+e.g. a bad `immutable_heads()`; the refs step's import options; the snapshot knobs) fail after the
+workspace was created, so they leave `.jj/` as the CLI does and name it in `left_behind`.
 
 On success the function returns a live `RepoHandle` for the converted
 workspace. The Dart worker stores the raw handle in its Model-A handle table
@@ -694,8 +723,7 @@ colocated refs import reports an unreadable ref a SECOND time, as the CLI does);
 on the snapshot's success, `jj.snapshot_files_refused` / `jj.snapshot_paths_not_utf8`.
 The refs step and the head import commit without a finish, so an empty identity is
 warned only by a finish the snapshot itself runs. A failure keeps everything reported
-before it — when it came before the re-open, although the rollback removes `.jj/`; a
-failed re-open or watcher arming leaves `.jj/` in place.
+before it, and the state it describes stays on disk.
 
 **Success payload:** `Envelope<RepoHandle>`
 
@@ -713,7 +741,8 @@ RepoHandle {
 |----------------------|--------------------------------------------------------|
 | `jj.already_jj_repo` | `.jj/` already exists at `path`.                       |
 | `jj.not_a_git_repo`  | No `.git/` at `path` (or path does not exist).         |
-| `jj.convert_failed`  | jj-lib, config-write or `detect_repo` I/O error during conversion; detail in `context`. |
+| `jj.convert_failed`  | jj-lib, config-write or `detect_repo` I/O error during conversion; detail in `context`, the `.jj/` it left in `left_behind` (Story 9.57). |
+| `jj.config_error`    | A user-level or new-workspace config fault refuses before anything is written; a later one (start-up environment, refs-step import options, snapshot knobs) leaves `.jj/` and names it in `left_behind`. |
 | `ffi.null_pointer`   | `path` is null.                                        |
 | `ffi.utf8_error`     | `path` contains invalid UTF-8.                         |
 | `watcher.io_error`   | The filesystem watcher could not be armed, so no handle is returned (strict-fail, OQ-1 — see *Async events* below). The written `.jj/` persists; detail in `context`. |

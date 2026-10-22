@@ -632,5 +632,50 @@ void main() {
         throwsA(isA<ZanshinFfiException>().having((e) => e.hints, 'hints', isEmpty)),
       );
     });
+
+    // Story 9.57: what a failed conversion left on disk rides the exception — absent reads as
+    // [], the wire order (outermost first) is kept, the list is unmodifiable.
+    test("an error envelope's left-behind paths reach the exception", () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: false,
+        error: fbs.FfiErrorObjectBuilder(
+          code: 'jj.convert_failed',
+          context: 'snapshot failed',
+          leftBehind: ['/w', '/w/.jj'],
+        ),
+      ).toBytes();
+
+      expect(
+        () => decodeStatusEnvelope(bytes),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.leftBehind, 'leftBehind', ['/w', '/w/.jj'])
+              .having((e) => e.hints, 'hints', isEmpty)
+              .having(
+                (e) =>
+                    () => e.leftBehind.add('x'),
+                'leftBehind.add',
+                throwsUnsupportedError,
+              ),
+        ),
+      );
+      expect(
+        () => decodeStatusEnvelope(_error()),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.leftBehind, 'leftBehind', isEmpty)),
+      );
+    });
+
+    test('toString names the left-behind paths when there are some (Story 9.57)', () {
+      const e = ZanshinFfiException.withReport(
+        'jj.convert_failed',
+        'snapshot failed',
+        precondition: null,
+        warnings: [],
+        leftBehind: ['/w/.jj'],
+      );
+
+      expect(e.toString(), 'ZanshinFfiException(jj.convert_failed: snapshot failed; left behind: /w/.jj)');
+      expect(const ZanshinFfiException('ffi.unknown').leftBehind, isEmpty);
+    });
   });
 }

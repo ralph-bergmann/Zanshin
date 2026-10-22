@@ -1025,7 +1025,11 @@ class ZanshinWorker {
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `jj.already_jj_repo`,
   /// `jj.not_a_git_repo`, `jj.convert_failed`), carrying the failed
-  /// conversion's warnings and its PARTIAL snapshot report (Story 9.35).
+  /// conversion's warnings and its PARTIAL snapshot report (Story 9.35). The
+  /// conversion never touches the working copy or `.git/`, and a failure is
+  /// not rolled back: the disk is as `jj git init` leaves it, and the
+  /// exception's `leftBehind` names the `.jj/` it left (Story 9.57), so the UI
+  /// can offer to remove it.
   Future<CreatedRepoHandle> convert(String path) async {
     final WorkerResponse response = await _sendCommand(
       ConvertRepoCommand(commandId: _correlator.allocateId(), path: path),

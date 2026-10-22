@@ -69,11 +69,19 @@
 //! What `.git/` sees is what the CLI's own sequence writes: the refs step's colocated
 //! `export_refs` (it writes back exactly the refs jj has just imported), and the snapshot's
 //! colocated export and index update for a dirty work tree. No user-visible ref and no HEAD is
-//! moved, no working-tree file is written or deleted, and the rollback below never deletes or
-//! rewrites `.git/`.
+//! moved, and no working-tree file is written or deleted.
 //!
-//! One deliberate departure, documented at its site: a failed conversion rolls back further
-//! than the CLI does, which never undoes a partial `jj git init`.
+//! ## What a failure leaves (Story 9.57)
+//!
+//! Neither verb cleans anything up: convert never touches the working copy or `.git/`, and on
+//! failure the disk is as `jj git init` leaves it — the CLI's `do_init` propagates every error
+//! with `?` (`cli/src/commands/git/init.rs` @ v0.46.0), so the only cleanup is jj-lib's own `.jj`
+//! removal inside `init_external_git`. A failed conversion names what it created and left in
+//! [`CreationOutcome::left_behind`], so the UI can offer the decision; nothing is deleted. A
+//! `.jj` the call did not create (one `init_external_git` refused as existing) is never listed.
+//! A failure after the `trunk()` alias step also leaves the secure-config directory
+//! `<config_dir>/jj/repos/<config-id>/` it created, as the CLI does; that directory lives outside
+//! the workspace and is not listed in `left_behind`.
 //!
 //! ## What both verbs report (Story 9.33)
 //!
@@ -100,9 +108,7 @@
 //! The raw commits (`import git refs`, the colocated `import git head`, `snapshot working copy`)
 //! run no identity check, exactly as in the CLI; only a finish does. The snapshot's report is
 //! [`CreationOutcome::precondition`], `Some` iff the snapshot started. A failure keeps
-//! everything reported before it — when the failure came before the re-open, even though the
-//! rollback then removes the state it describes; a failed re-open (or, in the FFI, a failed
-//! watcher arming) leaves `.jj/` in place.
+//! everything reported before it, and the state it describes stays on disk.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -111,14 +117,15 @@ use jj_lib::config::StackedConfig;
 use jj_lib::git::{import_refs, GitImportOptions, GitRefKind};
 use jj_lib::ref_name::{GitRefName, RemoteName, WorkspaceName};
 use jj_lib::repo::ReadonlyRepo;
+use jj_lib::rewrite::RebaseOptions;
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 
-use crate::op_support::start_repo_transaction;
+use crate::op_support::{resolve_immutable, start_repo_transaction};
 use crate::repo::{creation_error, CreationOutcome};
 use crate::warning::{self, WarningKind, Warnings};
 use crate::wc_ops::is_colocated_git_workspace;
-use crate::{config, detect_repo, mutate, snapshot, Repo, RepoError, RepoKind};
+use crate::{config, detect_repo, mutate, snapshot, MutateError, Repo, RepoError, RepoKind};
 
 /// What a conversion reports beside its result (Story 9.33), filled as the steps run so a
 /// failure keeps what came before it.
@@ -128,6 +135,11 @@ struct ConversionReport {
     precondition: Option<crate::Precondition>,
     /// The conversion's warnings, in the CLI's print order.
     warnings: Warnings,
+    /// What a failed conversion created and left on disk (Story 9.57), outermost first.
+    left_behind: Vec<PathBuf>,
+    /// Whether `init_external_git` returned `Ok` — the `.jj/` is the call's own only then; a
+    /// `.jj` it refused as `DestinationExists` (the user's, or a concurrent process's) is not.
+    jj_created: bool,
 }
 
 impl ConversionReport {
@@ -137,6 +149,7 @@ impl ConversionReport {
             result,
             precondition: self.precondition,
             warnings: self.warnings.take(),
+            left_behind: self.left_behind,
         }
     }
 }
@@ -160,10 +173,15 @@ impl ConversionReport {
 /// What `.git/` sees is the CLI's own colocated bookkeeping (ref export, index update for a
 /// dirty tree); no user-visible ref, no `HEAD` and no work-tree file is moved or written.
 ///
-/// One deliberate departure from the CLI: a failure rolls back further than the CLI, which
-/// leaves a partially converted repo in place. Rollback removes `.jj/` only — it never deletes
-/// or rewrites `.git/` — so a conversion that fails *after* the alias step can orphan the
-/// secure-config directory it created.
+/// # What a failure leaves
+///
+/// Convert never touches the working copy or `.git/`; on failure the disk is as `jj git init`
+/// leaves it — nothing is deleted beyond jj-lib's own `.jj` removal when `init_external_git`
+/// itself fails. [`CreationOutcome::left_behind`] then names `<canonical root>/.jj` when the
+/// call created it and it still exists (a failed re-open included); it is empty on success and
+/// on every refusal that wrote nothing. A failure after the `trunk()` alias step also leaves the
+/// secure-config directory `<config_dir>/jj/repos/<config-id>/`, as the CLI does; it is not
+/// listed in `left_behind`.
 ///
 /// # Warnings and the snapshot report
 ///
@@ -178,12 +196,15 @@ impl ConversionReport {
 /// - [`RepoError::NotAGitRepo`] — `path` is neither a Git repo nor exists, or it cannot be
 ///   resolved to an absolute path (the same answer the not-found case gives).
 /// - [`RepoError::ConvertFailed`] — a jj-lib, config-write or `detect_repo` I/O error during
-///   conversion; the partially-created `.jj/` is rolled back.
+///   conversion; what was written up to the failure stays, as in the CLI.
 /// - [`RepoError::Config`] — the jj config stack the workspace would be created with (resolved
-///   for its own paths, as the CLI's `settings_for_new_workspace`) cannot be read; refused
-///   before anything is written. A fault of the user-level stack is checked first, as the
-///   CLI's start-up does, so it wins over every other error above. The converted workspace is
-///   then opened as by [`Repo::open`], whose errors apply too.
+///   for its own paths, as the CLI's `settings_for_new_workspace`) cannot be read; such a
+///   user-level or new-workspace-stack fault refuses before anything is written. A fault of the
+///   user-level stack is checked first, as the CLI's start-up does, so it wins over every other
+///   error above. The later config faults — the start-up environment (a bad
+///   `immutable_heads()`), the refs step's import options, the snapshot knobs — fail after
+///   `init_external_git`, so they leave `.jj/` as the CLI does and name it in `left_behind`. The
+///   converted workspace is then opened as by [`Repo::open`], whose errors apply too.
 #[must_use = "the outcome carries the result, the snapshot report and the warnings"]
 pub fn convert_colocated(path: &Path) -> CreationOutcome {
     let mut report = ConversionReport::default();
@@ -210,14 +231,11 @@ fn convert_colocated_steps(path: &Path, report: &mut ConversionReport) -> Result
     let root = std::fs::canonicalize(path).map_err(|_| RepoError::NotAGitRepo { path: path.to_owned() })?;
     // Resolved for the new workspace's own paths — the CLI's `settings_for_new_workspace`.
     let settings = config::user_settings_for_new_workspace(&root)?;
-    match convert_into(&settings, &root, report) {
-        Ok(()) => Repo::open(&root),
-        Err(e) => {
-            // Roll back only what convert created: the `.jj/` dir. Never touch `.git/`.
-            let _ = std::fs::remove_dir_all(root.join(".jj"));
-            Err(e)
-        }
+    let result = convert_into(&settings, &root, report).and_then(|()| Repo::open(&root));
+    if result.is_err() && report.jj_created {
+        report.left_behind = still_present([root.join(".jj")]);
     }
+    result
 }
 
 /// Creates a **jj-native** (non-colocated) workspace at `workspace_path` from the
@@ -252,10 +270,18 @@ fn convert_colocated_steps(path: &Path, report: &mut ConversionReport) -> Result
 /// Passing `workspace_path == git_repo_path` (D5) is a colocated request and takes the
 /// colocated shape instead — including its `.jj/.gitignore` and its colocated snapshot.
 ///
-/// A failure rolls back further than the CLI, which leaves a partially initialised repo in
-/// place: the destination (or just its `.jj/`, when the directory already existed) is
-/// removed, the source is never touched, and a failure *after* the alias step can orphan the
-/// secure-config directory it created.
+/// # What a failure leaves
+///
+/// Convert never touches the working copy or the source; on failure the disk is as `jj git init
+/// --git-repo` leaves it — nothing is deleted beyond jj-lib's own `.jj` removal when
+/// `init_external_git` itself fails. [`CreationOutcome::left_behind`] then names, outermost
+/// first, the topmost directory the call created on the way to `workspace_path` (the CLI's
+/// `create_or_reuse_dir` creates one level; `create_dir_all` is the bridge's documented
+/// liberalization) and `<workspace_path>/.jj` when the call created it, each only when it still
+/// exists (a failed re-open included), spelled as `workspace_path` was passed; it is empty on
+/// success and on every refusal that wrote nothing. A failure after the `trunk()` alias step also
+/// leaves the secure-config directory `<config_dir>/jj/repos/<config-id>/`, as the CLI does; it
+/// is not listed in `left_behind`.
 ///
 /// # Warnings and the snapshot report
 ///
@@ -272,12 +298,13 @@ fn convert_colocated_steps(path: &Path, report: &mut ConversionReport) -> Result
 /// - [`RepoError::NotAGitRepo`] — `git_repo_path` is not a Git repo (normal or
 ///   bare) or does not exist.
 /// - [`RepoError::ConvertFailed`] — a jj-lib, config-write or `detect_repo` I/O error, or
-///   `workspace_path` cannot be created or resolved; the partially-created destination is
-///   rolled back.
+///   `workspace_path` cannot be created or resolved; what was written up to the failure stays,
+///   as in the CLI.
 /// - [`RepoError::Config`] — as for [`convert_colocated`]: a user-level fault refuses first,
 ///   before the destination is created; a fault that needs the destination's own paths (a
 ///   scoped table) surfaces once the destination exists (the CLI's order), so a destination
-///   created for the call is rolled back with it.
+///   created for the call stays, as in the CLI. Also the head import's finish when
+///   `immutable_heads()` does not resolve (the CLI's `tx.finish`): `.jj/` exists by then.
 #[must_use = "the outcome carries the result, the snapshot report and the warnings"]
 pub fn convert_import(git_repo_path: &Path, workspace_path: &Path) -> CreationOutcome {
     let mut report = ConversionReport::default();
@@ -324,18 +351,32 @@ fn convert_import_steps(
         Err(e) => return Err(RepoError::ConvertFailed { reason: e.to_string() }),
     }
 
-    let created_dir = !workspace_path.exists();
-    match import_into(git_repo_path, workspace_path, report) {
-        Ok(()) => Repo::open(workspace_path),
-        Err(e) => {
-            if created_dir {
-                let _ = std::fs::remove_dir_all(workspace_path);
-            } else {
-                let _ = std::fs::remove_dir_all(workspace_path.join(".jj"));
-            }
-            Err(e)
-        }
+    // Recorded before anything is written: what the call itself creates on the way.
+    let created_top = topmost_missing_ancestor(workspace_path);
+    let result = import_into(git_repo_path, workspace_path, report).and_then(|()| Repo::open(workspace_path));
+    if result.is_err() {
+        let jj_dir = report.jj_created.then(|| workspace_path.join(".jj"));
+        report.left_behind = still_present(created_top.into_iter().chain(jj_dir));
     }
+    result
+}
+
+/// The outermost directory `create_dir_all(path)` would create: the topmost ancestor of `path`
+/// (itself included) that does not exist, or `None` when `path` exists. The empty prefix of a
+/// relative path is the current directory, which exists.
+fn topmost_missing_ancestor(path: &Path) -> Option<PathBuf> {
+    path.ancestors()
+        .take_while(|ancestor| !ancestor.as_os_str().is_empty() && ancestor.symlink_metadata().is_err())
+        .last()
+        .map(Path::to_path_buf)
+}
+
+/// The `paths` that are present on disk, in their order — a dangling symlink counts.
+fn still_present(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
+    paths
+        .into_iter()
+        .filter(|path| path.symlink_metadata().is_ok())
+        .collect()
 }
 
 /// Stat-only: is `path` itself a (bare) git directory?
@@ -458,7 +499,7 @@ fn maybe_snapshot(
 }
 
 /// A pre-verb-snapshot failure during a conversion: a config fault stays one, everything else
-/// fails the conversion (and rolls it back).
+/// fails the conversion.
 fn precondition_error(e: crate::PreconditionError) -> RepoError {
     match e {
         crate::PreconditionError::Config { reason } => RepoError::Config { reason },
@@ -525,8 +566,8 @@ fn maybe_set_trunk_alias(workspace: &Workspace, repo: &impl jj_lib::repo::Repo) 
 
 /// `jj git init`'s External arm over an existing `<root>/.git` (`init.rs:222-224`, `:249-282` @
 /// v0.46.0; Story 9.20): [`convert_into`]'s steps with their report — the snapshot report and the
-/// warnings — and WITHOUT [`convert_colocated`]'s rollback, since `jj git init` cleans up nothing
-/// beyond jj-lib's own `.jj` removal. `root` is canonical and `settings` are the new workspace's.
+/// warnings. Like the conversions, it cleans up nothing beyond jj-lib's own `.jj` removal, as
+/// `jj git init` does. `root` is canonical and `settings` are the new workspace's.
 pub(crate) fn init_over_git_dir(
     settings: &UserSettings,
     root: &Path,
@@ -537,7 +578,7 @@ pub(crate) fn init_over_git_dir(
 }
 
 /// Runs the colocated external-git init and then `do_init`'s External sequence, reporting into
-/// `report`. On `Err`, the caller rolls back `.jj/`.
+/// `report`. On `Err`, what was written stays (`do_init` propagates with `?`).
 fn convert_into(settings: &UserSettings, path: &Path, report: &mut ConversionReport) -> Result<(), RepoError> {
     // Open the EXISTING `.git` as the backing store (gix::open — strictly non-destructive).
     // Because `.git` is inside `path`, the workspace is colocated. This is what
@@ -550,12 +591,13 @@ fn convert_into(settings: &UserSettings, path: &Path, report: &mut ConversionRep
         &git_repo_path,
     ))
     .map_err(|e| creation_error(&e, |reason| RepoError::ConvertFailed { reason }))?;
+    report.jj_created = true;
     external_arm(&mut workspace, &repo, report)
 }
 
 /// Ports `do_init`'s `GitInitMode::External` branch (jj CLI @ v0.44.0), non-colocated in the
 /// intended two-path use. Creates and populates the jj workspace at `workspace_path`, reporting
-/// into `report`. On `Err`, the caller rolls back the destination.
+/// into `report`. On `Err`, what was written stays (`do_init` propagates with `?`).
 fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut ConversionReport) -> Result<(), RepoError> {
     std::fs::create_dir_all(workspace_path).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
     // WHY here and not at the entry point: the destination may legitimately not exist yet, so the
@@ -567,7 +609,7 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut Convers
     // The settings are resolved for the canonical destination, AFTER it exists — the CLI's
     // order (start-up check → create the destination → canonicalize →
     // `settings_for_new_workspace`); only a fault that needs the destination's paths is left
-    // for here, and it is rolled back with the directory. (The CLI's `create_or_reuse_dir`
+    // for here, and the directory stays, as in the CLI. (The CLI's `create_or_reuse_dir`
     // creates ONE level; `create_dir_all` is the bridge's documented liberalization.)
     let settings = config::user_settings_for_new_workspace(&workspace_path)?;
 
@@ -580,6 +622,7 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut Convers
         &resolved,
     ))
     .map_err(|e| creation_error(&e, |reason| RepoError::ConvertFailed { reason }))?;
+    report.jj_created = true;
     external_arm(&mut workspace, &repo, report)
 }
 
@@ -636,8 +679,11 @@ const COLOCATED_IN_GIT_WORKTREE: &str = "Initialized a new colocated jj repo ins
 
 /// The CLI's non-colocated head import (`init.rs:262-270` @ v0.46.0): import the HEAD commit,
 /// check `@` out onto it, and — only when something changed — finish the transaction like
-/// `tx.finish(ui, "import git head")`, whose working-copy update materialises HEAD's tree in
-/// the destination. Since jj 0.45 this records NO git head in the view (`import_head_commit`,
+/// `tx.finish(ui, "import git head")` (`cli_util.rs:2849-2866`, `:2986-3002`): resolve the
+/// immutable set against `tx.base_repo()` — an unresolvable `immutable_heads()` refuses as
+/// [`RepoError::Config`] with no operation written — rebase the mutable descendants, then take the
+/// Git import/export lock and finish; the finish's working-copy update materialises HEAD's tree
+/// in the destination. Since jj 0.45 this records NO git head in the view (`import_head_commit`,
 /// not `import_head`): a non-colocated workspace does not track Git HEAD. Skipped when HEAD is
 /// unborn (a fresh `git init` with no commits): then nothing changed, no `@` is created, and
 /// no operation is written.
@@ -650,21 +696,34 @@ fn import_head_into_destination(
     let workspace_name = workspace.workspace_name().to_owned();
     let mut tx = start_repo_transaction(repo, &workspace_name);
     if let Some(commit) = pollster::block_on(jj_lib::git::import_head_commit(tx.repo_mut())).map_err(convert_failed)? {
-        let mut_repo = tx.repo_mut();
-        pollster::block_on(mut_repo.check_out(workspace_name, &commit)).map_err(convert_failed)?;
-        pollster::block_on(mut_repo.rebase_descendants()).map_err(convert_failed)?;
+        pollster::block_on(tx.repo_mut().check_out(workspace_name, &commit)).map_err(convert_failed)?;
     }
     if !tx.repo().has_changes() {
         return Ok(());
     }
+    let immutable = resolve_immutable(tx.base_repo().as_ref(), &env.immutable).map_err(finish_error)?;
+    pollster::block_on(
+        tx.repo_mut()
+            .rebase_descendants_with_options(&immutable, &RebaseOptions::default(), |_, _| {}),
+    )
+    .map_err(convert_failed)?;
     let lock = snapshot::lock_git_import_export(workspace, false).map_err(convert_failed)?;
     let ctx = mutate::FinishCtx {
         immutable: &env.immutable,
         colocated: false,
         _lock: &lock,
     };
-    mutate::finish_transaction(workspace, tx, "import git head", &ctx, sink).map_err(convert_failed)?;
+    mutate::finish_transaction(workspace, tx, "import git head", &ctx, sink).map_err(finish_error)?;
     Ok(())
+}
+
+/// A failure of the head import's finish: an unresolvable `immutable_heads()` is the CLI's config
+/// error, everything else fails the conversion.
+fn finish_error(e: MutateError) -> RepoError {
+    match e {
+        MutateError::Config { reason } => RepoError::Config { reason },
+        other => convert_failed(other),
+    }
 }
 
 #[cfg(test)]
@@ -740,6 +799,57 @@ mod tests {
             convert_failed("lock"),
             RepoError::ConvertFailed { reason } if reason == "lock"
         ));
+    }
+
+    /// Story 9.57: the head import's finish refuses an unresolvable `immutable_heads()` as the
+    /// CLI's config error; anything else fails the conversion.
+    #[test]
+    fn head_import_finish_failures_map_onto_the_repo_error_taxonomy() {
+        assert!(matches!(
+            finish_error(MutateError::Config { reason: "alias".to_owned() }),
+            RepoError::Config { reason } if reason == "alias"
+        ));
+        assert!(matches!(
+            finish_error(MutateError::Backend("b".to_owned())),
+            RepoError::ConvertFailed { reason } if reason.contains('b')
+        ));
+    }
+
+    /// Story 9.57: the topmost directory `create_dir_all` would create — `None` for an existing
+    /// path, the path itself one level down, the first missing ancestor further down, and the
+    /// first component of a relative path whose every component is missing.
+    #[test]
+    fn topmost_missing_ancestor_finds_the_outermost_directory_to_create() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        assert_eq!(topmost_missing_ancestor(root), None);
+        assert_eq!(topmost_missing_ancestor(&root.join("a")), Some(root.join("a")));
+        assert_eq!(topmost_missing_ancestor(&root.join("a/b/c")), Some(root.join("a")));
+        std::fs::create_dir(root.join("a")).expect("mkdir a");
+        assert_eq!(topmost_missing_ancestor(&root.join("a/b/c")), Some(root.join("a/b")));
+
+        let relative = Path::new("zanshin-9-57-missing-dir/nested");
+        assert!(
+            !Path::new("zanshin-9-57-missing-dir").exists(),
+            "the cwd must not hold it"
+        );
+        assert_eq!(
+            topmost_missing_ancestor(relative),
+            Some(PathBuf::from("zanshin-9-57-missing-dir"))
+        );
+        assert_eq!(topmost_missing_ancestor(Path::new(".")), None);
+    }
+
+    /// Story 9.57: only what is still on disk is reported, in the given order; a dangling
+    /// symlink is on disk.
+    #[test]
+    fn still_present_keeps_what_exists_in_order() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        std::fs::create_dir(root.join("dir")).expect("mkdir");
+        std::os::unix::fs::symlink(root.join("nowhere"), root.join("dangling")).expect("symlink");
+        let present = still_present([root.join("dir"), root.join("missing"), root.join("dangling")]);
+        assert_eq!(present, [root.join("dir"), root.join("dangling")]);
     }
 
     /// The state [`external_arm`] starts from: a colocated `init_external_git` over a fresh

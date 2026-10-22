@@ -3342,6 +3342,16 @@ pub mod zanshin {
         /// hints (Story 9.56): the jj CLI's hint lines for this refusal, verbatim (a line may itself
         /// hold newlines, as the CLI's `add_hint` text does) and in the CLI's order. Absent = none —
         /// an error without hints writes no field. context never holds in-band "Hint:" text.
+        ///
+        /// left_behind (Story 9.57): the paths a FAILED conversion (`zanshin_repo_convert`) created and
+        /// left on disk, outermost first — the topmost directory an import created on the way to its
+        /// destination, then the workspace's `.jj/` (only when the call created it), each only when it
+        /// still exists. A later entry may lie inside an earlier one (an import lists the created
+        /// destination and its `.jj/`). An import's paths are spelled as the caller passed the
+        /// destination; a colocated conversion's are canonical. Nothing is deleted on a failure (the
+        /// disk is as `jj git init` leaves it); the UI may offer the decision. A failure after the
+        /// `trunk()` alias step also leaves `<config_dir>/jj/repos/<config-id>/`, which is not listed.
+        /// Absent = none — every other error, and the `internal.panic` fallback, writes no field.
         pub struct FfiError<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -3360,6 +3370,7 @@ pub mod zanshin {
             pub const VT_CODE: ::flatbuffers::VOffsetT = 4;
             pub const VT_CONTEXT: ::flatbuffers::VOffsetT = 6;
             pub const VT_HINTS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_LEFT_BEHIND: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -3371,6 +3382,9 @@ pub mod zanshin {
                 args: &'args FfiErrorArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<FfiError<'bldr>> {
                 let mut builder = FfiErrorBuilder::new(_fbb);
+                if let Some(x) = args.left_behind {
+                    builder.add_left_behind(x);
+                }
                 if let Some(x) = args.hints {
                     builder.add_hints(x);
                 }
@@ -3414,6 +3428,17 @@ pub mod zanshin {
                     >>(FfiError::VT_HINTS, None)
                 }
             }
+            #[inline]
+            pub fn left_behind(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(FfiError::VT_LEFT_BEHIND, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for FfiError<'_> {
@@ -3426,6 +3451,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("code", Self::VT_CODE, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("context", Self::VT_CONTEXT, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("hints", Self::VT_HINTS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("left_behind", Self::VT_LEFT_BEHIND, false)?
      .finish();
                 Ok(())
             }
@@ -3435,6 +3461,8 @@ pub mod zanshin {
             pub context: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub hints:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub left_behind:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
         }
         impl<'a> Default for FfiErrorArgs<'a> {
             #[inline]
@@ -3443,6 +3471,7 @@ pub mod zanshin {
                     code: None,
                     context: None,
                     hints: None,
+                    left_behind: None,
                 }
             }
         }
@@ -3471,6 +3500,16 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(FfiError::VT_HINTS, hints);
             }
             #[inline]
+            pub fn add_left_behind(
+                &mut self,
+                left_behind: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FfiError::VT_LEFT_BEHIND, left_behind);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FfiErrorBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 FfiErrorBuilder {
@@ -3491,6 +3530,7 @@ pub mod zanshin {
                 ds.field("code", &self.code());
                 ds.field("context", &self.context());
                 ds.field("hints", &self.hints());
+                ds.field("left_behind", &self.left_behind());
                 ds.finish()
             }
         }
@@ -27510,9 +27550,8 @@ pub mod zanshin {
         /// `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
         /// working-copy check ran the snapshot (Story 9.28). `zanshin_repo_convert` carries the
         /// conversion's snapshot report (`jj git init`'s `maybe_snapshot`, Story 9.33) iff that snapshot
-        /// started — on its ok envelope and on its error envelope (after a failure before the re-open it
-        /// describes state the rollback removed; a failed re-open or watcher arming leaves `.jj/` in
-        /// place). `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
+        /// started — on its ok envelope and on its error envelope (the state it describes stays on disk:
+        /// a conversion is never rolled back, Story 9.57). `zanshin_snapshot`'s success is `ok` with NO `data` and the precondition set.
         /// `zanshin_workspace_update_stale` runs no pre-verb snapshot — it IS the recovery — and carries
         /// the recovery's TRAILING snapshot report (Story 9.23), on its ok and its error envelope.
         ///

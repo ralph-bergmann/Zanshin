@@ -38,6 +38,10 @@ pub struct CreationScenario {
     pub cli: &'static [&'static str],
     /// The Zanshin call, given the temp dir.
     pub zanshin: fn(&Path) -> zanshin_jj::CreationOutcome,
+    /// A user config file both calls run under (`JJ_CONFIG`, Story 9.57), or `None` for the
+    /// pinned empty one. A scenario with one changes the process environment, so it runs in a
+    /// process of its own (`main.rs`'s `own_process` list); the read-back runs without it.
+    pub user_config: Option<&'static str>,
 }
 
 /// Runs `prep` in `dir`.
@@ -103,6 +107,7 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
         target: "",
         cli: &["git", "init"],
         zanshin: |dir| init(dir.to_owned(), None),
+        user_config: None,
     },
     CreationScenario {
         id: "init_no_colocate",
@@ -110,6 +115,7 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
         target: "",
         cli: &["git", "init", "--no-colocate"],
         zanshin: |dir| init(dir.to_owned(), Some(false)),
+        user_config: None,
     },
     CreationScenario {
         id: "init_missing_destination",
@@ -117,6 +123,7 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
         target: "sub",
         cli: &["git", "init", "sub"],
         zanshin: |dir| init(dir.join("sub"), None),
+        user_config: None,
     },
     CreationScenario {
         id: "init_over_git_colocate",
@@ -124,6 +131,7 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
         target: "",
         cli: &["git", "init"],
         zanshin: |dir| init(dir.to_owned(), None),
+        user_config: None,
     },
     CreationScenario {
         id: "init_over_git_no_colocate",
@@ -131,6 +139,7 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
         target: "",
         cli: &["git", "init", "--no-colocate"],
         zanshin: |dir| init(dir.to_owned(), Some(false)),
+        user_config: None,
     },
     CreationScenario {
         id: "clone_default",
@@ -138,6 +147,7 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
         target: "dest",
         cli: &["git", "clone", "src", "dest"],
         zanshin: |dir| clone(&clone_options(dir, "src")),
+        user_config: None,
     },
     CreationScenario {
         id: "clone_no_colocate",
@@ -150,6 +160,7 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
                 ..clone_options(dir, "src")
             })
         },
+        user_config: None,
     },
     CreationScenario {
         id: "clone_remote_name",
@@ -162,6 +173,7 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
                 ..clone_options(dir, "src")
             })
         },
+        user_config: None,
     },
     CreationScenario {
         id: "clone_branch",
@@ -174,6 +186,7 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
                 ..clone_options(dir, "src")
             })
         },
+        user_config: None,
     },
     CreationScenario {
         id: "clone_empty_source",
@@ -181,6 +194,7 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
         target: "dest",
         cli: &["git", "clone", "src", "dest"],
         zanshin: |dir| clone(&clone_options(dir, "src")),
+        user_config: None,
     },
     CreationScenario {
         id: "clone_non_empty_destination",
@@ -191,8 +205,80 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
         target: "dest",
         cli: &["git", "clone", "src", "dest"],
         zanshin: |dir| clone(&clone_options(dir, "src")),
+        user_config: None,
+    },
+    // ── Story 9.57: `convert` leaves on disk what `jj git init` leaves ──────────
+    CreationScenario {
+        id: "convert_colocated_default",
+        prep: GIT_HERE,
+        target: "",
+        cli: &["git", "init", "--colocate"],
+        zanshin: |dir| zanshin_jj::convert_colocated(dir),
+        user_config: None,
+    },
+    CreationScenario {
+        id: "convert_import_default",
+        prep: SOURCE,
+        target: "dest",
+        cli: &["git", "init", "--git-repo", "src", "dest"],
+        zanshin: |dir| zanshin_jj::convert_import(&dir.join("src"), &dir.join("dest")),
+        user_config: None,
+    },
+    // A `src/.git` without objects: `init_external_git` fails, jj-lib removes the `.jj` it
+    // started, and the destination the call created stays — on both sides.
+    CreationScenario {
+        id: "convert_import_invalid_source",
+        prep: &[Prep::Write("src/.git/description", "no objects\n")],
+        target: "dest",
+        cli: &["git", "init", "--git-repo", "src", "dest"],
+        zanshin: |dir| zanshin_jj::convert_import(&dir.join("src"), &dir.join("dest")),
+        user_config: None,
+    },
+    // An `immutable_heads()` that parses but does not resolve: the non-colocated `import git
+    // head` finish (`tx.finish`) refuses `Config error` after `.jj/` exists, on both sides.
+    CreationScenario {
+        id: "convert_import_unresolvable_immutable",
+        prep: SOURCE,
+        target: "dest",
+        cli: &["git", "init", "--git-repo", "src", "dest"],
+        zanshin: |dir| zanshin_jj::convert_import(&dir.join("src"), &dir.join("dest")),
+        user_config: Some(UNRESOLVABLE_IMMUTABLE),
+    },
+    // The colocated flow runs no `tx.finish`: the same alias does not refuse it.
+    CreationScenario {
+        id: "convert_colocated_unresolvable_immutable",
+        prep: GIT_HERE,
+        target: "",
+        cli: &["git", "init", "--colocate"],
+        zanshin: |dir| zanshin_jj::convert_colocated(dir),
+        user_config: Some(UNRESOLVABLE_IMMUTABLE),
+    },
+    // The refs step cannot load its import options (`init_git_refs`): both refuse after
+    // `init_external_git` succeeded, and the `.jj/` stays.
+    CreationScenario {
+        id: "convert_import_refs_step_config_fault",
+        prep: SOURCE,
+        target: "dest",
+        cli: &["git", "init", "--git-repo", "src", "dest"],
+        zanshin: |dir| zanshin_jj::convert_import(&dir.join("src"), &dir.join("dest")),
+        user_config: Some(BROKEN_AUTO_TRACK),
+    },
+    // The same refs-step fault in the colocated flow — the only conversion the FFI exposes.
+    CreationScenario {
+        id: "convert_colocated_refs_step_config_fault",
+        prep: GIT_HERE,
+        target: "",
+        cli: &["git", "init", "--colocate"],
+        zanshin: |dir| zanshin_jj::convert_colocated(dir),
+        user_config: Some(BROKEN_AUTO_TRACK),
     },
 ];
+
+/// A user config whose `remotes.origin.auto-track-bookmarks` does not parse.
+const BROKEN_AUTO_TRACK: &str = "[remotes.origin]\nauto-track-bookmarks = \"glob:(\"\n";
+
+/// A user config whose `immutable_heads()` parses but names a symbol that does not exist.
+const UNRESOLVABLE_IMMUTABLE: &str = "[revset-aliases]\n'immutable_heads()' = 'nonexistent_symbol_xyz'\n";
 
 /// The created repo's own config (`jj config list --repo`, the repo presets) and its bookmarks
 /// with their remotes, read back through the CLI; the temp dir is replaced by `<tmp>` (the two

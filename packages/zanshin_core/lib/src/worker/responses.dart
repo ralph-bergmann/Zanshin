@@ -99,23 +99,30 @@ final class GraphLayoutResult extends WorkerResponse {
 /// have written operations; this is where the facts the jj CLI would have
 /// printed land when the command itself failed.
 final class ZanshinFfiException implements Exception {
-  /// An exception without a report: [precondition] is `null`, [warnings] and
-  /// [hints] empty. For failures Dart detects in a buffer (a corrupt or
-  /// mismatched payload), not for error envelopes.
-  const ZanshinFfiException(this.code, [this.context]) : precondition = null, warnings = const [], hints = const [];
+  /// An exception without a report: [precondition] is `null`, [warnings],
+  /// [hints] and [leftBehind] empty. For failures Dart detects in a buffer (a
+  /// corrupt or mismatched payload), not for error envelopes.
+  const ZanshinFfiException(this.code, [this.context])
+    : precondition = null,
+      warnings = const [],
+      hints = const [],
+      leftBehind = const [];
 
   /// An exception with a report — the shape every error envelope decodes to,
   /// the worker-built ones (`ffi.invalid_handle`, `internal.dispatch_error`)
   /// included: [precondition] `null` when the envelope carries none, [warnings]
   /// in wire order (the CLI's print order), empty when there were none, and
-  /// the error's [hints] (Story 9.56), empty when it has none. Keeps the
-  /// [warnings] and [hints] lists it is given as is.
+  /// the error's [hints] (Story 9.56), empty when it has none, and what a
+  /// failed conversion left on disk ([leftBehind], Story 9.57), empty
+  /// otherwise. Keeps the [warnings], [hints] and [leftBehind] lists it is
+  /// given as is.
   const ZanshinFfiException.withReport(
     this.code,
     this.context, {
     required this.precondition,
     required this.warnings,
     this.hints = const [],
+    this.leftBehind = const [],
   });
 
   /// Machine-readable error code, e.g. `jj.repo_not_found`.
@@ -144,6 +151,20 @@ final class ZanshinFfiException implements Exception {
   /// Unmodifiable on an exception decoded from an error envelope.
   final List<String> hints;
 
+  /// The paths a FAILED conversion created and left on disk (Story 9.57),
+  /// outermost first — for an import the directory it created on the way,
+  /// then the workspace's `.jj/` (only when the call created it) — each only
+  /// when it still exists. A later entry may lie inside an earlier one (an
+  /// import lists the created destination and its `.jj/`). An import's paths
+  /// are spelled as the caller passed the destination; a colocated
+  /// conversion's are canonical. Nothing is deleted on a failure: the disk is
+  /// as `jj git init` leaves it, and the UI may offer to remove these. A
+  /// failure after the `trunk()` alias step also leaves the secure-config
+  /// directory `<config_dir>/jj/repos/<config-id>/`, which is not listed.
+  /// Empty for every other error. Unmodifiable on an exception decoded from an
+  /// error envelope.
+  final List<String> leftBehind;
+
   @override
   String toString() {
     final buf = StringBuffer('ZanshinFfiException($code');
@@ -152,6 +173,9 @@ final class ZanshinFfiException implements Exception {
     }
     if (hints.isNotEmpty) {
       buf.write('; hints: ${hints.join(' | ')}');
+    }
+    if (leftBehind.isNotEmpty) {
+      buf.write('; left behind: ${leftBehind.join(' | ')}');
     }
     buf.write(')');
     return buf.toString();
