@@ -1798,14 +1798,14 @@ Spec: spec-9-56-closing-commit-summary-template-hints.
 
 Spec: spec-9-57-convert-no-own-rollback-cli-parity.
 
-- **A failed `Repo::init` (over an existing `.git/`, or of a new destination) does not report what it left on disk; only the two convert verbs fill `CreationOutcome.left_behind` / `FfiError.left_behind`.** Low.
+- ~~**A failed `Repo::init` (over an existing `.git/`, or of a new destination) does not report what it left on disk; only the two convert verbs fill `CreationOutcome.left_behind` / `FfiError.left_behind`.**~~ — RESOLVED 2026-10-22 (spec-9-58-init-left-behind-one-level-immutable-text, commit 2bb36ad): a failed `Repo::init` lists the destination it created and then `.jj` once its jj-lib creation succeeded, canonical, through `FfiError.left_behind` / `ZanshinFfiException.leftBehind`; Rust, FFI and Dart tests. Low.
   - `crates/zanshin-jj/src/creation.rs:187` (`create_or_reuse_dir` destination) and `:200` (`init_over_git_dir`, the same External steps as `convert_colocated`, no rollback since Story 9.20); Story 9.57 scoped the "partial state left" fact to `convert`.
   - **Follow-up:** fill `left_behind` in `creation::init` the way `convert` does (the `.jj` only after `init_external_git` succeeded, plus a destination the call created), if the UI should offer the same decision after a failed init.
   - **2026-10-22, Ralph:** yes, like convert → **Story 9.58** (item 1). Covered by Story 9.58.
 - ~~**`clone`'s finish maps an unresolvable `immutable_heads()` to `RepoError::CloneFailed` (`jj.jj_lib_error`), while the CLI's `tx.finish` reports a `Config error` (Zanshin: `jj.config_error`).** Low.~~ — **RESOLVED 2026-10-22 (spec-9-57-closing-clone-finish-config-error, commit cee2f0d):** clone's `finish` maps `resolve_immutable`'s error through `creation::finish_error` (`MutateError::Config` → `RepoError::Config`, else `CloneFailed`); the code is pinned by the Rust tests (the inline `finish_error` unit test and two rows in `tests/it/creation_warnings.rs`: new destination removed; existing empty colocated destination left empty); the oracle scenario `clone_unresolvable_immutable` witnesses that the refusal and the clean-up stay CLI-equal (it compares outcome, warnings and disk, never the code; ledgered only for the CLI's 7 template warnings).
   - `crates/zanshin-jj/src/creation.rs:486-487` (`resolve_immutable(..).map_err(|e| clone_failed(..))`); CLI v0.46.0 `cli_util.rs:2986-3002`. The refusal matches; only the code differs.
   - **Follow-up:** Done (cee2f0d) — mapped as `convert`'s head-import finish does.
-- **`convert_import` creates every missing level of its destination (`create_dir_all`), while `jj git init --git-repo` creates one level (`create_or_reuse_dir`) and refuses "Failed to create workspace" when the parent is missing.** Low.
+- ~~**`convert_import` creates every missing level of its destination (`create_dir_all`), while `jj git init --git-repo` creates one level (`create_or_reuse_dir`) and refuses "Failed to create workspace" when the parent is missing.**~~ — RESOLVED 2026-10-22 (spec-9-58-init-left-behind-one-level-immutable-text, commit 2bb36ad): `convert_import` creates one level; a missing parent refuses "Failed to create workspace: …" and creates nothing; oracle `convert_import_missing_parent`. Low.
   - `crates/zanshin-jj/src/convert.rs` `import_into` (documented there as the bridge's liberalization since Story 2.13); CLI v0.46.0 `cli/src/commands/git/init.rs:161-163`. Pre-existing; Story 9.57 only reports the topmost created directory in `left_behind`.
   - **Follow-up:** Ralph decides whether `convert_import` creates one level and refuses otherwise, like the CLI (it has no FFI symbol yet).
   - **2026-10-22, Ralph:** one level, like the CLI → **Story 9.58** (item 2). Covered by Story 9.58.
@@ -1814,7 +1814,7 @@ Spec: spec-9-57-convert-no-own-rollback-cli-parity.
 
 Spec: spec-9-57-closing-clone-finish-config-error.
 
-- **An unresolvable `immutable_heads()` refuses every verb (and `clone`, `convert_import`) with jj-lib's bare resolution error as `context`, while the CLI's message is "Invalid `revset-aliases.immutable_heads()`" with that error as its cause.** Low.
+- ~~**An unresolvable `immutable_heads()` refuses every verb (and `clone`, `convert_import`) with jj-lib's bare resolution error as `context`, while the CLI's message is "Invalid `revset-aliases.immutable_heads()`" with that error as its cause.**~~ — RESOLVED 2026-10-22 (spec-9-58-init-left-behind-one-level-immutable-text, commit 2bb36ad): `resolve_immutable` prefixes "Invalid `revset-aliases.immutable_heads()`: "; `git push`'s commit check keeps jj-lib's plain text, as the CLI's bare `.resolve()?` (`push.rs:803-805` @ v0.46.0). The parse failure is a separate bullet under "Surfaced in Story 9.58". Low.
   - `crates/zanshin-jj/src/op_support.rs:86-91` (`resolve_expression(..).map_err(cfg)`, reason = the `RevsetError` text only); CLI v0.46.0 `cli/src/cli_util.rs:1146-1167` (`config_error_with_message("Invalid `revset-aliases.immutable_heads()`", e)`). Pre-existing, shared by every caller of `resolve_immutable`; found in this run's review.
   - **Follow-up:** prefix the reason in `resolve_immutable` with the CLI's message (one place; witnesses that assert the reason text adjust).
   - **2026-10-22, Ralph:** prefix the CLI's text → **Story 9.58** (item 4). Covered by Story 9.58.
@@ -1823,10 +1823,10 @@ Spec: spec-9-57-closing-clone-finish-config-error.
 
 Residual risks Story 9.57's run named in its report but did not defer; Ralph decided each on 2026-10-22.
 
-- **`convert_import`'s `left_behind` can misname the destination it created: a concurrent create between its existence check and `create_dir_all` lists a directory the call did not create, and a destination containing `..` misses the directory actually created.** Low.
+- ~~**`convert_import`'s `left_behind` can misname the destination it created: a concurrent create between its existence check and `create_dir_all` lists a directory the call did not create, and a destination containing `..` misses the directory actually created.**~~ — RESOLVED 2026-10-22 (spec-9-58-init-left-behind-one-level-immutable-text, commit 2bb36ad): "created" comes from the call's own `create_dir` result (replaces `topmost_missing_ancestor`); an existing destination is never listed, a `..` path is listed canonically. Low.
   - `crates/zanshin-jj/src/convert.rs` `topmost_missing_ancestor` runs before `import_into`'s `create_dir_all`; no FFI symbol yet, so no caller is affected today.
   - **Follow-up:** read "created" from the `create_dir` result instead of a check before it, with one-level creation → **Story 9.58** (item 3). Covered by Story 9.58.
-- **A `watcher.io_error` after a successful creation carries no `left_behind`; nothing says the repository on disk is then complete.** Low.
+- ~~**A `watcher.io_error` after a successful creation carries no `left_behind`; nothing says the repository on disk is then complete.**~~ — RESOLVED 2026-10-22 (spec-9-58-init-left-behind-one-level-immutable-text, commit 2bb36ad): the FFI, `docs/ffi-abi.md` and Dart docs say this error follows a successful creation, the repository is complete, it carries no `left_behind` and can be opened again. Low.
   - `crates/zanshin-ffi/src/repo.rs` `creation_envelope` (arming after `Ok`); the `.jj/` left is a whole repo, not a half-converted one.
   - **Follow-up:** Ralph 2026-10-22: no `left_behind` there; the FFI and Dart docs say the repo is complete and the UI can reopen it → **Story 9.58** (item 5). Covered by Story 9.58.
 - **The rebase and lock error arms of `import_head_into_destination` are reached by no test.** Low.

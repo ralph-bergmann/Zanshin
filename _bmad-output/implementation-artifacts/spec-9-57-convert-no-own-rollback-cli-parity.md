@@ -22,6 +22,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/creation.rs:148
     severity: low
+    resolved: >-
+      2026-10-22 — fixed (spec-9-58-init-left-behind-one-level-immutable-text, commit 2bb36ad): a failed Repo::init lists the destination it created and the .jj once its jj-lib creation succeeded.
   - summary: >-
       `clone`'s finish maps an unresolvable `immutable_heads()` to `RepoError::CloneFailed`
       (`jj.jj_lib_error`), while the CLI's `tx.finish` reports a `Config error` (Zanshin: `jj.config_error`).
@@ -46,6 +48,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/convert.rs import_into
     severity: low
+    resolved: >-
+      2026-10-22 — fixed (spec-9-58-init-left-behind-one-level-immutable-text, commit 2bb36ad): convert_import creates one level; a missing parent refuses "Failed to create workspace" and creates nothing.
 ---
 
 <intent-contract>

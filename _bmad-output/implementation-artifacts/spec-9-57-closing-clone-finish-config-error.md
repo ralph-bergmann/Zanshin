@@ -23,6 +23,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/op_support.rs:86
     severity: low
+    resolved: >-
+      2026-10-22 — fixed (spec-9-58-init-left-behind-one-level-immutable-text, commit 2bb36ad): resolve_immutable prefixes "Invalid `revset-aliases.immutable_heads()`: "; git push's commit check keeps jj-lib's plain text, as the CLI.
 ---
 
 <intent-contract>
