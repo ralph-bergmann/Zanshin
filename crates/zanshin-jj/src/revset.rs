@@ -461,7 +461,11 @@ fn parse_revset_in(
         workspace: Some(workspace_ctx),
     };
 
-    revset::parse(diagnostics, expr, &context).map_err(|e| RevsetError::ParseError { reason: e.to_string() })
+    // The source chain too (`In alias …` → the alias body's own error): the CLI prints it as
+    // "Caused by:" lines; jj-lib's `Display` shows only the outermost error.
+    revset::parse(diagnostics, expr, &context).map_err(|e| RevsetError::ParseError {
+        reason: crate::mutate::flatten_chain(&e),
+    })
 }
 
 /// Resolves the symbols of a parsed expression against `repo_dyn` without evaluating it.
@@ -762,6 +766,26 @@ mod tests {
                 "jj-lib's parse error follows: {reason}"
             );
         }
+    }
+
+    /// A parse error inside a nested alias keeps jj-lib's source chain — each `In alias …` level
+    /// down to the broken body's own error — as the CLI's "Caused by:" lines do; jj-lib's
+    /// `Display` alone shows only the outermost level.
+    #[test]
+    fn a_parse_error_in_a_nested_alias_keeps_its_cause_chain() {
+        let (_tmp, repo, parse_config) =
+            repo_with("[revset-aliases]\n'immutable_heads()' = 'broken()'\n'broken()' = 'bogus_function('\n");
+        let reason = reason(immutable_heads_expression(
+            repo.workspace(),
+            &parse_config,
+            &mut Warnings::default(),
+        ));
+        assert!(reason.starts_with(PREFIX), "{reason}");
+        assert!(reason.contains("In alias `broken()`"), "{reason}");
+        assert!(
+            reason.contains("bogus_function"),
+            "the broken body's own error closes the chain: {reason}"
+        );
     }
 
     /// The builtin alias parses, into both the heads and the set.

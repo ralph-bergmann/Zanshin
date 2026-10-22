@@ -90,11 +90,14 @@ canonical — known from the creating calls' own results, never from a check bef
    destination; a `..` spelling names the directory actually created;
 2. `<root>/.jj`, when this call's jj-lib creation (`init_external_git` over an existing `.git/`,
    `init_colocated_git`, `init_internal_git`, `init_simple`) returned `Ok` — a `.jj` the
-   workspace creation refused as existing is the user's and never listed.
+   workspace creation refused as existing is the user's and never listed;
+3. `<root>/.git`, for a NEW colocated `zanshin_repo_init` (no `.git` before the call): jj-lib's
+   `init_colocated_git` creates it and its own failure cleanup removes only `.jj`, so it is listed
+   whether that creation returned `Ok` or not.
 
-A later entry may lie inside an earlier one (the created destination and its `.jj/`). A failure
-after the `trunk()` alias step also leaves `<config_dir>/jj/repos/<config-id>/`, and a failed NEW
-colocated init the `.git/` jj-lib created; neither is listed. A `watcher.io_error` comes after a
+A later entry may lie inside an earlier one (the created destination and its `.jj/` / `.git/`). A
+failure after the `trunk()` alias step also leaves `<config_dir>/jj/repos/<config-id>/`; it is not
+listed. A `watcher.io_error` comes after a
 successful creation and carries none: the repository on disk is complete and can be opened
 again. The vector
 is **absent** on every other error and on a refusal that wrote nothing — every reader treats that

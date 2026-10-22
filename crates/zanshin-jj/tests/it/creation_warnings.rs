@@ -149,6 +149,7 @@ fn creation_paths_report_what_the_cli_prints() {
     a_wrong_typed_snapshot_knob_fails_inside_the_conversion_snapshot(tmp.path());
     a_bad_immutable_heads_alias_fails_before_the_conversion_snapshot(tmp.path());
     a_bad_immutable_heads_alias_fails_a_new_colocated_init_after_its_jj(tmp.path());
+    a_failed_colocated_init_into_an_existing_dir_names_its_git(tmp.path());
     an_unresolvable_immutable_heads_alias_refuses_the_import_at_its_head_finish(tmp.path());
     an_unresolvable_immutable_heads_alias_does_not_refuse_a_colocated_conversion(tmp.path());
     an_unresolvable_immutable_heads_alias_refuses_a_clone_into_a_new_destination(tmp.path());
@@ -631,7 +632,8 @@ fn a_bad_immutable_heads_alias_fails_before_the_conversion_snapshot(tmp: &Path) 
 
 /// Story 9.58: a new colocated init builds its start-up environment after `init_colocated_git`
 /// (`git/init.rs` @ v0.46.0, `for_workable_repo`), so a bad `immutable_heads()` alias refuses with
-/// the destination the init created and its `.jj/` left — both named, canonical, outermost first.
+/// the destination the init created, its `.jj/` and the `.git/` jj-lib created left — all named,
+/// canonical, outermost first.
 fn a_bad_immutable_heads_alias_fails_a_new_colocated_init_after_its_jj(tmp: &Path) {
     let user = tmp.join("bad-immutable-init.toml");
     fs::write(&user, "[revset-aliases]\n'immutable_heads()' = 'bogus_function()'\n").unwrap();
@@ -653,7 +655,34 @@ fn a_bad_immutable_heads_alias_fails_a_new_colocated_init_after_its_jj(tmp: &Pat
     assert!(reason.contains("bogus_function"), "{reason}");
     assert!(dst.join(".jj").is_dir(), "the .jj/ stays, as the CLI leaves it");
     let canonical = dst.canonicalize().unwrap();
-    assert_eq!(outcome.left_behind, [canonical.clone(), canonical.join(".jj")]);
+    assert_eq!(
+        outcome.left_behind,
+        [canonical.clone(), canonical.join(".jj"), canonical.join(".git")]
+    );
+}
+
+/// A new colocated init into an EXISTING empty directory that fails late names the `.jj/` and the
+/// `.git/` it created, not the directory (the user's); jj-lib's cleanup removes neither.
+fn a_failed_colocated_init_into_an_existing_dir_names_its_git(tmp: &Path) {
+    let user = tmp.join("bad-immutable-init-existing.toml");
+    fs::write(&user, "[revset-aliases]\n'immutable_heads()' = 'bogus_function()'\n").unwrap();
+    set_env("JJ_CONFIG", Some(user.to_str().unwrap()));
+    let dst = TempDir::new().unwrap();
+    let outcome = Repo::init(&zanshin_jj::InitOptions {
+        path: dst.path().to_owned(),
+        backend: Some(Backend::Git),
+        colocate: Some(true),
+        ..Default::default()
+    });
+    set_env("JJ_CONFIG", Some(""));
+
+    assert!(
+        matches!(outcome.result, Err(RepoError::Config { .. })),
+        "{:?}",
+        outcome.result
+    );
+    let canonical = dst.path().canonicalize().unwrap();
+    assert_eq!(outcome.left_behind, [canonical.join(".jj"), canonical.join(".git")]);
 }
 
 /// Story 9.57: an `immutable_heads()` alias that PARSES but does not resolve passes the start-up

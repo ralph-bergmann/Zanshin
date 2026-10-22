@@ -164,7 +164,7 @@ pub(crate) fn init(options: &InitOptions) -> CreationOutcome {
 }
 
 /// What a creation call itself created on the way (Story 9.58), known from the creating calls'
-/// own results — never from a check before them.
+/// own results — never from a check before them, except the new colocated `.git` (below).
 #[derive(Debug, Default)]
 pub(crate) struct Created {
     /// The destination this call created ([`create_or_reuse_dir`] returned `true`): canonical,
@@ -172,13 +172,24 @@ pub(crate) struct Created {
     pub(crate) destination: Option<PathBuf>,
     /// `<canonical root>/.jj`, once this call's jj-lib creation returned `Ok`.
     pub(crate) jj_dir: Option<PathBuf>,
+    /// `<canonical root>/.git` of a NEW colocated init: jj-lib's `init_colocated_git` creates it
+    /// inside the call and its own failure cleanup removes only `.jj` (`init_with_factories`
+    /// @ 0.46.0), so it may stay whether that call returns `Ok` or not. Recorded before the call
+    /// — the arm runs only when `.git` is absent — and listed while it exists.
+    pub(crate) git_dir: Option<PathBuf>,
 }
 
 impl Created {
-    /// What a failed creation left: the created destination, then the `.jj` — outermost first,
-    /// each only when it is still on disk.
+    /// What a failed creation left: the created destination, then the `.jj`, then a new
+    /// colocated `.git` — outermost first, each only when it is still on disk.
     pub(crate) fn left_behind(&self) -> Vec<PathBuf> {
-        crate::convert::still_present(self.destination.iter().chain(&self.jj_dir).cloned())
+        crate::convert::still_present(
+            self.destination
+                .iter()
+                .chain(&self.jj_dir)
+                .chain(&self.git_dir)
+                .cloned(),
+        )
     }
 }
 
@@ -263,6 +274,7 @@ fn init_steps(
         created.jj_dir = external.jj_dir;
         external.result?;
     } else if colocate {
+        created.git_dir = Some(git_dir);
         let (workspace, _repo) = pollster::block_on(Workspace::init_colocated_git(&settings, &root, hash))
             .map_err(|e| init_creation_error(&e, &root))?;
         created.jj_dir = Some(root.join(".jj"));

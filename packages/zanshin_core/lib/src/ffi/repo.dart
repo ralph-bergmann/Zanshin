@@ -56,8 +56,9 @@ fbs.ObjectHash _objectHash(ObjectHash? hash) => switch (hash) {
 /// `jj.already_jj_repo`, `jj.convert_failed`, `jj.config_error`,
 /// `ffi.invalid_argument`, `watcher.io_error`. A failure is not rolled back
 /// (the disk is as `jj git init` leaves it); the error's
-/// `FfiError.left_behind` names the destination and the `.jj/` the call
-/// created and left (Story 9.58). A `watcher.io_error` comes after a
+/// `FfiError.left_behind` names the destination, the `.jj/` and — for a new
+/// colocated init — the `.git/` the call created and left (Story 9.58). A
+/// `watcher.io_error` comes after a
 /// successful init: the repository is complete and carries no `left_behind`.
 Uint8List zanshinRepoInit(
   String path, {

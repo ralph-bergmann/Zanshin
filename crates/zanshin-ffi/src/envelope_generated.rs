@@ -3346,12 +3346,12 @@ pub mod zanshin {
         /// left_behind (Stories 9.57/9.58): the paths a FAILED creation — `zanshin_repo_init` or
         /// `zanshin_repo_convert` — created and left on disk, outermost first: the destination the
         /// call created (an existing one is reused and never listed), then the workspace's `.jj/` (only
-        /// when the call's jj-lib creation succeeded), each only when it still exists. A later entry may
-        /// lie inside an earlier one (the created destination and its `.jj/`). The paths are canonical.
-        /// Nothing is deleted on a failure (the disk is as `jj git init` leaves it); the UI may offer
-        /// the decision. A failure after the `trunk()` alias step also leaves
-        /// `<config_dir>/jj/repos/<config-id>/`, and a failed new colocated init the `.git/` jj-lib
-        /// created; neither is listed. A `watcher.io_error` comes after a successful creation and
+        /// when the call's jj-lib creation succeeded), then — for a new colocated init — the `.git/`
+        /// jj-lib created, each only when it still exists. A later entry may lie inside an earlier one
+        /// (the created destination and its `.jj/` / `.git/`). The paths are canonical. Nothing is
+        /// deleted on a failure (the disk is as `jj git init` leaves it); the UI may offer the decision.
+        /// A failure after the `trunk()` alias step also leaves `<config_dir>/jj/repos/<config-id>/`;
+        /// it is not listed. A `watcher.io_error` comes after a successful creation and
         /// carries none: the repository is complete. Absent = none — every other error, and the
         /// `internal.panic` fallback, writes no field.
         pub struct FfiError<'a> {

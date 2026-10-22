@@ -465,7 +465,8 @@ class ZanshinWorker {
   /// A refused init throws [ZanshinFfiException] carrying its warnings. A
   /// failure is not rolled back: the disk is as `jj git init` leaves it, and
   /// the exception's `leftBehind` names, outermost first, the destination the
-  /// call created and the `.jj/` it created (Story 9.58), each while it still
+  /// call created, the `.jj/` it created and — for a new colocated init — the
+  /// `.git/` it created (Story 9.58), each while it still
   /// exists — empty for a refusal that wrote nothing — so the UI can offer to
   /// remove them. A `watcher.io_error` comes after a successful init: the
   /// repository is complete, `leftBehind` is empty, and it can be opened

@@ -2861,10 +2861,11 @@ impl Repo {
     /// [`CreationOutcome::left_behind`] names, outermost first, the canonical destination when
     /// this call created it, then `<root>/.jj` when this call's jj-lib creation
     /// (`init_external_git` over an existing `.git/`, `init_colocated_git`, `init_internal_git`,
-    /// `init_simple`) returned `Ok` — each only while it still exists (a failed re-open
-    /// included). It is empty on success and on every refusal that wrote nothing (an existing
-    /// `.jj/`, `--no-colocate` over `.git/`, a missing parent). A failed NEW colocated init also
-    /// leaves the `.git/` jj-lib created; that is not listed.
+    /// `init_simple`) returned `Ok`, then — for a NEW colocated init — the `<root>/.git`
+    /// `init_colocated_git` created (jj-lib's own cleanup removes only `.jj`, so it can stay even
+    /// when that call fails) — each only while it still exists (a failed re-open included). It
+    /// is empty on success and on every refusal that wrote nothing (an existing `.jj/`,
+    /// `--no-colocate` over `.git/`, a missing parent).
     ///
     /// # Warnings
     ///

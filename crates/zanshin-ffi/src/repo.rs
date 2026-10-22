@@ -772,9 +772,9 @@ pub unsafe extern "C" fn zanshin_repo_open(path: *const c_char) -> *mut ZanshinB
 /// own `.jj` removal when its creation itself fails), and the error envelope's
 /// `FfiError.left_behind` names, outermost first, what this call created and left (Story 9.58):
 /// the canonical destination when the call created it, then `<root>/.jj` when the call's jj-lib
-/// creation succeeded — each only while it still exists. A refusal that wrote nothing (an
-/// existing workspace, `no_colocate` over `.git/`, a missing parent) carries none. A failed NEW
-/// colocated init also leaves the `.git/` jj-lib created; it is not listed.
+/// creation succeeded, then — for a NEW colocated init — the `<root>/.git` jj-lib created (its
+/// own cleanup removes only `.jj`) — each only while it still exists. A refusal that wrote
+/// nothing (an existing workspace, `no_colocate` over `.git/`, a missing parent) carries none.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
