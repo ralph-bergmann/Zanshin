@@ -733,10 +733,8 @@ mod tests {
     }
 
     fn reason<T>(result: Result<T, ConfigError>) -> String {
-        match result {
-            Err(ConfigError::Load { reason }) => reason,
-            Ok(_) => panic!("expected a config error"),
-        }
+        let ConfigError::Load { reason } = result.err().expect("expected a config error");
+        reason
     }
 
     /// An unparseable `immutable_heads()` refuses with the CLI's start-up text
