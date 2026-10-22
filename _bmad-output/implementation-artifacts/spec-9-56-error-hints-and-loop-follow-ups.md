@@ -34,6 +34,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/convert.rs:655
     severity: low
+    resolved: >-
+      2026-10-22 — fixed (spec-9-57-convert-no-own-rollback-cli-parity, commit f1c4046): the head-import finish resolves immutable_heads() against the base repo and refuses jj.config_error after .jj/ exists, as the CLI; convert's own rollback is gone (left_behind reports what is left).
   - summary: >-
       The immutable refusal's "Could not modify commit: <summary>" hint (like push's "Rejected commit:"
       hint) renders Zanshin's approximate summary, not the CLI's `templates.commit_summary`, so a commit
