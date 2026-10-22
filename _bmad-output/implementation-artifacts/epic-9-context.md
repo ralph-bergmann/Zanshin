@@ -66,6 +66,7 @@ Build the jj CLI's meaningful operation set as typed, transaction-bounded verb c
 - Story 9.54: Edited editor text for `squash`/`split` + 9.51–9.53 follow-ups
 - Story 9.55: One integration-test binary per crate
 - Story 9.56: Hints on errors + three 9.24/9.30/9.31 loop follow-ups
+- Story 9.57: `convert` leaves on disk what the CLI leaves (no own rollback)
 
 ## Requirements & Constraints
 
@@ -84,7 +85,8 @@ Build the jj CLI's meaningful operation set as typed, transaction-bounded verb c
 - **Hints:** a hint the UI shows verbatim travels as its verb's plan/result data (payload `hints: [string]`, e.g. fetch remotes, push result). Since 9.56, errors carry the CLI's hint lines in an appended `FfiError.hints: [string]` (absent = none, CLI order, verbatim), mirrored as `ZanshinFfiException.hints`; the reason/context holds no in-band "Hint:" text; the registry notes which codes carry hints. Warnings keep code + message only.
 - **`op_support.rs`** ports CLI-only orchestration: rewritability/immutable-set guard, `-o`/`-A`/`-B` location + loop check, message combination/trailers, `SelectedTree`. Real algorithm ports: `revert`, `split`, `parallelize`, headless `arrange`.
 - **Precondition = CLI start-up:** colocated → import HEAD → snapshot → import refs under jj's git import/export lock, each op only on change, knobs read where the CLI reads them; not for no-snapshot commands or creation paths. A broken start-up environment refuses every verb; a stale working copy refuses snapshotting calls until `update-stale` recovers it.
-- **Finish = CLI `tx.finish`:** the shared finish resolves the immutable set (rebasing mutable descendants) for every write with changes, so an unresolvable alias refuses with no operation, as the CLI does.
+- **Finish = CLI `tx.finish`:** the shared finish resolves the immutable set (rebasing mutable descendants) for every write with changes — creation paths' "import git head" finish included — so an unresolvable alias refuses with no operation, as the CLI does.
+- **Creation paths own no rollback:** on any failure of `init`/`clone`/`convert` the disk is what the CLI's `jj git init` leaves (only jj-lib's own cleanup); the working copy and `.git/` are never touched; the backend deletes nothing it cannot prove it created — the error result reports a partial state left behind so the UI offers the decision.
 - **Settings = the CLI's full config stack**, resolved per verb's CLI command name; no hardcoded identity, no `.gitconfig`. Config writes share one `ConfigFile` helper and write no operation.
 - **One pure `plan_*` fn per verb**, shared with `drop_actions` (advisory; the verb's refusal wins), so preview rows and execution agree; plans report what the CLI would ask (combined description, push dry-run per remote/ref). Argument parsing/expression building happens in the CLI's order before repo-dependent checks (e.g. remote patterns before listing remotes).
 - **Interactive verbs** take a GUI tree from `select_tree` (9.50); an edited editor buffer is passed separately from `-m` (both refuse).
@@ -108,6 +110,7 @@ Build the jj CLI's meaningful operation set as typed, transaction-bounded verb c
 - 9.21's `redo` reuses 9.39's walk; 9.40's gate covers new verbs; 9.30 shares 9.5's import-options helper.
 - 9.51 builds on 9.15/9.20/9.23/9.49; 9.52 on 6.4a/9.20/9.30; 9.54 follows 9.51/9.53.
 - 9.56 builds on 9.20 (push remote resolution), 9.30 (fetch hints, `num_rewritten`), 9.31 (plan fns/drop rows must flip with the finish change) and 9.32/9.35 (envelope + Dart error result it extends); its hint field reaches every ported error path and the registry.
+- 9.57 builds on 9.20 (`init_over_git_dir` already follows the CLI), 9.33 (creation-path reporting) and 9.56 (shared finish resolving the immutable set); its partial-state fact uses 9.32's envelope style.
 - 9.55 restructured every verb story's tests; later stories add tests as `tests/it/` modules.
 - Already covered outside Epic 9: reads `status`/`revset`/`change`/`op_log`/`bookmark list`/`remotes` (Epic 2), graph + `log` (Epic 4), `diff` (Epic 5); `describe`/`new`/`edit`/`abandon` (6.1), `undo` (6.2), `git fetch` (6.4a).
 - UI consumers: 10.10 (drop menu) uses 9.31's `drop_actions`; 10.25 the edited-text field; 11.8 (Sync) uses 9.24's poll.
