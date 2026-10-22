@@ -2,7 +2,8 @@
 title: 'Story 9.57 — `convert` leaves on disk what the CLI leaves: no own rollback, refuses under a broken `immutable_heads()`'
 type: 'feature'
 created: '2026-10-22'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: 'bca81203e48a2dcb7131b107c28da7d02589aa41'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -30,6 +31,18 @@ deferred:
       config error. The refusal itself matches; only the code differs.
     location: >-
       crates/zanshin-jj/src/creation.rs:486
+    severity: low
+  - summary: >-
+      `convert_import` creates every missing level of its destination (`create_dir_all`), while `jj git
+      init --git-repo` creates one level (`create_or_reuse_dir`) and refuses "Failed to create workspace"
+      when the parent is missing — so for a nested new destination the disk differs from the CLI's even
+      before any failure.
+    evidence: |-
+      `crates/zanshin-jj/src/convert.rs` `import_into` (`create_dir_all`, documented there as the bridge's
+      liberalization since Story 2.13); CLI v0.46.0 `cli/src/commands/git/init.rs:161-163`. Pre-existing;
+      Story 9.57 only reports the topmost created directory in `left_behind`.
+    location: >-
+      crates/zanshin-jj/src/convert.rs import_into
     severity: low
 ---
 
@@ -109,6 +122,39 @@ deferred:
 
 ## Review Triage Log
 
+### 2026-10-22 — Review pass
+- verdicts: 29 findings — high 0, medium 1, low 23, false 5, maybe-false 0
+- findings:
+  - `[medium]` `[patch]` (blind) `left_behind` names a `.jj` the call did not create (a concurrent process, or a pre-existing one) — `init_external_git`'s `create_jj_dir` runs outside jj-lib's cleanup, so its `DestinationExists` leaves a foreign `.jj` that the existence check reported; fixed: `ConversionReport` records that `init_external_git` returned `Ok`, and `.jj` is listed only then (test: a `.jj` regular file stays untouched, `left_behind` empty).
+  - `[low]` `[reject]` (blind) `topmost_missing_ancestor` is probed before `create_dir_all`, so a directory a concurrent process creates in between is reported as created — needs a concurrent writer inside a sub-millisecond window on a path being converted into; closing it means creating level by level and recording each `mkdir`, more than a direct correction.
+  - `[low]` `[patch]` (blind) the secure-config directory `<config_dir>/jj/repos/<id>/` a late failure leaves is no longer documented and is not in `left_behind` — caveat restored in the new wording (it stays, as the CLI leaves it, and is not listed).
+  - `[low]` `[reject]` (blind) a `watcher.io_error` after a SUCCESSFUL convert leaves `.jj/` with an empty `left_behind` — that `.jj/` is a complete, openable repo, not a half-converted state; the FFI docs say it persists and a retry sees an existing jj repo; filling it needs a convert-only branch in the shared `creation_envelope_for`.
+  - `[low]` `[patch]` (blind) `zanshin_repo_convert`'s `jj.config_error` doc still says "refused before anything is written", but start-up-environment, refs-step and snapshot-knob faults now leave `.jj/` — reworded in the rustdoc, bindings and `ffi-abi.md`.
+  - `[low]` `[patch]` (blind) `rust-error-codes.md` `jj.convert_failed` promises `left_behind` while also listing `zanshin_repo_init`'s External flow, which never fills it — the row now says init carries none.
+  - `[false]` `[reject]` (blind) sprint-status / deferred-work mirrors missing — written at finalize (this run's commit), not part of the reviewed code.
+  - `[low]` `[reject]` (blind) the CLI `tx.finish` order is hand-copied a fourth time — sharing it means refactoring clone's and `workspace_add`'s finishes, whose error mappings differ by design (clone's code drift is deferred); five lines, each citing the CLI.
+  - `[low]` `[reject]` (blind) `convert_import` reports paths in the caller's spelling (possibly relative), `convert_colocated` canonical ones — `convert_import` has no FFI symbol; the doc now says so explicitly; canonicalizing a possibly-symlinked `.jj` would change the deletion target.
+  - `[false]` `[reject]` (blind) `topmost_missing_ancestor` treats `EACCES`/`ENOTDIR` as missing — `create_dir_all` then fails before creating anything, and `still_present` drops a path it cannot stat, so nothing wrong is reported.
+  - `[low]` `[patch]` (blind) an import lists the created destination AND its `.jj/` (a child of an earlier entry) — documented that a later entry may lie inside an earlier one.
+  - `[low]` `[reject]` (blind) "a failed re-open included" and a `jj.config_error` envelope's `left_behind` have no direct test — no fixture forces `Repo::open` to fail after a successful conversion; both go through the one `left_behind` computation and the code-independent `creation_envelope_for` copy, which the `jj.convert_failed` FFI test and the unit test pin.
+  - `[low]` `[patch]` (blind) the oracle drives no FAILING colocated convert (the only one the FFI exposes) — added own-process `convert_colocated_refs_step_config_fault`.
+  - `[low]` `[patch]` (blind) Dart `_decodeLeftBehind` duplicates the hints decoder — one shared private `[string]` decoder.
+  - `[low]` `[reject]` (blind) a non-empty `CallReport.left_behind` would be dropped by the ok writer without an assertion — no caller fills it on success (`CreationOutcome.left_behind` is empty for `Ok` by construction); documented "error writer only".
+  - `[false]` `[reject]` (blind) `coverage-baseline.txt` not in the diff — this run's gate rule forbids the coverage step; the story loop runs it after its last story.
+  - `[low]` `[patch]` (edge) a pre-existing `.jj` regular file / dangling symlink in the converted directory is reported in `left_behind` — same root cause as the first row; fixed with it.
+  - `[low]` `[patch]` (edge) an existing import destination holding a `.jj` file reports it — same root cause; fixed with it.
+  - `[low]` `[reject]` (edge) concurrent creation of `created_top` between probe and `create_dir_all` — duplicate of the blind-hunter race row.
+  - `[low]` `[reject]` (edge) a destination with `..` under a missing parent (`/t/x/../y`) makes `create_dir_all` create `/t/y` too while `left_behind` names `/t/x` — programmatic `..` paths into a missing parent are not an everyday input and `convert_import` has no FFI; lexical normalization adds a path-rewriting step.
+  - `[low]` `[reject]` (edge) a non-UTF-8 left-behind path is sent lossily — FFI paths enter as UTF-8 C strings; only a non-UTF-8 symlink target under the canonicalized root could produce one; skipping or flagging adds a branch for a case not met in practice.
+  - `[low]` `[patch]` (edge) the deleted secure-config caveat — same as the blind-hunter row; restored.
+  - `[low]` `[patch]` (edge) the "created by the call" claim vs the existence-only check — same root cause as the first row; fixed with it.
+  - `[false]` `[reject]` (intent) the unresolvable-alias refusal is witnessed at the Rust/oracle surface, not as an FFI `jj.config_error` — `convert_import` has no FFI symbol, the colocated FFI convert correctly does not refuse (CLI), and `RepoError::Config` → `jj.config_error` is pinned by the existing `map_repo_err` tests.
+  - `[low]` `[reject]` (intent) blocked `.jj/.gitignore` and a failed re-open have no convert-level test — not reachable through the public verbs without fault injection; both go through the single `left_behind` computation the other failure rows pin.
+  - `[low]` `[reject]` (intent) the snapshot-fault and alias-write rows cite the CLI code path instead of comparing in the oracle — the story allows "else a test citing the CLI code path"; driving them needs new oracle prep (chmod, a broken XDG per side).
+  - `[low]` `[patch]` (intent) `left_behind` omits the orphaned secure-config directory the story's motivation names, and adds the topmost created ancestor beyond item 3's "the destination directory" — the secure-config part shares the restored-caveat fix above; the ancestor is the destination itself whenever one level is created, and lists exactly what the call made otherwise.
+  - `[false]` `[reject]` (intent) Auto Run Result / verification notes / deferred-work mirror absent — written at finalize.
+  - `[low]` `[defer]` (intent) `convert_import` creates every missing destination level (`create_dir_all`) where the CLI creates one and refuses otherwise — pre-existing documented liberalization (Story 2.13), not caused by this story; added to `deferred:`.
+
 ## Design Notes
 
 **Why a typed `FfiError.left_behind`, not a warning.** Every warning code is a CLI `ui.warning_*` line (registry rule, 9.32); the CLI prints nothing about a half-initialised repo. The fact is error detail with structure (paths the UI may offer to delete), like `hints` (9.56), so it rides `FfiError` and is sourced from the call's `CallReport` — no change to the 76 `FfiErrorObj` literals, and `ActionOutcome.refusal` never sets it.
@@ -130,3 +176,38 @@ let lock = lock_git_import_export(workspace, false)…; finish_transaction(…)
 - `cargo test -p zanshin-parity --test oracle` -- expected: green, no UNEXPECTED / CHANGED / STALE.
 - `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity -p zanshin-mcp --all-targets -- -D warnings`, `cargo fmt --all --check` -- expected: clean.
 - `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings`, `dart format --set-exit-if-changed .`, `dart test` (real cdylib, gate env); `dart analyze` in `app/` -- expected: green.
+
+**Verification notes (run 2026-10-22, after the review patches; no `cargo make test` / `test-full` / `coverage` per the loop's gate rule):**
+- `cargo fmt --all --check` — clean.
+- `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity -p zanshin-mcp --all-targets -- -D warnings` — clean.
+- `cargo test -p zanshin-jj` — 306 lib + 1016 `it` passed (1 pre-existing ignored perf benchmark).
+- `cargo test -p zanshin-ffi` — 196 lib + 307 `it` passed.
+- `cargo test -p zanshin-parity --test oracle` — 208 passed (194 scenarios), no UNEXPECTED / CHANGED / STALE.
+- `cargo make codegen` — re-run leaves the tree unchanged (generated header, Rust and Dart accessors, bindings committed).
+- `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings` clean, `dart format --set-exit-if-changed .` clean, `cargo make --allow-private test-core` (real cdylib, gate env) 933 passed; `dart analyze` in `app/` clean.
+- Coverage not measured (loop gate rule); the new and changed lines got tests — except two error arms of `import_head_into_destination` (the `rebase_descendants_with_options` and lock failures) that no fixture reaches, same shape as the old plain-rebase line.
+
+## Auto Run Result
+
+Status: done
+
+**Items:**
+- **I1 — fixed (f1c40463d00dcdf04d569beefd98a7c319fe4c3d).** `convert_import`'s "import git head" finish now follows the CLI's `tx.finish` order: with changes it resolves `immutable_heads()` against `tx.base_repo()` (an unresolvable alias refuses `RepoError::Config` / `jj.config_error` after `.jj/` exists, as `jj git init --git-repo`), rebases the mutable descendants, then locks and finishes. The colocated arm runs no `tx.finish` in the CLI and keeps succeeding under the same alias. Both convert verbs' own rollback is gone (Ralph's decision on I1). Witnesses: Rust (`creation_warnings.rs`) and oracle `convert_import_unresolvable_immutable` / `convert_colocated_unresolvable_immutable` (ledger: the CLI's 7 start-up short-prefix template warnings, as 9.56's alias scenarios).
+
+**Summary.** `convert_colocated` / `convert_import` delete nothing on failure; the disk is as `jj git init` leaves it (jj-lib's own `.jj` cleanup inside `init_external_git` stays; the working copy and `.git/` are untouched). A failed conversion names what it created and left: `CreationOutcome.left_behind` (outermost first — an import's topmost created directory, then the `.jj/` — a `.jj` only when this call's `init_external_git` created it, each only when it still exists) → `FfiError.left_behind: [string]` (appended; absent when empty, panic fallback bytes unchanged) → `ZanshinFfiException.leftBehind`. The secure-config directory a late failure leaves is documented, not listed. Docs (rustdoc, `.fbs`, generated bindings, Dart, `ffi-abi.md`, `rust-error-codes.md`) state the new failure contract.
+
+**Files changed (f1c4046):**
+- `crates/zanshin-jj/src/convert.rs` — rollbacks removed, `left_behind` (+ `jj_created`, `topmost_missing_ancestor`, `still_present`), head-import finish in CLI order, docs, unit tests.
+- `crates/zanshin-jj/src/repo.rs`, `creation.rs`, `config.rs` — `CreationOutcome.left_behind`, doc rewording.
+- `crates/zanshin-jj/tests/it/{convert,convert_alias_write_failure,creation_warnings,config_identity,api_stability}.rs` — rollback assertions flipped to the CLI's on-disk state, `left_behind` asserted, new rows (unresolvable alias, nested destination, pre-existing `.jj` symlink/file).
+- `schemas/envelope.fbs` + generated `envelope_generated.rs`, `zanshin_ffi.h`, `bindings.dart`, `envelope_zanshin.ffi_generated.dart` — `FfiError.left_behind`.
+- `crates/zanshin-ffi/src/{envelope,repo,config,snapshot,graph}.rs`, `tests/it/repo_ffi.rs` — `CallReport.left_behind`, error writer, docs, tests.
+- `packages/zanshin_core/lib/src/{worker/responses,ffi/precondition,ffi/repo,worker/commands,worker/isolate}.dart`, `test/ffi/warning_test.dart`, `test/worker/error_reports_test.dart` — `leftBehind`, shared `[string]` decoder, docs, tests.
+- `crates/zanshin-parity/tests/oracle/{driver,git_scenarios,harness,main,ledger}.rs` — per-scenario `JJ_CONFIG` in own-process creation tests; 7 convert scenarios; 2 ledger entries.
+- `docs/ffi-abi.md`, `docs/rust-error-codes.md` — failure contract, `left_behind`, `jj.config_error` emitter.
+
+**Review:** 29 findings (medium 1, low 23, false 5). Patched: `.jj` listed only when the call created it (medium); secure-config caveat restored; `jj.config_error` docs reworded for faults after `init_external_git`; `jj.convert_failed` row notes init carries no `left_behind`; nesting/spelling of `left_behind` documented; oracle `convert_colocated_refs_step_config_fault`; one shared Dart `[string]` decoder. Deferred (mirrored in deferred-work.md "Surfaced in Story 9.57"): init reports no `left_behind`; clone maps an unresolvable alias to `jj.jj_lib_error`; `convert_import`'s `create_dir_all` vs the CLI's one level. Rejected (reasons in the triage log): `created_top` probe race, watcher failure after success, `tx.finish` copy not shared, caller-spelled import paths, `..` paths, non-UTF-8 lossy paths, re-open / config-error envelope without own fixture, ok-writer assertion, citing instead of oracle for the snapshot-fault/alias-write rows.
+
+**Follow-up review recommended:** false — patched counts high 0, medium 1, low 7 entries.
+
+**Residual risks:** coverage ratchet not run (loop gate at the end) — two unreachable error arms in `import_head_into_destination`; the `created_top` probe-then-create race and `..` destinations can misname the created directory for `convert_import` (no FFI symbol yet); a `watcher.io_error` after a successful convert carries no `left_behind` (the repo is complete).
