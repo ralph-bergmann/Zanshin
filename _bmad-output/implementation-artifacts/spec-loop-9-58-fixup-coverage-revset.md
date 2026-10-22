@@ -17,6 +17,8 @@ deferred:
     location: >-
       _bmad-output/project-context.md (testing rules)
     severity: low
+    resolved: >-
+      2026-10-23 — fixed (console session, Ralph: rule in project-context.md; commit 8ffb8b1): testing rules forbid a match with a panic! arm in test helpers.
 ---
 
 <intent-contract>

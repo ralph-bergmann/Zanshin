@@ -1837,7 +1837,7 @@ Residual risks Story 9.57's run named in its report but did not defer; Ralph dec
 
 Spec: spec-9-58-init-left-behind-one-level-immutable-text.
 
-- **A failed NEW colocated `Repo::init` (no `.git` before the call) also leaves the `.git/` jj-lib's `init_colocated_git` created; `left_behind` lists only the destination and `.jj`, as Story 9.58 scopes it.** Low.
+- ~~**A failed NEW colocated `Repo::init` (no `.git` before the call) also leaves the `.git/` jj-lib's `init_colocated_git` created; `left_behind` lists only the destination and `.jj`, as Story 9.58 scopes it.**~~ — RESOLVED 2026-10-23 (console session, Ralph: list it; commit 8105bcc): `Created.git_dir` is recorded before `init_colocated_git` (the arm runs only without `.git`) and listed after the destination and `.jj` while it exists; witnesses in `tests/it/creation_warnings.rs` (new destination; existing empty directory). Low.
   - `crates/zanshin-jj/src/creation.rs` `init_steps` colocated arm: jj-lib 0.46.0 `GitBackend::init_colocated` creates `<root>/.git` (its `init_with_factories` cleanup removes only `.jj`); `workable_env` / `add_gitignore` / `Repo::open` can then fail (e.g. a bad `immutable_heads()` alias). With a created destination the `.git/` lies inside the listed directory; into an existing empty directory it is not named.
   - **Follow-up:** Ralph decides whether `left_behind` also lists a `.git/` the call created (then `Created` records it after `init_colocated_git` returns `Ok`), or the documented non-listing stays.
 - ~~**An `immutable_heads()` alias that does not PARSE still refuses with jj-lib's bare parse error, while the CLI prefixes that case with "Invalid `revset-aliases.immutable_heads()`" too; Story 9.58 prefixed only the resolve failure.** Low.~~ — RESOLVED 2026-10-22 (spec-9-58-closing-immutable-heads-parse-prefix, commit 593f6c9): `immutable_heads_expression` returns `ConfigError::Load` with the CLI's prefix + jj-lib's parse error; the start-up environment and `git push`'s planner pass the reason through unchanged.
@@ -1848,7 +1848,7 @@ Spec: spec-9-58-init-left-behind-one-level-immutable-text.
 
 Spec: spec-9-58-closing-immutable-heads-parse-prefix.
 
-- **Every revset parse error Zanshin reports drops jj-lib's source chain (e.g. an `immutable_heads()` whose definition calls a broken user alias loses the "In alias …" cause), while the CLI prints that chain as "Caused by:".** Low.
+- ~~**Every revset parse error Zanshin reports drops jj-lib's source chain (e.g. an `immutable_heads()` whose definition calls a broken user alias loses the "In alias …" cause), while the CLI prints that chain as "Caused by:".**~~ — RESOLVED 2026-10-23 (console session, Ralph: fix here; commit 8105bcc): `parse_revset_in` renders the error with `mutate::flatten_chain`; witness `revset::tests::a_parse_error_in_a_nested_alias_keeps_its_cause_chain`. Low.
   - `crates/zanshin-jj/src/revset.rs:464` `parse_revset_in` maps with `e.to_string()`; jj-lib 0.46.0 `RevsetParseError` displays only `{pest_error}`, its `source` separate (`revset_parser.rs:155-161`). Pre-existing, shared by every revset parse in the crate; found in this run's review.
   - **Follow-up:** render the parse error with its source chain (`flatten_chain`) in `parse_revset_in`, adjusting the witnesses that assert parse-error text.
 
@@ -1856,6 +1856,6 @@ Spec: spec-9-58-closing-immutable-heads-parse-prefix.
 
 Spec: spec-loop-9-58-fixup-coverage-revset.
 
-- **No project rule stops a loop's new test helper from carrying a never-run `panic!` fallback arm, which drops the file below a 100% baseline.** Low.
+- ~~**No project rule stops a loop's new test helper from carrying a never-run `panic!` fallback arm, which drops the file below a 100% baseline.**~~ — RESOLVED 2026-10-23 (console session, Ralph: rule in project-context.md; commit 8ffb8b1): testing rules forbid a `match` with a `panic!` arm in test helpers (`expect` / irrefutable `let` / `assert!(matches!(…))` instead). Low.
   - Second occurrence: `remote_changes.rs` / `drop_actions.rs` / `config.rs` (fixed 46031ea) and now `crates/zanshin-jj/src/revset.rs` (593f6c9, fixed b4fff0b); neither `_bmad-output/project-context.md` nor `docs/coverage.md` names the pattern.
   - **Follow-up:** Ralph decides whether `project-context.md` (testing rules) or `docs/coverage.md` gains the rule "no never-run fallback arms in test helpers — `expect`/`assert!(matches!(…))` instead of a `match` with a `panic!` arm".

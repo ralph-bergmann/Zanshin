@@ -21,6 +21,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/creation.rs init_steps
     severity: low
+    resolved: >-
+      2026-10-23 — fixed (console session, Ralph: list it; commit 8105bcc): Created.git_dir is recorded before init_colocated_git and listed after the destination and .jj while it exists.
   - summary: >-
       An `immutable_heads()` alias that does not PARSE still refuses with jj-lib's bare parse error, while the CLI
       prefixes that case with "Invalid `revset-aliases.immutable_heads()`" too; Story 9.58 prefixed only the

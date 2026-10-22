@@ -23,6 +23,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/revset.rs:464
     severity: low
+    resolved: >-
+      2026-10-23 — fixed (console session, Ralph: fix here; commit 8105bcc): parse_revset_in renders the error with mutate::flatten_chain.
 ---
 
 <intent-contract>
