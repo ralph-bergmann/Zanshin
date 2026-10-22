@@ -7686,6 +7686,30 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Related:** 2.12, 2.13, 9.20, 9.33, 9.56; deferred-work "Surfaced in Story 9.56".
 
+### Story 9.58: Follow-ups of 9.57 — `init` reports what it left, `convert_import` creates one level, the CLI's `immutable_heads()` error text [M/bridge]
+*(Added 2026-10-22, Ralph — console session after the 9.57 story loop: decided on 9.57's open deferrals and the residual risks its run named.)*
+
+**Motivation.** Story 9.57 gave the two convert verbs `CreationOutcome.left_behind` (→ `FfiError.left_behind` → `ZanshinFfiException.leftBehind`), so the UI can offer what to do after a failed creation. `Repo::init` still reports nothing, `convert_import` still creates every missing level of its destination where the CLI creates one, and its "did we create it" check runs before the creation, so `left_behind` can name a directory the call did not create (another process creating it meanwhile) or miss one (a destination with `..`). Separately, an unresolvable `immutable_heads()` refuses every verb with jj-lib's bare resolution error, where the CLI's message is "Invalid `revset-aliases.immutable_heads()`".
+
+**Scope.**
+1. **`Repo::init` fills `left_behind` on failure, as convert does** (Ralph: yes, like convert): the destination when this call created it, and `.jj` when this call created it, outermost first; nothing it did not create. Every failure point of `init` (`crates/zanshin-jj/src/creation.rs` `init_steps`: the new-destination arms and `init_over_git_dir`, the same External steps as `convert_colocated`). Carried through the FFI and Dart as 9.57 built it; the docs of `Repo::init`, `zanshin_repo_init`, `initRepo` and `docs/ffi-abi.md` state it.
+2. **`convert_import` creates one level, like `jj git init --git-repo`** (Ralph: like the CLI): `create_or_reuse_dir` semantics (`cli/src/commands/git/init.rs:161-163` @ v0.46.0) — the destination itself is created or an existing directory reused; a missing parent refuses "Failed to create workspace: …" as `init` does (`creation.rs` `init_failed`). Drop the `create_dir_all` liberalization and its docs (since Story 2.13).
+3. **"Did we create it" from the creation itself, not a check before it.** For `init` and `convert_import`, whether the destination was created is read from the result of the one `create_dir` call (created vs. `AlreadyExists` reused — the same semantics as jj-lib's `create_or_reuse_dir`), not from a `symlink_metadata` check before it; `.jj` stays "listed only when this call created it" (9.57). This replaces `convert.rs` `topmost_missing_ancestor` and closes both misnaming cases 9.57's run named (a concurrent create between check and write; a destination containing `..`).
+4. **The CLI's wording for an unresolvable `immutable_heads()`.** `op_support.rs` `resolve_immutable` (~:86-91) prefixes the reason with the CLI's message — "Invalid `revset-aliases.immutable_heads()`" + the jj-lib error as the cause (`cli_util.rs:1146-1167` @ v0.46.0 `config_error_with_message`), in the style of the existing ported `*_error_with_message` sites (e.g. `init_failed`'s "Failed to create workspace: <cause>"). One place, every verb and `clone` / `convert_import`; tests that assert the reason text follow.
+5. **Docs: a `watcher.io_error` after a successful creation means the repo is complete.** `docs/ffi-abi.md` and the Dart docs of `initRepo` / `cloneRepo` / `convert` say that this error comes after the creation succeeded, so the repository on disk is whole (no `left_behind`, nothing half-made) and the UI can offer to open it again rather than to clean up.
+
+**Non-goals.** UI. `clone`'s clean-up (it removes what it created, as the CLI). Tests for `import_head_into_destination`'s rebase and lock error arms (Ralph 2026-10-22: pure `?` forwarding of jj-lib errors, unreachable without a test-only seam — leave them). `left_behind` on `watcher.io_error` (Ralph 2026-10-22: no, docs only — item 5).
+
+**Depends on.** 9.57 (done).
+
+**Witnesses.**
+- Item 1: a failed `init` into a new destination lists the destination; a failed `init` over an existing `.git` lists the `.jj` it created; a refusal before anything is written lists nothing (Rust, FFI, Dart).
+- Item 2: `convert_import` into `<missing>/<dest>` refuses "Failed to create workspace" and creates nothing, as the CLI (parity oracle); into a missing `<dest>` with an existing parent it works as today.
+- Item 3: a destination that already exists is never listed; a destination path with `..` lists the directory actually created.
+- Item 4: an unresolvable alias refuses with a reason starting "Invalid `revset-aliases.immutable_heads()`" for a verb, `clone` and `convert_import`.
+
+**Related:** 2.13, 9.20, 9.33, 9.56, 9.57; deferred-work "Surfaced in Story 9.57", "Surfaced in the closing run of Story 9.57", "Surfaced in the console session after the 9.57 story loop".
+
 ### MCP exposure (cross-cut with Epic 7)
 Each verb optionally gets an MCP tool (extends Epic 7's write-tools 7.4 beyond `describe`/`new`). Per ADR-0003 open questions: decide (a) whether every mutation verb gets an MCP tool immediately or reads + a core subset first, and (b) whether MCP gets the raw `eval_revset` or only named views.
 
