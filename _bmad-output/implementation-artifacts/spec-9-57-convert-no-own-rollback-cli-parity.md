@@ -32,6 +32,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/creation.rs:486
     severity: low
+    resolved: >-
+      2026-10-22 — fixed (spec-9-57-closing-clone-finish-config-error, commit cee2f0d): clone's finish maps resolve_immutable's Config error through creation::finish_error to RepoError::Config (jj.config_error), else CloneFailed.
   - summary: >-
       `convert_import` creates every missing level of its destination (`create_dir_all`), while `jj git
       init --git-repo` creates one level (`create_or_reuse_dir`) and refuses "Failed to create workspace"
