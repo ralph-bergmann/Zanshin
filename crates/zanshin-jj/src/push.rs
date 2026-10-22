@@ -1339,8 +1339,10 @@ pub(crate) fn plan_push(
     let mut hints = Vec::new();
     let remotes = resolve_remotes(&base, args, config, sink, &mut hints)?;
     let parse_config = crate::revset::revset_config(config, sink).map_err(cfg)?;
-    let immutable_heads =
-        crate::revset::immutable_heads_expression(repo.workspace(), &parse_config, sink).map_err(cfg)?;
+    // The reason is already the CLI's "Invalid `revset-aliases.immutable_heads()`: …" text;
+    // `cfg` would prepend `config error: `.
+    let immutable_heads = crate::revset::immutable_heads_expression(repo.workspace(), &parse_config, sink)
+        .map_err(|crate::ConfigError::Load { reason }| MutateError::Config { reason })?;
     let mut planner = Planner {
         repo,
         args,

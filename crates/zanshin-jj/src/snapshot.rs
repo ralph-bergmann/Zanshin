@@ -56,7 +56,7 @@ use jj_lib::working_copy::{self, LockedWorkingCopy, WorkingCopyFreshness};
 use jj_lib::workspace::Workspace;
 
 use crate::git::GitExportFailure;
-use crate::mutate::{self, cfg, flatten_chain, MutateError};
+use crate::mutate::{self, flatten_chain, MutateError};
 use crate::op_support::start_repo_transaction;
 use crate::stale::StaleRecovery;
 use crate::template::TemplateStartup;
@@ -366,7 +366,8 @@ impl CommandEnv {
     /// # Errors
     ///
     /// - [`PreconditionError::Config`] — an alias table is not a table, the effective config is
-    ///   malformed, the `immutable_heads()` alias does not parse, or `revsets.short-prefixes` is
+    ///   malformed, the `immutable_heads()` alias does not parse ("Invalid
+    ///   `revset-aliases.immutable_heads()`: …"), or `revsets.short-prefixes` is
     ///   not a string or does not parse ("Invalid `revsets.short-prefixes`: …").
     pub(crate) fn load(
         workspace: &Workspace,
@@ -377,7 +378,7 @@ impl CommandEnv {
         sink.record_load(Load::FilesetAliases, warnings);
         let revset = crate::revset::revset_config(config, sink)?;
         let aliases = crate::template::load_aliases(config, sink)?;
-        let immutable = crate::revset::immutable_expression(workspace, &revset, sink).map_err(cfg)?;
+        let immutable = crate::revset::immutable_expression(workspace, &revset, sink)?;
         let short_prefixes = crate::template::load_short_prefixes(
             (workspace.workspace_root(), workspace.workspace_name()),
             &revset,

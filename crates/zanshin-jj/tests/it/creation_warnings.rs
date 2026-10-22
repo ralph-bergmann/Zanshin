@@ -94,7 +94,7 @@ const IDENTITY: &str = "Name and email not configured. Until configured, your co
 const STOLEN: &str = "Failed to import some Git refs:\n  refs/remotes/git/stolen";
 
 /// The CLI's prefix of an unresolvable `immutable_heads()` (`cli_util.rs:1146-1167` @ v0.46.0;
-/// Story 9.58).
+/// Story 9.58) — and of an unparseable one (`cli_util.rs:1106-1117`; Story 9.58 closing run).
 const IMMUTABLE_HEADS_INVALID: &str = "Invalid `revset-aliases.immutable_heads()`: ";
 
 /// A 2 MiB file — twice the builtin `snapshot.max-new-file-size` (1 MiB).
@@ -623,6 +623,7 @@ fn a_bad_immutable_heads_alias_fails_before_the_conversion_snapshot(tmp: &Path) 
             outcome.result
         );
     };
+    assert!(reason.starts_with(IMMUTABLE_HEADS_INVALID), "{reason}");
     assert!(reason.contains("bogus_function"), "{reason}");
     assert!(outcome.precondition.is_none(), "the snapshot never started");
     assert_left_jj(&outcome.left_behind, dir.path());
@@ -645,11 +646,11 @@ fn a_bad_immutable_heads_alias_fails_a_new_colocated_init_after_its_jj(tmp: &Pat
     });
     set_env("JJ_CONFIG", Some(""));
 
-    assert!(
-        matches!(&outcome.result, Err(RepoError::Config { .. })),
-        "{:?}",
-        outcome.result
-    );
+    let Err(RepoError::Config { reason }) = &outcome.result else {
+        panic!("{:?}", outcome.result);
+    };
+    assert!(reason.starts_with(IMMUTABLE_HEADS_INVALID), "{reason}");
+    assert!(reason.contains("bogus_function"), "{reason}");
     assert!(dst.join(".jj").is_dir(), "the .jj/ stays, as the CLI leaves it");
     let canonical = dst.canonicalize().unwrap();
     assert_eq!(outcome.left_behind, [canonical.clone(), canonical.join(".jj")]);

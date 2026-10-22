@@ -197,7 +197,8 @@ impl LogParse {
     /// # Errors
     ///
     /// - [`RevsetError::ParseError`] — any expression is syntactically invalid.
-    /// - [`RevsetError::Config`] — the repo's effective jj config is malformed or unreadable.
+    /// - [`RevsetError::Config`] — the repo's effective jj config is malformed or unreadable, or
+    ///   its `immutable_heads()` alias does not parse.
     pub(crate) fn new(
         repo: &Repo,
         sink: &mut Warnings,

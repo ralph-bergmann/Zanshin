@@ -564,7 +564,12 @@ fn a_bad_immutable_heads_alias_is_refused_before_the_lock() {
         .expect("the start-up refusal must not wait for the lock");
 
     assert!(
-        matches!(&result, Err(PreconditionError::Config { reason }) if reason.contains("bogus_function")),
+        matches!(
+            &result,
+            Err(PreconditionError::Config { reason })
+                if reason.starts_with("Invalid `revset-aliases.immutable_heads()`: ")
+                    && reason.contains("bogus_function")
+        ),
         "{result:?}"
     );
     drop(held);

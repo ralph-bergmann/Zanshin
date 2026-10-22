@@ -624,12 +624,14 @@ where
 ///
 /// # Errors
 ///
-/// - [`RevsetError::ParseError`] — the `immutable_heads()` alias does not parse.
+/// - [`ConfigError::Load`] — the `immutable_heads()` alias does not parse: "Invalid
+///   `revset-aliases.immutable_heads()`: {jj-lib's parse error}", as
+///   [`immutable_heads_expression`].
 pub(crate) fn immutable_expression(
     workspace: &Workspace,
     parse_config: &RevsetConfig,
     sink: &mut Warnings,
-) -> Result<Arc<UserRevsetExpression>, RevsetError> {
+) -> Result<Arc<UserRevsetExpression>, ConfigError> {
     Ok(immutable_heads_expression(workspace, parse_config, sink)?
         .union(&RevsetExpression::root())
         .ancestors())
@@ -666,12 +668,15 @@ pub(crate) fn trunk_resolution_error(
 ///
 /// # Errors
 ///
-/// - [`RevsetError::ParseError`] — the `immutable_heads()` alias does not parse.
+/// - [`ConfigError::Load`] — the `immutable_heads()` alias does not parse. The reason is the
+///   CLI's start-up text, "Invalid `revset-aliases.immutable_heads()`: " + jj-lib's parse error
+///   (`load_immutable_heads_expression`, `cli/src/cli_util.rs:1106-1117` @ v0.46.0, raised for
+///   every command — `jj git push` included), in the shape of `revsets.short-prefixes`'s.
 pub(crate) fn immutable_heads_expression(
     workspace: &Workspace,
     parse_config: &RevsetConfig,
     sink: &mut Warnings,
-) -> Result<Arc<UserRevsetExpression>, RevsetError> {
+) -> Result<Arc<UserRevsetExpression>, ConfigError> {
     let definition = parse_config
         .aliases_map
         .get_function("immutable_heads", 0)
@@ -683,7 +688,13 @@ pub(crate) fn immutable_heads_expression(
         definition.as_deref().unwrap_or("immutable_heads()"),
         &[],
         &mut diagnostics,
-    )?;
+    )
+    .map_err(|e| ConfigError::Load {
+        reason: format!(
+            "Invalid `revset-aliases.immutable_heads()`: {}",
+            crate::template::parse_reason(e)
+        ),
+    })?;
     sink.record_load(
         Load::ImmutableHeads,
         warning::parse_diagnostics(
@@ -693,4 +704,74 @@ pub(crate) fn immutable_heads_expression(
         ),
     );
     Ok(heads)
+}
+
+#[cfg(test)]
+mod tests {
+    use jj_lib::config::{ConfigLayer, ConfigSource};
+
+    use super::{immutable_expression, immutable_heads_expression, revset_config, RevsetConfig};
+    use crate::config::ConfigError;
+    use crate::warning::Warnings;
+
+    const PREFIX: &str = "Invalid `revset-aliases.immutable_heads()`: ";
+
+    /// A fresh repo and the revset config of its effective config with `toml` as a user layer.
+    fn repo_with(toml: &str) -> (tempfile::TempDir, crate::Repo, RevsetConfig) {
+        test_helpers::pin_test_env();
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let repo = crate::Repo::init(&crate::InitOptions {
+            path: tmp.path().to_owned(),
+            ..Default::default()
+        })
+        .result
+        .expect("init");
+        let mut config = crate::config::load(&repo).expect("config");
+        config.add_layer(ConfigLayer::parse(ConfigSource::User, toml).expect("toml"));
+        let parse_config = revset_config(&config, &mut Warnings::default()).expect("revset config");
+        (tmp, repo, parse_config)
+    }
+
+    fn reason<T>(result: Result<T, ConfigError>) -> String {
+        match result {
+            Err(ConfigError::Load { reason }) => reason,
+            Ok(_) => panic!("expected a config error"),
+        }
+    }
+
+    /// An unparseable `immutable_heads()` refuses with the CLI's start-up text
+    /// (`cli_util.rs:1106-1117` @ v0.46.0), jj-lib's parse error after it — without
+    /// `RevsetError`'s own `invalid revset: ` prefix.
+    #[test]
+    fn an_unparseable_alias_is_the_clis_config_error() {
+        let (_tmp, repo, parse_config) = repo_with("[revset-aliases]\n'immutable_heads()' = 'bogus_function('\n");
+        for reason in [
+            reason(immutable_heads_expression(
+                repo.workspace(),
+                &parse_config,
+                &mut Warnings::default(),
+            )),
+            reason(immutable_expression(
+                repo.workspace(),
+                &parse_config,
+                &mut Warnings::default(),
+            )),
+        ] {
+            assert!(reason.starts_with(PREFIX), "{reason}");
+            assert!(!reason.contains("invalid revset: "), "{reason}");
+            assert!(
+                reason.contains("bogus_function"),
+                "jj-lib's parse error follows: {reason}"
+            );
+        }
+    }
+
+    /// The builtin alias parses, into both the heads and the set.
+    #[test]
+    fn the_builtin_alias_parses() {
+        let (_tmp, repo, parse_config) = repo_with("");
+        let mut sink = Warnings::default();
+        assert!(immutable_heads_expression(repo.workspace(), &parse_config, &mut sink).is_ok());
+        assert!(immutable_expression(repo.workspace(), &parse_config, &mut sink).is_ok());
+    }
 }

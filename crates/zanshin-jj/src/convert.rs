@@ -867,7 +867,12 @@ mod tests {
         let result = external_arm(&mut workspace, &repo, &mut report);
 
         assert!(
-            matches!(&result, Err(RepoError::Config { reason }) if reason.contains("bogus_function")),
+            matches!(
+                &result,
+                Err(RepoError::Config { reason })
+                    if reason.starts_with("Invalid `revset-aliases.immutable_heads()`: ")
+                        && reason.contains("bogus_function")
+            ),
             "{result:?}"
         );
         assert!(

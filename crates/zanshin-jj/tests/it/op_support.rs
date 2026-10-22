@@ -313,13 +313,16 @@ fn an_unparseable_immutable_heads_alias_is_a_config_error() {
     let err = repo
         .describe(ChangeId(layout.commit3_change_id), "nope")
         .expect_err("a guard that cannot determine what is protected must refuse");
+    // The CLI's start-up text (`cli_util.rs:1106-1117` @ v0.46.0), naming the offending text.
+    let MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason }) = &err else {
+        panic!("expected Config, got {err:?}");
+    };
     assert!(
-        matches!(
-            err,
-            MutateError::Precondition(zanshin_jj::PreconditionError::Config { .. })
-        ),
-        "expected Config, got {err:?}"
+        reason.starts_with("Invalid `revset-aliases.immutable_heads()`: "),
+        "{reason}"
     );
+    assert!(reason.contains("bogus_function"), "{reason}");
+    assert!(!reason.contains("invalid revset: "), "{reason}");
 }
 
 // ── The guard lets mutable commits through ────────────────────────────────────────
