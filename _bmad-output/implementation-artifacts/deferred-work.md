@@ -1851,3 +1851,11 @@ Spec: spec-9-58-closing-immutable-heads-parse-prefix.
 - **Every revset parse error Zanshin reports drops jj-lib's source chain (e.g. an `immutable_heads()` whose definition calls a broken user alias loses the "In alias …" cause), while the CLI prints that chain as "Caused by:".** Low.
   - `crates/zanshin-jj/src/revset.rs:464` `parse_revset_in` maps with `e.to_string()`; jj-lib 0.46.0 `RevsetParseError` displays only `{pest_error}`, its `source` separate (`revset_parser.rs:155-161`). Pre-existing, shared by every revset parse in the crate; found in this run's review.
   - **Follow-up:** render the parse error with its source chain (`flatten_chain`) in `parse_revset_in`, adjusting the witnesses that assert parse-error text.
+
+## Surfaced in the fix-up run after the story loop 9.58 (bmad-build-auto, 2026-10-23)
+
+Spec: spec-loop-9-58-fixup-coverage-revset.
+
+- **No project rule stops a loop's new test helper from carrying a never-run `panic!` fallback arm, which drops the file below a 100% baseline.** Low.
+  - Second occurrence: `remote_changes.rs` / `drop_actions.rs` / `config.rs` (fixed 46031ea) and now `crates/zanshin-jj/src/revset.rs` (593f6c9, fixed b4fff0b); neither `_bmad-output/project-context.md` nor `docs/coverage.md` names the pattern.
+  - **Follow-up:** Ralph decides whether `project-context.md` (testing rules) or `docs/coverage.md` gains the rule "no never-run fallback arms in test helpers — `expect`/`assert!(matches!(…))` instead of a `match` with a `panic!` arm".
