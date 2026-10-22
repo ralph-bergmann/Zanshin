@@ -1832,3 +1832,14 @@ Residual risks Story 9.57's run named in its report but did not defer; Ralph dec
 - **The rebase and lock error arms of `import_head_into_destination` are reached by no test.** Low.
   - `crates/zanshin-jj/src/convert.rs` `import_head_into_destination` (`rebase_descendants_with_options(..).map_err(convert_failed)?`, `lock_git_import_export(..).map_err(convert_failed)?`); the `.jj/` holding the lock is created in the same call, and a rebase fails only on a broken backend.
   - **Follow-up:** none — record. Ralph 2026-10-22: pure `?` forwarding of jj-lib errors, no test-only seam; Story 9.58 lists it as a non-goal.
+
+## Surfaced in Story 9.58 (bmad-build-auto, 2026-10-22)
+
+Spec: spec-9-58-init-left-behind-one-level-immutable-text.
+
+- **A failed NEW colocated `Repo::init` (no `.git` before the call) also leaves the `.git/` jj-lib's `init_colocated_git` created; `left_behind` lists only the destination and `.jj`, as Story 9.58 scopes it.** Low.
+  - `crates/zanshin-jj/src/creation.rs` `init_steps` colocated arm: jj-lib 0.46.0 `GitBackend::init_colocated` creates `<root>/.git` (its `init_with_factories` cleanup removes only `.jj`); `workable_env` / `add_gitignore` / `Repo::open` can then fail (e.g. a bad `immutable_heads()` alias). With a created destination the `.git/` lies inside the listed directory; into an existing empty directory it is not named.
+  - **Follow-up:** Ralph decides whether `left_behind` also lists a `.git/` the call created (then `Created` records it after `init_colocated_git` returns `Ok`), or the documented non-listing stays.
+- **An `immutable_heads()` alias that does not PARSE still refuses with jj-lib's bare parse error, while the CLI prefixes that case with "Invalid `revset-aliases.immutable_heads()`" too; Story 9.58 prefixed only the resolve failure.** Low.
+  - CLI v0.46.0 `cli/src/cli_util.rs:1115` (`load_immutable_heads_expression` → `config_error_with_message`); Zanshin `crates/zanshin-jj/src/revset.rs` `immutable_heads_expression` returns `RevsetError::ParseError` unprefixed, its callers map it with `cfg`. Pre-existing; found in this story's review.
+  - **Follow-up:** prefix the parse failure the same way in one place (`immutable_heads_expression`), adjusting the witnesses that assert its text.
