@@ -337,6 +337,11 @@ the `zanshin-graph` lane crate was removed)*
   compiled cdylib. The isolate boundary is NEVER mocked.
 - No `#[ignore]` / `skip:` on tests for "flakiness" reasons. Either the test is
   deterministic or it's deleted.
+- No never-run fallback arms in test helpers (Ralph 2026-10-23): a helper that takes
+  the expected variant out of a result uses `expect` / `expect_err` / an irrefutable
+  `let`, or `assert!(matches!(…))` — never a `match` whose other arm only `panic!`s.
+  That arm never runs and drops a 100 % file below its coverage baseline (it failed
+  the gate twice: 46031ea, b4fff0b).
 
 **Coverage ratchet (local-only; part of `cargo make test`):**
 - `cargo make coverage` measures **Rust** line coverage — the source-level union
@@ -679,6 +684,9 @@ the `zanshin-graph` lane crate was removed)*
   refusals; only the terminal UX is replaced. The CLI is the semantic oracle (read at the pinned
   tag in `../jj`), but only for behavior: Zanshin REPLACES its terminal UX (no TUI/`$EDITOR`/
   pager/prompts/templated stdout); interactive verbs take a GUI-supplied `TreeId`. (NFR-R-2, ADR-0003)
+  Changed 2026-10-23 (Ralph): "behave like the CLI or not?" is never a question for Ralph — a
+  finding whose fix is to match the CLI's observable behavior is decided: fix it (or hand it to a
+  run), never defer it as a decision. Only product and UI decisions go to Ralph.
 - **NEVER bake in a default path or silently pick a parameter the jj CLI leaves to the user.**
   Pass every such CLI parameter through the typed verb + FFI/MCP surface so the UI offers it.
   (Pre-filling a CLI-applied default as a user-editable field is fine; deciding for the user is not.) (FR-JJ-17)

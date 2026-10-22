@@ -41,7 +41,7 @@ From here on, never ask Ralph anything; collect questions for the final report.
    - **covered** — a later story that is not done yet names this same fix in its `sprint-status.yaml` comment or epics.md text. Note that story; partial overlap does not count. The bullet stays open until that story's run closes it as an inbound item; if the bullet's Follow-up line does not name that story, append ` Covered by Story <x>.` to it.
    - **closing run** — all of these hold:
      - it names a concrete defect, gap or missing test in this repo's code, tests or docs;
-     - its text asks for no product or scope decision: no "decision for Ralph" / "Ralph decides", no options to choose between, no conditional follow-up ("if the gate time bites"), no CLI-behavior or API change to agree on;
+     - its text asks for no product or scope decision: no "decision for Ralph" / "Ralph decides", no options to choose between, no conditional follow-up ("if the gate time bites"), no API change to agree on. Exception (Ralph, 2026-10-23): a decision that is only "behave like the jj CLI or not?" is decided — like the CLI — so such an item qualifies; its closing-run entry says "Decided (Ralph, 2026-10-23): behave like the CLI.";
      - it can be fixed and verified unattended — no manual check at a running app, no Ralph's real repo, no hardware;
      - its fix touches no agent-context or planning file (CLAUDE.md, AGENTS.md, `project-context.md`, `epic-*-context.md`, `epics.md`, ADRs, `sprint-status.yaml`, `decisions-review-*.md`).
 
@@ -119,7 +119,8 @@ I2. …
 
 For each item: verify it against the code as Story <id> leaves it. Fix or settle it if it is real; reject it
 with the reason if it is false or no longer applies; defer it only when it needs a decision from Ralph or a
-story after Story <id> — do not mirror such an item into deferred-work.md again, it is already there. Under
+story after Story <id> — do not mirror such an item into deferred-work.md again, it is already there.
+Matching the jj CLI's observable behavior is never a decision for Ralph (Ralph, 2026-10-23): do it. Under
 `## Auto Run Result`, list every item by its number with its outcome: fixed (commit hash), rejected (reason),
 partly done (what is left) or not done (why).
 
@@ -143,7 +144,8 @@ new work with its own spec; Story <id>'s finished spec is not to be resumed or r
 
 For each item: verify it against the current code first. Fix it if it is real; reject it with the reason if it
 is false or not worth the added complexity. Defer it only when the fix needs a product decision from Ralph —
-do not mirror such an item into deferred-work.md again, it is already there. Change Story <id>'s code only as
+do not mirror such an item into deferred-work.md again, it is already there. Matching the jj CLI's observable
+behavior is never a decision for Ralph (Ralph, 2026-10-23): do it. Change Story <id>'s code only as
 far as an item needs. Under `## Auto Run Result`, list every item by its number with its outcome: fixed (commit
 hash), rejected (reason) or deferred (what Ralph must decide).
 
