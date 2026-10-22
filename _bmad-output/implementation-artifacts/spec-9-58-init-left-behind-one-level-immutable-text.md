@@ -33,6 +33,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/revset.rs immutable_heads_expression
     severity: low
+    resolved: >-
+      2026-10-22 — fixed (spec-9-58-closing-immutable-heads-parse-prefix, commit 593f6c9): an unparseable immutable_heads() refuses with "Invalid `revset-aliases.immutable_heads()`: <parse error>" at every call site, as the CLI's start-up parse.
 ---
 
 <intent-contract>
