@@ -1582,15 +1582,17 @@ class _PayloadTypeIdReader extends fb.Reader<PayloadTypeId> {
 ///  hold newlines, as the CLI's `add_hint` text does) and in the CLI's order. Absent = none —
 ///  an error without hints writes no field. context never holds in-band "Hint:" text.
 ///
-///  left_behind (Story 9.57): the paths a FAILED conversion (`zanshin_repo_convert`) created and
-///  left on disk, outermost first — the topmost directory an import created on the way to its
-///  destination, then the workspace's `.jj/` (only when the call created it), each only when it
-///  still exists. A later entry may lie inside an earlier one (an import lists the created
-///  destination and its `.jj/`). An import's paths are spelled as the caller passed the
-///  destination; a colocated conversion's are canonical. Nothing is deleted on a failure (the
-///  disk is as `jj git init` leaves it); the UI may offer the decision. A failure after the
-///  `trunk()` alias step also leaves `<config_dir>/jj/repos/<config-id>/`, which is not listed.
-///  Absent = none — every other error, and the `internal.panic` fallback, writes no field.
+///  left_behind (Stories 9.57/9.58): the paths a FAILED creation — `zanshin_repo_init` or
+///  `zanshin_repo_convert` — created and left on disk, outermost first: the destination the
+///  call created (an existing one is reused and never listed), then the workspace's `.jj/` (only
+///  when the call's jj-lib creation succeeded), each only when it still exists. A later entry may
+///  lie inside an earlier one (the created destination and its `.jj/`). The paths are canonical.
+///  Nothing is deleted on a failure (the disk is as `jj git init` leaves it); the UI may offer
+///  the decision. A failure after the `trunk()` alias step also leaves
+///  `<config_dir>/jj/repos/<config-id>/`, and a failed new colocated init the `.git/` jj-lib
+///  created; neither is listed. A `watcher.io_error` comes after a successful creation and
+///  carries none: the repository is complete. Absent = none — every other error, and the
+///  `internal.panic` fallback, writes no field.
 class FfiError {
   FfiError._(this._bc, this._bcOffset);
   factory FfiError(List<int> bytes) {

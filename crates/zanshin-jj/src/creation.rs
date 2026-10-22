@@ -148,20 +148,73 @@ fn workable_env(
 pub(crate) fn init(options: &InitOptions) -> CreationOutcome {
     let mut sink = Warnings::default();
     let mut precondition = None;
-    let result = init_steps(options, &mut sink, &mut precondition);
+    let mut created = Created::default();
+    let result = init_steps(options, &mut sink, &mut precondition, &mut created);
+    let left_behind = if result.is_err() {
+        created.left_behind()
+    } else {
+        Vec::new()
+    };
     CreationOutcome {
         result,
         precondition,
         warnings: sink.take(),
-        left_behind: Vec::new(),
+        left_behind,
     }
 }
 
-/// The failure of a create-or-canonicalize step of the destination — the CLI's
+/// What a creation call itself created on the way (Story 9.58), known from the creating calls'
+/// own results — never from a check before them.
+#[derive(Debug, Default)]
+pub(crate) struct Created {
+    /// The destination this call created ([`create_or_reuse_dir`] returned `true`): canonical,
+    /// spelled as the caller passed it only when canonicalizing it failed.
+    pub(crate) destination: Option<PathBuf>,
+    /// `<canonical root>/.jj`, once this call's jj-lib creation returned `Ok`.
+    pub(crate) jj_dir: Option<PathBuf>,
+}
+
+impl Created {
+    /// What a failed creation left: the created destination, then the `.jj` — outermost first,
+    /// each only when it is still on disk.
+    pub(crate) fn left_behind(&self) -> Vec<PathBuf> {
+        crate::convert::still_present(self.destination.iter().chain(&self.jj_dir).cloned())
+    }
+}
+
+/// jj-lib's `file_util::create_or_reuse_dir` (`file_util.rs:70-76` @ 0.46.0) — ONE level, an
+/// existing directory reused — answering whether THIS call created it: `true` iff `create_dir`
+/// returned `Ok`.
+pub(crate) fn create_or_reuse_dir(path: &Path) -> io::Result<bool> {
+    match std::fs::create_dir(path) {
+        Ok(()) => Ok(true),
+        Err(_) if path.is_dir() => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+/// The CLI's destination step (`init.rs:161-163` @ v0.46.0): [`create_or_reuse_dir`], then
+/// canonicalize. A destination this call created is recorded in `created` — canonical, or as
+/// spelled when only the canonicalize failed.
+pub(crate) fn create_destination(path: &Path, created: &mut Created) -> io::Result<PathBuf> {
+    let made = create_or_reuse_dir(path)?;
+    let canonical = std::fs::canonicalize(path);
+    if made {
+        created.destination = Some(canonical.as_ref().map_or_else(|_| path.to_owned(), Clone::clone));
+    }
+    canonical
+}
+
+/// The CLI's text for a destination that cannot be created or canonicalized —
 /// `user_error_with_message("Failed to create workspace", e)` (`init.rs:162-164`).
+pub(crate) fn failed_to_create_workspace(e: impl std::fmt::Display) -> String {
+    format!("Failed to create workspace: {e}")
+}
+
+/// The failure of a create-or-canonicalize step of the destination, as `init`'s error.
 fn init_failed(e: impl std::fmt::Display) -> RepoError {
     RepoError::InitFailed {
-        reason: format!("Failed to create workspace: {e}"),
+        reason: failed_to_create_workspace(e),
     }
 }
 
@@ -178,16 +231,15 @@ fn init_steps(
     options: &InitOptions,
     sink: &mut Warnings,
     precondition: &mut Option<crate::Precondition>,
+    created: &mut Created,
 ) -> Result<Repo, RepoError> {
     // The CLI's start-up config check runs before the command touches any path, and its
     // `command.settings()` is what `git.colocate` / `git.object-hash` are read from.
     let startup = config::check_startup_stack()?;
     let Some(Backend::Git) = options.backend else {
-        return init_native(options);
+        return init_native(options, created);
     };
-    let root = file_util::create_or_reuse_dir(&options.path)
-        .and_then(|()| std::fs::canonicalize(&options.path))
-        .map_err(init_failed)?;
+    let root = create_destination(&options.path, created).map_err(init_failed)?;
     let colocate = effective_colocate(&startup, options.colocate)?;
     let hash = gix_kind(effective_object_hash(&startup, options.object_hash)?);
 
@@ -205,25 +257,28 @@ fn init_steps(
         if root.join(".jj").symlink_metadata().is_ok() {
             return Err(RepoError::AlreadyJjRepo { path: root });
         }
-        let (result, report, warnings) = crate::convert::init_over_git_dir(&settings, &root);
-        *precondition = report;
-        sink.extend(warnings);
-        result?;
+        let external = crate::convert::init_over_git_dir(&settings, &root);
+        *precondition = external.precondition;
+        sink.extend(external.warnings);
+        created.jj_dir = external.jj_dir;
+        external.result?;
     } else if colocate {
         let (workspace, _repo) = pollster::block_on(Workspace::init_colocated_git(&settings, &root, hash))
             .map_err(|e| init_creation_error(&e, &root))?;
+        created.jj_dir = Some(root.join(".jj"));
         workable_env(&workspace, sink, |reason| RepoError::InitFailed { reason })?;
         add_gitignore(&workspace, |reason| RepoError::InitFailed { reason })?;
     } else {
         pollster::block_on(Workspace::init_internal_git(&settings, &root, hash))
             .map_err(|e| init_creation_error(&e, &root))?;
+        created.jj_dir = Some(root.join(".jj"));
     }
     Repo::open(&root)
 }
 
 /// The native-backend creation, unchanged by Story 9.20: the destination must exist and the
 /// Git-only flags are refused.
-fn init_native(options: &InitOptions) -> Result<Repo, RepoError> {
+fn init_native(options: &InitOptions, created: &mut Created) -> Result<Repo, RepoError> {
     if options.colocate.is_some() || options.object_hash.is_some() {
         return Err(RepoError::InvalidInput {
             reason: "colocation and the object hash apply only to the Git backend".to_owned(),
@@ -234,6 +289,7 @@ fn init_native(options: &InitOptions) -> Result<Repo, RepoError> {
     })?;
     let settings = config::user_settings_for_new_workspace(&root)?;
     pollster::block_on(Workspace::init_simple(&settings, &root)).map_err(|e| init_creation_error(&e, &root))?;
+    created.jj_dir = Some(root.join(".jj"));
     Repo::open(&root)
 }
 
@@ -670,8 +726,46 @@ fn check_out_working_branch(
 mod tests {
     use std::path::Path;
 
-    use super::{add_remote_error, clean_up, fetch_error, finish_error};
+    use super::{
+        add_remote_error, clean_up, create_destination, create_or_reuse_dir, fetch_error, finish_error, Created,
+    };
     use crate::{MutateError, RepoError};
+
+    /// Story 9.58: jj-lib's `create_or_reuse_dir`, answering whether THIS call created the
+    /// directory — a new one `true`, an existing one `false` (reused), a missing parent and an
+    /// existing file are errors, and nothing is created on the way.
+    #[test]
+    fn create_or_reuse_dir_reports_whether_it_created_the_directory() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        assert!(create_or_reuse_dir(&root.join("new")).expect("creates"));
+        assert!(root.join("new").is_dir());
+        assert!(!create_or_reuse_dir(&root.join("new")).expect("reuses"));
+        assert!(create_or_reuse_dir(&root.join("missing/dest")).is_err());
+        assert!(!root.join("missing").exists(), "one level: no parent is created");
+        std::fs::write(root.join("file"), "x").expect("write file");
+        assert!(create_or_reuse_dir(&root.join("file")).is_err());
+    }
+
+    /// Story 9.58: the destination step records a destination it created, canonical (a `..`
+    /// spelling names the directory actually created), and none it reused.
+    #[test]
+    fn create_destination_records_only_a_created_destination_canonically() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let root = tmp.path().canonicalize().expect("canonicalize");
+        std::fs::create_dir(tmp.path().join("x")).expect("mkdir x");
+
+        let mut created = Created::default();
+        let dest = create_destination(&tmp.path().join("x/../y"), &mut created).expect("creates y");
+        assert_eq!(dest, root.join("y"));
+        assert_eq!(created.destination, Some(root.join("y")));
+        assert_eq!(created.left_behind(), [root.join("y")]);
+
+        let mut reused = Created::default();
+        create_destination(&tmp.path().join("x"), &mut reused).expect("reuses x");
+        assert_eq!(reused.destination, None);
+        assert!(reused.left_behind().is_empty());
+    }
 
     /// The CLI's `clean_up_dirs` (`clone.rs:262-284` @ v0.46.0): `.jj` and — colocated — `.git`
     /// removed (an absent one counts as removed), the destination removed iff the clone created

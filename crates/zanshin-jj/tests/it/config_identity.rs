@@ -733,6 +733,23 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
         !fresh_git.join(".jj").exists(),
         "a failing git backend leaves no .jj behind"
     );
+    // Story 9.58: a destination the init created stays (the CLI's `create_or_reuse_dir`) and is
+    // named, canonical, in `left_behind`; jj-lib removed its own `.jj`.
+    let new_git = tmp.join("new-git");
+    let outcome = Repo::init(&zanshin_jj::InitOptions {
+        path: new_git.clone(),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    });
+    assert!(
+        matches!(&outcome.result, Err(RepoError::Config { reason }) if reason.contains("abandon-unreachable-commits")),
+        "unexpected result: {:?}",
+        outcome.result
+    );
+    assert!(new_git.is_dir(), "the created destination stays, as in the CLI");
+    assert!(!new_git.join(".jj").exists(), "jj-lib removed the .jj it started");
+    assert_eq!(outcome.left_behind, [new_git.canonicalize().unwrap()]);
     let git_repo = TempDir::new().unwrap();
     let status = Command::new("git")
         .args(["init", "-q"])
@@ -766,7 +783,7 @@ fn creation_paths(tmp: &Path, user_file: &Path) {
     // leaves it; jj-lib removed its own `.jj`.
     assert!(import_dest.is_dir(), "the created destination stays, as in the CLI");
     assert!(!import_dest.join(".jj").exists(), "jj-lib removed the .jj it started");
-    assert_eq!(outcome.left_behind, std::slice::from_ref(&import_dest));
+    assert_eq!(outcome.left_behind, [import_dest.canonicalize().unwrap()]);
 
     set_jj_config(user_file);
     let mut created = Repo::init(&zanshin_jj::InitOptions {

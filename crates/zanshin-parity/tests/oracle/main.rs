@@ -241,7 +241,8 @@ parity!(
     fetch_remote_fetch_bookmarks,
     convert_colocated_default,
     convert_import_default,
-    convert_import_invalid_source;
+    convert_import_invalid_source,
+    convert_import_missing_parent;
     own_process:
     convert_import_unresolvable_immutable,
     convert_colocated_unresolvable_immutable,
@@ -262,7 +263,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 195);
+    assert_eq!(SCENARIO_IDS.len(), 196);
 }
 
 #[test]

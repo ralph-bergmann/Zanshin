@@ -508,7 +508,9 @@ impl<'r, 't> CommitsValidator<'r, 't> {
             .flat_map(|(_, old_head)| old_head.target.present_adds())
             .cloned()
             .collect();
-        let immutable_heads = crate::op_support::resolve_immutable(base, planner.immutable_heads)?;
+        // The CLI resolves with a bare `.resolve()?` here, no config-error wrapping
+        // (`cli/src/commands/git/push.rs:803-805` @ v0.46.0).
+        let immutable_heads = crate::revset::resolve_expression(base, planner.immutable_heads).map_err(cfg)?;
         let private_commits = if planner.args.allow_private {
             None
         } else {

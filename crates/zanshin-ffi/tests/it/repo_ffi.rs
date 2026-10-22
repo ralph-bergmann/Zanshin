@@ -910,9 +910,110 @@ fn convert_whose_snapshot_fails_reports_on_the_error_envelope() {
     assert!(jj_dir.is_dir(), "nothing is deleted");
 }
 
+/// Story 9.58: a colocated init over a Git repo whose snapshot fails (a new file it cannot open)
+/// is `jj.convert_failed`, and the error envelope names the `.jj/` the init created — canonical —
+/// in `FfiError.left_behind`; the destination existed, so it is not listed.
+#[test]
+fn init_over_git_whose_snapshot_fails_names_its_jj_in_left_behind() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    test_helpers::pin_test_env();
+    let tmp = TempDir::new().expect("tempdir");
+    git_with_commit(tmp.path());
+    let locked = tmp.path().join("locked.txt");
+    fs::write(&locked, "unreadable").expect("write the unreadable file");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).expect("make it unreadable");
+    let path = cstr(tmp.path().to_str().expect("path must be UTF-8"));
+
+    let bytes = unsafe { read_and_free(repo_init_colocated(&path)) };
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).expect("restore the mode");
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok(), "the snapshot cannot open the file");
+    assert_eq!(env.error().and_then(|e| e.code()), Some("jj.convert_failed"));
+    let jj_dir = tmp.path().canonicalize().expect("canonical root").join(".jj");
+    let left: Vec<&str> = env
+        .error()
+        .and_then(|e| e.left_behind())
+        .expect("left_behind on the error")
+        .iter()
+        .collect();
+    assert_eq!(left, [jj_dir.to_str().expect("UTF-8 path")]);
+    assert!(jj_dir.is_dir(), "nothing is deleted");
+}
+
+/// Story 9.58: a git init into a NEW destination that fails after creating it (a wrong-typed
+/// `git.abandon-unreachable-commits` the git backend reads) is `jj.config_error`, and the error
+/// envelope names the destination the call created — canonical — in `FfiError.left_behind`; jj-lib
+/// removed its own `.jj`. Runs in its own process: it points `JJ_CONFIG` at a file of its own.
+#[test]
+fn init_into_a_new_destination_failing_late_names_it_in_left_behind() {
+    test_helpers::own_process!("init_into_a_new_destination_failing_late_names_it_in_left_behind");
+    test_helpers::pin_test_env();
+    let tmp = TempDir::new().expect("tempdir");
+    let user = tmp.path().join("bad-git.toml");
+    fs::write(&user, "[git]\nabandon-unreachable-commits = \"yes\"\n").expect("write the user config");
+    // SAFETY: this test runs alone in its own process (`own_process!`), before any jj read.
+    unsafe { std::env::set_var("JJ_CONFIG", &user) };
+    let target = tmp.path().join("new-dest");
+    let path = cstr(target.to_str().expect("path must be UTF-8"));
+
+    let bytes = unsafe { read_and_free(repo_init(&path, 1)) };
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok());
+    let error = env.error().expect("an error");
+    assert_eq!(error.code(), Some("jj.config_error"), "{:?}", error.context());
+    let canonical = target.canonicalize().expect("the created destination stays");
+    let left: Vec<&str> = error.left_behind().expect("left_behind on the error").iter().collect();
+    assert_eq!(left, [canonical.to_str().expect("UTF-8 path")]);
+    assert!(!target.join(".jj").exists(), "jj-lib removed the .jj it started");
+}
+
+/// Story 9.58: an init under a missing parent refuses ("Failed to create workspace") having
+/// created nothing, so its error envelope carries no `left_behind`.
+#[test]
+fn init_under_a_missing_parent_carries_no_left_behind() {
+    test_helpers::pin_test_env();
+    let tmp = TempDir::new().expect("tempdir");
+    let target = tmp.path().join("missing").join("dest");
+    let path = cstr(target.to_str().expect("path must be UTF-8"));
+
+    let bytes = unsafe { read_and_free(repo_init(&path, 1)) };
+    let env = parse_envelope(&bytes);
+    assert!(!env.ok());
+    let error = env.error().expect("an error");
+    assert_eq!(error.code(), Some("jj.jj_lib_error"));
+    assert!(
+        error
+            .context()
+            .is_some_and(|c| c.starts_with("Failed to create workspace: ")),
+        "{:?}",
+        error.context()
+    );
+    assert!(error.left_behind().is_none(), "nothing was created");
+    assert!(!tmp.path().join("missing").exists(), "nothing was created");
+}
+
 /// `zanshin_repo_init` over a `RepoInitRequest` (Story 9.20): `backend` 0 = native, 1 = git — a git
 /// one with `no_colocate`, the internal workspace these rows were written against.
 unsafe fn repo_init(path: &std::ffi::CString, backend: i32) -> *mut zanshin_ffi::ffi_strings::ZanshinBuf {
+    // SAFETY: forwarded caller contract.
+    unsafe { repo_init_with(path, backend, false, backend == 1) }
+}
+
+/// `zanshin_repo_init` for a colocated git workspace (`colocate`) — over an existing `.git/`
+/// the CLI's External flow (Story 9.58).
+unsafe fn repo_init_colocated(path: &std::ffi::CString) -> *mut zanshin_ffi::ffi_strings::ZanshinBuf {
+    // SAFETY: forwarded caller contract.
+    unsafe { repo_init_with(path, 1, true, false) }
+}
+
+/// `zanshin_repo_init` over a `RepoInitRequest` with the CLI's two colocation flags as given.
+unsafe fn repo_init_with(
+    path: &std::ffi::CString,
+    backend: i32,
+    colocate: bool,
+    no_colocate: bool,
+) -> *mut zanshin_ffi::ffi_strings::ZanshinBuf {
     let mut b = flatbuffers::FlatBufferBuilder::new();
     let path = b.create_string(path.to_str().expect("UTF-8 path"));
     let req = zanshin_ffi::fbs::RepoInitRequest::create(
@@ -921,8 +1022,8 @@ unsafe fn repo_init(path: &std::ffi::CString, backend: i32) -> *mut zanshin_ffi:
             kind: zanshin_ffi::fbs::RequestKind::RepoInit,
             path: Some(path),
             backend: zanshin_ffi::fbs::InitBackend(u8::try_from(backend).expect("a backend byte")),
-            colocate: false,
-            no_colocate: backend == 1,
+            colocate,
+            no_colocate,
             object_hash: zanshin_ffi::fbs::ObjectHash::Unspecified,
         },
     );

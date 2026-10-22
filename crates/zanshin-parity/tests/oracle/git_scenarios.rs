@@ -234,6 +234,17 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
         zanshin: |dir| zanshin_jj::convert_import(&dir.join("src"), &dir.join("dest")),
         user_config: None,
     },
+    // ── Story 9.58: the destination is created one level deep ───────────────────
+    // A missing parent: both refuse "Failed to create workspace" and create nothing — the target
+    // is the parent, so a created parent would diverge.
+    CreationScenario {
+        id: "convert_import_missing_parent",
+        prep: SOURCE,
+        target: "missing",
+        cli: &["git", "init", "--git-repo", "src", "missing/dest"],
+        zanshin: |dir| zanshin_jj::convert_import(&dir.join("src"), &dir.join("missing").join("dest")),
+        user_config: None,
+    },
     // An `immutable_heads()` that parses but does not resolve: the non-colocated `import git
     // head` finish (`tx.finish`) refuses `Config error` after `.jj/` exists, on both sides.
     CreationScenario {

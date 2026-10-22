@@ -462,6 +462,15 @@ class ZanshinWorker {
   /// then the colocated finish's (Story 9.33); its `precondition` is `null`
   /// unless an init over `.git/` imported refs.
   ///
+  /// A refused init throws [ZanshinFfiException] carrying its warnings. A
+  /// failure is not rolled back: the disk is as `jj git init` leaves it, and
+  /// the exception's `leftBehind` names, outermost first, the destination the
+  /// call created and the `.jj/` it created (Story 9.58), each while it still
+  /// exists — empty for a refusal that wrote nothing — so the UI can offer to
+  /// remove them. A `watcher.io_error` comes after a successful init: the
+  /// repository is complete, `leftBehind` is empty, and it can be opened
+  /// again.
+  ///
   /// Throws [ArgumentError] if [path] contains an interior NUL (U+0000) or
   /// [backend] is not `0`/`1`.
   Future<CreatedRepoHandle> initRepo(
@@ -510,8 +519,10 @@ class ZanshinWorker {
   /// `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error`, `jj.config_error`,
   /// `watcher.io_error`) throws [ZanshinFfiException] carrying the clone's
   /// warnings (Story 9.35) — including `jj.clone_cleanup_failed`, which only an
-  /// error envelope carries. Progress rides [events] as
-  /// `operation: "clone"`, under the handle id the clone gets.
+  /// error envelope carries. A `watcher.io_error` comes after a successful
+  /// clone: the repository is complete, `leftBehind` is empty, and it can be
+  /// opened again. Progress rides [events] as `operation: "clone"`, under the
+  /// handle id the clone gets.
   ///
   /// Returns a [NetworkOperation] (Story 9.52): the clone runs on a helper
   /// isolate, so its `progress` arrives while `result` is pending, and
@@ -1029,7 +1040,9 @@ class ZanshinWorker {
   /// conversion never touches the working copy or `.git/`, and a failure is
   /// not rolled back: the disk is as `jj git init` leaves it, and the
   /// exception's `leftBehind` names the `.jj/` it left (Story 9.57), so the UI
-  /// can offer to remove it.
+  /// can offer to remove it. A `watcher.io_error` comes after a successful
+  /// conversion: the repository is complete, `leftBehind` is empty, and it
+  /// can be opened again.
   Future<CreatedRepoHandle> convert(String path) async {
     final WorkerResponse response = await _sendCommand(
       ConvertRepoCommand(commandId: _correlator.allocateId(), path: path),

@@ -73,20 +73,30 @@ Warning { code: string; message: string; }
 **Success:** `ok = true`, `data` holds the concrete payload variant.  
 **Error:** `ok = false`, `error.code` holds the dotted AR-P-4 code, `error.context`
 holds human-readable detail, `error.hints` the CLI's hint lines, `error.left_behind` what a
-failed conversion left on disk. See `docs/rust-error-codes.md` for the full registry.
+failed init or conversion left on disk. See `docs/rust-error-codes.md` for the full registry.
 
-### `FfiError.left_behind` — what a failed conversion left on disk (Story 9.57)
+### `FfiError.left_behind` — what a failed init or conversion left on disk (Stories 9.57, 9.58)
 
-A failed `zanshin_repo_convert` deletes nothing: the disk is as `jj git init` leaves it (the
-CLI's `do_init` propagates every error with `?`; the only cleanup is jj-lib's own `.jj` removal
-when the workspace creation itself fails). Its error envelope names, in `left_behind`, the paths
-the call created that still exist after the failure, outermost first — the canonical
-`<root>/.jj`, only when the call created it (a `.jj` the workspace creation refused as existing is
-the user's and never listed). (`zanshin_jj::convert_import`, which has no FFI symbol yet, reports
-the topmost directory it created on the way to its destination before the destination's `.jj/`
-— a later entry may lie inside an earlier one — spelled as the caller passed the destination.) A
-failure after the `trunk()` alias step also leaves `<config_dir>/jj/repos/<config-id>/`, which is
-not listed. The vector
+A failed `zanshin_repo_init` or `zanshin_repo_convert` deletes nothing: the disk is as `jj git
+init` leaves it (the CLI's `do_init` propagates every error with `?`; the only cleanup is jj-lib's
+own `.jj` removal when the workspace creation itself fails). Its error envelope names, in
+`left_behind`, the paths the call created that still exist after the failure, outermost first,
+canonical — known from the creating calls' own results, never from a check before them:
+
+1. the destination, when this call created it. Like the CLI's `create_or_reuse_dir` a
+   destination is created ONE level deep — a missing parent refuses "Failed to create workspace:
+   …" and creates nothing — and an existing one is reused and never listed. Only
+   `zanshin_repo_init` (and `zanshin_jj::convert_import`, which has no FFI symbol yet) creates a
+   destination; a `..` spelling names the directory actually created;
+2. `<root>/.jj`, when this call's jj-lib creation (`init_external_git` over an existing `.git/`,
+   `init_colocated_git`, `init_internal_git`, `init_simple`) returned `Ok` — a `.jj` the
+   workspace creation refused as existing is the user's and never listed.
+
+A later entry may lie inside an earlier one (the created destination and its `.jj/`). A failure
+after the `trunk()` alias step also leaves `<config_dir>/jj/repos/<config-id>/`, and a failed NEW
+colocated init the `.git/` jj-lib created; neither is listed. A `watcher.io_error` comes after a
+successful creation and carries none: the repository on disk is complete and can be opened
+again. The vector
 is **absent** on every other error and on a refusal that wrote nothing — every reader treats that
 as an empty list — so every other error, and `PANIC_FALLBACK_ENVELOPE`, keeps its bytes. It is
 sourced from the call's report (the FFI `CallReport.left_behind`) and written by the error writer
@@ -745,7 +755,7 @@ RepoHandle {
 | `jj.config_error`    | A user-level or new-workspace config fault refuses before anything is written; a later one (start-up environment, refs-step import options, snapshot knobs) leaves `.jj/` and names it in `left_behind`. |
 | `ffi.null_pointer`   | `path` is null.                                        |
 | `ffi.utf8_error`     | `path` contains invalid UTF-8.                         |
-| `watcher.io_error`   | The filesystem watcher could not be armed, so no handle is returned (strict-fail, OQ-1 — see *Async events* below). The written `.jj/` persists; detail in `context`. |
+| `watcher.io_error`   | The filesystem watcher could not be armed, so no handle is returned (strict-fail, OQ-1 — see *Async events* below). It comes after a successful conversion: the repository on disk is complete, the envelope carries no `left_behind`, and the UI can open it again; detail in `context`. |
 
 ---
 
@@ -795,11 +805,12 @@ dropped, so no callback can fire for a handle after `close` returns.
 **Arming failure is strict-fail (OQ-1):** if the watcher cannot be armed
 (e.g. a required `.jj` sub-path is missing or unwatchable), the wrapper
 returns `watcher.io_error` and **no handle** — the repo is not left open in
-an unwatched state. For `init`/`clone`/`convert` the on-disk artefacts
-created before the arming failure **persist** (only the arming failed; a
-retry will see an existing repo — same posture as other post-init failures) and
-the `watcher.io_error` envelope still carries the creation's warnings / snapshot
-report (Story 9.33); `open` leaves no residue. Post-arm watch degradation (e.g. an FS error after a
+an unwatched state. For `init`/`clone`/`convert` the arming comes after a
+successful creation: the repository on disk is **complete** (only the arming
+failed; it can be opened again with `zanshin_repo_open`, and a retried creation
+sees an existing repo), the envelope carries no `left_behind` (Story 9.58), and
+it still carries the creation's warnings / snapshot report (Story 9.33); `open`
+leaves no residue. Post-arm watch degradation (e.g. an FS error after a
 successful open) never re-uses this code string; it rides the event stream
 instead (see `WatchError` below) — `watcher.io_error` is emitted in exactly
 one place: the arming-failure envelope at open/init/clone/convert.

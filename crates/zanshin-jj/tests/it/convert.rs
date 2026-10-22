@@ -671,25 +671,153 @@ fn convert_import_failure_leaves_the_created_destination() {
     );
     assert!(dst.is_dir(), "the created destination stays, as in the CLI");
     assert!(!dst.join(".jj").exists(), "jj-lib removed the .jj/ it created");
-    assert_eq!(outcome.left_behind, [dst]);
+    assert_eq!(outcome.left_behind, [dst.canonicalize().expect("canonicalize")]);
 }
 
-/// Story 9.57: a destination nested under missing directories is created with its parents
-/// (`create_dir_all`, the bridge's documented liberalization); the topmost one created is what
-/// the failure reports first.
+/// Story 9.58: the destination is created ONE level deep, as the CLI's `create_or_reuse_dir`
+/// (`cli/src/commands/git/init.rs:161-163` @ v0.46.0): under a missing parent the import refuses
+/// with the CLI's "Failed to create workspace: …", creates nothing and leaves nothing behind.
 #[test]
-fn convert_import_failure_reports_the_topmost_created_directory() {
+fn convert_import_under_a_missing_parent_refuses_and_creates_nothing() {
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+
+    let dst_parent = TempDir::new().expect("tempdir dst");
+    let dst = dst_parent.path().join("missing").join("dest");
+
+    let outcome = convert_import(src.path(), &dst);
+    assert!(
+        matches!(&outcome.result, Err(RepoError::ConvertFailed { reason })
+            if reason.starts_with("Failed to create workspace: ")),
+        "{:?}",
+        outcome.result
+    );
+    assert!(!dst_parent.path().join("missing").exists(), "no parent is created");
+    assert!(outcome.left_behind.is_empty(), "{:?}", outcome.left_behind);
+}
+
+/// Story 9.58: a `..` destination names the directory the call actually created — canonical,
+/// read from the creation's own result.
+#[test]
+fn convert_import_failure_reports_a_dot_dot_destination_canonically() {
     pin_env();
     let src = TempDir::new().expect("tempdir src");
     fs::create_dir(src.path().join(".git")).expect("create empty .git dir");
 
     let dst_parent = TempDir::new().expect("tempdir dst");
-    let dst = dst_parent.path().join("a").join("b");
+    fs::create_dir(dst_parent.path().join("x")).expect("mkdir x");
+    let dst = dst_parent.path().join("x").join("..").join("y");
 
     let outcome = convert_import(src.path(), &dst);
     assert!(outcome.result.is_err(), "{:?}", outcome.result);
-    assert!(dst.is_dir(), "the nested destination stays");
-    assert_eq!(outcome.left_behind, [dst_parent.path().join("a")]);
+    let canonical_parent = dst_parent.path().canonicalize().expect("canonicalize");
+    assert_eq!(outcome.left_behind, [canonical_parent.join("y")]);
+}
+
+/// Story 9.58: a destination that existed before the call is reused and never listed, even
+/// when the call's own `.jj/` is left behind — here by a snapshot that cannot read a file.
+#[test]
+fn convert_import_failure_into_an_existing_destination_lists_only_its_jj() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    pin_env();
+    let src = TempDir::new().expect("tempdir src");
+    init_git_repo_with_commit(src.path());
+    let dst = TempDir::new().expect("tempdir dst");
+    let locked = dst.path().join("locked.txt");
+    fs::write(&locked, "unreadable").expect("write");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).expect("chmod");
+
+    let outcome = convert_import(src.path(), dst.path());
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).expect("chmod back");
+
+    assert!(
+        matches!(outcome.result, Err(RepoError::ConvertFailed { .. })),
+        "{:?}",
+        outcome.result
+    );
+    let root = dst.path().canonicalize().expect("canonicalize");
+    assert_eq!(outcome.left_behind, [root.join(".jj")]);
+}
+
+/// Story 9.58: a failed `Repo::init` over an existing `.git/` (the External flow) leaves the
+/// `.jj/` it created, as `jj git init` does, and names it — canonical — in `left_behind`; the
+/// destination existed, so it is not listed.
+#[test]
+fn init_over_a_git_repo_failing_late_reports_its_jj() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    pin_env();
+    let tmp = TempDir::new().expect("tempdir");
+    init_git_repo_with_commit(tmp.path());
+    let locked = tmp.path().join("locked.txt");
+    fs::write(&locked, "unreadable").expect("write");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).expect("chmod");
+
+    let outcome = Repo::init(&zanshin_jj::InitOptions {
+        path: tmp.path().to_path_buf(),
+        backend: Some(zanshin_jj::Backend::Git),
+        colocate: Some(true),
+        ..Default::default()
+    });
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).expect("chmod back");
+
+    assert!(
+        matches!(outcome.result, Err(RepoError::ConvertFailed { .. })),
+        "{:?}",
+        outcome.result
+    );
+    assert!(tmp.path().join(".jj").is_dir(), "the .jj/ stays, as the CLI leaves it");
+    let root = tmp.path().canonicalize().expect("canonicalize");
+    assert_eq!(outcome.left_behind, [root.join(".jj")]);
+}
+
+/// Story 9.58: `Repo::init`'s refusals that write nothing — an existing workspace,
+/// `--no-colocate` over `.git/`, a missing parent ("Failed to create workspace: …", nothing
+/// created) — leave nothing behind.
+#[test]
+fn init_refusals_that_write_nothing_leave_nothing_behind() {
+    pin_env();
+    let git_options = |path: &Path, colocate: bool| zanshin_jj::InitOptions {
+        path: path.to_path_buf(),
+        backend: Some(zanshin_jj::Backend::Git),
+        colocate: Some(colocate),
+        ..Default::default()
+    };
+
+    let jj = TempDir::new().expect("tempdir");
+    init_git_repo_with_commit(jj.path());
+    convert_colocated(jj.path()).result.expect("convert");
+    let outcome = Repo::init(&git_options(jj.path(), true));
+    assert!(
+        matches!(outcome.result, Err(RepoError::AlreadyJjRepo { .. })),
+        "{:?}",
+        outcome.result
+    );
+    assert!(outcome.left_behind.is_empty(), "{:?}", outcome.left_behind);
+
+    let git = TempDir::new().expect("tempdir");
+    init_git_repo_with_commit(git.path());
+    let outcome = Repo::init(&git_options(git.path(), false));
+    assert!(
+        matches!(outcome.result, Err(RepoError::GitRepoExists { .. })),
+        "{:?}",
+        outcome.result
+    );
+    assert!(!git.path().join(".jj").exists(), "nothing written");
+    assert!(outcome.left_behind.is_empty(), "{:?}", outcome.left_behind);
+
+    let parent = TempDir::new().expect("tempdir");
+    let outcome = Repo::init(&git_options(&parent.path().join("missing").join("dest"), false));
+    assert!(
+        matches!(&outcome.result, Err(RepoError::InitFailed { reason })
+            if reason.starts_with("Failed to create workspace: ")),
+        "{:?}",
+        outcome.result
+    );
+    assert!(!parent.path().join("missing").exists(), "nothing created");
+    assert!(outcome.left_behind.is_empty(), "{:?}", outcome.left_behind);
 }
 
 // ── Test 10: detect_repo I/O error → ConvertFailed ───────────────────────────

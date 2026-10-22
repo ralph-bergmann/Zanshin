@@ -2442,6 +2442,14 @@ ZanshinBuf *zanshin_repo_open(const char *path);
  *
  * Returns a `RepoHandle` envelope on success.
  *
+ * If the init fails, the disk is as `jj git init` leaves it (nothing is deleted beyond jj-lib's
+ * own `.jj` removal when its creation itself fails), and the error envelope's
+ * `FfiError.left_behind` names, outermost first, what this call created and left (Story 9.58):
+ * the canonical destination when the call created it, then `<root>/.jj` when the call's jj-lib
+ * creation succeeded — each only while it still exists. A refusal that wrote nothing (an
+ * existing workspace, `no_colocate` over `.git/`, a missing parent) carries none. A failed NEW
+ * colocated init also leaves the `.git/` jj-lib created; it is not listed.
+ *
  * # Errors
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `RepoInitRequest`, its `kind` is not
@@ -2449,18 +2457,22 @@ ZanshinBuf *zanshin_repo_open(const char *path);
  * - `jj.invalid_input` — `path` is absent, both colocation flags are set, or the native backend
  *   is given a Git flag.
  * - `jj.jj_lib_error` — the destination cannot be created ("Failed to create workspace: …") or
- *   the jj-lib creation failed; detail in `context`.
+ *   the jj-lib creation failed; detail in `context`. After the destination step it may carry
+ *   `FfiError.left_behind` (see above).
  * - `jj.git_repo_exists` — `no_colocate` over a directory holding `.git/`; the path in `context`.
  * - `jj.already_jj_repo` — the destination is already a jj workspace.
- * - `jj.convert_failed` — a step of the External flow failed.
+ * - `jj.convert_failed` — a step of the External flow failed; once its `.jj` was created, that
+ *   `.jj` is in `FfiError.left_behind` (see above).
  * - `jj.config_error` — the jj config stack cannot be read (the user-level stack first, as the
  *   CLI's start-up, then the stack resolved for the new workspace's paths), `git.colocate` /
  *   `git.object-hash` is malformed, or the created workspace's own stack cannot when it is
- *   re-opened. `context` names the path or key.
+ *   re-opened. `context` names the path or key. After the destination step it may carry
+ *   `FfiError.left_behind` (see above).
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
- *   no handle is returned rather than one for an unwatched repo. It runs AFTER the init
- *   has succeeded, so the created `.jj/` persists and a retry sees an existing repo.
- *   Detail in `context`.
+ *   no handle is returned rather than one for an unwatched repo. It comes AFTER a successful
+ *   init: the repository on disk is complete, the envelope carries no `left_behind`, and the UI
+ *   can open it again (`zanshin_repo_open`); a retried init sees an existing repo. Detail in
+ *   `context`.
  *
  * # Warnings
  * `Envelope.warnings` on the ok envelope and on every error envelope: a colocated init's
@@ -2527,8 +2539,9 @@ ZanshinBuf *zanshin_repo_init(const uint8_t *data,
  *   outside that scope (the checkout's `check out git remote's branch`) keeps the workspace, as
  *   the CLI's (Story 9.57 closing run). `context` names the unresolved symbol.
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
- *   no handle is returned rather than one for an unwatched repo. It runs AFTER the clone
- *   has SUCCEEDED, so the cloned workspace persists and a retry sees a non-empty destination.
+ *   no handle is returned rather than one for an unwatched repo. It comes AFTER a successful
+ *   clone: the repository on disk is complete, the envelope carries no `left_behind`, and the UI
+ *   can open it again (`zanshin_repo_open`); a retried clone sees a non-empty destination.
  *   Detail in `context`.
  *
  * # Warnings
@@ -2645,9 +2658,10 @@ ZanshinBuf *zanshin_repo_detect(const char *path);
  * - `ffi.null_pointer` — `path` is a null pointer.
  * - `ffi.utf8_error` — `path` contains invalid UTF-8.
  * - `watcher.io_error` — the filesystem watcher could not be armed. Arming is strict-fail:
- *   no handle is returned rather than one for an unwatched repo. It runs AFTER the
- *   conversion has succeeded, so the written `.jj/` persists and a retry sees an existing
- *   jj repo. Detail in `context`.
+ *   no handle is returned rather than one for an unwatched repo. It comes AFTER a successful
+ *   conversion: the repository on disk is complete, the envelope carries no `left_behind`, and
+ *   the UI can open it again (`zanshin_repo_open`); a retried conversion sees an existing jj
+ *   repo. Detail in `context`.
  *
  * # Warnings
  * Both envelopes — ok AND error — carry the conversion's report (Story 9.33):

@@ -164,6 +164,36 @@ void main() {
       expect(() => e.leftBehind.add('x'), throwsUnsupportedError, reason: 'decoded lists are unmodifiable');
     });
 
+    // Story 9.58: a failed init over `.git/` (the External flow) is not rolled back either, and
+    // the exception names the `.jj/` the init created; the destination existed, so it is not listed.
+    test('a_failed_init_over_git_names_the_jj_it_left', () async {
+      await _gitWithCommit(tempDir);
+      final String locked = (File('$root/locked.txt')..writeAsStringSync('unreadable')).path;
+      await _chmod('000', locked);
+
+      final ZanshinFfiException e;
+      try {
+        e = await _thrown(worker.initRepo(root, backend: 1, colocate: true));
+      } finally {
+        await _chmod('644', locked);
+      }
+
+      expect(e.code, 'jj.convert_failed');
+      expect(Directory('$root/.jj').existsSync(), isTrue, reason: 'the failed init leaves its .jj/');
+      expect(e.leftBehind, ['$root/.jj']);
+    });
+
+    // Story 9.58: an init under a missing parent refuses having written nothing — the CLI's
+    // "Failed to create workspace" — and leaves nothing behind.
+    test('an_init_refusal_that_wrote_nothing_leaves_nothing_behind', () async {
+      final ZanshinFfiException e = await _thrown(worker.initRepo('$root/missing/dest', backend: 1));
+
+      expect(e.code, 'jj.jj_lib_error');
+      expect(e.context, startsWith('Failed to create workspace: '));
+      expect(e.leftBehind, isEmpty);
+      expect(Directory('$root/missing').existsSync(), isFalse, reason: 'no parent is created');
+    });
+
     test('an_error_without_a_report_carries_none', () async {
       // An existing directory that is not a jj repo: Rust stamps no report on open.
       final ZanshinFfiException e = await _thrown(worker.openRepo(root));
@@ -172,7 +202,11 @@ void main() {
       expect(e.precondition, isNull);
       expect(e.warnings, isEmpty);
       expect(e.hints, isEmpty, reason: 'a hint-less error carries no hints (Story 9.56)');
-      expect(e.leftBehind, isEmpty, reason: 'only a failed conversion leaves something behind (Story 9.57)');
+      expect(
+        e.leftBehind,
+        isEmpty,
+        reason: 'only a failed init or conversion leaves something behind (Stories 9.57/9.58)',
+      );
     });
 
     // Story 9.56: the CLI's hint lines ride the error envelope's `FfiError.hints` through the

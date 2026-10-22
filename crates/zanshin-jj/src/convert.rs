@@ -77,8 +77,11 @@
 //! failure the disk is as `jj git init` leaves it — the CLI's `do_init` propagates every error
 //! with `?` (`cli/src/commands/git/init.rs` @ v0.46.0), so the only cleanup is jj-lib's own `.jj`
 //! removal inside `init_external_git`. A failed conversion names what it created and left in
-//! [`CreationOutcome::left_behind`], so the UI can offer the decision; nothing is deleted. A
-//! `.jj` the call did not create (one `init_external_git` refused as existing) is never listed.
+//! [`CreationOutcome::left_behind`], so the UI can offer the decision; nothing is deleted. What
+//! the call created is known from the creating calls' own results (Story 9.58): an import's
+//! destination when its one-level `create_dir` succeeded, the `.jj` when `init_external_git`
+//! returned `Ok` — a destination that existed, or a `.jj` the call did not create (one
+//! `init_external_git` refused as existing), is never listed; the paths are canonical.
 //! A failure after the `trunk()` alias step also leaves the secure-config directory
 //! `<config_dir>/jj/repos/<config-id>/` it created, as the CLI does; that directory lives outside
 //! the workspace and is not listed in `left_behind`.
@@ -121,6 +124,7 @@ use jj_lib::rewrite::RebaseOptions;
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 
+use crate::creation::{create_destination, failed_to_create_workspace, Created};
 use crate::op_support::{resolve_immutable, start_repo_transaction};
 use crate::repo::{creation_error, CreationOutcome};
 use crate::warning::{self, WarningKind, Warnings};
@@ -137,9 +141,10 @@ struct ConversionReport {
     warnings: Warnings,
     /// What a failed conversion created and left on disk (Story 9.57), outermost first.
     left_behind: Vec<PathBuf>,
-    /// Whether `init_external_git` returned `Ok` — the `.jj/` is the call's own only then; a
+    /// What the call created (Story 9.58): the destination [`import_into`] created, and the
+    /// `.jj/` once `init_external_git` returned `Ok` — the `.jj/` is the call's own only then; a
     /// `.jj` it refused as `DestinationExists` (the user's, or a concurrent process's) is not.
-    jj_created: bool,
+    created: Created,
 }
 
 impl ConversionReport {
@@ -232,8 +237,8 @@ fn convert_colocated_steps(path: &Path, report: &mut ConversionReport) -> Result
     // Resolved for the new workspace's own paths — the CLI's `settings_for_new_workspace`.
     let settings = config::user_settings_for_new_workspace(&root)?;
     let result = convert_into(&settings, &root, report).and_then(|()| Repo::open(&root));
-    if result.is_err() && report.jj_created {
-        report.left_behind = still_present([root.join(".jj")]);
+    if result.is_err() {
+        report.left_behind = report.created.left_behind();
     }
     result
 }
@@ -274,14 +279,15 @@ fn convert_colocated_steps(path: &Path, report: &mut ConversionReport) -> Result
 ///
 /// Convert never touches the working copy or the source; on failure the disk is as `jj git init
 /// --git-repo` leaves it — nothing is deleted beyond jj-lib's own `.jj` removal when
-/// `init_external_git` itself fails. [`CreationOutcome::left_behind`] then names, outermost
-/// first, the topmost directory the call created on the way to `workspace_path` (the CLI's
-/// `create_or_reuse_dir` creates one level; `create_dir_all` is the bridge's documented
-/// liberalization) and `<workspace_path>/.jj` when the call created it, each only when it still
-/// exists (a failed re-open included), spelled as `workspace_path` was passed; it is empty on
-/// success and on every refusal that wrote nothing. A failure after the `trunk()` alias step also
-/// leaves the secure-config directory `<config_dir>/jj/repos/<config-id>/`, as the CLI does; it
-/// is not listed in `left_behind`.
+/// `init_external_git` itself fails. `workspace_path` is created ONE level deep, as the CLI's
+/// `create_or_reuse_dir` (a missing parent refuses "Failed to create workspace: …" and nothing
+/// is created). [`CreationOutcome::left_behind`] then names, outermost first, the destination
+/// when this call created it (an existing one is reused and never listed) and its `.jj` when the
+/// call created it, each only when it still exists (a failed re-open included), canonical (the
+/// directory actually created, also for a `..` spelling); it is empty on success and on every
+/// refusal that wrote nothing. A failure after the `trunk()` alias step also leaves the
+/// secure-config directory `<config_dir>/jj/repos/<config-id>/`, as the CLI does; it is not
+/// listed in `left_behind`.
 ///
 /// # Warnings and the snapshot report
 ///
@@ -298,8 +304,8 @@ fn convert_colocated_steps(path: &Path, report: &mut ConversionReport) -> Result
 /// - [`RepoError::NotAGitRepo`] — `git_repo_path` is not a Git repo (normal or
 ///   bare) or does not exist.
 /// - [`RepoError::ConvertFailed`] — a jj-lib, config-write or `detect_repo` I/O error, or
-///   `workspace_path` cannot be created or resolved; what was written up to the failure stays,
-///   as in the CLI.
+///   `workspace_path` cannot be created or resolved (the CLI's "Failed to create workspace: …",
+///   e.g. a missing parent); what was written up to the failure stays, as in the CLI.
 /// - [`RepoError::Config`] — as for [`convert_colocated`]: a user-level fault refuses first,
 ///   before the destination is created; a fault that needs the destination's own paths (a
 ///   scoped table) surfaces once the destination exists (the CLI's order), so a destination
@@ -351,28 +357,15 @@ fn convert_import_steps(
         Err(e) => return Err(RepoError::ConvertFailed { reason: e.to_string() }),
     }
 
-    // Recorded before anything is written: what the call itself creates on the way.
-    let created_top = topmost_missing_ancestor(workspace_path);
     let result = import_into(git_repo_path, workspace_path, report).and_then(|()| Repo::open(workspace_path));
     if result.is_err() {
-        let jj_dir = report.jj_created.then(|| workspace_path.join(".jj"));
-        report.left_behind = still_present(created_top.into_iter().chain(jj_dir));
+        report.left_behind = report.created.left_behind();
     }
     result
 }
 
-/// The outermost directory `create_dir_all(path)` would create: the topmost ancestor of `path`
-/// (itself included) that does not exist, or `None` when `path` exists. The empty prefix of a
-/// relative path is the current directory, which exists.
-fn topmost_missing_ancestor(path: &Path) -> Option<PathBuf> {
-    path.ancestors()
-        .take_while(|ancestor| !ancestor.as_os_str().is_empty() && ancestor.symlink_metadata().is_err())
-        .last()
-        .map(Path::to_path_buf)
-}
-
 /// The `paths` that are present on disk, in their order — a dangling symlink counts.
-fn still_present(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
+pub(crate) fn still_present(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
     paths
         .into_iter()
         .filter(|path| path.symlink_metadata().is_ok())
@@ -566,15 +559,30 @@ fn maybe_set_trunk_alias(workspace: &Workspace, repo: &impl jj_lib::repo::Repo) 
 
 /// `jj git init`'s External arm over an existing `<root>/.git` (`init.rs:222-224`, `:249-282` @
 /// v0.46.0; Story 9.20): [`convert_into`]'s steps with their report — the snapshot report and the
-/// warnings. Like the conversions, it cleans up nothing beyond jj-lib's own `.jj` removal, as
-/// `jj git init` does. `root` is canonical and `settings` are the new workspace's.
-pub(crate) fn init_over_git_dir(
-    settings: &UserSettings,
-    root: &Path,
-) -> (Result<(), RepoError>, Option<crate::Precondition>, Vec<crate::Warning>) {
+/// warnings, and the `.jj` it created. Like the conversions, it cleans up nothing beyond jj-lib's
+/// own `.jj` removal, as `jj git init` does. `root` is canonical and `settings` are the new
+/// workspace's.
+pub(crate) fn init_over_git_dir(settings: &UserSettings, root: &Path) -> OverGitDir {
     let mut report = ConversionReport::default();
     let result = convert_into(settings, root, &mut report);
-    (result, report.precondition, report.warnings.take())
+    OverGitDir {
+        result,
+        precondition: report.precondition,
+        warnings: report.warnings.take(),
+        jj_dir: report.created.jj_dir,
+    }
+}
+
+/// [`init_over_git_dir`]'s outcome, for `Repo::init` to report.
+pub(crate) struct OverGitDir {
+    /// The External flow's result.
+    pub(crate) result: Result<(), RepoError>,
+    /// `maybe_snapshot`'s report — `Some` from the moment it starts.
+    pub(crate) precondition: Option<crate::Precondition>,
+    /// The flow's warnings, in the CLI's print order.
+    pub(crate) warnings: Vec<crate::Warning>,
+    /// `<root>/.jj` once `init_external_git` returned `Ok` (Story 9.58).
+    pub(crate) jj_dir: Option<PathBuf>,
 }
 
 /// Runs the colocated external-git init and then `do_init`'s External sequence, reporting into
@@ -591,7 +599,7 @@ fn convert_into(settings: &UserSettings, path: &Path, report: &mut ConversionRep
         &git_repo_path,
     ))
     .map_err(|e| creation_error(&e, |reason| RepoError::ConvertFailed { reason }))?;
-    report.jj_created = true;
+    report.created.jj_dir = Some(path.join(".jj"));
     external_arm(&mut workspace, &repo, report)
 }
 
@@ -599,18 +607,18 @@ fn convert_into(settings: &UserSettings, path: &Path, report: &mut ConversionRep
 /// intended two-path use. Creates and populates the jj workspace at `workspace_path`, reporting
 /// into `report`. On `Err`, what was written stays (`do_init` propagates with `?`).
 fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut ConversionReport) -> Result<(), RepoError> {
-    std::fs::create_dir_all(workspace_path).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
-    // WHY here and not at the entry point: the destination may legitimately not exist yet, so the
-    // canonicalize has to follow the directory creation. It has to happen at all because the CLI
-    // canonicalizes its destination after creating it (`cli/src/commands/git/init.rs:162-163` @
-    // v0.46.0) — see `Repo::init`.
+    // The CLI's destination step (`cli/src/commands/git/init.rs:161-163` @ v0.46.0): ONE level
+    // created or reused, then canonicalized — here and not at the entry point, because the
+    // destination may legitimately not exist yet. A destination this call created is recorded
+    // from the creation's own result.
     let workspace_path =
-        std::fs::canonicalize(workspace_path).map_err(|e| RepoError::ConvertFailed { reason: e.to_string() })?;
+        create_destination(workspace_path, &mut report.created).map_err(|e| RepoError::ConvertFailed {
+            reason: failed_to_create_workspace(e),
+        })?;
     // The settings are resolved for the canonical destination, AFTER it exists — the CLI's
     // order (start-up check → create the destination → canonicalize →
     // `settings_for_new_workspace`); only a fault that needs the destination's paths is left
-    // for here, and the directory stays, as in the CLI. (The CLI's `create_or_reuse_dir`
-    // creates ONE level; `create_dir_all` is the bridge's documented liberalization.)
+    // for here, and the directory stays, as in the CLI.
     let settings = config::user_settings_for_new_workspace(&workspace_path)?;
 
     let resolved = resolve_git_repo_path(git_repo_path);
@@ -622,7 +630,7 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut Convers
         &resolved,
     ))
     .map_err(|e| creation_error(&e, |reason| RepoError::ConvertFailed { reason }))?;
-    report.jj_created = true;
+    report.created.jj_dir = Some(workspace_path.join(".jj"));
     external_arm(&mut workspace, &repo, report)
 }
 
@@ -813,31 +821,6 @@ mod tests {
             finish_error(MutateError::Backend("b".to_owned())),
             RepoError::ConvertFailed { reason } if reason.contains('b')
         ));
-    }
-
-    /// Story 9.57: the topmost directory `create_dir_all` would create — `None` for an existing
-    /// path, the path itself one level down, the first missing ancestor further down, and the
-    /// first component of a relative path whose every component is missing.
-    #[test]
-    fn topmost_missing_ancestor_finds_the_outermost_directory_to_create() {
-        let tmp = tempfile::TempDir::new().expect("tempdir");
-        let root = tmp.path();
-        assert_eq!(topmost_missing_ancestor(root), None);
-        assert_eq!(topmost_missing_ancestor(&root.join("a")), Some(root.join("a")));
-        assert_eq!(topmost_missing_ancestor(&root.join("a/b/c")), Some(root.join("a")));
-        std::fs::create_dir(root.join("a")).expect("mkdir a");
-        assert_eq!(topmost_missing_ancestor(&root.join("a/b/c")), Some(root.join("a/b")));
-
-        let relative = Path::new("zanshin-9-57-missing-dir/nested");
-        assert!(
-            !Path::new("zanshin-9-57-missing-dir").exists(),
-            "the cwd must not hold it"
-        );
-        assert_eq!(
-            topmost_missing_ancestor(relative),
-            Some(PathBuf::from("zanshin-9-57-missing-dir"))
-        );
-        assert_eq!(topmost_missing_ancestor(Path::new(".")), None);
     }
 
     /// Story 9.57: only what is still on disk is reported, in the given order; a dangling

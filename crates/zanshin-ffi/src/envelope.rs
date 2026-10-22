@@ -427,16 +427,17 @@ const PANIC_FALLBACK_ENVELOPE: &[u8] = &[
 /// The call-level facts every verb envelope carries beside its payload or its error: the
 /// (possibly partial) pre-verb snapshot report (Story 9.26) and the call's warnings in the CLI's
 /// print order (Story 9.32), written as `Envelope.precondition` / `Envelope.warnings`, and what a
-/// failed conversion left on disk (Story 9.57), written as `FfiError.left_behind` by the error
-/// writer only. The `Default` is a call with none — every field then stays ABSENT on the wire.
+/// failed init or conversion left on disk (Stories 9.57/9.58), written as `FfiError.left_behind`
+/// by the error writer only. The `Default` is a call with none — every field then stays ABSENT on
+/// the wire.
 #[derive(Debug, Default)]
 pub struct CallReport {
     /// The pre-verb snapshot report; `None` for a symbol that runs no precondition.
     pub precondition: Option<zanshin_jj::Precondition>,
     /// The call's warnings; empty writes no `warnings` vector.
     pub warnings: Vec<zanshin_jj::Warning>,
-    /// The paths a failed conversion created and left, outermost first; empty (every other call)
-    /// writes no `left_behind` vector.
+    /// The paths a failed init or conversion created and left, outermost first; empty (every
+    /// other call) writes no `left_behind` vector.
     pub left_behind: Vec<String>,
 }
 
@@ -1159,10 +1160,10 @@ pub fn err(code: &str, context: Option<&str>) -> Vec<u8> {
 
 /// [`err`] carrying the CLI's hint lines as `FfiError.hints` (Story 9.56) and the report of the
 /// verb that failed — its (partial) pre-verb snapshot report as `Envelope.precondition` (Story
-/// 9.26), its warnings as `Envelope.warnings` (Story 9.32) and what a failed conversion left on
-/// disk as `FfiError.left_behind` (Story 9.57). With no hints and `None` (or an empty report) it
-/// builds exactly [`err`]'s bytes — which is what keeps [`PANIC_FALLBACK_ENVELOPE`]
-/// byte-identical.
+/// 9.26), its warnings as `Envelope.warnings` (Story 9.32) and what a failed init or conversion
+/// left on disk as `FfiError.left_behind` (Stories 9.57/9.58). With no hints and `None` (or an
+/// empty report) it builds exactly [`err`]'s bytes — which is what keeps
+/// [`PANIC_FALLBACK_ENVELOPE`] byte-identical.
 #[must_use]
 pub fn err_with_report(code: &str, context: Option<&str>, hints: &[String], report: Option<&CallReport>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);

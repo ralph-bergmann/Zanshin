@@ -54,7 +54,11 @@ fbs.ObjectHash _objectHash(ObjectHash? hash) => switch (hash) {
 ///
 /// Errors: `jj.invalid_input`, `jj.jj_lib_error`, `jj.git_repo_exists`,
 /// `jj.already_jj_repo`, `jj.convert_failed`, `jj.config_error`,
-/// `ffi.invalid_argument`.
+/// `ffi.invalid_argument`, `watcher.io_error`. A failure is not rolled back
+/// (the disk is as `jj git init` leaves it); the error's
+/// `FfiError.left_behind` names the destination and the `.jj/` the call
+/// created and left (Story 9.58). A `watcher.io_error` comes after a
+/// successful init: the repository is complete and carries no `left_behind`.
 Uint8List zanshinRepoInit(
   String path, {
   required int backend,
@@ -172,9 +176,11 @@ Uint8List zanshinRepoDetect(String path) {
 ///
 /// Returns the raw FlatBuffers `Envelope<RepoHandle>` bytes.
 ///
-/// Errors: `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`. A
-/// failure is not rolled back (the disk is as `jj git init` leaves it); the
-/// error's `FfiError.left_behind` names the `.jj/` it left (Story 9.57).
+/// Errors: `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`,
+/// `watcher.io_error`. A failure is not rolled back (the disk is as `jj git
+/// init` leaves it); the error's `FfiError.left_behind` names the `.jj/` it
+/// left (Story 9.57). A `watcher.io_error` comes after a successful
+/// conversion: the repository is complete and carries no `left_behind`.
 Uint8List zanshinRepoConvert(String path) {
   final ffi.Pointer<Utf8> p = path.toNativeUtf8();
   try {

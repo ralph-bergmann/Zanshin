@@ -113,7 +113,7 @@ final class ZanshinFfiException implements Exception {
   /// included: [precondition] `null` when the envelope carries none, [warnings]
   /// in wire order (the CLI's print order), empty when there were none, and
   /// the error's [hints] (Story 9.56), empty when it has none, and what a
-  /// failed conversion left on disk ([leftBehind], Story 9.57), empty
+  /// failed creation left on disk ([leftBehind], Stories 9.57/9.58), empty
   /// otherwise. Keeps the [warnings], [hints] and [leftBehind] lists it is
   /// given as is.
   const ZanshinFfiException.withReport(
@@ -151,18 +151,20 @@ final class ZanshinFfiException implements Exception {
   /// Unmodifiable on an exception decoded from an error envelope.
   final List<String> hints;
 
-  /// The paths a FAILED conversion created and left on disk (Story 9.57),
-  /// outermost first — for an import the directory it created on the way,
-  /// then the workspace's `.jj/` (only when the call created it) — each only
-  /// when it still exists. A later entry may lie inside an earlier one (an
-  /// import lists the created destination and its `.jj/`). An import's paths
-  /// are spelled as the caller passed the destination; a colocated
-  /// conversion's are canonical. Nothing is deleted on a failure: the disk is
-  /// as `jj git init` leaves it, and the UI may offer to remove these. A
-  /// failure after the `trunk()` alias step also leaves the secure-config
-  /// directory `<config_dir>/jj/repos/<config-id>/`, which is not listed.
-  /// Empty for every other error. Unmodifiable on an exception decoded from an
-  /// error envelope.
+  /// The paths a FAILED creation — `initRepo` (Story 9.58) or `convert`
+  /// (Story 9.57) — created and left on disk, outermost first: the
+  /// destination the call created (an existing one is reused and never
+  /// listed), then the workspace's `.jj/` (only when the call created it) —
+  /// each only when it still exists. A later entry may lie inside an earlier
+  /// one (the created destination and its `.jj/`). The paths are canonical.
+  /// Nothing is deleted on a failure: the disk is as `jj git init` leaves it,
+  /// and the UI may offer to remove these. A failure after the `trunk()` alias
+  /// step also leaves the secure-config directory
+  /// `<config_dir>/jj/repos/<config-id>/`, and a failed new colocated init the
+  /// `.git/` it created; neither is listed. Empty for every other error — a
+  /// `watcher.io_error` after a successful creation included (the repository
+  /// is complete). Unmodifiable on an exception decoded from an error
+  /// envelope.
   final List<String> leftBehind;
 
   @override

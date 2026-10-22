@@ -151,16 +151,19 @@ pub struct CreationOutcome {
     pub precondition: Option<crate::Precondition>,
     /// The call's warnings in the CLI's print order, including those recorded before a failure.
     pub warnings: Vec<crate::Warning>,
-    /// What a FAILED conversion ([`crate::convert_colocated`], [`crate::convert_import`]) created
-    /// and left on disk, outermost first (Story 9.57): the topmost directory an import created on
-    /// the way to its destination, then the workspace's `.jj/` (only when the call created it) —
-    /// each only when it still exists after the failure. A later entry may lie inside an earlier
-    /// one (an import lists the created destination and its `.jj/`). An import's paths are
-    /// spelled as the caller passed `workspace_path`; a colocated conversion's are canonical.
+    /// What a FAILED [`Repo::init`] (Story 9.58) or conversion ([`crate::convert_colocated`],
+    /// [`crate::convert_import`]; Story 9.57) created and left on disk, outermost first: the
+    /// destination this call created (one level, the CLI's `create_or_reuse_dir`; an existing one
+    /// is reused and never listed), then the workspace's `.jj/` (only when this call's jj-lib
+    /// creation returned `Ok`) — each only when it still exists after the failure, known from the
+    /// creating calls' own results, never from a check before them. A later entry may lie inside
+    /// an earlier one (the created destination and its `.jj/`). The paths are canonical (the
+    /// caller's spelling only when canonicalizing the just-created destination itself failed).
     /// Nothing is deleted; the UI may offer the decision. A failure after the `trunk()` alias
     /// step also leaves the secure-config directory `<config_dir>/jj/repos/<config-id>/`, as the
-    /// CLI does — it is not listed here. Empty on success, on every refusal that wrote nothing,
-    /// and for every other creation path.
+    /// CLI does — it is not listed here; nor is the `.git/` a failed NEW colocated init leaves.
+    /// Empty on success, on every refusal that wrote nothing, and for [`Repo::clone`] (which
+    /// removes what it created itself) and [`Repo::open_with_report`].
     pub left_behind: Vec<PathBuf>,
 }
 
@@ -2852,6 +2855,16 @@ impl Repo {
     /// Nothing is cleaned up on failure beyond what jj-lib's creation removes itself (`.jj`), as
     /// in the CLI. The created workspace is then opened as by [`Repo::open`], whose errors apply
     /// too; the handle carries the full config stack.
+    ///
+    /// # What a failure leaves
+    ///
+    /// [`CreationOutcome::left_behind`] names, outermost first, the canonical destination when
+    /// this call created it, then `<root>/.jj` when this call's jj-lib creation
+    /// (`init_external_git` over an existing `.git/`, `init_colocated_git`, `init_internal_git`,
+    /// `init_simple`) returned `Ok` — each only while it still exists (a failed re-open
+    /// included). It is empty on success and on every refusal that wrote nothing (an existing
+    /// `.jj/`, `--no-colocate` over `.git/`, a missing parent). A failed NEW colocated init also
+    /// leaves the `.git/` jj-lib created; that is not listed.
     ///
     /// # Warnings
     ///

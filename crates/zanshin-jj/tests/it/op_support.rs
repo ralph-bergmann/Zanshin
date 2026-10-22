@@ -286,7 +286,16 @@ fn an_unresolvable_immutable_heads_alias_is_a_config_error() {
     let err = repo
         .describe(ChangeId(layout.commit1_change_id), "nope")
         .expect_err("an unresolvable alias must not be silently ignored");
-    assert!(matches!(err, MutateError::Config { .. }), "unexpected error: {err:?}");
+    // Story 9.58: the CLI's text — "Invalid `revset-aliases.immutable_heads()`" and jj-lib's
+    // error, which still names the symbol.
+    let MutateError::Config { reason } = &err else {
+        panic!("unexpected error: {err:?}");
+    };
+    assert!(
+        reason.starts_with("Invalid `revset-aliases.immutable_heads()`: "),
+        "{reason}"
+    );
+    assert!(reason.contains("no-such-bookmark"), "{reason}");
 }
 
 #[test]

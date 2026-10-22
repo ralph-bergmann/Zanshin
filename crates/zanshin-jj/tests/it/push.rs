@@ -1011,6 +1011,38 @@ fn private_commits_are_rejected_unless_allowed() {
     assert_eq!(w.remote_refs()["refs/heads/main"], wip);
 }
 
+/// Story 9.58 review: the push commit check resolves `immutable_heads()` with a bare
+/// `.resolve()?` (`cli/src/commands/git/push.rs:803-805` @ v0.46.0), so its refusal keeps
+/// jj-lib's text — without the "Invalid `revset-aliases.immutable_heads()`" prefix the finish
+/// paths carry.
+#[test]
+fn an_unresolvable_immutable_alias_at_the_commit_check_keeps_jj_libs_text() {
+    let mut w = world();
+    advance_main(&mut w);
+    // The clone's repo config already holds a `[revset-aliases]` table (`trunk()`): add the alias
+    // inside it.
+    let id = fs::read_to_string(w.root.join(".jj").join("repo").join("config-id")).expect("config-id");
+    let xdg = PathBuf::from(std::env::var_os("XDG_CONFIG_HOME").expect("pinned"));
+    let path = xdg.join("jj").join("repos").join(id.trim()).join("config.toml");
+    let text = fs::read_to_string(&path).expect("the clone's repo config");
+    assert!(text.contains("[revset-aliases]\n"), "{text}");
+    let text = text.replace(
+        "[revset-aliases]\n",
+        "[revset-aliases]\n'immutable_heads()' = 'nonexistent_symbol_xyz'\n",
+    );
+    fs::write(&path, text).expect("write the repo config");
+    w.reopen();
+    let err = w.push(&GitPushArgs::default()).expect_err("the commit check refuses");
+    let MutateError::Config { reason } = &err else {
+        panic!("{err:?}");
+    };
+    assert!(reason.contains("nonexistent_symbol_xyz"), "{reason}");
+    assert!(
+        !reason.starts_with("Invalid `revset-aliases.immutable_heads()`"),
+        "{reason}"
+    );
+}
+
 /// A second remote `up`: a clone of the bare remote, with `main@up` tracked where `main@origin`
 /// is.
 fn add_second_remote(w: &mut World) -> PathBuf {

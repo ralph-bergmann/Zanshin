@@ -60,7 +60,7 @@ use jj_lib::trailer::{parse_description_trailers, Trailer};
 use jj_lib::transaction::Transaction;
 use jj_lib::ui_path::parse_fs_path;
 
-use crate::mutate::{be, cfg, MutateError};
+use crate::mutate::{be, MutateError};
 use crate::revset::resolve_expression;
 use crate::template::Templates;
 
@@ -81,13 +81,16 @@ use crate::template::Templates;
 /// - [`MutateError::Config`] — a symbol in the immutable expression cannot be resolved
 ///   (e.g. the alias names a bookmark that does not exist). The CLI classifies this
 ///   failure the same way — `resolve_immutable_expression` maps its `resolve()` error to
-///   ``Invalid `revset-aliases.immutable_heads()` `` — because the alias, not the caller's
-///   argument, is what is wrong.
+///   ``Invalid `revset-aliases.immutable_heads()` `` (`cli_util.rs:1146-1167` @ v0.46.0) —
+///   because the alias, not the caller's argument, is what is wrong. The reason is that text,
+///   then `: ` and jj-lib's error (Story 9.58), for every caller.
 pub(crate) fn resolve_immutable(
     repo: &dyn jj_lib::repo::Repo,
     expr: &Arc<UserRevsetExpression>,
 ) -> Result<Arc<ResolvedRevsetExpression>, MutateError> {
-    resolve_expression(repo, expr).map_err(cfg)
+    resolve_expression(repo, expr).map_err(|e| MutateError::Config {
+        reason: format!("Invalid `revset-aliases.immutable_heads()`: {e}"),
+    })
 }
 
 /// Refuses the rewrite if any of `commit_ids` is inside the immutable set.
