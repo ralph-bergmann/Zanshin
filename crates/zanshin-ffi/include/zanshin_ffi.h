@@ -68,6 +68,8 @@ char *zanshin_ffi_version(void);
  *   or only-hidden), or divergent; the id in `context`. An ABSENT `revision` is not an
  *   error — it is what applies the CLI's `-r` default `@`. An explicitly present EMPTY
  *   string is a VALUE, not an absence, and lands here.
+ * - `jj.revset_resolution_error` — an absent `revision`'s `@` default in a workspace with no
+ *   working-copy commit; the CLI's text in `context`.
  * - `jj.bookmark_exists` — a name is already a local bookmark; the name in `context`.
  * - `jj.bookmark_tracked_remote_exists` — a name's local bookmark is absent but it still has
  *   a tracked remote bookmark; the name in `context`.
@@ -422,8 +424,9 @@ ZanshinBuf *zanshin_evolog(uint64_t handle, const uint8_t *data, uintptr_t len);
  *   carries. The offending id in `context`. An ABSENT side is not an error — ONE absent side
  *   applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the `jj.invalid_input`
  *   bullet above.
- * - `jj.revset_resolution_error` — a `CommitIdRef` prefix is carried by two or more commits;
- *   jj-lib's own ambiguity wording in `context`.
+ * - `jj.revset_resolution_error` — a `CommitIdRef` prefix is carried by two or more commits, or
+ *   an absent side's `@` default in a workspace with no working-copy commit; jj-lib's own
+ *   wording in `context`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
  *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
  *   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
@@ -884,6 +887,8 @@ void zanshin_buffer_free(uint8_t *ptr, uintptr_t len);
  * - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
  *   or only-hidden), or divergent. An ABSENT `revision` is not an error — it is what applies
  *   the CLI's `-r` default `@`.
+ * - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
+ *   commit; the CLI's text in `context`.
  * - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
  *   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
@@ -928,6 +933,8 @@ ZanshinBuf *zanshin_file_list(uint64_t handle, const uint8_t *data, uintptr_t le
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `FileShowRequest` buffer, or its `kind`
  *   is not `FileShow`, i.e. the buffer was built for a different wrapper.
+ * - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
+ *   commit; the CLI's text in `context`.
  * - `jj.invalid_input` — `paths` is empty, or an entry is not a valid repo path.
  * - `jj.change_not_found` — `revision` does not resolve.
  * - `jj.path_not_found` — exactly one path was given and it is absent from the revision's
@@ -965,6 +972,8 @@ ZanshinBuf *zanshin_file_show(uint64_t handle,
  * - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer, or its `kind`
  *   is not `FileAnnotate`, i.e. the buffer was built for a different wrapper.
  * - `jj.change_not_found` — `revision` does not resolve.
+ * - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
+ *   commit; the CLI's text in `context`.
  * - `jj.invalid_input` — `path` is absent from the request buffer, or is not a valid repo
  *   path.
  * - `jj.path_not_found` — `path` is absent from the revision's tree; the path in `context`.
@@ -1009,6 +1018,8 @@ ZanshinBuf *zanshin_file_annotate(uint64_t handle,
  * - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer, or its `kind`
  *   is not `FileSearch`, i.e. the buffer was built for a different wrapper.
  * - `jj.change_not_found` — `revision` does not resolve.
+ * - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
+ *   commit; the CLI's text in `context`.
  * - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
  *   or does not parse, or a `paths` entry is not a valid repo path; detail in `context`.
  * - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
@@ -1573,8 +1584,9 @@ ZanshinBuf *zanshin_op_log(uint64_t handle, int64_t limit);
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `GitPushRequest` buffer, or its `kind`
  *   is not `GitPush`.
- * - `jj.invalid_input` — conflicting flags, a pattern that does not parse, "No git remotes to
- *   push to", a malformed `--named`, an empty `--change` set; the CLI's text in `context`.
+ * - `jj.invalid_input` — conflicting flags (before the snapshot, as clap refuses them: nothing
+ *   written, no `precondition`), a pattern that does not parse, "No git remotes to push to", a
+ *   malformed `--named`, an empty `--change` set; the CLI's text in `context`.
  * - `jj.bookmark_exists` / `jj.bookmark_tracked_remote_exists` — a `--change` / `--named` name is
  *   taken; the name in `context`.
  * - `jj.push_ref_refused` / `jj.push_commit_rejected` — an explicitly named ref is refused, or
@@ -1626,12 +1638,14 @@ ZanshinBuf *zanshin_git_push(uint64_t handle,
  * - `ffi.invalid_argument` — `data` does not verify as a `RebaseRequest` buffer, or its `kind`
  *   is not `Rebase`.
  * - `jj.invalid_input` — more than one of `branch`/`source`/`revisions`, `onto` with
- *   `insert_after`/`insert_before`, or no location (refused before anything resolves); "Cannot
- *   rebase <12 hex> onto itself" / "… onto descendant <12 hex>"; a location that would create a
- *   loop or resolves no parent; a merge with the root commit as a parent in a Git repo; detail in
- *   `context`.
+ *   `insert_after`/`insert_before`, or no location (clap's refusals: before the snapshot, nothing
+ *   written, no `precondition`); "Cannot rebase <12 hex> onto itself" / "… onto descendant <12
+ *   hex>"; a location that would create a loop or resolves no parent; a merge with the root
+ *   commit as a parent in a Git repo; detail in `context`.
  * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
  *   in `context`.
+ * - `jj.revset_resolution_error` — the default `-b @` in a workspace with no working-copy commit;
+ *   the CLI's text in `context`.
  * - `jj.immutable` — a commit the move rewrites, or a child the location would rewrite, is
  *   immutable; its hex commit id in `context`.
  * - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
@@ -2276,8 +2290,8 @@ ZanshinBuf *zanshin_describe(uint64_t handle,
  * - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
  *   is not `NewChange`. The two wrappers that read this ONE table carry different kinds, so an
  *   `Abandon`-tagged buffer is refused here rather than treated as `parents`.
- * - `jj.invalid_input` — `parents` combined with `insert_after` / `insert_before`; all three
- *   lists empty; (Git backend) two or more parents — positional, or computed by `-A`/`-B` —
+ * - `jj.invalid_input` — `parents` combined with `insert_after` / `insert_before`, or all three
+ *   lists empty (both before the snapshot: nothing written, no `precondition`); (Git backend) two or more parents — positional, or computed by `-A`/`-B` —
  *   including the root commit, refused up front with the Git backend's own text ("The Git
  *   backend does not support creating merge commits with the root commit as one of the
  *   parents.") — Story 9.31; (`-A`/`-B`) the location would create a loop (`Refusing to create
@@ -2535,8 +2549,11 @@ ZanshinBuf *zanshin_git_fetch(uint64_t handle, const uint8_t *data, uintptr_t le
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer, or its `kind`
  *   is not `Restore`, i.e. the buffer was built for a different wrapper.
- * - `jj.invalid_input` — `changes_in` was combined with `from`/`into`, or a `paths` entry
- *   is not a valid repo path; detail in `context`.
+ * - `jj.invalid_input` — `changes_in` was combined with `from`/`into` (clap's refusal: before the
+ *   snapshot, nothing written, no `precondition`), or a `paths` entry is not a valid repo path;
+ *   detail in `context`.
+ * - `jj.revset_resolution_error` — an absent one's `@` default in a workspace with no
+ *   working-copy commit; the CLI's text in `context`.
  * - `jj.change_not_found` — `from`, `into` or `changes_in` is malformed, carried by no
  *   VISIBLE commit (unknown or only-hidden), or divergent. An ABSENT one is not an error —
  *   it is exactly the "the user did not supply it" wire form described above, and it is what
@@ -2591,7 +2608,8 @@ ZanshinBuf *zanshin_restore(uint64_t handle, const uint8_t *data, uintptr_t len)
  * - `jj.revset_parse_error` — `into` is syntactically invalid or names an unknown
  *   function; jj-lib's reason in `context`.
  * - `jj.revset_resolution_error` — `into` is well-formed but a symbol in it cannot be
- *   resolved; jj-lib's reason in `context`.
+ *   resolved, or an absent `from`'s `@` default in a workspace with no working-copy commit;
+ *   jj-lib's reason in `context`.
  * - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
  * - `jj.change_not_found` — `from` is malformed, carried by no VISIBLE commit (unknown or
  *   only-hidden), or divergent. An ABSENT `from` is not an error — it is what applies the
@@ -2685,12 +2703,15 @@ ZanshinBuf *zanshin_snapshot(uint64_t handle);
  *   is not `Squash`.
  * - `jj.invalid_input` — `revision` combined with `from`/`into`, `message` with
  *   `use_destination_message`, `message` with `edited_description` ("--message cannot be used
- *   with an edited description"), a merge or the root commit as the revision ("Cannot squash
+ *   with an edited description") — these before the snapshot, as clap refuses them: nothing
+ *   written, no `precondition` — a merge or the root commit as the revision ("Cannot squash
  *   merge commits without a specified destination"), or a `paths` entry that is not a valid repo
  *   path; detail in `context`.
  * - `jj.change_not_found` — `revision`, a `from` entry or `into` is malformed, carried by no
  *   VISIBLE commit, or divergent; the id in `context`.
  * - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
+ * - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
+ *   commit; the CLI's text in `context`.
  * - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve; or
  *   (Story 9.51) `templates.commit_trailers` or (the editor case) `templates.draft_commit_description`
  *   does not parse or render — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
@@ -2733,6 +2754,8 @@ ZanshinBuf *zanshin_squash(uint64_t handle,
  * - `jj.change_not_found` — `revision`, a `from` entry or `into` does not resolve; the id in
  *   `context`.
  * - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
+ * - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
+ *   commit; the CLI's text in `context`.
  * - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve; or
  *   (Story 9.51) `templates.commit_trailers` or (the editor case) `templates.draft_commit_description`
  *   does not parse or render — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
@@ -2780,12 +2803,15 @@ ZanshinBuf *zanshin_squash_plan(uint64_t handle,
  *   not `Split`.
  * - `jj.invalid_input` — `message` with an edited description ("--message cannot be used with an
  *   edited description"), only one edited description ("an edited split needs both descriptions:
- *   the selected and the remaining"), `paths` is empty or holds an invalid repo path, `parallel`
- *   is combined with a location, `onto` with `insert_after`/`insert_before`, the location resolves
- *   no parent, or it would create a loop; detail in `context`.
+ *   the selected and the remaining"), `parallel` combined with a location, `onto` with
+ *   `insert_after`/`insert_before` — these before the snapshot, as clap refuses them: nothing
+ *   written, no `precondition` — `paths` is empty or holds an invalid repo path, the location
+ *   resolves no parent, or it would create a loop; detail in `context`.
  * - `jj.change_not_found` — `revision` or a location entry is malformed, carried by no VISIBLE
  *   commit, or divergent; the id in `context`.
  * - `jj.immutable` — the target, or a child the location would rewrite, is immutable.
+ * - `jj.revset_resolution_error` — an omitted `revision`'s `@` in a workspace with no
+ *   working-copy commit; the CLI's text in `context`.
  * - `jj.config_error` — `split.legacy-bookmark-behavior` is not a boolean, or the config or its
  *   `immutable_heads()` alias does not read or resolve; or (Story 9.51) `templates.commit_trailers`
  *   or (without `message`) `templates.draft_commit_description` does not parse or render —

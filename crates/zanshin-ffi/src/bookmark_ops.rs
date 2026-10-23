@@ -123,6 +123,8 @@ fn read_bookmark_delete_request(data: *const u8, len: usize) -> Result<BookmarkD
 ///   or only-hidden), or divergent; the id in `context`. An ABSENT `revision` is not an
 ///   error — it is what applies the CLI's `-r` default `@`. An explicitly present EMPTY
 ///   string is a VALUE, not an absence, and lands here.
+/// - `jj.revset_resolution_error` — an absent `revision`'s `@` default in a workspace with no
+///   working-copy commit; the CLI's text in `context`.
 /// - `jj.bookmark_exists` — a name is already a local bookmark; the name in `context`.
 /// - `jj.bookmark_tracked_remote_exists` — a name's local bookmark is absent but it still has
 ///   a tracked remote bookmark; the name in `context`.

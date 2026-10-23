@@ -1173,8 +1173,8 @@ pub unsafe extern "C" fn zanshin_describe(
 /// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
 ///   is not `NewChange`. The two wrappers that read this ONE table carry different kinds, so an
 ///   `Abandon`-tagged buffer is refused here rather than treated as `parents`.
-/// - `jj.invalid_input` — `parents` combined with `insert_after` / `insert_before`; all three
-///   lists empty; (Git backend) two or more parents — positional, or computed by `-A`/`-B` —
+/// - `jj.invalid_input` — `parents` combined with `insert_after` / `insert_before`, or all three
+///   lists empty (both before the snapshot: nothing written, no `precondition`); (Git backend) two or more parents — positional, or computed by `-A`/`-B` —
 ///   including the root commit, refused up front with the Git backend's own text ("The Git
 ///   backend does not support creating merge commits with the root commit as one of the
 ///   parents.") — Story 9.31; (`-A`/`-B`) the location would create a loop (`Refusing to create
@@ -1559,8 +1559,11 @@ pub unsafe extern "C" fn zanshin_git_fetch(handle: u64, data: *const u8, len: us
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `RestoreRequest` buffer, or its `kind`
 ///   is not `Restore`, i.e. the buffer was built for a different wrapper.
-/// - `jj.invalid_input` — `changes_in` was combined with `from`/`into`, or a `paths` entry
-///   is not a valid repo path; detail in `context`.
+/// - `jj.invalid_input` — `changes_in` was combined with `from`/`into` (clap's refusal: before the
+///   snapshot, nothing written, no `precondition`), or a `paths` entry is not a valid repo path;
+///   detail in `context`.
+/// - `jj.revset_resolution_error` — an absent one's `@` default in a workspace with no
+///   working-copy commit; the CLI's text in `context`.
 /// - `jj.change_not_found` — `from`, `into` or `changes_in` is malformed, carried by no
 ///   VISIBLE commit (unknown or only-hidden), or divergent. An ABSENT one is not an error —
 ///   it is exactly the "the user did not supply it" wire form described above, and it is what
@@ -1626,7 +1629,8 @@ pub unsafe extern "C" fn zanshin_restore(handle: u64, data: *const u8, len: usiz
 /// - `jj.revset_parse_error` — `into` is syntactically invalid or names an unknown
 ///   function; jj-lib's reason in `context`.
 /// - `jj.revset_resolution_error` — `into` is well-formed but a symbol in it cannot be
-///   resolved; jj-lib's reason in `context`.
+///   resolved, or an absent `from`'s `@` default in a workspace with no working-copy commit;
+///   jj-lib's reason in `context`.
 /// - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
 /// - `jj.change_not_found` — `from` is malformed, carried by no VISIBLE commit (unknown or
 ///   only-hidden), or divergent. An ABSENT `from` is not an error — it is what applies the

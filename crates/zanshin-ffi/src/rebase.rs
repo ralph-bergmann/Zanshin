@@ -139,12 +139,14 @@ fn read_arrange_request(data: *const u8, len: usize) -> Result<ArrangeOptions, F
 /// - `ffi.invalid_argument` — `data` does not verify as a `RebaseRequest` buffer, or its `kind`
 ///   is not `Rebase`.
 /// - `jj.invalid_input` — more than one of `branch`/`source`/`revisions`, `onto` with
-///   `insert_after`/`insert_before`, or no location (refused before anything resolves); "Cannot
-///   rebase <12 hex> onto itself" / "… onto descendant <12 hex>"; a location that would create a
-///   loop or resolves no parent; a merge with the root commit as a parent in a Git repo; detail in
-///   `context`.
+///   `insert_after`/`insert_before`, or no location (clap's refusals: before the snapshot, nothing
+///   written, no `precondition`); "Cannot rebase <12 hex> onto itself" / "… onto descendant <12
+///   hex>"; a location that would create a loop or resolves no parent; a merge with the root
+///   commit as a parent in a Git repo; detail in `context`.
 /// - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
 ///   in `context`.
+/// - `jj.revset_resolution_error` — the default `-b @` in a workspace with no working-copy commit;
+///   the CLI's text in `context`.
 /// - `jj.immutable` — a commit the move rewrites, or a child the location would rewrite, is
 ///   immutable; its hex commit id in `context`.
 /// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.

@@ -755,8 +755,13 @@ fn collect_ids(
 }
 
 /// Refuses the CLI's clap conflicts (`push.rs:121-122`, `:185`): `--all` / `--tracked` with each
-/// other or with a specific ref, `--deleted` with a specific ref.
-fn check_flags(args: &GitPushArgs) -> Result<(), MutateError> {
+/// other or with a specific ref, `--deleted` with a specific ref — before the pre-verb snapshot
+/// ([`crate::Repo::git_push`]), as the CLI parses its arguments before it snapshots.
+///
+/// # Errors
+///
+/// [`MutateError::InvalidInput`] naming the conflicting flags.
+pub(crate) fn check_flags(args: &GitPushArgs) -> Result<(), MutateError> {
     let specific = [
         ("--bookmark", !args.bookmarks.is_empty()),
         ("--tag", !args.tags.is_empty()),
@@ -1327,7 +1332,6 @@ pub(crate) fn plan_push(
     tx: &mut Transaction,
     args: &GitPushArgs,
 ) -> Result<PushPlan, MutateError> {
-    check_flags(args)?;
     let base = Arc::clone(tx.base_repo());
     let VerbContext {
         config,

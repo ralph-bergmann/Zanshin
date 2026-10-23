@@ -126,12 +126,15 @@ fn read_split_request(data: *const u8, len: usize) -> Result<SplitOptions, FfiEr
 ///   is not `Squash`.
 /// - `jj.invalid_input` — `revision` combined with `from`/`into`, `message` with
 ///   `use_destination_message`, `message` with `edited_description` ("--message cannot be used
-///   with an edited description"), a merge or the root commit as the revision ("Cannot squash
+///   with an edited description") — these before the snapshot, as clap refuses them: nothing
+///   written, no `precondition` — a merge or the root commit as the revision ("Cannot squash
 ///   merge commits without a specified destination"), or a `paths` entry that is not a valid repo
 ///   path; detail in `context`.
 /// - `jj.change_not_found` — `revision`, a `from` entry or `into` is malformed, carried by no
 ///   VISIBLE commit, or divergent; the id in `context`.
 /// - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
+/// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
+///   commit; the CLI's text in `context`.
 /// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve; or
 ///   (Story 9.51) `templates.commit_trailers` or (the editor case) `templates.draft_commit_description`
 ///   does not parse or render — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
@@ -181,6 +184,8 @@ pub unsafe extern "C" fn zanshin_squash(handle: u64, data: *const u8, len: usize
 /// - `jj.change_not_found` — `revision`, a `from` entry or `into` does not resolve; the id in
 ///   `context`.
 /// - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
+/// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
+///   commit; the CLI's text in `context`.
 /// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve; or
 ///   (Story 9.51) `templates.commit_trailers` or (the editor case) `templates.draft_commit_description`
 ///   does not parse or render — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
@@ -235,12 +240,15 @@ pub unsafe extern "C" fn zanshin_squash_plan(handle: u64, data: *const u8, len: 
 ///   not `Split`.
 /// - `jj.invalid_input` — `message` with an edited description ("--message cannot be used with an
 ///   edited description"), only one edited description ("an edited split needs both descriptions:
-///   the selected and the remaining"), `paths` is empty or holds an invalid repo path, `parallel`
-///   is combined with a location, `onto` with `insert_after`/`insert_before`, the location resolves
-///   no parent, or it would create a loop; detail in `context`.
+///   the selected and the remaining"), `parallel` combined with a location, `onto` with
+///   `insert_after`/`insert_before` — these before the snapshot, as clap refuses them: nothing
+///   written, no `precondition` — `paths` is empty or holds an invalid repo path, the location
+///   resolves no parent, or it would create a loop; detail in `context`.
 /// - `jj.change_not_found` — `revision` or a location entry is malformed, carried by no VISIBLE
 ///   commit, or divergent; the id in `context`.
 /// - `jj.immutable` — the target, or a child the location would rewrite, is immutable.
+/// - `jj.revset_resolution_error` — an omitted `revision`'s `@` in a workspace with no
+///   working-copy commit; the CLI's text in `context`.
 /// - `jj.config_error` — `split.legacy-bookmark-behavior` is not a boolean, or the config or its
 ///   `immutable_heads()` alias does not read or resolve; or (Story 9.51) `templates.commit_trailers`
 ///   or (without `message`) `templates.draft_commit_description` does not parse or render —

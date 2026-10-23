@@ -29,6 +29,20 @@ fn parallelize_makes_siblings_and_their_child_a_merge() {
 }
 
 #[test]
+fn parallelize_keeps_a_merge_childs_parent_outside_the_set() {
+    let mut fx = base();
+    let on_a = [fx.a.clone()];
+    let x = add(&mut fx, &on_a, &[("x.txt", "x\n")], "X\n");
+    let merge_parents = [fx.c.clone(), x.clone()];
+    let m = add(&mut fx, &merge_parents, &[("m.txt", "m\n")], "M\n");
+    let result = fx.repo.parallelize(&[fx.b.clone(), fx.c.clone()]).expect("parallelize");
+    assert_op(&fx, &result, "parallelize 2 commits");
+    assert_eq!(parents(&fx.root, &fx.c), [fx.a.clone()]);
+    // M's in-set parent C becomes B and C; its outside parent X stays, in place.
+    assert_eq!(parents(&fx.root, &m), [fx.b.clone(), fx.c.clone(), x]);
+}
+
+#[test]
 fn parallelize_one_or_no_revision_writes_no_operation() {
     let mut fx = base();
     let b = fx.b.clone();

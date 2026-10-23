@@ -346,6 +346,8 @@ fn file_search_to_envelope(search: &FileSearch, report: &crate::envelope::CallRe
 /// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit (unknown
 ///   or only-hidden), or divergent. An ABSENT `revision` is not an error — it is what applies
 ///   the CLI's `-r` default `@`.
+/// - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
+///   commit; the CLI's text in `context`.
 /// - `jj.invalid_input` — a `paths` entry is not a valid repo path; detail in `context`.
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
 ///   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
@@ -401,6 +403,8 @@ pub unsafe extern "C" fn zanshin_file_list(handle: u64, data: *const u8, len: us
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileShowRequest` buffer, or its `kind`
 ///   is not `FileShow`, i.e. the buffer was built for a different wrapper.
+/// - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
+///   commit; the CLI's text in `context`.
 /// - `jj.invalid_input` — `paths` is empty, or an entry is not a valid repo path.
 /// - `jj.change_not_found` — `revision` does not resolve.
 /// - `jj.path_not_found` — exactly one path was given and it is absent from the revision's
@@ -445,6 +449,8 @@ pub unsafe extern "C" fn zanshin_file_show(handle: u64, data: *const u8, len: us
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileAnnotateRequest` buffer, or its `kind`
 ///   is not `FileAnnotate`, i.e. the buffer was built for a different wrapper.
 /// - `jj.change_not_found` — `revision` does not resolve.
+/// - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
+///   commit; the CLI's text in `context`.
 /// - `jj.invalid_input` — `path` is absent from the request buffer, or is not a valid repo
 ///   path.
 /// - `jj.path_not_found` — `path` is absent from the revision's tree; the path in `context`.
@@ -498,6 +504,8 @@ pub unsafe extern "C" fn zanshin_file_annotate(handle: u64, data: *const u8, len
 /// - `ffi.invalid_argument` — `data` does not verify as a `FileSearchRequest` buffer, or its `kind`
 ///   is not `FileSearch`, i.e. the buffer was built for a different wrapper.
 /// - `jj.change_not_found` — `revision` does not resolve.
+/// - `jj.invalid_input` — an absent `revision`'s `@` default in a workspace with no working-copy
+///   commit; the CLI's text in `context`.
 /// - `jj.invalid_input` — `pattern` is absent from the request buffer, names an unknown kind
 ///   or does not parse, or a `paths` entry is not a valid repo path; detail in `context`.
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config

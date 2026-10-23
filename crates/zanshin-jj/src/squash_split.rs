@@ -216,7 +216,32 @@ pub(crate) struct SquashDecision {
     pub(crate) abandoned: Vec<Commit>,
 }
 
-/// The read-only part `squash` and `squash_plan` share (Story 9.15): the clap conflicts, the
+/// What clap refuses for `jj squash` (`squash.rs` @ v0.46.0: `--revision` conflicts with
+/// `--from`/`--into`, `--message` with `--use-destination-message`), plus a `message` given with
+/// an edited description — refused before the pre-verb snapshot, as the CLI parses its arguments
+/// before it snapshots ([`crate::Repo::squash`]).
+///
+/// # Errors
+///
+/// [`MutateError::InvalidInput`] naming the conflicting flags.
+pub(crate) fn check_squash_args(options: &SquashOptions) -> Result<(), MutateError> {
+    if options.revision.is_some() && (!options.from.is_empty() || options.into.is_some()) {
+        return Err(MutateError::invalid(
+            "--revision cannot be used with --from or --into".to_owned(),
+        ));
+    }
+    if options.message.is_some() && options.use_destination_message {
+        return Err(MutateError::invalid(
+            "--message cannot be used with --use-destination-message".to_owned(),
+        ));
+    }
+    if options.message.is_some() && options.edited_description.is_some() {
+        return Err(MutateError::invalid(EDITED_WITH_MESSAGE.to_owned()));
+    }
+    Ok(())
+}
+
+/// The read-only part `squash` and `squash_plan` share (Story 9.15): the
 /// source/destination resolution, the merge refusal, the rewritability guard, the selection,
 /// the unmatched-path warning, the abandoned set and the description mode — in the CLI's
 /// order (`squash.rs:184-355` @ v0.46.0).
@@ -237,20 +262,6 @@ pub(crate) fn plan_squash(
     ctx: &mut VerbContext,
     options: &SquashOptions,
 ) -> Result<PlannedSquash, MutateError> {
-    if options.revision.is_some() && (!options.from.is_empty() || options.into.is_some()) {
-        return Err(MutateError::invalid(
-            "--revision cannot be used with --from or --into".to_owned(),
-        ));
-    }
-    if options.message.is_some() && options.use_destination_message {
-        return Err(MutateError::invalid(
-            "--message cannot be used with --use-destination-message".to_owned(),
-        ));
-    }
-    if options.message.is_some() && options.edited_description.is_some() {
-        return Err(MutateError::invalid(EDITED_WITH_MESSAGE.to_owned()));
-    }
-
     let (sources, destination) = resolve_squash(tx, workspace, options)?;
     let mut ids: Vec<JjCommitId> = sources.iter().map(|c| c.id().clone()).collect();
     ids.push(destination.id().clone());
@@ -572,20 +583,15 @@ pub(crate) struct PreparedSplit {
     pub(crate) location: Option<(Vec<JjCommitId>, Vec<JjCommitId>)>,
 }
 
-/// Everything before `split` rewrites anything (Story 9.15): the clap conflicts, the target,
-/// the rewritability guard, the location (`compute_commit_location(…, "split-out commit")`),
-/// the unmatched-path warning over `[parent_tree, tree]` and the selection with its two
-/// warnings — `SplitArgs::resolve` and `select_diff` (`split.rs:201-257`, `:546-598` @ v0.46.0).
+/// What clap refuses for `jj split` (`split.rs` @ v0.46.0: `--parallel` conflicts with
+/// `-o`/`-A`/`-B`, `-o` with `-A`/`-B`), plus a `message` given with an edited description and
+/// only one of the two edited descriptions — refused before the pre-verb snapshot, as the CLI
+/// parses its arguments before it snapshots ([`crate::Repo::split`]).
 ///
 /// # Errors
 ///
-/// See [`crate::Repo::split`].
-pub(crate) fn prepare_split(
-    tx: &Transaction,
-    workspace: &Workspace,
-    ctx: &mut VerbContext,
-    options: &SplitOptions,
-) -> Result<PreparedSplit, MutateError> {
+/// [`MutateError::InvalidInput`] naming the conflicting flags.
+pub(crate) fn check_split_args(options: &SplitOptions) -> Result<(), MutateError> {
     let edited = [
         &options.edited_selected_description,
         &options.edited_remaining_description,
@@ -609,7 +615,24 @@ pub(crate) fn prepare_split(
             "--onto cannot be combined with -A/--insert-after or -B/--insert-before".to_owned(),
         ));
     }
+    Ok(())
+}
 
+/// Everything before `split` rewrites anything (Story 9.15): the target,
+/// the rewritability guard, the location (`compute_commit_location(…, "split-out commit")`),
+/// the unmatched-path warning over `[parent_tree, tree]` and the selection with its two
+/// warnings — `SplitArgs::resolve` and `select_diff` (`split.rs:201-257`, `:546-598` @ v0.46.0).
+///
+/// # Errors
+///
+/// See [`crate::Repo::split`].
+pub(crate) fn prepare_split(
+    tx: &Transaction,
+    workspace: &Workspace,
+    ctx: &mut VerbContext,
+    options: &SplitOptions,
+) -> Result<PreparedSplit, MutateError> {
+    let use_move_flags = options.onto.is_some() || options.insert_after.is_some() || options.insert_before.is_some();
     let target = resolve_or_wc(tx.repo(), workspace.workspace_name(), options.revision.as_ref())?;
     let templates = ctx.templates(workspace);
     let immutable = guard_rewritable(tx, &templates, std::slice::from_ref(target.id()))?;

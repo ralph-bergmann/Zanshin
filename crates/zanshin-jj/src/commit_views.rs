@@ -239,6 +239,7 @@ fn res(e: ResolveError, id: Option<&ChangeId>) -> CommitViewError {
         ResolveError::NotFound => CommitViewError::ChangeNotFound {
             id: id.map(|i| i.0.clone()).unwrap_or_default(),
         },
+        ResolveError::NoWorkingCopy(reason) => CommitViewError::RevsetResolutionError { reason },
         ResolveError::Backend(reason) => CommitViewError::Backend(reason),
     }
 }

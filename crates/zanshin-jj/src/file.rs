@@ -246,6 +246,7 @@ fn res(e: ResolveError, revision: Option<&ChangeId>) -> FileError {
         ResolveError::NotFound => FileError::ChangeNotFound {
             id: revision.map(|r| r.0.clone()).unwrap_or_default(),
         },
+        ResolveError::NoWorkingCopy(reason) => FileError::InvalidInput { reason },
         ResolveError::Backend(reason) => FileError::Backend(reason),
     }
 }

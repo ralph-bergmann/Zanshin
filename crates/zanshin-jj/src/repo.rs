@@ -480,6 +480,29 @@ impl Repo {
         self.with_verb_stats(true, verb)
     }
 
+    /// [`Repo::with_verb`] for a verb whose CLI counterpart refuses some argument combinations in
+    /// clap: `args` (the verb's pure check) refuses where clap refuses — after the start-up
+    /// secure-config fix-up (`reload_repo_config` runs before `parse_args`,
+    /// `cli/src/cli_util.rs:4667`, `:4692` @ v0.46.0) and BEFORE the pre-verb snapshot, which only
+    /// the command body runs. A refused call writes no operation and leaves no precondition
+    /// report; its warnings are the fix-up's.
+    fn with_checked_verb<T>(
+        &mut self,
+        args: Result<(), crate::MutateError>,
+        verb: impl FnOnce(&mut Self, &mut crate::snapshot::VerbContext) -> Result<T, crate::MutateError>,
+    ) -> Result<T, crate::MutateError> {
+        let Err(refusal) = args else {
+            return self.with_verb(verb);
+        };
+        let mut fix_ups = Vec::new();
+        let refreshed = self.refresh_settings(&mut fix_ups);
+        self.pending_precondition = None;
+        self.pending_warnings = crate::warning::Warnings::default();
+        self.pending_warnings.extend(fix_ups);
+        refreshed?;
+        Err(refusal)
+    }
+
     /// [`Repo::with_verb`] with the precondition's snapshot-stats warnings switched by
     /// `warn_stats` (see [`Repo::precondition`]).
     fn with_verb_stats<T, E: From<crate::PreconditionError>>(
@@ -783,7 +806,9 @@ impl Repo {
     ///   VISIBLE commit (unknown or only-hidden), or divergent (the CLI's `-r` refuses an
     ///   ambiguous revision too). An ABSENT `revision` is not an error: it is what applies
     ///   the CLI's `-r` default `@`.
-    /// - [`crate::FileError::InvalidInput`] — a `paths` entry is not a valid repo path.
+    /// - [`crate::FileError::InvalidInput`] — a `paths` entry is not a valid repo path, or an
+    ///   absent `revision`'s `@` in a workspace with no working-copy commit ("Workspace `<name>`
+    ///   doesn't have a working-copy commit"; this holds for all four file reads).
     /// - [`crate::FileError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     // WHY: owned `ChangeId` is the house currency for a single-revision parameter
@@ -1217,8 +1242,9 @@ impl Repo {
     ///
     /// Every refusal happens before the first write; nothing is written.
     ///
-    /// - [`crate::MutateError::InvalidInput`] — `parents` combined with an insert list; all three
-    ///   lists empty; (Git backend) two or more parents — positional, or computed by `-A`/`-B` —
+    /// - [`crate::MutateError::InvalidInput`] — `parents` combined with an insert list, or all
+    ///   three lists empty (both before the snapshot, as clap refuses the first); (Git backend)
+    ///   two or more parents — positional, or computed by `-A`/`-B` —
     ///   including the root commit, with the Git backend's own text, "The Git backend does not
     ///   support creating merge commits with the root commit as one of the parents." (Story
     ///   9.31); (`-A`/`-B`) the location would create a loop (`Refusing to create a loop: commit
@@ -1246,7 +1272,8 @@ impl Repo {
         insert_after: &[crate::ChangeId],
         insert_before: &[crate::ChangeId],
     ) -> Result<crate::MutationResult, crate::MutateError> {
-        self.with_verb(|repo, ctx| {
+        let args = crate::mutate::check_new_args(parents, insert_after, insert_before);
+        self.with_checked_verb(args, |repo, ctx| {
             crate::mutate::new_change(repo.workspace_mut(), ctx, parents, insert_after, insert_before)
         })
     }
@@ -1374,7 +1401,8 @@ impl Repo {
     /// # Errors
     ///
     /// Every refusal before the network:
-    /// - [`crate::MutateError::InvalidInput`] — conflicting flags, a pattern that does not parse,
+    /// - [`crate::MutateError::InvalidInput`] — conflicting flags (before the snapshot, as clap
+    ///   refuses them, so nothing is written), a pattern that does not parse,
     ///   "No git remotes to push to", a `--named` argument without `=` or with an empty side or an
     ///   unparsable name, an empty `--change` set.
     /// - [`crate::MutateError::BookmarkExists`] / [`crate::MutateError::BookmarkTrackedRemoteExists`]
@@ -1399,7 +1427,9 @@ impl Repo {
         progress: &crate::ProgressFn,
         cancel: Option<&crate::cancel::CancelGuard>,
     ) -> Result<crate::GitPushOutcome, crate::MutateError> {
-        self.with_verb(|repo, ctx| crate::push::git_push(repo, ctx, args, progress, cancel))
+        self.with_checked_verb(crate::push::check_flags(args), |repo, ctx| {
+            crate::push::git_push(repo, ctx, args, progress, cancel)
+        })
     }
 
     /// `jj git fetch` (FR-JJ-13, Story 9.30): fetches the remotes and refs `args` selects in ONE
@@ -1978,7 +2008,9 @@ impl Repo {
     ///   ABSENT side is not an error: ONE absent side applies the CLI's `--from`/`--to` default
     ///   `@`, and omitting BOTH is the `InvalidInput` bullet above.
     /// - [`crate::CommitViewError::RevsetResolutionError`] — a [`crate::RevisionRef::CommitId`]
-    ///   prefix is carried by two or more commits; refused, never resolved to one of them.
+    ///   prefix is carried by two or more commits; refused, never resolved to one of them. Or an
+    ///   absent side's `@` in a workspace with no working-copy commit ("Workspace `<name>`
+    ///   doesn't have a working-copy commit").
     /// - [`crate::CommitViewError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     // WHY: an OWNED single-revision parameter is the house SHAPE (epics.md Story 6.1 / AC-1);
@@ -2220,7 +2252,9 @@ impl Repo {
     ///   string.
     /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, carried by no
     ///   VISIBLE commit (unknown or only-hidden), or divergent. An ABSENT `revision` is not
-    ///   an error: it is what applies the CLI's `-r` default `@`.
+    ///   an error: it is what applies the CLI's `-r` default `@` — refused as
+    ///   [`crate::MutateError::RevsetResolutionError`] ("Workspace `<name>` doesn't have a
+    ///   working-copy commit") in a workspace with no working-copy commit.
     /// - [`crate::MutateError::BookmarkExists`] — a name is already a local bookmark.
     /// - [`crate::MutateError::BookmarkTrackedRemoteExists`] — a name's local bookmark is
     ///   absent but it still has a tracked remote bookmark. On a GIT-backed repo a colocated
@@ -2304,12 +2338,15 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::MutateError::InvalidInput`] — `changes_in` combined with `from`/`into`,
-    ///   or a `paths` entry is not a valid repo path.
+    /// - [`crate::MutateError::InvalidInput`] — `changes_in` combined with `from`/`into` (before
+    ///   the snapshot, as clap refuses it, so nothing is written), or a `paths` entry is not a
+    ///   valid repo path.
     /// - [`crate::MutateError::ChangeNotFound`] — `from`, `into` or `changes_in` is
     ///   malformed, carried by no VISIBLE commit (unknown or only-hidden), or divergent. An
     ///   ABSENT one is not an error: it is what selects the CLI's
     ///   `--from`/`--into`/`--changes-in` defaults described above.
+    /// - [`crate::MutateError::RevsetResolutionError`] — such an `@` default in a workspace with
+    ///   no working-copy commit ("Workspace `<name>` doesn't have a working-copy commit").
     /// - [`crate::MutateError::Immutable`] — the destination resolves to a commit inside the
     ///   repo's effective immutable set. Unlike `describe`/`abandon` this verb has no
     ///   separate root-commit guard, so the ROOT commit reports this code too — which is
@@ -2331,7 +2368,8 @@ impl Repo {
         paths: &[String],
         restore_descendants: bool,
     ) -> Result<crate::MutationResult, crate::MutateError> {
-        self.with_verb(|repo, ctx| {
+        let args = crate::mutate::check_restore_args(from.as_ref(), into.as_ref(), changes_in.as_ref());
+        self.with_checked_verb(args, |repo, ctx| {
             crate::mutate::restore(
                 repo.workspace_mut(),
                 ctx,
@@ -2380,7 +2418,9 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — a `paths` entry is not a valid repo path.
     /// - [`crate::MutateError::ChangeNotFound`] — `from` is malformed, carried by no VISIBLE
     ///   commit (unknown or only-hidden), or divergent. An ABSENT `from` is not an error: it
-    ///   is what applies the CLI's `--from` default `@`.
+    ///   is what applies the CLI's `--from` default `@` — refused as
+    ///   [`crate::MutateError::RevsetResolutionError`] ("Workspace `<name>` doesn't have a
+    ///   working-copy commit") in a workspace with no working-copy commit.
     /// - [`crate::MutateError::Immutable`] — a commit the hunks would be absorbed into is
     ///   inside the repo's effective immutable set. Unreachable with the `mutable()`
     ///   default, which excludes that set by construction.
@@ -2454,10 +2494,13 @@ impl Repo {
     ///
     /// - [`crate::MutateError::InvalidInput`] — `revision` combined with `from`/`into`, `message`
     ///   combined with `use_destination_message`, `message` combined with `edited_description`
-    ///   ("--message cannot be used with an edited description"), a merge or root `revision`
-    ///   without `from`/`into`, or a `paths` entry that is not a valid repo path.
+    ///   ("--message cannot be used with an edited description") — these before the snapshot, as
+    ///   clap refuses them, so nothing is written — a merge or root `revision` without
+    ///   `from`/`into`, or a `paths` entry that is not a valid repo path.
     /// - [`crate::MutateError::ChangeNotFound`] — `revision`, a `from` entry or `into` is
     ///   malformed, carried by no VISIBLE commit, or divergent.
+    /// - [`crate::MutateError::RevsetResolutionError`] — an omitted revision's `@` in a workspace
+    ///   with no working-copy commit ("Workspace `<name>` doesn't have a working-copy commit").
     /// - [`crate::MutateError::Immutable`] — a source or the destination is inside the repo's
     ///   effective immutable set (the root commit included).
     /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve; or a
@@ -2469,7 +2512,9 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn squash(&mut self, options: &crate::SquashOptions) -> Result<crate::MutationResult, crate::MutateError> {
-        self.with_verb(|repo, ctx| crate::squash_split::squash(repo.workspace_mut(), ctx, options))
+        self.with_checked_verb(crate::squash_split::check_squash_args(options), |repo, ctx| {
+            crate::squash_split::squash(repo.workspace_mut(), ctx, options)
+        })
     }
 
     /// The description [`Repo::squash`] would have to ask for (Story 9.15): the squash with the
@@ -2492,7 +2537,9 @@ impl Repo {
     /// [`crate::MutateError::NotAGitRepo`].
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn squash_plan(&mut self, options: &crate::SquashOptions) -> Result<crate::SquashPlan, crate::MutateError> {
-        self.with_verb(|repo, ctx| crate::squash_split::squash_plan(repo.workspace(), ctx, options))
+        self.with_checked_verb(crate::squash_split::check_squash_args(options), |repo, ctx| {
+            crate::squash_split::squash_plan(repo.workspace(), ctx, options)
+        })
     }
 
     /// Which verbs `source` can run at each of `locations` — the drop-action capability query
@@ -2597,11 +2644,15 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — `message` combined with an edited description
     ///   ("--message cannot be used with an edited description"), only one of the two edited
     ///   descriptions given ("an edited split needs both descriptions: the selected and the
-    ///   remaining"), `paths` is empty or holds an invalid repo path, `parallel` is combined with
-    ///   a location, `onto` with `insert_after`/`insert_before`, the location resolves no parent,
-    ///   or it would create a loop.
+    ///   remaining"), `parallel` combined with a location, `onto` with
+    ///   `insert_after`/`insert_before` — these before the snapshot, as clap refuses them, so
+    ///   nothing is written — `paths` is empty or holds an invalid repo path, the location
+    ///   resolves no parent, or it would create a loop.
     /// - [`crate::MutateError::ChangeNotFound`] — `revision` or a location entry is malformed,
     ///   carried by no VISIBLE commit, or divergent.
+    /// - [`crate::MutateError::RevsetResolutionError`] — an omitted `revision`'s `@` in a
+    ///   workspace with no working-copy commit ("Workspace `<name>` doesn't have a working-copy
+    ///   commit").
     /// - [`crate::MutateError::Immutable`] — the target, or a child the location would
     ///   rewrite, is inside the repo's effective immutable set.
     /// - [`crate::MutateError::Config`] — `split.legacy-bookmark-behavior` is not a boolean, the
@@ -2614,7 +2665,9 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn split(&mut self, options: &crate::SplitOptions) -> Result<crate::SplitResult, crate::MutateError> {
-        self.with_verb(|repo, ctx| crate::squash_split::split(repo.workspace_mut(), ctx, options))
+        self.with_checked_verb(crate::squash_split::check_split_args(options), |repo, ctx| {
+            crate::squash_split::split(repo.workspace_mut(), ctx, options)
+        })
     }
 
     /// Moves revisions to a new place in the graph (Story 9.16) — the CLI's `jj rebase`.
@@ -2647,12 +2700,15 @@ impl Repo {
     /// # Errors
     ///
     /// - [`crate::MutateError::InvalidInput`] — more than one of `branch`/`source`/`revisions`,
-    ///   `onto` with `insert_after`/`insert_before`, or none of the three location lists (refused
-    ///   before anything resolves); `Cannot rebase <12 hex> onto itself` / `onto descendant <12
-    ///   hex>`; a location that would create a loop or resolves no parent; or the backend refusing
-    ///   a commit of the move (a merge with the root commit as a parent, in a Git repo).
+    ///   `onto` with `insert_after`/`insert_before`, or none of the three location lists (clap's
+    ///   refusals: before the snapshot, so nothing is written); `Cannot rebase <12 hex> onto
+    ///   itself` / `onto descendant <12 hex>`; a location that would create a loop or resolves no
+    ///   parent; or the backend refusing a commit of the move (a merge with the root commit as a
+    ///   parent, in a Git repo).
     /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
     ///   commit, or divergent.
+    /// - [`crate::MutateError::RevsetResolutionError`] — the default `-b @` in a workspace with
+    ///   no working-copy commit ("Workspace `<name>` doesn't have a working-copy commit").
     /// - [`crate::MutateError::Immutable`] — a commit the move rewrites, or a child the location
     ///   would rewrite, is inside the repo's effective immutable set.
     /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
@@ -2661,7 +2717,9 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn rebase(&mut self, options: &crate::RebaseOptions) -> Result<crate::MutationResult, crate::MutateError> {
-        self.with_verb(|repo, ctx| crate::rebase::rebase(repo.workspace_mut(), ctx, options))
+        self.with_checked_verb(crate::rebase::check_rebase_args(options), |repo, ctx| {
+            crate::rebase::rebase(repo.workspace_mut(), ctx, options)
+        })
     }
 
     /// Makes revisions siblings (Story 9.16) — the CLI's `jj parallelize`.

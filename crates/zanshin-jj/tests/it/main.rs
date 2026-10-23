@@ -11,6 +11,7 @@
 //! test of a child process of this binary, so the shared environment never changes after the pin.
 
 mod api_stability;
+mod arg_refusals;
 mod bookmark_ops;
 mod bookmarks;
 mod change;

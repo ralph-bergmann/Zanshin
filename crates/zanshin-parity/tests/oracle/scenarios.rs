@@ -2280,6 +2280,7 @@ pub fn scenarios() -> Vec<Scenario> {
     .chain(rebase_flag_and_parallelize_scenarios())
     .chain(rebase_i1_and_immutable_scenarios())
     .chain(rebase_repeated_and_refusal_scenarios())
+    .chain(clap_refusal_scenarios())
     .chain(crate::git_scenarios::push_scenarios())
     .chain(crate::git_scenarios::bookmark_auto_track_scenarios())
     .chain(crate::git_scenarios::fetch_scenarios())
@@ -2644,6 +2645,19 @@ fn rebase_i1_and_immutable_scenarios() -> Vec<Scenario> {
                 argv
             },
         ),
+        Scenario {
+            // M = merge(C, X) is outside the set: C's place takes B and C, X stays.
+            setup: X_AND_MERGE,
+            ..simple(
+                "parallelize_merge_child_keeps_outside_parent",
+                |repo, _, s| parallelize_outcome(repo, s, &["B", "C"]),
+                |s| {
+                    let mut argv = vec!["parallelize".to_owned()];
+                    argv.extend(change_args(s, &["B", "C"]));
+                    argv
+                },
+            )
+        },
     ]
 }
 
@@ -2753,5 +2767,108 @@ fn rebase_repeated_and_refusal_scenarios() -> Vec<Scenario> {
             },
             |s| rebase_argv_repeated(s, &[("-r", "C"), ("-A", "B"), ("-B", "A")]),
         ),
+    ]
+}
+
+/// The edit every clap-refusal scenario leaves in the working copy: a snapshot would record it.
+const DIRTY_C: &[(&str, &str)] = &[("c.txt", "c, edited before a clap refusal\n")];
+
+/// Clap refusals on a dirty working copy: the CLI parses its arguments before the command body
+/// snapshots, so it refuses without a `snapshot working copy` operation — and so must Zanshin.
+fn clap_refusal_scenarios() -> Vec<Scenario> {
+    vec![
+        Scenario {
+            files: DIRTY_C,
+            ..simple(
+                "rebase_clap_conflict_dirty_wc",
+                |repo, _, s| {
+                    let options = RebaseOptions {
+                        revisions: vec![s.change("B")],
+                        source: vec![s.change("B")],
+                        onto: vec![s.change("A")],
+                        ..RebaseOptions::default()
+                    };
+                    rebase_outcome(repo, &options)
+                },
+                |s| rebase_argv_repeated(s, &[("-r", "B"), ("-s", "B"), ("-o", "A")]),
+            )
+        },
+        Scenario {
+            files: DIRTY_C,
+            ..simple(
+                "squash_clap_conflict_dirty_wc",
+                |repo, _, s| {
+                    let options = SquashOptions {
+                        revision: Some(s.change("B")),
+                        into: Some(s.change("A")),
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |s| {
+                    vec![
+                        "squash".to_owned(),
+                        "-r".to_owned(),
+                        s.change_arg("B"),
+                        "--into".to_owned(),
+                        s.change_arg("A"),
+                    ]
+                },
+            )
+        },
+        Scenario {
+            files: DIRTY_C,
+            ..simple(
+                "split_clap_conflict_dirty_wc",
+                |repo, _, s| {
+                    let options = SplitOptions {
+                        paths: vec!["c.txt".to_owned()],
+                        parallel: true,
+                        onto: Some(vec![s.change("A")]),
+                        ..SplitOptions::default()
+                    };
+                    split_outcome(repo, &options)
+                },
+                |s| {
+                    vec![
+                        "split".to_owned(),
+                        "--parallel".to_owned(),
+                        "-o".to_owned(),
+                        s.change_arg("A"),
+                        "c.txt".to_owned(),
+                    ]
+                },
+            )
+        },
+        Scenario {
+            files: DIRTY_C,
+            ..simple(
+                "new_clap_conflict_dirty_wc",
+                |repo, _, s| {
+                    let result = repo.new_change(&[s.change("A")], &[s.change("B")], &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| vec!["new".to_owned(), s.change_arg("A"), "-A".to_owned(), s.change_arg("B")],
+            )
+        },
+        Scenario {
+            files: DIRTY_C,
+            ..simple(
+                "restore_clap_conflict_dirty_wc",
+                |repo, _, s| {
+                    let result = repo.restore(Some(s.change("A")), None, Some(s.change("B")), &[], false);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| {
+                    vec![
+                        "restore".to_owned(),
+                        "--from".to_owned(),
+                        s.change_arg("A"),
+                        "--changes-in".to_owned(),
+                        s.change_arg("B"),
+                    ]
+                },
+            )
+        },
     ]
 }

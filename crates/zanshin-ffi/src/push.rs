@@ -305,8 +305,9 @@ pub fn ok_git_push_result(outcome: &GitPushOutcome, report: &CallReport) -> Vec<
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `GitPushRequest` buffer, or its `kind`
 ///   is not `GitPush`.
-/// - `jj.invalid_input` — conflicting flags, a pattern that does not parse, "No git remotes to
-///   push to", a malformed `--named`, an empty `--change` set; the CLI's text in `context`.
+/// - `jj.invalid_input` — conflicting flags (before the snapshot, as clap refuses them: nothing
+///   written, no `precondition`), a pattern that does not parse, "No git remotes to push to", a
+///   malformed `--named`, an empty `--change` set; the CLI's text in `context`.
 /// - `jj.bookmark_exists` / `jj.bookmark_tracked_remote_exists` — a `--change` / `--named` name is
 ///   taken; the name in `context`.
 /// - `jj.push_ref_refused` / `jj.push_commit_rejected` — an explicitly named ref is refused, or

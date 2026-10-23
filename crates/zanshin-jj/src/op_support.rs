@@ -619,6 +619,10 @@ pub(crate) enum ResolveError {
     /// at hidden/abandoned commits, or is DIVERGENT — all indistinguishable, and all a
     /// refusal rather than a guess.
     NotFound,
+    /// The revision was omitted, so it is `@`, and the workspace has no working-copy commit —
+    /// the CLI's user error `RevsetResolutionError::WorkspaceMissingWorkingCopy`, whose text
+    /// ("Workspace `<name>` doesn't have a working-copy commit") this carries.
+    NoWorkingCopy(String),
     /// An underlying jj-lib failure (index lookup or store read).
     Backend(String),
 }
@@ -766,8 +770,9 @@ pub(crate) fn resolve_commit_id_prefix(
 ///
 /// - [`ResolveError::NotFound`] — `id` is present but does not resolve (see
 ///   [`resolve_commit`]).
-/// - [`ResolveError::Backend`] — the workspace has no working-copy commit at all, or a
-///   store read failed.
+/// - [`ResolveError::NoWorkingCopy`] — `id` is `None` and the workspace has no working-copy
+///   commit (a workspace forgotten from another one).
+/// - [`ResolveError::Backend`] — a store read failed.
 pub(crate) fn resolve_or_wc(
     repo: &dyn jj_lib::repo::Repo,
     workspace_name: &jj_lib::ref_name::WorkspaceName,
@@ -779,7 +784,14 @@ pub(crate) fn resolve_or_wc(
     let wc_id = repo
         .view()
         .get_wc_commit_id(workspace_name)
-        .ok_or_else(|| ResolveError::Backend("workspace has no working-copy commit".to_owned()))?
+        .ok_or_else(|| {
+            ResolveError::NoWorkingCopy(
+                jj_lib::revset::RevsetResolutionError::WorkspaceMissingWorkingCopy {
+                    name: workspace_name.to_owned(),
+                }
+                .to_string(),
+            )
+        })?
         .clone();
     repo.store()
         .get_commit(&wc_id)

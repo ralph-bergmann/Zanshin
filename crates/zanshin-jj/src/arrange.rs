@@ -636,4 +636,23 @@ mod tests {
         expected.extend([cb.id().clone(), new_d.id().clone()]);
         assert_eq!(*tx.repo().view().heads(), expected);
     }
+
+    #[test]
+    fn execute_refuses_a_cycle_in_the_new_parents() {
+        let (_tmp, head) = repo();
+        let mut tx = tx(&head);
+        // A and B name each other as parents — a plan the TUI's swaps cannot build; the CLI
+        // panics on it, Zanshin refuses.
+        let root = tx.repo().store().root_commit();
+        let ca = commit(&mut tx, &[&root]);
+        let cb = commit(&mut tx, &[&ca]);
+        let mut plan = no_op_plan(&[&ca, &cb]);
+        plan.rewrites.get_mut(ca.id()).expect("a").new_parents = ids(&[&cb]);
+
+        let err = pollster::block_on(plan.execute(tx.repo_mut())).expect_err("a cycle refuses");
+        assert!(
+            matches!(&err, crate::MutateError::Backend(reason) if reason == "cycle detected"),
+            "{err:?}"
+        );
+    }
 }

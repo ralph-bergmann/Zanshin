@@ -207,13 +207,18 @@ fn the_reader_keeps_absent_and_present_empty_apart() {
     assert!(!env.ok());
     assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_INVALID_INPUT));
     assert_eq!(env.error().and_then(|e| e.context()), Some("No git remotes to push to"));
+    assert!(
+        env.precondition().is_some(),
+        "the command body's refusal envelope carries the snapshot report"
+    );
 
+    // `--all` with `-b`: clap refuses before the command body snapshots, so no report.
     let bytes = push(handle, &push_request(fbs::RequestKind::GitPush, None, &["main"], true));
     let env = envelope(&bytes);
     assert_eq!(env.error().and_then(|e| e.code()), Some(JJ_INVALID_INPUT));
     assert!(
-        env.precondition().is_some(),
-        "the refusal envelope carries the snapshot report"
+        env.precondition().is_none(),
+        "a clap refusal's envelope carries no snapshot report"
     );
     close(handle);
 }

@@ -548,6 +548,7 @@ pub(crate) fn res(e: ResolveError, id: Option<&ChangeId>) -> MutateError {
         ResolveError::NotFound => MutateError::ChangeNotFound {
             id: id.map(|i| i.0.clone()).unwrap_or_default(),
         },
+        ResolveError::NoWorkingCopy(reason) => MutateError::RevsetResolutionError { reason },
         ResolveError::Backend(reason) => MutateError::Backend(reason),
     }
 }
@@ -1009,8 +1010,34 @@ pub(crate) struct NewLocation {
     pub(crate) children: Vec<jj_lib::backend::CommitId>,
 }
 
-/// The read-only part of `jj new` (Story 9.48): the argument shape, the ordered dedup
-/// resolution and — for `-A`/`-B` — the insert location with its refusals, in `cmd_new`'s
+/// What `jj new` refuses before it snapshots: positional parents together with
+/// `-A`/`-B` (clap's `conflicts_with = "revisions"`), and — Zanshin has no `@` default, the
+/// caller passes it — all three lists empty. [`crate::Repo::new_change`] runs it before the
+/// pre-verb snapshot, as the CLI parses its arguments before it snapshots.
+///
+/// # Errors
+///
+/// [`MutateError::InvalidInput`] for either shape.
+pub(crate) fn check_new_args(
+    parents: &[ChangeId],
+    insert_after: &[ChangeId],
+    insert_before: &[ChangeId],
+) -> Result<(), MutateError> {
+    let insert = !insert_after.is_empty() || !insert_before.is_empty();
+    if !parents.is_empty() && insert {
+        return Err(MutateError::invalid(
+            "parent revisions cannot be combined with --insert-after or --insert-before".to_owned(),
+        ));
+    }
+    if parents.is_empty() && !insert {
+        return Err(MutateError::invalid(
+            "new_change requires at least one parent, --insert-after or --insert-before revision".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// The read-only part of `jj new` (Story 9.48): the ordered dedup resolution and — for `-A`/`-B` — the insert location with its refusals, in `cmd_new`'s
 /// order (`cli/src/commands/new.rs:168-186` @ v0.46.0). Writes nothing; [`new_change`] runs it
 /// first, and Story 9.31's `new` rows (`drop_actions`' merge row, `change_actions`' three) call
 /// the same fn.
@@ -1035,11 +1062,12 @@ pub(crate) struct NewLocation {
 /// commit write. `-A`/`-B` yield that too — e.g. `-B` of a child of the root together with `-B`
 /// of a commit in another lineage takes the root and that commit's parent.
 ///
+/// The lists' shape is [`check_new_args`]', which [`crate::Repo::new_change`] runs before the
+/// snapshot; every caller passes a valid one.
+///
 /// # Errors
 ///
-/// - [`MutateError::InvalidInput`] — `parents` together with `insert_after`/`insert_before`
-///   (clap's `conflicts_with = "revisions"`); all three lists empty (Zanshin has no `@`
-///   default, the caller passes it); (Git backend) two or more parents — positional or computed
+/// - [`MutateError::InvalidInput`] — (Git backend) two or more parents — positional or computed
 ///   by `-A`/`-B` — including the root commit ([`GIT_ROOT_MERGE`]); or the location would
 ///   create a loop (`Refusing to create a loop: commit <12 hex> would be both an ancestor and a
 ///   descendant of the new commit`).
@@ -1059,17 +1087,6 @@ pub(crate) fn plan_new(
     insert_after: &[ChangeId],
     insert_before: &[ChangeId],
 ) -> Result<NewLocation, MutateError> {
-    let insert = !insert_after.is_empty() || !insert_before.is_empty();
-    if !parents.is_empty() && insert {
-        return Err(MutateError::invalid(
-            "parent revisions cannot be combined with --insert-after or --insert-before".to_owned(),
-        ));
-    }
-    if parents.is_empty() && !insert {
-        return Err(MutateError::invalid(
-            "new_change requires at least one parent, --insert-after or --insert-before revision".to_owned(),
-        ));
-    }
     let destination = resolve_ordered(tx, given(parents))?;
     let after = resolve_ordered(tx, given(insert_after))?;
     let before = resolve_ordered(tx, given(insert_before))?;
@@ -1716,6 +1733,26 @@ pub(crate) fn plan_restore(
     Ok(RestorePlan { to_commit, restored })
 }
 
+/// What clap refuses for `jj restore`: `--changes-in` declares `conflicts_with_all = ["into",
+/// "from"]` (`restore.rs:78`) — refused before the pre-verb snapshot ([`crate::Repo::restore`]),
+/// as the CLI parses its arguments before it snapshots.
+///
+/// # Errors
+///
+/// [`MutateError::InvalidInput`] — `changes_in` combined with `from`/`into`.
+pub(crate) fn check_restore_args(
+    from: Option<&ChangeId>,
+    into: Option<&ChangeId>,
+    changes_in: Option<&ChangeId>,
+) -> Result<(), MutateError> {
+    if changes_in.is_some() && (from.is_some() || into.is_some()) {
+        return Err(MutateError::invalid(
+            "`changes_in` cannot be combined with `from`/`into`".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 /// Gives the paths matching `paths` in the destination commit the content they have in the
 /// source commit (Story 9.3) — the CLI's `jj restore`, whole-file only.
 ///
@@ -1745,8 +1782,8 @@ pub(crate) fn plan_restore(
 ///
 /// # Errors
 ///
-/// - [`MutateError::InvalidInput`] — `changes_in` combined with `from`/`into`, or a `paths`
-///   entry is not a valid repo path.
+/// - [`MutateError::InvalidInput`] — a `paths` entry is not a valid repo path (the
+///   `changes_in` conflict is [`check_restore_args`]', run before the snapshot).
 /// - [`MutateError::ChangeNotFound`] — `from`, `into` or `changes_in` is malformed, carried
 ///   by no VISIBLE commit (unknown or only-hidden), or divergent. Not to be confused with an
 ///   ABSENT one, which is not an error at all: it is what selects the CLI's
@@ -1769,15 +1806,6 @@ pub(crate) fn restore(
     paths: &[String],
     restore_descendants: bool,
 ) -> Result<MutationResult, MutateError> {
-    // CLI parity: clap declares `--changes-in` with `conflicts_with_all = ["into", "from"]`
-    // (`restore.rs:78`), so the combination never reaches the command body there. Refuse
-    // before touching the repo, so no operation can be written either.
-    if changes_in.is_some() && (from.is_some() || into.is_some()) {
-        return Err(MutateError::invalid(
-            "`changes_in` cannot be combined with `from`/`into`".to_owned(),
-        ));
-    }
-
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
 

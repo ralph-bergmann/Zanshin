@@ -750,6 +750,26 @@ pub fn push_scenarios() -> Vec<Scenario> {
             },
             |_| strings(&["git", "push", "--all", "-b", "b-mark"]),
         ),
+        // The same refusal on a dirty working copy: clap refuses before the command body
+        // snapshots, so no `snapshot working copy` operation is written.
+        Scenario {
+            files: &[("c.txt", "c, edited before a clap refusal\n")],
+            ..push(
+                "push_all_with_bookmark_refused_dirty_wc",
+                REMOTE,
+                |repo, _, _| {
+                    push_outcome(
+                        repo,
+                        &GitPushArgs {
+                            all: true,
+                            bookmarks: strings(&["b-mark"]),
+                            ..GitPushArgs::default()
+                        },
+                    )
+                },
+                |_| strings(&["git", "push", "--all", "-b", "b-mark"]),
+            )
+        },
         // ── Story 9.51: `templates.git_push_bookmark` ───────────────────────
         // A customised template names the `--change` bookmark.
         push(

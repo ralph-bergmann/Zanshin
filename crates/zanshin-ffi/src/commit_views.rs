@@ -424,8 +424,9 @@ pub unsafe extern "C" fn zanshin_evolog(handle: u64, data: *const u8, len: usize
 ///   carries. The offending id in `context`. An ABSENT side is not an error — ONE absent side
 ///   applies the CLI's `--from`/`--to` default `@`, and omitting BOTH is the `jj.invalid_input`
 ///   bullet above.
-/// - `jj.revset_resolution_error` — a `CommitIdRef` prefix is carried by two or more commits;
-///   jj-lib's own ambiguity wording in `context`.
+/// - `jj.revset_resolution_error` — a `CommitIdRef` prefix is carried by two or more commits, or
+///   an absent side's `@` default in a workspace with no working-copy commit; jj-lib's own
+///   wording in `context`.
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
 ///   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
 ///   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial

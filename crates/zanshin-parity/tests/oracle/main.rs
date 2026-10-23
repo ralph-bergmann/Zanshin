@@ -189,6 +189,7 @@ parity!(
     push_all_two_remotes_one_refuses,
     push_all_one_remote_left_empty,
     push_all_with_bookmark_refused,
+    push_all_with_bookmark_refused_dirty_wc,
     describe_empty_trailers,
     describe_broken_template,
     new_description,
@@ -266,12 +267,18 @@ parity!(
     rebase_i1_branch_insert_before,
     rebase_immutable_refused,
     parallelize_child_becomes_a_merge,
+    parallelize_merge_child_keeps_outside_parent,
     rebase_i1_source_insert_before_merge,
     rebase_source_onto_itself_refused,
     rebase_several_revisions,
     rebase_several_sources,
     rebase_onto_two_parents,
-    rebase_insert_loop_refused;
+    rebase_insert_loop_refused,
+    rebase_clap_conflict_dirty_wc,
+    squash_clap_conflict_dirty_wc,
+    split_clap_conflict_dirty_wc,
+    new_clap_conflict_dirty_wc,
+    restore_clap_conflict_dirty_wc;
     own_process:
     convert_import_unresolvable_immutable,
     convert_colocated_unresolvable_immutable,
@@ -292,7 +299,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 225);
+    assert_eq!(SCENARIO_IDS.len(), 232);
 }
 
 #[test]

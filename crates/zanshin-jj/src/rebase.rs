@@ -347,11 +347,15 @@ fn tx_description(target: &MoveCommitsTarget) -> String {
     }
 }
 
-/// Refuses what clap refuses before anything resolves: more than one of `-b`/`-s`/`-r` (the
-/// `to_rebase` group), `-o` together with `-A`/`-B`, or none of the three location flags (the
-/// required `RebaseDestinationArgs` group) — the location texts are `compute_commit_location`'s,
-/// as `drop_actions` refuses them.
-fn check_rebase_args(options: &RebaseOptions) -> Result<(), MutateError> {
+/// Refuses what clap refuses, before the pre-verb snapshot ([`crate::Repo::rebase`]): more than
+/// one of `-b`/`-s`/`-r` (the `to_rebase` group), `-o` together with `-A`/`-B`, or none of the
+/// three location flags (the required `RebaseDestinationArgs` group) — the location texts are
+/// `compute_commit_location`'s, as `drop_actions` refuses them.
+///
+/// # Errors
+///
+/// [`MutateError::InvalidInput`] naming the conflicting flags.
+pub(crate) fn check_rebase_args(options: &RebaseOptions) -> Result<(), MutateError> {
     let given = [&options.branch, &options.source, &options.revisions]
         .iter()
         .filter(|ids| !ids.is_empty())
@@ -367,10 +371,10 @@ fn check_rebase_args(options: &RebaseOptions) -> Result<(), MutateError> {
     }
 }
 
-/// `jj rebase` (Story 9.16) — see [`crate::Repo::rebase`]: the clap checks, the plan of the
-/// given form (`-b @` when none), "No revisions to rebase." for an empty target, [`apply_move`]
-/// with the caller's flags, the "Nothing changed." gate, then the finish with the CLI's
-/// description.
+/// `jj rebase` (Story 9.16) — see [`crate::Repo::rebase`], which ran [`check_rebase_args`]
+/// before the snapshot: the plan of the given form (`-b @` when none), "No revisions to rebase."
+/// for an empty target, [`apply_move`] with the caller's flags, the "Nothing changed." gate,
+/// then the finish with the CLI's description.
 ///
 /// # Errors
 ///
@@ -380,7 +384,6 @@ pub(crate) fn rebase(
     ctx: &mut VerbContext,
     options: &RebaseOptions,
 ) -> Result<MutationResult, MutateError> {
-    check_rebase_args(options)?;
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let old_wc_id = readonly.view().get_wc_commit_id(&workspace_name).cloned();
