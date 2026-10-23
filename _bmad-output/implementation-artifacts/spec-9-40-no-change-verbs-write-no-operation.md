@@ -23,6 +23,9 @@ deferred:
     location: >-
       crates/zanshin-jj/tests/it/op_log.rs undo_preserves_current_git_head_and_git_refs_not_targets
     severity: low
+    resolved: >-
+      2026-10-23 — fixed (spec-9-40-closing-undo-keeps-git-refs-witness, commit 873ccfe): op B also creates a
+      local bookmark, so the undo writes and the kept `git_refs`/`git_head` are asserted on a written view.
   - summary: >-
       Story 9.38's tracking text still says `mutate.rs::edit` always commits `edit commit <id>`; since
       Story 9.40 an edit of the current NON-discardable `@` writes nothing, only the discardable case
