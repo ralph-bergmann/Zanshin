@@ -24,6 +24,7 @@ import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/precondition.dart' show Precondition;
 import '../ffi/push.dart' show GitPushResult;
+import '../ffi/rebase.dart' show ArrangeAction, SwapDownAction, SwapUpAction;
 import '../ffi/remotes.dart' show Remote, RemoteRefChange;
 import '../ffi/squash_split.dart' show SplitResult, SquashPlan;
 import '../ffi/status.dart' show WorkingCopyStatus;
@@ -899,6 +900,97 @@ final class RepoHandle {
       editedSelectedDescription: editedSelectedDescription,
       editedRemainingDescription: editedRemainingDescription,
     );
+  }
+
+  /// Move revisions to a new place in the graph (Story 9.16) — the CLI's
+  /// `jj rebase`.
+  ///
+  /// What moves — at most one of [revisions] (`-r`: only these; their
+  /// descendants move onto their parents), [source] (`-s`: with their
+  /// descendants) and [branch] (`-b`: the roots of `destination..branch`); none
+  /// is the CLI's `-b @`. Where — [onto] (`-o`) or [insertAfter] /
+  /// [insertBefore] (`-A` / `-B`). [skipEmptied], [keepDivergent] and
+  /// [simplifyParents] are the CLI's flags. A move with nothing to rebase or
+  /// that changes nothing writes no operation (the result's `newOpId` is the
+  /// pre-call head); the commits the move abandoned (divergent twins, newly
+  /// emptied commits) are the result's `abandonedChangeIds`, an abandoned `@`'s
+  /// replacement its `newChangeIds`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an id contains an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> rebase({
+    List<String> branch = const [],
+    List<String> source = const [],
+    List<String> revisions = const [],
+    List<String> onto = const [],
+    List<String> insertAfter = const [],
+    List<String> insertBefore = const [],
+    bool skipEmptied = false,
+    bool keepDivergent = false,
+    bool simplifyParents = false,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.rebase(
+      _handleId,
+      branch: branch,
+      source: source,
+      revisions: revisions,
+      onto: onto,
+      insertAfter: insertAfter,
+      insertBefore: insertBefore,
+      skipEmptied: skipEmptied,
+      keepDivergent: keepDivergent,
+      simplifyParents: simplifyParents,
+    );
+  }
+
+  /// Make [changeIds] siblings (Story 9.16) — the CLI's `jj parallelize`.
+  ///
+  /// Each keeps its parents outside the set and inherits an in-set parent's
+  /// new parents; a child of the set keeps every target it descended from as
+  /// an ancestor. One revision, or none, writes no operation (the result's
+  /// `newOpId` is the pre-call head).
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an id contains an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.change_not_found`, `jj.immutable`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> parallelize(List<String> changeIds) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.parallelize(_handleId, changeIds);
+  }
+
+  /// Rearrange revisions (Story 9.16) — the CLI's `jj arrange` with its TUI
+  /// session as data.
+  ///
+  /// [revisions] are the change ids to arrange (empty = the `revsets.arrange`
+  /// setting, jj's default `reachable(@, mutable())`); [actions] are the TUI's
+  /// keys, replayed in order: a [SwapDownAction] / [SwapUpAction] the TUI would
+  /// ignore is ignored, an action on a change outside the set refuses
+  /// `jj.invalid_input`. Actions that change nothing write no operation (the
+  /// result's `newOpId` is the pre-call head); the abandoned changes are the
+  /// result's `abandonedChangeIds`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an id contains an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — a gap in the set carries the CLI's hint —,
+  /// `jj.change_not_found`, `jj.immutable`, `jj.revset_parse_error`,
+  /// `jj.revset_resolution_error`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> arrange({List<String> revisions = const [], List<ArrangeAction> actions = const []}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.arrange(_handleId, revisions: revisions, actions: actions);
   }
 
   /// Commit the working-copy commit (Story 9.49) — the CLI's

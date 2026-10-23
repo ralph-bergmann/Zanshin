@@ -14,6 +14,7 @@ use jj_lib::workspace::Workspace;
 use zanshin_jj::CommitOptions;
 use zanshin_jj::ConfigScope;
 use zanshin_jj::ConfigTarget;
+use zanshin_jj::RebaseOptions;
 use zanshin_jj::SparseInheritance;
 use zanshin_jj::SplitOptions;
 use zanshin_jj::SquashOptions;
@@ -2274,8 +2275,373 @@ pub fn scenarios() -> Vec<Scenario> {
         },
     ]
     .into_iter()
+    .chain(rebase_scenarios())
+    .chain(rebase_default_and_refusal_scenarios())
+    .chain(rebase_flag_and_parallelize_scenarios())
+    .chain(rebase_i1_and_immutable_scenarios())
     .chain(crate::git_scenarios::push_scenarios())
     .chain(crate::git_scenarios::bookmark_auto_track_scenarios())
     .chain(crate::git_scenarios::fetch_scenarios())
     .collect()
+}
+
+// ── Story 9.16: rebase, parallelize ──────────────────────────────────────────────
+//
+// `jj arrange` has no scenario: the CLI's arrange is TUI-only (crossterm raw mode), so the pinned
+// CLI cannot run it headless. Its port rests on the CLI's own `State` / `RewritePlan` unit tests
+// (ported in `crates/zanshin-jj/src/arrange.rs`) and the jj-level tests
+// (`crates/zanshin-jj/tests/it/parallelize_arrange.rs`).
+
+/// `Repo::rebase` with `options`.
+fn rebase_outcome(repo: &mut zanshin_jj::Repo, options: &RebaseOptions) -> Outcome {
+    let result = repo.rebase(options);
+    zanshin_outcome(repo, &result)
+}
+
+/// `Repo::parallelize` of the commits labelled `labels`.
+fn parallelize_outcome(repo: &mut zanshin_jj::Repo, s: &State, labels: &[&str]) -> Outcome {
+    let ids: Vec<zanshin_jj::ChangeId> = labels.iter().map(|label| s.change(label)).collect();
+    let result = repo.parallelize(&ids);
+    zanshin_outcome(repo, &result)
+}
+
+/// The labels' change ids as the CLI's arguments.
+fn change_args(s: &State, labels: &[&str]) -> Vec<String> {
+    labels.iter().map(|label| s.change_arg(label)).collect()
+}
+
+/// `jj rebase <what> <what label> <where> <where label> [flags]`, the labels as change ids
+/// (`root` as `root()`).
+fn rebase_argv(s: &State, what: (&str, &str), location: (&str, &str), flags: &[&str]) -> Vec<String> {
+    let arg = |label: &str| {
+        if label == "root" {
+            "root()".to_owned()
+        } else {
+            s.change_arg(label)
+        }
+    };
+    let mut argv = vec![
+        "rebase".to_owned(),
+        what.0.to_owned(),
+        arg(what.1),
+        location.0.to_owned(),
+        arg(location.1),
+    ];
+    argv.extend(flags.iter().map(|flag| (*flag).to_owned()));
+    argv
+}
+
+/// D on A re-adding B's `b.txt`: onto B it is emptied.
+const D_REPEATS_B: &[Step] = &[
+    Step::Jj(&["new", "-m", "D", "@--"]),
+    Step::Write("b.txt", "b\n"),
+    Step::Jj(&["util", "snapshot"]),
+];
+
+/// M = merge(C, B) and X on the root.
+const MERGE_AND_X: &[Step] = &[
+    Step::Jj(&["new", "-m", "M", "@", "@-"]),
+    Step::Jj(&["new", "-m", "X", "root()"]),
+];
+
+/// The rebase scenarios of the four drop-menu forms and `-r` onto a descendant.
+fn rebase_scenarios() -> Vec<Scenario> {
+    vec![
+        simple(
+            "rebase_source_onto",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    source: vec![s.change("C")],
+                    onto: vec![s.change("A")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv(s, ("-s", "C"), ("-o", "A"), &[]),
+        ),
+        simple(
+            "rebase_revision_onto_root",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    revisions: vec![s.change("B")],
+                    onto: vec![s.change("root")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv(s, ("-r", "B"), ("-o", "root"), &[]),
+        ),
+        simple(
+            "rebase_revision_onto_descendant",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    revisions: vec![s.change("B")],
+                    onto: vec![s.change("C")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv(s, ("-r", "B"), ("-o", "C"), &[]),
+        ),
+        simple(
+            "rebase_revision_insert_after",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    revisions: vec![s.change("C")],
+                    insert_after: vec![s.change("A")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv(s, ("-r", "C"), ("-A", "A"), &[]),
+        ),
+        simple(
+            "rebase_revision_insert_before",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    revisions: vec![s.change("C")],
+                    insert_before: vec![s.change("B")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv(s, ("-r", "C"), ("-B", "B"), &[]),
+        ),
+    ]
+}
+
+/// The rebase scenarios of the `-b @` default, a branch already in place, and the two refusals.
+fn rebase_default_and_refusal_scenarios() -> Vec<Scenario> {
+    vec![
+        simple(
+            "rebase_default_branch",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    onto: vec![s.change("A")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| vec!["rebase".to_owned(), "-o".to_owned(), s.change_arg("A")],
+        ),
+        Scenario {
+            // `-b @` with `@` on X off the root: roots(A..@) is X — it moves.
+            setup: &[Step::Jj(&["new", "-m", "X", "root()"])],
+            ..simple(
+                "rebase_default_branch_moves",
+                |repo, _, s| {
+                    let options = RebaseOptions {
+                        onto: vec![s.change("A")],
+                        ..RebaseOptions::default()
+                    };
+                    rebase_outcome(repo, &options)
+                },
+                |s| vec!["rebase".to_owned(), "-o".to_owned(), s.change_arg("A")],
+            )
+        },
+        simple(
+            "rebase_branch_noop",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    branch: vec![s.change("A")],
+                    onto: vec![s.change("B")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv(s, ("-b", "A"), ("-o", "B"), &[]),
+        ),
+        simple(
+            "rebase_source_onto_descendant_refused",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    source: vec![s.change("A")],
+                    onto: vec![s.change("B")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv(s, ("-s", "A"), ("-o", "B"), &[]),
+        ),
+        simple(
+            "rebase_revision_onto_itself_refused",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    revisions: vec![s.change("A")],
+                    onto: vec![s.change("A")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv(s, ("-r", "A"), ("-o", "A"), &[]),
+        ),
+    ]
+}
+
+/// The rebase scenarios with a refusal, a flag or the I1 corner, and parallelize's.
+fn rebase_flag_and_parallelize_scenarios() -> Vec<Scenario> {
+    vec![
+        Scenario {
+            setup: D_REPEATS_B,
+            ..simple(
+                "rebase_skip_emptied",
+                |repo, _, s| {
+                    let options = RebaseOptions {
+                        revisions: vec![s.change("D")],
+                        onto: vec![s.change("B")],
+                        skip_emptied: true,
+                        ..RebaseOptions::default()
+                    };
+                    rebase_outcome(repo, &options)
+                },
+                |s| rebase_argv(s, ("-r", "D"), ("-o", "B"), &["--skip-emptied"]),
+            )
+        },
+        Scenario {
+            setup: MERGE_AND_X,
+            ..simple(
+                "rebase_simplify_parents",
+                |repo, _, s| {
+                    let options = RebaseOptions {
+                        source: vec![s.change("A")],
+                        onto: vec![s.change("X")],
+                        simplify_parents: true,
+                        ..RebaseOptions::default()
+                    };
+                    rebase_outcome(repo, &options)
+                },
+                |s| rebase_argv(s, ("-s", "A"), ("-o", "X"), &["--simplify-parents"]),
+            )
+        },
+        // Deferred-work I1: `-s` with `-A`/`-B` whose target lies inside the moved set.
+        simple(
+            "rebase_i1_source_insert_after",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    source: vec![s.change("A")],
+                    insert_after: vec![s.change("B")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv(s, ("-s", "A"), ("-A", "B"), &[]),
+        ),
+        simple(
+            "rebase_i1_source_insert_before",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    source: vec![s.change("A")],
+                    insert_before: vec![s.change("C")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv(s, ("-s", "A"), ("-B", "C"), &[]),
+        ),
+        simple(
+            "parallelize_two",
+            |repo, _, s| parallelize_outcome(repo, s, &["B", "C"]),
+            |s| {
+                let mut argv = vec!["parallelize".to_owned()];
+                argv.extend(change_args(s, &["B", "C"]));
+                argv
+            },
+        ),
+        simple(
+            "parallelize_one_noop",
+            |repo, _, s| parallelize_outcome(repo, s, &["B"]),
+            |s| {
+                let mut argv = vec!["parallelize".to_owned()];
+                argv.extend(change_args(s, &["B"]));
+                argv
+            },
+        ),
+    ]
+}
+
+/// X on A, then M = merge(C, X): M is inside `B::` with a parent outside it.
+const X_AND_MERGE: &[Step] = &[
+    Step::Jj(&["new", "-m", "X", "@--"]),
+    Step::Jj(&["new", "-m", "M", "b-mark+", "@"]),
+];
+
+/// `immutable_heads()` = B (through its bookmark): A and B are immutable.
+const B_IMMUTABLE: &[Step] = &[Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "revset-aliases.'immutable_heads()'",
+    "b-mark",
+])];
+
+/// Deferred-work I1 where the move relocates and `-b`'s two I1 cases, an immutable refusal, and
+/// parallelize's outside-child branch.
+fn rebase_i1_and_immutable_scenarios() -> Vec<Scenario> {
+    vec![
+        Scenario {
+            // jj-lib replaces M by its parents' external ancestors (A for C, X itself): B onto
+            // merge(A, X).
+            setup: X_AND_MERGE,
+            ..simple(
+                "rebase_i1_source_insert_after_merge",
+                |repo, _, s| {
+                    let options = RebaseOptions {
+                        source: vec![s.change("B")],
+                        insert_after: vec![s.change("M")],
+                        ..RebaseOptions::default()
+                    };
+                    rebase_outcome(repo, &options)
+                },
+                |s| rebase_argv(s, ("-s", "B"), ("-A", "M"), &[]),
+            )
+        },
+        simple(
+            "rebase_i1_branch_insert_after",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    branch: vec![s.change("C")],
+                    insert_after: vec![s.change("B")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv(s, ("-b", "C"), ("-A", "B"), &[]),
+        ),
+        simple(
+            "rebase_i1_branch_insert_before",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    branch: vec![s.change("A")],
+                    insert_before: vec![s.change("C")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv(s, ("-b", "A"), ("-B", "C"), &[]),
+        ),
+        Scenario {
+            setup: B_IMMUTABLE,
+            ..simple(
+                "rebase_immutable_refused",
+                |repo, _, s| {
+                    let options = RebaseOptions {
+                        revisions: vec![s.change("B")],
+                        onto: vec![s.change("root")],
+                        ..RebaseOptions::default()
+                    };
+                    rebase_outcome(repo, &options)
+                },
+                |s| rebase_argv(s, ("-r", "B"), ("-o", "root"), &[]),
+            )
+        },
+        simple(
+            "parallelize_child_becomes_a_merge",
+            |repo, _, s| parallelize_outcome(repo, s, &["A", "B"]),
+            |s| {
+                let mut argv = vec!["parallelize".to_owned()];
+                argv.extend(change_args(s, &["A", "B"]));
+                argv
+            },
+        ),
+    ]
 }

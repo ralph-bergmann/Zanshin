@@ -110,6 +110,56 @@ external ffi.Pointer<ZanshinBuf> zanshin_absorb(
   int len,
 );
 
+/// Rearrange revisions, in the repo identified by `handle` — the CLI's `jj arrange` with its TUI
+/// session sent as data (Story 9.16).
+///
+/// The arguments cross as an `ArrangeRequest` `FlatBuffers` request buffer: `revisions` (ABSENT or
+/// EMPTY = the `revsets.arrange` setting, jj's default `reachable(@, mutable())`, whose parse
+/// diagnostics warn "In revset expression") and `actions` — the TUI's keys, replayed in order:
+/// `SwapDown` / `SwapUp` swap a commit with its one parent / child in the set (ignored otherwise,
+/// as the TUI ignores it), `Abandon` / `Keep` mark it. An empty set or actions that change nothing
+/// write NO operation and `MutationResult.new_op_id` carries the PRE-CALL head; otherwise the
+/// operation is `arrange revisions`. The working copy is snapshotted first (Story 9.26).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success: the commits
+/// marked abandoned in `abandoned_change_ids`, an abandoned `@`'s replacement in
+/// `new_change_ids`.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `ArrangeRequest` buffer, its `kind` is
+/// not `Arrange`, or an action's `kind` is absent (`Unspecified`) or unknown.
+/// - `jj.invalid_input` — an action's `change_id` is absent ("`change_id` is required"); the set has
+/// a gap ("Cannot arrange revset with gaps in.", with the hint "Revision <12 hex> would need to be
+/// in the set."); an action names a change outside the set ("… is not among the revisions
+/// to arrange").
+/// - `jj.change_not_found` — a revision or an action's change id is malformed, carried by no
+/// VISIBLE commit, or divergent; the id in `context`.
+/// - `jj.immutable` — a target is immutable; its hex commit id in `context`.
+/// - `jj.revset_parse_error` / `jj.revset_resolution_error` — the arrange revset setting (the
+/// default target set) does not parse or resolve.
+/// - `jj.config_error` — the arrange revset setting is not a string, or the config or its
+/// `immutable_heads()` alias does not read or resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.ArrangeRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration
+/// of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_arrange(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// Create local bookmarks pointing at one revision, in the repo referenced by `handle` — the
 /// CLI's `jj bookmark create`.
 ///
@@ -2070,6 +2120,99 @@ external ffi.Pointer<ZanshinBuf> zanshin_op_log(
   int limit,
 );
 
+/// Make revisions siblings, in the repo identified by `handle` — the CLI's `jj parallelize`
+/// (Story 9.16).
+///
+/// The revisions cross as a `ChangeIdList` `FlatBuffers` request buffer tagged `Parallelize`
+/// (`change_ids`; `insert_after` / `insert_before` are ignored). Each keeps its parents outside the
+/// set and inherits an in-set parent's new parents; a child of the set keeps every target it
+/// descended from as an ancestor. Only the targets that move are checked rewritable. A set that
+/// changes nothing (one revision, none) writes NO operation and `MutationResult.new_op_id` carries
+/// the PRE-CALL head; otherwise the operation is `parallelize <n> commits`. The working copy is
+/// snapshotted first (Story 9.26).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind` is
+/// not `Parallelize` — a `NewChange`- or `Abandon`-tagged buffer is refused here.
+/// - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
+/// in `context`.
+/// - `jj.immutable` — a target that would move is immutable; its hex commit id in `context`.
+/// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.ChangeIdListObjectBuilder(...).toBytes()`); Rust only borrows it for the duration of
+/// the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_parallelize(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Move revisions to a new place in the graph, in the repo identified by `handle` — the CLI's
+/// `jj rebase` (Story 9.16).
+///
+/// The arguments cross as a `RebaseRequest` `FlatBuffers` request buffer, one field per CLI flag:
+/// what moves — `branch` (`-b`, the roots of `destination..branch` with their descendants),
+/// `source` (`-s`, with their descendants) or `revisions` (`-r`, only these; at most one of the
+/// three, none = the CLI's `-b @`) — where — `onto` (`-o`) or `insert_after` / `insert_before`
+/// (`-A` / `-B`) — and the flags `skip_emptied`, `keep_divergent`, `simplify_parents`. A move
+/// with nothing to rebase or that changes nothing writes NO operation and
+/// `MutationResult.new_op_id` carries the PRE-CALL head. Otherwise the operation is the CLI's
+/// (`rebase commit <hex>`, `rebase commit <hex> and <n> more`, `rebase <n> commits`, `rebase commit
+/// <hex> and descendants`, `rebase <n> commits and their descendants`). The working copy is
+/// snapshotted first (Story 9.26).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success: the
+/// commits the move abandoned (divergent twins already in the destination, newly emptied commits)
+/// in `abandoned_change_ids`, an abandoned `@`'s replacement in `new_change_ids`.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `RebaseRequest` buffer, or its `kind`
+/// is not `Rebase`.
+/// - `jj.invalid_input` — more than one of `branch`/`source`/`revisions`, `onto` with
+/// `insert_after`/`insert_before`, or no location (refused before anything resolves); "Cannot
+/// rebase <12 hex> onto itself" / "… onto descendant <12 hex>"; a location that would create a
+/// loop or resolves no parent; a merge with the root commit as a parent in a Git repo; detail in
+/// `context`.
+/// - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
+/// in `context`.
+/// - `jj.immutable` — a commit the move rewrites, or a child the location would rewrite, is
+/// immutable; its hex commit id in `context`.
+/// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.RebaseRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration
+/// of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_rebase(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// List the configured git remotes of the repo identified by `handle`.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `Remotes` payload on success.
@@ -2965,6 +3108,10 @@ const int AnnotationLine_VT_ORIGINAL_LINE_NUMBER = 8;
 
 const int AnnotationLine_VT_ORIGIN_FOUND = 12;
 
+const int ArrangeAction_VT_CHANGE_ID = 6;
+
+const int ArrangeRequest_VT_ACTIONS = 8;
+
 const int BookmarkCreateRequest_VT_NAMES = 6;
 
 const int Bookmark_VT_AHEAD = 18;
@@ -3075,15 +3222,13 @@ const int DropAction_VT_VERB = 4;
 
 const int DropActionsRequest_VT_BOOKMARK = 12;
 
-const int DropActionsRequest_VT_CHANGE_ID = 8;
-
 const int DropActionsRequest_VT_LOCATIONS = 14;
 
 const int DropActionsRequest_VT_SOURCE_KIND = 6;
 
-const int DropActions_VT_ACTIONS = 4;
-
 const int ENUM_MAX_ACTION_STATUS = 2;
+
+const int ENUM_MAX_ARRANGE_ACTION_KIND = 4;
 
 const int ENUM_MAX_BOOKMARK_KIND = 1;
 
@@ -3127,7 +3272,7 @@ const int ENUM_MAX_REMOTE_REF_KIND = 1;
 
 const int ENUM_MAX_REPO_KIND = 3;
 
-const int ENUM_MAX_REQUEST_KIND = 39;
+const int ENUM_MAX_REQUEST_KIND = 42;
 
 const int ENUM_MAX_REVISION_REF = 2;
 
@@ -3142,6 +3287,8 @@ const int ENUM_MAX_UNTRACKED_REASON = 2;
 const int ENUM_MAX_WATCHER_EVENT_KIND = 2;
 
 const int ENUM_MIN_ACTION_STATUS = 0;
+
+const int ENUM_MIN_ARRANGE_ACTION_KIND = 0;
 
 const int ENUM_MIN_BOOKMARK_KIND = 0;
 
@@ -3285,8 +3432,6 @@ const int GitPushRequest_VT_OPTIONS = 32;
 
 const int GitPushRequest_VT_REMOTES = 6;
 
-const int GitPushRequest_VT_REVISIONS = 24;
-
 const int GitPushRequest_VT_TAGS = 10;
 
 const int GitPushRequest_VT_TRACKED = 14;
@@ -3429,6 +3574,18 @@ const int PushSigning_VT_REBASED_DESCENDANTS = 6;
 
 const int PushSigning_VT_UPDATED_SIGNATURES = 4;
 
+const int RebaseRequest_VT_BRANCH = 6;
+
+const int RebaseRequest_VT_KEEP_DIVERGENT = 20;
+
+const int RebaseRequest_VT_REVISIONS = 10;
+
+const int RebaseRequest_VT_SIMPLIFY_PARENTS = 22;
+
+const int RebaseRequest_VT_SKIP_EMPTIED = 18;
+
+const int RebaseRequest_VT_SOURCE = 8;
+
 const int RefDistance_VT_HAS_UPPER = 8;
 
 const int RefDistance_VT_LOWER = 4;
@@ -3452,8 +3609,6 @@ const int RepoCloneRequest_VT_NO_COLOCATE = 14;
 const int RepoCloneRequest_VT_OBJECT_HASH = 22;
 
 const int RepoCloneRequest_VT_REMOTE_NAME = 10;
-
-const int RepoCloneRequest_VT_SOURCE = 6;
 
 const int RepoDetect_VT_SUGGESTED_KIND = 8;
 

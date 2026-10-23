@@ -68,7 +68,8 @@ pub struct MutationResult {
     pub new_op_id: crate::OperationId,
     /// Change ids of genuinely NEW changes minted by this mutation: [`new_change`]'s
     /// created commit, or the replacement `@` jj-lib auto-creates when [`abandon`] — or
-    /// [`crate::Repo::squash`] — abandons `@` itself, or the one commit of
+    /// [`crate::Repo::squash`], [`crate::Repo::rebase`] or [`crate::Repo::arrange`] (Story 9.16)
+    /// — abandons `@` itself, or the one commit of
     /// [`crate::Repo::split`] that gets a new change id (Story 9.15). A rewrite ([`describe`]) or a pointer move ([`edit`]) never
     /// mints a new change id, so this is empty for those. Empty for [`abandon`] unless
     /// `@` itself was among the abandoned ids. Always empty for [`crate::op_log::undo`]
@@ -94,7 +95,12 @@ pub struct MutationResult {
     /// git (`git.abandon-unreachable-commits`) — empty when that key is `false`, or when the
     /// fetch made nothing unreachable. For `squash` (Story 9.15) they are
     /// the sources it abandoned — every source whose changes all moved, unless
-    /// `keep_emptied`.
+    /// `keep_emptied`. [`crate::Repo::rebase`] and [`crate::Repo::arrange`] (Story 9.16) report
+    /// theirs the same way: a rebase's divergent twins already in the destination (unless
+    /// `keep_divergent`) and, with `skip_emptied`, its newly emptied commits; arrange's commits
+    /// marked abandoned. Always empty for [`crate::Repo::parallelize`]. A rebase's divergent twin
+    /// is only that one commit: its change id stays visible on the identical commit already in
+    /// the destination.
     pub abandoned_change_ids: Vec<ChangeId>,
     /// Change id of the working-copy commit (`@`) after this mutation — whether or not
     /// this mutation is what moved it.

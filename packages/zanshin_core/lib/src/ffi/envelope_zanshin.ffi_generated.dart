@@ -15,14 +15,15 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  `FlatBuffers` layer tells them apart — so a `BookmarkCreateRequest` fed to
 ///  `zanshin_bookmark_delete` would silently glob-delete names the caller meant literally.
 ///
-///  The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
+///  The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by THREE wrappers, as
 ///  `zanshin_new_change`'s `parents` (plus its `insert_after` / `insert_before`, which only
-///  `NewChange` reads — Story 9.48) and as `zanshin_abandon`'s `change_ids`, so it carries the
-///  two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-///  named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
+///  `NewChange` reads — Story 9.48), as `zanshin_abandon`'s `change_ids` and as
+///  `zanshin_parallelize`'s revisions (Story 9.16), so it carries the three kinds `NewChange`,
+///  `Abandon` and `Parallelize` — mis-routing there abandons the commits the caller named as
+///  parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 ///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 ///  very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-///  squash, never a different verb. For the other 35 tables the variant name plus `Request` IS
+///  squash, never a different verb. For the other 37 tables the variant name plus `Request` IS
 ///  the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -71,7 +72,10 @@ enum RequestKind {
   RepoClone(36),
   RepoInit(37),
   GitFetch(38),
-  DropActions(39);
+  DropActions(39),
+  Rebase(40),
+  Parallelize(41),
+  Arrange(42);
 
   final int value;
   const RequestKind(this.value);
@@ -158,6 +162,12 @@ enum RequestKind {
         return RequestKind.GitFetch;
       case 39:
         return RequestKind.DropActions;
+      case 40:
+        return RequestKind.Rebase;
+      case 41:
+        return RequestKind.Parallelize;
+      case 42:
+        return RequestKind.Arrange;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -166,7 +176,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 39;
+  static const int maxValue = 42;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -178,6 +188,55 @@ class _RequestKindReader extends fb.Reader<RequestKind> {
 
   @override
   RequestKind read(fb.BufferContext bc, int offset) => RequestKind.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  One of the `jj arrange` TUI's key actions (Story 9.16): swap with the one parent (`J`) / the
+///  one child (`K`), abandon (`a`), keep (`p`). `Unspecified = 0` is the default of an ABSENT
+///  `kind` and is always refused (`ffi.invalid_argument`), so a forgotten kind never decodes as a
+///  swap. Member order IS the wire value — APPEND only.
+enum ArrangeActionKind {
+  Unspecified(0),
+  SwapDown(1),
+  SwapUp(2),
+  Abandon(3),
+  Keep(4);
+
+  final int value;
+  const ArrangeActionKind(this.value);
+
+  factory ArrangeActionKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return ArrangeActionKind.Unspecified;
+      case 1:
+        return ArrangeActionKind.SwapDown;
+      case 2:
+        return ArrangeActionKind.SwapUp;
+      case 3:
+        return ArrangeActionKind.Abandon;
+      case 4:
+        return ArrangeActionKind.Keep;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static ArrangeActionKind? _createOrNull(int? value) => value == null ? null : ArrangeActionKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 4;
+  static const fb.Reader<ArrangeActionKind> reader = _ArrangeActionKindReader();
+}
+
+class _ArrangeActionKindReader extends fb.Reader<ArrangeActionKind> {
+  const _ArrangeActionKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  ArrangeActionKind read(fb.BufferContext bc, int offset) =>
+      ArrangeActionKind.fromValue(const fb.Int8Reader().read(bc, offset));
 }
 
 ///  The remotes of `zanshin_git_fetch` (Story 9.30) — the CLI's either/or of `--remote` and
@@ -1700,12 +1759,13 @@ class FfiErrorObjectBuilder extends fb.ObjectBuilder {
 }
 
 ///  A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
-///  `parents` and `zanshin_abandon`'s `change_ids`. `kind` therefore distinguishes the two
-///  wrappers: `NewChange` or `Abandon`.
+///  `parents`, `zanshin_abandon`'s `change_ids` and `zanshin_parallelize`'s revisions (Story
+///  9.16). `kind` therefore distinguishes the three wrappers: `NewChange`, `Abandon` or
+///  `Parallelize`.
 ///
 ///  `insert_after` / `insert_before` (Story 9.48) are read ONLY by `zanshin_new_change`: the
 ///  CLI's `jj new -A` / `-B` targets. ABSENT or empty means the flag was not given;
-///  `zanshin_abandon` ignores both.
+///  `zanshin_abandon` and `zanshin_parallelize` ignore both.
 class ChangeIdList {
   ChangeIdList._(this._bc, this._bcOffset);
   factory ChangeIdList(List<int> bytes) {
@@ -2428,6 +2488,379 @@ class SplitRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(7, insertBeforeOffset);
     fbBuilder.addOffset(8, editedSelectedDescriptionOffset);
     fbBuilder.addOffset(9, editedRemainingDescriptionOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_rebase` (Story 9.16) — the CLI's `jj rebase` flags, one field each;
+///  change ids are jj reverse-hex. ABSENT or EMPTY is the flag not given.
+///
+///    branch / source / revisions   the CLI's `-b` / `-s` / `-r`: at most one given (else
+///                       `jj.invalid_input`); none of the three is the CLI's default `-b @`
+///    onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`: at least one given, and
+///                       `onto` excludes the other two (else `jj.invalid_input`)
+///    skip_emptied, keep_divergent, simplify_parents   the CLI's `--skip-emptied` /
+///                       `--keep-divergent` / `--simplify-parents`
+class RebaseRequest {
+  RebaseRequest._(this._bc, this._bcOffset);
+  factory RebaseRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RebaseRequest> reader = _RebaseRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get branch => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get source => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get revisions => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  List<String>? get onto => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 12);
+  List<String>? get insertAfter => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 14);
+  List<String>? get insertBefore =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 16);
+  bool get skipEmptied => const fb.BoolReader().vTableGet(_bc, _bcOffset, 18, false);
+  bool get keepDivergent => const fb.BoolReader().vTableGet(_bc, _bcOffset, 20, false);
+  bool get simplifyParents => const fb.BoolReader().vTableGet(_bc, _bcOffset, 22, false);
+
+  @override
+  String toString() {
+    return 'RebaseRequest{kind: ${kind}, branch: ${branch}, source: ${source}, revisions: ${revisions}, onto: ${onto}, insertAfter: ${insertAfter}, insertBefore: ${insertBefore}, skipEmptied: ${skipEmptied}, keepDivergent: ${keepDivergent}, simplifyParents: ${simplifyParents}}';
+  }
+}
+
+class _RebaseRequestReader extends fb.TableReader<RebaseRequest> {
+  const _RebaseRequestReader();
+
+  @override
+  RebaseRequest createObject(fb.BufferContext bc, int offset) => RebaseRequest._(bc, offset);
+}
+
+class RebaseRequestBuilder {
+  RebaseRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(10);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addBranchOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSourceOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addOntoOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addInsertAfterOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int addInsertBeforeOffset(int? offset) {
+    fbBuilder.addOffset(6, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSkipEmptied(bool? skipEmptied) {
+    fbBuilder.addBool(7, skipEmptied);
+    return fbBuilder.offset;
+  }
+
+  int addKeepDivergent(bool? keepDivergent) {
+    fbBuilder.addBool(8, keepDivergent);
+    return fbBuilder.offset;
+  }
+
+  int addSimplifyParents(bool? simplifyParents) {
+    fbBuilder.addBool(9, simplifyParents);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RebaseRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _branch;
+  final List<String>? _source;
+  final List<String>? _revisions;
+  final List<String>? _onto;
+  final List<String>? _insertAfter;
+  final List<String>? _insertBefore;
+  final bool? _skipEmptied;
+  final bool? _keepDivergent;
+  final bool? _simplifyParents;
+
+  RebaseRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? branch,
+    List<String>? source,
+    List<String>? revisions,
+    List<String>? onto,
+    List<String>? insertAfter,
+    List<String>? insertBefore,
+    bool? skipEmptied,
+    bool? keepDivergent,
+    bool? simplifyParents,
+  }) : _kind = kind,
+       _branch = branch,
+       _source = source,
+       _revisions = revisions,
+       _onto = onto,
+       _insertAfter = insertAfter,
+       _insertBefore = insertBefore,
+       _skipEmptied = skipEmptied,
+       _keepDivergent = keepDivergent,
+       _simplifyParents = simplifyParents;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? branchOffset = _branch == null
+        ? null
+        : fbBuilder.writeList(_branch!.map(fbBuilder.writeString).toList());
+    final int? sourceOffset = _source == null
+        ? null
+        : fbBuilder.writeList(_source!.map(fbBuilder.writeString).toList());
+    final int? revisionsOffset = _revisions == null
+        ? null
+        : fbBuilder.writeList(_revisions!.map(fbBuilder.writeString).toList());
+    final int? ontoOffset = _onto == null ? null : fbBuilder.writeList(_onto!.map(fbBuilder.writeString).toList());
+    final int? insertAfterOffset = _insertAfter == null
+        ? null
+        : fbBuilder.writeList(_insertAfter!.map(fbBuilder.writeString).toList());
+    final int? insertBeforeOffset = _insertBefore == null
+        ? null
+        : fbBuilder.writeList(_insertBefore!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(10);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, branchOffset);
+    fbBuilder.addOffset(2, sourceOffset);
+    fbBuilder.addOffset(3, revisionsOffset);
+    fbBuilder.addOffset(4, ontoOffset);
+    fbBuilder.addOffset(5, insertAfterOffset);
+    fbBuilder.addOffset(6, insertBeforeOffset);
+    fbBuilder.addBool(7, _skipEmptied);
+    fbBuilder.addBool(8, _keepDivergent);
+    fbBuilder.addBool(9, _simplifyParents);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One entry of `ArrangeRequest`'s `actions`: `kind` on the commit of `change_id` (jj
+///  reverse-hex, required — absent is `jj.invalid_input` "change_id is required"). A nested
+///  value, never a buffer root: it carries no `RequestKind`.
+class ArrangeAction {
+  ArrangeAction._(this._bc, this._bcOffset);
+  factory ArrangeAction(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ArrangeAction> reader = _ArrangeActionReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  ArrangeActionKind get kind => ArrangeActionKind.fromValue(const fb.Int8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get changeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'ArrangeAction{kind: ${kind}, changeId: ${changeId}}';
+  }
+}
+
+class _ArrangeActionReader extends fb.TableReader<ArrangeAction> {
+  const _ArrangeActionReader();
+
+  @override
+  ArrangeAction createObject(fb.BufferContext bc, int offset) => ArrangeAction._(bc, offset);
+}
+
+class ArrangeActionBuilder {
+  ArrangeActionBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addKind(ArrangeActionKind? kind) {
+    fbBuilder.addInt8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ArrangeActionObjectBuilder extends fb.ObjectBuilder {
+  final ArrangeActionKind? _kind;
+  final String? _changeId;
+
+  ArrangeActionObjectBuilder({
+    ArrangeActionKind? kind,
+    String? changeId,
+  }) : _kind = kind,
+       _changeId = changeId;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? changeIdOffset = _changeId == null ? null : fbBuilder.writeString(_changeId!);
+    fbBuilder.startTable(2);
+    fbBuilder.addInt8(0, _kind?.value);
+    fbBuilder.addOffset(1, changeIdOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_arrange` (Story 9.16) — the CLI's `jj arrange [REVSETS]` with its TUI
+///  session as data.
+///
+///    revisions          change ids (jj reverse-hex); ABSENT or EMPTY = the `revsets.arrange`
+///                       setting (jj's default `reachable(@, mutable())`)
+///    actions            the TUI's key actions, replayed in order; ABSENT or EMPTY changes nothing
+class ArrangeRequest {
+  ArrangeRequest._(this._bc, this._bcOffset);
+  factory ArrangeRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<ArrangeRequest> reader = _ArrangeRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get revisions => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<ArrangeAction>? get actions =>
+      const fb.ListReader<ArrangeAction>(ArrangeAction.reader).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'ArrangeRequest{kind: ${kind}, revisions: ${revisions}, actions: ${actions}}';
+  }
+}
+
+class _ArrangeRequestReader extends fb.TableReader<ArrangeRequest> {
+  const _ArrangeRequestReader();
+
+  @override
+  ArrangeRequest createObject(fb.BufferContext bc, int offset) => ArrangeRequest._(bc, offset);
+}
+
+class ArrangeRequestBuilder {
+  ArrangeRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addActionsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class ArrangeRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _revisions;
+  final List<ArrangeActionObjectBuilder>? _actions;
+
+  ArrangeRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? revisions,
+    List<ArrangeActionObjectBuilder>? actions,
+  }) : _kind = kind,
+       _revisions = revisions,
+       _actions = actions;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionsOffset = _revisions == null
+        ? null
+        : fbBuilder.writeList(_revisions!.map(fbBuilder.writeString).toList());
+    final int? actionsOffset = _actions == null
+        ? null
+        : fbBuilder.writeList(_actions!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionsOffset);
+    fbBuilder.addOffset(2, actionsOffset);
     return fbBuilder.endTable();
   }
 

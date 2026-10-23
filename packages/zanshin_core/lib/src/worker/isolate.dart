@@ -41,6 +41,7 @@ import '../ffi/mutate.dart' as repo_ffi_mutate;
 import '../ffi/op_log.dart' as repo_ffi_op_log;
 import '../ffi/precondition.dart' as repo_ffi_precondition;
 import '../ffi/push.dart' as repo_ffi_push;
+import '../ffi/rebase.dart' as repo_ffi_rebase;
 import '../ffi/remotes.dart' as repo_ffi_remotes;
 import '../ffi/repo.dart' as repo_ffi;
 import '../ffi/repo_detect.dart' as repo_ffi_detect;
@@ -1587,6 +1588,109 @@ class ZanshinWorker {
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
+  /// Move revisions to a new place in the graph, in the repo identified by
+  /// [handleId] (Story 9.16) — the CLI's `jj rebase`.
+  ///
+  /// [branch] / [source] / [revisions] (`-b` / `-s` / `-r`; all empty = `-b
+  /// @`), [onto] / [insertAfter] / [insertBefore] (`-o` / `-A` / `-B`) and the
+  /// three flags cross unchanged.
+  ///
+  /// Sends a [RebaseCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if an id contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`). Completes
+  /// with a [StateError] after [close]; the close-guard [StateError] is
+  /// delivered synchronously by [RepoHandle.rebase].
+  Future<repo_ffi_mutate.MutationResult> rebase(
+    int handleId, {
+    List<String> branch = const [],
+    List<String> source = const [],
+    List<String> revisions = const [],
+    List<String> onto = const [],
+    List<String> insertAfter = const [],
+    List<String> insertBefore = const [],
+    bool skipEmptied = false,
+    bool keepDivergent = false,
+    bool simplifyParents = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(branch, 'branch');
+    rejectInteriorNuls(source, 'source');
+    rejectInteriorNuls(revisions, 'revisions');
+    rejectInteriorNuls(onto, 'onto');
+    rejectInteriorNuls(insertAfter, 'insertAfter');
+    rejectInteriorNuls(insertBefore, 'insertBefore');
+    final Uint8List bytes = await send(
+      RebaseCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        branch: branch,
+        source: source,
+        revisions: revisions,
+        onto: onto,
+        insertAfter: insertAfter,
+        insertBefore: insertBefore,
+        skipEmptied: skipEmptied,
+        keepDivergent: keepDivergent,
+        simplifyParents: simplifyParents,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Make [changeIds] siblings, in the repo identified by [handleId] (Story
+  /// 9.16) — the CLI's `jj parallelize`.
+  ///
+  /// Sends a [ParallelizeCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if an id contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.change_not_found`, `jj.immutable`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.parallelize].
+  Future<repo_ffi_mutate.MutationResult> parallelize(int handleId, List<String> changeIds) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(changeIds, 'changeIds');
+    final Uint8List bytes = await send(
+      ParallelizeCommand(commandId: _correlator.allocateId(), handleId: handleId, changeIds: changeIds),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Rearrange revisions, in the repo identified by [handleId] (Story 9.16) —
+  /// the CLI's `jj arrange` with its TUI session as data: [revisions] (empty =
+  /// the `revsets.arrange` setting) and the TUI's key [actions], replayed in
+  /// order.
+  ///
+  /// Sends an [ArrangeCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if an id contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error`,
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`). Completes
+  /// with a [StateError] after [close]; the close-guard [StateError] is
+  /// delivered synchronously by [RepoHandle.arrange].
+  Future<repo_ffi_mutate.MutationResult> arrange(
+    int handleId, {
+    List<String> revisions = const [],
+    List<repo_ffi_rebase.ArrangeAction> actions = const [],
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(revisions, 'revisions');
+    rejectInteriorNuls([for (final action in actions) action.changeId], 'actions');
+    final Uint8List bytes = await send(
+      ArrangeCommand(commandId: _correlator.allocateId(), handleId: handleId, revisions: revisions, actions: actions),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
   /// The calling-side interior-NUL guard of [squash] and [squashPlan].
   static void _rejectSquashNuls(
     String? revision,
@@ -2939,6 +3043,65 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinAbsorb(raw, from: from, into: into, paths: paths);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case RebaseCommand(
+          :final int handleId,
+          :final List<String> branch,
+          :final List<String> source,
+          :final List<String> revisions,
+          :final List<String> onto,
+          :final List<String> insertAfter,
+          :final List<String> insertBefore,
+          :final bool skipEmptied,
+          :final bool keepDivergent,
+          :final bool simplifyParents,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: RebaseCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_rebase.zanshinRebase(
+              raw,
+              branch: branch,
+              source: source,
+              revisions: revisions,
+              onto: onto,
+              insertAfter: insertAfter,
+              insertBefore: insertBefore,
+              skipEmptied: skipEmptied,
+              keepDivergent: keepDivergent,
+              simplifyParents: simplifyParents,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case ParallelizeCommand(:final int handleId, :final List<String> changeIds):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: ParallelizeCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_rebase.zanshinParallelize(raw, changeIds);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case ArrangeCommand(
+          :final int handleId,
+          :final List<String> revisions,
+          :final List<repo_ffi_rebase.ArrangeAction> actions,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: ArrangeCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_rebase.zanshinArrange(raw, revisions: revisions, actions: actions);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

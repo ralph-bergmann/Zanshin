@@ -4,6 +4,7 @@ import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 import '../ffi/config.dart' show ConfigScope, ConfigTarget;
 import '../ffi/drop_actions.dart' show DropLocation, DropSource;
 import '../ffi/fetch.dart' show FetchRefs, FetchRemotes;
+import '../ffi/rebase.dart' show ArrangeAction;
 import '../ffi/repo.dart' show ObjectHash;
 import '../ffi/workspace.dart' show SparseInheritance;
 import '../graph_layout/layout_request.dart' show LaneOrder, LayoutMode;
@@ -1647,6 +1648,101 @@ final class NetworkCancelCommand extends WorkerCommand {
 
   /// The `commandId` of the network call to cancel.
   final int targetCommandId;
+}
+
+/// Move revisions to a new place in the graph, in the repo identified by
+/// [handleId] (Story 9.16) — the CLI's `jj rebase`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinRebase(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class RebaseCommand extends WorkerCommand implements HandleScopedCommand {
+  const RebaseCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.branch,
+    required this.source,
+    required this.revisions,
+    required this.onto,
+    required this.insertAfter,
+    required this.insertBefore,
+    required this.skipEmptied,
+    required this.keepDivergent,
+    required this.simplifyParents,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `-b` change ids; empty = the flag not given.
+  final List<String> branch;
+
+  /// `-s` change ids; empty = the flag not given.
+  final List<String> source;
+
+  /// `-r` change ids; empty = the flag not given.
+  final List<String> revisions;
+
+  /// `-o` change ids; empty = the flag not given.
+  final List<String> onto;
+
+  /// `-A` change ids; empty = the flag not given.
+  final List<String> insertAfter;
+
+  /// `-B` change ids; empty = the flag not given.
+  final List<String> insertBefore;
+
+  /// `--skip-emptied`.
+  final bool skipEmptied;
+
+  /// `--keep-divergent`.
+  final bool keepDivergent;
+
+  /// `--simplify-parents`.
+  final bool simplifyParents;
+}
+
+/// Make revisions siblings, in the repo identified by [handleId] (Story 9.16)
+/// — the CLI's `jj parallelize`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinParallelize(raw, …)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class ParallelizeCommand extends WorkerCommand implements HandleScopedCommand {
+  const ParallelizeCommand({required super.commandId, required this.handleId, required this.changeIds});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The revisions to parallelize.
+  final List<String> changeIds;
+}
+
+/// Rearrange revisions, in the repo identified by [handleId] (Story 9.16) —
+/// the CLI's `jj arrange` with its TUI session as data.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinArrange(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class ArrangeCommand extends WorkerCommand implements HandleScopedCommand {
+  const ArrangeCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revisions,
+    required this.actions,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The revisions to arrange; empty = the `revsets.arrange` setting.
+  final List<String> revisions;
+
+  /// The TUI's key actions, replayed in order.
+  final List<ArrangeAction> actions;
 }
 
 /// Request a graceful worker shutdown (Story 3.6).

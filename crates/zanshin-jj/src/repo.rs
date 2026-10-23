@@ -2617,6 +2617,120 @@ impl Repo {
         self.with_verb(|repo, ctx| crate::squash_split::split(repo.workspace_mut(), ctx, options))
     }
 
+    /// Moves revisions to a new place in the graph (Story 9.16) — the CLI's `jj rebase`.
+    ///
+    /// What moves — one of three forms, at most one given:
+    ///
+    /// - `revisions` (`-r`): only these commits; their descendants move onto their parents. A
+    ///   revision may move onto its own descendant.
+    /// - `source` (`-s`): these commits with all their descendants; each becomes a direct child of
+    ///   the destination.
+    /// - `branch` (`-b`): the roots of `destination..branch` with their descendants. All three
+    ///   empty is the CLI's default `-b @`.
+    ///
+    /// Where — `onto` (`-o`, the new parents) or `insert_after` / `insert_before` (`-A` / `-B`,
+    /// the new parents and the children that move on top), the location as `jj new` resolves it.
+    /// `skip_emptied`, `keep_divergent` and `simplify_parents` are the CLI's flags: without
+    /// `keep_divergent`, a divergent commit whose identical twin is already in the destination is
+    /// abandoned. Bookmarks follow their commits; an abandoned commit's bookmarks are not deleted.
+    ///
+    /// A move with nothing to rebase (the CLI's "No revisions to rebase.", e.g. a branch already
+    /// on the destination) or that changes nothing writes NO operation; `new_op_id` is then the
+    /// pre-call head. Otherwise the operation is the CLI's: `rebase commit <hex>`, `rebase commit
+    /// <hex> and <n> more`, `rebase <n> commits` (`-r`), `rebase commit <hex> and descendants` or
+    /// `rebase <n> commits and their descendants` (`-s`/`-b`), full commit ids before the move.
+    /// `abandoned_change_ids` names the commits the move abandoned (divergent twins, newly emptied
+    /// commits); `new_change_ids` the replacement `@` when `@` was one of them.
+    ///
+    /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — more than one of `branch`/`source`/`revisions`,
+    ///   `onto` with `insert_after`/`insert_before`, or none of the three location lists (refused
+    ///   before anything resolves); `Cannot rebase <12 hex> onto itself` / `onto descendant <12
+    ///   hex>`; a location that would create a loop or resolves no parent; or the backend refusing
+    ///   a commit of the move (a merge with the root commit as a parent, in a Git repo).
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
+    ///   commit, or divergent.
+    /// - [`crate::MutateError::Immutable`] — a commit the move rewrites, or a child the location
+    ///   would rewrite, is inside the repo's effective immutable set.
+    /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn rebase(&mut self, options: &crate::RebaseOptions) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::rebase::rebase(repo.workspace_mut(), ctx, options))
+    }
+
+    /// Makes revisions siblings (Story 9.16) — the CLI's `jj parallelize`.
+    ///
+    /// Each of `change_ids` keeps its parents outside the set, and in place of a parent inside the
+    /// set inherits that parent's new parents; a commit outside the set keeps every target it
+    /// descended from as an ancestor (a child of a target gets the target's in-set ancestors as
+    /// direct parents too). Only the targets that move are checked rewritable, so an immutable
+    /// root of the set is allowed. A set that changes nothing — one revision, none, or
+    /// revisions already independent — writes NO operation (`new_op_id` is the pre-call head);
+    /// otherwise the operation is `parallelize <n> commits`.
+    ///
+    /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
+    ///   commit, or divergent.
+    /// - [`crate::MutateError::Immutable`] — a target that would move is inside the repo's
+    ///   effective immutable set.
+    /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn parallelize(&mut self, change_ids: &[crate::ChangeId]) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::parallelize::parallelize(repo.workspace_mut(), ctx, change_ids))
+    }
+
+    /// Rearranges revisions (Story 9.16) — the CLI's `jj arrange` with its terminal UI replaced
+    /// by the UI's own key actions.
+    ///
+    /// The target set is `options.revisions`, or — when empty — the `revsets.arrange` setting
+    /// (jj's default `reachable(@, mutable())`), parsed like a user revset (its diagnostics are
+    /// warnings "In revset expression"). It must be rewritable and have no gaps. Then
+    /// `options.actions` are replayed in order, as the TUI applies its keys:
+    /// [`crate::ArrangeAction::SwapDown`] / [`crate::ArrangeAction::SwapUp`] swap a commit with its
+    /// one parent / child in the set (ignored otherwise, as the TUI ignores it),
+    /// [`crate::ArrangeAction::Abandon`] / [`crate::ArrangeAction::Keep`] mark it. The result is
+    /// written as the TUI's confirm writes it; descendants outside the set follow.
+    ///
+    /// An empty target set (the CLI's "No revisions to arrange.") or actions that change nothing
+    /// write NO operation (`new_op_id` is the pre-call head); otherwise the operation is `arrange
+    /// revisions`. `abandoned_change_ids` names the commits marked abandoned, `new_change_ids` the
+    /// replacement `@` when `@` was one of them.
+    ///
+    /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — the target set has a gap ("Cannot arrange revset
+    ///   with gaps in.", hint "Revision <12 hex> would need to be in the set."), or an action names
+    ///   a change outside the target set ("<change id> is not among the revisions to arrange").
+    /// - [`crate::MutateError::ChangeNotFound`] — a revision or an action's change id is
+    ///   malformed, carried by no VISIBLE commit, or divergent.
+    /// - [`crate::MutateError::Immutable`] — a target is inside the repo's effective immutable
+    ///   set.
+    /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`]
+    ///   — `revsets.arrange` does not parse or resolve.
+    /// - [`crate::MutateError::Config`] — `revsets.arrange` is not a string, the alias tables do
+    ///   not read, or the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn arrange(&mut self, options: &crate::ArrangeOptions) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::arrange::arrange(repo.workspace_mut(), ctx, options))
+    }
+
     /// Commits the working-copy commit (Story 9.49) — the CLI's `jj commit -m <message>
     /// [paths]`: `@` keeps the selected changes and gets the description, and a new `@` holds the
     /// rest.

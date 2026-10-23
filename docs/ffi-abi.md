@@ -275,9 +275,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Forty of the 75 exported symbols take their arguments as a **FlatBuffers
+Forty-three of the 78 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Twenty-eight use the handle-scoped three-parameter shape:
+strings. Thirty-one use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -435,24 +435,25 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **38** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **40** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
 request table's field order is an in-place WIP edit that MUST regenerate BOTH
 committed codegen sides in the same commit.
 
-Two tables are shared by two symbols each: `ChangeIdList` (`zanshin_new_change`'s
-`parents` and `zanshin_abandon`'s `change_ids`; its `insert_after` / `insert_before`
-lists — `jj new -A` / `-B`, Story 9.48 — are read only by `zanshin_new_change`,
-`zanshin_abandon` ignores them) and `SquashRequest`
+Two tables are shared: `ChangeIdList` by three symbols (`zanshin_new_change`'s
+`parents`, `zanshin_abandon`'s `change_ids` and `zanshin_parallelize`'s revisions, Story
+9.16; its `insert_after` / `insert_before` lists — `jj new -A` / `-B`, Story 9.48 — are
+read only by `zanshin_new_change`, the other two ignore them) and `SquashRequest` by two
 (`zanshin_squash` and `zanshin_squash_plan`, Story 9.15 — the plan previews the
 squash its caller is about to run, with the same arguments). Every other table has
-exactly one caller, and no table is orphaned. 38 tables + 2 shared reuses = the 40
+exactly one caller, and no table is orphaned. 40 tables + 3 shared reuses = the 43
 request-buffer symbols (Story 9.20 adds `GitPushRequest`, `RepoCloneRequest` and
 `RepoInitRequest` — `zanshin_repo_init` / `zanshin_repo_clone` took two C strings / a string and
 an `int32_t` backend before; Story 9.30 adds `GitFetchRequest` — `zanshin_git_fetch` took a
-remote name and a cancel token before; Story 9.31 adds `DropActionsRequest`).
+remote name and a cancel token before; Story 9.31 adds `DropActionsRequest`; Story 9.16 adds `RebaseRequest` and
+`ArrangeRequest`).
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
 members of the `RevisionRef` union carried by `InterdiffRequest`'s `from`/`to`,
@@ -461,7 +462,11 @@ standalone, and they carry no `kind` tag of their own — the tag belongs to the
 request table that owns them. `EnvironmentVariable` (Story 9.36) is the same kind of
 nested helper: the entries of `EnvironmentAdoptRequest`'s `variables` vector, `name` and
 `value` as `[ubyte]` because an environment is not guaranteed UTF-8. `DropLocation` (Story 9.31) is one
-too: the entries of `DropActionsRequest`'s `locations` vector.
+too: the entries of `DropActionsRequest`'s `locations` vector, and so is `ArrangeAction`
+(Story 9.16): the entries of `ArrangeRequest`'s `actions` vector, each a `kind`
+(`ArrangeActionKind`: `Unspecified`, `SwapDown`, `SwapUp`, `Abandon`, `Keep` — append-only) and a
+required `change_id` (absent: `jj.invalid_input` "change_id is required"; an absent `kind` —
+`Unspecified` — or an unknown one: `ffi.invalid_argument`, never a silent `SwapDown`).
 
 #### The `RequestKind` tag
 
@@ -472,9 +477,9 @@ request table is therefore `kind: RequestKind`, and every reader refuses a buffe
 whose tag is not its own — row 3 of the ladder above, before any other field is
 read and before the handle is borrowed.
 
-The tag is per-**wrapper**, not per-table. For 36 tables the variant name plus
-`Request` is the table name; `ChangeIdList` carries **two** kinds, `NewChange`
-and `Abandon`, because a per-table tag would have left the sharpest collision
+The tag is per-**wrapper**, not per-table. For 38 tables the variant name plus
+`Request` is the table name; `ChangeIdList` carries **three** kinds, `NewChange`,
+`Abandon` and `Parallelize` (Story 9.16), because a per-table tag would have left the sharpest collision
 unrefused — a buffer meant as `parents` abandoning those commits instead. Only
 `NewChange` reads the table's `insert_after` / `insert_before` (Story 9.48).
 `SquashRequest` is the one deliberate exception: both of its wrappers accept the
@@ -523,7 +528,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **75** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **78** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -578,6 +583,9 @@ or no `# Errors` block.
 | `zanshin_squash` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SquashRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54) |
 | `zanshin_squash_plan` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SquashRequest` | `SquashPlan` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54) |
 | `zanshin_split` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SplitRequest` | `SplitResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54) |
+| `zanshin_rebase` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `RebaseRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.16 |
+| `zanshin_parallelize` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` (`kind = Parallelize`) | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.16 |
+| `zanshin_arrange` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ArrangeRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.16 |
 | `zanshin_drop_actions` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DropActionsRequest` | `DropActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_change_actions` | `(uint64_t handle, const char *change_id)` | — | `ChangeActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_commit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.no_working_copy`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.49 |
@@ -1697,6 +1705,37 @@ jj-lib failure in any row fails the whole call `jj.jj_lib_error`. Dart:
 `RepoHandle.dropActions(source, locations)` → `DropActions` (sealed `DropSource`:
 `ChangeDropSource` / `SelectionDropSource` / `BookmarkDropSource`; a refusal is an
 `ActionRefusal(code, context, hints)`), `RepoHandle.changeActions(changeId)` → `ChangeActions`.
+
+## `zanshin_rebase`, `zanshin_parallelize`, `zanshin_arrange` (Story 9.16)
+
+The CLI's `jj rebase`, `jj parallelize` and `jj arrange` at v0.46.0, all three answering the
+shared `MutationResult` (the drop menu takes anchor, flash and origin from its own request). A call
+that writes nothing — "No revisions to rebase.", "No revisions to arrange.", or a move that changes
+nothing — carries the PRE-CALL head in `new_op_id`. `abandoned_change_ids` names jj-lib's own
+abandonments (a rebase's divergent twins already in the destination and, with `skip_emptied`, its
+newly emptied commits; arrange's `Abandon`s); `new_change_ids` is the replacement `@` when `@` was
+among them.
+
+| Table | Fields |
+|-------|--------|
+| `RebaseRequest` | `kind = Rebase`; `branch` / `source` / `revisions` (`-b` / `-s` / `-r`, at most one given; none = `-b @`), `onto` / `insert_after` / `insert_before` (`-o` / `-A` / `-B`, at least one, `onto` excludes the others — both clap rules refuse `jj.invalid_input` before anything resolves), `skip_emptied`, `keep_divergent`, `simplify_parents`. ABSENT or EMPTY lists are the flag not given. |
+| `ChangeIdList` (`kind = Parallelize`) | `change_ids`: the revisions to parallelize; `insert_after` / `insert_before` ignored. |
+| `ArrangeRequest` | `kind = Arrange`; `revisions` (ABSENT or EMPTY = `revsets.arrange`, jj's default `reachable(@, mutable())`, its parse diagnostics warned "In revset expression"), `actions: [ArrangeAction]` — the TUI's keys replayed in order. |
+| `ArrangeAction` | `kind: ArrangeActionKind` (`Unspecified` = absent, refused `ffi.invalid_argument`; `SwapDown`: swap with the one parent in the set; `SwapUp`: with the one child in the set — either ignored otherwise, as the TUI ignores it; `Abandon`; `Keep`), `change_id` (required). |
+
+The operation descriptions are the CLI's: `rebase commit <hex>`, `rebase commit <hex> and <n>
+more`, `rebase <n> commits` (`-r`), `rebase commit <hex> and descendants`, `rebase <n> commits and
+their descendants` (`-s` / `-b`), `parallelize <n> commits`, `arrange revisions`. Refusals reuse
+registered codes only: `jj.invalid_input` ("Cannot rebase <12 hex> onto itself" / "… onto
+descendant <12 hex>", `compute_commit_location`'s location texts, "Cannot arrange revset with gaps
+in." with the hint "Revision <12 hex> would need to be in the set.", "<change id> is not among the
+revisions to arrange"), `jj.change_not_found`, `jj.immutable` (parallelize checks only the targets
+that move), `jj.config_error`, and for arrange's config revset `jj.revset_parse_error` /
+`jj.revset_resolution_error`. `-s`/`-b` with `-A`/`-B` whose target lies inside the moved set is
+NOT refused up front: the move is jj-lib's `compute_move_commits`, as in the CLI (deferred-work I1,
+settled). Dart: `RepoHandle.rebase(...)`, `RepoHandle.parallelize(changeIds)`,
+`RepoHandle.arrange(revisions:, actions:)` with the sealed `ArrangeAction`
+(`SwapDownAction` / `SwapUpAction` / `AbandonAction` / `KeepAction`).
 
 ## `GitPushResult` payload and `zanshin_git_push` (Story 9.20)
 

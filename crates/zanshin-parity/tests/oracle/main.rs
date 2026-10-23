@@ -244,7 +244,28 @@ parity!(
     convert_colocated_default,
     convert_import_default,
     convert_import_invalid_source,
-    convert_import_missing_parent;
+    convert_import_missing_parent,
+    rebase_source_onto,
+    rebase_revision_onto_root,
+    rebase_revision_onto_descendant,
+    rebase_revision_insert_after,
+    rebase_revision_insert_before,
+    rebase_default_branch,
+    rebase_default_branch_moves,
+    rebase_branch_noop,
+    rebase_source_onto_descendant_refused,
+    rebase_revision_onto_itself_refused,
+    rebase_skip_emptied,
+    rebase_simplify_parents,
+    rebase_i1_source_insert_after,
+    rebase_i1_source_insert_before,
+    parallelize_two,
+    parallelize_one_noop,
+    rebase_i1_source_insert_after_merge,
+    rebase_i1_branch_insert_after,
+    rebase_i1_branch_insert_before,
+    rebase_immutable_refused,
+    parallelize_child_becomes_a_merge;
     own_process:
     convert_import_unresolvable_immutable,
     convert_colocated_unresolvable_immutable,
@@ -265,7 +286,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 198);
+    assert_eq!(SCENARIO_IDS.len(), 219);
 }
 
 #[test]

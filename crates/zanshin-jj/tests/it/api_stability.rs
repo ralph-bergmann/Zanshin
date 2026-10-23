@@ -9,17 +9,17 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (82 types; the AC-1 table's 30 plus the
+// --- Type-path aliases: one alias per public type (99 types; the AC-1 table's 30 plus the
 // --- types later stories added — CommitMeta/CommitRef (4.8), ConfigError/LogDefaults (4.9),
 // --- MutationResult/MutateError (6.1), ProgressEvent (6.4a), Tag/TagKind/WorkingCopy/
 // --- ViewError (9.2), AbsorbResult/SkippedPath (9.3), FileEntry/FileType/ShownFile/
 // --- FileContents/AnnotationLine/SearchMatch/FileError (9.4), GitImportResult/GitRefUpdate/
 // --- GitRefUpdateKind/GitExportResult/GitExportFailure (9.5), ShowEntry/EvologEntry/
-// --- InterdiffView/CommitViewError (9.6), WorkspaceEntry/WorkspaceError (9.7)). Story 9.8
-// --- adds NO public type — both bookmark mutations reuse MutationResult/MutateError — so the
-// --- count moved only when follow-up F turned `interdiff`'s bare Vec into InterdiffView.
+// --- InterdiffView/CommitViewError (9.6), WorkspaceEntry/WorkspaceError (9.7), 82 by then).
+// --- Story 9.8 adds NO public type — both bookmark mutations reuse MutationResult/MutateError —
+// --- so the count moved only when follow-up F turned `interdiff`'s bare Vec into InterdiffView.
 // --- Later stories name their types in their own section below, the last being
-// --- SquashOptions/SquashPlan/SplitOptions/SplitResult (9.15) ---------------------
+// --- RebaseOptions/ArrangeOptions/ArrangeAction (9.16) ------------------------------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -1152,6 +1152,60 @@ fn squash_split_surface_resolves() {
             &mut zanshin_jj::Repo,
             &zanshin_jj::SplitOptions,
         ) -> Result<zanshin_jj::SplitResult, zanshin_jj::MutateError>;
+}
+
+// rebase / parallelize / arrange (Story 9.16)
+type _RebaseOptions = zanshin_jj::RebaseOptions;
+type _ArrangeOptions = zanshin_jj::ArrangeOptions;
+type _ArrangeAction = zanshin_jj::ArrangeAction;
+
+/// The Story 9.16 surface: the three new types named field by field and variant by variant (the
+/// CLI's `jj rebase` flags, `jj arrange`'s revisions and TUI keys), and the three `Repo` methods
+/// as `fn` pointers — all three answer the shared `MutationResult`.
+#[test]
+fn rebase_parallelize_arrange_surface_resolves() {
+    let id = |s: &str| zanshin_jj::ChangeId(s.to_owned());
+    let rebase = zanshin_jj::RebaseOptions {
+        branch: vec![id("b")],
+        source: Vec::new(),
+        revisions: Vec::new(),
+        onto: vec![id("o")],
+        insert_after: Vec::new(),
+        insert_before: Vec::new(),
+        skip_emptied: true,
+        keep_divergent: false,
+        simplify_parents: true,
+    };
+    assert_eq!(rebase.clone(), rebase);
+    assert_eq!(zanshin_jj::RebaseOptions::default().branch, Vec::new());
+    let actions = vec![
+        zanshin_jj::ArrangeAction::SwapDown(id("d")),
+        zanshin_jj::ArrangeAction::SwapUp(id("u")),
+        zanshin_jj::ArrangeAction::Abandon(id("a")),
+        zanshin_jj::ArrangeAction::Keep(id("k")),
+    ];
+    let arrange = zanshin_jj::ArrangeOptions {
+        revisions: vec![id("r")],
+        actions,
+    };
+    assert_eq!(arrange.clone(), arrange);
+    assert_eq!(zanshin_jj::ArrangeOptions::default().actions, Vec::new());
+
+    _ = zanshin_jj::Repo::rebase
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::RebaseOptions,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::parallelize
+        as fn(
+            &mut zanshin_jj::Repo,
+            &[zanshin_jj::ChangeId],
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::arrange
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::ArrangeOptions,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
 }
 
 // drop actions (Story 9.31)

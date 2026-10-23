@@ -74,14 +74,15 @@ table FfiError {
 /// `FlatBuffers` layer tells them apart — so a `BookmarkCreateRequest` fed to
 /// `zanshin_bookmark_delete` would silently glob-delete names the caller meant literally.
 ///
-/// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
+/// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by THREE wrappers, as
 /// `zanshin_new_change`'s `parents` (plus its `insert_after` / `insert_before`, which only
-/// `NewChange` reads — Story 9.48) and as `zanshin_abandon`'s `change_ids`, so it carries the
-/// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-/// named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
+/// `NewChange` reads — Story 9.48), as `zanshin_abandon`'s `change_ids` and as
+/// `zanshin_parallelize`'s revisions (Story 9.16), so it carries the three kinds `NewChange`,
+/// `Abandon` and `Parallelize` — mis-routing there abandons the commits the caller named as
+/// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-/// squash, never a different verb. For the other 35 tables the variant name plus `Request` IS
+/// squash, never a different verb. For the other 37 tables the variant name plus `Request` IS
 /// the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -130,16 +131,20 @@ enum RequestKind : ubyte {
   RepoClone,
   RepoInit,
   GitFetch,
-  DropActions
+  DropActions,
+  Rebase,
+  Parallelize,
+  Arrange
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
-/// `parents` and `zanshin_abandon`'s `change_ids`. `kind` therefore distinguishes the two
-/// wrappers: `NewChange` or `Abandon`.
+/// `parents`, `zanshin_abandon`'s `change_ids` and `zanshin_parallelize`'s revisions (Story
+/// 9.16). `kind` therefore distinguishes the three wrappers: `NewChange`, `Abandon` or
+/// `Parallelize`.
 ///
 /// `insert_after` / `insert_before` (Story 9.48) are read ONLY by `zanshin_new_change`: the
 /// CLI's `jj new -A` / `-B` targets. ABSENT or empty means the flag was not given;
-/// `zanshin_abandon` ignores both.
+/// `zanshin_abandon` and `zanshin_parallelize` ignore both.
 table ChangeIdList {
   kind: RequestKind;
   change_ids: [string];
@@ -246,6 +251,54 @@ table SplitRequest {
   insert_before: [string];
   edited_selected_description: string;
   edited_remaining_description: string;
+}
+
+/// Arguments of `zanshin_rebase` (Story 9.16) — the CLI's `jj rebase` flags, one field each;
+/// change ids are jj reverse-hex. ABSENT or EMPTY is the flag not given.
+///
+///   branch / source / revisions   the CLI's `-b` / `-s` / `-r`: at most one given (else
+///                      `jj.invalid_input`); none of the three is the CLI's default `-b @`
+///   onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`: at least one given, and
+///                      `onto` excludes the other two (else `jj.invalid_input`)
+///   skip_emptied, keep_divergent, simplify_parents   the CLI's `--skip-emptied` /
+///                      `--keep-divergent` / `--simplify-parents`
+table RebaseRequest {
+  kind: RequestKind;
+  branch: [string];
+  source: [string];
+  revisions: [string];
+  onto: [string];
+  insert_after: [string];
+  insert_before: [string];
+  skip_emptied: bool;
+  keep_divergent: bool;
+  simplify_parents: bool;
+}
+
+/// One of the `jj arrange` TUI's key actions (Story 9.16): swap with the one parent (`J`) / the
+/// one child (`K`), abandon (`a`), keep (`p`). `Unspecified = 0` is the default of an ABSENT
+/// `kind` and is always refused (`ffi.invalid_argument`), so a forgotten kind never decodes as a
+/// swap. Member order IS the wire value — APPEND only.
+enum ArrangeActionKind : byte { Unspecified, SwapDown, SwapUp, Abandon, Keep }
+
+/// One entry of `ArrangeRequest`'s `actions`: `kind` on the commit of `change_id` (jj
+/// reverse-hex, required — absent is `jj.invalid_input` "change_id is required"). A nested
+/// value, never a buffer root: it carries no `RequestKind`.
+table ArrangeAction {
+  kind: ArrangeActionKind;
+  change_id: string;
+}
+
+/// Arguments of `zanshin_arrange` (Story 9.16) — the CLI's `jj arrange [REVSETS]` with its TUI
+/// session as data.
+///
+///   revisions          change ids (jj reverse-hex); ABSENT or EMPTY = the `revsets.arrange`
+///                      setting (jj's default `reachable(@, mutable())`)
+///   actions            the TUI's key actions, replayed in order; ABSENT or EMPTY changes nothing
+table ArrangeRequest {
+  kind: RequestKind;
+  revisions: [string];
+  actions: [ArrangeAction];
 }
 
 /// Arguments of `zanshin_commit` (Story 9.49) — the CLI's `jj commit -m <message> [paths]`.

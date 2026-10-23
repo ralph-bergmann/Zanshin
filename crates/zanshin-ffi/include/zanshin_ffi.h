@@ -14,7 +14,11 @@
 
 #define ENUM_MIN_REQUEST_KIND 0
 
-#define ENUM_MAX_REQUEST_KIND 39
+#define ENUM_MAX_REQUEST_KIND 42
+
+#define ENUM_MIN_ARRANGE_ACTION_KIND 0
+
+#define ENUM_MAX_ARRANGE_ACTION_KIND 4
 
 #define ENUM_MIN_FETCH_REMOTES_MODE 0
 
@@ -179,6 +183,22 @@ typedef struct {
 
 #define SplitRequest_VT_EDITED_REMAINING_DESCRIPTION 22
 
+#define RebaseRequest_VT_BRANCH 6
+
+#define RebaseRequest_VT_SOURCE 8
+
+#define RebaseRequest_VT_REVISIONS 10
+
+#define RebaseRequest_VT_SKIP_EMPTIED 18
+
+#define RebaseRequest_VT_KEEP_DIVERGENT 20
+
+#define RebaseRequest_VT_SIMPLIFY_PARENTS 22
+
+#define ArrangeAction_VT_CHANGE_ID 6
+
+#define ArrangeRequest_VT_ACTIONS 8
+
 #define GitPushRequest_VT_REMOTES 6
 
 #define GitPushRequest_VT_BOOKMARKS 8
@@ -197,8 +217,6 @@ typedef struct {
 
 #define GitPushRequest_VT_ALLOW_CONFLICTS 22
 
-#define GitPushRequest_VT_REVISIONS 24
-
 #define GitPushRequest_VT_CHANGES 26
 
 #define GitPushRequest_VT_NAMED 28
@@ -214,8 +232,6 @@ typedef struct {
 #define GitFetchRequest_VT_REFS_MODE 10
 
 #define GitFetchRequest_VT_BRANCHES 12
-
-#define RepoCloneRequest_VT_SOURCE 6
 
 #define RepoCloneRequest_VT_DESTINATION 8
 
@@ -286,8 +302,6 @@ typedef struct {
 #define CommitContentsRequest_VT_COMMIT_IDS 8
 
 #define DropActionsRequest_VT_SOURCE_KIND 6
-
-#define DropActionsRequest_VT_CHANGE_ID 8
 
 #define DropActionsRequest_VT_BOOKMARK 12
 
@@ -476,8 +490,6 @@ typedef struct {
 #define DropAction_VT_LOCATION 6
 
 #define DropAction_VT_OUTCOME 8
-
-#define DropActions_VT_ACTIONS 4
 
 #define ChangeActions_VT_NEW_ONTO 4
 
@@ -2218,6 +2230,146 @@ ZanshinBuf *zanshin_op_log(uint64_t handle, int64_t limit);
 ZanshinBuf *zanshin_git_push(uint64_t handle,
                              const uint8_t *data,
                              uintptr_t len);
+
+/**
+ * Move revisions to a new place in the graph, in the repo identified by `handle` — the CLI's
+ * `jj rebase` (Story 9.16).
+ *
+ * The arguments cross as a `RebaseRequest` `FlatBuffers` request buffer, one field per CLI flag:
+ * what moves — `branch` (`-b`, the roots of `destination..branch` with their descendants),
+ * `source` (`-s`, with their descendants) or `revisions` (`-r`, only these; at most one of the
+ * three, none = the CLI's `-b @`) — where — `onto` (`-o`) or `insert_after` / `insert_before`
+ * (`-A` / `-B`) — and the flags `skip_emptied`, `keep_divergent`, `simplify_parents`. A move
+ * with nothing to rebase or that changes nothing writes NO operation and
+ * `MutationResult.new_op_id` carries the PRE-CALL head. Otherwise the operation is the CLI's
+ * (`rebase commit <hex>`, `rebase commit <hex> and <n> more`, `rebase <n> commits`, `rebase commit
+ * <hex> and descendants`, `rebase <n> commits and their descendants`). The working copy is
+ * snapshotted first (Story 9.26).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success: the
+ * commits the move abandoned (divergent twins already in the destination, newly emptied commits)
+ * in `abandoned_change_ids`, an abandoned `@`'s replacement in `new_change_ids`.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `RebaseRequest` buffer, or its `kind`
+ *   is not `Rebase`.
+ * - `jj.invalid_input` — more than one of `branch`/`source`/`revisions`, `onto` with
+ *   `insert_after`/`insert_before`, or no location (refused before anything resolves); "Cannot
+ *   rebase <12 hex> onto itself" / "… onto descendant <12 hex>"; a location that would create a
+ *   loop or resolves no parent; a merge with the root commit as a parent in a Git repo; detail in
+ *   `context`.
+ * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
+ *   in `context`.
+ * - `jj.immutable` — a commit the move rewrites, or a child the location would rewrite, is
+ *   immutable; its hex commit id in `context`.
+ * - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.RebaseRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration
+ * of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_rebase(uint64_t handle,
+                           const uint8_t *data,
+                           uintptr_t len);
+
+/**
+ * Make revisions siblings, in the repo identified by `handle` — the CLI's `jj parallelize`
+ * (Story 9.16).
+ *
+ * The revisions cross as a `ChangeIdList` `FlatBuffers` request buffer tagged `Parallelize`
+ * (`change_ids`; `insert_after` / `insert_before` are ignored). Each keeps its parents outside the
+ * set and inherits an in-set parent's new parents; a child of the set keeps every target it
+ * descended from as an ancestor. Only the targets that move are checked rewritable. A set that
+ * changes nothing (one revision, none) writes NO operation and `MutationResult.new_op_id` carries
+ * the PRE-CALL head; otherwise the operation is `parallelize <n> commits`. The working copy is
+ * snapshotted first (Story 9.26).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind` is
+ *   not `Parallelize` — a `NewChange`- or `Abandon`-tagged buffer is refused here.
+ * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
+ *   in `context`.
+ * - `jj.immutable` — a target that would move is immutable; its hex commit id in `context`.
+ * - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.ChangeIdListObjectBuilder(...).toBytes()`); Rust only borrows it for the duration of
+ * the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_parallelize(uint64_t handle,
+                                const uint8_t *data,
+                                uintptr_t len);
+
+/**
+ * Rearrange revisions, in the repo identified by `handle` — the CLI's `jj arrange` with its TUI
+ * session sent as data (Story 9.16).
+ *
+ * The arguments cross as an `ArrangeRequest` `FlatBuffers` request buffer: `revisions` (ABSENT or
+ * EMPTY = the `revsets.arrange` setting, jj's default `reachable(@, mutable())`, whose parse
+ * diagnostics warn "In revset expression") and `actions` — the TUI's keys, replayed in order:
+ * `SwapDown` / `SwapUp` swap a commit with its one parent / child in the set (ignored otherwise,
+ * as the TUI ignores it), `Abandon` / `Keep` mark it. An empty set or actions that change nothing
+ * write NO operation and `MutationResult.new_op_id` carries the PRE-CALL head; otherwise the
+ * operation is `arrange revisions`. The working copy is snapshotted first (Story 9.26).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success: the commits
+ * marked abandoned in `abandoned_change_ids`, an abandoned `@`'s replacement in
+ * `new_change_ids`.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as an `ArrangeRequest` buffer, its `kind` is
+ *   not `Arrange`, or an action's `kind` is absent (`Unspecified`) or unknown.
+ * - `jj.invalid_input` — an action's `change_id` is absent ("`change_id` is required"); the set has
+ *   a gap ("Cannot arrange revset with gaps in.", with the hint "Revision <12 hex> would need to be
+ *   in the set."); an action names a change outside the set ("… is not among the revisions
+ *   to arrange").
+ * - `jj.change_not_found` — a revision or an action's change id is malformed, carried by no
+ *   VISIBLE commit, or divergent; the id in `context`.
+ * - `jj.immutable` — a target is immutable; its hex commit id in `context`.
+ * - `jj.revset_parse_error` / `jj.revset_resolution_error` — the arrange revset setting (the
+ *   default target set) does not parse or resolve.
+ * - `jj.config_error` — the arrange revset setting is not a string, or the config or its
+ *   `immutable_heads()` alias does not read or resolve.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.ArrangeRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration
+ * of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_arrange(uint64_t handle,
+                            const uint8_t *data,
+                            uintptr_t len);
 
 /**
  * List the configured git remotes of the repo identified by `handle`.

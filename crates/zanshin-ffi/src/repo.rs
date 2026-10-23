@@ -229,18 +229,24 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
 // need exactly the same two.
 
 /// Parse a `ChangeIdList` request buffer's `change_ids` into an owned `Vec<ChangeId>` —
-/// `zanshin_abandon`'s reader; `insert_after` / `insert_before` are ignored (only
-/// `zanshin_new_change` reads them, through [`read_new_change_args`]).
+/// `zanshin_abandon`'s and `zanshin_parallelize`'s reader (Story 9.16); `insert_after` /
+/// `insert_before` are ignored (only `zanshin_new_change` reads them, through
+/// [`read_new_change_args`]).
 ///
-/// `expected` is the caller's own [`fbs::RequestKind`]: this ONE table is read by TWO wrappers,
-/// as `zanshin_new_change`'s `parents` and as `zanshin_abandon`'s `change_ids`, so the tag is
-/// what keeps a mis-routed buffer from abandoning the commits the caller named as parents.
+/// `expected` is the caller's own [`fbs::RequestKind`]: this ONE table is read by THREE wrappers,
+/// as `zanshin_new_change`'s `parents`, as `zanshin_abandon`'s `change_ids` and as
+/// `zanshin_parallelize`'s revisions, so the tag is what keeps a mis-routed buffer from
+/// abandoning the commits the caller named as parents.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `ChangeIdList` buffer, or its `kind`
 ///   is not `expected`.
-fn read_change_id_list(data: *const u8, len: usize, expected: fbs::RequestKind) -> Result<Vec<ChangeId>, FfiErrorObj> {
+pub(crate) fn read_change_id_list(
+    data: *const u8,
+    len: usize,
+    expected: fbs::RequestKind,
+) -> Result<Vec<ChangeId>, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
     let bytes = unsafe { std::slice::from_raw_parts(data, len) };

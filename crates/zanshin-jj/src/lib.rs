@@ -27,6 +27,7 @@
 //! mechanically; `crates/zanshin-jj/tests/it/api_stability.rs` asserts the
 //! complete surface structurally.
 
+pub(crate) mod arrange;
 pub(crate) mod bookmark_ops;
 pub(crate) mod bookmarks;
 pub mod cancel;
@@ -49,6 +50,7 @@ pub(crate) mod graph;
 pub(crate) mod mutate;
 pub(crate) mod op_log;
 pub(crate) mod op_support;
+pub(crate) mod parallelize;
 pub(crate) mod push;
 pub(crate) mod rebase;
 pub(crate) mod remote_changes;
@@ -69,6 +71,7 @@ pub(crate) mod wc_ops;
 pub(crate) mod workspace;
 pub(crate) mod workspace_add;
 
+pub use arrange::{ArrangeAction, ArrangeOptions};
 pub use bookmarks::{Bookmark, BookmarkError, BookmarkKind, RefDistance};
 pub use change::{Change, ChangeError, CommitId, ConflictState, Signature, Timestamp, Timestamps};
 pub use commit::CommitOptions;
@@ -98,6 +101,7 @@ pub use push::{
     GitPushArgs, GitPushOutcome, PushCommitRejection, PushCreatedBookmark, PushFailure, PushFailureKind, PushPath,
     PushRef, PushRefKind, PushRefName, PushRefStatus, PushRefusal, PushRemote, PushSigning,
 };
+pub use rebase::RebaseOptions;
 pub use remote_changes::{RemoteRefChange, RemoteRefChangeKind, RemoteRefKind};
 pub use remotes::{
     FetchRefs, FetchRemotes, GitFetchArgs, GitFetchOutcome, ProgressEvent, ProgressFn, Remote, RemoteError,

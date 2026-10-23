@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: MIT
 
-//! `rebase.rs` — the plan phase of `jj rebase -r`, `-s` and `-b` (Story 9.31), ported from
-//! `plan_rebase_revisions` / `plan_rebase_source` / `plan_rebase_branch` /
-//! `check_rebase_destinations` (`cli/src/commands/rebase.rs:431-599` @ v0.46.0), plus the CLI's
-//! "No revisions to rebase." / "Nothing changed." answer for a planned move
-//! ([`rebase_is_no_op`]).
+//! `rebase.rs` — `jj rebase` (Story 9.16), ported step for step from `cmd_rebase`
+//! (`cli/src/commands/rebase.rs:368-429` @ v0.46.0) over its plan fns `plan_rebase_revisions` /
+//! `plan_rebase_source` / `plan_rebase_branch` / `check_rebase_destinations` (`:431-599`, Story
+//! 9.31) and `tx_description` (`:601-615`), plus the CLI's "No revisions to rebase." / "Nothing
+//! changed." answer for a planned move ([`rebase_is_no_op`]).
 //!
-//! The fns are pure: they resolve, check and return the `MoveCommitsLocation` jj-lib's
-//! `compute_move_commits` takes, and write nothing. `drop_actions`' three rebase rows call them
-//! today; the rebase verb (Story 9.16) is meant to call the same fns. Every refusal is the CLI's
+//! The plan fns are pure: they resolve, check and return the `MoveCommitsLocation` jj-lib's
+//! `compute_move_commits` takes, and write nothing. `drop_actions`' three rebase rows and the
+//! verb ([`rebase`]) call the same fns, and the preview and the verb apply the move through the
+//! one [`apply_move`], so a row and the verb cannot disagree. Every refusal is the CLI's
 //! `user_error` text as [`MutateError::InvalidInput`]; the commit ids in it are the CLI's
 //! `short_commit_hash`, 12 hex digits.
+//!
+//! Divergences, all deliberate: clap's argument rules become [`MutateError::InvalidInput`]
+//! naming the flags, checked before anything resolves; the status lines (`Rebased N commits…`,
+//! `Abandoned N divergent commits…`) are terminal UX and not ported — the abandonments are the
+//! result's `abandoned_change_ids`.
 
 use std::sync::Arc;
 
@@ -18,19 +24,59 @@ use futures::TryStreamExt as _;
 use jj_lib::backend::{BackendError, CommitId};
 use jj_lib::commit::Commit;
 use jj_lib::config::{ConfigLayer, ConfigSource};
+use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoader};
 use jj_lib::revset::RevsetExpression;
 use jj_lib::rewrite::{
     compute_move_commits, find_duplicate_divergent_commits, EmptyBehavior, MoveCommitsLocation, MoveCommitsTarget,
-    RebaseOptions, RewriteRefsOptions,
+    RebaseOptions as JjRebaseOptions, RebasedCommit, RewriteRefsOptions,
 };
 use jj_lib::settings::UserSettings;
 use jj_lib::transaction::Transaction;
+use jj_lib::workspace::Workspace;
 
-use crate::mutate::{be, guard_rewritable, MutateError};
-use crate::op_support::{resolve_commit_location, resolve_immutable, resolve_ordered, LocationArgs};
+use crate::mutate::{
+    be, finish_verb, guard_rewritable, mutation_result, no_op_result, resolve_or_wc, MutateError, MutationResult,
+};
+use crate::op_support::{
+    resolve_commit_location, resolve_immutable, resolve_ordered, start_repo_transaction, LocationArgs, NO_LOCATION,
+    ONTO_WITH_INSERT,
+};
+use crate::snapshot::VerbContext;
 use crate::template::Templates;
 use crate::ChangeId;
+
+/// [`crate::Repo::rebase`]'s arguments — the CLI's `jj rebase` flags, one field each (Story
+/// 9.16). An EMPTY list is a flag that was not given (clap cannot pass a flag with no values).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RebaseOptions {
+    /// `-b/--branch`, repeatable: rebase the whole branch — the roots of `destination..branch`.
+    /// With `source` and `revisions` empty too, the CLI's default `-b @`.
+    pub branch: Vec<ChangeId>,
+    /// `-s/--source`, repeatable: rebase these revisions with their descendants.
+    pub source: Vec<ChangeId>,
+    /// `-r/--revision`, repeatable: rebase only these revisions; their descendants move onto
+    /// their parents.
+    pub revisions: Vec<ChangeId>,
+    /// `-o/--onto`, repeatable: the new parents. Excludes `insert_after`/`insert_before`.
+    pub onto: Vec<ChangeId>,
+    /// `-A/--insert-after`, repeatable.
+    pub insert_after: Vec<ChangeId>,
+    /// `-B/--insert-before`, repeatable.
+    pub insert_before: Vec<ChangeId>,
+    /// `--skip-emptied`: a rebased commit that becomes empty is abandoned (one that was empty
+    /// before is kept).
+    pub skip_emptied: bool,
+    /// `--keep-divergent`: keep a divergent commit whose identical twin is already in the
+    /// destination, instead of abandoning it.
+    pub keep_divergent: bool,
+    /// `--simplify-parents`: drop a rebased commit's parents that are ancestors of its other
+    /// parents.
+    pub simplify_parents: bool,
+}
+
+/// The refusal of more than one of `-b`/`-s`/`-r` — clap's `to_rebase` group (`rebase.rs:268`).
+const ONE_TARGET_FLAG: &str = "only one of -b/--branch, -s/--source or -r/--revision can be given";
 
 /// The noun `compute_commit_location`'s loop refusal names for every rebase form.
 const REBASED_COMMITS: &str = "rebased commits";
@@ -112,7 +158,7 @@ pub(crate) fn plan_rebase_source(
 /// already on the destination): the CLI's "No revisions to rebase.", which [`rebase_is_no_op`]
 /// answers. The immutable set is resolved for the location only with `-A`/`-B`, whose children
 /// the location rewrites. An empty `branch` plans an empty target: the CLI's `-b` default `@` is
-/// the caller's to resolve and pass, as the rebase verb (Story 9.16) must.
+/// the caller's to resolve and pass — the verb passes `@`'s commit ([`plan_rebase_branch_ids`]).
 ///
 /// # Errors
 ///
@@ -124,6 +170,22 @@ pub(crate) fn plan_rebase_branch(
     location: &LocationArgs<'_>,
 ) -> Result<MoveCommitsLocation, MutateError> {
     let branch_ids = resolve_ordered(tx, Some(branch))?.unwrap_or_default();
+    plan_rebase_branch_ids(tx, templates, branch_ids, location)
+}
+
+/// [`plan_rebase_branch`] over already-resolved branch commits — the verb's `-b @` default
+/// passes `@`'s commit itself (the CLI's `resolve_single_rev(@)`), never its change id, which a
+/// divergent `@` would not resolve.
+///
+/// # Errors
+///
+/// As [`plan_rebase_branch`].
+fn plan_rebase_branch_ids(
+    tx: &Transaction,
+    templates: &Templates<'_>,
+    branch_ids: Vec<CommitId>,
+    location: &LocationArgs<'_>,
+) -> Result<MoveCommitsLocation, MutateError> {
     let resolved = if location.inserts() {
         resolve_immutable(tx.base_repo().as_ref(), templates.immutable())?
     } else {
@@ -185,10 +247,8 @@ fn onto_itself(id: &CommitId) -> MutateError {
 /// Whether the rebase `loc` plans would write no operation: an empty target is the CLI's "No
 /// revisions to rebase." (`cmd_rebase`, `rebase.rs:395-399` @ v0.46.0), answered before anything
 /// is computed; otherwise the CLI's "Nothing changed." guard (`cli_util.rs:2851`) after
-/// `cmd_rebase`'s move (`rebase.rs:403-424` @ v0.46.0): jj-lib's
-/// `compute_move_commits`, the divergent duplicates already in the destination recorded to
-/// abandon (no `--keep-divergent`), and `apply` with the CLI's default options. Exact by
-/// construction: it is the move the verb runs.
+/// [`apply_move`] with the CLI's default options (no `--skip-emptied`, no `--keep-divergent`, no
+/// `--simplify-parents`). Exact by construction: it is the move the verb runs.
 ///
 /// The move is applied to `tx`, which the caller drops afterwards. `tx` must start from a head
 /// loaded by [`load_dry_run_head`] (`signing.behavior = "drop"`): a preview must never invoke the
@@ -196,32 +256,178 @@ fn onto_itself(id: &CommitId) -> MutateError {
 ///
 /// # Errors
 ///
+/// As [`apply_move`].
+pub(crate) fn rebase_is_no_op(tx: &mut Transaction, loc: &MoveCommitsLocation) -> Result<bool, MutateError> {
+    if target_ids(loc).is_empty() {
+        return Ok(true);
+    }
+    apply_move(tx, loc, &jj_rebase_options(&RebaseOptions::default()), false)?;
+    Ok(!tx.repo().has_changes())
+}
+
+/// The commits `loc` moves — the CLI's `target_ids` (`rebase.rs:390-393`).
+fn target_ids(loc: &MoveCommitsLocation) -> &[CommitId] {
+    let (MoveCommitsTarget::Commits(ids) | MoveCommitsTarget::Roots(ids)) = &loc.target;
+    ids
+}
+
+/// jj-lib's options for the CLI's three flags (`rebase.rs:374-383` @ v0.46.0); bookmarks of an
+/// abandoned commit are never deleted.
+fn jj_rebase_options(options: &RebaseOptions) -> JjRebaseOptions {
+    JjRebaseOptions {
+        empty: if options.skip_emptied {
+            EmptyBehavior::AbandonNewlyEmpty
+        } else {
+            EmptyBehavior::Keep
+        },
+        rewrite_refs: RewriteRefsOptions {
+            delete_abandoned_bookmarks: false,
+        },
+        simplify_ancestor_merge: options.simplify_parents,
+    }
+}
+
+/// `cmd_rebase`'s move (`rebase.rs:402-424` @ v0.46.0), on `tx`: jj-lib's
+/// `compute_move_commits`; unless `keep_divergent`, the divergent duplicates already in the
+/// destination recorded to abandon; then `apply` with `options`. Shared by the verb and
+/// [`rebase_is_no_op`], so preview and execution apply the same move.
+///
+/// Returns the commits the move abandoned: the divergent duplicates (in jj-lib's order), then the
+/// newly emptied ones (`--skip-emptied`), ordered by commit id.
+///
+/// # Errors
+///
 /// - [`MutateError::InvalidInput`] — the backend refuses a commit of the move as unsupported
 ///   (the Git backend's "…merge commits with the root commit as one of the parents."), its text
 ///   verbatim: the CLI reports it as a user error.
 /// - [`MutateError::Backend`] — any other jj-lib failure.
-pub(crate) fn rebase_is_no_op(tx: &mut Transaction, loc: &MoveCommitsLocation) -> Result<bool, MutateError> {
-    let (MoveCommitsTarget::Commits(target_ids) | MoveCommitsTarget::Roots(target_ids)) = &loc.target;
-    if target_ids.is_empty() {
-        return Ok(true);
-    }
+pub(crate) fn apply_move(
+    tx: &mut Transaction,
+    loc: &MoveCommitsLocation,
+    options: &JjRebaseOptions,
+    keep_divergent: bool,
+) -> Result<Vec<Commit>, MutateError> {
     let mut computed = pollster::block_on(compute_move_commits(tx.repo(), loc)).map_err(unsupported)?;
-    let divergent = pollster::block_on(find_duplicate_divergent_commits(
-        tx.repo(),
-        &loc.new_parent_ids,
-        &loc.target,
-    ))
-    .map_err(unsupported)?;
-    computed.record_to_abandon(divergent.iter().map(Commit::id).cloned());
-    let options = RebaseOptions {
-        empty: EmptyBehavior::Keep,
-        rewrite_refs: RewriteRefsOptions {
-            delete_abandoned_bookmarks: false,
+    let mut abandoned = Vec::new();
+    if !keep_divergent {
+        abandoned = pollster::block_on(find_duplicate_divergent_commits(
+            tx.repo(),
+            &loc.new_parent_ids,
+            &loc.target,
+        ))
+        .map_err(unsupported)?;
+        computed.record_to_abandon(abandoned.iter().map(Commit::id).cloned());
+    }
+    let stats = pollster::block_on(computed.apply(tx.repo_mut(), options)).map_err(unsupported)?;
+    let mut emptied: Vec<&CommitId> = stats
+        .rebased_commits
+        .iter()
+        .filter(|(_, rebased)| matches!(rebased, RebasedCommit::Abandoned { .. }))
+        .map(|(id, _)| id)
+        .collect();
+    emptied.sort();
+    for id in emptied {
+        abandoned.push(tx.repo().store().get_commit(id).map_err(be)?);
+    }
+    Ok(abandoned)
+}
+
+/// The operation description — `tx_description` (`rebase.rs:601-615` @ v0.46.0), full hex ids.
+fn tx_description(target: &MoveCommitsTarget) -> String {
+    match target {
+        MoveCommitsTarget::Commits(ids) => match &ids[..] {
+            [] => format!("rebase {} commits", ids.len()),
+            [id] => format!("rebase commit {}", id.hex()),
+            [first, others @ ..] => format!("rebase commit {} and {} more", first.hex(), others.len()),
         },
-        simplify_ancestor_merge: false,
+        MoveCommitsTarget::Roots(ids) => match &ids[..] {
+            [id] => format!("rebase commit {} and descendants", id.hex()),
+            _ => format!("rebase {} commits and their descendants", ids.len()),
+        },
+    }
+}
+
+/// Refuses what clap refuses before anything resolves: more than one of `-b`/`-s`/`-r` (the
+/// `to_rebase` group), `-o` together with `-A`/`-B`, or none of the three location flags (the
+/// required `RebaseDestinationArgs` group) — the location texts are `compute_commit_location`'s,
+/// as `drop_actions` refuses them.
+fn check_rebase_args(options: &RebaseOptions) -> Result<(), MutateError> {
+    let given = [&options.branch, &options.source, &options.revisions]
+        .iter()
+        .filter(|ids| !ids.is_empty())
+        .count();
+    if given > 1 {
+        return Err(MutateError::invalid(ONE_TARGET_FLAG));
+    }
+    let inserts = !options.insert_after.is_empty() || !options.insert_before.is_empty();
+    match (options.onto.is_empty(), inserts) {
+        (false, true) => Err(MutateError::invalid(ONTO_WITH_INSERT)),
+        (true, false) => Err(MutateError::invalid(NO_LOCATION)),
+        _ => Ok(()),
+    }
+}
+
+/// `jj rebase` (Story 9.16) — see [`crate::Repo::rebase`]: the clap checks, the plan of the
+/// given form (`-b @` when none), "No revisions to rebase." for an empty target, [`apply_move`]
+/// with the caller's flags, the "Nothing changed." gate, then the finish with the CLI's
+/// description.
+///
+/// # Errors
+///
+/// See [`crate::Repo::rebase`].
+pub(crate) fn rebase(
+    workspace: &mut Workspace,
+    ctx: &mut VerbContext,
+    options: &RebaseOptions,
+) -> Result<MutationResult, MutateError> {
+    check_rebase_args(options)?;
+    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let workspace_name = workspace.workspace_name().to_owned();
+    let old_wc_id = readonly.view().get_wc_commit_id(&workspace_name).cloned();
+
+    let mut tx = start_repo_transaction(&readonly, &workspace_name);
+    let location = LocationArgs {
+        onto: &options.onto,
+        insert_after: &options.insert_after,
+        insert_before: &options.insert_before,
     };
-    pollster::block_on(computed.apply(tx.repo_mut(), &options)).map_err(unsupported)?;
-    Ok(!tx.repo().has_changes())
+    let loc = {
+        let templates = ctx.templates(workspace);
+        if !options.revisions.is_empty() {
+            plan_rebase_revisions(&tx, &templates, &options.revisions, &location)?
+        } else if !options.source.is_empty() {
+            plan_rebase_source(&tx, &templates, &options.source, &location)?
+        } else if !options.branch.is_empty() {
+            plan_rebase_branch(&tx, &templates, &options.branch, &location)?
+        } else {
+            let at = resolve_or_wc(tx.repo(), &workspace_name, None)?;
+            plan_rebase_branch_ids(&tx, &templates, vec![at.id().clone()], &location)?
+        }
+    };
+    // "No revisions to rebase." (`rebase.rs:394-401`): nothing is computed or written.
+    if target_ids(&loc).is_empty() {
+        drop(tx);
+        return no_op_result(&workspace_name, &readonly);
+    }
+    let abandoned = apply_move(&mut tx, &loc, &jj_rebase_options(options), options.keep_divergent)?;
+    // `WorkspaceCommandTransaction::finish`'s "Nothing changed." guard (`cli_util.rs:2852`).
+    if !tx.repo().has_changes() {
+        drop(tx);
+        return no_op_result(&workspace_name, &readonly);
+    }
+    let finish = finish_verb(workspace, tx, &tx_description(&loc.target), ctx)?;
+    let wc_abandoned = old_wc_id
+        .as_ref()
+        .is_some_and(|id| abandoned.iter().any(|c| c.id() == id));
+    let new_change_ids = match (&finish.wc_commit, wc_abandoned) {
+        (Some(new_wc_commit), true) => vec![ChangeId(new_wc_commit.change_id().reverse_hex())],
+        _ => Vec::new(),
+    };
+    let abandoned_change_ids = abandoned
+        .iter()
+        .map(|c| ChangeId(c.change_id().reverse_hex()))
+        .collect();
+    mutation_result(&finish, new_change_ids, abandoned_change_ids)
 }
 
 /// The repo's head operation loaded through `loader`'s stores with [`dry_run_settings`], once
@@ -367,6 +573,91 @@ mod tests {
                 "{flag}: {refused:?}"
             );
         }
+    }
+
+    /// `tx_description`'s five shapes, as the CLI writes them (`rebase.rs:601-615` @ v0.46.0).
+    #[test]
+    fn tx_description_names_the_target_as_the_cli_does() {
+        use jj_lib::backend::CommitId;
+        use jj_lib::rewrite::MoveCommitsTarget;
+
+        let a = CommitId::from_hex("aa");
+        let b = CommitId::from_hex("bb");
+        let c = CommitId::from_hex("cc");
+        let describe = |target: MoveCommitsTarget| super::tx_description(&target);
+        assert_eq!(describe(MoveCommitsTarget::Commits(vec![])), "rebase 0 commits");
+        assert_eq!(
+            describe(MoveCommitsTarget::Commits(vec![a.clone()])),
+            "rebase commit aa"
+        );
+        assert_eq!(
+            describe(MoveCommitsTarget::Commits(vec![a.clone(), b.clone(), c])),
+            "rebase commit aa and 2 more"
+        );
+        assert_eq!(
+            describe(MoveCommitsTarget::Roots(vec![a.clone()])),
+            "rebase commit aa and descendants"
+        );
+        assert_eq!(
+            describe(MoveCommitsTarget::Roots(vec![a, b])),
+            "rebase 2 commits and their descendants"
+        );
+    }
+
+    /// clap's rules, refused before anything resolves — the ids need not exist.
+    #[test]
+    fn check_rebase_args_refuses_what_clap_refuses() {
+        use super::{check_rebase_args, RebaseOptions, ONE_TARGET_FLAG};
+        use crate::mutate::MutateError;
+        use crate::op_support::{NO_LOCATION, ONTO_WITH_INSERT};
+        use crate::ChangeId;
+
+        let id = || vec![ChangeId("zz".to_owned())];
+        let reason = |options: RebaseOptions| {
+            check_rebase_args(&options).err().map(|e| {
+                assert!(matches!(&e, MutateError::InvalidInput { hints, .. } if hints.is_empty()));
+                e.to_string().replacen("invalid input: ", "", 1)
+            })
+        };
+        let onto = RebaseOptions {
+            onto: id(),
+            ..RebaseOptions::default()
+        };
+        assert_eq!(reason(onto.clone()), None, "-b @ -o X");
+        for (branch, source, revisions) in [(true, true, false), (true, false, true), (false, true, true)] {
+            let options = RebaseOptions {
+                branch: if branch { id() } else { vec![] },
+                source: if source { id() } else { vec![] },
+                revisions: if revisions { id() } else { vec![] },
+                ..onto.clone()
+            };
+            assert_eq!(reason(options).as_deref(), Some(ONE_TARGET_FLAG));
+        }
+        assert_eq!(
+            reason(RebaseOptions {
+                revisions: id(),
+                ..RebaseOptions::default()
+            })
+            .as_deref(),
+            Some(NO_LOCATION)
+        );
+        for (after, before) in [(true, false), (false, true)] {
+            let options = RebaseOptions {
+                insert_after: if after { id() } else { vec![] },
+                insert_before: if before { id() } else { vec![] },
+                ..onto.clone()
+            };
+            assert_eq!(reason(options).as_deref(), Some(ONTO_WITH_INSERT));
+        }
+        assert_eq!(
+            reason(RebaseOptions {
+                insert_after: id(),
+                insert_before: id(),
+                ..RebaseOptions::default()
+            }),
+            None,
+            "-A and -B together"
+        );
     }
 
     #[test]

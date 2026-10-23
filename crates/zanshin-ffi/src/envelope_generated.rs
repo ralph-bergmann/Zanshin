@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 39;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 42;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 40] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 43] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -64,6 +64,9 @@ pub mod zanshin {
             RequestKind::RepoInit,
             RequestKind::GitFetch,
             RequestKind::DropActions,
+            RequestKind::Rebase,
+            RequestKind::Parallelize,
+            RequestKind::Arrange,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -74,14 +77,15 @@ pub mod zanshin {
         /// `FlatBuffers` layer tells them apart — so a `BookmarkCreateRequest` fed to
         /// `zanshin_bookmark_delete` would silently glob-delete names the caller meant literally.
         ///
-        /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by TWO wrappers, as
+        /// The tag is per-WRAPPER, not per-table: `ChangeIdList` is read by THREE wrappers, as
         /// `zanshin_new_change`'s `parents` (plus its `insert_after` / `insert_before`, which only
-        /// `NewChange` reads — Story 9.48) and as `zanshin_abandon`'s `change_ids`, so it carries the
-        /// two kinds `NewChange` and `Abandon` — mis-routing there abandons the commits the caller
-        /// named as parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
+        /// `NewChange` reads — Story 9.48), as `zanshin_abandon`'s `change_ids` and as
+        /// `zanshin_parallelize`'s revisions (Story 9.16), so it carries the three kinds `NewChange`,
+        /// `Abandon` and `Parallelize` — mis-routing there abandons the commits the caller named as
+        /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
         /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
         /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-        /// squash, never a different verb. For the other 35 tables the variant name plus `Request` IS
+        /// squash, never a different verb. For the other 37 tables the variant name plus `Request` IS
         /// the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -135,9 +139,12 @@ pub mod zanshin {
             pub const RepoInit: Self = Self(37);
             pub const GitFetch: Self = Self(38);
             pub const DropActions: Self = Self(39);
+            pub const Rebase: Self = Self(40);
+            pub const Parallelize: Self = Self(41);
+            pub const Arrange: Self = Self(42);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 39;
+            pub const ENUM_MAX: u8 = 42;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -179,6 +186,9 @@ pub mod zanshin {
                 Self::RepoInit,
                 Self::GitFetch,
                 Self::DropActions,
+                Self::Rebase,
+                Self::Parallelize,
+                Self::Arrange,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -223,6 +233,9 @@ pub mod zanshin {
                     Self::RepoInit => Some("RepoInit"),
                     Self::GitFetch => Some("GitFetch"),
                     Self::DropActions => Some("DropActions"),
+                    Self::Rebase => Some("Rebase"),
+                    Self::Parallelize => Some("Parallelize"),
+                    Self::Arrange => Some("Arrange"),
                     _ => None,
                 }
             }
@@ -278,6 +291,116 @@ pub mod zanshin {
         }
 
         impl ::flatbuffers::SimpleToVerifyInSlice for RequestKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_ARRANGE_ACTION_KIND: i8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_ARRANGE_ACTION_KIND: i8 = 4;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_ARRANGE_ACTION_KIND: [ArrangeActionKind; 5] = [
+            ArrangeActionKind::Unspecified,
+            ArrangeActionKind::SwapDown,
+            ArrangeActionKind::SwapUp,
+            ArrangeActionKind::Abandon,
+            ArrangeActionKind::Keep,
+        ];
+
+        /// One of the `jj arrange` TUI's key actions (Story 9.16): swap with the one parent (`J`) / the
+        /// one child (`K`), abandon (`a`), keep (`p`). `Unspecified = 0` is the default of an ABSENT
+        /// `kind` and is always refused (`ffi.invalid_argument`), so a forgotten kind never decodes as a
+        /// swap. Member order IS the wire value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct ArrangeActionKind(pub i8);
+        #[allow(non_upper_case_globals)]
+        impl ArrangeActionKind {
+            pub const Unspecified: Self = Self(0);
+            pub const SwapDown: Self = Self(1);
+            pub const SwapUp: Self = Self(2);
+            pub const Abandon: Self = Self(3);
+            pub const Keep: Self = Self(4);
+
+            pub const ENUM_MIN: i8 = 0;
+            pub const ENUM_MAX: i8 = 4;
+            pub const ENUM_VALUES: &'static [Self] = &[
+                Self::Unspecified,
+                Self::SwapDown,
+                Self::SwapUp,
+                Self::Abandon,
+                Self::Keep,
+            ];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Unspecified => Some("Unspecified"),
+                    Self::SwapDown => Some("SwapDown"),
+                    Self::SwapUp => Some("SwapUp"),
+                    Self::Abandon => Some("Abandon"),
+                    Self::Keep => Some("Keep"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for ArrangeActionKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for ArrangeActionKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for ArrangeActionKind {
+            type Output = ArrangeActionKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for ArrangeActionKind {
+            type Scalar = i8;
+            #[inline]
+            fn to_little_endian(self) -> i8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: i8) -> Self {
+                let b = i8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for ArrangeActionKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                i8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for ArrangeActionKind {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -3540,12 +3663,13 @@ pub mod zanshin {
         #[derive(Copy, Clone, PartialEq)]
 
         /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
-        /// `parents` and `zanshin_abandon`'s `change_ids`. `kind` therefore distinguishes the two
-        /// wrappers: `NewChange` or `Abandon`.
+        /// `parents`, `zanshin_abandon`'s `change_ids` and `zanshin_parallelize`'s revisions (Story
+        /// 9.16). `kind` therefore distinguishes the three wrappers: `NewChange`, `Abandon` or
+        /// `Parallelize`.
         ///
         /// `insert_after` / `insert_before` (Story 9.48) are read ONLY by `zanshin_new_change`: the
         /// CLI's `jj new -A` / `-B` targets. ABSENT or empty means the flag was not given;
-        /// `zanshin_abandon` ignores both.
+        /// `zanshin_abandon` and `zanshin_parallelize` ignore both.
         pub struct ChangeIdList<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -4842,6 +4966,655 @@ pub mod zanshin {
                 ds.field("insert_before", &self.insert_before());
                 ds.field("edited_selected_description", &self.edited_selected_description());
                 ds.field("edited_remaining_description", &self.edited_remaining_description());
+                ds.finish()
+            }
+        }
+        pub enum RebaseRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_rebase` (Story 9.16) — the CLI's `jj rebase` flags, one field each;
+        /// change ids are jj reverse-hex. ABSENT or EMPTY is the flag not given.
+        ///
+        ///   branch / source / revisions   the CLI's `-b` / `-s` / `-r`: at most one given (else
+        ///                      `jj.invalid_input`); none of the three is the CLI's default `-b @`
+        ///   onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`: at least one given, and
+        ///                      `onto` excludes the other two (else `jj.invalid_input`)
+        ///   skip_emptied, keep_divergent, simplify_parents   the CLI's `--skip-emptied` /
+        ///                      `--keep-divergent` / `--simplify-parents`
+        pub struct RebaseRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RebaseRequest<'a> {
+            type Inner = RebaseRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RebaseRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_BRANCH: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SOURCE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_REVISIONS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_ONTO: ::flatbuffers::VOffsetT = 12;
+            pub const VT_INSERT_AFTER: ::flatbuffers::VOffsetT = 14;
+            pub const VT_INSERT_BEFORE: ::flatbuffers::VOffsetT = 16;
+            pub const VT_SKIP_EMPTIED: ::flatbuffers::VOffsetT = 18;
+            pub const VT_KEEP_DIVERGENT: ::flatbuffers::VOffsetT = 20;
+            pub const VT_SIMPLIFY_PARENTS: ::flatbuffers::VOffsetT = 22;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RebaseRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RebaseRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RebaseRequest<'bldr>> {
+                let mut builder = RebaseRequestBuilder::new(_fbb);
+                if let Some(x) = args.insert_before {
+                    builder.add_insert_before(x);
+                }
+                if let Some(x) = args.insert_after {
+                    builder.add_insert_after(x);
+                }
+                if let Some(x) = args.onto {
+                    builder.add_onto(x);
+                }
+                if let Some(x) = args.revisions {
+                    builder.add_revisions(x);
+                }
+                if let Some(x) = args.source {
+                    builder.add_source(x);
+                }
+                if let Some(x) = args.branch {
+                    builder.add_branch(x);
+                }
+                builder.add_simplify_parents(args.simplify_parents);
+                builder.add_keep_divergent(args.keep_divergent);
+                builder.add_skip_emptied(args.skip_emptied);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(RebaseRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn branch(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RebaseRequest::VT_BRANCH, None)
+                }
+            }
+            #[inline]
+            pub fn source(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RebaseRequest::VT_SOURCE, None)
+                }
+            }
+            #[inline]
+            pub fn revisions(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RebaseRequest::VT_REVISIONS, None)
+                }
+            }
+            #[inline]
+            pub fn onto(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RebaseRequest::VT_ONTO, None)
+                }
+            }
+            #[inline]
+            pub fn insert_after(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RebaseRequest::VT_INSERT_AFTER, None)
+                }
+            }
+            #[inline]
+            pub fn insert_before(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RebaseRequest::VT_INSERT_BEFORE, None)
+                }
+            }
+            #[inline]
+            pub fn skip_emptied(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(RebaseRequest::VT_SKIP_EMPTIED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn keep_divergent(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(RebaseRequest::VT_KEEP_DIVERGENT, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn simplify_parents(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(RebaseRequest::VT_SIMPLIFY_PARENTS, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RebaseRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("branch", Self::VT_BRANCH, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("source", Self::VT_SOURCE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("revisions", Self::VT_REVISIONS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("onto", Self::VT_ONTO, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_after", Self::VT_INSERT_AFTER, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_before", Self::VT_INSERT_BEFORE, false)?
+     .visit_field::<bool>("skip_emptied", Self::VT_SKIP_EMPTIED, false)?
+     .visit_field::<bool>("keep_divergent", Self::VT_KEEP_DIVERGENT, false)?
+     .visit_field::<bool>("simplify_parents", Self::VT_SIMPLIFY_PARENTS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct RebaseRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub branch:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub source:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub revisions:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub onto:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub insert_after:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub insert_before:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub skip_emptied: bool,
+            pub keep_divergent: bool,
+            pub simplify_parents: bool,
+        }
+        impl<'a> Default for RebaseRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RebaseRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    branch: None,
+                    source: None,
+                    revisions: None,
+                    onto: None,
+                    insert_after: None,
+                    insert_before: None,
+                    skip_emptied: false,
+                    keep_divergent: false,
+                    simplify_parents: false,
+                }
+            }
+        }
+
+        pub struct RebaseRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RebaseRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(RebaseRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_branch(
+                &mut self,
+                branch: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RebaseRequest::VT_BRANCH, branch);
+            }
+            #[inline]
+            pub fn add_source(
+                &mut self,
+                source: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RebaseRequest::VT_SOURCE, source);
+            }
+            #[inline]
+            pub fn add_revisions(
+                &mut self,
+                revisions: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RebaseRequest::VT_REVISIONS, revisions);
+            }
+            #[inline]
+            pub fn add_onto(
+                &mut self,
+                onto: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RebaseRequest::VT_ONTO, onto);
+            }
+            #[inline]
+            pub fn add_insert_after(
+                &mut self,
+                insert_after: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RebaseRequest::VT_INSERT_AFTER, insert_after);
+            }
+            #[inline]
+            pub fn add_insert_before(
+                &mut self,
+                insert_before: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RebaseRequest::VT_INSERT_BEFORE, insert_before);
+            }
+            #[inline]
+            pub fn add_skip_emptied(&mut self, skip_emptied: bool) {
+                self.fbb_
+                    .push_slot::<bool>(RebaseRequest::VT_SKIP_EMPTIED, skip_emptied, false);
+            }
+            #[inline]
+            pub fn add_keep_divergent(&mut self, keep_divergent: bool) {
+                self.fbb_
+                    .push_slot::<bool>(RebaseRequest::VT_KEEP_DIVERGENT, keep_divergent, false);
+            }
+            #[inline]
+            pub fn add_simplify_parents(&mut self, simplify_parents: bool) {
+                self.fbb_
+                    .push_slot::<bool>(RebaseRequest::VT_SIMPLIFY_PARENTS, simplify_parents, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RebaseRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RebaseRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RebaseRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RebaseRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RebaseRequest");
+                ds.field("kind", &self.kind());
+                ds.field("branch", &self.branch());
+                ds.field("source", &self.source());
+                ds.field("revisions", &self.revisions());
+                ds.field("onto", &self.onto());
+                ds.field("insert_after", &self.insert_after());
+                ds.field("insert_before", &self.insert_before());
+                ds.field("skip_emptied", &self.skip_emptied());
+                ds.field("keep_divergent", &self.keep_divergent());
+                ds.field("simplify_parents", &self.simplify_parents());
+                ds.finish()
+            }
+        }
+        pub enum ArrangeActionOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One entry of `ArrangeRequest`'s `actions`: `kind` on the commit of `change_id` (jj
+        /// reverse-hex, required — absent is `jj.invalid_input` "change_id is required"). A nested
+        /// value, never a buffer root: it carries no `RequestKind`.
+        pub struct ArrangeAction<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ArrangeAction<'a> {
+            type Inner = ArrangeAction<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ArrangeAction<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CHANGE_ID: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ArrangeAction { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ArrangeActionArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ArrangeAction<'bldr>> {
+                let mut builder = ArrangeActionBuilder::new(_fbb);
+                if let Some(x) = args.change_id {
+                    builder.add_change_id(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> ArrangeActionKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ArrangeActionKind>(ArrangeAction::VT_KIND, Some(ArrangeActionKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ArrangeAction::VT_CHANGE_ID, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ArrangeAction<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<ArrangeActionKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("change_id", Self::VT_CHANGE_ID, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ArrangeActionArgs<'a> {
+            pub kind: ArrangeActionKind,
+            pub change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ArrangeActionArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ArrangeActionArgs {
+                    kind: ArrangeActionKind::Unspecified,
+                    change_id: None,
+                }
+            }
+        }
+
+        pub struct ArrangeActionBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ArrangeActionBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: ArrangeActionKind) {
+                self.fbb_
+                    .push_slot::<ArrangeActionKind>(ArrangeAction::VT_KIND, kind, ArrangeActionKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_change_id(&mut self, change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ArrangeAction::VT_CHANGE_ID, change_id);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ArrangeActionBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ArrangeActionBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ArrangeAction<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ArrangeAction<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ArrangeAction");
+                ds.field("kind", &self.kind());
+                ds.field("change_id", &self.change_id());
+                ds.finish()
+            }
+        }
+        pub enum ArrangeRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_arrange` (Story 9.16) — the CLI's `jj arrange [REVSETS]` with its TUI
+        /// session as data.
+        ///
+        ///   revisions          change ids (jj reverse-hex); ABSENT or EMPTY = the `revsets.arrange`
+        ///                      setting (jj's default `reachable(@, mutable())`)
+        ///   actions            the TUI's key actions, replayed in order; ABSENT or EMPTY changes nothing
+        pub struct ArrangeRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ArrangeRequest<'a> {
+            type Inner = ArrangeRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ArrangeRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISIONS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ACTIONS: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ArrangeRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ArrangeRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ArrangeRequest<'bldr>> {
+                let mut builder = ArrangeRequestBuilder::new(_fbb);
+                if let Some(x) = args.actions {
+                    builder.add_actions(x);
+                }
+                if let Some(x) = args.revisions {
+                    builder.add_revisions(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ArrangeRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revisions(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ArrangeRequest::VT_REVISIONS, None)
+                }
+            }
+            #[inline]
+            pub fn actions(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ArrangeAction<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ArrangeAction>>,
+                    >>(ArrangeRequest::VT_ACTIONS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ArrangeRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("revisions", Self::VT_REVISIONS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<ArrangeAction>>>>("actions", Self::VT_ACTIONS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct ArrangeRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revisions:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub actions: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ArrangeAction<'a>>>>,
+            >,
+        }
+        impl<'a> Default for ArrangeRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ArrangeRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revisions: None,
+                    actions: None,
+                }
+            }
+        }
+
+        pub struct ArrangeRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ArrangeRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ArrangeRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revisions(
+                &mut self,
+                revisions: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ArrangeRequest::VT_REVISIONS, revisions);
+            }
+            #[inline]
+            pub fn add_actions(
+                &mut self,
+                actions: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<ArrangeAction<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ArrangeRequest::VT_ACTIONS, actions);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ArrangeRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ArrangeRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ArrangeRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ArrangeRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ArrangeRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revisions", &self.revisions());
+                ds.field("actions", &self.actions());
                 ds.finish()
             }
         }
