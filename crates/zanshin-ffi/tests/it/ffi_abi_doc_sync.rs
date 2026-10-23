@@ -521,8 +521,9 @@ fn the_header_defines_no_macro_but_its_include_guard() {
     let stray = stray_defines(&header);
     assert!(
         stray.is_empty(),
-        "{HEADER_PATH} defines {} macro(s) besides its include guard — a flatc-generated \
-         module without `/// cbindgen:ignore` leaks its FlatBuffers internals:\n  {}",
+        "{HEADER_PATH} defines {} macro(s) besides its include guard — either a generated \
+         module without `/// cbindgen:ignore` leaks its FlatBuffers internals, or a new public \
+         constant reached the C surface and needs an explicit decision:\n  {}",
         stray.len(),
         stray.join("\n  ")
     );

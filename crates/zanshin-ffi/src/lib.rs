@@ -12,13 +12,13 @@
 
 use core::ffi::c_char;
 
-// WHY: flatc-generated code is not subject to our lint bar; warnings there are
-// noise from machine output, not actionable refactors.
 // WHY (`cbindgen:ignore`): parsed, this module would put its FlatBuffers internals
 // (`ENUM_MIN_*`/`ENUM_MAX_*`, `<Table>_VT_*` vtable offsets) into `zanshin_ffi.h` —
 // meaningless outside the Rust runtime, and cbindgen keeps only one `VT_*` per bare name
 // across all tables, so every regeneration silently added and dropped tables' offsets.
 /// cbindgen:ignore
+// WHY: flatc-generated code is not subject to our lint bar; warnings there are
+// noise from machine output, not actionable refactors.
 #[allow(warnings)]
 pub(crate) mod envelope_generated;
 

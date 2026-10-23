@@ -531,10 +531,10 @@ run_task = "coverage"
 
 [tasks.codegen]
 description = "Regenerate FFI C header (cbindgen), Dart bindings (ffigen), and FlatBuffers accessors (flatc) for all schemas/*.fbs. Run after any .fbs or extern \"C\" change; commit the result."
-# WHY: flatc must run before cbindgen/ffigen so the Rust types from the
-# generated accessors are present when cbindgen reads the crate (even though
-# the FlatBuffers types don't appear in the extern "C" signatures directly,
-# keeping the order deterministic avoids surprises if that ever changes).
+# WHY: flatc runs before cbindgen/ffigen so the generated accessors the crate
+# declares (`mod envelope_generated`, skipped by cbindgen via `cbindgen:ignore`)
+# exist and are current — the crate cannot compile without them — and the
+# step order stays deterministic.
 dependencies = ["codegen-flatc-rust", "codegen-flatc-dart", "codegen-cbindgen", "codegen-ffigen"]
 
 [tasks.codegen-flatc-rust]
