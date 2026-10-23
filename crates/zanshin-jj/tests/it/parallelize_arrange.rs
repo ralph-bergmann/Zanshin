@@ -219,7 +219,11 @@ fn arrange_defaults_to_revsets_arrange() {
             actions: vec![ArrangeAction::Abandon(a.clone())],
         })
     });
-    assert!(matches!(err, MutateError::InvalidInput { .. }), "{err:?}");
+    let expected = format!("{} is not among the revisions to arrange", a.0);
+    assert!(
+        matches!(&err, MutateError::InvalidInput { reason, .. } if *reason == expected),
+        "{err:?}"
+    );
 
     // An empty set: "No revisions to arrange."
     let mut fx = base();

@@ -214,12 +214,16 @@ fn assert_written(fx: &Fx, bytes: &[u8], description: &str) {
 #[test]
 fn rebase_moves_a_source_onto_a_target() {
     let fx = base();
+    let c_hex = Repo::open(&fx.root)
+        .expect("open")
+        .get_change(&ChangeId(fx.c.clone()))
+        .expect("change")
+        .commit_id
+        .0;
     let req = rebase_request(&[], &[&fx.c], &[&fx.a]);
     // SAFETY: `fx.handle` is open; `req` is a live buffer for the call.
     let bytes = unsafe { read_and_free(zanshin_rebase(fx.handle, req.as_ptr(), req.len())) };
-    let description = head_op(&fx.root).1;
-    assert!(description.starts_with("rebase commit ") && description.ends_with(" and descendants"));
-    assert_written(&fx, &bytes, &description);
+    assert_written(&fx, &bytes, &format!("rebase commit {c_hex} and descendants"));
     assert_eq!(parent_ids(&fx.root, &fx.c), std::slice::from_ref(&fx.a));
 }
 

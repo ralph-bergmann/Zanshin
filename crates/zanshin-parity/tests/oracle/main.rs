@@ -265,7 +265,13 @@ parity!(
     rebase_i1_branch_insert_after,
     rebase_i1_branch_insert_before,
     rebase_immutable_refused,
-    parallelize_child_becomes_a_merge;
+    parallelize_child_becomes_a_merge,
+    rebase_i1_source_insert_before_merge,
+    rebase_source_onto_itself_refused,
+    rebase_several_revisions,
+    rebase_several_sources,
+    rebase_onto_two_parents,
+    rebase_insert_loop_refused;
     own_process:
     convert_import_unresolvable_immutable,
     convert_colocated_unresolvable_immutable,
@@ -286,7 +292,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 219);
+    assert_eq!(SCENARIO_IDS.len(), 225);
 }
 
 #[test]

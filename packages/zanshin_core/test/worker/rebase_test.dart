@@ -117,6 +117,18 @@ void main() {
       expect(skip.newChangeIds, [skip.workingCopyChangeId], reason: 'the emptied commit was @');
     });
 
+    test('simplify_parents_crosses_the_buffer', () async {
+      // M = merge(C, B), X on the root: `-s A -o X` leaves M's parent B
+      // redundant (B is C's ancestor); only --simplify-parents drops it.
+      final String m = await add([ids[2], ids[1]], const {}, 'M\n');
+      final String x = await add(['z' * 32], const {'x.txt': 'x\n'}, 'X\n');
+
+      await repo.rebase(source: [ids[0]], onto: [x], simplifyParents: true);
+
+      expect(await parents(m), [ids[2]]);
+      expect(await parents(ids[0]), [x]);
+    });
+
     test('branch_crosses_the_buffer_and_moves_the_roots_of_the_branch', () async {
       final String x = await add(['z' * 32], const {'x.txt': 'x\n'}, 'X\n');
 

@@ -2279,6 +2279,7 @@ pub fn scenarios() -> Vec<Scenario> {
     .chain(rebase_default_and_refusal_scenarios())
     .chain(rebase_flag_and_parallelize_scenarios())
     .chain(rebase_i1_and_immutable_scenarios())
+    .chain(rebase_repeated_and_refusal_scenarios())
     .chain(crate::git_scenarios::push_scenarios())
     .chain(crate::git_scenarios::bookmark_auto_track_scenarios())
     .chain(crate::git_scenarios::fetch_scenarios())
@@ -2642,6 +2643,115 @@ fn rebase_i1_and_immutable_scenarios() -> Vec<Scenario> {
                 argv.extend(change_args(s, &["A", "B"]));
                 argv
             },
+        ),
+    ]
+}
+
+/// X on the root; `@` ends on it.
+const X_ON_ROOT: &[Step] = &[Step::Jj(&["new", "-m", "X", "root()"])];
+
+/// `jj rebase` with repeated flags: each `(flag, label)` pair in order, labels as change ids
+/// (`root` as `root()`).
+fn rebase_argv_repeated(s: &State, pairs: &[(&str, &str)]) -> Vec<String> {
+    let mut argv = vec!["rebase".to_owned()];
+    for (flag, label) in pairs {
+        argv.push((*flag).to_owned());
+        argv.push(if *label == "root" {
+            "root()".to_owned()
+        } else {
+            s.change_arg(label)
+        });
+    }
+    argv
+}
+
+/// I1's `-B` relocation, `-s` onto itself, repeated flags (the plural operation descriptions and a
+/// rebase that creates a merge) and a location that would create a loop.
+fn rebase_repeated_and_refusal_scenarios() -> Vec<Scenario> {
+    vec![
+        Scenario {
+            // jj-lib replaces the new child M by its external descendants (none) and keeps M's
+            // outside parent X: B onto merge(A, X), as with `-A M`.
+            setup: X_AND_MERGE,
+            ..simple(
+                "rebase_i1_source_insert_before_merge",
+                |repo, _, s| {
+                    let options = RebaseOptions {
+                        source: vec![s.change("B")],
+                        insert_before: vec![s.change("M")],
+                        ..RebaseOptions::default()
+                    };
+                    rebase_outcome(repo, &options)
+                },
+                |s| rebase_argv(s, ("-s", "B"), ("-B", "M"), &[]),
+            )
+        },
+        simple(
+            "rebase_source_onto_itself_refused",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    source: vec![s.change("A")],
+                    onto: vec![s.change("A")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv(s, ("-s", "A"), ("-o", "A"), &[]),
+        ),
+        simple(
+            "rebase_several_revisions",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    revisions: vec![s.change("B"), s.change("C")],
+                    onto: vec![s.change("root")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv_repeated(s, &[("-r", "B"), ("-r", "C"), ("-o", "root")]),
+        ),
+        Scenario {
+            setup: X_ON_ROOT,
+            ..simple(
+                "rebase_several_sources",
+                |repo, _, s| {
+                    let options = RebaseOptions {
+                        source: vec![s.change("C"), s.change("X")],
+                        onto: vec![s.change("A")],
+                        ..RebaseOptions::default()
+                    };
+                    rebase_outcome(repo, &options)
+                },
+                |s| rebase_argv_repeated(s, &[("-s", "C"), ("-s", "X"), ("-o", "A")]),
+            )
+        },
+        Scenario {
+            setup: X_ON_ROOT,
+            ..simple(
+                "rebase_onto_two_parents",
+                |repo, _, s| {
+                    let options = RebaseOptions {
+                        source: vec![s.change("C")],
+                        onto: vec![s.change("B"), s.change("X")],
+                        ..RebaseOptions::default()
+                    };
+                    rebase_outcome(repo, &options)
+                },
+                |s| rebase_argv_repeated(s, &[("-s", "C"), ("-o", "B"), ("-o", "X")]),
+            )
+        },
+        simple(
+            "rebase_insert_loop_refused",
+            |repo, _, s| {
+                let options = RebaseOptions {
+                    revisions: vec![s.change("C")],
+                    insert_after: vec![s.change("B")],
+                    insert_before: vec![s.change("A")],
+                    ..RebaseOptions::default()
+                };
+                rebase_outcome(repo, &options)
+            },
+            |s| rebase_argv_repeated(s, &[("-r", "C"), ("-A", "B"), ("-B", "A")]),
         ),
     ]
 }
