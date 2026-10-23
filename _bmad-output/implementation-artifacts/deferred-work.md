@@ -1905,13 +1905,18 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **`jj.fileset_diagnostic` is registered but unreachable at jj-lib 0.46** (jj-lib emits no fileset diagnostic; `revset.rs` is its only `add_warning` caller). Low.
   - `crates/zanshin-jj/src/fix.rs` `get_tools_config` records them under "In `fix.tools.<name>`" exactly as the CLI prints them.
   - **Follow-up:** re-check at the next jj-lib pin bump; a test once jj-lib emits one.
-- **`jj.config_deprecated` reaches only the snapshotting verbs and the config verbs; `config gc`, the non-snapshotting reads and the creation paths run the `line-range-arg` migration but drop its "Deprecated … config" warning, which the CLI prints on every command.** Medium.
-  - `crates/zanshin-jj/src/config_cmd.rs` calls `startup(.., None)` for `config gc`; `crates/zanshin-jj/src/config.rs` `load_with` / `load` discard the `Deprecations` (graph.rs, revset.rs, creation.rs, convert.rs reach config through them).
-  - **Follow-up:** thread a warning sink through those paths (or record the descriptions where each already has one) and test one read and one creation path.
+- ~~**`jj.config_deprecated` reaches only the snapshotting verbs and the config verbs; `config gc`, the non-snapshotting reads and the creation paths run the `line-range-arg` migration but drop its "Deprecated … config" warning, which the CLI prints on every command.**~~ — RESOLVED 2026-10-23 (closing run spec-9-9-closing-config-deprecated-every-start-up, commit 9629c9e): `config::check_startup_stack(sink)` records the migrations first in init / clone / `convert_colocated` / `convert_import` (kept on a refusal past the start-up check); `config_gc_list` / `config_gc_delete` return `ConfigOutcome` and their start-up records into it (FFI: both envelopes). The graph/revset reads were not affected — `walk_graph` / `graph_topology` / `eval_revset` run `start_call`, which records once per call (witness `fix::a_deprecated_line_range_arg_warns_once_per_graph_read`); `log_defaults` is the config half of the same `jj log` and stays silent. Medium.
+  - Was: `crates/zanshin-jj/src/config_cmd.rs` called `startup(.., None)` for `config gc`; `check_startup_stack` migrated and dropped the `Deprecations`.
+  - **Follow-up:** done (spec-9-9-closing-config-deprecated-every-start-up).
 - **A configured fix tool that never exits blocks the repo's worker for good — the CLI's user can Ctrl-C, the app's cannot, and `fix` has no cancel.** Medium.
   - `crates/zanshin-jj/src/fix.rs` `Runner::run_tool` waits without a deadline, as the CLI's `run_tool` does.
   - **Follow-up:** give `fix` the network verbs' cancel (Story 9.52: helper + process-group kill), or a per-tool timeout if Ralph wants one.
-- **A fix tool that exits without reading stdin might raise SIGPIPE in the app process, if the Flutter/Dart host does not ignore SIGPIPE (unverified).** High if true.
-  - `crates/zanshin-jj/src/fix.rs` `Runner::run_tool` writes the content with `write_all`; Rust ignores SIGPIPE only in a binary's `main`, a cdylib inherits the host's disposition.
-  - **Follow-up:** check the Dart VM / Flutter macOS engine's SIGPIPE disposition, or run a tool that closes stdin early under `dart test`; if not ignored, set `SIG_IGN` once at FFI init.
+- ~~**A fix tool that exits without reading stdin might raise SIGPIPE in the app process, if the Flutter/Dart host does not ignore SIGPIPE (unverified).**~~ — REJECTED 2026-10-23 (closing run spec-9-9-closing-config-deprecated-every-start-up): probed with `sigaction(SIGPIPE, NULL, &old)` through Dart FFI — the standalone Dart VM (`dart run` / `dart test`), `flutter_tester` (`flutter test`) and the Flutter macOS embedder (a `flutter build macos --debug` app) all report `SIG_IGN` (the Dart VM's `Platform::Initialize`); the cdylib runs only after the host VM is up, so an early-closed stdin yields `EPIPE` (discarded, as in the CLI), never a signal. No code. High if true.
+  - Was: `crates/zanshin-jj/src/fix.rs` `Runner::run_tool` writes the content with `write_all`; Rust ignores SIGPIPE only in a binary's `main`, a cdylib inherits the host's disposition.
+  - **Follow-up:** none.
 
+## Surfaced in the closing run of Story 9.9 (bmad-build-auto, 2026-10-23)
+
+- **`Repo::resolve_workspace_root` (the CLI's `jj workspace root --name`) loads no config stack, so it neither warns `jj.config_deprecated` nor refuses a broken config as the CLI's start-up does.** Low.
+  - `crates/zanshin-jj/src/repo.rs` `resolve_workspace_root` calls `workspace::resolve_root` only; the CLI's `run_internal` (`cli_util.rs:4630-4740` @ v0.46.0) resolves, migrates and warns for every command, `jj workspace root` included. Outside the two items of this closing run.
+  - **Follow-up:** run the start-up stack check there (with a warning channel on its result), as every other command does.
