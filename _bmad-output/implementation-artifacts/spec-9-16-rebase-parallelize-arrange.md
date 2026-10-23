@@ -5,7 +5,7 @@ created: '2026-10-23'
 status: 'done'
 baseline_revision: '7f6d75b29870e91cb8db33e0a2a85ac314d8ed63'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: [multiple-goals, oversized]
@@ -16,6 +16,13 @@ deferred:
       Story 9.16's regeneration removed `GitPushRequest_VT_REVISIONS`, `RepoCloneRequest_VT_SOURCE`, `DropActionsRequest_VT_CHANGE_ID` and `DropActions_VT_ACTIONS` and emitted only part of the new tables' offsets; the baseline header already held a single `_VT_KIND` for every table. No C, Dart or Rust consumer reads these defines today (the FlatBuffers code is generated separately).
     location: >-
       crates/zanshin-ffi/include/zanshin_ffi.h; the cbindgen config of crates/zanshin-ffi
+    severity: low
+  - summary: >-
+      No Dart round trip observes `keepDivergent`: dropping it anywhere along `RepoHandle.rebase` → worker → `zanshinRebase` would still pass the zanshin_core suite.
+    evidence: |-
+      `every_rebase_field_crosses_the_buffer` passes `keepDivergent: true` on a history with no divergent commit, so the flag cannot change the outcome; making a divergent commit needs jj-lib directly (the jj-level `divergent_b` makes an old commit visible again), which the Dart API cannot do. The Rust reader test `the_rebase_reader_carries_every_flag` and the jj-level `a_divergent_twin_already_in_the_destination_is_abandoned_unless_kept` cover the Rust side only. `simplifyParents` got its Dart witness in the follow-up review.
+    location: >-
+      packages/zanshin_core/test/worker/rebase_test.dart (every_rebase_field_crosses_the_buffer); packages/zanshin_core/lib/src/worker/handle.dart:947, isolate.dart:1637 and :3076, ffi/rebase.dart:86
     severity: low
 ---
 
@@ -171,6 +178,43 @@ CLI anchors at `v0.46.0` (copies: `git -C ../jj show v0.46.0:cli/src/commands/<f
   - `[low]` `[patch]` (intent) the "Surfaced in Story 9.16" section holds only a "Nothing deferred" line — replaced by the mirrored deferral at finalisation.
   - `[false]` `[reject]` (intent) sprint-status claims oracle results before the spec records them — the claims are true (oracle run green, 228 tests) and recorded under Verification at finalisation.
 
+### 2026-10-23 — Review pass (follow-up)
+- verdicts: 33 findings — high 0, medium 2, low 21, false 10, maybe-false 0
+- findings:
+  - `[low]` `[reject]` (blind) clap-rule refusals run after the pre-verb snapshot, so a clap-invalid call on a dirty working copy writes a snapshot operation the CLI would not — real (`check_rebase_args` runs inside `with_verb`, `rebase.rs:383`), but it is the house pattern of `squash`/`split` (`squash_split.rs:241-251`, also inside the verb), the GUI builds its requests from valid forms, and the snapshot is one the next call writes anyway; hoisting the check before `with_verb` must also clear `pending_warnings` / the precondition report by hand — added state handling for a case nobody meets in everyday use.
+  - `[low]` `[reject]` (blind) the `-b @` default in a workspace with no working-copy commit answers `jj.jj_lib_error` rather than a user error — real (`op_support.rs:782` `ResolveError::Backend`), but `squash`/`split`'s `resolve_or_wc(None)` answer the same; it needs a workspace forgotten from another one, and a dedicated mapping adds a branch and an error variant to the verb's contract.
+  - `[low]` `[reject]` (blind) arrange skips validating actions when the target set is empty — carried: same claim as the first pass's edge row (CLI answers "No revisions to arrange." before any TUI exists).
+  - `[low]` `[patch]` (blind) no oracle scenario covers divergent-twin abandonment / `--keep-divergent` — carried: same claim as the first pass's "oracle covers only the simple paths" row (divergent abandon stays covered by the jj-level test).
+  - `[low]` `[patch]` (blind) the I1 `-s B -B M` relocation was never compared with the CLI — fixed: oracle scenario `rebase_i1_source_insert_before_merge` (matches the CLI).
+  - `[low]` `[patch]` (blind) repeated flags, plural op descriptions and a multi-`onto` merge are untested against the CLI — fixed: oracle scenarios `rebase_several_revisions` (`-r B -r C`), `rebase_several_sources` (`-s C -s X`), `rebase_onto_two_parents` (`-s C -o B -o X`), all matching the CLI.
+  - `[low]` `[reject]` (blind) the "was `@` abandoned → its replacement" block is repeated in `squash_split.rs`, `rebase.rs`, `arrange.rs` (and a variant in `mutate.rs` abandon) — six lines per verb, each next to its own abandonment source; a shared helper means editing two pre-existing verbs outside this story for no behavioural change.
+  - `[low]` `[patch]` (blind) `rebase_ffi.rs::rebase_moves_a_source_onto_a_target` compared the head description with itself — fixed: asserts `rebase commit <C's full hex> and descendants`.
+  - `[medium]` `[patch]` (blind) the Dart round trip never observes `keepDivergent` / `simplifyParents` — fixed in part: `simplify_parents_crosses_the_buffer` (M = merge(C, B), `-s A -o X` → M's parents `[C]`); `keepDivergent` needs a divergent commit the Dart API cannot make → deferred (mirrored to deferred-work.md).
+  - `[low]` `[reject]` (blind) the FFI / Dart error lists omit `jj.not_a_git_repo` — the new rows match every sibling mutation row (`zanshin_squash`, `docs/ffi-abi.md:583`), and the code needs a colocated workspace without a Git backend, which a real repo cannot be.
+  - `[low]` `[patch]` (blind) `arrange_defaults_to_revsets_arrange`'s `revsets.arrange = "@"` case asserted only `InvalidInput` — fixed: compares the reason "<A> is not among the revisions to arrange".
+  - `[low]` `[defer]` (blind) the regenerated header drops `Table_VT_*` defines — carried: same as the first pass's deferred header row.
+  - `[low]` `[reject]` (blind) the drop_actions/verb agreement test covers linear BASE only — carried: same as the first pass's rejected row.
+  - `[low]` `[patch]` (blind) `abandoned_change_ids` can name a change still visible through a divergent twin — carried: same as the first pass's edge row (documented on `MutationResult`).
+  - `[false]` `[reject]` (blind) the sprint-status / deferred-work entries re-embed their history after "Was:" — that is the files' sibling style (18 "Was:" entries in sprint-status.yaml, 5 in deferred-work.md).
+  - `[low]` `[reject]` (edge) clap-invalid options on a dirty working copy write a snapshot operation — same as the blind clap-snapshot row.
+  - `[low]` `[reject]` (edge) a divergent arrange target cannot be named by an action — carried: same as the first pass's divergent rows.
+  - `[false]` `[reject]` (edge) the spec's `ArrangeActionKind` lacks the code's `Unspecified = 0` — the code is the first pass's deliberate fix (absent kind ≠ `SwapDown`); every client is generated from the `.fbs`, and the only fix would edit this spec.
+  - `[false]` `[reject]` (edge) a missing `change_id` answers `jj.invalid_input`, not an `ffi` code — that is what the siblings do: `envelope.rs:617` `missing_field` is `JJ_INVALID_INPUT`, used by 11 other FFI modules.
+  - `[false]` `[reject]` (edge) on a dirty working copy a refusal or no-op reports a head other than the pre-call one — the CLI snapshots before every non-clap refusal and before "No revisions to rebase." / "Nothing changed." too, so the post-snapshot head is the CLI's; only the clap case differs (rejected above).
+  - `[medium]` `[patch]` (verification-gap) `keepDivergent` / `simplifyParents` not verified Dart→Rust — same as the blind Dart-flags row (fixed in part, `keepDivergent` deferred).
+  - `[low]` `[reject]` (intent) arrange's effects are compared with the port's expectations, never the CLI's — the CLI's arrange is TUI-only (crossterm raw mode) and cannot run headless; the ported CLI unit tests are the available CLI evidence.
+  - `[low]` `[patch]` (intent) the matrix's `-s` onto itself is oracle-checked only as `-r A -o A` — fixed: oracle scenario `rebase_source_onto_itself_refused` (matches the CLI).
+  - `[low]` `[reject]` (intent) "already in place" `-s B -o A` has no oracle scenario — carried: the first pass noted it is the same no-op path as the oracle's `-b A -o B`.
+  - `[low]` `[patch]` (intent) `keep_divergent` has no oracle scenario — carried: same as the blind divergent-oracle row.
+  - `[low]` `[patch]` (intent) `compute_commit_location`'s loop refusal has no rebase witness — fixed: oracle scenario `rebase_insert_loop_refused` (`-r C -A B -B A`, refused as the CLI refuses).
+  - `[false]` `[reject]` (intent) the clap rows use house-style text — the intent prescribes `MutateError::InvalidInput` naming the flags; clap's own text is terminal UX with nothing to compare.
+  - `[false]` `[reject]` (intent) preview/verb agreement is shown for default flags only — `drop_actions` rows carry no flags, so default flags are the only preview there is.
+  - `[false]` `[reject]` (intent) the `-b @` default calls `plan_rebase_branch_ids`, not `plan_rebase_branch` — `plan_rebase_branch` resolves its ids and delegates to `plan_rebase_branch_ids`; same behaviour, and the oracle's `rebase_default_branch*` match the CLI.
+  - `[false]` `[reject]` (intent) `MutationResult` fields are checked in Zanshin only — the CLI has no counterpart; the intent defines them.
+  - `[low]` `[defer]` (intent) the header regeneration removed unrelated defines — carried: same as the deferred header row.
+  - `[false]` `[reject]` (intent) `ChangeIdList` gained a third reader instead of a new table — the spec's Code Map prescribes it; the intent is silent and the reuse has no harm.
+  - `[false]` `[reject]` (intent) I1 bookkeeping — the diff matches the intent's Never list (`drop_actions` unchanged) and records I1 resolved; no divergence.
+
 ## Design Notes
 
 - **Arrange's headless plan = the TUI's key actions.** The CLI's TUI can only swap a commit with its single parent/child and toggle abandon/keep; `c` confirms the resulting `State`. Replaying those actions (by change id instead of cursor position) on a port of `State` reaches exactly the CLI's reachable states and needs no cycle or set validation beyond "the id is a target". A free-form "new parents per commit" plan would accept graphs the CLI can never produce. The facade is `Repo::arrange` (house naming after the CLI verb); it is the epic's "headless `arrange_apply(plan)`".
@@ -198,6 +242,14 @@ Gate rule for this run: no `cargo make test` / `test-full` / `coverage`; targete
 - `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings` -- no issues; `dart format --set-exit-if-changed lib test` -- 0 changed; `dart test test/ffi/rebase_test.dart test/worker/rebase_test.dart test/ffi/warning_test.dart test/worker/squash_split_test.dart test/worker/mutate_test.dart` -- 221 passed (real cdylib).
 - Not run (gate rule): `cargo make test`, `test-full`, `coverage` — the story loop runs the gate once at its end.
 
+**Outcomes of the follow-up review pass (2026-10-23; tests only, no production code changed; full gate not run per the run's gate rule):**
+- `cargo test -p zanshin-parity --test oracle` -- 239 passed (6 new scenarios: `rebase_i1_source_insert_before_merge`, `rebase_source_onto_itself_refused`, `rebase_several_revisions`, `rebase_several_sources`, `rebase_onto_two_parents`, `rebase_insert_loop_refused`; no ledger entry).
+- `cargo test -p zanshin-jj --test it -- parallelize_arrange::` -- 13 passed.
+- `cargo test -p zanshin-ffi --test it -- rebase_ffi::` -- 7 passed.
+- `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity --all-targets -- -D warnings` -- clean. `cargo fmt --all --check` -- clean.
+- `packages/zanshin_core`: `dart format --set-exit-if-changed lib test` -- 0 changed; `dart analyze --fatal-infos --fatal-warnings` -- no issues; `dart test test/ffi/rebase_test.dart test/worker/rebase_test.dart` (test-core env) -- 18 passed (real cdylib).
+- `cargo make codegen` not needed: no FFI or schema change.
+
 ## Auto Run Result
 
 Status: done
@@ -224,3 +276,28 @@ Status: done
 **Follow-up review recommendation: true.** Patched at entry verdict: high 0, medium 5, low 4. Unverified risk: the review patches were checked only by the targeted runs above — per-file coverage of the four new files (`arrange.rs`, `parallelize.rs`, `zanshin-ffi/src/rebase.rs`, and the extern-fn guard for the three new externs) is unmeasured until the story loop's final gate; the never-firing "cycle detected" closure in `arrange.rs` is the line most likely to stay uncovered.
 
 **Residual risks.** Coverage ratchet not run (gate rule). `jj arrange` has no parity oracle (TUI-only in the CLI); its correctness rests on the ported CLI unit tests and jj-level tests. The `every_drop_actions_rebase_row_agrees_with_the_verb` test takes ~30 s.
+
+### Follow-up review pass (2026-10-23)
+
+Status: done
+
+**Summary.** A fresh four-layer review of the finished story (diff since `7f6d75b`). No production code changed; the pass added tests only.
+
+**Files changed.**
+- `crates/zanshin-parity/tests/oracle/scenarios.rs`, `main.rs` — six new rebase scenarios (`-s B -B M` I1 relocation, `-s A -o A`, `-r B -r C`, `-s C -s X`, `-s C -o B -o X`, the `-A`/`-B` loop refusal); scenario count 219 → 225.
+- `crates/zanshin-ffi/tests/it/rebase_ffi.rs` — the success test asserts the exact operation description.
+- `crates/zanshin-jj/tests/it/parallelize_arrange.rs` — the `revsets.arrange = "@"` refusal asserts its reason.
+- `packages/zanshin_core/test/worker/rebase_test.dart` — `simplify_parents_crosses_the_buffer`.
+- This spec and `deferred-work.md` (one mirrored deferral).
+
+**Review findings.** 33 findings: medium 2, low 21, false 10. Patched: the Dart `simplifyParents` round trip (medium; the same root cause came from two layers), the I1 `-B` relocation oracle, the repeated-flag and multi-`onto` oracles, the `-s` onto-itself oracle, the loop-refusal oracle, the vacuous FFI description assertion, and the reason-less arrange assertion (low). Deferred: the Dart `keepDivergent` round trip (low; needs a divergent commit the Dart API cannot make). Rejected:
+- The clap refusals run after the snapshot (two layers). Squash and split do the same; the GUI sends valid forms; a fix needs hand-cleared per-call state.
+- `-b @` with no working-copy commit answers `jj.jj_lib_error`, as squash and split do. It needs a forgotten workspace.
+- The repeated "`@` abandoned" block. Extracting it would touch two pre-existing verbs.
+- `jj.not_a_git_repo` is not listed in the new error rows, as in every sibling row. A real repo cannot reach it.
+- arrange has no CLI comparison. The CLI's arrange is TUI-only.
+- Ten false findings, and the rows carried from the first pass.
+
+**Follow-up review recommendation: false.** This was a follow-up pass and patched no `high` finding. Patched at entry verdict: high 0, medium 1, low 6.
+
+**Residual risks.** The coverage ratchet was not run (gate rule). `keepDivergent`'s Dart half has no observing test (deferred). The clap refusals still follow a snapshot on a dirty working copy; this is rejected as the house pattern.

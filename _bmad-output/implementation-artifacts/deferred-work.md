@@ -1876,3 +1876,9 @@ Spec: spec-9-40-no-change-verbs-write-no-operation.
 - **The cbindgen-generated `zanshin_ffi.h` keeps each bare FlatBuffers `VT_*` offset name only once across all tables, so adding a table silently drops other tables' `Table_VT_*` defines.** Low.
   - Story 9.16's regeneration removed `GitPushRequest_VT_REVISIONS`, `RepoCloneRequest_VT_SOURCE`, `DropActionsRequest_VT_CHANGE_ID` and `DropActions_VT_ACTIONS` and emitted the new tables' offsets only in part (`crates/zanshin-ffi/include/zanshin_ffi.h`); the baseline header already held a single `_VT_KIND`. No C, Dart or Rust consumer reads these defines today.
   - **Follow-up:** exclude the `VT_*` associated consts from cbindgen's export (or prefix them per table) so the header is either complete or silent.
+
+## Surfaced in the follow-up review of Story 9.16 (bmad-build-auto, 2026-10-23)
+
+- **No Dart round trip observes `keepDivergent`, so dropping the flag anywhere along `RepoHandle.rebase` → worker → `zanshinRebase` would still pass the zanshin_core suite.** Low.
+  - `packages/zanshin_core/test/worker/rebase_test.dart` `every_rebase_field_crosses_the_buffer` passes `keepDivergent: true` on a history with no divergent commit; a divergent commit needs jj-lib directly (`crates/zanshin-jj/tests/it/rebase.rs` `divergent_b`), which the Dart API cannot do. The Rust side is covered (`the_rebase_reader_carries_every_flag`, `a_divergent_twin_already_in_the_destination_is_abandoned_unless_kept`); `simplifyParents` got its Dart witness in this pass.
+  - **Follow-up:** a Dart round trip once the Dart API can produce a divergent change (e.g. an op-restore/concurrent-op verb), or none.
