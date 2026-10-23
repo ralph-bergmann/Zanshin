@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 49;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 50;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 50] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 51] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -74,6 +74,7 @@ pub mod zanshin {
             RequestKind::BookmarkMove,
             RequestKind::BookmarkAdvance,
             RequestKind::BookmarkRename,
+            RequestKind::SelectTree,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -156,9 +157,10 @@ pub mod zanshin {
             pub const BookmarkMove: Self = Self(47);
             pub const BookmarkAdvance: Self = Self(48);
             pub const BookmarkRename: Self = Self(49);
+            pub const SelectTree: Self = Self(50);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 49;
+            pub const ENUM_MAX: u8 = 50;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -210,6 +212,7 @@ pub mod zanshin {
                 Self::BookmarkMove,
                 Self::BookmarkAdvance,
                 Self::BookmarkRename,
+                Self::SelectTree,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -264,6 +267,7 @@ pub mod zanshin {
                     Self::BookmarkMove => Some("BookmarkMove"),
                     Self::BookmarkAdvance => Some("BookmarkAdvance"),
                     Self::BookmarkRename => Some("BookmarkRename"),
+                    Self::SelectTree => Some("SelectTree"),
                     _ => None,
                 }
             }
@@ -3359,13 +3363,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 48;
+        pub const ENUM_MAX_PAYLOAD: u8 = 49;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 49] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 50] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -3415,6 +3419,7 @@ pub mod zanshin {
             Payload::DropActions,
             Payload::ChangeActions,
             Payload::FixResult,
+            Payload::SelectedTree,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -3471,9 +3476,10 @@ pub mod zanshin {
             pub const DropActions: Self = Self(46);
             pub const ChangeActions: Self = Self(47);
             pub const FixResult: Self = Self(48);
+            pub const SelectedTree: Self = Self(49);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 48;
+            pub const ENUM_MAX: u8 = 49;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -3524,6 +3530,7 @@ pub mod zanshin {
                 Self::DropActions,
                 Self::ChangeActions,
                 Self::FixResult,
+                Self::SelectedTree,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -3577,6 +3584,7 @@ pub mod zanshin {
                     Self::DropActions => Some("DropActions"),
                     Self::ChangeActions => Some("ChangeActions"),
                     Self::FixResult => Some("FixResult"),
+                    Self::SelectedTree => Some("SelectedTree"),
                     _ => None,
                 }
             }
@@ -4459,6 +4467,807 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum HunkKeyOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One changed section of a file, by where it sits on each side in lines (Story 9.50) — the
+        /// builtin diff editor's sections (`ContentDiff::by_line`). `old_start` / `new_start`: 0-based
+        /// index of the section's first line on the left (parent) / right (revision) side; `old_count` /
+        /// `new_count`: its lines there (an insertion has `old_count` 0, a deletion `new_count` 0). Lines
+        /// are cut like `split_inclusive('\n')`: a last line without `\n` counts.
+        pub struct HunkKey<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for HunkKey<'a> {
+            type Inner = HunkKey<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> HunkKey<'a> {
+            pub const VT_OLD_START: ::flatbuffers::VOffsetT = 4;
+            pub const VT_OLD_COUNT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NEW_START: ::flatbuffers::VOffsetT = 8;
+            pub const VT_NEW_COUNT: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                HunkKey { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args HunkKeyArgs,
+            ) -> ::flatbuffers::WIPOffset<HunkKey<'bldr>> {
+                let mut builder = HunkKeyBuilder::new(_fbb);
+                builder.add_new_count(args.new_count);
+                builder.add_new_start(args.new_start);
+                builder.add_old_count(args.old_count);
+                builder.add_old_start(args.old_start);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn old_start(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(HunkKey::VT_OLD_START, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn old_count(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(HunkKey::VT_OLD_COUNT, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn new_start(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(HunkKey::VT_NEW_START, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn new_count(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(HunkKey::VT_NEW_COUNT, Some(0)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for HunkKey<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u32>("old_start", Self::VT_OLD_START, false)?
+                    .visit_field::<u32>("old_count", Self::VT_OLD_COUNT, false)?
+                    .visit_field::<u32>("new_start", Self::VT_NEW_START, false)?
+                    .visit_field::<u32>("new_count", Self::VT_NEW_COUNT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct HunkKeyArgs {
+            pub old_start: u32,
+            pub old_count: u32,
+            pub new_start: u32,
+            pub new_count: u32,
+        }
+        impl<'a> Default for HunkKeyArgs {
+            #[inline]
+            fn default() -> Self {
+                HunkKeyArgs {
+                    old_start: 0,
+                    old_count: 0,
+                    new_start: 0,
+                    new_count: 0,
+                }
+            }
+        }
+
+        pub struct HunkKeyBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> HunkKeyBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_old_start(&mut self, old_start: u32) {
+                self.fbb_.push_slot::<u32>(HunkKey::VT_OLD_START, old_start, 0);
+            }
+            #[inline]
+            pub fn add_old_count(&mut self, old_count: u32) {
+                self.fbb_.push_slot::<u32>(HunkKey::VT_OLD_COUNT, old_count, 0);
+            }
+            #[inline]
+            pub fn add_new_start(&mut self, new_start: u32) {
+                self.fbb_.push_slot::<u32>(HunkKey::VT_NEW_START, new_start, 0);
+            }
+            #[inline]
+            pub fn add_new_count(&mut self, new_count: u32) {
+                self.fbb_.push_slot::<u32>(HunkKey::VT_NEW_COUNT, new_count, 0);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> HunkKeyBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                HunkKeyBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<HunkKey<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for HunkKey<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("HunkKey");
+                ds.field("old_start", &self.old_start());
+                ds.field("old_count", &self.old_count());
+                ds.field("new_start", &self.new_start());
+                ds.field("new_count", &self.new_count());
+                ds.finish()
+            }
+        }
+        pub enum FileSelectionOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One file of a `SelectTreeRequest` (Story 9.50). `path` is repo-relative in jj's internal
+        /// `/`-separated form (what `ShowEntry.file_changes` reports). `whole` selects the revision's
+        /// value at that path, whatever the change; otherwise `hunks` lists the selected sections (absent
+        /// or empty: nothing of the file). `whole` together with `hunks` is refused (`jj.invalid_input`).
+        pub struct FileSelection<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileSelection<'a> {
+            type Inner = FileSelection<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileSelection<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WHOLE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_HUNKS: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileSelection { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileSelectionArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileSelection<'bldr>> {
+                let mut builder = FileSelectionBuilder::new(_fbb);
+                if let Some(x) = args.hunks {
+                    builder.add_hunks(x);
+                }
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.add_whole(args.whole);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileSelection::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn whole(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(FileSelection::VT_WHOLE, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn hunks(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkKey<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkKey>>,
+                    >>(FileSelection::VT_HUNKS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileSelection<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+     .visit_field::<bool>("whole", Self::VT_WHOLE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<HunkKey>>>>("hunks", Self::VT_HUNKS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct FileSelectionArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub whole: bool,
+            pub hunks: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkKey<'a>>>>,
+            >,
+        }
+        impl<'a> Default for FileSelectionArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileSelectionArgs {
+                    path: None,
+                    whole: false,
+                    hunks: None,
+                }
+            }
+        }
+
+        pub struct FileSelectionBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileSelectionBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileSelection::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_whole(&mut self, whole: bool) {
+                self.fbb_.push_slot::<bool>(FileSelection::VT_WHOLE, whole, false);
+            }
+            #[inline]
+            pub fn add_hunks(
+                &mut self,
+                hunks: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<HunkKey<'b>>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileSelection::VT_HUNKS, hunks);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileSelectionBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileSelectionBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileSelection<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileSelection<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileSelection");
+                ds.field("path", &self.path());
+                ds.field("whole", &self.whole());
+                ds.field("hunks", &self.hunks());
+                ds.finish()
+            }
+        }
+        pub enum SelectTreeRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_select_tree` (Story 9.50) — a hunk selection, applied as the CLI's
+        /// builtin diff editor applies a choice.
+        ///
+        ///   revision           jj reverse-hex change id; absent → `@`
+        ///   left               the revision's parent tree the selection was made against, hex tree ids
+        ///                      in order — `ShowEntry.parent_tree_ids`; stale (`jj.stale_selection`)
+        ///                      when the revision's parent tree is no longer this
+        ///   files              the selected files; a changed file not listed keeps its left side; each
+        ///                      path at most once
+        pub struct SelectTreeRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for SelectTreeRequest<'a> {
+            type Inner = SelectTreeRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> SelectTreeRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_LEFT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_FILES: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                SelectTreeRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SelectTreeRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SelectTreeRequest<'bldr>> {
+                let mut builder = SelectTreeRequestBuilder::new(_fbb);
+                if let Some(x) = args.files {
+                    builder.add_files(x);
+                }
+                if let Some(x) = args.left {
+                    builder.add_left(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(SelectTreeRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SelectTreeRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn left(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SelectTreeRequest::VT_LEFT, None)
+                }
+            }
+            #[inline]
+            pub fn files(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileSelection<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileSelection>>,
+                    >>(SelectTreeRequest::VT_FILES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for SelectTreeRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("left", Self::VT_LEFT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileSelection>>>>("files", Self::VT_FILES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct SelectTreeRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub left:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub files: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileSelection<'a>>>>,
+            >,
+        }
+        impl<'a> Default for SelectTreeRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SelectTreeRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revision: None,
+                    left: None,
+                    files: None,
+                }
+            }
+        }
+
+        pub struct SelectTreeRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SelectTreeRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(SelectTreeRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SelectTreeRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_left(
+                &mut self,
+                left: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SelectTreeRequest::VT_LEFT, left);
+            }
+            #[inline]
+            pub fn add_files(
+                &mut self,
+                files: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<FileSelection<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SelectTreeRequest::VT_FILES, files);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SelectTreeRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SelectTreeRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SelectTreeRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for SelectTreeRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("SelectTreeRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revision", &self.revision());
+                ds.field("left", &self.left());
+                ds.field("files", &self.files());
+                ds.finish()
+            }
+        }
+        pub enum TreeSelectionOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A tree arm's selection (Story 9.50): the tree `zanshin_select_tree` returned (`tree_ids`,
+        /// `labels` exactly as its `SelectedTree` payload carries them) and the `left` it was selected
+        /// against. The verb refuses `jj.stale_selection` when the source's parent tree is no longer
+        /// `left`.
+        pub struct TreeSelection<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for TreeSelection<'a> {
+            type Inner = TreeSelection<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> TreeSelection<'a> {
+            pub const VT_TREE_IDS: ::flatbuffers::VOffsetT = 4;
+            pub const VT_LABELS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_LEFT: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                TreeSelection { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args TreeSelectionArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<TreeSelection<'bldr>> {
+                let mut builder = TreeSelectionBuilder::new(_fbb);
+                if let Some(x) = args.left {
+                    builder.add_left(x);
+                }
+                if let Some(x) = args.labels {
+                    builder.add_labels(x);
+                }
+                if let Some(x) = args.tree_ids {
+                    builder.add_tree_ids(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn tree_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(TreeSelection::VT_TREE_IDS, None)
+                }
+            }
+            #[inline]
+            pub fn labels(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(TreeSelection::VT_LABELS, None)
+                }
+            }
+            #[inline]
+            pub fn left(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(TreeSelection::VT_LEFT, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for TreeSelection<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("tree_ids", Self::VT_TREE_IDS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("labels", Self::VT_LABELS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("left", Self::VT_LEFT, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct TreeSelectionArgs<'a> {
+            pub tree_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub labels:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub left:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for TreeSelectionArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                TreeSelectionArgs {
+                    tree_ids: None,
+                    labels: None,
+                    left: None,
+                }
+            }
+        }
+
+        pub struct TreeSelectionBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> TreeSelectionBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_tree_ids(
+                &mut self,
+                tree_ids: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(TreeSelection::VT_TREE_IDS, tree_ids);
+            }
+            #[inline]
+            pub fn add_labels(
+                &mut self,
+                labels: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(TreeSelection::VT_LABELS, labels);
+            }
+            #[inline]
+            pub fn add_left(
+                &mut self,
+                left: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(TreeSelection::VT_LEFT, left);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> TreeSelectionBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                TreeSelectionBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<TreeSelection<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for TreeSelection<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("TreeSelection");
+                ds.field("tree_ids", &self.tree_ids());
+                ds.field("labels", &self.labels());
+                ds.field("left", &self.left());
+                ds.finish()
+            }
+        }
+        pub enum SourceTreeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One squash source's selected tree (Story 9.50): `source` a jj reverse-hex change id.
+        pub struct SourceTree<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for SourceTree<'a> {
+            type Inner = SourceTree<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> SourceTree<'a> {
+            pub const VT_SOURCE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TREE: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                SourceTree { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SourceTreeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SourceTree<'bldr>> {
+                let mut builder = SourceTreeBuilder::new(_fbb);
+                if let Some(x) = args.tree {
+                    builder.add_tree(x);
+                }
+                if let Some(x) = args.source {
+                    builder.add_source(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn source(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SourceTree::VT_SOURCE, None)
+                }
+            }
+            #[inline]
+            pub fn tree(&self) -> Option<TreeSelection<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<TreeSelection>>(SourceTree::VT_TREE, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for SourceTree<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("source", Self::VT_SOURCE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<TreeSelection>>("tree", Self::VT_TREE, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct SourceTreeArgs<'a> {
+            pub source: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub tree: Option<::flatbuffers::WIPOffset<TreeSelection<'a>>>,
+        }
+        impl<'a> Default for SourceTreeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SourceTreeArgs {
+                    source: None,
+                    tree: None,
+                }
+            }
+        }
+
+        pub struct SourceTreeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SourceTreeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_source(&mut self, source: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SourceTree::VT_SOURCE, source);
+            }
+            #[inline]
+            pub fn add_tree(&mut self, tree: ::flatbuffers::WIPOffset<TreeSelection<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<TreeSelection>>(SourceTree::VT_TREE, tree);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SourceTreeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SourceTreeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SourceTree<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for SourceTree<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("SourceTree");
+                ds.field("source", &self.source());
+                ds.field("tree", &self.tree());
+                ds.finish()
+            }
+        }
         pub enum SquashRequestOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -4481,6 +5290,10 @@ pub mod zanshin {
         ///                      (`jj.invalid_input`, "--message cannot be used with an edited
         ///                      description"; `zanshin_squash_plan` too); `zanshin_squash_plan` otherwise
         ///                      ignores it.
+        ///   trees              the tree arm (Story 9.50): per source, the tree selected against that
+        ///                      source's parent tree; a source without one moves everything. Absent or
+        ///                      empty = the paths arm; non-empty with `paths` refused (`jj.invalid_input`,
+        ///                      before the snapshot), as is an entry naming no source or two naming one.
         pub struct SquashRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -4505,6 +5318,7 @@ pub mod zanshin {
             pub const VT_USE_DESTINATION_MESSAGE: ::flatbuffers::VOffsetT = 16;
             pub const VT_KEEP_EMPTIED: ::flatbuffers::VOffsetT = 18;
             pub const VT_EDITED_DESCRIPTION: ::flatbuffers::VOffsetT = 20;
+            pub const VT_TREES: ::flatbuffers::VOffsetT = 22;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -4516,6 +5330,9 @@ pub mod zanshin {
                 args: &'args SquashRequestArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<SquashRequest<'bldr>> {
                 let mut builder = SquashRequestBuilder::new(_fbb);
+                if let Some(x) = args.trees {
+                    builder.add_trees(x);
+                }
                 if let Some(x) = args.edited_description {
                     builder.add_edited_description(x);
                 }
@@ -4636,6 +5453,17 @@ pub mod zanshin {
                         .get::<::flatbuffers::ForwardsUOffset<&str>>(SquashRequest::VT_EDITED_DESCRIPTION, None)
                 }
             }
+            #[inline]
+            pub fn trees(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SourceTree<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SourceTree>>,
+                    >>(SquashRequest::VT_TREES, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for SquashRequest<'_> {
@@ -4654,6 +5482,7 @@ pub mod zanshin {
      .visit_field::<bool>("use_destination_message", Self::VT_USE_DESTINATION_MESSAGE, false)?
      .visit_field::<bool>("keep_emptied", Self::VT_KEEP_EMPTIED, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("edited_description", Self::VT_EDITED_DESCRIPTION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<SourceTree>>>>("trees", Self::VT_TREES, false)?
      .finish();
                 Ok(())
             }
@@ -4671,6 +5500,9 @@ pub mod zanshin {
             pub use_destination_message: bool,
             pub keep_emptied: bool,
             pub edited_description: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub trees: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<SourceTree<'a>>>>,
+            >,
         }
         impl<'a> Default for SquashRequestArgs<'a> {
             #[inline]
@@ -4685,6 +5517,7 @@ pub mod zanshin {
                     use_destination_message: false,
                     keep_emptied: false,
                     edited_description: None,
+                    trees: None,
                 }
             }
         }
@@ -4754,6 +5587,16 @@ pub mod zanshin {
                 );
             }
             #[inline]
+            pub fn add_trees(
+                &mut self,
+                trees: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<SourceTree<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SquashRequest::VT_TREES, trees);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SquashRequestBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 SquashRequestBuilder {
@@ -4780,6 +5623,7 @@ pub mod zanshin {
                 ds.field("use_destination_message", &self.use_destination_message());
                 ds.field("keep_emptied", &self.keep_emptied());
                 ds.field("edited_description", &self.edited_description());
+                ds.field("trees", &self.trees());
                 ds.finish()
             }
         }
@@ -4790,8 +5634,8 @@ pub mod zanshin {
         /// change ids are jj reverse-hex.
         ///
         ///   revision           absent → `@` (the CLI's default)
-        ///   paths              repo-relative PREFIXES, at least one (no paths = the CLI's interactive
-        ///                      diff editor, refused as `jj.invalid_input`)
+        ///   paths              repo-relative PREFIXES; neither paths nor `tree` (the CLI's interactive
+        ///                      diff editor) is refused as `jj.invalid_input`
         ///   message            the CLI's `-m` for the SELECTED commit; ABSENT = no `-m` (both commits
         ///                      get what the CLI's editor holds saved unchanged: their description with
         ///                      `templates.commit_trailers` added, rendered through
@@ -4808,6 +5652,9 @@ pub mod zanshin {
         ///                      needs both descriptions: the selected and the remaining"); with `message`
         ///                      refused (`jj.invalid_input`, "--message cannot be used with an edited
         ///                      description").
+        ///   tree               the tree arm (Story 9.50): the SELECTED commit's tree, selected against
+        ///                      the target's parent tree; absent = the paths arm; with `paths` refused
+        ///                      (`jj.invalid_input`, before the snapshot)
         pub struct SplitRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -4833,6 +5680,7 @@ pub mod zanshin {
             pub const VT_INSERT_BEFORE: ::flatbuffers::VOffsetT = 18;
             pub const VT_EDITED_SELECTED_DESCRIPTION: ::flatbuffers::VOffsetT = 20;
             pub const VT_EDITED_REMAINING_DESCRIPTION: ::flatbuffers::VOffsetT = 22;
+            pub const VT_TREE: ::flatbuffers::VOffsetT = 24;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -4844,6 +5692,9 @@ pub mod zanshin {
                 args: &'args SplitRequestArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<SplitRequest<'bldr>> {
                 let mut builder = SplitRequestBuilder::new(_fbb);
+                if let Some(x) = args.tree {
+                    builder.add_tree(x);
+                }
                 if let Some(x) = args.edited_remaining_description {
                     builder.add_edited_remaining_description(x);
                 }
@@ -4978,6 +5829,16 @@ pub mod zanshin {
                     )
                 }
             }
+            #[inline]
+            pub fn tree(&self) -> Option<TreeSelection<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<TreeSelection>>(SplitRequest::VT_TREE, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for SplitRequest<'_> {
@@ -4997,6 +5858,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_before", Self::VT_INSERT_BEFORE, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("edited_selected_description", Self::VT_EDITED_SELECTED_DESCRIPTION, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("edited_remaining_description", Self::VT_EDITED_REMAINING_DESCRIPTION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<TreeSelection>>("tree", Self::VT_TREE, false)?
      .finish();
                 Ok(())
             }
@@ -5017,6 +5879,7 @@ pub mod zanshin {
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub edited_selected_description: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub edited_remaining_description: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub tree: Option<::flatbuffers::WIPOffset<TreeSelection<'a>>>,
         }
         impl<'a> Default for SplitRequestArgs<'a> {
             #[inline]
@@ -5032,6 +5895,7 @@ pub mod zanshin {
                     insert_before: None,
                     edited_selected_description: None,
                     edited_remaining_description: None,
+                    tree: None,
                 }
             }
         }
@@ -5120,6 +5984,11 @@ pub mod zanshin {
                 );
             }
             #[inline]
+            pub fn add_tree(&mut self, tree: ::flatbuffers::WIPOffset<TreeSelection<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<TreeSelection>>(SplitRequest::VT_TREE, tree);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SplitRequestBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 SplitRequestBuilder {
@@ -5147,6 +6016,7 @@ pub mod zanshin {
                 ds.field("insert_before", &self.insert_before());
                 ds.field("edited_selected_description", &self.edited_selected_description());
                 ds.field("edited_remaining_description", &self.edited_remaining_description());
+                ds.field("tree", &self.tree());
                 ds.finish()
             }
         }
@@ -6550,6 +7420,9 @@ pub mod zanshin {
         ///   paths              repo-relative PREFIXES of the changes the committed `@` keeps;
         ///                      empty/absent = every change (the CLI's "describe + new")
         ///   message            the CLI's repeatable `-m`, optional on the wire: empty/absent = `-m ""`
+        ///   tree               the tree arm (Story 9.50): the committed `@`'s tree, selected against
+        ///                      `@`'s parent tree; absent = the paths arm; with `paths` refused
+        ///                      (`jj.invalid_input`, before the snapshot)
         pub struct CommitRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -6568,6 +7441,7 @@ pub mod zanshin {
             pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
             pub const VT_PATHS: ::flatbuffers::VOffsetT = 6;
             pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TREE: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -6579,6 +7453,9 @@ pub mod zanshin {
                 args: &'args CommitRequestArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<CommitRequest<'bldr>> {
                 let mut builder = CommitRequestBuilder::new(_fbb);
+                if let Some(x) = args.tree {
+                    builder.add_tree(x);
+                }
                 if let Some(x) = args.message {
                     builder.add_message(x);
                 }
@@ -6622,6 +7499,16 @@ pub mod zanshin {
                     >>(CommitRequest::VT_MESSAGE, None)
                 }
             }
+            #[inline]
+            pub fn tree(&self) -> Option<TreeSelection<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<TreeSelection>>(CommitRequest::VT_TREE, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for CommitRequest<'_> {
@@ -6634,6 +7521,7 @@ pub mod zanshin {
      .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("message", Self::VT_MESSAGE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<TreeSelection>>("tree", Self::VT_TREE, false)?
      .finish();
                 Ok(())
             }
@@ -6644,6 +7532,7 @@ pub mod zanshin {
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub message:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub tree: Option<::flatbuffers::WIPOffset<TreeSelection<'a>>>,
         }
         impl<'a> Default for CommitRequestArgs<'a> {
             #[inline]
@@ -6652,6 +7541,7 @@ pub mod zanshin {
                     kind: RequestKind::Unspecified,
                     paths: None,
                     message: None,
+                    tree: None,
                 }
             }
         }
@@ -6683,6 +7573,11 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(CommitRequest::VT_MESSAGE, message);
             }
             #[inline]
+            pub fn add_tree(&mut self, tree: ::flatbuffers::WIPOffset<TreeSelection<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<TreeSelection>>(CommitRequest::VT_TREE, tree);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> CommitRequestBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 CommitRequestBuilder {
@@ -6703,6 +7598,7 @@ pub mod zanshin {
                 ds.field("kind", &self.kind());
                 ds.field("paths", &self.paths());
                 ds.field("message", &self.message());
+                ds.field("tree", &self.tree());
                 ds.finish()
             }
         }
@@ -25311,6 +26207,11 @@ pub mod zanshin {
         ///
         /// There is no textual patch: line/word-level diffing is Epic 5 (`zanshin-diff`), which will
         /// EXTEND this payload rather than replace it.
+        ///
+        /// `parent_tree_ids` (Story 9.50) is the tree `file_changes` diff against — the commit's merged
+        /// parent tree, what split/squash/commit diff against — as hex tree ids in order (one for a
+        /// resolved tree, an odd number for a conflicted merge of parents): the `left` a hunk selection
+        /// (`zanshin_select_tree`) is made against.
         pub struct ShowEntry<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -25328,6 +26229,7 @@ pub mod zanshin {
         impl<'a> ShowEntry<'a> {
             pub const VT_CHANGE: ::flatbuffers::VOffsetT = 4;
             pub const VT_FILE_CHANGES: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PARENT_TREE_IDS: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -25339,6 +26241,9 @@ pub mod zanshin {
                 args: &'args ShowEntryArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<ShowEntry<'bldr>> {
                 let mut builder = ShowEntryBuilder::new(_fbb);
+                if let Some(x) = args.parent_tree_ids {
+                    builder.add_parent_tree_ids(x);
+                }
                 if let Some(x) = args.file_changes {
                     builder.add_file_changes(x);
                 }
@@ -25371,6 +26276,19 @@ pub mod zanshin {
                     >>(ShowEntry::VT_FILE_CHANGES, None)
                 }
             }
+            #[inline]
+            pub fn parent_tree_ids(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ShowEntry::VT_PARENT_TREE_IDS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for ShowEntry<'_> {
@@ -25380,11 +26298,10 @@ pub mod zanshin {
                 pos: usize,
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<Change>>("change", Self::VT_CHANGE, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileChange>>,
-                    >>("file_changes", Self::VT_FILE_CHANGES, false)?
-                    .finish();
+     .visit_field::<::flatbuffers::ForwardsUOffset<Change>>("change", Self::VT_CHANGE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileChange>>>>("file_changes", Self::VT_FILE_CHANGES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("parent_tree_ids", Self::VT_PARENT_TREE_IDS, false)?
+     .finish();
                 Ok(())
             }
         }
@@ -25393,6 +26310,8 @@ pub mod zanshin {
             pub file_changes: Option<
                 ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileChange<'a>>>>,
             >,
+            pub parent_tree_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
         }
         impl<'a> Default for ShowEntryArgs<'a> {
             #[inline]
@@ -25400,6 +26319,7 @@ pub mod zanshin {
                 ShowEntryArgs {
                     change: None,
                     file_changes: None,
+                    parent_tree_ids: None,
                 }
             }
         }
@@ -25425,6 +26345,16 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(ShowEntry::VT_FILE_CHANGES, file_changes);
             }
             #[inline]
+            pub fn add_parent_tree_ids(
+                &mut self,
+                parent_tree_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ShowEntry::VT_PARENT_TREE_IDS, parent_tree_ids);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ShowEntryBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 ShowEntryBuilder {
@@ -25444,6 +26374,7 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("ShowEntry");
                 ds.field("change", &self.change());
                 ds.field("file_changes", &self.file_changes());
+                ds.field("parent_tree_ids", &self.parent_tree_ids());
                 ds.finish()
             }
         }
@@ -30256,6 +31187,146 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum SelectedTreeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_select_tree`'s answer (Story 9.50): the written tree's ids (hex, in order — one for a
+        /// resolved tree, an odd number for a conflicted one) and its conflict labels (empty = unlabeled,
+        /// else one per id). Pass both, with the request's `left`, as a verb's `TreeSelection`.
+        pub struct SelectedTree<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for SelectedTree<'a> {
+            type Inner = SelectedTree<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> SelectedTree<'a> {
+            pub const VT_TREE_IDS: ::flatbuffers::VOffsetT = 4;
+            pub const VT_LABELS: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                SelectedTree { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SelectedTreeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SelectedTree<'bldr>> {
+                let mut builder = SelectedTreeBuilder::new(_fbb);
+                if let Some(x) = args.labels {
+                    builder.add_labels(x);
+                }
+                if let Some(x) = args.tree_ids {
+                    builder.add_tree_ids(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn tree_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SelectedTree::VT_TREE_IDS, None)
+                }
+            }
+            #[inline]
+            pub fn labels(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SelectedTree::VT_LABELS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for SelectedTree<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("tree_ids", Self::VT_TREE_IDS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("labels", Self::VT_LABELS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct SelectedTreeArgs<'a> {
+            pub tree_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub labels:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for SelectedTreeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SelectedTreeArgs {
+                    tree_ids: None,
+                    labels: None,
+                }
+            }
+        }
+
+        pub struct SelectedTreeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SelectedTreeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_tree_ids(
+                &mut self,
+                tree_ids: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SelectedTree::VT_TREE_IDS, tree_ids);
+            }
+            #[inline]
+            pub fn add_labels(
+                &mut self,
+                labels: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SelectedTree::VT_LABELS, labels);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SelectedTreeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SelectedTreeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SelectedTree<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for SelectedTree<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("SelectedTree");
+                ds.field("tree_ids", &self.tree_ids());
+                ds.field("labels", &self.labels());
+                ds.finish()
+            }
+        }
         pub enum WarningOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -31248,6 +32319,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_selected_tree(&self) -> Option<SelectedTree<'a>> {
+                if self.data_type() == Payload::SelectedTree {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { SelectedTree::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -31309,6 +32395,7 @@ pub mod zanshin {
           Payload::DropActions => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<DropActions>>("Payload::DropActions", pos),
           Payload::ChangeActions => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ChangeActions>>("Payload::ChangeActions", pos),
           Payload::FixResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<FixResult>>("Payload::FixResult", pos),
+          Payload::SelectedTree => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<SelectedTree>>("Payload::SelectedTree", pos),
           _ => Ok(()),
         }
      })?
@@ -31736,6 +32823,13 @@ pub mod zanshin {
                     }
                     Payload::FixResult => {
                         if let Some(x) = self.data_as_fix_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::SelectedTree => {
+                        if let Some(x) = self.data_as_selected_tree() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

@@ -27,6 +27,7 @@ import '../ffi/precondition.dart' show Precondition;
 import '../ffi/push.dart' show GitPushResult;
 import '../ffi/rebase.dart' show ArrangeAction, SwapDownAction, SwapUpAction;
 import '../ffi/remotes.dart' show Remote, RemoteRefChange;
+import '../ffi/select_tree.dart' show FileSelection, SelectedTree, SourceTree, TreeSelection;
 import '../ffi/squash_split.dart' show SplitResult, SquashPlan;
 import '../ffi/status.dart' show WorkingCopyStatus;
 import '../ffi/warning.dart' show WarnedList, ZanshinWarning;
@@ -763,7 +764,7 @@ final class RepoHandle {
   }
 
   /// Move changes from one or more revisions into another (Story 9.15) — the
-  /// CLI's `jj squash`, paths only.
+  /// CLI's `jj squash`.
   ///
   /// Neither [from] nor [into]: [revision] (`null` = `@`) into its ONE parent;
   /// a merge or the root commit refuses. Otherwise the [from] change ids
@@ -785,11 +786,18 @@ final class RepoHandle {
   /// CLI's `--editor` saving exactly that text: written cleaned up, with no
   /// trailers added; with [message] it is refused (`jj.invalid_input`).
   ///
+  /// [trees] (Story 9.50) is the tree arm, in place of the CLI's interactive
+  /// editor, which runs once per source: per source, the tree [selectTree]
+  /// returned with its `left`; a source without one moves everything.
+  /// Non-empty [trees] with [paths] is refused (`jj.invalid_input`); a source
+  /// whose parent tree moved since the selection refuses `jj.stale_selection`.
+  ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
-  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  /// `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
   Future<MutationResult> squash({
     String? revision,
     List<String> from = const [],
@@ -799,6 +807,7 @@ final class RepoHandle {
     bool useDestinationMessage = false,
     bool keepEmptied = false,
     String? editedDescription,
+    List<SourceTree> trees = const [],
   }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -813,6 +822,7 @@ final class RepoHandle {
       useDestinationMessage: useDestinationMessage,
       keepEmptied: keepEmptied,
       editedDescription: editedDescription,
+      trees: trees,
     );
   }
 
@@ -867,6 +877,7 @@ final class RepoHandle {
     List<String>? message,
     bool useDestinationMessage = false,
     bool keepEmptied = false,
+    List<SourceTree> trees = const [],
   }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
@@ -880,14 +891,18 @@ final class RepoHandle {
       message: message,
       useDestinationMessage: useDestinationMessage,
       keepEmptied: keepEmptied,
+      trees: trees,
     );
   }
 
-  /// Split a revision in two (Story 9.15) — the CLI's `jj split`, paths only.
+  /// Split a revision in two (Story 9.15) — the CLI's `jj split`.
   ///
   /// [revision] (`null` = `@`) is split into the changes to [paths] —
-  /// repo-relative PREFIXES, at least one (no paths is the CLI's interactive
-  /// diff editor, refused as `jj.invalid_input`) — and the rest. Plain: the
+  /// repo-relative PREFIXES — or into [tree] (Story 9.50, the tree arm in place
+  /// of the CLI's interactive diff editor: the tree [selectTree] returned with
+  /// its `left`) — and the rest. One of the two is required (neither, or both,
+  /// is `jj.invalid_input`); a target whose parent tree moved since the
+  /// selection refuses `jj.stale_selection`. Plain: the
   /// selected commit keeps the change id, the remaining one becomes its child;
   /// [parallel]: both on the target's parents; [onto] / [insertAfter] /
   /// [insertBefore] (`-o` / `-A` / `-B`, `null` = not given): the selected
@@ -906,9 +921,11 @@ final class RepoHandle {
   /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
-  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  /// `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
   Future<SplitResult> split({
-    required List<String> paths,
+    List<String> paths = const [],
+    TreeSelection? tree,
     String? revision,
     List<String>? message,
     bool parallel = false,
@@ -932,6 +949,7 @@ final class RepoHandle {
       insertBefore: insertBefore,
       editedSelectedDescription: editedSelectedDescription,
       editedRemainingDescription: editedRemainingDescription,
+      tree: tree,
     );
   }
 
@@ -1160,16 +1178,52 @@ final class RepoHandle {
   /// [paths] that select no change of `@` warn `jj.commit_paths_unmatched`; the
   /// commit runs anyway.
   ///
+  /// [tree] (Story 9.50) is the tree arm, in place of the CLI's
+  /// `--interactive`/`--tool`: the committed `@` gets the tree [selectTree]
+  /// returned, the new `@` everything else — an edit to `@` made after the
+  /// selection included. With [paths] it is refused (`jj.invalid_input`); when
+  /// `@`'s parent tree moved since the selection, `jj.stale_selection`.
+  ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
   /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.no_working_copy`, `jj.invalid_input`, `jj.config_error`,
-  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
-  Future<MutationResult> commit({required List<String> message, List<String> paths = const []}) {
+  /// `jj.no_working_copy`, `jj.invalid_input`, `jj.stale_selection`,
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> commit({required List<String> message, List<String> paths = const [], TreeSelection? tree}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
-    return _worker.commit(_handleId, message: message, paths: paths);
+    return _worker.commit(_handleId, message: message, paths: paths, tree: tree);
+  }
+
+  /// Write the tree a hunk selection yields (Story 9.50) — the CLI's builtin
+  /// diff editor applying the same choice — for the tree arms of [commit],
+  /// [split] and [squash].
+  ///
+  /// The diff is [revision]'s (`null` = `@`) parent tree against its own tree.
+  /// [left] is that parent tree as the selection saw it
+  /// (`ShowEntry.parentTreeIds` from [show]). Each of [files] is selected whole
+  /// (`FileSelection.whole`) or by its sections (`FileSelection.hunks`, keys as
+  /// the builtin diff editor cuts them); only a regular, same-mode UTF-8 text
+  /// without NUL bytes on both sides has sections — added/deleted files, mode
+  /// changes, binary files and conflicts are whole only. A changed file not
+  /// listed, and every unselected section, keeps its left side.
+  ///
+  /// Pass the result as `TreeSelection.of(tree, left: left)`. Writes no
+  /// operation of its own. A change to the revision's own content after the
+  /// selection is not stale.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
+  /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.stale_selection` — the
+  /// revision's parent tree is no longer [left], or a key is not a current
+  /// section — `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<SelectedTree> selectTree({required List<String> left, required List<FileSelection> files, String? revision}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.selectTree(_handleId, revision: revision, left: left, files: files);
   }
 
   /// List the entries of a revision's tree (Story 9.4) — the CLI's

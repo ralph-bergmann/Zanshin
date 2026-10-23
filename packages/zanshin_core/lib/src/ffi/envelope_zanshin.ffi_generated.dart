@@ -82,7 +82,8 @@ enum RequestKind {
   BookmarkList(46),
   BookmarkMove(47),
   BookmarkAdvance(48),
-  BookmarkRename(49);
+  BookmarkRename(49),
+  SelectTree(50);
 
   final int value;
   const RequestKind(this.value);
@@ -189,6 +190,8 @@ enum RequestKind {
         return RequestKind.BookmarkAdvance;
       case 49:
         return RequestKind.BookmarkRename;
+      case 50:
+        return RequestKind.SelectTree;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -197,7 +200,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 49;
+  static const int maxValue = 50;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -1605,7 +1608,8 @@ enum PayloadTypeId {
   GitFetchRemotes(45),
   DropActions(46),
   ChangeActions(47),
-  FixResult(48);
+  FixResult(48),
+  SelectedTree(49);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -1710,6 +1714,8 @@ enum PayloadTypeId {
         return PayloadTypeId.ChangeActions;
       case 48:
         return PayloadTypeId.FixResult;
+      case 49:
+        return PayloadTypeId.SelectedTree;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -1718,7 +1724,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 48;
+  static const int maxValue = 49;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -2224,6 +2230,508 @@ class AbsorbRequestObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One changed section of a file, by where it sits on each side in lines (Story 9.50) — the
+///  builtin diff editor's sections (`ContentDiff::by_line`). `old_start` / `new_start`: 0-based
+///  index of the section's first line on the left (parent) / right (revision) side; `old_count` /
+///  `new_count`: its lines there (an insertion has `old_count` 0, a deletion `new_count` 0). Lines
+///  are cut like `split_inclusive('\n')`: a last line without `\n` counts.
+class HunkKey {
+  HunkKey._(this._bc, this._bcOffset);
+  factory HunkKey(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<HunkKey> reader = _HunkKeyReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get oldStart => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  int get oldCount => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  int get newStart => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  int get newCount => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 10, 0);
+
+  @override
+  String toString() {
+    return 'HunkKey{oldStart: ${oldStart}, oldCount: ${oldCount}, newStart: ${newStart}, newCount: ${newCount}}';
+  }
+}
+
+class _HunkKeyReader extends fb.TableReader<HunkKey> {
+  const _HunkKeyReader();
+
+  @override
+  HunkKey createObject(fb.BufferContext bc, int offset) => HunkKey._(bc, offset);
+}
+
+class HunkKeyBuilder {
+  HunkKeyBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addOldStart(int? oldStart) {
+    fbBuilder.addUint32(0, oldStart);
+    return fbBuilder.offset;
+  }
+
+  int addOldCount(int? oldCount) {
+    fbBuilder.addUint32(1, oldCount);
+    return fbBuilder.offset;
+  }
+
+  int addNewStart(int? newStart) {
+    fbBuilder.addUint32(2, newStart);
+    return fbBuilder.offset;
+  }
+
+  int addNewCount(int? newCount) {
+    fbBuilder.addUint32(3, newCount);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class HunkKeyObjectBuilder extends fb.ObjectBuilder {
+  final int? _oldStart;
+  final int? _oldCount;
+  final int? _newStart;
+  final int? _newCount;
+
+  HunkKeyObjectBuilder({
+    int? oldStart,
+    int? oldCount,
+    int? newStart,
+    int? newCount,
+  }) : _oldStart = oldStart,
+       _oldCount = oldCount,
+       _newStart = newStart,
+       _newCount = newCount;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    fbBuilder.startTable(4);
+    fbBuilder.addUint32(0, _oldStart);
+    fbBuilder.addUint32(1, _oldCount);
+    fbBuilder.addUint32(2, _newStart);
+    fbBuilder.addUint32(3, _newCount);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One file of a `SelectTreeRequest` (Story 9.50). `path` is repo-relative in jj's internal
+///  `/`-separated form (what `ShowEntry.file_changes` reports). `whole` selects the revision's
+///  value at that path, whatever the change; otherwise `hunks` lists the selected sections (absent
+///  or empty: nothing of the file). `whole` together with `hunks` is refused (`jj.invalid_input`).
+class FileSelection {
+  FileSelection._(this._bc, this._bcOffset);
+  factory FileSelection(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileSelection> reader = _FileSelectionReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  bool get whole => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
+  List<HunkKey>? get hunks => const fb.ListReader<HunkKey>(HunkKey.reader).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'FileSelection{path: ${path}, whole: ${whole}, hunks: ${hunks}}';
+  }
+}
+
+class _FileSelectionReader extends fb.TableReader<FileSelection> {
+  const _FileSelectionReader();
+
+  @override
+  FileSelection createObject(fb.BufferContext bc, int offset) => FileSelection._(bc, offset);
+}
+
+class FileSelectionBuilder {
+  FileSelectionBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWhole(bool? whole) {
+    fbBuilder.addBool(1, whole);
+    return fbBuilder.offset;
+  }
+
+  int addHunksOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileSelectionObjectBuilder extends fb.ObjectBuilder {
+  final String? _path;
+  final bool? _whole;
+  final List<HunkKeyObjectBuilder>? _hunks;
+
+  FileSelectionObjectBuilder({
+    String? path,
+    bool? whole,
+    List<HunkKeyObjectBuilder>? hunks,
+  }) : _path = path,
+       _whole = whole,
+       _hunks = hunks;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    final int? hunksOffset = _hunks == null
+        ? null
+        : fbBuilder.writeList(_hunks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, pathOffset);
+    fbBuilder.addBool(1, _whole);
+    fbBuilder.addOffset(2, hunksOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_select_tree` (Story 9.50) — a hunk selection, applied as the CLI's
+///  builtin diff editor applies a choice.
+///
+///    revision           jj reverse-hex change id; absent → `@`
+///    left               the revision's parent tree the selection was made against, hex tree ids
+///                       in order — `ShowEntry.parent_tree_ids`; stale (`jj.stale_selection`)
+///                       when the revision's parent tree is no longer this
+///    files              the selected files; a changed file not listed keeps its left side; each
+///                       path at most once
+class SelectTreeRequest {
+  SelectTreeRequest._(this._bc, this._bcOffset);
+  factory SelectTreeRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<SelectTreeRequest> reader = _SelectTreeRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get left => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  List<FileSelection>? get files =>
+      const fb.ListReader<FileSelection>(FileSelection.reader).vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'SelectTreeRequest{kind: ${kind}, revision: ${revision}, left: ${left}, files: ${files}}';
+  }
+}
+
+class _SelectTreeRequestReader extends fb.TableReader<SelectTreeRequest> {
+  const _SelectTreeRequestReader();
+
+  @override
+  SelectTreeRequest createObject(fb.BufferContext bc, int offset) => SelectTreeRequest._(bc, offset);
+}
+
+class SelectTreeRequestBuilder {
+  SelectTreeRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLeftOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFilesOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class SelectTreeRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _revision;
+  final List<String>? _left;
+  final List<FileSelectionObjectBuilder>? _files;
+
+  SelectTreeRequestObjectBuilder({
+    RequestKind? kind,
+    String? revision,
+    List<String>? left,
+    List<FileSelectionObjectBuilder>? files,
+  }) : _kind = kind,
+       _revision = revision,
+       _left = left,
+       _files = files;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    final int? leftOffset = _left == null ? null : fbBuilder.writeList(_left!.map(fbBuilder.writeString).toList());
+    final int? filesOffset = _files == null
+        ? null
+        : fbBuilder.writeList(_files!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionOffset);
+    fbBuilder.addOffset(2, leftOffset);
+    fbBuilder.addOffset(3, filesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A tree arm's selection (Story 9.50): the tree `zanshin_select_tree` returned (`tree_ids`,
+///  `labels` exactly as its `SelectedTree` payload carries them) and the `left` it was selected
+///  against. The verb refuses `jj.stale_selection` when the source's parent tree is no longer
+///  `left`.
+class TreeSelection {
+  TreeSelection._(this._bc, this._bcOffset);
+  factory TreeSelection(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<TreeSelection> reader = _TreeSelectionReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<String>? get treeIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get labels => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get left => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'TreeSelection{treeIds: ${treeIds}, labels: ${labels}, left: ${left}}';
+  }
+}
+
+class _TreeSelectionReader extends fb.TableReader<TreeSelection> {
+  const _TreeSelectionReader();
+
+  @override
+  TreeSelection createObject(fb.BufferContext bc, int offset) => TreeSelection._(bc, offset);
+}
+
+class TreeSelectionBuilder {
+  TreeSelectionBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addTreeIdsOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLabelsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLeftOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class TreeSelectionObjectBuilder extends fb.ObjectBuilder {
+  final List<String>? _treeIds;
+  final List<String>? _labels;
+  final List<String>? _left;
+
+  TreeSelectionObjectBuilder({
+    List<String>? treeIds,
+    List<String>? labels,
+    List<String>? left,
+  }) : _treeIds = treeIds,
+       _labels = labels,
+       _left = left;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? treeIdsOffset = _treeIds == null
+        ? null
+        : fbBuilder.writeList(_treeIds!.map(fbBuilder.writeString).toList());
+    final int? labelsOffset = _labels == null
+        ? null
+        : fbBuilder.writeList(_labels!.map(fbBuilder.writeString).toList());
+    final int? leftOffset = _left == null ? null : fbBuilder.writeList(_left!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, treeIdsOffset);
+    fbBuilder.addOffset(1, labelsOffset);
+    fbBuilder.addOffset(2, leftOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One squash source's selected tree (Story 9.50): `source` a jj reverse-hex change id.
+class SourceTree {
+  SourceTree._(this._bc, this._bcOffset);
+  factory SourceTree(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<SourceTree> reader = _SourceTreeReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get source => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  TreeSelection? get tree => TreeSelection.reader.vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'SourceTree{source: ${source}, tree: ${tree}}';
+  }
+}
+
+class _SourceTreeReader extends fb.TableReader<SourceTree> {
+  const _SourceTreeReader();
+
+  @override
+  SourceTree createObject(fb.BufferContext bc, int offset) => SourceTree._(bc, offset);
+}
+
+class SourceTreeBuilder {
+  SourceTreeBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addSourceOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTreeOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class SourceTreeObjectBuilder extends fb.ObjectBuilder {
+  final String? _source;
+  final TreeSelectionObjectBuilder? _tree;
+
+  SourceTreeObjectBuilder({
+    String? source,
+    TreeSelectionObjectBuilder? tree,
+  }) : _source = source,
+       _tree = tree;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? sourceOffset = _source == null ? null : fbBuilder.writeString(_source!);
+    final int? treeOffset = _tree?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, sourceOffset);
+    fbBuilder.addOffset(1, treeOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Arguments of `zanshin_squash` AND `zanshin_squash_plan` (Story 9.15) — the CLI's `jj squash`
 ///  flags, one field each; change ids are jj reverse-hex.
 ///
@@ -2243,6 +2751,10 @@ class AbsorbRequestObjectBuilder extends fb.ObjectBuilder {
 ///                       (`jj.invalid_input`, "--message cannot be used with an edited
 ///                       description"; `zanshin_squash_plan` too); `zanshin_squash_plan` otherwise
 ///                       ignores it.
+///    trees              the tree arm (Story 9.50): per source, the tree selected against that
+///                       source's parent tree; a source without one moves everything. Absent or
+///                       empty = the paths arm; non-empty with `paths` refused (`jj.invalid_input`,
+///                       before the snapshot), as is an entry naming no source or two naming one.
 class SquashRequest {
   SquashRequest._(this._bc, this._bcOffset);
   factory SquashRequest(List<int> bytes) {
@@ -2264,10 +2776,12 @@ class SquashRequest {
   bool get useDestinationMessage => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
   bool get keepEmptied => const fb.BoolReader().vTableGet(_bc, _bcOffset, 18, false);
   String? get editedDescription => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 20);
+  List<SourceTree>? get trees =>
+      const fb.ListReader<SourceTree>(SourceTree.reader).vTableGetNullable(_bc, _bcOffset, 22);
 
   @override
   String toString() {
-    return 'SquashRequest{kind: ${kind}, revision: ${revision}, from: ${from}, into: ${into}, paths: ${paths}, message: ${message}, useDestinationMessage: ${useDestinationMessage}, keepEmptied: ${keepEmptied}, editedDescription: ${editedDescription}}';
+    return 'SquashRequest{kind: ${kind}, revision: ${revision}, from: ${from}, into: ${into}, paths: ${paths}, message: ${message}, useDestinationMessage: ${useDestinationMessage}, keepEmptied: ${keepEmptied}, editedDescription: ${editedDescription}, trees: ${trees}}';
   }
 }
 
@@ -2284,7 +2798,7 @@ class SquashRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(9);
+    fbBuilder.startTable(10);
   }
 
   int addKind(RequestKind? kind) {
@@ -2332,6 +2846,11 @@ class SquashRequestBuilder {
     return fbBuilder.offset;
   }
 
+  int addTreesOffset(int? offset) {
+    fbBuilder.addOffset(9, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -2347,6 +2866,7 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
   final bool? _useDestinationMessage;
   final bool? _keepEmptied;
   final String? _editedDescription;
+  final List<SourceTreeObjectBuilder>? _trees;
 
   SquashRequestObjectBuilder({
     RequestKind? kind,
@@ -2358,6 +2878,7 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
     bool? useDestinationMessage,
     bool? keepEmptied,
     String? editedDescription,
+    List<SourceTreeObjectBuilder>? trees,
   }) : _kind = kind,
        _revision = revision,
        _from = from,
@@ -2366,7 +2887,8 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
        _message = message,
        _useDestinationMessage = useDestinationMessage,
        _keepEmptied = keepEmptied,
-       _editedDescription = editedDescription;
+       _editedDescription = editedDescription,
+       _trees = trees;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -2379,7 +2901,10 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
         ? null
         : fbBuilder.writeList(_message!.map(fbBuilder.writeString).toList());
     final int? editedDescriptionOffset = _editedDescription == null ? null : fbBuilder.writeString(_editedDescription!);
-    fbBuilder.startTable(9);
+    final int? treesOffset = _trees == null
+        ? null
+        : fbBuilder.writeList(_trees!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(10);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, revisionOffset);
     fbBuilder.addOffset(2, fromOffset);
@@ -2389,6 +2914,7 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addBool(6, _useDestinationMessage);
     fbBuilder.addBool(7, _keepEmptied);
     fbBuilder.addOffset(8, editedDescriptionOffset);
+    fbBuilder.addOffset(9, treesOffset);
     return fbBuilder.endTable();
   }
 
@@ -2405,8 +2931,8 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
 ///  change ids are jj reverse-hex.
 ///
 ///    revision           absent → `@` (the CLI's default)
-///    paths              repo-relative PREFIXES, at least one (no paths = the CLI's interactive
-///                       diff editor, refused as `jj.invalid_input`)
+///    paths              repo-relative PREFIXES; neither paths nor `tree` (the CLI's interactive
+///                       diff editor) is refused as `jj.invalid_input`
 ///    message            the CLI's `-m` for the SELECTED commit; ABSENT = no `-m` (both commits
 ///                       get what the CLI's editor holds saved unchanged: their description with
 ///                       `templates.commit_trailers` added, rendered through
@@ -2423,6 +2949,9 @@ class SquashRequestObjectBuilder extends fb.ObjectBuilder {
 ///                       needs both descriptions: the selected and the remaining"); with `message`
 ///                       refused (`jj.invalid_input`, "--message cannot be used with an edited
 ///                       description").
+///    tree               the tree arm (Story 9.50): the SELECTED commit's tree, selected against
+///                       the target's parent tree; absent = the paths arm; with `paths` refused
+///                       (`jj.invalid_input`, before the snapshot)
 class SplitRequest {
   SplitRequest._(this._bc, this._bcOffset);
   factory SplitRequest(List<int> bytes) {
@@ -2446,10 +2975,11 @@ class SplitRequest {
       const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 18);
   String? get editedSelectedDescription => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 20);
   String? get editedRemainingDescription => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 22);
+  TreeSelection? get tree => TreeSelection.reader.vTableGetNullable(_bc, _bcOffset, 24);
 
   @override
   String toString() {
-    return 'SplitRequest{kind: ${kind}, revision: ${revision}, paths: ${paths}, message: ${message}, parallel: ${parallel}, onto: ${onto}, insertAfter: ${insertAfter}, insertBefore: ${insertBefore}, editedSelectedDescription: ${editedSelectedDescription}, editedRemainingDescription: ${editedRemainingDescription}}';
+    return 'SplitRequest{kind: ${kind}, revision: ${revision}, paths: ${paths}, message: ${message}, parallel: ${parallel}, onto: ${onto}, insertAfter: ${insertAfter}, insertBefore: ${insertBefore}, editedSelectedDescription: ${editedSelectedDescription}, editedRemainingDescription: ${editedRemainingDescription}, tree: ${tree}}';
   }
 }
 
@@ -2466,7 +2996,7 @@ class SplitRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(10);
+    fbBuilder.startTable(11);
   }
 
   int addKind(RequestKind? kind) {
@@ -2519,6 +3049,11 @@ class SplitRequestBuilder {
     return fbBuilder.offset;
   }
 
+  int addTreeOffset(int? offset) {
+    fbBuilder.addOffset(10, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -2535,6 +3070,7 @@ class SplitRequestObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _insertBefore;
   final String? _editedSelectedDescription;
   final String? _editedRemainingDescription;
+  final TreeSelectionObjectBuilder? _tree;
 
   SplitRequestObjectBuilder({
     RequestKind? kind,
@@ -2547,6 +3083,7 @@ class SplitRequestObjectBuilder extends fb.ObjectBuilder {
     List<String>? insertBefore,
     String? editedSelectedDescription,
     String? editedRemainingDescription,
+    TreeSelectionObjectBuilder? tree,
   }) : _kind = kind,
        _revision = revision,
        _paths = paths,
@@ -2556,7 +3093,8 @@ class SplitRequestObjectBuilder extends fb.ObjectBuilder {
        _insertAfter = insertAfter,
        _insertBefore = insertBefore,
        _editedSelectedDescription = editedSelectedDescription,
-       _editedRemainingDescription = editedRemainingDescription;
+       _editedRemainingDescription = editedRemainingDescription,
+       _tree = tree;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -2579,7 +3117,8 @@ class SplitRequestObjectBuilder extends fb.ObjectBuilder {
     final int? editedRemainingDescriptionOffset = _editedRemainingDescription == null
         ? null
         : fbBuilder.writeString(_editedRemainingDescription!);
-    fbBuilder.startTable(10);
+    final int? treeOffset = _tree?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(11);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, revisionOffset);
     fbBuilder.addOffset(2, pathsOffset);
@@ -2590,6 +3129,7 @@ class SplitRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(7, insertBeforeOffset);
     fbBuilder.addOffset(8, editedSelectedDescriptionOffset);
     fbBuilder.addOffset(9, editedRemainingDescriptionOffset);
+    fbBuilder.addOffset(10, treeOffset);
     return fbBuilder.endTable();
   }
 
@@ -3401,6 +3941,9 @@ class FixRequestObjectBuilder extends fb.ObjectBuilder {
 ///    paths              repo-relative PREFIXES of the changes the committed `@` keeps;
 ///                       empty/absent = every change (the CLI's "describe + new")
 ///    message            the CLI's repeatable `-m`, optional on the wire: empty/absent = `-m ""`
+///    tree               the tree arm (Story 9.50): the committed `@`'s tree, selected against
+///                       `@`'s parent tree; absent = the paths arm; with `paths` refused
+///                       (`jj.invalid_input`, before the snapshot)
 class CommitRequest {
   CommitRequest._(this._bc, this._bcOffset);
   factory CommitRequest(List<int> bytes) {
@@ -3416,10 +3959,11 @@ class CommitRequest {
   RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
   List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
   List<String>? get message => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  TreeSelection? get tree => TreeSelection.reader.vTableGetNullable(_bc, _bcOffset, 10);
 
   @override
   String toString() {
-    return 'CommitRequest{kind: ${kind}, paths: ${paths}, message: ${message}}';
+    return 'CommitRequest{kind: ${kind}, paths: ${paths}, message: ${message}, tree: ${tree}}';
   }
 }
 
@@ -3436,7 +3980,7 @@ class CommitRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(4);
   }
 
   int addKind(RequestKind? kind) {
@@ -3454,6 +3998,11 @@ class CommitRequestBuilder {
     return fbBuilder.offset;
   }
 
+  int addTreeOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -3463,14 +4012,17 @@ class CommitRequestObjectBuilder extends fb.ObjectBuilder {
   final RequestKind? _kind;
   final List<String>? _paths;
   final List<String>? _message;
+  final TreeSelectionObjectBuilder? _tree;
 
   CommitRequestObjectBuilder({
     RequestKind? kind,
     List<String>? paths,
     List<String>? message,
+    TreeSelectionObjectBuilder? tree,
   }) : _kind = kind,
        _paths = paths,
-       _message = message;
+       _message = message,
+       _tree = tree;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -3479,10 +4031,12 @@ class CommitRequestObjectBuilder extends fb.ObjectBuilder {
     final int? messageOffset = _message == null
         ? null
         : fbBuilder.writeList(_message!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(3);
+    final int? treeOffset = _tree?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(4);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, pathsOffset);
     fbBuilder.addOffset(2, messageOffset);
+    fbBuilder.addOffset(3, treeOffset);
     return fbBuilder.endTable();
   }
 
@@ -14506,6 +15060,11 @@ class GitExportResultObjectBuilder extends fb.ObjectBuilder {
 ///
 ///  There is no textual patch: line/word-level diffing is Epic 5 (`zanshin-diff`), which will
 ///  EXTEND this payload rather than replace it.
+///
+///  `parent_tree_ids` (Story 9.50) is the tree `file_changes` diff against — the commit's merged
+///  parent tree, what split/squash/commit diff against — as hex tree ids in order (one for a
+///  resolved tree, an odd number for a conflicted merge of parents): the `left` a hunk selection
+///  (`zanshin_select_tree`) is made against.
 class ShowEntry {
   ShowEntry._(this._bc, this._bcOffset);
   factory ShowEntry(List<int> bytes) {
@@ -14521,10 +15080,12 @@ class ShowEntry {
   Change? get change => Change.reader.vTableGetNullable(_bc, _bcOffset, 4);
   List<FileChange>? get fileChanges =>
       const fb.ListReader<FileChange>(FileChange.reader).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get parentTreeIds =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
 
   @override
   String toString() {
-    return 'ShowEntry{change: ${change}, fileChanges: ${fileChanges}}';
+    return 'ShowEntry{change: ${change}, fileChanges: ${fileChanges}, parentTreeIds: ${parentTreeIds}}';
   }
 }
 
@@ -14541,7 +15102,7 @@ class ShowEntryBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(2);
+    fbBuilder.startTable(3);
   }
 
   int addChangeOffset(int? offset) {
@@ -14554,6 +15115,11 @@ class ShowEntryBuilder {
     return fbBuilder.offset;
   }
 
+  int addParentTreeIdsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -14562,12 +15128,15 @@ class ShowEntryBuilder {
 class ShowEntryObjectBuilder extends fb.ObjectBuilder {
   final ChangeObjectBuilder? _change;
   final List<FileChangeObjectBuilder>? _fileChanges;
+  final List<String>? _parentTreeIds;
 
   ShowEntryObjectBuilder({
     ChangeObjectBuilder? change,
     List<FileChangeObjectBuilder>? fileChanges,
+    List<String>? parentTreeIds,
   }) : _change = change,
-       _fileChanges = fileChanges;
+       _fileChanges = fileChanges,
+       _parentTreeIds = parentTreeIds;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -14576,9 +15145,13 @@ class ShowEntryObjectBuilder extends fb.ObjectBuilder {
     final int? fileChangesOffset = _fileChanges == null
         ? null
         : fbBuilder.writeList(_fileChanges!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    fbBuilder.startTable(2);
+    final int? parentTreeIdsOffset = _parentTreeIds == null
+        ? null
+        : fbBuilder.writeList(_parentTreeIds!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
     fbBuilder.addOffset(0, changeOffset);
     fbBuilder.addOffset(1, fileChangesOffset);
+    fbBuilder.addOffset(2, parentTreeIdsOffset);
     return fbBuilder.endTable();
   }
 
@@ -17534,6 +18107,95 @@ class CommitContentsObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  `zanshin_select_tree`'s answer (Story 9.50): the written tree's ids (hex, in order — one for a
+///  resolved tree, an odd number for a conflicted one) and its conflict labels (empty = unlabeled,
+///  else one per id). Pass both, with the request's `left`, as a verb's `TreeSelection`.
+class SelectedTree {
+  SelectedTree._(this._bc, this._bcOffset);
+  factory SelectedTree(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<SelectedTree> reader = _SelectedTreeReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<String>? get treeIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get labels => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'SelectedTree{treeIds: ${treeIds}, labels: ${labels}}';
+  }
+}
+
+class _SelectedTreeReader extends fb.TableReader<SelectedTree> {
+  const _SelectedTreeReader();
+
+  @override
+  SelectedTree createObject(fb.BufferContext bc, int offset) => SelectedTree._(bc, offset);
+}
+
+class SelectedTreeBuilder {
+  SelectedTreeBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addTreeIdsOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLabelsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class SelectedTreeObjectBuilder extends fb.ObjectBuilder {
+  final List<String>? _treeIds;
+  final List<String>? _labels;
+
+  SelectedTreeObjectBuilder({
+    List<String>? treeIds,
+    List<String>? labels,
+  }) : _treeIds = treeIds,
+       _labels = labels;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? treeIdsOffset = _treeIds == null
+        ? null
+        : fbBuilder.writeList(_treeIds!.map(fbBuilder.writeString).toList());
+    final int? labelsOffset = _labels == null
+        ? null
+        : fbBuilder.writeList(_labels!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, treeIdsOffset);
+    fbBuilder.addOffset(1, labelsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  One warning the call produced (Story 9.32) — the jj CLI's `ui.warning_*` output as a coded
 ///  fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
 ///  Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
@@ -17765,6 +18427,8 @@ class Envelope {
         return ChangeActions.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 48:
         return FixResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 49:
+        return SelectedTree.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

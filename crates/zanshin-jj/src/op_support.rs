@@ -32,8 +32,8 @@
 //! `op_metadata.workspace_name` the way a CLI-written one does (Epic 9 follow-up L). Story
 //! 9.15 wired §2 (`split -o/-A/-B`), §3's description ports and §4's
 //! [`SelectedTree::into_commit_selection`] into `squash`/`split`; Story 9.51 wired
-//! [`apply_trailers`] through [`crate::template`]. Still tested-but-unwired: §4's
-//! GUI-selected-tree arm [`SelectedTree::from_tree_id`] (Story 9.50 decides its contract).
+//! [`apply_trailers`] through [`crate::template`]; Story 9.50 wired §4's GUI-selected-tree arm
+//! [`SelectedTree::from_tree_id`] into the tree arms of `commit`/`split`/`squash`.
 //!
 //! The CLI's two `panic!`s in `compute_commit_location` become
 //! [`MutateError::InvalidInput`]: a library must not abort the process on a caller-reachable
@@ -43,11 +43,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use futures::TryStreamExt as _;
-use jj_lib::backend::{CommitId, TreeId};
+use jj_lib::backend::CommitId;
 use jj_lib::commit::Commit;
-use jj_lib::conflict_labels::ConflictLabels;
 use jj_lib::matchers::Matcher;
-use jj_lib::merge::{Diff, Merge};
+use jj_lib::merge::Diff;
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::ref_name::WorkspaceName;
@@ -557,34 +556,23 @@ impl SelectedTree {
         Ok(Self(tree))
     }
 
-    /// Re-hydrates a tree the GUI selected and already wrote, named by its hex id.
+    /// Re-hydrates a tree [`crate::Repo::select_tree`] wrote (Story 9.50) — its tree ids and
+    /// conflict labels, so a conflicted selection keeps its labels.
     ///
-    /// The id is verified against the store: `MergedTree::new` never touches the backend,
-    /// so an unknown id would otherwise only surface much later, inside an unrelated call.
+    /// Every id is verified against the store: `MergedTree::new` never touches the backend, so an
+    /// unknown id would otherwise only surface much later, inside an unrelated call.
     ///
     /// # Errors
     ///
-    /// - [`MutateError::InvalidInput`] — `tree_id_hex` is not valid hex.
+    /// - [`MutateError::InvalidInput`] — an even or zero id count, an id that is not hex, or a
+    ///   label count that is neither zero nor the id count.
     /// - [`MutateError::Backend`] — no such tree in the store, or a backend read failure.
-    // WHY `allow(dead_code)`: Story 9.3 wired `from_paths` (restore), Story 9.15
-    // `into_commit_selection` (squash/split, paths arm only) and Story 9.49 reuses `from_paths`
-    // (commit, paths arm only), but NOT this arm — the tree arm of squash/split/commit/diffedit
-    // (its contract, `left` and its staleness refusal) is Story 9.50's to decide. It is the
-    // only item of this impl still unused, so the attribute sits
-    // here rather than on the struct/impl: a blanket allow that no longer shields anything
-    // would let a genuinely dead item pass unnoticed. `expect(dead_code)` would be wrong — the
-    // lint does not fire in the test build, where the module's own `#[cfg(test)]` tests call
-    // it, and an unfulfilled expectation is itself a warning.
-    #[allow(dead_code)]
-    pub(crate) fn from_tree_id(store: &Arc<Store>, tree_id_hex: &str) -> Result<Self, MutateError> {
-        let tree_id = TreeId::try_from_hex(tree_id_hex)
-            .ok_or_else(|| MutateError::invalid(format!("malformed tree id: {tree_id_hex}")))?;
-        pollster::block_on(store.get_tree(RepoPathBuf::root(), &tree_id)).map_err(be)?;
-        Ok(Self(MergedTree::new(
-            store.clone(),
-            Merge::resolved(tree_id),
-            ConflictLabels::unlabeled(),
-        )))
+    pub(crate) fn from_tree_id(store: &Arc<Store>, tree: &crate::SelectedTreeId) -> Result<Self, MutateError> {
+        let (tree_ids, labels) = tree.parse()?;
+        for tree_id in &tree_ids {
+            pollster::block_on(store.get_tree(RepoPathBuf::root(), tree_id)).map_err(be)?;
+        }
+        Ok(Self(MergedTree::new(store.clone(), tree_ids, labels)))
     }
 
     /// The selected tree.
@@ -1476,6 +1464,13 @@ mod tests {
         assert_eq!(selected.tree().tree_ids(), before.tree_ids());
     }
 
+    fn selected_tree(ids: &[&str], labels: &[&str]) -> crate::SelectedTreeId {
+        crate::SelectedTreeId {
+            tree_ids: ids.iter().map(|&id| id.to_owned()).collect(),
+            labels: labels.iter().map(|&label| label.to_owned()).collect(),
+        }
+    }
+
     #[test]
     fn from_tree_id_rehydrates_a_known_tree_and_assembles_a_selection() {
         pin_env();
@@ -1489,7 +1484,8 @@ mod tests {
             .expect("fixture trees are conflict-free")
             .hex();
 
-        let selected = SelectedTree::from_tree_id(store, &hex).expect("a written tree id re-hydrates");
+        let selected =
+            SelectedTree::from_tree_id(store, &selected_tree(&[&hex], &[])).expect("a written tree id re-hydrates");
         assert_eq!(selected.tree().tree_ids(), after.tree_ids());
 
         let id = commit_by_description(&readonly, "Commit 1");
@@ -1505,7 +1501,8 @@ mod tests {
         let fx = extract_fixture("tiny-3-commits").unwrap();
         let readonly = immutable_at_head(&fx.path).readonly;
 
-        let err = SelectedTree::from_tree_id(readonly.store(), "nothex").expect_err("not valid hex");
+        let err =
+            SelectedTree::from_tree_id(readonly.store(), &selected_tree(&["nothex"], &[])).expect_err("not valid hex");
         assert!(
             matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("malformed tree id")),
             "unexpected error: {err:?}"
@@ -1518,9 +1515,47 @@ mod tests {
         let fx = extract_fixture("tiny-3-commits").unwrap();
         let readonly = immutable_at_head(&fx.path).readonly;
 
-        let err = SelectedTree::from_tree_id(readonly.store(), &"ab".repeat(20))
+        let err = SelectedTree::from_tree_id(readonly.store(), &selected_tree(&[&"ab".repeat(20)], &[]))
             .expect_err("well-formed hex, but no such tree");
         assert!(matches!(err, MutateError::Backend(_)), "unexpected error: {err:?}");
+    }
+
+    /// An even id count, no id at all, or a label count that is neither zero nor the id count
+    /// refuses before the store is read.
+    #[test]
+    fn from_tree_id_refuses_a_malformed_shape() {
+        pin_env();
+        let fx = extract_fixture("tiny-3-commits").unwrap();
+        let readonly = immutable_at_head(&fx.path).readonly;
+        let id = "ab".repeat(20);
+        for (ids, labels) in [
+            (vec![id.as_str(), id.as_str()], vec![]),
+            (vec![], vec![]),
+            (vec![id.as_str()], vec!["one", "two"]),
+        ] {
+            let err = SelectedTree::from_tree_id(readonly.store(), &selected_tree(&ids, &labels))
+                .expect_err("malformed shape");
+            assert!(
+                matches!(err, MutateError::InvalidInput { .. }),
+                "unexpected error: {err:?}"
+            );
+        }
+    }
+
+    /// A conflicted tree re-hydrates with its labels.
+    #[test]
+    fn from_tree_id_keeps_a_conflicted_trees_labels() {
+        pin_env();
+        let fx = extract_fixture("tiny-3-commits").unwrap();
+        let readonly = immutable_at_head(&fx.path).readonly;
+        let (before, after) = commit_trees(&readonly);
+        let hex = |tree: &MergedTree| tree.tree_ids().as_resolved().expect("resolved").hex();
+        let ids = [hex(&after), hex(&before), hex(&after)];
+        let ids: Vec<&str> = ids.iter().map(String::as_str).collect();
+        let selected = SelectedTree::from_tree_id(readonly.store(), &selected_tree(&ids, &["a", "base", "b"]))
+            .expect("three known trees");
+        assert_eq!(selected.tree().tree_ids().num_sides(), 2);
+        assert_eq!(selected.tree().labels().as_slice(), ["a", "base", "b"]);
     }
 
     // ── §6 transaction opening ────────────────────────────────────────────────

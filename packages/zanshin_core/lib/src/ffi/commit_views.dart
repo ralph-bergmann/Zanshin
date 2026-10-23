@@ -211,7 +211,7 @@ Uint8List interdiffRequestBytes({
 
 /// One revision as `show` presents it (mirrors `zanshin_jj::ShowEntry`).
 final class ShowEntry {
-  const ShowEntry({required this.change, required this.fileChanges});
+  const ShowEntry({required this.change, required this.fileChanges, this.parentTreeIds = const []});
 
   /// Full metadata for the revision — the same [Change] `getChange` returns for
   /// this commit.
@@ -222,6 +222,13 @@ final class ShowEntry {
   /// commit it is empty. `renamed`/`copied` entries CAN appear here, unlike in
   /// [zanshinInterdiff]'s result.
   final List<FileChange> fileChanges;
+
+  /// The tree [fileChanges] diff against — the merged parent tree that `split`,
+  /// `squash` and `commit` diff against too — as hex tree ids in order (one for
+  /// a resolved tree, several for a conflicted merge of parents). It is the
+  /// `left` a hunk selection is made against (`RepoHandle.selectTree`, Story
+  /// 9.50).
+  final List<String> parentTreeIds;
 }
 
 /// What `interdiff` reports (mirrors `zanshin_jj::InterdiffView`).
@@ -308,6 +315,7 @@ WarnedList<ShowEntry> _decodeShowViewEnvelope(Uint8List bytes) {
 ShowEntry _mapShowEntry(fbs.ShowEntry e) => ShowEntry(
   change: _requireChange(e.change, 'ShowEntry'),
   fileChanges: e.fileChanges?.map(mapFileChangeTable).toList() ?? const [],
+  parentTreeIds: e.parentTreeIds ?? const [],
 );
 
 /// Decode an `EvologView` `Envelope` buffer into a `List<EvologEntry>` that also

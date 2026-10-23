@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'request_bytes.dart';
+import 'select_tree.dart' show TreeSelection, rejectTreeSelectionNuls, treeSelectionBuilder;
 
 // This file owns the Dart half of Story 9.49's `commit`: the request builder
 // and the adapter. It answers the shared `MutationResult`, decoded through
@@ -17,14 +18,22 @@ import 'request_bytes.dart';
 ///
 /// [message] is the repeatable `-m` (required; an empty list is `-m ""`).
 /// [paths] are repo-relative PREFIXES of the changes the committed `@` keeps
-/// (empty = every change).
-Uint8List zanshinCommit(int rawHandle, {required List<String> message, List<String> paths = const []}) {
+/// (empty = every change). [tree] (Story 9.50) is the tree arm — the committed
+/// `@`'s tree from `selectTree` with its `left`; with [paths] it is refused.
+Uint8List zanshinCommit(
+  int rawHandle, {
+  required List<String> message,
+  List<String> paths = const [],
+  TreeSelection? tree,
+}) {
   rejectInteriorNuls(paths, 'paths');
   rejectInteriorNuls(message, 'message');
+  rejectTreeSelectionNuls(tree);
   final Uint8List request = fbs.CommitRequestObjectBuilder(
     kind: fbs.RequestKind.Commit,
     paths: paths,
     message: message,
+    tree: treeSelectionBuilder(tree),
   ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_commit(rawHandle, ptr, len));
 }

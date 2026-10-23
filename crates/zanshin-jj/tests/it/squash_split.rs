@@ -847,7 +847,7 @@ fn split_warns_when_everything_or_nothing_is_selected_and_still_splits() {
 fn split_refusals_write_nothing() {
     let mut fx = base();
     let err = assert_refused_without_an_operation(&mut fx, |repo| repo.split(&split_c(&[], None)).map(drop));
-    assert!(matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("at least one path")));
+    assert!(matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("paths or a selected tree")));
 
     let parallel_and_location = SplitOptions {
         parallel: true,

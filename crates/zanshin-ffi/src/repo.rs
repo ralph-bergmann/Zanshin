@@ -31,8 +31,8 @@ use crate::envelope::{
     JJ_GIT_REPO_EXISTS, JJ_GIT_WORKTREE_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
     JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY, JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED,
     JJ_PUSH_COMMIT_REJECTED, JJ_PUSH_REF_REFUSED, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND,
-    JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, JJ_UNDO_CROSS_WORKSPACE, JJ_WORKSPACE_EXISTS,
-    WATCHER_IO_ERROR,
+    JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, JJ_STALE_SELECTION, JJ_UNDO_CROSS_WORKSPACE,
+    JJ_WORKSPACE_EXISTS, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -163,7 +163,7 @@ fn map_repo_err_code(e: RepoError) -> FfiErrorObj {
 /// `jj.path_not_ignored` and to the registered `jj.no_working_copy`. Story 9.23's
 /// `zanshin_workspace_add` adds three: `jj.workspace_exists`, `jj.destination_not_empty` and
 /// `jj.git_worktree_failed`. Story 9.20's `zanshin_git_push` adds `jj.push_ref_refused` and
-/// `jj.push_commit_rejected`.
+/// `jj.push_commit_rejected`. Story 9.50's hunk selection adds `jj.stale_selection`.
 pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
     let hints = e.hints();
     let (code, context) = match e {
@@ -196,6 +196,7 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         MutateError::GitWorktree(reason) => (JJ_GIT_WORKTREE_FAILED, Some(reason)),
         MutateError::PushRefRefused { message, .. } => (JJ_PUSH_REF_REFUSED, Some(message)),
         MutateError::PushCommitRejected { message, .. } => (JJ_PUSH_COMMIT_REJECTED, Some(message)),
+        MutateError::StaleSelection { reason } => (JJ_STALE_SELECTION, Some(reason)),
         MutateError::Backend(reason) => (JJ_JJ_LIB_ERROR, Some(reason)),
     };
     FfiErrorObj {
@@ -2153,6 +2154,16 @@ mod tests {
         });
         assert_eq!(e.code, JJ_PATH_NOT_IGNORED);
         assert_eq!(e.context.unwrap(), "d.txt\ntarget/file2");
+    }
+
+    #[test]
+    fn map_mutate_err_stale_selection_maps_to_jj_stale_selection() {
+        let e = map_mutate_err(MutateError::StaleSelection {
+            reason: "moved".to_owned(),
+        });
+        assert_eq!(e.code, JJ_STALE_SELECTION);
+        assert_eq!(e.context.as_deref(), Some("moved"));
+        assert!(e.hints.is_empty());
     }
 
     #[test]

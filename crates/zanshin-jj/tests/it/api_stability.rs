@@ -360,6 +360,7 @@ fn sample_show_entry() -> zanshin_jj::ShowEntry {
             path: std::path::PathBuf::new(),
             kind: zanshin_jj::ChangeKind::Added,
         }],
+        parent_tree_ids: vec![String::new()],
     }
 }
 
@@ -1186,6 +1187,10 @@ fn squash_split_surface_resolves() {
         use_destination_message: false,
         keep_emptied: true,
         edited_description: Some("e".to_owned()),
+        trees: vec![zanshin_jj::SourceTree {
+            source: id("f"),
+            tree: sample_tree_selection(),
+        }],
     };
     assert_eq!(squash.clone(), squash);
     assert_eq!(zanshin_jj::SquashOptions::default().message, None);
@@ -1203,6 +1208,7 @@ fn squash_split_surface_resolves() {
         insert_before: Some(vec![id("b")]),
         edited_selected_description: Some("s".to_owned()),
         edited_remaining_description: Some("r".to_owned()),
+        tree: Some(sample_tree_selection()),
     };
     assert_eq!(split.clone(), split);
     let result = zanshin_jj::SplitResult {
@@ -1466,15 +1472,72 @@ fn commit_surface_resolves() {
     let options = zanshin_jj::CommitOptions {
         paths: vec!["p".to_owned()],
         message: vec!["m".to_owned()],
+        tree: Some(sample_tree_selection()),
     };
     assert_eq!(options.clone(), options);
     let default = zanshin_jj::CommitOptions::default();
-    assert!(default.paths.is_empty() && default.message.is_empty());
+    assert!(default.paths.is_empty() && default.message.is_empty() && default.tree.is_none());
     _ = zanshin_jj::Repo::commit
         as fn(
             &mut zanshin_jj::Repo,
             &zanshin_jj::CommitOptions,
         ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+}
+
+// select_tree (Story 9.50)
+type _HunkKey = zanshin_jj::HunkKey;
+type _FileChoice = zanshin_jj::FileChoice;
+type _FileSelection = zanshin_jj::FileSelection;
+type _SelectTreeOptions = zanshin_jj::SelectTreeOptions;
+type _SelectedTreeId = zanshin_jj::SelectedTreeId;
+type _TreeSelection = zanshin_jj::TreeSelection;
+type _SourceTree = zanshin_jj::SourceTree;
+
+/// Names every `TreeSelection` / `SelectedTreeId` field by its public path (Story 9.50).
+fn sample_tree_selection() -> zanshin_jj::TreeSelection {
+    zanshin_jj::TreeSelection {
+        tree: zanshin_jj::SelectedTreeId {
+            tree_ids: vec!["t".to_owned()],
+            labels: Vec::new(),
+        },
+        left: vec!["l".to_owned()],
+    }
+}
+
+/// The Story 9.50 surface: the selection types named field by field, the stale refusal and
+/// `Repo::select_tree` as a `fn` pointer.
+#[test]
+fn select_tree_surface_resolves() {
+    let key = zanshin_jj::HunkKey {
+        old_start: 0,
+        old_count: 1,
+        new_start: 0,
+        new_count: 2,
+    };
+    let options = zanshin_jj::SelectTreeOptions {
+        revision: Some(zanshin_jj::ChangeId("r".to_owned())),
+        left: vec!["l".to_owned()],
+        files: vec![
+            zanshin_jj::FileSelection {
+                path: "a".to_owned(),
+                choice: zanshin_jj::FileChoice::Whole,
+            },
+            zanshin_jj::FileSelection {
+                path: "b".to_owned(),
+                choice: zanshin_jj::FileChoice::Hunks(vec![key]),
+            },
+        ],
+    };
+    assert_eq!(options.clone(), options);
+    assert_eq!(zanshin_jj::SelectTreeOptions::default().revision, None);
+    assert_eq!(sample_tree_selection().clone(), sample_tree_selection());
+    let stale = zanshin_jj::MutateError::StaleSelection { reason: "r".to_owned() };
+    assert!(stale.hints().is_empty());
+    _ = zanshin_jj::Repo::select_tree
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::SelectTreeOptions,
+        ) -> Result<zanshin_jj::SelectedTreeId, zanshin_jj::MutateError>;
 }
 
 // snapshot precondition (Story 9.26)

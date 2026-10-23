@@ -6,9 +6,14 @@
 //! `cli/src/description_util.rs` @ v0.46.0. Terminal text is not ported; the two
 //! `ui.warning_default` lines of `split` become the call's warnings.
 //!
-//! Both verbs select by PATHS only: each entry is a repo-relative PREFIX through
+//! Both verbs select by PATHS — each entry is a repo-relative PREFIX through
 //! [`crate::op_support::build_matcher`] (an empty list is everything, `""` the root), exactly as
-//! for `restore` — the fileset DSL is terminal input language (ADR-0003).
+//! for `restore`; the fileset DSL is terminal input language (ADR-0003) — or by the TREE ARM
+//! (Story 9.50), in place of the CLI's `--interactive`/`--tool`: a tree the GUI selected
+//! ([`crate::Repo::select_tree`]) against the source's parent tree, refused as stale when that
+//! parent tree is no longer its `left`. `squash` takes one tree per source, as the CLI runs its
+//! editor once per source; a source without one gets what the editor saved unchanged gives —
+//! everything.
 //!
 //! **No `-m` where the CLI opens its editor = the editor saved unchanged.** A squash whose
 //! abandoned sources and destination carry two or more non-empty descriptions (and no
@@ -30,9 +35,9 @@
 //!
 //! Divergences, all deliberate:
 //!
-//! - no interactive/tree arm, no `--tool`, no `--editor` flag (the edited text above is the
-//!   editor's result): the tree arm (a GUI-selected tree and its `left`) is Story 9.50's; a
-//!   `split` with NO paths — the CLI's diff-editor default — refuses
+//! - no `--interactive`, no `--tool`, no `--editor` flag: the diff editor's result is the tree
+//!   arm, the description editor's the edited text above; paths together with a tree refuse; a
+//!   `split` with neither paths nor a tree — the CLI's diff-editor default — refuses
 //!   [`MutateError::InvalidInput`];
 //! - no `squash -o`/`-A`/`-B` (experimental at v0.46.0: the squashed changes go into a NEW
 //!   commit there);
@@ -71,6 +76,7 @@ use crate::op_support::{
     cleanup_description_lines, combine_messages_for_editing, compute_commit_location, join_message_paragraphs,
     resolve_ordered, start_repo_transaction, try_combine_messages, SelectedTree,
 };
+use crate::select_tree::{check_left, check_tree_selection, PATHS_WITH_TREE};
 use crate::snapshot::VerbContext;
 use crate::template::{write_hidden, Templates};
 use crate::warning::{WarningKind, Warnings};
@@ -106,6 +112,11 @@ pub struct SquashOptions {
     /// `message`; allowed with `use_destination_message` (the CLI allows `-u --editor`).
     /// [`crate::Repo::squash_plan`] refuses it with `message` too, and otherwise ignores it.
     pub edited_description: Option<String>,
+    /// The tree arm (Story 9.50): per source, the tree selected in the GUI against that source's
+    /// parent tree — the CLI's `--interactive`/`--tool` result, one per source. A source without
+    /// an entry moves everything (the editor saved unchanged). Non-empty conflicts with `paths`;
+    /// an entry naming no source, or two naming one, refuses.
+    pub trees: Vec<crate::SourceTree>,
 }
 
 /// What [`crate::Repo::squash`] would write as the squashed revision's description when it
@@ -158,6 +169,10 @@ pub struct SplitOptions {
     /// The text the user edited the REMAINING commit's description to — see
     /// `edited_selected_description`.
     pub edited_remaining_description: Option<String>,
+    /// The tree arm (Story 9.50): the SELECTED commit's tree, selected in the GUI against the
+    /// target's parent tree — the CLI's `--interactive`/`--tool` result (its no-paths default).
+    /// Conflicts with `paths`.
+    pub tree: Option<crate::TreeSelection>,
 }
 
 /// What [`crate::Repo::split`] did (Story 9.15).
@@ -238,6 +253,12 @@ pub(crate) fn check_squash_args(options: &SquashOptions) -> Result<(), MutateErr
     if options.message.is_some() && options.edited_description.is_some() {
         return Err(MutateError::invalid(EDITED_WITH_MESSAGE.to_owned()));
     }
+    if !options.trees.is_empty() && !options.paths.is_empty() {
+        return Err(MutateError::invalid(PATHS_WITH_TREE.to_owned()));
+    }
+    for entry in &options.trees {
+        check_tree_selection(&entry.tree)?;
+    }
     Ok(())
 }
 
@@ -277,6 +298,7 @@ pub(crate) fn plan_squash(
         SquashedDescription::Combine
     };
 
+    let trees = source_trees(tx, &sources, &options.trees)?;
     // `select_diff` (`squash.rs:485-533`): the left side is each source's PARENT tree.
     let mut selections: Vec<CommitWithSelection> = Vec::with_capacity(sources.len());
     for source in &sources {
@@ -286,7 +308,12 @@ pub(crate) fn plan_squash(
             pollster::block_on(source.parents_conflict_label()).map_err(be)?,
             source.conflict_label(),
         );
-        let selected = SelectedTree::from_paths(Diff::new(&parent_tree, &source_tree), labels, matcher.as_ref())?;
+        let selected = if let Some(selection) = trees.get(source.id()) {
+            check_left(&parent_tree, &selection.left)?;
+            SelectedTree::from_tree_id(tx.repo().store(), &selection.tree)?
+        } else {
+            SelectedTree::from_paths(Diff::new(&parent_tree, &source_tree), labels, matcher.as_ref())?
+        };
         selections.push(selected.into_commit_selection(source.clone(), parent_tree));
     }
     let selected_trees: Vec<&MergedTree> = selections.iter().map(|s| &s.selected_tree).collect();
@@ -312,6 +339,32 @@ pub(crate) fn plan_squash(
         selections,
         squashed,
     })
+}
+
+/// The tree arm's entries by source commit (Story 9.50) — each entry's `source` resolved, refused
+/// unless it is one of `sources` and named once.
+fn source_trees<'a>(
+    tx: &Transaction,
+    sources: &[Commit],
+    entries: &'a [crate::SourceTree],
+) -> Result<HashMap<JjCommitId, &'a crate::TreeSelection>, MutateError> {
+    let mut trees = HashMap::with_capacity(entries.len());
+    for entry in entries {
+        let commit = resolve_commit(tx.repo(), &entry.source)?;
+        if !sources.iter().any(|source| source.id() == commit.id()) {
+            return Err(MutateError::invalid(format!(
+                "a selected tree names {}, which is not a source of the squash",
+                entry.source.0
+            )));
+        }
+        if trees.insert(commit.id().clone(), &entry.tree).is_some() {
+            return Err(MutateError::invalid(format!(
+                "two selected trees name the same source: {}",
+                entry.source.0
+            )));
+        }
+    }
+    Ok(trees)
 }
 
 /// The sources (oldest first) and the destination — `squash.rs:197-248` @ v0.46.0.
@@ -615,7 +668,13 @@ pub(crate) fn check_split_args(options: &SplitOptions) -> Result<(), MutateError
             "--onto cannot be combined with -A/--insert-after or -B/--insert-before".to_owned(),
         ));
     }
-    Ok(())
+    let Some(selection) = &options.tree else {
+        return Ok(());
+    };
+    if !options.paths.is_empty() {
+        return Err(MutateError::invalid(PATHS_WITH_TREE.to_owned()));
+    }
+    check_tree_selection(selection)
 }
 
 /// Everything before `split` rewrites anything (Story 9.15): the target,
@@ -664,18 +723,22 @@ pub(crate) fn prepare_split(
         &[&parent_tree, &target_tree],
     )?;
 
-    if options.paths.is_empty() {
+    let selected = if let Some(selection) = &options.tree {
+        check_left(&parent_tree, &selection.left)?;
+        SelectedTree::from_tree_id(tx.repo().store(), &selection.tree)?
+    } else if options.paths.is_empty() {
         return Err(MutateError::invalid(
-            "split needs at least one path: the interactive selection the CLI opens without paths is not \
-                     supported"
+            "split needs paths or a selected tree: the CLI's interactive default without paths is the \
+                     selected tree (select_tree)"
                 .to_owned(),
         ));
-    }
-    let labels = Diff::new(
-        pollster::block_on(target.parents_conflict_label()).map_err(be)?,
-        target.conflict_label(),
-    );
-    let selected = SelectedTree::from_paths(Diff::new(&parent_tree, &target_tree), labels, matcher.as_ref())?;
+    } else {
+        let labels = Diff::new(
+            pollster::block_on(target.parents_conflict_label()).map_err(be)?,
+            target.conflict_label(),
+        );
+        SelectedTree::from_paths(Diff::new(&parent_tree, &target_tree), labels, matcher.as_ref())?
+    };
     let target = selected.into_commit_selection(target, parent_tree);
     if target.is_full_selection() {
         ctx.warnings.push(

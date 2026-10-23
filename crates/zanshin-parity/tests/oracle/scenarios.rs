@@ -16,12 +16,18 @@ use zanshin_jj::CommitOptions;
 use zanshin_jj::ConfigScope;
 use zanshin_jj::ConfigTarget;
 use zanshin_jj::DuplicateOptions;
+use zanshin_jj::FileChoice;
+use zanshin_jj::FileSelection;
 use zanshin_jj::FixOptions;
+use zanshin_jj::HunkKey;
 use zanshin_jj::MetaeditOptions;
 use zanshin_jj::RebaseOptions;
+use zanshin_jj::SelectTreeOptions;
+use zanshin_jj::SourceTree;
 use zanshin_jj::SparseInheritance;
 use zanshin_jj::SplitOptions;
 use zanshin_jj::SquashOptions;
+use zanshin_jj::TreeSelection;
 
 use crate::compare::config_outcome;
 use crate::compare::zanshin_outcome;
@@ -507,9 +513,61 @@ fn commit_outcome(repo: &mut zanshin_jj::Repo, paths: &[&str], message: &[&str])
     let options = CommitOptions {
         paths: paths.iter().map(|p| (*p).to_owned()).collect(),
         message: message.iter().map(|m| (*m).to_owned()).collect(),
+        tree: None,
     };
     let result = repo.commit(&options);
     zanshin_outcome(repo, &result)
+}
+
+// ── Story 9.50: hunk selection → selected tree ─────────────────────────────────────
+
+/// `@` (D, on C) changes `f.txt` from `a b c d e` to `A b C d E` — three sections — and the repo
+/// config names a diff editor `zs` that writes what choosing sections 1 and 3 gives,
+/// `A b c d E`, into the right side (Story 9.50). The CLI runs it through `--tool zs`; Zanshin
+/// selects the same sections through `select_tree`.
+const SECTIONS_TOOL: &[Step] = &[
+    Step::Write("f.txt", "a\nb\nc\nd\ne\n"),
+    Step::Jj(&["new", "-m", "D"]),
+    Step::Write("f.txt", "A\nb\nC\nd\nE\n"),
+    Step::Jj(&["util", "snapshot"]),
+    Step::Jj(&["config", "set", "--repo", "merge-tools.zs.program", "\"sh\""]),
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "merge-tools.zs.edit-args",
+        r#"["-c", 'printf "A\nb\nc\nd\nE\n" > "$1/f.txt"', "sh", "$right"]"#,
+    ]),
+];
+
+/// `@`'s sections 1 and 3 of `f.txt` through `select_tree` (Story 9.50): `@`'s change id and the
+/// tree arm's selection, its `left` read from `show`.
+fn sections_one_and_three(repo: &mut zanshin_jj::Repo) -> (zanshin_jj::ChangeId, TreeSelection) {
+    let entry = repo.show(None, None).expect("show @").swap_remove(0);
+    let key = |start| HunkKey {
+        old_start: start,
+        old_count: 1,
+        new_start: start,
+        new_count: 1,
+    };
+    let tree = repo
+        .select_tree(&SelectTreeOptions {
+            revision: None,
+            left: entry.parent_tree_ids.clone(),
+            files: vec![FileSelection {
+                path: "f.txt".to_owned(),
+                choice: FileChoice::Hunks(vec![key(0), key(4)]),
+            }],
+        })
+        .expect("select sections 1 and 3");
+    let _ = repo.take_warnings();
+    (
+        entry.change.id,
+        TreeSelection {
+            tree,
+            left: entry.parent_tree_ids,
+        },
+    )
 }
 
 /// `experimental-advance-branches.enabled-branches = ["*"]` in the repo config (Story 9.49).
@@ -1646,6 +1704,56 @@ pub fn scenarios() -> Vec<Scenario> {
                 "commit_advance_not_a_list",
                 |repo, _, _| commit_outcome(repo, &[], &["first"]),
                 |_| args(&["commit", "-m", "first"]),
+            )
+        },
+        // ── Story 9.50: the tree arms against the CLI's `--tool` ─────────────────────
+        Scenario {
+            setup: SECTIONS_TOOL,
+            ..simple(
+                "split_tool_sections_1_3",
+                |repo, _, _| {
+                    let (_, tree) = sections_one_and_three(repo);
+                    let options = SplitOptions {
+                        tree: Some(tree),
+                        message: Some(vec!["first".to_owned()]),
+                        ..SplitOptions::default()
+                    };
+                    split_outcome(repo, &options)
+                },
+                |_| args(&["split", "--tool", "zs", "-m", "first"]),
+            )
+        },
+        Scenario {
+            setup: SECTIONS_TOOL,
+            ..simple(
+                "commit_tool_sections_1_3",
+                |repo, _, _| {
+                    let (_, tree) = sections_one_and_three(repo);
+                    let options = CommitOptions {
+                        message: vec!["first".to_owned()],
+                        tree: Some(tree),
+                        ..CommitOptions::default()
+                    };
+                    let result = repo.commit(&options);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["commit", "--tool", "zs", "-m", "first"]),
+            )
+        },
+        Scenario {
+            setup: SECTIONS_TOOL,
+            ..simple(
+                "squash_tool_sections_1_3",
+                |repo, _, _| {
+                    let (at, tree) = sections_one_and_three(repo);
+                    let options = SquashOptions {
+                        message: Some(vec!["first".to_owned()]),
+                        trees: vec![SourceTree { source: at, tree }],
+                        ..SquashOptions::default()
+                    };
+                    squash_outcome(repo, &options)
+                },
+                |_| args(&["squash", "--tool", "zs", "-m", "first"]),
             )
         },
         // ── Story 9.49 closing run: `new` advances bookmarks ────────────────────────

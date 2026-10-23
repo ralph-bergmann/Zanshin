@@ -138,8 +138,9 @@ Dart `WorkerCommand` → optional MCP tool → tests (+ coverage attribution + r
   read verbs + a core mutation subset ship first? (Independent of this ADR; a scoping call.)
 - **`eval_revset` exposure to MCP** — a raw revset tool is powerful for agents but unbounded;
   decide whether MCP gets `eval_revset` or only named views.
-- **Interactive-verb contract** — finalize the exact `SelectedTree`/`TreeId` hand-off shape
-  between the Flutter diff editor and the backend for `squash`/`split`/`diffedit`/`resolve`.
+- ~~**Interactive-verb contract**~~ — CLOSED 2026-10-23 (Story 9.50): see the implementation note
+  "The interactive-verb contract is a separate `select_tree` read" below. `diffedit`/`resolve`
+  (Story 9.17) reuse it.
 
 ## Implementation notes (as built)
 
@@ -157,3 +158,25 @@ Dart `WorkerCommand` → optional MCP tool → tests (+ coverage attribution + r
   reads (`list_tags`, `list_heads`, `list_working_copies`; bookmarks shipped in Epic 2) stop at the
   crate API. A `Stream` has no wire representation, and the FFI boundary is snapshot-only, so
   surfacing is a separate decision — as is the `eval_revset`-to-MCP open question above.
+- **The interactive-verb contract is a separate `select_tree` read (Story 9.50, contract B).** The
+  GUI's diff editor hands its choice to `Repo::select_tree(revision, left, files)`: per path the
+  whole file or a set of `HunkKey`s — the builtin diff editor's sections
+  (`ContentDiff::by_line`, `cli/src/merge_tools/builtin.rs:225-271` @ v0.46.0) keyed by their
+  0-based line ranges on each side. It builds the tree exactly as the builtin editor applies a
+  choice (`apply_diff_builtin`, `:405-465`), writes it to the store — no operation — and returns
+  its tree ids AND conflict labels, so a conflicted result round-trips. `left` is the revision's
+  parent tree (`Commit::parent_tree`, what `split`/`squash`/`commit` diff against), exposed as
+  `ShowEntry::parent_tree_ids`; it is ids, not one id, because a merge's parent tree can be
+  conflicted. `commit`, `split` and `squash` (one tree per source) take the tree plus `left` in a
+  TREE ARM, in place of the CLI's `--interactive`/`--tool`; paths and a tree together refuse
+  `jj.invalid_input`. **Staleness:** a `left` that is no longer the revision's parent tree (a
+  rebase), or a key that is not a current section, refuses `jj.stale_selection` (a new code: one
+  remedy, re-select) — checked by `select_tree` and again by each tree arm where the CLI runs its
+  editor. A change to the revision's own content is NOT stale: every verb snapshots first (Story
+  9.26), the tree is absolute, and the rest stays in the revision. Whole-only: added/deleted
+  files, mode changes, binary (NUL or non-UTF-8) files, symlinks, submodules and conflicts — for
+  mode changes and conflicts a deliberate divergence (epics.md Story 9.50): the builtin editor
+  offers a mode change as a separate `FileMode` toggle (`builtin.rs:296-301` @ v0.46.0) and
+  sections a conflicted file over its materialized markers (`:423-445`). The
+  9.47 oracle drives the stock CLI's `--tool` with a scripted editor making the same choice
+  (`split_tool_sections_1_3`, `commit_tool_sections_1_3`, `squash_tool_sections_1_3`).

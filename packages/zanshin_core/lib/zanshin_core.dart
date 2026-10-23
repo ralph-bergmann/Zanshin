@@ -78,6 +78,7 @@ export 'src/ffi/rebase.dart' show AbandonAction, ArrangeAction, KeepAction, Swap
 export 'src/ffi/remotes.dart' show RemoteRefChange, RemoteRefChangeKind, RemoteRefKind;
 export 'src/ffi/repo.dart' show ObjectHash;
 export 'src/ffi/repo_detect.dart' show RepoDetectResult, RepoKind;
+export 'src/ffi/select_tree.dart' show FileSelection, HunkKey, SelectedTree, SourceTree, TreeSelection;
 export 'src/ffi/squash_split.dart' show SplitResult, SquashPlan;
 export 'src/ffi/status.dart' show WorkingCopyStatus;
 export 'src/ffi/warning.dart' show WarnedList, ZanshinWarning, ZanshinWarningCode;

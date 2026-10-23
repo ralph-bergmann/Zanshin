@@ -52,7 +52,7 @@ use jj_lib::commit::Commit;
 use jj_lib::copies::{CopyOperation, CopyRecords};
 use jj_lib::matchers::{EverythingMatcher, Matcher};
 use jj_lib::merged_tree::MergedTree;
-use jj_lib::object_id::ObjectId as _;
+use jj_lib::object_id::ObjectId;
 use jj_lib::repo::Repo as _;
 use jj_lib::revset::RevsetStreamExt as _;
 use jj_lib::store::Store;
@@ -100,6 +100,12 @@ pub struct ShowEntry {
     pub change: Change,
     /// Per-path changes relative to the merged parent tree, in jj-lib's own diff order.
     pub file_changes: Vec<FileChange>,
+    /// The tree `file_changes` diff against — `Commit::parent_tree`, what `split`, `squash` and
+    /// `commit` diff against too — as hex tree ids in `Merge` order (one for a resolved tree, an
+    /// odd number for a conflicted merge of parents). It is the `left` a hunk selection is made
+    /// against ([`crate::Repo::select_tree`], Story 9.50). jj-lib returns the commit's OWN tree
+    /// for a commit its index knows to be empty — the same tree, so the same `left` the verbs see.
+    pub parent_tree_ids: Vec<String>,
 }
 
 /// What `jj interdiff` reports: the per-path change list, plus whether the tree it diffed FROM
@@ -430,13 +436,19 @@ pub(crate) fn show(
             let change = change_from_commit(repo_dyn, &commit).map_err(CommitViewError::Backend)?;
             let after = commit.tree();
             // Merges ALL parents (root-safe): for a merge commit this is what the merge
-            // itself changed. NEVER surface it as "the parent tree id" — it short-circuits
-            // to the commit's own tree for an index-empty commit (`commit.rs:134-143`).
+            // itself changed. It short-circuits to the commit's own tree for an index-empty
+            // commit (`commit.rs:134-143`), so it is surfaced as the `left` the verbs diff
+            // against (Story 9.50), never as the parents' own tree.
             let before = commit.parent_tree(repo_dyn).await.map_err(be)?;
+            let parent_tree_ids = before.tree_ids().iter().map(ObjectId::hex).collect();
             let records = copy_records_over_all_parents(store, &commit).await?;
             // `EverythingMatcher`: `jj show` has NO path argument (`show.rs:109`).
             let file_changes = tree_file_changes(&before, &after, &EverythingMatcher, &records).await?;
-            out.push(ShowEntry { change, file_changes });
+            out.push(ShowEntry {
+                change,
+                file_changes,
+                parent_tree_ids,
+            });
         }
         Ok::<(), CommitViewError>(())
     })?;

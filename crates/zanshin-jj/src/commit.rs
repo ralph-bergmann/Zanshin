@@ -11,14 +11,16 @@
 //! `@` is rewritten in place with the selected changes and the `-m` description, a new `@` is
 //! created on top of it with the old `@`'s full tree, and the bookmarks
 //! `experimental-advance-branches` selects move from `@`'s parents to the committed `@`. The
-//! selection is by PATHS only: each entry is a repo-relative PREFIX through
+//! selection is by PATHS — each entry is a repo-relative PREFIX through
 //! [`crate::op_support::build_matcher`] (an empty list is everything, `""` the root), exactly as
-//! for `restore` — the fileset DSL is terminal input language (ADR-0003).
+//! for `restore`; the fileset DSL is terminal input language (ADR-0003) — or, in place of the
+//! CLI's `--interactive`/`--tool`, a tree the GUI selected ([`crate::Repo::select_tree`], Story
+//! 9.50), refused as stale when `@`'s parent tree is no longer its `left`.
 //!
 //! Divergences, all deliberate:
 //!
-//! - no tree arm, no `--interactive`, no `--tool`: the tree arm (a GUI-selected tree and its
-//!   `left`) is Story 9.50's;
+//! - no `--interactive`, no `--tool`: their diff editor is the GUI's, whose result arrives as the
+//!   tree arm; paths together with a tree refuse;
 //! - no editor arm and no `--editor`: `-m` is required (the GUI always passes it), so there is no
 //!   "editor saved unchanged" case and no empty-message hint; a non-empty `-m` gets
 //!   `templates.commit_trailers` (Story 9.51, [`crate::template`]);
@@ -37,6 +39,7 @@ use jj_lib::workspace::Workspace;
 use crate::bookmark_ops::union_expression;
 use crate::mutate::{be, build_matcher, cfg, finish_verb, mutation_result, MutateError, MutationResult};
 use crate::op_support::{join_message_paragraphs, start_repo_transaction, SelectedTree};
+use crate::select_tree::{check_left, check_tree_selection, PATHS_WITH_TREE};
 use crate::snapshot::VerbContext;
 use crate::template::Templates;
 use crate::warning::WarningKind;
@@ -52,6 +55,25 @@ pub struct CommitOptions {
     /// `-m`, repeatable: the paragraphs of the committed `@`'s description, joined like the CLI
     /// joins them. Required — an empty list is `-m ""`.
     pub message: Vec<String>,
+    /// The tree arm (Story 9.50): the tree the committed `@` gets, selected in the GUI against
+    /// `@`'s parent tree — the CLI's `--interactive`/`--tool` result. Conflicts with `paths`.
+    pub tree: Option<crate::TreeSelection>,
+}
+
+/// What `jj commit` refuses before the snapshot (Story 9.50): `paths` together with a selected
+/// tree, or a tree arm of the wrong shape — as the CLI parses its arguments before it snapshots.
+///
+/// # Errors
+///
+/// [`MutateError::InvalidInput`].
+pub(crate) fn check_commit_args(options: &CommitOptions) -> Result<(), MutateError> {
+    let Some(selection) = &options.tree else {
+        return Ok(());
+    };
+    if !options.paths.is_empty() {
+        return Err(MutateError::invalid(PATHS_WITH_TREE.to_owned()));
+    }
+    check_tree_selection(selection)
 }
 
 /// A local bookmark eligible to advance — the CLI's `AdvanceableBookmark`: its name and the
@@ -161,7 +183,12 @@ pub(crate) fn commit(
         wc_commit.conflict_label(),
     );
     let wc_tree = wc_commit.tree();
-    let selected = SelectedTree::from_paths(Diff::new(&base_tree, &wc_tree), labels, matcher.as_ref())?;
+    let selected = if let Some(selection) = &options.tree {
+        check_left(&base_tree, &selection.left)?;
+        SelectedTree::from_tree_id(tx.repo().store(), &selection.tree)?
+    } else {
+        SelectedTree::from_paths(Diff::new(&base_tree, &wc_tree), labels, matcher.as_ref())?
+    };
     let tree = selected.tree().clone();
     if !options.paths.is_empty() && tree.tree_ids() == base_tree.tree_ids() {
         ctx.warnings.push(

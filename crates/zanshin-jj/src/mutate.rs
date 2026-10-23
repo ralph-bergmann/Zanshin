@@ -394,6 +394,19 @@ pub enum MutateError {
         /// The CLI's hints for it (Story 9.56) — the plan's `rejection.hints`.
         hints: Vec<String>,
     },
+    /// A GUI hunk selection no longer fits the revision (Story 9.50): its `left` is not the
+    /// revision's parent tree any more (a rebase, a rewritten parent), or one of its keys is not a
+    /// current section of its file — [`crate::Repo::select_tree`] and the tree arms of `commit`,
+    /// `split` and `squash`. A change to the revision's own content is NOT stale. Nothing is
+    /// written.
+    ///
+    /// Its own variant because the remedy is specific: re-read the diff, re-map the selection and
+    /// select again. The CLI has no counterpart — its editor always works on the current diff.
+    #[error("stale selection: {reason}")]
+    StaleSelection {
+        /// What no longer fits.
+        reason: String,
+    },
     /// The pre-verb snapshot failed (Story 9.26) — the verb itself never ran. See
     /// [`crate::PreconditionError`]; the partial facts ride [`crate::Repo::take_precondition`].
     #[error(transparent)]

@@ -2602,7 +2602,7 @@ impl Repo {
     }
 
     /// Moves changes from one or more revisions into another (Story 9.15) — the CLI's
-    /// `jj squash`, paths only.
+    /// `jj squash`.
     ///
     /// Source and destination resolve as in the CLI (`cli/src/commands/squash.rs` @ v0.46.0):
     ///
@@ -2619,6 +2619,11 @@ impl Repo {
     /// the destination only when `@` is squashed into its parent (`-r`/the default)
     /// (`MutationResult::new_change_ids`), and the abandoned sources are reported in
     /// `MutationResult::abandoned_change_ids`.
+    ///
+    /// `trees` is the tree arm (Story 9.50), in place of the CLI's interactive editor, which runs
+    /// once per source: per source, the tree selected in the GUI ([`Repo::select_tree`]) against
+    /// that source's parent tree; a source without an entry moves everything (the editor saved
+    /// unchanged). Non-empty `trees` conflicts with `paths`.
     ///
     /// The description: `message` (the CLI's `-m`, paragraphs joined like the CLI's), else the
     /// destination's (`use_destination_message`), else the one non-empty description of the
@@ -2644,9 +2649,12 @@ impl Repo {
     ///
     /// - [`crate::MutateError::InvalidInput`] — `revision` combined with `from`/`into`, `message`
     ///   combined with `use_destination_message`, `message` combined with `edited_description`
-    ///   ("--message cannot be used with an edited description") — these before the snapshot, as
-    ///   clap refuses them, so nothing is written — a merge or root `revision` without
-    ///   `from`/`into`, or a `paths` entry that is not a valid repo path.
+    ///   ("--message cannot be used with an edited description"), `paths` with `trees`, a tree of
+    ///   the wrong shape — these before the snapshot, as clap refuses them, so nothing is written
+    ///   — a merge or root `revision` without `from`/`into`, a `paths` entry that is not a valid
+    ///   repo path, or a `trees` entry naming no source or a source another entry names.
+    /// - [`crate::MutateError::StaleSelection`] — a source's parent tree is not its tree's
+    ///   `left`.
     /// - [`crate::MutateError::ChangeNotFound`] — `revision`, a `from` entry or `into` is
     ///   malformed, carried by no VISIBLE commit, or divergent.
     /// - [`crate::MutateError::RevsetResolutionError`] — an omitted revision's `@` in a workspace
@@ -2753,11 +2761,12 @@ impl Repo {
         self.with_verb(|repo, ctx| crate::drop_actions::change_actions(repo.workspace(), ctx, change))
     }
 
-    /// Splits a revision in two (Story 9.15) — the CLI's `jj split`, paths only.
+    /// Splits a revision in two (Story 9.15) — the CLI's `jj split`.
     ///
     /// `revision` (or `@`) is split into the changes to `paths` — repo-relative PREFIXES as for
-    /// [`Repo::restore`], AT LEAST ONE (the CLI's no-paths default is its interactive diff
-    /// editor, so an empty list refuses) — and the rest:
+    /// [`Repo::restore`] — or, the tree arm (Story 9.50) in place of the CLI's interactive diff
+    /// editor (its no-paths default), into `tree`, selected in the GUI ([`Repo::select_tree`])
+    /// against the target's parent tree; one of the two is required. The rest:
     ///
     /// - plain: the SELECTED commit keeps the target's change id and parents, the REMAINING
     ///   commit (a new change id) becomes its child;
@@ -2795,9 +2804,11 @@ impl Repo {
     ///   ("--message cannot be used with an edited description"), only one of the two edited
     ///   descriptions given ("an edited split needs both descriptions: the selected and the
     ///   remaining"), `parallel` combined with a location, `onto` with
-    ///   `insert_after`/`insert_before` — these before the snapshot, as clap refuses them, so
-    ///   nothing is written — `paths` is empty or holds an invalid repo path, the location
-    ///   resolves no parent, or it would create a loop.
+    ///   `insert_after`/`insert_before`, `paths` with `tree`, a `tree` of the wrong shape — these
+    ///   before the snapshot, as clap refuses them, so nothing is written — neither `paths` nor
+    ///   `tree`, an invalid repo path, a location that resolves no parent, or one that would
+    ///   create a loop.
+    /// - [`crate::MutateError::StaleSelection`] — the target's parent tree is not `tree.left`.
     /// - [`crate::MutateError::ChangeNotFound`] — `revision` or a location entry is malformed,
     ///   carried by no VISIBLE commit, or divergent.
     /// - [`crate::MutateError::RevsetResolutionError`] — an omitted `revision`'s `@` in a
@@ -3098,12 +3109,20 @@ impl Repo {
     /// guard, as in the CLI. The operation is `commit <old @ commit hex>`; `new_change_ids` names
     /// the new `@`.
     ///
+    /// `tree` is the tree arm (Story 9.50), in place of the CLI's `--interactive`/`--tool`: the
+    /// committed `@` gets that tree, selected in the GUI ([`Repo::select_tree`]) against `@`'s
+    /// parent tree, and the new `@` everything else — a change to `@` made after the selection
+    /// included. It refuses `jj.stale_selection` when `@`'s parent tree is no longer its `left`.
+    ///
     /// # Errors
     ///
     /// - [`crate::MutateError::NoWorkingCopy`] — this workspace has no working-copy commit (the
     ///   CLI's "This command requires a working copy").
-    /// - [`crate::MutateError::InvalidInput`] — a path is not a valid repo path, or an
-    ///   `experimental-advance-branches` pattern does not parse.
+    /// - [`crate::MutateError::InvalidInput`] — `paths` together with `tree`, or a `tree` of the
+    ///   wrong shape (malformed hex, an even or zero id count, a label count that is neither zero
+    ///   nor the id count) — these before the snapshot, so nothing is written — a path is not a
+    ///   valid repo path, or an `experimental-advance-branches` pattern does not parse.
+    /// - [`crate::MutateError::StaleSelection`] — `@`'s parent tree is not `tree.left`.
     /// - [`crate::MutateError::Config`] — an `experimental-advance-branches` list is not a list
     ///   of strings, the config could not be read, the `immutable_heads()` alias does not
     ///   resolve (the finish rebases only mutable descendants, as the CLI's `tx.finish`), or (a
@@ -3114,7 +3133,50 @@ impl Repo {
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn commit(&mut self, options: &crate::CommitOptions) -> Result<crate::MutationResult, crate::MutateError> {
-        self.with_verb(|repo, ctx| crate::commit::commit(repo.workspace_mut(), ctx, options))
+        self.with_checked_verb(crate::commit::check_commit_args(options), |repo, ctx| {
+            crate::commit::commit(repo.workspace_mut(), ctx, options)
+        })
+    }
+
+    /// Writes the tree a hunk selection yields (Story 9.50) — the CLI's builtin diff editor
+    /// applying the same choice (`cli/src/merge_tools/builtin.rs:405-545` @ v0.46.0), for the tree
+    /// arms of [`Repo::commit`], [`Repo::split`] and [`Repo::squash`].
+    ///
+    /// The diff is `revision`'s (`None`: `@`) parent tree against its own tree — what those verbs
+    /// diff against. `left` is that parent tree as the selection saw it
+    /// ([`crate::ShowEntry::parent_tree_ids`]). Each file of `files` is selected
+    /// [`crate::FileChoice::Whole`] (the revision's value, whatever the change) or by
+    /// [`crate::HunkKey`]s — the builtin editor's sections (`ContentDiff::by_line`), which only a
+    /// file that is a regular, same-mode UTF-8 text without NUL bytes on both sides has. A changed
+    /// path not listed keeps its left value, as does every unselected section.
+    ///
+    /// Returns the tree's ids and conflict labels; pass them, with `left`, to a verb's tree arm.
+    /// Writes NO operation — only the tree's objects reach the store — beyond the pre-verb
+    /// snapshot's (Story 9.26). A change to the revision's own content after the selection is
+    /// not stale: the verbs take the tree as it is, and the rest stays in the revision.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `left` is malformed hex or has an even or zero
+    ///   count; a path is invalid, the root, or listed twice — before the snapshot, as the CLI
+    ///   parses its arguments before it snapshots, so nothing is written.
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, carried by no VISIBLE
+    ///   commit, or divergent.
+    /// - [`crate::MutateError::RevsetResolutionError`] — an omitted `revision`'s `@` in a
+    ///   workspace with no working-copy commit.
+    /// - [`crate::MutateError::StaleSelection`] — the revision's parent tree is not `left`, a key
+    ///   is not a current section of its file, or keys name a path that can only be selected
+    ///   whole or is unchanged.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn select_tree(
+        &mut self,
+        options: &crate::SelectTreeOptions,
+    ) -> Result<crate::SelectedTreeId, crate::MutateError> {
+        self.with_checked_verb(crate::select_tree::check_select_tree_args(options), |repo, _ctx| {
+            crate::select_tree::select_tree(repo.workspace(), options)
+        })
     }
 
     /// Starts tracking the working-copy paths matching `paths` (Story 9.22) — the CLI's

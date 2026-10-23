@@ -7,6 +7,7 @@ import '../ffi/drop_actions.dart' show DropLocation, DropSource;
 import '../ffi/fetch.dart' show FetchRefs, FetchRemotes;
 import '../ffi/rebase.dart' show ArrangeAction;
 import '../ffi/repo.dart' show ObjectHash;
+import '../ffi/select_tree.dart' show FileSelection, SourceTree, TreeSelection;
 import '../ffi/workspace.dart' show SparseInheritance;
 import '../graph_layout/layout_request.dart' show LaneOrder, LayoutMode;
 
@@ -1558,6 +1559,7 @@ final class SquashCommand extends WorkerCommand implements HandleScopedCommand {
     required this.useDestinationMessage,
     required this.keepEmptied,
     this.editedDescription,
+    this.trees = const [],
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
@@ -1588,6 +1590,10 @@ final class SquashCommand extends WorkerCommand implements HandleScopedCommand {
   /// The user's edit of the editor text (Story 9.54) — the CLI's `--editor`
   /// saving exactly this text, written without trailers; `null` = no editor.
   final String? editedDescription;
+
+  /// The tree arm (Story 9.50): per source, the tree selected against that
+  /// source's parent tree; empty = the paths arm.
+  final List<SourceTree> trees;
 }
 
 /// Preview the description a [SquashCommand] with the same arguments would
@@ -1607,6 +1613,7 @@ final class SquashPlanCommand extends WorkerCommand implements HandleScopedComma
     required this.message,
     required this.useDestinationMessage,
     required this.keepEmptied,
+    this.trees = const [],
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
@@ -1633,6 +1640,9 @@ final class SquashPlanCommand extends WorkerCommand implements HandleScopedComma
 
   /// As [SquashCommand.keepEmptied].
   final bool keepEmptied;
+
+  /// As [SquashCommand.trees].
+  final List<SourceTree> trees;
 }
 
 /// Preview which verbs [source] can run at each of [locations], in the repo
@@ -1701,6 +1711,7 @@ final class SplitCommand extends WorkerCommand implements HandleScopedCommand {
     required this.insertBefore,
     this.editedSelectedDescription,
     this.editedRemainingDescription,
+    this.tree,
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
@@ -1710,7 +1721,7 @@ final class SplitCommand extends WorkerCommand implements HandleScopedCommand {
   /// `-r`, a change id; `null` = `@`.
   final String? revision;
 
-  /// Repo-relative paths interpreted as PREFIXES; at least one.
+  /// Repo-relative paths interpreted as PREFIXES; empty with [tree] set.
   final List<String> paths;
 
   /// `-m` for the selected commit; `null` = no `-m`.
@@ -1734,6 +1745,10 @@ final class SplitCommand extends WorkerCommand implements HandleScopedCommand {
 
   /// The user's edit of the remaining commit's editor text (Story 9.54).
   final String? editedRemainingDescription;
+
+  /// The tree arm (Story 9.50): the selected commit's tree; `null` = the paths
+  /// arm.
+  final TreeSelection? tree;
 }
 
 /// Commit the working-copy commit, in the repo identified by [handleId] (Story
@@ -1743,7 +1758,13 @@ final class SplitCommand extends WorkerCommand implements HandleScopedCommand {
 /// remove), calls `zanshinCommit(raw, …)`, and replies with a `BufferResult`
 /// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
 final class CommitCommand extends WorkerCommand implements HandleScopedCommand {
-  const CommitCommand({required super.commandId, required this.handleId, required this.paths, required this.message});
+  const CommitCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.paths,
+    required this.message,
+    this.tree,
+  });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
   @override
@@ -1754,6 +1775,40 @@ final class CommitCommand extends WorkerCommand implements HandleScopedCommand {
 
   /// `-m`, required; empty = `-m ""`.
   final List<String> message;
+
+  /// The tree arm (Story 9.50): the committed `@`'s tree; `null` = the paths
+  /// arm.
+  final TreeSelection? tree;
+}
+
+/// Write the tree a hunk selection yields, in the repo identified by
+/// [handleId] (Story 9.50) — the CLI's builtin diff editor applying the same
+/// choice. Writes no operation of its own.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinSelectTree(raw, …)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<SelectedTree>` bytes.
+final class SelectTreeCommand extends WorkerCommand implements HandleScopedCommand {
+  const SelectTreeCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revision,
+    required this.left,
+    required this.files,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The revision the selection was made in; `null` = `@`.
+  final String? revision;
+
+  /// The revision's parent tree the selection was made against.
+  final List<String> left;
+
+  /// The selected files.
+  final List<FileSelection> files;
 }
 
 /// Cancel the network call — fetch, push or clone — sent as command

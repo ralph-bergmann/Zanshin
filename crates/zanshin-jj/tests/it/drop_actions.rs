@@ -31,7 +31,7 @@ const UNKNOWN: &str = "qpvuntsmwlqtpvuntsmwlqtpvuntsm";
 const GIT_ROOT_MERGE: &str =
     "The Git backend does not support creating merge commits with the root commit as one of the parents.";
 const SPLIT_NO_PATHS: &str =
-    "split needs at least one path: the interactive selection the CLI opens without paths is not supported";
+    "split needs paths or a selected tree: the CLI's interactive default without paths is the selected tree (select_tree)";
 
 struct Fx {
     _tmp: TempDir,

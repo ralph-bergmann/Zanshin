@@ -284,9 +284,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Fifty of the 84 exported symbols take their arguments as a **FlatBuffers
+Fifty-one of the 85 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Thirty-eight use the handle-scoped three-parameter shape:
+strings. Thirty-nine use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -444,7 +444,7 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **43** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **48** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
@@ -457,12 +457,13 @@ Two tables are shared: `ChangeIdList` by three symbols (`zanshin_new_change`'s
 read only by `zanshin_new_change`, the other two ignore them) and `SquashRequest` by two
 (`zanshin_squash` and `zanshin_squash_plan`, Story 9.15 — the plan previews the
 squash its caller is about to run, with the same arguments). Every other table has
-exactly one caller, and no table is orphaned. 43 tables + 3 shared reuses = the 46
+exactly one caller, and no table is orphaned. 48 tables + 3 shared reuses = the 51
 request-buffer symbols (Story 9.20 adds `GitPushRequest`, `RepoCloneRequest` and
 `RepoInitRequest` — `zanshin_repo_init` / `zanshin_repo_clone` took two C strings / a string and
 an `int32_t` backend before; Story 9.30 adds `GitFetchRequest` — `zanshin_git_fetch` took a
 remote name and a cancel token before; Story 9.31 adds `DropActionsRequest`; Story 9.16 adds `RebaseRequest` and
-`ArrangeRequest`; Story 9.9 adds `MetaeditRequest`, `DuplicateRequest` and `FixRequest`).
+`ArrangeRequest`; Story 9.9 adds `MetaeditRequest`, `DuplicateRequest` and `FixRequest`; Story
+9.50 adds `SelectTreeRequest`).
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
 members of the `RevisionRef` union carried by `InterdiffRequest`'s `from`/`to`,
@@ -475,7 +476,10 @@ too: the entries of `DropActionsRequest`'s `locations` vector, and so is `Arrang
 (Story 9.16): the entries of `ArrangeRequest`'s `actions` vector, each a `kind`
 (`ArrangeActionKind`: `Unspecified`, `SwapDown`, `SwapUp`, `Abandon`, `Keep` — append-only) and a
 required `change_id` (absent: `jj.invalid_input` "change_id is required"; an absent `kind` —
-`Unspecified` — or an unknown one: `ffi.invalid_argument`, never a silent `SwapDown`).
+`Unspecified` — or an unknown one: `ffi.invalid_argument`, never a silent `SwapDown`). Story 9.50
+adds four: `FileSelection` and its `HunkKey`s (the entries of `SelectTreeRequest`'s `files`),
+`TreeSelection` (the tree arm of `CommitRequest`, `SplitRequest` and — per source, inside a
+`SourceTree` — `SquashRequest`) and `SourceTree` (the entries of `SquashRequest`'s `trees`).
 
 #### The `RequestKind` tag
 
@@ -486,7 +490,7 @@ request table is therefore `kind: RequestKind`, and every reader refuses a buffe
 whose tag is not its own — row 3 of the ladder above, before any other field is
 read and before the handle is borrowed.
 
-The tag is per-**wrapper**, not per-table. For 41 tables the variant name plus
+The tag is per-**wrapper**, not per-table. For 47 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **three** kinds, `NewChange`,
 `Abandon` and `Parallelize` (Story 9.16), because a per-table tag would have left the sharpest collision
 unrefused — a buffer meant as `parents` abandoning those commits instead. Only
@@ -537,7 +541,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **84** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **85** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -589,9 +593,9 @@ or no `# Errors` block.
 | `zanshin_abandon` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |
 | `zanshin_restore` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `RestoreRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.3 |
 | `zanshin_absorb` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `AbsorbRequest` | `AbsorbResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.3 |
-| `zanshin_squash` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SquashRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54) |
-| `zanshin_squash_plan` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SquashRequest` | `SquashPlan` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54) |
-| `zanshin_split` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SplitRequest` | `SplitResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54) |
+| `zanshin_squash` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SquashRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54, 9.50) |
+| `zanshin_squash_plan` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SquashRequest` | `SquashPlan` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54, 9.50) |
+| `zanshin_split` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SplitRequest` | `SplitResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.15 (+9.54, 9.50) |
 | `zanshin_rebase` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `RebaseRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.16 |
 | `zanshin_parallelize` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` (`kind = Parallelize`) | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.16 |
 | `zanshin_arrange` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ArrangeRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.16 |
@@ -600,7 +604,8 @@ or no `# Errors` block.
 | `zanshin_fix` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FixRequest` | `FixResult` (see § `zanshin_metaedit`, `zanshin_duplicate`, `zanshin_fix`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 |
 | `zanshin_drop_actions` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DropActionsRequest` | `DropActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_change_actions` | `(uint64_t handle, const char *change_id)` | — | `ChangeActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
-| `zanshin_commit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.no_working_copy`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.49 |
+| `zanshin_commit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.no_working_copy`, `jj.invalid_input`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.49 (+9.50) |
+| `zanshin_select_tree` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SelectTreeRequest` | `SelectedTree` (see § `zanshin_select_tree` — the GUI diff-editor contract) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.stale_selection`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.50 |
 | `zanshin_undo` | `(uint64_t handle, bool allow_cross_workspace)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.undo_cross_workspace`, `jj.nothing_to_undo`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (+9.39) |
 | `zanshin_bookmark_create` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkCreateRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.8 |
 | `zanshin_bookmark_delete` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkDeleteRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.8 |
@@ -1831,3 +1836,47 @@ the flag not given —, `object_hash`, and since Story 9.52 `cancel_token`) take
 since Story 9.20 and follow `jj git init` / `jj git clone` step for step: the destination rules, colocation by `git.colocate`, the clone's
 three operations and repo presets, its clean-up scope. Both colocation flags set is
 `jj.invalid_input`.
+
+---
+
+## `zanshin_select_tree` — the GUI diff-editor contract (Story 9.50)
+
+The CLI's interactive verbs (`split`, `squash`, `commit` with `-i`/`--tool`) run a diff editor over
+the revision's parent tree (`left`) and its own tree (`right`). Zanshin's GUI is that editor: it
+shows the diff, the user picks whole files or sections, and `zanshin_select_tree` writes the tree
+the CLI's builtin editor writes for the same choice (`cli/src/merge_tools/builtin.rs:405-545` @
+v0.46.0). The verbs then take that tree in their **tree arm**.
+
+1. **`left`** comes from `zanshin_show`: `ShowEntry.parent_tree_ids` — the tree `file_changes`
+   diff against and split/squash/commit diff against, as hex tree ids in order (several for a
+   conflicted merge of parents).
+2. **`SelectTreeRequest`** (`kind = SelectTree`): `revision` (absent = `@`), `left`, `files` — per
+   path (jj's internal `/` form) `whole` (the revision's value, whatever the change) or `hunks`, a
+   list of `HunkKey { old_start, old_count, new_start, new_count }`: the builtin editor's sections
+   (`ContentDiff::by_line`), 0-based line index and line count on each side, lines cut like
+   `split_inclusive('\n')`. Only a file that is a regular file with the same executable bit and
+   UTF-8 text without NUL bytes on both sides has sections; added/deleted files, mode changes,
+   binary files, symlinks, submodules and conflicts are whole only. A changed file not listed,
+   and every unselected section, keeps its left side. `whole` with `hunks`, a path listed twice,
+   the root, an invalid path or a malformed `left`: `jj.invalid_input`, before the snapshot (no
+   `precondition`, nothing written), as the CLI parses its arguments before it snapshots.
+3. **`SelectedTree { tree_ids, labels }`** is the answer: the tree's ids and conflict labels
+   (empty = unlabeled, else one per id), so a conflicted result round-trips unchanged. Writing it
+   is not a repo mutation: NO operation beyond the pre-verb snapshot's.
+4. **Tree arms** take `TreeSelection { tree_ids, labels, left }`: `CommitRequest.tree` (the
+   committed `@`'s tree; the new `@` keeps the rest), `SplitRequest.tree` (the SELECTED commit's
+   tree — the CLI's no-paths default) and `SquashRequest.trees`, one `SourceTree { source, tree }`
+   per source as the CLI runs its editor per source (a source without one moves everything; an
+   entry naming no source, or two naming one, `jj.invalid_input`). A tree together with `paths`,
+   or a tree of the wrong shape, refuses `jj.invalid_input` before the snapshot. An unknown tree
+   id is `jj.jj_lib_error`.
+5. **Staleness — `jj.stale_selection`:** the revision's (each source's) parent tree is no longer
+   `left` — a rebase, a rewritten parent — or a key is not one of the file's current sections. It
+   is checked by `zanshin_select_tree` and again by each tree arm where the CLI runs its editor;
+   nothing is written. A change to the revision's OWN content after the selection is not stale:
+   every verb snapshots first, the tree is absolute, and the rest stays in the revision. The
+   remedy is the UI's: re-read the diff, re-map the selection, select again.
+
+Not ported: the CLI's "Empty diff - won't run diff editor." warning, which reports the terminal
+editor not being launched. Dart: `RepoHandle.selectTree(...)` → `SelectedTree`, and the `tree` /
+`trees` parameters of `RepoHandle.commit` / `split` / `squash` / `squashPlan`.

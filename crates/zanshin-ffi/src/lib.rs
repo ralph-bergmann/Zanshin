@@ -59,6 +59,7 @@ pub mod push;
 pub mod rebase;
 pub mod remotes;
 pub mod repo;
+pub mod select_tree;
 pub mod snapshot;
 pub mod squash_split;
 pub mod status;

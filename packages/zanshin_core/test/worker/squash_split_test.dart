@@ -176,9 +176,9 @@ void main() {
       );
     });
 
-    test('split_without_paths_is_refused', () async {
+    test('split_without_paths_or_a_tree_is_refused', () async {
       await expectLater(
-        repo.split(paths: const []),
+        repo.split(),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
       );
     });

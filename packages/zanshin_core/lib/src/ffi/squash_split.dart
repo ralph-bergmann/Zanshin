@@ -10,6 +10,14 @@ import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'mutate.dart' show MutationResult, decodeMutationResultInternal;
 import 'precondition.dart' show decodeEnvelopeErrorInternal;
 import 'request_bytes.dart';
+import 'select_tree.dart'
+    show
+        SourceTree,
+        TreeSelection,
+        rejectSourceTreeNuls,
+        rejectTreeSelectionNuls,
+        sourceTreeBuilders,
+        treeSelectionBuilder;
 import 'warning.dart';
 
 // This file owns the Dart half of Story 9.15's three calls: the adapters
@@ -32,8 +40,10 @@ Uint8List _squashRequest({
   required List<String>? message,
   required bool useDestinationMessage,
   required bool keepEmptied,
+  required List<SourceTree> trees,
   String? editedDescription,
 }) {
+  rejectSourceTreeNuls(trees);
   rejectInteriorNul(revision, 'revision');
   rejectInteriorNuls(from, 'from');
   rejectInteriorNul(into, 'into');
@@ -50,6 +60,7 @@ Uint8List _squashRequest({
     useDestinationMessage: useDestinationMessage,
     keepEmptied: keepEmptied,
     editedDescription: editedDescription,
+    trees: sourceTreeBuilders(trees),
   ).toBytes();
 }
 
@@ -69,7 +80,9 @@ Uint8List _squashRequest({
 /// [editedDescription] (Story 9.54) is the user's edit of the editor text —
 /// the CLI's `--editor` saving exactly that text: written cleaned up, with NO
 /// `templates.commit_trailers` added; with [message] it is refused
-/// (`jj.invalid_input`).
+/// (`jj.invalid_input`). [trees] (Story 9.50) is the tree arm: per source the
+/// tree from `selectTree` with its `left`; a source without one moves
+/// everything; non-empty with [paths] it is refused.
 Uint8List zanshinSquash(
   int rawHandle, {
   String? revision,
@@ -80,6 +93,7 @@ Uint8List zanshinSquash(
   bool useDestinationMessage = false,
   bool keepEmptied = false,
   String? editedDescription,
+  List<SourceTree> trees = const [],
 }) {
   final Uint8List request = _squashRequest(
     revision: revision,
@@ -90,6 +104,7 @@ Uint8List zanshinSquash(
     useDestinationMessage: useDestinationMessage,
     keepEmptied: keepEmptied,
     editedDescription: editedDescription,
+    trees: trees,
   );
   return callWithRequest(request, (ptr, len) => zanshin_squash(rawHandle, ptr, len));
 }
@@ -107,6 +122,7 @@ Uint8List zanshinSquashPlan(
   List<String>? message,
   bool useDestinationMessage = false,
   bool keepEmptied = false,
+  List<SourceTree> trees = const [],
 }) {
   final Uint8List request = _squashRequest(
     revision: revision,
@@ -116,16 +132,19 @@ Uint8List zanshinSquashPlan(
     message: message,
     useDestinationMessage: useDestinationMessage,
     keepEmptied: keepEmptied,
+    trees: trees,
   );
   return callWithRequest(request, (ptr, len) => zanshin_squash_plan(rawHandle, ptr, len));
 }
 
 /// Call `zanshin_split` with the raw `u64` handle and a `SplitRequest` request
 /// buffer, and return the FlatBuffers `Envelope` bytes (Story 9.15) — the
-/// CLI's `jj split`, paths only.
+/// CLI's `jj split`.
 ///
-/// [revision] is `-r` (`null`: `@`). [paths] are repo-relative PREFIXES, at
-/// least one (no paths is the CLI's interactive diff editor, refused). [message]
+/// [revision] is `-r` (`null`: `@`). [paths] are repo-relative PREFIXES, or
+/// [tree] (Story 9.50) the SELECTED commit's tree from `selectTree` with its
+/// `left` — the CLI's interactive diff editor; one of the two is required, both
+/// are refused. [message]
 /// is `-m` for the SELECTED commit (`null`: both keep the original
 /// description). [parallel] is `--parallel`; [onto] / [insertAfter] /
 /// [insertBefore] are `-o` / `-A` / `-B` — `null` is the flag not given, an
@@ -137,7 +156,8 @@ Uint8List zanshinSquashPlan(
 /// (`jj.invalid_input`).
 Uint8List zanshinSplit(
   int rawHandle, {
-  required List<String> paths,
+  List<String> paths = const [],
+  TreeSelection? tree,
   String? revision,
   List<String>? message,
   bool parallel = false,
@@ -155,6 +175,7 @@ Uint8List zanshinSplit(
   rejectInteriorNuls(insertBefore ?? const [], 'insertBefore');
   rejectInteriorNul(editedSelectedDescription, 'editedSelectedDescription');
   rejectInteriorNul(editedRemainingDescription, 'editedRemainingDescription');
+  rejectTreeSelectionNuls(tree);
   final Uint8List request = fbs.SplitRequestObjectBuilder(
     kind: fbs.RequestKind.Split,
     revision: revision,
@@ -166,6 +187,7 @@ Uint8List zanshinSplit(
     insertBefore: insertBefore,
     editedSelectedDescription: editedSelectedDescription,
     editedRemainingDescription: editedRemainingDescription,
+    tree: treeSelectionBuilder(tree),
   ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_split(rawHandle, ptr, len));
 }

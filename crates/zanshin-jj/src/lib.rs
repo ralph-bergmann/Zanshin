@@ -60,6 +60,7 @@ pub(crate) mod remotes;
 mod repo;
 pub(crate) mod revert;
 pub(crate) mod revset;
+pub(crate) mod select_tree;
 pub(crate) mod snapshot;
 pub(crate) mod squash_split;
 pub(crate) mod stale;
@@ -114,6 +115,9 @@ pub use remotes::{
 };
 pub use repo::{Backend, CreationOutcome, Repo, RepoError};
 pub use revset::{resolve_revset, RevsetError, DEFAULT_LOG_REVSET};
+pub use select_tree::{
+    FileChoice, FileSelection, HunkKey, SelectTreeOptions, SelectedTreeId, SourceTree, TreeSelection,
+};
 pub use snapshot::{FinishFacts, Precondition, PreconditionError, StaleCause};
 pub use squash_split::{SplitOptions, SplitResult, SquashOptions, SquashPlan};
 pub use stale::{CheckoutStats, StaleRecovery, StaleRecoveryOutcome};

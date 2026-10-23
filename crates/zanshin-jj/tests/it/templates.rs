@@ -249,6 +249,7 @@ fn commit_adds_the_trailers_to_the_committed_description() {
         .commit(&CommitOptions {
             paths: Vec::new(),
             message: vec!["T".to_owned()],
+            tree: None,
         })
         .expect("commit");
     assert_eq!(fx.description(&committed), sob("T"));
@@ -370,6 +371,7 @@ fn a_broken_trailers_template_refuses_before_any_write() {
         repo.commit(&CommitOptions {
             paths: Vec::new(),
             message: vec!["T".to_owned()],
+            tree: None,
         })
         .map(drop)
     });

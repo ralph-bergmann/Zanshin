@@ -646,6 +646,7 @@ fn undo_restoring_an_equal_view_writes_no_operation() {
     repo.commit(&zanshin_jj::CommitOptions {
         paths: Vec::new(),
         message: vec!["one".to_owned()],
+        tree: None,
     })
     .expect("commit");
     let out = std::process::Command::new("git")

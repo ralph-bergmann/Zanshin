@@ -124,7 +124,15 @@ fn commit_request(paths: Option<&[&str]>, message: Option<&[&str]>, kind: fbs::R
     };
     let paths = vector(paths);
     let message = vector(message);
-    let req = fbs::CommitRequest::create(&mut b, &fbs::CommitRequestArgs { kind, paths, message });
+    let req = fbs::CommitRequest::create(
+        &mut b,
+        &fbs::CommitRequestArgs {
+            kind,
+            paths,
+            message,
+            tree: None,
+        },
+    );
     b.finish(req, None);
     b.finished_data().to_vec()
 }

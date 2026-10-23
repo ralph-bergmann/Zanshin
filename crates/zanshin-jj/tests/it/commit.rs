@@ -114,6 +114,7 @@ fn options(paths: &[&str], message: &[&str]) -> CommitOptions {
     CommitOptions {
         paths: strings(paths),
         message: strings(message),
+        tree: None,
     }
 }
 

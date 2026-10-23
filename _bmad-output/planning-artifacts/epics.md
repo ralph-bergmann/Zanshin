@@ -7523,6 +7523,14 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Related:** 5.1, 5.6, 9.1, 9.15, 9.17, 9.47, 9.49; 10.26, 10.27; ADR-0003.
 
+*(Reconciliation 2026-10-23, Story 9.50 build — the shipped contract; the text above is unchanged.)*
+- `Repo::select_tree(SelectTreeOptions { revision, left, files })` returns `SelectedTreeId { tree_ids, labels }`, not one `TreeId`: the written tree's ids (one for a resolved tree, an odd number for a conflicted one) and its conflict labels (empty = unlabeled), so a conflicted result round-trips. It writes no operation.
+- `left` is the revision's parent tree as hex tree ids, read from `ShowEntry.parent_tree_ids` (`show`); ids, not one id, because a merge's parent tree can be conflicted.
+- A key is `HunkKey { old_start, old_count, new_start, new_count }`: the 0-based index of the section's first line and its line count on each side, lines cut like `split_inclusive('\n')`.
+- The verbs take `TreeSelection { tree, left }` in a tree arm: `commit` and `split` one, `squash` one per source (`SourceTree { source, tree }`; a source without one moves everything). Paths together with a tree refuse `jj.invalid_input` before the snapshot.
+- Stale selections (a moved `left`, a key that is not a current section, keys on a whole-only or unchanged path) refuse the new code `jj.stale_selection`.
+- Mode changes and conflicted files are whole only — a deliberate divergence from the builtin editor, which offers a mode toggle and sections materialized conflict markers.
+
 ### Story 9.51: jj templates — `commit_trailers`, `draft_commit_description`, `git_push_bookmark` [M]
 *(Added 2026-10-20, Ralph — console session after the story loop of 2026-10-19. Four ledger entries share one root: Zanshin renders no jj templates. Ralph chose one story for all of them.)*
 

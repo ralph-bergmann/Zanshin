@@ -141,7 +141,8 @@ enum RequestKind : ubyte {
   BookmarkList,
   BookmarkMove,
   BookmarkAdvance,
-  BookmarkRename
+  BookmarkRename,
+  SelectTree
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -194,6 +195,60 @@ table AbsorbRequest {
   paths: [string];
 }
 
+/// One changed section of a file, by where it sits on each side in lines (Story 9.50) — the
+/// builtin diff editor's sections (`ContentDiff::by_line`). `old_start` / `new_start`: 0-based
+/// index of the section's first line on the left (parent) / right (revision) side; `old_count` /
+/// `new_count`: its lines there (an insertion has `old_count` 0, a deletion `new_count` 0). Lines
+/// are cut like `split_inclusive('\n')`: a last line without `\n` counts.
+table HunkKey {
+  old_start: uint;
+  old_count: uint;
+  new_start: uint;
+  new_count: uint;
+}
+
+/// One file of a `SelectTreeRequest` (Story 9.50). `path` is repo-relative in jj's internal
+/// `/`-separated form (what `ShowEntry.file_changes` reports). `whole` selects the revision's
+/// value at that path, whatever the change; otherwise `hunks` lists the selected sections (absent
+/// or empty: nothing of the file). `whole` together with `hunks` is refused (`jj.invalid_input`).
+table FileSelection {
+  path: string;
+  whole: bool;
+  hunks: [HunkKey];
+}
+
+/// Arguments of `zanshin_select_tree` (Story 9.50) — a hunk selection, applied as the CLI's
+/// builtin diff editor applies a choice.
+///
+///   revision           jj reverse-hex change id; absent → `@`
+///   left               the revision's parent tree the selection was made against, hex tree ids
+///                      in order — `ShowEntry.parent_tree_ids`; stale (`jj.stale_selection`)
+///                      when the revision's parent tree is no longer this
+///   files              the selected files; a changed file not listed keeps its left side; each
+///                      path at most once
+table SelectTreeRequest {
+  kind: RequestKind;
+  revision: string;
+  left: [string];
+  files: [FileSelection];
+}
+
+/// A tree arm's selection (Story 9.50): the tree `zanshin_select_tree` returned (`tree_ids`,
+/// `labels` exactly as its `SelectedTree` payload carries them) and the `left` it was selected
+/// against. The verb refuses `jj.stale_selection` when the source's parent tree is no longer
+/// `left`.
+table TreeSelection {
+  tree_ids: [string];
+  labels: [string];
+  left: [string];
+}
+
+/// One squash source's selected tree (Story 9.50): `source` a jj reverse-hex change id.
+table SourceTree {
+  source: string;
+  tree: TreeSelection;
+}
+
 /// Arguments of `zanshin_squash` AND `zanshin_squash_plan` (Story 9.15) — the CLI's `jj squash`
 /// flags, one field each; change ids are jj reverse-hex.
 ///
@@ -213,6 +268,10 @@ table AbsorbRequest {
 ///                      (`jj.invalid_input`, "--message cannot be used with an edited
 ///                      description"; `zanshin_squash_plan` too); `zanshin_squash_plan` otherwise
 ///                      ignores it.
+///   trees              the tree arm (Story 9.50): per source, the tree selected against that
+///                      source's parent tree; a source without one moves everything. Absent or
+///                      empty = the paths arm; non-empty with `paths` refused (`jj.invalid_input`,
+///                      before the snapshot), as is an entry naming no source or two naming one.
 table SquashRequest {
   kind: RequestKind;
   revision: string;
@@ -223,14 +282,15 @@ table SquashRequest {
   use_destination_message: bool;
   keep_emptied: bool;
   edited_description: string;
+  trees: [SourceTree];
 }
 
 /// Arguments of `zanshin_split` (Story 9.15) — the CLI's `jj split` flags, one field each;
 /// change ids are jj reverse-hex.
 ///
 ///   revision           absent → `@` (the CLI's default)
-///   paths              repo-relative PREFIXES, at least one (no paths = the CLI's interactive
-///                      diff editor, refused as `jj.invalid_input`)
+///   paths              repo-relative PREFIXES; neither paths nor `tree` (the CLI's interactive
+///                      diff editor) is refused as `jj.invalid_input`
 ///   message            the CLI's `-m` for the SELECTED commit; ABSENT = no `-m` (both commits
 ///                      get what the CLI's editor holds saved unchanged: their description with
 ///                      `templates.commit_trailers` added, rendered through
@@ -247,6 +307,9 @@ table SquashRequest {
 ///                      needs both descriptions: the selected and the remaining"); with `message`
 ///                      refused (`jj.invalid_input`, "--message cannot be used with an edited
 ///                      description").
+///   tree               the tree arm (Story 9.50): the SELECTED commit's tree, selected against
+///                      the target's parent tree; absent = the paths arm; with `paths` refused
+///                      (`jj.invalid_input`, before the snapshot)
 table SplitRequest {
   kind: RequestKind;
   revision: string;
@@ -258,6 +321,7 @@ table SplitRequest {
   insert_before: [string];
   edited_selected_description: string;
   edited_remaining_description: string;
+  tree: TreeSelection;
 }
 
 /// Arguments of `zanshin_rebase` (Story 9.16) — the CLI's `jj rebase` flags, one field each;
@@ -369,10 +433,14 @@ table FixRequest {
 ///   paths              repo-relative PREFIXES of the changes the committed `@` keeps;
 ///                      empty/absent = every change (the CLI's "describe + new")
 ///   message            the CLI's repeatable `-m`, optional on the wire: empty/absent = `-m ""`
+///   tree               the tree arm (Story 9.50): the committed `@`'s tree, selected against
+///                      `@`'s parent tree; absent = the paths arm; with `paths` refused
+///                      (`jj.invalid_input`, before the snapshot)
 table CommitRequest {
   kind: RequestKind;
   paths: [string];
   message: [string];
+  tree: TreeSelection;
 }
 
 /// Arguments of `zanshin_git_push` (Story 9.20) — the CLI's `jj git push` flags, one field each,
@@ -1926,9 +1994,15 @@ table GitExportResult {
 ///
 /// There is no textual patch: line/word-level diffing is Epic 5 (`zanshin-diff`), which will
 /// EXTEND this payload rather than replace it.
+///
+/// `parent_tree_ids` (Story 9.50) is the tree `file_changes` diff against — the commit's merged
+/// parent tree, what split/squash/commit diff against — as hex tree ids in order (one for a
+/// resolved tree, an odd number for a conflicted merge of parents): the `left` a hunk selection
+/// (`zanshin_select_tree`) is made against.
 table ShowEntry {
   change: Change;
   file_changes: [FileChange];
+  parent_tree_ids: [string];
 }
 
 /// The result of `zanshin_show`: one entry per commit the revset denotes, in RAW revset order
@@ -2272,6 +2346,14 @@ table CommitContents {
   contents: [CommitContent];
 }
 
+/// `zanshin_select_tree`'s answer (Story 9.50): the written tree's ids (hex, in order — one for a
+/// resolved tree, an odd number for a conflicted one) and its conflict labels (empty = unlabeled,
+/// else one per id). Pass both, with the request's `left`, as a verb's `TreeSelection`.
+table SelectedTree {
+  tree_ids: [string];
+  labels: [string];
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -2322,6 +2404,7 @@ union Payload {
   DropActions,
   ChangeActions,
   FixResult,
+  SelectedTree,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

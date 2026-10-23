@@ -47,6 +47,7 @@ import '../ffi/remotes.dart' as repo_ffi_remotes;
 import '../ffi/repo.dart' as repo_ffi;
 import '../ffi/repo_detect.dart' as repo_ffi_detect;
 import '../ffi/request_bytes.dart';
+import '../ffi/select_tree.dart' as repo_ffi_select_tree;
 import '../ffi/squash_split.dart' as repo_ffi_squash_split;
 import '../ffi/status.dart' as repo_ffi_status;
 import '../ffi/warning.dart';
@@ -1426,10 +1427,12 @@ class ZanshinWorker {
     bool useDestinationMessage = false,
     bool keepEmptied = false,
     String? editedDescription,
+    List<repo_ffi_select_tree.SourceTree> trees = const [],
   }) async {
     // See [bookmarkCreate] for why this guard is on the calling side.
     _rejectSquashNuls(revision, from, into, paths, message);
     rejectInteriorNul(editedDescription, 'editedDescription');
+    repo_ffi_select_tree.rejectSourceTreeNuls(trees);
     final Uint8List bytes = await send(
       SquashCommand(
         commandId: _correlator.allocateId(),
@@ -1442,6 +1445,7 @@ class ZanshinWorker {
         useDestinationMessage: useDestinationMessage,
         keepEmptied: keepEmptied,
         editedDescription: editedDescription,
+        trees: trees,
       ),
     );
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
@@ -1465,8 +1469,10 @@ class ZanshinWorker {
     List<String>? message,
     bool useDestinationMessage = false,
     bool keepEmptied = false,
+    List<repo_ffi_select_tree.SourceTree> trees = const [],
   }) async {
     _rejectSquashNuls(revision, from, into, paths, message);
+    repo_ffi_select_tree.rejectSourceTreeNuls(trees);
     final Uint8List bytes = await send(
       SquashPlanCommand(
         commandId: _correlator.allocateId(),
@@ -1478,6 +1484,7 @@ class ZanshinWorker {
         message: message,
         useDestinationMessage: useDestinationMessage,
         keepEmptied: keepEmptied,
+        trees: trees,
       ),
     );
     return repo_ffi_squash_split.decodeSquashPlanEnvelopeInternal(bytes);
@@ -1530,9 +1537,10 @@ class ZanshinWorker {
   }
 
   /// Split a revision in two, in the repo identified by [handleId] (Story
-  /// 9.15) — the CLI's `jj split`, paths only.
+  /// 9.15) — the CLI's `jj split`.
   ///
-  /// [revision] (`-r`, `null` = `@`), [paths] (at least one), [message] (`-m`
+  /// [revision] (`-r`, `null` = `@`), [paths] or [tree] (Story 9.50, the tree
+  /// arm — one of the two), [message] (`-m`
   /// for the selected commit), [parallel] and the [onto] / [insertAfter] /
   /// [insertBefore] locations (`null` = the flag not given) cross unchanged,
   /// and so do [editedSelectedDescription] / [editedRemainingDescription]
@@ -1550,7 +1558,8 @@ class ZanshinWorker {
   /// delivered synchronously by [RepoHandle.split].
   Future<repo_ffi_squash_split.SplitResult> split(
     int handleId, {
-    required List<String> paths,
+    List<String> paths = const [],
+    repo_ffi_select_tree.TreeSelection? tree,
     String? revision,
     List<String>? message,
     bool parallel = false,
@@ -1569,6 +1578,7 @@ class ZanshinWorker {
     rejectInteriorNuls(insertBefore ?? const [], 'insertBefore');
     rejectInteriorNul(editedSelectedDescription, 'editedSelectedDescription');
     rejectInteriorNul(editedRemainingDescription, 'editedRemainingDescription');
+    repo_ffi_select_tree.rejectTreeSelectionNuls(tree);
     final Uint8List bytes = await send(
       SplitCommand(
         commandId: _correlator.allocateId(),
@@ -1582,6 +1592,7 @@ class ZanshinWorker {
         insertBefore: insertBefore,
         editedSelectedDescription: editedSelectedDescription,
         editedRemainingDescription: editedRemainingDescription,
+        tree: tree,
       ),
     );
     return repo_ffi_squash_split.decodeSplitResultEnvelopeInternal(bytes);
@@ -1606,14 +1617,59 @@ class ZanshinWorker {
     int handleId, {
     required List<String> message,
     List<String> paths = const [],
+    repo_ffi_select_tree.TreeSelection? tree,
   }) async {
     // See [bookmarkCreate] for why this guard is on the calling side.
     rejectInteriorNuls(paths, 'paths');
     rejectInteriorNuls(message, 'message');
+    repo_ffi_select_tree.rejectTreeSelectionNuls(tree);
     final Uint8List bytes = await send(
-      CommitCommand(commandId: _correlator.allocateId(), handleId: handleId, paths: paths, message: message),
+      CommitCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        paths: paths,
+        message: message,
+        tree: tree,
+      ),
     );
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Write the tree a hunk selection yields, in the repo identified by
+  /// [handleId] (Story 9.50) — the CLI's builtin diff editor applying the same
+  /// choice, for the tree arms of [commit], [split] and [squash].
+  ///
+  /// [revision] (`null` = `@`), [left] (the revision's parent tree as
+  /// `ShowEntry.parentTreeIds` reported it) and [files] cross unchanged.
+  ///
+  /// Sends a [SelectTreeCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<SelectedTree>` bytes. Writes no operation of its
+  /// own.
+  ///
+  /// Throws [ArgumentError] if an argument contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.stale_selection`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.selectTree].
+  Future<repo_ffi_select_tree.SelectedTree> selectTree(
+    int handleId, {
+    required List<String> left,
+    required List<repo_ffi_select_tree.FileSelection> files,
+    String? revision,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    repo_ffi_select_tree.rejectSelectTreeNuls(revision, left, files);
+    final Uint8List bytes = await send(
+      SelectTreeCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        revision: revision,
+        left: left,
+        files: files,
+      ),
+    );
+    return repo_ffi_select_tree.decodeSelectedTreeEnvelopeInternal(bytes);
   }
 
   /// Move revisions to a new place in the graph, in the repo identified by
@@ -3456,6 +3512,7 @@ void _workerEntry(_WorkerInit init) {
           :final bool useDestinationMessage,
           :final bool keepEmptied,
           :final String? editedDescription,
+          :final List<repo_ffi_select_tree.SourceTree> trees,
         ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -3473,6 +3530,7 @@ void _workerEntry(_WorkerInit init) {
               useDestinationMessage: useDestinationMessage,
               keepEmptied: keepEmptied,
               editedDescription: editedDescription,
+              trees: trees,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }
@@ -3486,6 +3544,7 @@ void _workerEntry(_WorkerInit init) {
           :final List<String>? message,
           :final bool useDestinationMessage,
           :final bool keepEmptied,
+          :final List<repo_ffi_select_tree.SourceTree> trees,
         ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -3502,6 +3561,7 @@ void _workerEntry(_WorkerInit init) {
               message: message,
               useDestinationMessage: useDestinationMessage,
               keepEmptied: keepEmptied,
+              trees: trees,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }
@@ -3543,6 +3603,7 @@ void _workerEntry(_WorkerInit init) {
           :final List<String>? insertBefore,
           :final String? editedSelectedDescription,
           :final String? editedRemainingDescription,
+          :final repo_ffi_select_tree.TreeSelection? tree,
         ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -3561,18 +3622,45 @@ void _workerEntry(_WorkerInit init) {
               insertBefore: insertBefore,
               editedSelectedDescription: editedSelectedDescription,
               editedRemainingDescription: editedRemainingDescription,
+              tree: tree,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
-        case CommitCommand(:final int handleId, :final List<String> paths, :final List<String> message):
+        case CommitCommand(
+          :final int handleId,
+          :final List<String> paths,
+          :final List<String> message,
+          :final repo_ffi_select_tree.TreeSelection? tree,
+        ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: CommitCommand for unknown handleId $handleId');
             final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
-            final Uint8List bytes = repo_ffi_commit.zanshinCommit(raw, message: message, paths: paths);
+            final Uint8List bytes = repo_ffi_commit.zanshinCommit(raw, message: message, paths: paths, tree: tree);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case SelectTreeCommand(
+          :final int handleId,
+          :final String? revision,
+          :final List<String> left,
+          :final List<repo_ffi_select_tree.FileSelection> files,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: SelectTreeCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_select_tree.zanshinSelectTree(
+              raw,
+              revision: revision,
+              left: left,
+              files: files,
+            );
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

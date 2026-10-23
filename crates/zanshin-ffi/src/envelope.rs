@@ -152,6 +152,12 @@ pub const JJ_PUSH_REF_REFUSED: &str = "jj.push_ref_refused";
 /// that is not ready — no description, no author/committer, conflicts, private (Story 9.20); the
 /// CLI's "Won't push commit <hash> since it <reasons>" in `context`. Nothing is pushed or written.
 pub const JJ_PUSH_COMMIT_REJECTED: &str = "jj.push_commit_rejected";
+/// AR-P-4: emitted by `select_tree.rs::zanshin_select_tree` and the tree arms of
+/// `zanshin_commit` / `zanshin_split` / `zanshin_squash` / `zanshin_squash_plan` when a GUI hunk
+/// selection no longer fits the revision — its `left` is not the revision's parent tree any more,
+/// or a key is not a current section of its file (Story 9.50); what no longer fits in `context`.
+/// Nothing is written. The remedy: re-read the diff, re-map the selection, select again.
+pub const JJ_STALE_SELECTION: &str = "jj.stale_selection";
 /// AR-P-4: emitted by `workspace.rs::zanshin_workspace_add` when the new workspace's Git worktree
 /// could not be created — a workspace without a Git backend, or a failing `git`; jj-lib's text in
 /// `context` (Story 9.23). The destination directory created before stays, as in the CLI.
@@ -849,6 +855,27 @@ pub fn ok_squash_plan(r: &zanshin_jj::SquashPlan, report: &CallReport) -> Vec<u8
         },
     );
     finish_envelope(b, fbs::Payload::SquashPlan, Some(plan.as_union_value()), report)
+}
+
+/// Build a success `Envelope` with a `SelectedTree` payload and return the finished buffer
+/// (Story 9.50): the tree ids and labels exactly as `zanshin_jj` returned them.
+#[must_use]
+pub fn ok_selected_tree(r: &zanshin_jj::SelectedTreeId, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(256);
+    let mut strings = |values: &[String]| {
+        let offsets: Vec<_> = values.iter().map(|v| b.create_string(v)).collect();
+        b.create_vector(&offsets)
+    };
+    let tree_ids = strings(&r.tree_ids);
+    let labels = strings(&r.labels);
+    let tree = fbs::SelectedTree::create(
+        &mut b,
+        &fbs::SelectedTreeArgs {
+            tree_ids: Some(tree_ids),
+            labels: Some(labels),
+        },
+    );
+    finish_envelope(b, fbs::Payload::SelectedTree, Some(tree.as_union_value()), report)
 }
 
 /// Build a success `Envelope` with a `SplitResult` payload and return the finished buffer
@@ -1892,6 +1919,23 @@ mod tests {
             ]
         );
         assert!(all[5].combined_description_needed());
+    }
+
+    #[test]
+    fn ok_selected_tree_carries_the_ids_and_labels_in_order() {
+        let r = zanshin_jj::SelectedTreeId {
+            tree_ids: vec!["a1".to_owned(), "b2".to_owned(), "c3".to_owned()],
+            labels: vec!["x".to_owned(), "base".to_owned(), "y".to_owned()],
+        };
+        let buf = ok_selected_tree(&r, &CallReport::default());
+        let env = verified_envelope(&buf);
+        assert_eq!(env.data_type(), fbs::Payload::SelectedTree);
+        let tree = env.data_as_selected_tree().expect("SelectedTree payload");
+        let read = |v: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&str>>>| -> Vec<String> {
+            v.expect("present").iter().map(ToOwned::to_owned).collect()
+        };
+        assert_eq!(read(tree.tree_ids()), r.tree_ids);
+        assert_eq!(read(tree.labels()), r.labels);
     }
 
     #[test]

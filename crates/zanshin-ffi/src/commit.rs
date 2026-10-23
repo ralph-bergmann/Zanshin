@@ -21,7 +21,7 @@ use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 use crate::repo::map_mutate_err;
 
 /// Parse a `CommitRequest` buffer into owned [`CommitOptions`]; an ABSENT vector is empty (no
-/// paths = every change, no paragraph = `-m ""`).
+/// paths = every change, no paragraph = `-m ""`), an absent `tree` the paths arm.
 ///
 /// `data`/`len` describe a caller-owned buffer Dart builds and frees itself; Rust borrows it for
 /// the call only. The byte slice lives in this function's scope and the result is OWNED, so the
@@ -44,6 +44,7 @@ fn read_commit_request(data: *const u8, len: usize) -> Result<CommitOptions, Ffi
     Ok(CommitOptions {
         paths: owned(req.paths()),
         message: owned(req.message()),
+        tree: req.tree().map(crate::select_tree::tree_selection),
     })
 }
 
@@ -59,6 +60,10 @@ fn read_commit_request(data: *const u8, len: usize) -> Result<CommitOptions, Ffi
 /// parents that `experimental-advance-branches` selects move to the committed `@`. The operation
 /// is `commit <old @ commit hex>`. The working copy is snapshotted first (Story 9.26).
 ///
+/// `tree` (Story 9.50) is the tree arm, in place of the CLI's `--interactive`/`--tool`: the
+/// committed `@` gets the tree `zanshin_select_tree` returned, the new `@` everything else — a
+/// change to `@` made after the selection included.
+///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success; the new `@`
 /// is `new_change_ids`' one entry. `paths` that select no change of `@` warn
 /// `jj.commit_paths_unmatched` and still commit.
@@ -69,8 +74,11 @@ fn read_commit_request(data: *const u8, len: usize) -> Result<CommitOptions, Ffi
 /// - `ffi.invalid_argument` — `data` does not verify as a `CommitRequest` buffer, or its `kind` is
 ///   not `Commit`.
 /// - `jj.no_working_copy` — this workspace has no working-copy commit.
-/// - `jj.invalid_input` — a `paths` entry is not a valid repo path, or an
+/// - `jj.invalid_input` — `paths` together with `tree`, or a `tree` of the wrong shape (before the
+///   snapshot: nothing written, no `precondition`), a `paths` entry is not a valid repo path, or an
 ///   `experimental-advance-branches` pattern does not parse; detail in `context`.
+/// - `jj.stale_selection` — (the tree arm, Story 9.50) `@`'s parent tree is not the tree's `left`;
+///   nothing written.
 /// - `jj.config_error` — an `experimental-advance-branches` list is not a list of strings, or the
 ///   config does not read; or (a non-empty message, Story 9.51) `templates.commit_trailers` does
 ///   not parse or render — the CLI's text ("Failed to parse template: …" with its cause lines, "Trailers should be valid utf-8", jj-lib's trailer-parse text) in `context`, nothing written.
@@ -120,6 +128,7 @@ mod tests {
                 kind: fbs::RequestKind::Commit,
                 paths,
                 message,
+                tree: None,
             },
         );
         b.finish(req, None);
@@ -131,7 +140,7 @@ mod tests {
     fn the_reader_treats_absent_vectors_as_empty() {
         let bytes = request(None, None);
         let options = read_commit_request(bytes.as_ptr(), bytes.len()).expect("valid");
-        assert!(options.paths.is_empty() && options.message.is_empty());
+        assert!(options.paths.is_empty() && options.message.is_empty() && options.tree.is_none());
 
         let bytes = request(Some(&["x.txt", "dir"]), Some(&["subject", "body"]));
         let options = read_commit_request(bytes.as_ptr(), bytes.len()).expect("valid");

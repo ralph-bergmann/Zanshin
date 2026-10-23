@@ -66,6 +66,18 @@ fn read_squash_request(data: *const u8, len: usize) -> Result<SquashOptions, Ffi
         use_destination_message: req.use_destination_message(),
         keep_emptied: req.keep_emptied(),
         edited_description: req.edited_description().map(ToOwned::to_owned),
+        trees: req
+            .trees()
+            .map(|trees| {
+                trees
+                    .iter()
+                    .map(|entry| zanshin_jj::SourceTree {
+                        source: ChangeId(entry.source().unwrap_or_default().to_owned()),
+                        tree: entry.tree().map(crate::select_tree::tree_selection).unwrap_or_default(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
     })
 }
 
@@ -94,19 +106,22 @@ fn read_split_request(data: *const u8, len: usize) -> Result<SplitOptions, FfiEr
         insert_before: change_ids(req.insert_before()),
         edited_selected_description: req.edited_selected_description().map(ToOwned::to_owned),
         edited_remaining_description: req.edited_remaining_description().map(ToOwned::to_owned),
+        tree: req.tree().map(crate::select_tree::tree_selection),
     })
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
 
 /// Move changes from one or more revisions into another, in the repo identified by `handle` —
-/// the CLI's `jj squash`, paths only (Story 9.15).
+/// the CLI's `jj squash` (Story 9.15).
 ///
 /// The arguments cross as a `SquashRequest` `FlatBuffers` request buffer, one field per CLI flag:
 /// `revision` (absent with `from`/`into` absent too: `@` into its one parent), `from` (empty with
 /// `into` present: `@`), `into` (absent with `from` present: `@`), `paths` (repo-relative
 /// PREFIXES, empty = every path), `message` (the CLI's `-m`; ABSENT = no `-m`),
-/// `use_destination_message` (`-u`) and `keep_emptied` (`-k`). Without `message`, where the CLI
+/// `use_destination_message` (`-u`), `keep_emptied` (`-k`) and `trees` (Story 9.50, the CLI's
+/// interactive editor, once per source: per source the tree from `zanshin_select_tree` with its
+/// `left`; a source without one moves everything). Without `message`, where the CLI
 /// opens its editor (two or more non-empty descriptions among the abandoned sources and the
 /// destination), the combined text the editor holds is written as if saved unchanged — preview it
 /// with `zanshin_squash_plan` first, and send the user's edit back as `edited_description` (Story
@@ -126,13 +141,16 @@ fn read_split_request(data: *const u8, len: usize) -> Result<SplitOptions, FfiEr
 ///   is not `Squash`.
 /// - `jj.invalid_input` — `revision` combined with `from`/`into`, `message` with
 ///   `use_destination_message`, `message` with `edited_description` ("--message cannot be used
-///   with an edited description") — these before the snapshot, as clap refuses them: nothing
-///   written, no `precondition` — a merge or the root commit as the revision ("Cannot squash
-///   merge commits without a specified destination"), or a `paths` entry that is not a valid repo
-///   path; detail in `context`.
+///   with an edited description"), `paths` with `trees`, a tree of the wrong shape — these before
+///   the snapshot, as clap refuses them: nothing written, no `precondition` — a merge or the root
+///   commit as the revision ("Cannot squash merge commits without a specified destination"), a
+///   `paths` entry that is not a valid repo path, or a `trees` entry naming no source or a source
+///   another entry names; detail in `context`.
 /// - `jj.change_not_found` — `revision`, a `from` entry or `into` is malformed, carried by no
 ///   VISIBLE commit, or divergent; the id in `context`.
 /// - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
+/// - `jj.stale_selection` — (the tree arm, Story 9.50) a source's parent tree is not its tree's
+///   `left`; nothing written.
 /// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
 ///   commit; the CLI's text in `context`.
 /// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve; or
@@ -184,6 +202,8 @@ pub unsafe extern "C" fn zanshin_squash(handle: u64, data: *const u8, len: usize
 /// - `jj.change_not_found` — `revision`, a `from` entry or `into` does not resolve; the id in
 ///   `context`.
 /// - `jj.immutable` — a source or the destination is immutable; its hex commit id in `context`.
+/// - `jj.stale_selection` — (the tree arm, Story 9.50) a source's parent tree is not its tree's
+///   `left`; nothing written.
 /// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
 ///   commit; the CLI's text in `context`.
 /// - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve; or
@@ -214,12 +234,12 @@ pub unsafe extern "C" fn zanshin_squash_plan(handle: u64, data: *const u8, len: 
     vec_into_token(buf)
 }
 
-/// Split a revision in two, in the repo identified by `handle` — the CLI's `jj split`, paths only
-/// (Story 9.15).
+/// Split a revision in two, in the repo identified by `handle` — the CLI's `jj split` (Story 9.15).
 ///
 /// The arguments cross as a `SplitRequest` `FlatBuffers` request buffer, one field per CLI flag:
-/// `revision` (absent: `@`), `paths` (repo-relative PREFIXES, at least one — no paths is the CLI's
-/// interactive diff editor), `message` (the CLI's `-m` for the SELECTED commit; ABSENT: both keep
+/// `revision` (absent: `@`), `paths` (repo-relative PREFIXES) or `tree` (Story 9.50: the SELECTED
+/// commit's tree from `zanshin_select_tree` with its `left` — the CLI's interactive diff editor,
+/// its no-paths default; one of the two is required), `message` (the CLI's `-m` for the SELECTED commit; ABSENT: both keep
 /// the original description), `parallel`, the `onto` / `insert_after` / `insert_before`
 /// locations (ABSENT = the flag not given), and `edited_selected_description` /
 /// `edited_remaining_description` (Story 9.54, both or neither: the CLI's bulk editor saving
@@ -241,12 +261,15 @@ pub unsafe extern "C" fn zanshin_squash_plan(handle: u64, data: *const u8, len: 
 /// - `jj.invalid_input` — `message` with an edited description ("--message cannot be used with an
 ///   edited description"), only one edited description ("an edited split needs both descriptions:
 ///   the selected and the remaining"), `parallel` combined with a location, `onto` with
-///   `insert_after`/`insert_before` — these before the snapshot, as clap refuses them: nothing
-///   written, no `precondition` — `paths` is empty or holds an invalid repo path, the location
-///   resolves no parent, or it would create a loop; detail in `context`.
+///   `insert_after`/`insert_before`, `paths` with `tree`, a `tree` of the wrong shape — these
+///   before the snapshot, as clap refuses them: nothing written, no `precondition` — neither
+///   `paths` nor `tree`, an invalid repo path, a location that resolves no parent, or one that
+///   would create a loop; detail in `context`.
 /// - `jj.change_not_found` — `revision` or a location entry is malformed, carried by no VISIBLE
 ///   commit, or divergent; the id in `context`.
 /// - `jj.immutable` — the target, or a child the location would rewrite, is immutable.
+/// - `jj.stale_selection` — (the tree arm, Story 9.50) the target's parent tree is not the tree's `left`;
+///   nothing written.
 /// - `jj.revset_resolution_error` — an omitted `revision`'s `@` in a workspace with no
 ///   working-copy commit; the CLI's text in `context`.
 /// - `jj.config_error` — `split.legacy-bookmark-behavior` is not a boolean, or the config or its
