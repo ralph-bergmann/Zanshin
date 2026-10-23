@@ -2,7 +2,7 @@
 title: 'Story 9.9 closing run — `jj.config_deprecated` on `config gc` and the creation paths; SIGPIPE disposition settled'
 type: 'bugfix'
 created: '2026-10-23'
-status: 'in-review'
+status: 'done'
 baseline_revision: 'ae89dd97d708b021d1745db929216af5364b74a8'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -17,6 +17,13 @@ deferred:
       `crates/zanshin-jj/src/repo.rs` `resolve_workspace_root` calls `workspace::resolve_root` only; the CLI's `run_internal` (`cli_util.rs:4630-4740` @ v0.46.0) resolves, migrates and warns for every command, `jj workspace root` included. Outside the two items of this closing run.
     location: >-
       crates/zanshin-jj/src/repo.rs (resolve_workspace_root)
+    severity: low
+  - summary: >-
+      The `jj config edit` halves (`config_file_read` / `config_file_write`) load no config stack, so they never warn `jj.config_deprecated`, where the CLI's `jj config edit` warns whenever its start-up stack loads.
+    evidence: |-
+      `crates/zanshin-jj/src/config_cmd.rs` `file_read_with` / `file_write_with` run only the secure-config fix-up (Story 9.37: no stack load, so a broken config stays repairable); pre-existing since Story 9.28. Surfaced by this run's review (blind + edge layers).
+    location: >-
+      crates/zanshin-jj/src/config_cmd.rs (file_read_with, file_write_with)
     severity: low
 ---
 
@@ -86,6 +93,37 @@ User config (via `JJ_CONFIG`) holds `fix.tools.t.line-range-arg = "--l"`; `D` = 
 
 ## Review Triage Log
 
+### 2026-10-23 — Review pass
+- verdicts: 27 findings — high 0, medium 3, low 19, false 5, maybe-false 0
+- findings:
+  - `[medium]` `[patch]` (verification-gap) a deprecation kept on a refusal INSIDE `check_startup_stack` (`settings_from`) had no witness; swapping the two lines would pass every test — added a `creation_warnings` step: deprecated key + `user.name = 1`, Git init → `Err(RepoError::Config)` naming `user.name`, warnings `[D]`, commit 65a0ac3.
+  - `[false]` `[reject]` (intent) the fix does not live in `config::load_with` / `load` as the item located it — the graph/revset reads run `with_verb` → `start_call`, which records once per call; `walk_graph` / `graph_topology` / `eval_revset` witnesses show exactly one warning each.
+  - `[low]` `[reject]` (intent) `log_defaults` stays silent though the item lists it — it has no warning channel (`&self`, bare `Result`) and is the config half of the `jj log` whose walk/topology call already warns once; a second sink would print the CLI's one line twice and add API surface.
+  - `[low]` `[patch]` (intent) `graph_topology` claimed covered without a witness; FFI externs not run with a deprecated key — `graph_topology` added to `fix::a_deprecated_line_range_arg_warns_once_per_graph_read` (65a0ac3); the extern part is rejected: `outcome_to_envelope` is the shared mapping every config verb uses and is pinned by its own tests plus the gc-list builder test.
+  - `[medium]` `[patch]` (intent) refusal inside `check_startup_stack` untested — same as the verification-gap row, commit 65a0ac3.
+  - `[false]` `[reject]` (intent) the gc pair's public signatures changed although it is not Story 9.9 code — the item names `config gc` explicitly; carrying warnings on the error side needs `ConfigOutcome`, the sibling config verbs' type, and `api_stability` pins it.
+  - `[false]` `[reject]` (intent) docs claim beyond tests (editor halves load no stack; deprecation first in clone/convert) — `file_read_with` / `file_write_with` call only `fix_up`, no `startup`; the creation phase asserts `warnings.first()` is the deprecation for clone and both conversions.
+  - `[low]` `[reject]` (intent) item 2's probe leaves no repo artifact and the macOS probe was a debug build — the probe and its results are recorded in this spec and the ledger; the intent offered the disposition check as the settling option; release and debug share the VM's `Platform::Initialize`.
+  - `[false]` `[reject]` (intent) `## Auto Run Result` missing — written at finalize (this pass).
+  - `[medium]` `[patch]` (blind) the `check_startup_stack` doc promise (kept on a `settings_from` refusal) is untested — same as the verification-gap row, commit 65a0ac3.
+  - `[false]` `[reject]` (blind) colocated / native init and colocated clone may duplicate the warning — their extra loads go through the silent `config::load_for_workspace` (`creation.rs:137`, `:628`, `convert.rs:659`), never `start_call` or `check_startup_stack`, so no second warning can arise.
+  - `[low]` `[patch]` (blind) graph witness lacks `graph_topology`; no negative `log_defaults` test — `graph_topology` added (65a0ac3); `log_defaults` returns no warnings at all, so a negative test has nothing to observe.
+  - `[low]` `[reject]` (blind) FFI acceptance only half tested (gc error envelope, delete order on the wire, creation envelopes) — same as the intent row: shared `outcome_to_envelope` / creation-envelope mapping, pinned by their own tests; zanshin-jj tests pin the order.
+  - `[low]` `[defer]` (blind) the `jj config edit` halves never warn `jj.config_deprecated` though the CLI does when its stack loads — real, pre-existing since Story 9.28 (the halves deliberately load no stack, Story 9.37); deferred, mirrored to deferred-work.md.
+  - `[low]` `[patch]` (blind) `startup`'s `Option` sink dead and `fix_ups` misnamed after every caller passes a sink — now `warnings: &mut Vec<Warning>`, commit 65a0ac3.
+  - `[low]` `[reject]` (blind) CLI citation ranges differ across files — each range contains the print loop (`cli_util.rs` ~4720-4738 @ v0.46.0); the `check_startup_stack` doc deliberately spans to `UserSettings` (4750); a pure citation-unification adds nothing a reader needs.
+  - `[low]` `[patch]` (blind) the sprint-status note runs into the truncated earlier sentence — separated as "NOTE 2026-10-23 (closing run, …)" (spec commit).
+  - `[low]` `[reject]` (blind) Spec Change Log empty while the implementation departed from the Code Map — the fix is an edit of this build's spec; the departures (real FFI symbol names, editor-halves wording) are recorded in the verification notes.
+  - `[low]` `[patch]` (blind) clone `# Warnings` doc line ~150 chars, convert doc stub line — reflowed in `zanshin-ffi/src/repo.rs`, codegen re-run (header + bindings comments), commit 65a0ac3.
+  - `[low]` `[patch]` (blind) the missing-parent init row reused the directory holding the previous row's repo — fresh `TempDir`, commit 65a0ac3.
+  - `[low]` `[reject]` (blind) Dart docs for `configGcList` / `configGcDelete` do not name the new warning — both return types already carry the call's warnings (`WarnedList`, `ConfigGcResult.warnings`); no Dart code changed and no per-code list exists there to extend.
+  - `[low]` `[patch]` (blind) closed deferred-work entries keep live severities ("High if true.", "Medium.") — dropped (spec commit).
+  - `[low]` `[reject]` (edge) list + delete each warn, so one CLI `jj config gc` surfaces the line twice — the fix contradicts this spec's matrix row "gc delete → `[D]`"; each half is its own start-up that can refuse on its own.
+  - `[low]` `[patch]` (edge) `Repo::init` / `Repo::clone` docs omit the leading `jj.config_deprecated` and say the internal/native arms warn nothing — docs updated, commit 65a0ac3.
+  - `[low]` `[patch]` (edge) `convert.rs` module doc's print-order list omits the leading warning — item 1 added, commit 65a0ac3.
+  - `[low]` `[reject]` (edge) `check_startup_stack` resolves with command `None`, so a deprecated key inside a `--when.commands = ["git"]` scope warns in the CLI only — pre-existing for every Zanshin start-up but the config verbs and tracked by Story 9.41 (`9-41-when-commands-config-scopes-per-verb`, backlog).
+  - `[low]` `[defer]` (edge) the editor halves' parity gap while the ledger calls the every-command item resolved — same as the blind editor-halves row; deferred, mirrored.
+
 ## Design Notes
 
 - **Why not `log_defaults`.** The CLI's one `jj log` = one warning; the GUI's `jj log` is `log_defaults` (offers) + `walk_graph`/`graph_topology`, and the latter already warns via `start_call`. Warning in both would print the CLI's single line twice.
@@ -110,3 +148,37 @@ User config (via `JJ_CONFIG`) holds `fix.tools.t.line-range-arg = "--l"`; `D` = 
 - `packages/zanshin_core`: `dart test test/worker/warnings_test.dart test/ffi/config_test.dart` (with the gate's pinned env: `JJ_CONFIG=""`, `XDG_CONFIG_HOME=target/test-xdg-config`, …) — 24 passed.
 - `cargo make codegen` — header + `bindings.dart` changed in doc comments only (the gc externs and the `zanshin_repo_init` / `_clone` / `_convert` `# Warnings` sections now name `jj.config_deprecated`).
 - Deviation from the Code Map: the FFI creation symbols are `zanshin_repo_init` / `zanshin_repo_clone` / `zanshin_repo_convert` (`convert_import` has no FFI symbol); the docs name those. The registry/ABI emitter clause also now excludes the two `config_file_*` editor halves (they load no stack, so they never warned it) instead of the `gc` pair.
+
+**Verification notes (review pass 2026-10-23, after the patch commit 65a0ac3; no `cargo make test` / `test-full` / `coverage`):**
+- `cargo test -p zanshin-jj --lib` — 331 passed. `cargo test -p zanshin-jj --test it -- creation_warnings:: config_cmd:: config_cmd_user:: fix:: api_stability:: clone_init:: convert::` — 128 passed (incl. the new start-up-refusal step and `graph_topology`).
+- `cargo test -p zanshin-ffi --lib` — 203 passed; `cargo test -p zanshin-ffi --test it -- config_ffi:: repo_ffi:: ffi_abi_doc_sync::` — 71 passed.
+- `cargo test -p zanshin-parity --test oracle` — 280 passed (run on 9629c9e; 65a0ac3 changed docs/tests/`startup`'s parameter type only).
+- `cargo clippy -p zanshin-jj -p zanshin-ffi --all-targets -- -D warnings`, `cargo fmt --all --check` — clean. `cargo make codegen` — no drift after 65a0ac3.
+- `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings` — no issues; `dart format --set-exit-if-changed lib test` — 0 changed (only doc comments in `bindings.dart` changed).
+- Matrix audit: init ok / init refused / clone + conversions — `creation_warnings::creation_paths_report_what_the_cli_prints` (phase `a_deprecated_user_key_warns_once_first_on_every_creation_path`); gc list + delete — `config_cmd::a_deprecated_user_key_warns_on_config_gc` and inline `gc_warns_a_deprecated_key_at_its_start_up`; graph read — `fix::a_deprecated_line_range_arg_warns_once_per_graph_read`; no deprecated key — `creation_warnings` `init_reports_nothing`, `config_cmd::gc_lists_and_deletes_the_config_of_a_deleted_repo` (warnings empty). All ran and passed.
+
+## Auto Run Result
+
+Status: done
+
+**Items:**
+- **1 — fixed (9629c9efb0e64d74c465554907fdff5ab8bbdcda; review patches 65a0ac38ccc3f970c90a028e6a002c3165283598).** Verified partly real at `ae89dd9`: `config gc` (`startup(.., None)`) and the creation paths' `check_startup_stack` migrated and dropped the descriptions. Now `check_startup_stack(sink)` records them first in `init` / `clone` / `convert_colocated` / `convert_import` (before `settings_from`, so a start-up refusal keeps them), and `config_gc_list` / `config_gc_delete` return `ConfigOutcome` with their start-up recording into it; the FFI gc externs carry them on the ok and error envelope. The graph/revset part was false: `walk_graph` / `graph_topology` / `eval_revset` already record once per call via `start_call` (now witnessed); `log_defaults` is the config half of the same `jj log` and stays silent (no warning channel; warning there would print the CLI's one line twice).
+- **2 — rejected (false).** Probed `sigaction(SIGPIPE, NULL, &old)` through Dart FFI: the standalone Dart VM (`dart run` / `dart test`), `flutter_tester` and the Flutter macOS embedder (`flutter build macos --debug` app) all report `SIG_IGN`; the cdylib runs only inside those hosts after their VM is up, so an early-closed stdin yields `EPIPE` (discarded, as the CLI does). No code.
+
+**New findings (deferred, mirrored to deferred-work.md "Surfaced in the closing run of Story 9.9"):** `resolve_workspace_root` loads no start-up stack (low); the `jj config edit` halves never warn `jj.config_deprecated` (low).
+
+**Files changed:**
+- `crates/zanshin-jj/src/config.rs` — `check_startup_stack(sink)` records the deprecations.
+- `crates/zanshin-jj/src/creation.rs`, `convert.rs` — pass the creation sink; convert module doc's print order.
+- `crates/zanshin-jj/src/config_cmd.rs` — gc pair → `ConfigOutcome`; `startup` takes the warning list.
+- `crates/zanshin-jj/src/repo.rs` — `Repo::init` / `Repo::clone` warning docs.
+- `crates/zanshin-ffi/src/config.rs`, `repo.rs` — gc externs via `outcome_to_envelope`, gc-list envelope carries warnings, docs; `zanshin_ffi.h`, `bindings.dart` regenerated (comments).
+- Tests: `crates/zanshin-jj/tests/it/{creation_warnings,config_cmd,fix,api_stability}.rs`, inline `config_cmd` + `zanshin-ffi` config tests.
+- Docs: `docs/rust-error-codes.md`, `docs/ffi-abi.md`.
+- Ledger: `deferred-work.md` (item 1 RESOLVED, item 2 REJECTED, two surfaced lows), `sprint-status.yaml` (9-9 closing note), this spec.
+
+**Review:** 27 findings (medium 3, low 19, false 5). Patched: the start-up-refusal witness (medium, three layers), `graph_topology` witness, `startup`'s dead `Option`, `Repo::init`/`clone` and convert warning-order docs, FFI doc reflow, fresh dir for the refused-init row, sprint-status note, closed-entry severities. Deferred: the `jj config edit` halves' missing deprecation warning (low, pre-existing). Rejected: `log_defaults` silence (no channel, would duplicate), extern-level FFI tests (shared mapping), probe artifact/release build, citation ranges, spec Change Log edit, Dart docs, gc list+delete double warning (contradicts the spec matrix; each half its own start-up), `--when.commands` for creation start-ups (Story 9.41); false: loader location, colocated/native duplicates, gc API change, docs claims, missing Auto Run Result.
+
+**Follow-up review recommended:** false — patched at entry verdict: high 0, medium 1 (one grouped entry), low 9.
+
+**Residual risks:** coverage not measured (gate rule; new lines are exercised by the new tests); the full gate runs at the loop's end; a `--when.commands` scoped deprecated key stays unwarned on creation paths until Story 9.41.
