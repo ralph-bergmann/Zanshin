@@ -1864,9 +1864,9 @@ Spec: spec-loop-9-58-fixup-coverage-revset.
 
 Spec: spec-9-40-no-change-verbs-write-no-operation.
 
-- **`undo_preserves_current_git_head_and_git_refs_not_targets` no longer proves that `undo` keeps the current `git_refs`: its operations change only Git refs, so its undo now restores an equal view and writes nothing.** Low.
+- ~~**`undo_preserves_current_git_head_and_git_refs_not_targets` no longer proves that `undo` keeps the current `git_refs`: its operations change only Git refs, so its undo now restores an equal view and writes nothing.**~~ — RESOLVED 2026-10-23 (spec-9-40-closing-undo-keeps-git-refs-witness, commit 873ccfe): op B also creates a local bookmark, so the undo writes; the test asserts the written op (id ≠ op B, "undo: restore to operation <op A>"), the bookmark gone, and `git_refs`/`git_head` kept at Commit 3. Low.
   - `crates/zanshin-jj/tests/it/op_log.rs` (`undo_preserves_current_git_head_and_git_refs_not_targets`): still green, but since the Story 9.40 gate in `mutate::finish_verb` the undo takes the no-change arm, so its git_refs/git_head assertions hold trivially; the oracle's `undo_no_change` pins only `git_head`.
-  - **Follow-up:** give the test's undone operation a real repo-state change next to the Git-ref move, so the undo writes and the kept `git_refs` are asserted on a written view.
+  - **Follow-up:** Done (spec-9-40-closing-undo-keeps-git-refs-witness).
 - **Story 9.38's tracking text still says `mutate.rs::edit` always commits `edit commit <id>`; since Story 9.40 an edit of the current NON-discardable `@` writes nothing.** Low.
   - sprint-status.yaml `9-38-edit-current-at-is-noop` and the `edit` bullet Story 9.38 owns here; witness `crates/zanshin-jj/tests/it/mutate.rs` `edit_of_the_current_non_discardable_wc_writes_no_operation`. Left for 9.38: the discardable `@` (jj-lib's `MutableRepo::edit` abandons it) and the CLI's early return after the rewritability check.
   - **Follow-up:** narrow Story 9.38's scope text to the discardable case and the early return.
