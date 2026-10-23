@@ -31,6 +31,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/config.rs (load_with, load); crates/zanshin-jj/src/config_cmd.rs (config gc)
     severity: medium
+    resolved: >-
+      2026-10-23 — fixed (spec-9-9-closing-config-deprecated-every-start-up, commit 9629c9e): `config gc` and the creation paths now record the deprecation warnings; the graph/revset reads already warned once per call (now witnessed).
   - summary: >-
       A configured fix tool that never exits blocks the worker for good; the GUI has no Ctrl-C and `fix` has no cancel.
     evidence: |-
@@ -45,6 +47,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/fix.rs (Runner::run_tool)
     severity: high (unverified)
+    resolved: >-
+      2026-10-23 — rejected (spec-9-9-closing-config-deprecated-every-start-up): the Dart VM, `flutter_tester` and the Flutter macOS embedder all ignore SIGPIPE, so an early-closed stdin yields a discarded EPIPE, as in the CLI.
 ---
 
 <intent-contract>
