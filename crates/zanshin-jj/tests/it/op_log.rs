@@ -778,11 +778,17 @@ fn undo_preserves_current_git_head_and_git_refs_not_targets() {
     let commit1_id = CommitId::try_from_hex(&layout.commit1_commit_hex).expect("valid commit1 hex");
     let commit3_id = CommitId::try_from_hex(&layout.commit3_commit_hex).expect("valid commit3 hex");
 
-    // git_refs/git_head have no mutation exposed through Repo's public API yet (Story
-    // 2.8's bookmarks are read-only), so build the two ops directly via a raw jj-lib
-    // transaction: op A puts git_refs/git_head at Commit 1 (the TARGET undo() will
-    // restore toward); an intervening op B moves them to Commit 3 -- this becomes the
-    // CURRENT (pre-undo) state that undo()'s restored_view must leave untouched.
+    // git_refs/git_head have no mutation exposed through Repo's public API, and op B's
+    // bookmark (below) must land in the SAME operation as its Git-ref move, so build the
+    // two ops directly via raw jj-lib transactions: op A puts git_refs/git_head at Commit 1
+    // (the TARGET undo() will restore toward); an intervening op B moves them to Commit 3 --
+    // this becomes the CURRENT (pre-undo) state that undo()'s restored_view must leave
+    // untouched.
+    //
+    // Op B also creates a local bookmark -- a repo portion undo() DOES restore from the
+    // target. Without it, the restored view (op A's repo portion + the current git state)
+    // would equal op B's view, the undo would write nothing (Story 9.40's no-change gate),
+    // and the git assertions below would hold trivially on the unchanged view.
     let (workspace, _settings) = oracle_workspace(&fx.path);
     let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).expect("oracle load_at_head");
 
@@ -794,6 +800,7 @@ fn undo_preserves_current_git_head_and_git_refs_not_targets() {
     tx.repo_mut()
         .set_git_head_target(workspace.workspace_name(), RefTarget::normal(commit1_id));
     let repo_a = pollster::block_on(tx.commit("op A: git state at Commit 1")).expect("commit op A");
+    let op_a = repo_a.op_id().hex();
 
     let mut tx2 = repo_a.start_transaction();
     tx2.repo_mut().set_git_ref_target(
@@ -801,12 +808,24 @@ fn undo_preserves_current_git_head_and_git_refs_not_targets() {
         RefTarget::normal(commit3_id.clone()),
     );
     tx2.repo_mut()
-        .set_git_head_target(workspace.workspace_name(), RefTarget::normal(commit3_id));
-    pollster::block_on(tx2.commit("op B: git state moved to Commit 3")).expect("commit op B");
+        .set_git_head_target(workspace.workspace_name(), RefTarget::normal(commit3_id.clone()));
+    tx2.repo_mut()
+        .set_local_bookmark_target("undo-witness".as_ref(), RefTarget::normal(commit3_id));
+    let repo_b = pollster::block_on(tx2.commit("op B: git state moved to Commit 3 + a bookmark")).expect("commit op B");
+    let op_b = repo_b.op_id().hex();
 
     // undo() through the crate's public API: head (op B) -> its single parent (op A).
     let mut repo = Repo::open(&fx.path).unwrap();
-    repo.undo(false).unwrap();
+    let result = repo.undo(false).unwrap();
+
+    // The undo WROTE an operation: the view below is a written one, not op B's left as is.
+    let head_op = repo.op_log(Some(1)).unwrap().swap_remove(0);
+    assert_ne!(result.new_op_id.0, op_b, "the undo must write an operation");
+    assert_eq!(
+        result.new_op_id, head_op.id,
+        "MutationResult.new_op_id must match the op-log head"
+    );
+    assert_eq!(head_op.description, format!("undo: restore to operation {op_a}"));
 
     // git_head must still point at Commit 3 (CURRENT/op B) -- NOT revert to Commit 1
     // (the target op's value). A regression that swapped restored_view's git_refs/
@@ -819,6 +838,11 @@ fn undo_preserves_current_git_head_and_git_refs_not_targets() {
     let (oracle, _settings) = oracle_workspace(&fx.path);
     let view_repo = pollster::block_on(oracle.repo_loader().load_at_head()).expect("oracle load_at_head");
     let view = view_repo.view();
+
+    assert!(
+        view.get_local_bookmark("undo-witness".as_ref()).is_absent(),
+        "the local bookmark (repo portion) must be restored from the target op, where it is absent"
+    );
 
     let head: Vec<String> = view
         .git_head(oracle.workspace_name())
