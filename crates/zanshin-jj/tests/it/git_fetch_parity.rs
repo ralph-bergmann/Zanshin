@@ -1056,6 +1056,26 @@ fn a_fetch_with_nothing_new_does_not_resolve_the_immutable_set() {
     assert!(result.is_ok(), "{result:?}");
 }
 
+/// Story 9.40: a fetch that brings nothing new writes no operation — the CLI's `tx.finish` says
+/// "Nothing changed." — and reports the pre-call head with empty change lists.
+#[test]
+fn a_fetch_with_nothing_new_writes_no_operation() {
+    let dir = TempDir::new().unwrap();
+    let origin = Upstream::new(dir.path(), "origin");
+    let mut fx = Fx::new(&[("origin", &origin)]);
+    fx.fetch(&GitFetchArgs::default()).expect("first fetch");
+    let (before, _) = fx.head_op();
+
+    let outcome = fx.fetch(&GitFetchArgs::default()).expect("second fetch");
+
+    assert_eq!(outcome.mutation.new_op_id.0, before, "the result is the pre-call head");
+    assert_eq!(fx.head_op().0, before, "no operation is written");
+    assert!(outcome.mutation.abandoned_change_ids.is_empty());
+    assert!(outcome.changed_bookmarks.is_empty());
+    assert!(outcome.changed_tags.is_empty());
+    assert_eq!(outcome.num_rewritten, 0);
+}
+
 /// Writes, in the Git repo at `git_dir`, a copy of `commit` with its message replaced by
 /// `message` — every header kept, jj's `change-id` header included — and returns its id. The
 /// "same change, rewritten upstream" a force-push of an amended jj commit produces.

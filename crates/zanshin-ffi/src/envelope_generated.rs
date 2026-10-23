@@ -14428,7 +14428,8 @@ pub mod zanshin {
         /// `zanshin_git_fetch`'s answer (Story 9.30): the shared mutation contract and the fetch's own
         /// facts.
         ///
-        ///   mutation           the operation the fetch wrote (a no-change fetch writes one too)
+        ///   mutation           the operation the fetch wrote; a fetch that changed nothing writes none
+        ///                      (Story 9.40) and `new_op_id` is the head before the verb
         ///   remotes            the remotes fetched from, in remote-name order
         ///   hints              the CLI's hints, verbatim: "Fetching from the only existing remote: <name>"
         ///   failed_ref_names   the Git refs the import could not read (lossy UTF-8, sorted by name) —

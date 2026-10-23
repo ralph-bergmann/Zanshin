@@ -79,6 +79,7 @@ parity!(
     bookmark_create_unresolvable_trunk,
     describe_root,
     describe_no_change,
+    undo_no_change,
     describe_commit_trailers,
     restore_from,
     restore_no_args,
@@ -239,6 +240,7 @@ parity!(
     fetch_tracked,
     fetch_git_fetch_config,
     fetch_remote_fetch_bookmarks,
+    fetch_nothing_new,
     convert_colocated_default,
     convert_import_default,
     convert_import_invalid_source,
@@ -263,7 +265,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 196);
+    assert_eq!(SCENARIO_IDS.len(), 198);
 }
 
 #[test]
@@ -291,14 +293,14 @@ fn ledger_names_only_known_scenarios_and_aspects() {
 /// A ledgered aspect that still diverges, but with other values than the ledger pins, must
 /// fail: otherwise a wrong fix or a fresh regression in that aspect would pass as "expected".
 #[test]
-#[should_panic(expected = "CHANGED ops written")]
+#[should_panic(expected = "CHANGED descriptions")]
 fn a_ledgered_aspect_with_other_values_fails() {
     let found = [compare::Divergence {
-        aspect: "ops written".to_owned(),
+        aspect: "descriptions".to_owned(),
         zanshin: "a different Zanshin value".to_owned(),
         cli: "a different CLI value".to_owned(),
     }];
-    ledger::assert_matches_ledger("describe_no_change", &found);
+    ledger::assert_matches_ledger("describe_gui_text", &found);
 }
 
 #[test]

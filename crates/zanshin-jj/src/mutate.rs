@@ -8,10 +8,11 @@
 //! (AR-AP-1). The transaction boundary stays entirely inside this function; no mutation
 //! primitive crosses the crate's public API (ADR-0003).
 //!
-//! Two verbs can finish WITHOUT writing an operation — [`restore`] when the selected tree
-//! already equals the destination's, [`absorb`] when nothing was absorbable. Both mirror
-//! the CLI, which prints "Nothing changed." and commits nothing; the transaction is simply
-//! dropped and [`MutationResult::new_op_id`] carries the PRE-CALL head op id.
+//! Every verb whose CLI counterpart ends in `tx.finish` finishes WITHOUT writing an operation
+//! when its transaction changed nothing — [`finish_verb`]'s gate (Story 9.40), the CLI's
+//! "Nothing changed." (e.g. [`restore`] of an equal tree, [`absorb`] with nothing absorbable,
+//! [`describe`] with the unchanged text). The transaction is simply dropped and
+//! [`MutationResult::new_op_id`] carries the PRE-CALL head op id.
 //!
 //! Every verb runs after [`crate::Repo`]'s pre-verb snapshot (Story 9.26), so `@` already holds
 //! the on-disk edits, exactly as after the CLI's `workspace_helper`. Every verb whose CLI
@@ -59,9 +60,10 @@ pub struct MutationResult {
     /// Id of the operation this mutation committed — `jj op log`'s most-recent entry
     /// immediately afterward (NFR-R-2).
     ///
-    /// For the two verbs that can legitimately write NOTHING ([`restore`] with an already
-    /// identical tree, [`absorb`] with nothing absorbable) this is the head op id from
-    /// BEFORE the call — the op log is unchanged, which is exactly the signal jj itself
+    /// Every verb that finishes through [`finish_verb`] writes NOTHING when its transaction
+    /// changed nothing (Story 9.40 — e.g. [`restore`] with an already identical tree, [`absorb`]
+    /// with nothing absorbable, [`describe`] with the unchanged text); this is then the head op
+    /// id the verb started from — the op log is unchanged, which is exactly the signal jj itself
     /// gives, and there is deliberately no separate `no_op` flag.
     pub new_op_id: crate::OperationId,
     /// Change ids of genuinely NEW changes minted by this mutation: [`new_change`]'s
@@ -632,9 +634,9 @@ pub(crate) struct FinishCtx<'a> {
     pub(crate) _lock: &'a GitImportExportLock,
 }
 
-/// The outcome of [`finish_transaction`].
+/// The outcome of [`finish_transaction`] — or of [`finish_verb`]'s no-change gate.
 pub(crate) struct Finish {
-    /// The just-committed repo.
+    /// The just-committed repo; the PRE-CALL repo when [`Finish::committed`] is `false`.
     pub(crate) repo: Arc<ReadonlyRepo>,
     /// `@` after the finish — `None` only when the workspace is gone from the view.
     pub(crate) wc_commit: Option<Commit>,
@@ -643,6 +645,10 @@ pub(crate) struct Finish {
     /// What the checkout of `@` did to the files on disk — `None` when the workspace is gone
     /// from the view and nothing was checked out.
     pub(crate) checkout: Option<crate::CheckoutStats>,
+    /// Whether an operation was written. `false` = [`finish_verb`]'s no-change gate wrote
+    /// nothing ("Nothing changed."), so [`Finish::repo`] is the pre-call repo, not a post-verb
+    /// view.
+    pub(crate) committed: bool,
 }
 
 /// Resets `workspace_name`'s Git HEAD (in the git worktree at `workspace_root`) to `wc_commit`'s
@@ -719,7 +725,8 @@ fn wc_is_immutable(
 /// 2. Colocated: Git HEAD is reset to `@`'s parent ([`try_reset_git_head`]) and jj's refs are
 ///    exported ([`export_refs_into`]), under `ctx.lock`.
 /// 3. The transaction is committed as `description`. There is no `has_changes()` check here —
-///    the CLI has none either; its callers skip the call when nothing changed.
+///    the CLI has none either; [`finish_verb`] (the CLI's `tx.finish`) skips the call when
+///    nothing changed.
 /// 4. `@` is checked out ALWAYS when it exists, even if it did not move: the CLI's
 ///    `update_working_copy` calls `Workspace::check_out` unconditionally, which (re)records the
 ///    working copy at the new operation.
@@ -811,23 +818,27 @@ pub(crate) fn finish_transaction(
         wc_commit: maybe_new_wc_commit,
         facts,
         checkout,
+        committed: true,
     })
 }
 
 /// Finishes `tx` as the CLI's `WorkspaceCommandTransaction::finish` does
-/// (`cli/src/cli_util.rs:2849-2864` @ v0.46.0): a transaction with changes first resolves the
-/// immutable set against `tx.base_repo()` and rebases the mutable descendants
-/// (`rebase_mutable_descendants`, `:2986-3002`; Story 9.56), then takes the Git import/export
-/// lock right before [`finish_transaction`] so the Git HEAD export is atomic with the commit.
+/// (`cli/src/cli_util.rs:2849-2865` @ v0.46.0).
 ///
-/// A transaction WITHOUT changes skips the resolution — the CLI returns "Nothing changed." before
-/// it — and is still committed here: callers that must write no operation drop it themselves
-/// ([`finish_or_no_op_at`]).
+/// 1. A transaction WITHOUT changes writes no operation — the CLI prints "Nothing changed." and
+///    returns (Story 9.40). The result is built from `tx.base_repo()` (the head the verb loaded,
+///    after the pre-verb snapshot): no immutable-set resolution, no rebase, no Git lock, no
+///    export, no checkout, no finish warnings, and [`Finish::committed`] is `false`.
+/// 2. Otherwise the immutable set is resolved against `tx.base_repo()` and the mutable
+///    descendants are rebased (`rebase_mutable_descendants`, `:2986-3002`; Story 9.56), then the
+///    Git import/export lock is taken right before [`finish_transaction`] so the Git HEAD export
+///    is atomic with the commit.
 ///
 /// # Errors
 ///
 /// - [`MutateError::Config`] — the transaction has changes and `immutable_heads()` does not
 ///   resolve; nothing is written, as in the CLI.
+/// - [`MutateError::Backend`] — the no-change arm could not read `@`.
 /// - Anything [`lock_git_import_export`] or [`finish_transaction`] returns.
 pub(crate) fn finish_verb(
     workspace: &mut Workspace,
@@ -835,15 +846,28 @@ pub(crate) fn finish_verb(
     description: &str,
     ctx: &mut VerbContext,
 ) -> Result<Finish, MutateError> {
-    if tx.repo().has_changes() {
-        let immutable = resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
-        pollster::block_on(tx.repo_mut().rebase_descendants_with_options(
-            &immutable,
-            &RebaseOptions::default(),
-            |_, _| {},
-        ))
-        .map_err(be)?;
+    if !tx.repo().has_changes() {
+        let repo = tx.base_repo().clone();
+        let wc_commit = repo
+            .view()
+            .get_wc_commit_id(workspace.workspace_name())
+            .map(|id| repo.store().get_commit(id))
+            .transpose()
+            .map_err(be)?;
+        return Ok(Finish {
+            repo,
+            wc_commit,
+            facts: FinishFacts::default(),
+            checkout: None,
+            committed: false,
+        });
     }
+    let immutable = resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
+    pollster::block_on(
+        tx.repo_mut()
+            .rebase_descendants_with_options(&immutable, &RebaseOptions::default(), |_, _| {}),
+    )
+    .map_err(be)?;
     let lock = lock_git_import_export(workspace, ctx.colocated)?;
     finish_transaction(
         workspace,
@@ -916,8 +940,11 @@ pub(crate) fn plan_describe(
 ///
 /// `ctx.immutable` is the repo's effective immutable-set expression, parsed by the pre-verb
 /// snapshot ([`crate::snapshot::CommandEnv`]); the target is refused if it falls
-/// inside it, mirroring the CLI's `check_rewritable` in `jj describe`
-/// (`cli/src/commands/describe.rs:101` @ v0.44.0).
+/// inside it, mirroring the CLI's `check_rewritable_expr` in `jj describe`
+/// (`cli/src/commands/describe.rs:102-104` @ v0.46.0).
+///
+/// A `description` equal to the stored one (after the trailers step) writes no operation and
+/// returns the pre-call head op id, as `jj describe` ("Nothing changed."; Story 9.40).
 ///
 /// # Errors
 ///
@@ -954,8 +981,12 @@ pub(crate) fn describe(
             }
         }
     }
-    pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
-    pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
+    // `describe.rs:194-201`: an unchanged description (compared after the trailers) is filtered
+    // out, so nothing is rewritten and `tx.finish` reports "Nothing changed." (Story 9.40).
+    if builder.description() != commit.description() {
+        pollster::block_on(builder.write(tx.repo_mut())).map_err(be)?;
+        pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
+    }
     let finish = finish_verb(workspace, tx, &format!("describe commit {}", commit.id().hex()), ctx)?;
     mutation_result(&finish, Vec::new(), Vec::new())
 }
@@ -1474,7 +1505,8 @@ where
 /// nothing and still succeed. All of those shapes collapse to this one here.
 ///
 /// On the no-op path [`no_op_result`] returns the PRE-CALL op-log head, so a caller sees
-/// byte-identical op-log state — the same signal jj itself gives.
+/// byte-identical op-log state — the same signal jj itself gives. [`finish_verb`] carries the
+/// same gate since Story 9.40; the check here stays, it keeps the no-op result in one place.
 ///
 /// `work` records the warnings the CLI prints inside the transaction (before `tx.finish`) into
 /// the call's collector it is handed (Story 9.32).

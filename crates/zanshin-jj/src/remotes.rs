@@ -588,9 +588,7 @@ pub(crate) fn git_fetch(
     // `git_import` leaves this field empty for the same reason. When `@` itself was abandoned,
     // jj-lib's replacement is already reported via `working_copy_change_id`.
     let mutation = mutate::mutation_result(&finish, Vec::new(), crate::git::project_abandoned(&stats))?;
-    // WHY `committed = true`: a fetch always writes its operation (`finish_verb` has no
-    // `has_changes` check), so `finish.repo` is the post-import view the projection reads.
-    let import = crate::git::project_import(&stats, &finish.repo, true, mutation);
+    let import = crate::git::project_import(&stats, &finish.repo, finish.committed, mutation);
     Ok(GitFetchOutcome {
         mutation: import.mutation,
         remotes: remotes.into_iter().map(RemoteNameBuf::into_string).collect(),

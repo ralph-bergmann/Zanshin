@@ -1873,8 +1873,8 @@ pub(crate) fn git_push(
     }
     if pushed.recordable {
         match record_push(repo, ctx, tx, &description) {
-            Ok(op_id) => {
-                outcome.recorded = true;
+            Ok((op_id, committed)) => {
+                outcome.recorded = committed;
                 outcome.new_op_id = op_id;
             }
             Err(e) => late_error = late_error.or(Some(e)),
@@ -1891,15 +1891,17 @@ pub(crate) fn git_push(
 }
 
 /// The record step (`push.rs:622-655`): the push's operation written with `description` — the
-/// shared finish rebases the descendants, as the CLI's `tx.finish`. Returns the new operation's id.
+/// shared finish rebases the descendants, as the CLI's `tx.finish`. Returns the head op id after
+/// the step and whether an operation was written — `false` when the transaction changed nothing
+/// (the finish's "Nothing changed." gate, Story 9.40), the id then being the pre-call head.
 fn record_push(
     repo: &mut Repo,
     ctx: &mut VerbContext,
     tx: Transaction,
     description: &str,
-) -> Result<String, MutateError> {
+) -> Result<(String, bool), MutateError> {
     let finish = crate::mutate::finish_verb(repo.workspace_mut(), tx, description, ctx)?;
-    Ok(finish.repo.op_id().hex())
+    Ok((finish.repo.op_id().hex(), finish.committed))
 }
 
 /// What the push loop leaves behind.

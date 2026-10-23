@@ -928,6 +928,20 @@ pub fn scenarios() -> Vec<Scenario> {
             },
             |_| args(&["describe", "-m", "C"]),
         ),
+        // Story 9.40: Git HEAD made unborn behind jj's back, so the start-up import writes
+        // `import git head` (only `git_head` changes); undoing it restores an equal view — the
+        // CLI's "Nothing changed.", no operation.
+        Scenario {
+            setup: &[Step::Git(&["symbolic-ref", "HEAD", "refs/heads/nowhere"])],
+            ..simple(
+                "undo_no_change",
+                |repo, _, _| {
+                    let result = repo.undo(false);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["undo"]),
+            )
+        },
         Scenario {
             setup: &[Step::Jj(&[
                 "config",

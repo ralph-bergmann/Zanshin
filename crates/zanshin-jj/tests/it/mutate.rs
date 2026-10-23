@@ -132,6 +132,58 @@ fn describe_empty_string_makes_change_anonymous() {
     assert!(change.is_anonymous, "empty description + no bookmark must be anonymous");
 }
 
+/// Story 9.40: the stored description again rewrites nothing — `describe.rs:194-201` filters the
+/// unchanged commit out and `tx.finish` says "Nothing changed." — so no operation is written and
+/// the result is the pre-call head.
+#[test]
+fn describe_with_the_unchanged_text_writes_no_operation() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = repo.op_log(Some(1)).unwrap().swap_remove(0).id;
+
+    let result = repo
+        .describe(ChangeId(layout.commit1_change_id.clone()), "Commit 1")
+        .unwrap();
+
+    assert_eq!(result.new_op_id, before, "the result is the pre-call head");
+    assert_eq!(repo.op_log(Some(1)).unwrap()[0].id, before, "no operation is written");
+    assert_eq!(result.working_copy_change_id.0, layout.wc_change_id);
+    assert!(result.finish.is_none());
+    let change = repo.get_change(&ChangeId(layout.commit1_change_id)).unwrap();
+    assert_eq!(change.description, "Commit 1");
+    assert_eq!(
+        change.commit_id.0, layout.commit1_commit_hex,
+        "the commit is not rewritten"
+    );
+}
+
+/// The same unchanged text with an unresolvable `immutable_heads()`: `jj describe` resolves the
+/// immutable set in its rewritability check BEFORE it compares descriptions
+/// (`check_rewritable_expr`, `describe.rs:102-104` @ v0.46.0), so it refuses there — the
+/// no-change finish never gets to skip the resolution. Nothing is written.
+#[test]
+fn describe_with_the_unchanged_text_and_an_unresolvable_alias_refuses_like_the_cli() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    fs::write(
+        fx.path.join(".jj").join("repo").join("config.toml"),
+        "[revset-aliases]\n'immutable_heads()' = 'nonexistent_symbol_xyz'\n",
+    )
+    .unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = repo.op_log(Some(1)).unwrap().swap_remove(0).id;
+
+    let err = repo
+        .describe(ChangeId(layout.commit1_change_id), "Commit 1")
+        .expect_err("the rewritability check resolves the immutable set");
+
+    assert!(matches!(err, MutateError::Config { .. }), "{err:?}");
+    assert_eq!(repo.op_log(Some(1)).unwrap()[0].id, before, "nothing is written");
+}
+
 /// A mutation that does not move `@` still finishes like the CLI's `finish_transaction`
 /// (Story 9.26): `update_working_copy` checks `@` out UNCONDITIONALLY, which touches no file
 /// (the tree did not change) but records the new operation in the working copy's checkout
@@ -259,6 +311,24 @@ fn edit_switches_wc_without_creating_a_new_commit() {
         result.new_op_id, ops[0].id,
         "MutationResult.new_op_id must match the op-log head"
     );
+}
+
+/// Story 9.40: editing the commit that already is the (non-discardable) `@` changes nothing —
+/// the CLI's "Already editing that commit." — so no operation is written.
+#[test]
+fn edit_of_the_current_non_discardable_wc_writes_no_operation() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    repo.edit(ChangeId(layout.commit3_change_id.clone())).unwrap();
+    let before = repo.op_log(Some(1)).unwrap().swap_remove(0).id;
+
+    let result = repo.edit(ChangeId(layout.commit3_change_id.clone())).unwrap();
+
+    assert_eq!(result.new_op_id, before, "the result is the pre-call head");
+    assert_eq!(repo.op_log(Some(1)).unwrap()[0].id, before, "no operation is written");
+    assert_eq!(result.working_copy_change_id.0, layout.commit3_change_id);
 }
 
 // ── abandon ──────────────────────────────────────────────────────────────────────

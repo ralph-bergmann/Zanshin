@@ -184,6 +184,34 @@ fn a_trailer_already_present_is_not_added_again() {
     assert_eq!(fx.description(&at), sob("T"));
 }
 
+/// Story 9.40: the unchanged-description filter compares AFTER the trailers, as the CLI's
+/// (`describe.rs:194-201` @ v0.46.0): the stored text plus a missing trailer is a change, the
+/// same text once the trailer is stored is none.
+#[test]
+fn an_unchanged_description_is_compared_after_the_trailers() {
+    let mut fx = base(&[TRAILERS]);
+    let at = fx.c.clone();
+    let ops_before = fx.repo.op_log(None).expect("op log").len();
+
+    fx.repo.describe(at.clone(), "C\n").expect("describe");
+    assert_eq!(fx.description(&at), sob("C"), "the trailer is added");
+    assert_eq!(
+        fx.repo.op_log(None).expect("op log").len(),
+        ops_before + 1,
+        "one op written"
+    );
+
+    let head = fx.repo.op_log(Some(1)).expect("op log").swap_remove(0).id;
+    let again = fx.repo.describe(at.clone(), "C\n").expect("describe again");
+    assert_eq!(again.new_op_id, head, "the result is the pre-call head");
+    assert_eq!(
+        fx.repo.op_log(Some(1)).expect("op log")[0].id,
+        head,
+        "no operation is written"
+    );
+    assert_eq!(fx.description(&at), sob("C"));
+}
+
 // ── new ──────────────────────────────────────────────────────────────────────────
 
 #[test]

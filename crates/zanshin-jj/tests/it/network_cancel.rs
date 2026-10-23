@@ -312,6 +312,8 @@ fn a_remote_change_poll_cancelled_before_it_starts_never_runs_git() {
 #[test]
 fn an_uncancelled_fetch_finishes_and_a_later_cancel_is_a_no_op() {
     let mut w = world();
+    // Something new upstream: a fetch that changes nothing writes no operation (Story 9.40).
+    git(&["branch", "other", "main"], &w.bare);
     let before = w.head_op();
     let id = token();
     let guard = cancel::attach(id).expect("attaches");

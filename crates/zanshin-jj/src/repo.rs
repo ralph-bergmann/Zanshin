@@ -1151,7 +1151,9 @@ impl Repo {
     /// CLI-parity op-log description (NFR-R-2) — jj-lib only, never shells to `jj`
     /// (AR-AP-1). `description` may be empty (jj convention). A non-empty `description` gets
     /// `templates.commit_trailers` added, as `jj describe -m` does (Story 9.51); an empty one
-    /// gets none.
+    /// gets none. A `description` equal to the stored one (compared after the trailers, as the
+    /// CLI) writes no operation — `jj describe`'s "Nothing changed." (Story 9.40) — and the
+    /// result carries the pre-call head op id.
     ///
     /// # Errors
     ///
@@ -1252,6 +1254,10 @@ impl Repo {
     /// Switches the working copy to `change_id` without creating a new commit
     /// (FR-JJ-10a).
     ///
+    /// Editing the commit that already is a non-discardable `@` changes nothing, so no operation
+    /// is written and the result carries the pre-call head op id — the CLI's "Already editing that
+    /// commit." (Story 9.40); a discardable current `@` remains Story 9.38's.
+    ///
     /// # Errors
     ///
     /// - [`crate::MutateError::ChangeNotFound`] — `change_id` is malformed, absent,
@@ -1303,7 +1309,9 @@ impl Repo {
     ///
     /// Restores the undone operation's parent's repo state + local bookmarks/tags +
     /// remote-tracking bookmarks (leaving `git_refs`/`git_heads` untouched) onto a
-    /// freshly-committed op. `allow_cross_workspace` is the CLI's `--allow-cross-workspace`
+    /// freshly-committed op — unless the restored view equals the current one: then, as `jj undo`
+    /// ("Nothing changed."; Story 9.40), no operation is written and the result carries the
+    /// pre-call head op id. `allow_cross_workspace` is the CLI's `--allow-cross-workspace`
     /// (default `false`): without it, an operation performed in another workspace is not undone.
     /// Undoing a push or a workspace removal warns (`jj.undo_push_operation`,
     /// `jj.undo_workspace_removal`). See `op_log::undo` for the step.
@@ -1418,10 +1426,9 @@ impl Repo {
     /// remote has warn `jj.fetch_branches_unmatched`. The operation is `fetch from git remote(s)
     /// <names joined by ",">`. It finishes like the CLI's `tx.finish` (Story 9.26): a colocated
     /// workspace exports the fetched refs to Git, and the working copy is checked out at the new
-    /// operation. A fresh operation is committed even when nothing changed — NOT CLI parity: the
-    /// CLI's `WorkspaceCommandTransaction::finish` writes none when `!has_changes()`; the known,
-    /// tracked divergence (deferred-work.md, "`Repo::git_fetch` and `Repo::describe` write an
-    /// operation when nothing changed").
+    /// operation. A fetch that changed nothing writes no operation, as the CLI's
+    /// `WorkspaceCommandTransaction::finish` ("Nothing changed."; Story 9.40): the mutation's
+    /// `new_op_id` is the pre-call head and nothing is exported or checked out.
     ///
     /// `git.abandon-unreachable-commits`, `git.record-synthetic-predecessors` and the
     /// per-remote `remotes.<name>.auto-track-bookmarks` are read from the repo's EFFECTIVE

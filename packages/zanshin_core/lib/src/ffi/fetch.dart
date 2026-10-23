@@ -151,8 +151,9 @@ final class GitFetchResult {
     this.warnings = const [],
   });
 
-  /// The shared mutation contract. A fetch writes an operation even when
-  /// nothing changed. Its `abandonedChangeIds` are the commits the import
+  /// The shared mutation contract. A fetch that changed nothing writes no
+  /// operation, and `newOpId` is the pre-call head (the CLI's "Nothing
+  /// changed."). Its `abandonedChangeIds` are the commits the import
   /// abandoned because they became unreachable in git (what
   /// `git.abandon-unreachable-commits` governs); `newChangeIds` is always
   /// empty. The nested result carries no warnings of its own.

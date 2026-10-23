@@ -298,10 +298,10 @@ fn git_fetch_honours_remote_auto_track_bookmarks() {
     );
 }
 
-// ── Fetch with nothing new still commits a fresh op; @ stays put ──────────────────
+// ── Fetch with nothing new writes no op (Story 9.40); @ stays put ─────────────────
 
 #[test]
-fn git_fetch_twice_with_no_new_commits_still_commits_fresh_op_each_time() {
+fn git_fetch_twice_with_no_new_commits_writes_no_second_op() {
     test_helpers::pin_test_env();
     let src = TempDir::new().unwrap();
     init_git_repo_with_commits(src.path());
@@ -338,13 +338,13 @@ fn git_fetch_twice_with_no_new_commits_still_commits_fresh_op_each_time() {
     let after_second = repo.op_log(None).unwrap();
     assert_eq!(
         after_second.len(),
-        before + 2,
-        "fetch must commit a fresh op even when nothing changed (CLI parity)"
+        before + 1,
+        "a fetch that changed nothing writes no operation (CLI's \"Nothing changed.\")"
     );
     assert_eq!(after_second[0].description, "fetch from git remote(s) origin");
-    assert_ne!(
+    assert_eq!(
         first.mutation.new_op_id, second.mutation.new_op_id,
-        "each fetch commits a distinct operation"
+        "the no-change fetch reports the pre-call head"
     );
     assert_eq!(
         first.mutation.working_copy_change_id, second.mutation.working_copy_change_id,

@@ -391,7 +391,9 @@ final class RepoHandle {
     return _worker.commitContents(_handleId, operationId: operationId, commitIds: commitIds);
   }
 
-  /// Rewrite the description of [changeId] to [description] (Story 6.5).
+  /// Rewrite the description of [changeId] to [description] (Story 6.5). The
+  /// unchanged text writes no operation and `newOpId` is the head the verb
+  /// started from (Story 9.40).
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
@@ -479,7 +481,8 @@ final class RepoHandle {
   /// `--allow-cross-workspace` (default `false`, as in the CLI): without it an
   /// operation performed in another workspace is refused. Undoing a push or a
   /// workspace removal warns (`jj.undo_push_operation`,
-  /// `jj.undo_workspace_removal`).
+  /// `jj.undo_workspace_removal`). An equal restored view writes no operation
+  /// and `newOpId` is the head the verb started from (Story 9.40).
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
@@ -515,8 +518,9 @@ final class RepoHandle {
   /// handle's [handleId]. `git.abandon-unreachable-commits` and
   /// `git.record-synthetic-predecessors` are read from the repo's effective
   /// config per call, never hardcoded. The operation is
-  /// `fetch from git remote(s) <names joined by ",">`, written even when
-  /// nothing changed.
+  /// `fetch from git remote(s) <names joined by ",">`, written only when
+  /// something changed; otherwise no operation is written and `newOpId` is the
+  /// pre-call head (the CLI's "Nothing changed.").
   ///
   /// The result's `mutation.abandonedChangeIds` carries the commits the import
   /// abandoned because they became unreachable in git — jj-lib's OWN

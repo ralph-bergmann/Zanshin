@@ -334,8 +334,10 @@ fn identity_follows_the_user_stack(tmp: &Path, user_file: &Path) -> (FixtureHand
         "bookmark_create"
     );
     let wc = resolve_revset(&repo, "@").expect("@ resolves").swap_remove(0);
-    repo.describe(wc, "described anonymously").expect("describe commits");
+    repo.describe(wc.clone(), "described anonymously")
+        .expect("describe commits");
     assert_eq!(identity_warnings(&mut repo), both_missing, "describe");
+    the_unchanged_describe_never_warns(&mut repo, wc, "described anonymously");
     repo.bookmark_delete(&["exact:no-such-bookmark".to_owned()])
         .expect("matching nothing is a success");
     assert!(
@@ -360,6 +362,21 @@ fn identity_follows_the_user_stack(tmp: &Path, user_file: &Path) -> (FixtureHand
     set_env("JJ_USER", None);
     set_env("JJ_EMAIL", None);
     (fx, repo)
+}
+
+/// Story 9.40: describing `wc` with its stored `text` writes no operation, so it never reaches
+/// the finish's identity warning — the CLI's "Nothing changed.".
+fn the_unchanged_describe_never_warns(repo: &mut Repo, wc: ChangeId, text: &str) {
+    let head = repo.op_log(Some(1)).expect("op log").swap_remove(0).id.0;
+    let same = repo.describe(wc, text).expect("the unchanged text is a success");
+    // Read before `op_log`, whose own `with_verb` replaces the pending warnings.
+    assert!(identity_warnings(repo).is_empty(), "describe with the unchanged text");
+    assert_eq!(same.new_op_id.0, head, "the result is the pre-call head");
+    assert_eq!(
+        repo.op_log(Some(1)).expect("op log").swap_remove(0).id.0,
+        head,
+        "no operation is written"
+    );
 }
 
 /// The CLI's identity warning lives in `finish_transaction`, so the pre-verb snapshot's own

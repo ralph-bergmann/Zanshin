@@ -626,6 +626,46 @@ fn undo_at_root_operation_returns_nothing_to_undo() {
     );
 }
 
+/// Story 9.40: an undo whose restored view equals the current one writes no operation — `jj
+/// undo` says "Nothing changed." Git HEAD made unborn behind jj's back makes the precondition
+/// write `import git head`, which changes only `git_head`; undoing it restores the previous
+/// operation's repo state while keeping the CURRENT `git_head`, i.e. an equal view.
+#[test]
+fn undo_restoring_an_equal_view_writes_no_operation() {
+    test_helpers::pin_test_env();
+    let tmp = TempDir::new().unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(tmp.path()),
+        backend: Some(zanshin_jj::Backend::Git),
+        colocate: Some(true),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
+    repo.commit(&zanshin_jj::CommitOptions {
+        paths: Vec::new(),
+        message: vec!["one".to_owned()],
+    })
+    .expect("commit");
+    let out = std::process::Command::new("git")
+        .args(["symbolic-ref", "HEAD", "refs/heads/nowhere"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("spawn git");
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+
+    let result = repo.undo(false).expect("undo of an equal view succeeds");
+
+    let head = repo.op_log(Some(1)).unwrap().swap_remove(0);
+    assert_eq!(
+        head.description, "import git head",
+        "the precondition's import stays the head"
+    );
+    assert_eq!(result.new_op_id, head.id, "no undo operation is written");
+    assert!(result.finish.is_none());
+}
+
 #[test]
 fn undo_on_corrupt_repo_returns_backend_error() {
     test_helpers::pin_test_env();

@@ -945,9 +945,9 @@ pub fn bookmark_auto_track_scenarios() -> Vec<Scenario> {
 
 // ── jj git fetch (Story 9.30) ────────────────────────────────────────────────
 
-// Every fetch below brings something new: `git --git-dir <remote> branch <name> b-mark` adds a
-// branch on the bare remote at the pushed `b-mark` (a fetch that changes nothing is Story 9.40's
-// divergence, not this story's).
+// Every fetch below but `fetch_nothing_new` brings something new: `git --git-dir <remote> branch
+// <name> b-mark` adds a branch on the bare remote at the pushed `b-mark`. `fetch_nothing_new`
+// fetches what the push already recorded — the CLI's "Nothing changed.", no operation (Story 9.40).
 
 /// [`PUSHED`] plus `n-mark` and `x-mark` new on `origin`.
 const FETCH_PUSHED: &[Step] = &[
@@ -1111,6 +1111,14 @@ pub fn fetch_scenarios() -> Vec<Scenario> {
                 Step::Git(&["--git-dir", "../remote.git", "branch", "x-mark", "b-mark"]),
                 Step::Jj(&["config", "set", "--repo", "remotes.origin.fetch-bookmarks", "n-mark"]),
             ],
+            |repo, _, _| fetch_outcome(repo, &GitFetchArgs::default()),
+            |_| strings(&["git", "fetch"]),
+        ),
+        // Story 9.40: the push already recorded `b-mark@origin`, so the fetch brings nothing new —
+        // the CLI's "Nothing changed.", no operation.
+        push(
+            "fetch_nothing_new",
+            PUSHED,
             |repo, _, _| fetch_outcome(repo, &GitFetchArgs::default()),
             |_| strings(&["git", "fetch"]),
         ),

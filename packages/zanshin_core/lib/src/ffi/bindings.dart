@@ -691,7 +691,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_config_unset(
 
 /// Rewrite `change_id`'s description to `description` in the repo referenced by `handle`.
 ///
-/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success. The unchanged
+/// text writes no operation and `new_op_id` is the head the verb started from (Story 9.40).
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -1252,7 +1253,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_git_export(
 /// `Patterns` = the `branches` / `tags` patterns, an empty list fetching none of that kind;
 /// `Tracked` = the tracked bookmarks and tags) and `cancel_token`. The working copy is
 /// snapshotted first (Story 9.26); then ONE transaction fetches remote by remote, imports once,
-/// and writes `fetch from git remote(s) <names joined by ",">` — also when nothing changed.
+/// and writes `fetch from git remote(s) <names joined by ",">` — only when something changed;
+/// otherwise no operation is written and `new_op_id` is the pre-call head (Story 9.40).
 /// Never moves `@` unless the import abandoned it.
 ///
 /// Progress is dispatched over the SAME process-global event sink `WatcherEvent`
@@ -2744,7 +2746,9 @@ external void zanshin_string_free(
 /// not undone.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success; undoing a
-/// push or a workspace removal warns (`jj.undo_push_operation`, `jj.undo_workspace_removal`).
+/// push or a workspace removal warns (`jj.undo_push_operation`, `jj.undo_workspace_removal`). An
+/// equal restored view writes no operation and `new_op_id` is the head the verb started from
+/// (Story 9.40).
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.

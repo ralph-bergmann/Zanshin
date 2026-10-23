@@ -234,7 +234,11 @@ colocated workspace it resets Git HEAD to `@`'s parent and exports the refs, and
 if `@` became immutable it creates a new `@` on top. The refs the export could not
 write ride `MutationResult.finish` (absent when none failed); `@` becoming immutable,
 a failed HEAD reset, the export failures themselves and an empty identity are
-`Envelope.warnings` (Story 9.32).
+`Envelope.warnings` (Story 9.32). A transaction that changed nothing skips all of it, as the
+CLI's `tx.finish` ("Nothing changed."; Story 9.40): no operation is written (a `describe` with
+the unchanged text, a fetch that brought nothing, an `undo` restoring an equal view, …),
+`MutationResult.new_op_id` is the pre-call head op id, `finish` is absent and no finish warning
+is raised.
 
 `Payload` has **41** members. Two of them — `WatcherEvent` and `Progress` — are
 returned by no exported symbol: they arrive asynchronously through the
@@ -1610,8 +1614,9 @@ BEFORE any transaction — also for a `Named` miss, which was `jj.remote_not_fou
 (CLI parity). Then ONE transaction: each remote is fetched (its ignored Git refspecs warn
 `jj.fetch_refspec_ignored`), the refs are imported once (`jj.git_import_failed`), with `Patterns`
 the branch names no matched remote has warn `jj.fetch_branches_unmatched`, and the operation is
-`fetch from git remote(s) <names as symbols joined by ",">` — also when nothing changed (the
-tracked 9.40 divergence). The answer is `GitFetchResult`:
+`fetch from git remote(s) <names as symbols joined by ",">` — only when something changed; a fetch
+that changed nothing writes no operation (Story 9.40, see § `MutationResult`). The answer is
+`GitFetchResult`:
 
 | Field | Meaning |
 |-------|---------|

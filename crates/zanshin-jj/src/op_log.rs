@@ -139,6 +139,8 @@ pub(crate) fn op_log(workspace: &Workspace, limit: Option<usize>) -> Result<Vec<
 ///    `git_heads` at their current values (`DEFAULT_REVERT_WHAT`), committed as
 ///    `undo: restore to operation <hex>` — the description is the stack: the CLI and Zanshin
 ///    continue each other's undo stacks through it.
+/// 6. A restored view EQUAL to the current one writes no operation — the CLI's `tx.finish` prints
+///    "Nothing changed." (Story 9.40) — and the result carries the pre-call head op id.
 ///
 /// No `rebase_descendants()` call — a raw `set_view` records no rewrites, matching the
 /// CLI (which doesn't call it either).
