@@ -1882,3 +1882,14 @@ Spec: spec-9-40-no-change-verbs-write-no-operation.
 - **No Dart round trip observes `keepDivergent`, so dropping the flag anywhere along `RepoHandle.rebase` → worker → `zanshinRebase` would still pass the zanshin_core suite.** Low.
   - `packages/zanshin_core/test/worker/rebase_test.dart` `every_rebase_field_crosses_the_buffer` passes `keepDivergent: true` on a history with no divergent commit; a divergent commit needs jj-lib directly (`crates/zanshin-jj/tests/it/rebase.rs` `divergent_b`), which the Dart API cannot do. The Rust side is covered (`the_rebase_reader_carries_every_flag`, `a_divergent_twin_already_in_the_destination_is_abandoned_unless_kept`); `simplifyParents` got its Dart witness in this pass.
   - **Follow-up:** a Dart round trip once the Dart API can produce a divergent change (e.g. an op-restore/concurrent-op verb), or none.
+
+## Surfaced in the loop 9.40/9.16 fix-up (bmad-build-auto, 2026-10-23)
+
+Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing Story 9.16 code, above the 80% floor; not gate failures.
+
+- **`parallelize`'s merge-child-with-outside-parent arm (a child of the parallelized set that also has a parent outside it keeps that parent) has no test.** Medium.
+  - Coverage run at cc5e816: `crates/zanshin-jj/src/parallelize.rs` 95.95%, lines 102-104 (`else { new_parents.push(parent.clone()) }`) never executed; no case in `crates/zanshin-jj/tests/it/parallelize_arrange.rs` or the parity-oracle scenarios builds such a merge.
+  - **Follow-up:** a `parallelize_arrange` test (and an oracle scenario) with a merge child that has one parent inside and one outside the parallelized set.
+- **`RewritePlan::execute`'s cycle-detected error arm (Zanshin returns an error where the CLI panics) has no test.** Low.
+  - Coverage run at cc5e816: `crates/zanshin-jj/src/arrange.rs` 99.50%, line 247 (`|_| MutateError::Backend("cycle detected".to_owned())`) never executed; the inline tests build `RewritePlan`s by hand and could add a two-commit cycle.
+  - **Follow-up:** an inline test that executes a hand-built two-commit cycle and asserts the error.
