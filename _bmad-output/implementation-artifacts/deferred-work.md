@@ -1933,3 +1933,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **The builtin diff editor lets a mode change be toggled apart from content sections and sections conflicted files; Zanshin keeps both whole-only.** Medium.
   - `builtin.rs:296-301` (`Section::FileMode`) and `:423-445` (`conflicts::update_from_content`) @ v0.46.0; epics.md Story 9.50 chose whole-only on the premise that the builtin editor does too — documented as a divergence in `crates/zanshin-jj/src/select_tree.rs`' module doc and ADR-0003.
   - **Follow-up:** a design decision for the inspector (10.26): whether a mode toggle and conflict-marker sections get UI; if yes, a `FileChoice` arm for the mode and sectioning over the materialized conflict, written back as the builtin editor does.
+
+## Surfaced in Story 9.21 (bmad-build-auto, 2026-10-23)
+
+- **`op diff --op @` of a merge operation whose parents both rewrote the same commits fails with jj-lib's internal error "Predecessors cycle detected around commit …", in the pinned CLI and in Zanshin alike.** Low.
+  - jj-lib 0.46.0 `evolution::accumulate_predecessors` on the merged from-repo (`crates/zanshin-jj/src/op_diff.rs` `commits_diff`); pinned by `crates/zanshin-jj/tests/it/op_show_diff.rs` `op_diff_of_a_rebasing_merge_operation_fails_like_the_cli` (→ `jj.jj_lib_error`). The GUI's "Show changes" on such an op gets an internal error.
+  - **Follow-up:** none in Zanshin (CLI parity); an upstream jj report if it matters to the Undo Timeline (11.9).

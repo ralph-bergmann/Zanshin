@@ -5,11 +5,18 @@ created: '2026-10-23'
 status: 'done'
 baseline_revision: 'a951eff8714700d40c6f53d9c51b2268ecb256e7'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: [multiple-goals, oversized]
-deferred: []
+deferred:
+  - summary: >-
+      `op diff --op @` of a merge operation whose parents both rewrote the same commits fails with jj-lib's internal error "Predecessors cycle detected around commit …", in the pinned CLI and in Zanshin alike (CLI parity, not a Zanshin defect).
+    evidence: |-
+      jj-lib 0.46.0 `evolution::accumulate_predecessors` on the merged from-repo; witnessed against the pinned CLI during the review-patch run and pinned by crates/zanshin-jj/tests/it/op_show_diff.rs op_diff_of_a_rebasing_merge_operation_fails_like_the_cli (Backend → jj.jj_lib_error). The GUI's "Show changes" on such an op would get an internal error.
+    location: >-
+      crates/zanshin-jj/src/op_diff.rs commits_diff
+    severity: low
 ---
 
 <intent-contract>
@@ -112,6 +119,37 @@ CLI anchors at `v0.46.0` (`git -C ../jj show v0.46.0:<path>`): R = `cli/src/comm
 
 ## Review Triage Log
 
+### 2026-10-23 — Review pass
+- verdicts: 27 findings — high 0, medium 4, low 14, false 9, maybe-false 0 (2 lows rejected)
+- findings:
+  - `[low]` `[patch]` (edge-case) `jj.op_diff_changes_unresolved` drops the CLI's detail line "   (Use --show-changes-in=all() to see all changes)" written at the same site (diff.rs show_op_diff), against warning.rs's message contract — detail line appended verbatim, registry row updated.
+  - `[low]` `[reject]` (edge-case) op abandon: a working-copy lock/finish failure after the op heads were rewritten returns Err and loses the counts — the CLI fails the same way after the same rewrite (abandon.rs:136-154 `?`); reaching it needs a lock failure, and a partial-result error type is more than a direct correction.
+  - `[false]` `[reject]` (edge-case) a refused redo / op show / op diff can still move the op head via the pre-verb snapshot — that is the CLI's flow (workspace_helper snapshots before the verb body refuses), which the project rule "a refused verb writes no operation unless the CLI's flow wrote one before refusing" requires; the verb itself writes nothing.
+  - `[low]` `[patch]` (edge-case) range parsing has no inline unit test as the task said — grouped with the bounded-range gap below: an integration witness of the non-empty left side added (the parse is three lines inline in op_abandon; a pure helper for it adds nothing).
+  - `[medium]` `[patch]` (verification-gap) `show_changes_in` never observed crossing FFI/Dart — real-handle zanshin_op_show/zanshin_op_diff and `opShow`/`opDiff` with `none()` asserting an empty commit section and a non-zero elided count added.
+  - `[medium]` `[patch]` (verification-gap) op diff of a merge op (merged from-repo) untested — `op_diff --op @` on a divergent merge (from = both parents, no stray rows) and op diff of the root op added.
+  - `[medium]` `[patch]` (verification-gap) op abandon with a non-empty range start untested — bounded `<op>..@-` test added (counts, head's new parent = `<op>`).
+  - `[medium]` `[patch]` (verification-gap, other) op abandon searched the working-copy op only among CHANGED heads, warning falsely when the working copy sits at an unchanged head of two — now searches every reparented pair as abandon.rs:136-154 does; witness added.
+  - `[false]` `[reject]` (blind) redo drops "Restored to operation:" so the caller cannot learn the restored op — the written op's description `redo: restore to operation <hex>` names it (op_log/op_show head entry), and with no change nothing is restored; same shape as 9.39's undo.
+  - `[low]` `[patch]` (blind) same root as the first edge-case row (warning detail line) — fixed with it.
+  - `[low]` `[patch]` (blind) `jj.invalid_input` Meaning column's exhaustive hints list misses the two new hinted refusals — added.
+  - `[low]` `[patch]` (blind) `jj.operation_not_found` Meaning not widened and cites v0.44.0 — widened to caller-typed operation expressions, cites v0.46.0.
+  - `[low]` `[patch]` (blind) bounded range never exercised — same group as the verification-gap row.
+  - `[low]` `[patch]` (blind) oracle never redoes while the head is a redo op; no op abandon single / nothing scenario — `redo_of_a_redo`, `op_abandon_single`, `op_abandon_nothing` added.
+  - `[low]` `[patch]` (blind) `op_abandon_range` runs on a near-empty history — setup of a few describes added.
+  - `[low]` `[patch]` (blind) no real-repo test for an absent working-copy side — `op_show` after `workspace_add` (`from: None`) added.
+  - `[low]` `[patch]` (blind) op diff with several or zero from-ops untested — same group as the verification-gap merge-op row.
+  - `[low]` `[patch]` (blind) FFI tests miss invalid UTF-8 for zanshin_op_abandon and a present lone `to` / `show_changes_in` — added.
+  - `[low]` `[patch]` (blind) working-copy remap checked only indirectly — the bounded-range test asserts the recorded working-copy op id equals `head_op_ids[0]`.
+  - `[false]` `[reject]` (blind) sprint-status done while the spec is in-review — the run was mid-review; finalisation sets the spec done in the same run.
+  - `[low]` `[reject]` (intent 3a) oracle redo-stack coverage partial — superseded by the `redo_of_a_redo` row above (counted there as the patch); kept as a rejected duplicate observation.
+  - `[false]` `[reject]` (intent 3b) op show / op diff have no oracle scenario — the oracle compares repo state and warning counts; read verbs change neither, and their CLI output is terminal text (epic context: "Reads … need hand audit").
+  - `[false]` `[reject]` (intent 3c) op show / op diff carry no head-op field — the reading "every result" is the mutating results (item 1 serves the undo guard); a read's `to`/shown op carries its id.
+  - `[false]` `[reject]` (intent 3d) UI items unwired — CLAUDE.md: UI code only inside a story that asks for it; items 4-5 are records for 10.9/10.23/11.9/11.13.
+  - `[false]` `[reject]` (intent 3e) item 1's open race not deferred — it is an open Ralph decision already recorded in epics.md 9.21 item 1, not a gap this story found.
+  - `[false]` `[reject]` (intent 3f) checks not recorded under the spec's verification notes — finalisation records every check and outcome under Verification and Auto Run Result (this run's rule), not a code fix.
+  - `[false]` `[reject]` (intent 3g) op log only widened, not re-ported — the shipped Epic 2 read is the walk the CLI does (walk_ancestors from the head, limit); the remaining `op log` flags are terminal UX (spec Never).
+
 ## Design Notes
 
 - **Typed op diff, not text.** The CLI's `show_op_diff` output maps 1:1 onto `OpDiff` sections; a changed commit carries ids only — the GUI gets summaries from `commit_contents` and patches from `interdiff(predecessor[0] → commit)` / `show(abandoned)` (the CLI's own `show_change_diff` choice). Row order = the flat (`-G`) revset order; the graph layout is UI.
@@ -128,3 +166,39 @@ CLI anchors at `v0.46.0` (`git -C ../jj show v0.46.0:<path>`): R = `cli/src/comm
 - `cargo fmt --all --check` -- clean
 - `cargo make codegen` -- generated files committed, rerun leaves no diff
 - `flutter test` + `dart analyze` + `dart format --set-exit-if-changed .` in `packages/zanshin_core` -- clean
+
+**Checks run (2026-10-23, build-auto run; full gate deliberately not run — story-loop gate rule):**
+- `cargo fmt --all --check` — clean (after implementation and again after the review patches).
+- `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity --all-targets -- -D warnings` — clean (both rounds).
+- `cargo test -p zanshin-jj` — 348 unit + 1187 integration passed, 1 ignored (pre-existing); after the patches 348 + 1193 passed, 1 ignored. `op_show_diff::op_diff_of_a*` repeated 5× — stable.
+- `cargo test -p zanshin-ffi` — 212 unit + 339 integration passed; after the patches 212 + 341 (incl. `ffi_abi_doc_sync` at 89 exports).
+- `cargo test -p zanshin-parity --test oracle` — 310 passed; after the patches 313 (no ledger entry for the new scenarios).
+- `cargo make codegen` — rerun leaves no diff (both rounds).
+- `packages/zanshin_core`: `cargo make --allow-private test-core` (`dart test` with the pinned env; a bare `dart test` / `flutter test` fails its env guard "XDG_CONFIG_HOME is not pinned") — 1016, then 1017 tests passed; `dart analyze --fatal-infos --fatal-warnings` — no issues; `dart format --set-exit-if-changed` — 0 changed. `app/`: `dart analyze --fatal-infos` — no issues.
+- Coverage not measured (gate rule); new lines got tests.
+
+## Auto Run Result
+
+Status: done
+
+**Summary.** Ported `jj redo`, `jj op show`, `jj op diff` and `jj op abandon` @ v0.46.0 into `zanshin-jj` and wired them end to end; `Operation` now carries `workspace_name` and `tags`. Redo reuses 9.39's undo pieces (stack through `REDO_OP_DESC_PREFIX`, `restored_view`, 9.40's no-change gate); op show/diff return a typed `OpDiff` (commits with predecessors and elided estimates, working copies, local/remote bookmarks and tags); op abandon runs no snapshot, reparents through `op_walk::reparent_range`, rewrites the op heads and remaps the working copy.
+
+**Files changed.**
+- `crates/zanshin-jj/src/op_log.rs` — widened `Operation`, `redo`, `op_show`, `op_diff`, `op_abandon`, opset error mapping.
+- `crates/zanshin-jj/src/op_diff.rs` (new) — `parse_changes_in`, typed `show_op_diff` / `compute_operation_commits_diff` port.
+- `crates/zanshin-jj/src/{mutate,warning,lib,repo}.rs` — `NothingToRedo`, `RedoCrossWorkspace` (+hint), `OperationNotFound`; two warning kinds; re-exports; four `Repo` methods.
+- `schemas/envelope.fbs` + generated Rust/Dart/C — `OperationTag`, request/payload tables, `RequestKind::OpShow/OpDiff`.
+- `crates/zanshin-ffi/src/{op_log,repo,envelope}.rs` — `zanshin_redo`, `zanshin_op_show`, `zanshin_op_diff`, `zanshin_op_abandon` (89 exports), codes `jj.nothing_to_redo`, `jj.redo_cross_workspace`.
+- `packages/zanshin_core` — models/decoders, adapters, worker commands, `RepoHandle.redo/opShow/opDiff/opAbandon`, warning constants.
+- Tests: `crates/zanshin-jj/tests/it/{redo,op_show_diff,op_abandon}.rs` (new), `op_log.rs`, `op_workspace_name.rs`, `api_stability.rs`; `crates/zanshin-ffi/tests/it/op_log_ffi.rs`; Dart `test/ffi/op_log_test.dart`, `test/worker/op_verbs_test.dart`; oracle scenarios (10 new: redo ×5, op abandon ×5).
+- Docs: `docs/ffi-abi.md`, `docs/rust-error-codes.md`; `sprint-status.yaml`, `deferred-work.md`.
+
+**Review.** 27 findings (4 layers): 16 patched (4 medium — `show_changes_in` across the FFI/Dart seam untested, merge-op op diff untested, bounded abandon range untested, false working-copy warning when the wc op is an unchanged head of two (code fix); 12 low — warning detail line restored, two registry rows corrected, oracle/redo/abandon/FFI/workspace-add tests); 9 false and 2 low rejected (reasons in the triage log: CLI-parity snapshot before refusals, redo's restored op named by its description, wc lock failure after the head rewrite mirrors the CLI, the read verbs have no oracle surface, UI items out of scope). 1 item deferred (jj-lib's "Predecessors cycle detected" on a rebasing merge op, CLI parity), mirrored into deferred-work.md.
+
+**Follow-up review recommended: true** (first pass, 4 medium entries patched). The unverified risk: the `op_abandon` working-copy remap now searches every reparented head and calls `finish` for an unchanged head too — witnessed by one two-head test only, and never by the oracle (two-workspace abandon scenarios are absent).
+
+**Verification.** See `## Verification` → "Checks run": fmt, clippy, `cargo test` for zanshin-jj / zanshin-ffi / the parity oracle, codegen idempotence, the zanshin_core suite via `cargo make --allow-private test-core`, analyze and format — all green. Coverage and the full gate were not run (story-loop gate rule).
+
+**Residual risks / incident.**
+- Coverage unmeasured; `op_diff.rs`'s non-resolution fallback in `resolve_both` may be uncovered (file expected above the 80 % floor).
+- INCIDENT during the review-patch run: a bare `cd r` in the implementation subagent's shell was resolved by zoxide to `/Users/ralph.bergmann/development/projects/Kunden/viega/TWMS-Flutter-App`, and a few `target/debug/jj` commands ran there (`JJ_CONFIG=/dev/null JJ_USER=t JJ_EMAIL=t@t`). Per the subagent, jj's start-up snapshot wrote two operations there at 2026-10-23 23:03:57 (`0081acda15d9` "snapshot working copy", `db47525e502f` "import git refs"); a dirty working copy would have been snapshotted with committer "t <t@t>". Nothing was undone; `jj op restore ef2e5a032688` there restores the prior state — Ralph's decision.
