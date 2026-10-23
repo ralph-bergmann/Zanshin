@@ -923,18 +923,45 @@ class ZanshinWorker {
     return repo_ffi_op_log.decodeOpLogEnvelopeInternal(bytes);
   }
 
-  /// Read the bookmarks of the repo identified by [handleId] — the
-  /// `jj bookmark list --all-remotes` rows with their tracking facts (Story 9.29).
+  /// Read the bookmarks of the repo identified by [handleId] — the rows
+  /// `jj bookmark list` prints for the given arguments, in its order, with their
+  /// tracking facts (Stories 9.29 and 9.19). See [RepoHandle.bookmarks].
   ///
   /// Sends a [BookmarksCommand] via [send] and decodes the returned FlatBuffers
   /// `Envelope<Bookmarks>` bytes into a `List<Bookmark>`.
   ///
-  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.jj_lib_error`). Completes with a [StateError] after [close].
-  /// The close-guard [StateError] is delivered synchronously by [RepoHandle.bookmarks].
-  Future<WarnedList<repo_ffi_bookmarks.Bookmark>> bookmarks(int handleId) async {
+  /// Throws [ArgumentError] if any pattern or revset contains an interior NUL
+  /// (U+0000). Throws [ZanshinFfiException] on FFI errors (e.g.
+  /// `ffi.invalid_handle`, `jj.invalid_input`, `jj.revset_parse_error`,
+  /// `jj.config_error`, `jj.jj_lib_error`). Completes with a [StateError] after
+  /// [close]. The close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.bookmarks].
+  Future<WarnedList<repo_ffi_bookmarks.Bookmark>> bookmarks(
+    int handleId, {
+    List<String> names = const [],
+    List<String> revisions = const [],
+    List<String> remotes = const [],
+    bool allRemotes = false,
+    bool tracked = false,
+    bool conflicted = false,
+    List<repo_ffi_bookmarks.BookmarkSortKey> sort = const [],
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(names, 'names');
+    rejectInteriorNuls(revisions, 'revisions');
+    rejectInteriorNuls(remotes, 'remotes');
     final Uint8List bytes = await send(
-      BookmarksCommand(commandId: _correlator.allocateId(), handleId: handleId),
+      BookmarksCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        names: names,
+        revisions: revisions,
+        remotes: remotes,
+        allRemotes: allRemotes,
+        tracked: tracked,
+        conflicted: conflicted,
+        sort: sort,
+      ),
     );
     return repo_ffi_bookmarks.decodeBookmarksEnvelopeInternal(bytes);
   }
@@ -2427,6 +2454,97 @@ class ZanshinWorker {
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
+  /// Move existing local bookmarks to one revision, in the repo identified by
+  /// [handleId] (Story 9.19) — the CLI's `jj bookmark move`. See
+  /// [RepoHandle.bookmarkMove].
+  ///
+  /// Sends a [BookmarkMoveCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if a name, a [from] revset or [to] contains an
+  /// interior NUL (U+0000). Throws [ZanshinFfiException] on FFI errors (e.g.
+  /// `ffi.invalid_handle`, `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.revset_parse_error`). Completes with a [StateError] after [close].
+  Future<repo_ffi_mutate.MutationResult> bookmarkMove(
+    int handleId,
+    List<String> names, {
+    List<String> from = const [],
+    String? to,
+    bool allowBackwards = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(names, 'names');
+    rejectInteriorNuls(from, 'from');
+    rejectInteriorNul(to, 'to');
+    final Uint8List bytes = await send(
+      BookmarkMoveCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        names: names,
+        from: from,
+        to: to,
+        allowBackwards: allowBackwards,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Advance the closest bookmarks to a revision, in the repo identified by
+  /// [handleId] (Story 9.19) — the CLI's `jj bookmark advance`. See
+  /// [RepoHandle.bookmarkAdvance].
+  ///
+  /// Sends a [BookmarkAdvanceCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if a name or [to] contains an interior NUL
+  /// (U+0000). Throws [ZanshinFfiException] on FFI errors (e.g.
+  /// `ffi.invalid_handle`, `jj.invalid_input`, `jj.revset_resolution_error`).
+  /// Completes with a [StateError] after [close].
+  Future<repo_ffi_mutate.MutationResult> bookmarkAdvance(
+    int handleId, {
+    List<String> names = const [],
+    String? to,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(names, 'names');
+    rejectInteriorNul(to, 'to');
+    final Uint8List bytes = await send(
+      BookmarkAdvanceCommand(commandId: _correlator.allocateId(), handleId: handleId, names: names, to: to),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Rename a local bookmark, in the repo identified by [handleId] (Story
+  /// 9.19) — the CLI's `jj bookmark rename`. See [RepoHandle.bookmarkRename].
+  ///
+  /// Sends a [BookmarkRenameCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if a name contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.bookmark_exists`). Completes with a [StateError]
+  /// after [close].
+  Future<repo_ffi_mutate.MutationResult> bookmarkRename(
+    int handleId,
+    String oldName,
+    String newName, {
+    bool overwriteExisting = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNul(oldName, 'oldName');
+    rejectInteriorNul(newName, 'newName');
+    final Uint8List bytes = await send(
+      BookmarkRenameCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        oldName: oldName,
+        newName: newName,
+        overwriteExisting: overwriteExisting,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
   /// Start tracking the working-copy paths matching [paths], in the repo
   /// identified by [handleId] (Story 9.22) — the CLI's `jj file track`.
   ///
@@ -2934,14 +3052,32 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
-        case BookmarksCommand(:final int handleId):
+        case BookmarksCommand(
+          :final int handleId,
+          :final List<String> names,
+          :final List<String> revisions,
+          :final List<String> remotes,
+          :final bool allRemotes,
+          :final bool tracked,
+          :final bool conflicted,
+          :final List<repo_ffi_bookmarks.BookmarkSortKey> sort,
+        ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: BookmarksCommand for unknown handleId $handleId');
             final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
-            final Uint8List bytes = repo_ffi_bookmarks.zanshinBookmarks(raw);
+            final Uint8List bytes = repo_ffi_bookmarks.zanshinBookmarks(
+              raw,
+              names: names,
+              revisions: revisions,
+              remotes: remotes,
+              allRemotes: allRemotes,
+              tracked: tracked,
+              conflicted: conflicted,
+              sort: sort,
+            );
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
@@ -3720,6 +3856,61 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_bookmark_ops.zanshinBookmarkDelete(raw, names);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case BookmarkMoveCommand(
+          :final int handleId,
+          :final List<String> names,
+          :final List<String> from,
+          :final String? to,
+          :final bool allowBackwards,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: BookmarkMoveCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_bookmark_ops.zanshinBookmarkMove(
+              raw,
+              names,
+              from: from,
+              to: to,
+              allowBackwards: allowBackwards,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case BookmarkAdvanceCommand(:final int handleId, :final List<String> names, :final String? to):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: BookmarkAdvanceCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_bookmark_ops.zanshinBookmarkAdvance(raw, names: names, to: to);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case BookmarkRenameCommand(
+          :final int handleId,
+          :final String oldName,
+          :final String newName,
+          :final bool overwriteExisting,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: BookmarkRenameCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_bookmark_ops.zanshinBookmarkRename(
+              raw,
+              oldName,
+              newName,
+              overwriteExisting: overwriteExisting,
+            );
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

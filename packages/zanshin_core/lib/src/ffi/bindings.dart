@@ -161,6 +161,46 @@ external ffi.Pointer<ZanshinBuf> zanshin_arrange(
   int len,
 );
 
+/// Advance the closest bookmarks to a revision, in the repo referenced by `handle` — the CLI's
+/// `jj bookmark advance` (Story 9.19).
+///
+/// The arguments cross as a `BookmarkAdvanceRequest` `FlatBuffers` request buffer. `to` ABSENT
+/// applies `revsets.bookmark-advance-to` (default `@`), which must resolve to exactly one commit;
+/// present it is a change id. `names` are EXACT bookmark names; absent/empty applies the CLI's
+/// default candidates, the local bookmarks with a target in `revsets.bookmark-advance-from`
+/// (default `heads(::to & bookmarks())`). Then as `zanshin_bookmark_move` without
+/// `allow_backwards`. Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on
+/// success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkAdvanceRequest` buffer, or its
+/// `kind` is not `BookmarkAdvance`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — a backwards or sideways candidate ("Refusing to advance bookmark
+/// backwards or sideways: {name}", no hint).
+/// - `jj.change_not_found` — `to` does not resolve; the id in `context`.
+/// - `jj.revset_parse_error` / `jj.revset_resolution_error` — the default target does not parse
+/// or resolve to exactly one commit (`hints` carry "`revsets.bookmark-advance-to` controls the
+/// default target. …"), or the from revset does not parse or resolve.
+/// - `jj.config_error` — a `revsets.bookmark-advance-*` value is not a string, the revset aliases
+/// do not load, or the pre-verb refresh / snapshot faults as for `zanshin_bookmark_move`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_bookmark_create`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkAdvanceRequestObjectBuilder(...).toBytes()`); Rust only borrows it for
+/// the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_bookmark_advance(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// Create local bookmarks pointing at one revision, in the repo referenced by `handle` — the
 /// CLI's `jj bookmark create`.
 ///
@@ -270,17 +310,115 @@ external ffi.Pointer<ZanshinBuf> zanshin_bookmark_delete(
   int len,
 );
 
-/// List the bookmarks of the repo identified by `handle` — the `jj bookmark list --all-remotes`
-/// row set with its tracking facts (Story 9.29).
+/// Move existing local bookmarks to one revision, in the repo referenced by `handle` — the CLI's
+/// `jj bookmark move` (Story 9.19).
+///
+/// The arguments cross as a `BookmarkMoveRequest` `FlatBuffers` request buffer. `names` are EXACT
+/// bookmark names (the CLI's `exact:"…"`), `from` revset TEXTS (`--from`, unioned) — at least one
+/// is required; a bookmark moves when its name is named (any, without names) AND, with `from`, a
+/// target of it is in `from`. `to` ABSENT is the CLI's default `@` (snapshotted first, Story
+/// 9.26), present a change id. A bookmark already at the target is skipped; nothing left is a
+/// SUCCESS writing no operation (`MutationResult.new_op_id` is the pre-call head). Every moved
+/// bookmark gets a NORMAL target, so a conflicted one is resolved. Warnings:
+/// `jj.bookmark_names_unmatched`, `jj.bookmark_target_empty`. Op-log description `point bookmark
+/// {names} to commit {hex}`. Returns a `FlatBuffers` `Envelope` carrying a `MutationResult`
+/// payload on success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkMoveRequest` buffer, or its
+/// `kind` is not `BookmarkMove`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — neither `names` nor `from`; or, without `allow_backwards`, a backwards
+/// or sideways move ("Refusing to move bookmark backwards or sideways: {name}", the hint "Use
+/// --allow-backwards to allow it." in `hints`).
+/// - `jj.change_not_found` — `to` is malformed, unknown, hidden or divergent; the id in `context`.
+/// - `jj.revset_parse_error` / `jj.revset_resolution_error` — a `from` text, or no `@` for `to`'s
+/// default.
+/// - `jj.config_error` — the effective config changed and no longer reads, the pre-verb snapshot
+/// found a wrongly typed knob, or the revset aliases do not load.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale; nothing is
+/// written.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_bookmark_create`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkMoveRequestObjectBuilder(...).toBytes()`); Rust only borrows it for
+/// the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_bookmark_move(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Rename a local bookmark, in the repo referenced by `handle` — the CLI's `jj bookmark rename`
+/// (Story 9.19).
+///
+/// The arguments cross as a `BookmarkRenameRequest` `FlatBuffers` request buffer: `old_name` and
+/// `new_name` are DECODED names, `overwrite_existing` is `--overwrite-existing`. The new name
+/// points where the old one did, the old one is gone, and the tracking of the old name's remotes
+/// moves to the new name (the remote bookmarks themselves are not renamed). Renaming to the same
+/// name with `overwrite_existing` writes no operation. Warnings:
+/// `jj.bookmark_rename_remote_exists`, `jj.bookmark_tracking_dropped`,
+/// `jj.bookmark_remotes_not_renamed`, `jj.bookmark_tracked_remotes_exist`. Op-log description
+/// `rename bookmark {old} to {new}`. Returns a `FlatBuffers` `Envelope` carrying a
+/// `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkRenameRequest` buffer, or its
+/// `kind` is not `BookmarkRename`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — a name is empty or absent, or `old_name` is not a local bookmark ("No
+/// such bookmark: {old}").
+/// - `jj.bookmark_exists` — `new_name` is a local bookmark and `overwrite_existing` is off (also
+/// for the same name, as in the CLI); the name in `context`.
+/// - `jj.config_error` — the pre-verb refresh or snapshot faults as for `zanshin_bookmark_move`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_bookmark_create`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkRenameRequestObjectBuilder(...).toBytes()`); Rust only borrows it for
+/// the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_bookmark_rename(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// List the bookmarks of the repo identified by `handle` — the rows `jj bookmark list` prints for
+/// the request's arguments, in its order, with their tracking facts (Stories 9.29 and 9.19).
+///
+/// The arguments cross as a `BookmarkListRequest` `FlatBuffers` request buffer: `names` (string
+/// PATTERNS, a bare one a GLOB) OR-ed with `revisions` (revsets on LOCAL targets), `remotes`
+/// (remote-name patterns), `all_remotes`, `tracked`, `conflicted` and `sort` (empty applies
+/// `ui.bookmark-list-sort-keys`). An all-default buffer lists the CLI's default rows;
+/// `all_remotes` its `--all-remotes` set. Rows: each local row, then its tracked remote rows,
+/// then the name's untracked remote rows, in name order, then re-sorted by the sort keys. An
+/// exact name that matches no local or remote bookmark warns `jj.bookmark_names_unmatched`.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `Bookmarks` payload on success.
 ///
 /// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkListRequest` buffer, its `kind`
+/// is not `BookmarkList`, or a `sort` element is `Unspecified` or unknown.
 /// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.invalid_input` — `all_remotes` with `remotes`, `tracked` or `conflicted` (clap's
+/// conflict, refused before the snapshot), or a name or remote pattern does not parse.
+/// - `jj.revset_parse_error` / `jj.revset_resolution_error` — a `revisions` text.
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
 /// unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
 /// committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
-/// `precondition` says which.
+/// `precondition` says which. Or `ui.bookmark-list-sort-keys` is not an array of the CLI's key
+/// names, or the revset aliases do not load.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 /// the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an unclassified jj-lib error (incl. a failed ahead/behind revset);
@@ -292,10 +430,15 @@ external ffi.Pointer<ZanshinBuf> zanshin_bookmark_delete(
 /// `0` is detected and returned as `ffi.invalid_handle`.
 /// A stale non-zero handle is undefined behaviour; the Dart worker's Model-A
 /// handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkListRequestObjectBuilder(...).toBytes()`); Rust only borrows it for
+/// the duration of the call.
 /// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
-@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
 external ffi.Pointer<ZanshinBuf> zanshin_bookmarks(
   int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
 );
 
 /// Release a `FlatBuffers` buffer allocated by a Rust FFI function, given the

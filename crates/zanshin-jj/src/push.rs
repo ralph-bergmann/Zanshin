@@ -984,14 +984,34 @@ fn ensure_new_bookmark_name(repo: &dyn jj_lib::repo::Repo, name: &RefName) -> Re
 /// The single commit `revision` resolves to — the CLI's `resolve_single_rev`
 /// (`cli_util.rs:1830-1841`, refusals `revset_util.rs:277-331` @ v0.46.0).
 fn resolve_single(planner: &mut Planner<'_>, base: &ReadonlyRepo, revision: &str) -> Result<Commit, MutateError> {
-    let ids = planner.commit_ids(base, revision)?;
+    let expression = planner.parse(revision)?;
+    single_commit(base, &expression, revision)
+}
+
+/// The single commit the parsed `expression` (the text `revision`) denotes against `base`, with
+/// `resolve_single_rev`'s refusals (`revset_util.rs:277-331` @ v0.46.0) — shared with `bookmark
+/// advance`'s default target (Story 9.19).
+///
+/// # Errors
+///
+/// - [`MutateError::RevsetResolutionError`] — a symbol does not resolve, or the set holds no
+///   commit or more than one.
+/// - [`MutateError::Backend`] — an evaluation or store read failed.
+pub(crate) fn single_commit(
+    base: &ReadonlyRepo,
+    expression: &Arc<UserRevsetExpression>,
+    revision: &str,
+) -> Result<Commit, MutateError> {
+    let ids = collect_ids(base, expression)?;
     match ids.as_slice() {
         [id] => base.store().get_commit(id).map_err(be),
         [] => Err(MutateError::RevsetResolutionError {
             reason: format!("Revset `{revision}` didn't resolve to any revisions"),
+            hints: vec![],
         }),
         _ => Err(MutateError::RevsetResolutionError {
             reason: format!("Revset `{revision}` resolved to more than one revision"),
+            hints: vec![],
         }),
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-// Wire-shape and guard tests for Story 9.8's two bookmark mutation adapters,
+// Wire-shape and guard tests for the bookmark mutation adapters (Story 9.8's
+// create / delete, Story 9.19's move / advance / rename),
 // using synthetic FlatBuffers buffers built via the generated `*ObjectBuilder`s.
 // No real cdylib required - these exercise the Dart-side request encoding and
 // the adapters' NUL backstop in isolation, and mirror the Rust-side readers in
@@ -191,6 +192,118 @@ void main() {
           ),
         );
       }
+    });
+  });
+
+  group('Story 9.19 request wire shapes', () {
+    test('BookmarkMoveRequest: absent to and empty from stay distinguishable', () {
+      final req = fbs.BookmarkMoveRequest(
+        fbs.BookmarkMoveRequestObjectBuilder(
+          kind: fbs.RequestKind.BookmarkMove,
+          names: ['b', 'a'],
+          allowBackwards: true,
+        ).toBytes(),
+      );
+      expect(req.kind, fbs.RequestKind.BookmarkMove);
+      expect(req.names, ['b', 'a']);
+      expect(req.from, isNull, reason: 'absent = no --from');
+      expect(req.to, isNull, reason: 'null-for-absence: absent means `@`');
+      expect(req.allowBackwards, isTrue);
+
+      final withFrom = fbs.BookmarkMoveRequest(
+        fbs.BookmarkMoveRequestObjectBuilder(
+          kind: fbs.RequestKind.BookmarkMove,
+          from: ['@-', 'main'],
+          to: 'qpvuntsm',
+        ).toBytes(),
+      );
+      expect(withFrom.from, ['@-', 'main']);
+      expect(withFrom.to, 'qpvuntsm');
+      expect(withFrom.allowBackwards, isFalse);
+    });
+
+    test('BookmarkAdvanceRequest: absent names and to apply the config defaults', () {
+      final req = fbs.BookmarkAdvanceRequest(
+        fbs.BookmarkAdvanceRequestObjectBuilder(kind: fbs.RequestKind.BookmarkAdvance).toBytes(),
+      );
+      expect(req.kind, fbs.RequestKind.BookmarkAdvance);
+      expect(req.names, isNull);
+      expect(req.to, isNull);
+    });
+
+    test('BookmarkRenameRequest carries both names and the flag', () {
+      final req = fbs.BookmarkRenameRequest(
+        fbs.BookmarkRenameRequestObjectBuilder(
+          kind: fbs.RequestKind.BookmarkRename,
+          oldName: 'old',
+          newName: 'new',
+          overwriteExisting: true,
+        ).toBytes(),
+      );
+      expect(req.kind, fbs.RequestKind.BookmarkRename);
+      expect((req.oldName, req.newName, req.overwriteExisting), ('old', 'new', true));
+    });
+  });
+
+  group('Story 9.19 adapter guards', () {
+    final nul = String.fromCharCode(0);
+
+    test('zanshinBookmarkMove rejects an interior NUL in names, from and to', () {
+      expect(
+        () => zanshinBookmarkMove(0, ['a${nul}b']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'names')),
+      );
+      expect(
+        () => zanshinBookmarkMove(0, const [], from: ['@$nul-']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'from')),
+      );
+      expect(
+        () => zanshinBookmarkMove(0, ['a'], to: 'qpv${nul}untsm'),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'to')),
+      );
+    });
+
+    test('zanshinBookmarkAdvance rejects an interior NUL in names and to', () {
+      expect(
+        () => zanshinBookmarkAdvance(0, names: ['a${nul}b']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'names')),
+      );
+      expect(
+        () => zanshinBookmarkAdvance(0, to: 'qpv${nul}untsm'),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'to')),
+      );
+    });
+
+    test('zanshinBookmarkRename rejects an interior NUL in either name', () {
+      expect(
+        () => zanshinBookmarkRename(0, 'o${nul}ld', 'new'),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'oldName')),
+      );
+      expect(
+        () => zanshinBookmarkRename(0, 'old', 'n${nul}ew'),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'newName')),
+      );
+    });
+  });
+
+  group('a refusal with hints travels through the shipped MutationResult decoder', () {
+    test('the backwards refusal keeps its hint', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: false,
+        error: fbs.FfiErrorObjectBuilder(
+          code: 'jj.invalid_input',
+          context: 'Refusing to move bookmark backwards or sideways: feature',
+          hints: ['Use --allow-backwards to allow it.'],
+        ),
+      ).toBytes();
+      expect(
+        () => decodeMutationResultEnvelope(bytes),
+        throwsA(
+          isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input').having((e) => e.hints, 'hints', [
+            'Use --allow-backwards to allow it.',
+          ]),
+        ),
+      );
     });
   });
 }

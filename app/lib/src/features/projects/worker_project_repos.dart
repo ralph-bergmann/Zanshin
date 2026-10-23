@@ -106,7 +106,10 @@ class _WorkerProjectRepo implements ProjectRepo {
         hasFileChanges: hasFileChanges,
         headRefs: heads.refs,
         bookmarks: () async {
-          final WarnedList<Bookmark> bookmarks = await handle.bookmarks();
+          final WarnedList<Bookmark> bookmarks = await handle.bookmarks(
+            allRemotes: true,
+            sort: const [BookmarkSortKey.name],
+          );
           _logWarnings('bookmarks', bookmarks.warnings);
           return bookmarks;
         },

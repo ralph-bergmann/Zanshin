@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! `zanshin_bookmark_*` — the two bookmark MUTATION wrappers (Story 9.8): `create` and
-//! `delete`.
+//! `zanshin_bookmark_*` — the bookmark MUTATION wrappers: `create` and `delete` (Story 9.8),
+//! `move`, `advance` and `rename` (Story 9.19).
 //!
 //! Each calls the matching `zanshin_jj::Repo` method and serialises the result into a
 //! `FlatBuffers` `Envelope`. The handle is borrowed (not consumed). Split from
@@ -10,14 +10,14 @@
 //! `MutateError` surface keeps landing in `repo.rs::map_mutate_err` and never grows a
 //! second, desyncable spelling.
 //!
-//! Both verbs return the shipped `MutationResult` payload; neither adds a `Payload` union
-//! member. Transport follows ADR-0001: both take a LIST of strings (plus, for `create`, a
-//! distinguishably-ABSENT `revision`), so both cross as request BUFFERS rather than as
-//! `CString`s.
+//! Every verb returns the shipped `MutationResult` payload; none adds a `Payload` union
+//! member. Transport follows ADR-0001: each takes a LIST of strings or a distinguishably-ABSENT
+//! string (or, for `rename`, two strings and a flag), so each crosses as a request BUFFER rather
+//! than as `CString`s.
 
 use flatbuffers::VerifierOptions;
 use tracing::debug;
-use zanshin_jj::ChangeId;
+use zanshin_jj::{BookmarkMoveOptions, ChangeId};
 
 use crate::envelope::{
     catch, expect_request_kind, invalid_request, ok_mutation_result, precondition_envelope, reject_null_request,
@@ -88,6 +88,88 @@ fn read_bookmark_delete_request(data: *const u8, len: usize) -> Result<BookmarkD
     expect_request_kind(req.kind(), fbs::RequestKind::BookmarkDelete)?;
     Ok(BookmarkDeleteRequestOwned {
         names: req.names().into_iter().flatten().map(ToOwned::to_owned).collect(),
+    })
+}
+
+/// The strings of an optional request vector — ABSENT is EMPTY. Shared with `bookmarks.rs`'s
+/// list reader.
+pub(crate) fn strings(v: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&str>>>) -> Vec<String> {
+    v.into_iter().flatten().map(ToOwned::to_owned).collect()
+}
+
+/// Parse a `BookmarkMoveRequest` buffer into owned [`BookmarkMoveOptions`]. Absent vectors are
+/// empty; the jj layer refuses neither-names-nor-from with its one message.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkMoveRequest` buffer, or its
+///   `kind` is not `BookmarkMove`.
+fn read_bookmark_move_request(data: *const u8, len: usize) -> Result<BookmarkMoveOptions, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only.
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::BookmarkMoveRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::BookmarkMove)?;
+    Ok(BookmarkMoveOptions {
+        names: strings(req.names()),
+        from: strings(req.from()),
+        to: req.to().map(|s| ChangeId(s.to_owned())),
+        allow_backwards: req.allow_backwards(),
+    })
+}
+
+/// Owned Rust form of a `BookmarkAdvanceRequest` buffer; `to` absent applies
+/// `revsets.bookmark-advance-to`.
+struct BookmarkAdvanceRequestOwned {
+    names: Vec<String>,
+    to: Option<ChangeId>,
+}
+
+/// Parse a `BookmarkAdvanceRequest` buffer into an owned [`BookmarkAdvanceRequestOwned`].
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkAdvanceRequest` buffer, or its
+///   `kind` is not `BookmarkAdvance`.
+fn read_bookmark_advance_request(data: *const u8, len: usize) -> Result<BookmarkAdvanceRequestOwned, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only.
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::BookmarkAdvanceRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::BookmarkAdvance)?;
+    Ok(BookmarkAdvanceRequestOwned {
+        names: strings(req.names()),
+        to: req.to().map(|s| ChangeId(s.to_owned())),
+    })
+}
+
+/// Owned Rust form of a `BookmarkRenameRequest` buffer. An absent name becomes the EMPTY name,
+/// which the jj layer refuses with its one message.
+struct BookmarkRenameRequestOwned {
+    old_name: String,
+    new_name: String,
+    overwrite_existing: bool,
+}
+
+/// Parse a `BookmarkRenameRequest` buffer into an owned [`BookmarkRenameRequestOwned`].
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkRenameRequest` buffer, or its
+///   `kind` is not `BookmarkRename`.
+fn read_bookmark_rename_request(data: *const u8, len: usize) -> Result<BookmarkRenameRequestOwned, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only.
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::BookmarkRenameRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::BookmarkRename)?;
+    Ok(BookmarkRenameRequestOwned {
+        old_name: req.old_name().unwrap_or_default().to_owned(),
+        new_name: req.new_name().unwrap_or_default().to_owned(),
+        overwrite_existing: req.overwrite_existing(),
     })
 }
 
@@ -209,6 +291,149 @@ pub unsafe extern "C" fn zanshin_bookmark_delete(handle: u64, data: *const u8, l
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
         let result = session.repo.bookmark_delete(&req.names);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
+    });
+    vec_into_token(buf)
+}
+
+/// Move existing local bookmarks to one revision, in the repo referenced by `handle` — the CLI's
+/// `jj bookmark move` (Story 9.19).
+///
+/// The arguments cross as a `BookmarkMoveRequest` `FlatBuffers` request buffer. `names` are EXACT
+/// bookmark names (the CLI's `exact:"…"`), `from` revset TEXTS (`--from`, unioned) — at least one
+/// is required; a bookmark moves when its name is named (any, without names) AND, with `from`, a
+/// target of it is in `from`. `to` ABSENT is the CLI's default `@` (snapshotted first, Story
+/// 9.26), present a change id. A bookmark already at the target is skipped; nothing left is a
+/// SUCCESS writing no operation (`MutationResult.new_op_id` is the pre-call head). Every moved
+/// bookmark gets a NORMAL target, so a conflicted one is resolved. Warnings:
+/// `jj.bookmark_names_unmatched`, `jj.bookmark_target_empty`. Op-log description `point bookmark
+/// {names} to commit {hex}`. Returns a `FlatBuffers` `Envelope` carrying a `MutationResult`
+/// payload on success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkMoveRequest` buffer, or its
+///   `kind` is not `BookmarkMove`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — neither `names` nor `from`; or, without `allow_backwards`, a backwards
+///   or sideways move ("Refusing to move bookmark backwards or sideways: {name}", the hint "Use
+///   --allow-backwards to allow it." in `hints`).
+/// - `jj.change_not_found` — `to` is malformed, unknown, hidden or divergent; the id in `context`.
+/// - `jj.revset_parse_error` / `jj.revset_resolution_error` — a `from` text, or no `@` for `to`'s
+///   default.
+/// - `jj.config_error` — the effective config changed and no longer reads, the pre-verb snapshot
+///   found a wrongly typed knob, or the revset aliases do not load.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale; nothing is
+///   written.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_bookmark_create`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkMoveRequestObjectBuilder(...).toBytes()`); Rust only borrows it for
+/// the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_bookmark_move(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_bookmark_move", handle);
+    let buf = catch(|| {
+        let options = read_bookmark_move_request(data, len)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.bookmark_move(&options);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
+    });
+    vec_into_token(buf)
+}
+
+/// Advance the closest bookmarks to a revision, in the repo referenced by `handle` — the CLI's
+/// `jj bookmark advance` (Story 9.19).
+///
+/// The arguments cross as a `BookmarkAdvanceRequest` `FlatBuffers` request buffer. `to` ABSENT
+/// applies `revsets.bookmark-advance-to` (default `@`), which must resolve to exactly one commit;
+/// present it is a change id. `names` are EXACT bookmark names; absent/empty applies the CLI's
+/// default candidates, the local bookmarks with a target in `revsets.bookmark-advance-from`
+/// (default `heads(::to & bookmarks())`). Then as `zanshin_bookmark_move` without
+/// `allow_backwards`. Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on
+/// success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkAdvanceRequest` buffer, or its
+///   `kind` is not `BookmarkAdvance`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — a backwards or sideways candidate ("Refusing to advance bookmark
+///   backwards or sideways: {name}", no hint).
+/// - `jj.change_not_found` — `to` does not resolve; the id in `context`.
+/// - `jj.revset_parse_error` / `jj.revset_resolution_error` — the default target does not parse
+///   or resolve to exactly one commit (`hints` carry "`revsets.bookmark-advance-to` controls the
+///   default target. …"), or the from revset does not parse or resolve.
+/// - `jj.config_error` — a `revsets.bookmark-advance-*` value is not a string, the revset aliases
+///   do not load, or the pre-verb refresh / snapshot faults as for `zanshin_bookmark_move`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_bookmark_create`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkAdvanceRequestObjectBuilder(...).toBytes()`); Rust only borrows it for
+/// the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_bookmark_advance(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_bookmark_advance", handle);
+    let buf = catch(|| {
+        let req = read_bookmark_advance_request(data, len)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.bookmark_advance(&req.names, req.to.as_ref());
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
+    });
+    vec_into_token(buf)
+}
+
+/// Rename a local bookmark, in the repo referenced by `handle` — the CLI's `jj bookmark rename`
+/// (Story 9.19).
+///
+/// The arguments cross as a `BookmarkRenameRequest` `FlatBuffers` request buffer: `old_name` and
+/// `new_name` are DECODED names, `overwrite_existing` is `--overwrite-existing`. The new name
+/// points where the old one did, the old one is gone, and the tracking of the old name's remotes
+/// moves to the new name (the remote bookmarks themselves are not renamed). Renaming to the same
+/// name with `overwrite_existing` writes no operation. Warnings:
+/// `jj.bookmark_rename_remote_exists`, `jj.bookmark_tracking_dropped`,
+/// `jj.bookmark_remotes_not_renamed`, `jj.bookmark_tracked_remotes_exist`. Op-log description
+/// `rename bookmark {old} to {new}`. Returns a `FlatBuffers` `Envelope` carrying a
+/// `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkRenameRequest` buffer, or its
+///   `kind` is not `BookmarkRename`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — a name is empty or absent, or `old_name` is not a local bookmark ("No
+///   such bookmark: {old}").
+/// - `jj.bookmark_exists` — `new_name` is a local bookmark and `overwrite_existing` is off (also
+///   for the same name, as in the CLI); the name in `context`.
+/// - `jj.config_error` — the pre-verb refresh or snapshot faults as for `zanshin_bookmark_move`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_bookmark_create`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkRenameRequestObjectBuilder(...).toBytes()`); Rust only borrows it for
+/// the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_bookmark_rename(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_bookmark_rename", handle);
+    let buf = catch(|| {
+        let req = read_bookmark_rename_request(data, len)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session
+            .repo
+            .bookmark_rename(&req.old_name, &req.new_name, req.overwrite_existing);
         precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)

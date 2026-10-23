@@ -6,11 +6,12 @@ import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'request_bytes.dart';
 
-// This file owns the Dart half of Story 9.8's two bookmark MUTATIONS: the request
-// builders and the two adapters (bookmarkCreate / bookmarkDelete). `dart:ffi`
-// stays inside `ffi/` — only the worker isolate calls these adapters.
+// This file owns the Dart half of the bookmark MUTATIONS: the request builders
+// and the adapters (Story 9.8's bookmarkCreate / bookmarkDelete, Story 9.19's
+// bookmarkMove / bookmarkAdvance / bookmarkRename). `dart:ffi` stays inside
+// `ffi/` — only the worker isolate calls these adapters.
 //
-// There is deliberately NO model and NO decoder here: both verbs return the
+// There is deliberately NO model and NO decoder here: every verb returns the
 // shipped `MutationResult`, so `isolate.dart` decodes their envelopes with
 // `mutate.dart`'s own `decodeMutationResultEnvelopeInternal`. A second spelling
 // of that decoder would be a second thing to keep in sync with one wire table.
@@ -64,4 +65,64 @@ Uint8List zanshinBookmarkDelete(int rawHandle, List<String> names) {
     names: names,
   ).toBytes();
   return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmark_delete(rawHandle, ptr, len)));
+}
+
+/// Call `zanshin_bookmark_move` with the raw `u64` handle and a
+/// `BookmarkMoveRequest` request buffer (Story 9.19), and return the FlatBuffers
+/// `Envelope` bytes.
+///
+/// [names] are EXACT bookmark names (the CLI's `exact:"…"`), [from] revset
+/// texts (`--from`); at least one must be non-empty, else `jj.invalid_input`. A
+/// `null` [to] applies the CLI's `--to` default `@`.
+Uint8List zanshinBookmarkMove(
+  int rawHandle,
+  List<String> names, {
+  List<String> from = const [],
+  String? to,
+  bool allowBackwards = false,
+}) {
+  rejectInteriorNuls(names, 'names');
+  rejectInteriorNuls(from, 'from');
+  rejectInteriorNul(to, 'to');
+  final Uint8List request = fbs.BookmarkMoveRequestObjectBuilder(
+    kind: fbs.RequestKind.BookmarkMove,
+    names: names,
+    from: from,
+    to: to,
+    allowBackwards: allowBackwards,
+  ).toBytes();
+  return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmark_move(rawHandle, ptr, len)));
+}
+
+/// Call `zanshin_bookmark_advance` with the raw `u64` handle and a
+/// `BookmarkAdvanceRequest` request buffer (Story 9.19), and return the
+/// FlatBuffers `Envelope` bytes.
+///
+/// Empty [names] applies the CLI's default candidates
+/// (`revsets.bookmark-advance-from`); a `null` [to] applies
+/// `revsets.bookmark-advance-to`.
+Uint8List zanshinBookmarkAdvance(int rawHandle, {List<String> names = const [], String? to}) {
+  rejectInteriorNuls(names, 'names');
+  rejectInteriorNul(to, 'to');
+  final Uint8List request = fbs.BookmarkAdvanceRequestObjectBuilder(
+    kind: fbs.RequestKind.BookmarkAdvance,
+    names: names,
+    to: to,
+  ).toBytes();
+  return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmark_advance(rawHandle, ptr, len)));
+}
+
+/// Call `zanshin_bookmark_rename` with the raw `u64` handle and a
+/// `BookmarkRenameRequest` request buffer (Story 9.19), and return the
+/// FlatBuffers `Envelope` bytes. Both names are DECODED names.
+Uint8List zanshinBookmarkRename(int rawHandle, String oldName, String newName, {bool overwriteExisting = false}) {
+  rejectInteriorNul(oldName, 'oldName');
+  rejectInteriorNul(newName, 'newName');
+  final Uint8List request = fbs.BookmarkRenameRequestObjectBuilder(
+    kind: fbs.RequestKind.BookmarkRename,
+    oldName: oldName,
+    newName: newName,
+    overwriteExisting: overwriteExisting,
+  ).toBytes();
+  return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmark_rename(rawHandle, ptr, len)));
 }

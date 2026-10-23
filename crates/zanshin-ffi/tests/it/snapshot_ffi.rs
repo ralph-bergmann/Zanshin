@@ -22,7 +22,6 @@ use std::path::{Path, PathBuf};
 use flatbuffers::root as fb_root;
 use tempfile::TempDir;
 use zanshin_ffi::bookmark_ops::zanshin_bookmark_create;
-use zanshin_ffi::bookmarks::zanshin_bookmarks;
 use zanshin_ffi::change::zanshin_change;
 use zanshin_ffi::commit_contents::zanshin_commit_contents;
 use zanshin_ffi::commit_views::{zanshin_evolog, zanshin_interdiff, zanshin_show};
@@ -362,7 +361,7 @@ fn every_read_wrapper_maps_a_failed_pre_verb_snapshot_and_carries_the_partial_re
             ("status", read_and_free(zanshin_status(handle))),
             ("change", read_and_free(zanshin_change(handle, any_id.as_ptr()))),
             ("op_log", read_and_free(zanshin_op_log(handle, -1))),
-            ("bookmarks", read_and_free(zanshin_bookmarks(handle))),
+            ("bookmarks", read_and_free(crate::bookmarks_all_remotes(handle))),
             ("remotes", read_and_free(zanshin_remotes(handle))),
         ]
     };
@@ -408,7 +407,7 @@ unsafe fn ok_row(name: &str, handle: u64, file: &str, wc: &CString) -> Vec<u8> {
         match name {
             "change" => read_and_free(zanshin_change(handle, wc.as_ptr())),
             "op_log" => read_and_free(zanshin_op_log(handle, -1)),
-            "bookmarks" => read_and_free(zanshin_bookmarks(handle)),
+            "bookmarks" => read_and_free(crate::bookmarks_all_remotes(handle)),
             "remotes" => read_and_free(zanshin_remotes(handle)),
             "graph_topology" => {
                 let req = request(|b| {

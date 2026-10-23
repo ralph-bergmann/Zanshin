@@ -14,7 +14,10 @@ use test_helpers::{
     add_commit_off_root, add_commit_with_files, describe_commit, extract_fixture, set_local_bookmark,
     set_remote_bookmark, FixtureHandle,
 };
-use zanshin_jj::{convert_colocated, Bookmark, BookmarkError, BookmarkKind, RefDistance, Repo};
+use zanshin_jj::{
+    convert_colocated, Bookmark, BookmarkError, BookmarkKind, BookmarkListOptions, BookmarkSortKey, RefDistance, Repo,
+    WarningKind,
+};
 
 /// Open the fixture as a raw jj-lib `Workspace` for oracle reads.
 fn oracle_workspace(root: &Path) -> (Workspace, UserSettings) {
@@ -36,7 +39,7 @@ fn bookmarks_on_tiny_returns_empty() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     let mut repo = Repo::open(&fx.path).unwrap();
-    let bms = repo.list_bookmarks().unwrap();
+    let bms = repo.list_bookmarks(&crate::all_remotes()).unwrap();
     assert!(bms.is_empty(), "tiny fixture has no bookmarks; got {bms:?}");
 }
 
@@ -47,7 +50,7 @@ fn bookmarks_on_medium_equals_local_oracle() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("medium-1k-commits").unwrap();
     let mut repo = Repo::open(&fx.path).unwrap();
-    let bms = repo.list_bookmarks().unwrap();
+    let bms = repo.list_bookmarks(&crate::all_remotes()).unwrap();
 
     // All medium entries are Local (fixture has no remote bookmarks), hence vacuously synced.
     assert!(
@@ -160,7 +163,7 @@ fn bookmarks_local_and_remote_tracking_yields_two_entries() {
     // Re-resolves to head (ADR-0002): the Repo opened after the transaction sees
     // the new operation.
     let mut repo = Repo::open(&fx.path).unwrap();
-    let bms = repo.list_bookmarks().unwrap();
+    let bms = repo.list_bookmarks(&crate::all_remotes()).unwrap();
 
     let feature_bms: Vec<_> = bms.iter().filter(|b| b.name == "feature").collect();
     assert_eq!(
@@ -203,7 +206,7 @@ fn bookmarks_list_untracked_remotes_and_never_an_unstored_ghost() {
     let (fx, expected_change) = setup_with_remote_bookmarks();
 
     let mut repo = Repo::open(&fx.path).unwrap();
-    let bms = repo.list_bookmarks().unwrap();
+    let bms = repo.list_bookmarks(&crate::all_remotes()).unwrap();
 
     assert!(
         !bms.iter().any(|b| b.name == "ghost"),
@@ -223,46 +226,24 @@ fn bookmarks_list_untracked_remotes_and_never_an_unstored_ghost() {
     );
 }
 
-// ── AC-4: sorted by (name, kind) — Local before Remote ───────────────────────
+// ── AC-4 / Story 9.19: the CLI's row order ─────────────────────────────────────
 
+/// The CLI's order (`collect_items` + `--all-remotes`, Story 9.19), not 9.29's (name, remote)
+/// sort: per name the local row, then its TRACKED remote rows, then the untracked remote rows —
+/// so an untracked `foo@aaa` comes after a tracked `foo@origin` although `aaa` sorts first.
 #[test]
-fn bookmarks_are_sorted_by_name_then_kind() {
+fn bookmarks_follow_the_clis_row_order() {
     test_helpers::pin_test_env();
-    let (fx, _) = setup_with_remote_bookmarks();
-
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let (p, c) = parent_and_child(&fx.path);
+    set_local_bookmark(&fx.path, "foo", &[&p]);
+    set_remote_bookmark(&fx.path, "foo", "origin", &c, true);
+    set_remote_bookmark(&fx.path, "foo", "aaa", &c, false);
+    set_local_bookmark(&fx.path, "bar", &[&p]);
     let mut repo = Repo::open(&fx.path).unwrap();
-    let bms = repo.list_bookmarks().unwrap();
-
-    // Assert the full list is sorted by (name, kind).
-    for pair in bms.windows(2) {
-        let a = &pair[0];
-        let b = &pair[1];
-        let ord = a.name.cmp(&b.name).then_with(|| remote_of(a).cmp(&remote_of(b)));
-        assert!(
-            ord.is_le(),
-            "bookmarks out of order: {:?} should not come after {:?}",
-            (&a.name, &a.kind),
-            (&b.name, &b.kind)
-        );
-    }
-
-    // "feature/Local" must be immediately adjacent before "feature/Remote{origin}".
-    let feature_idxs: Vec<usize> = bms
-        .iter()
-        .enumerate()
-        .filter(|(_, b)| b.name == "feature")
-        .map(|(i, _)| i)
-        .collect();
-    assert_eq!(feature_idxs.len(), 2, "'feature' must appear exactly twice");
     assert_eq!(
-        feature_idxs[1],
-        feature_idxs[0] + 1,
-        "'feature' Local and Remote entries must be adjacent"
-    );
-    assert_eq!(
-        bms[feature_idxs[0]].kind,
-        BookmarkKind::Local,
-        "Local must precede Remote for the same name"
+        labels(&mut repo, &crate::all_remotes()),
+        ["bar", "foo", "foo@origin", "foo@aaa"]
     );
 }
 
@@ -281,12 +262,12 @@ fn bookmarks_on_corrupt_repo_returns_backend_error() {
 
     let mut repo = Repo::open(tmp.path()).unwrap();
 
-    // Corrupt AFTER open: list_bookmarks() re-resolves to head per call (ADR-0002),
+    // Corrupt AFTER open: list_bookmarks(&crate::all_remotes()) re-resolves to head per call (ADR-0002),
     // so removing op_heads makes load_at_head() fail → BookmarkError::Backend.
     let op_heads = tmp.path().join(".jj").join("repo").join("op_heads");
     fs::remove_dir_all(&op_heads).unwrap();
 
-    let result = repo.list_bookmarks();
+    let result = repo.list_bookmarks(&crate::all_remotes());
     assert!(
         matches!(result, Err(BookmarkError::Precondition(zanshin_jj::PreconditionError::Backend(_)))),
         "the pre-verb snapshot fails first (Story 9.26, as the CLI would): corrupt repo must yield Backend error, got: {result:?}"
@@ -338,7 +319,7 @@ fn bookmarks_conflicted_target_uses_first_added_change_id() {
     pollster::block_on(tx.commit("test: add divergent local bookmark")).unwrap();
 
     let mut repo = Repo::open(&fx.path).unwrap();
-    let bms = repo.list_bookmarks().unwrap();
+    let bms = repo.list_bookmarks(&crate::all_remotes()).unwrap();
 
     let divergent: Vec<_> = bms.iter().filter(|b| b.name == "divergent").collect();
     assert_eq!(
@@ -380,7 +361,7 @@ fn bookmarks_preserve_non_ascii_name_and_sort_by_codepoint() {
     pollster::block_on(tx.commit("test: non-ASCII bookmark name")).unwrap();
 
     let mut repo = Repo::open(&fx.path).unwrap();
-    let bms = repo.list_bookmarks().unwrap();
+    let bms = repo.list_bookmarks(&crate::all_remotes()).unwrap();
 
     // Verbatim UTF-8 preservation of the non-ASCII name.
     assert!(
@@ -423,14 +404,6 @@ fn exact(n: u64) -> RefDistance {
     }
 }
 
-/// The sort key's second half: the local row (`None`) before remotes by remote name.
-fn remote_of(bookmark: &Bookmark) -> Option<&str> {
-    match &bookmark.kind {
-        BookmarkKind::Local => None,
-        BookmarkKind::Remote { remote_name, .. } => Some(remote_name),
-    }
-}
-
 /// The reverse-hex change id of the commit `commit_hex`.
 fn change_of(root: &Path, commit_hex: &str) -> zanshin_jj::ChangeId {
     let (ws, _) = oracle_workspace(root);
@@ -442,7 +415,7 @@ fn change_of(root: &Path, commit_hex: &str) -> zanshin_jj::ChangeId {
 /// The listed rows named `name`.
 fn rows(root: &Path, name: &str) -> Vec<Bookmark> {
     let mut repo = Repo::open(root).unwrap();
-    repo.list_bookmarks()
+    repo.list_bookmarks(&crate::all_remotes())
         .unwrap()
         .into_iter()
         .filter(|b| b.name == name)
@@ -786,7 +759,7 @@ fn a_colocated_bookmark_has_a_synced_git_row() {
     repo.bookmark_create(&["feature".to_owned()], None).unwrap();
 
     let listed: Vec<Bookmark> = repo
-        .list_bookmarks()
+        .list_bookmarks(&crate::all_remotes())
         .unwrap()
         .into_iter()
         .filter(|b| b.name == "feature")
@@ -820,4 +793,288 @@ fn git(args: &[&str], dir: &Path) {
         "git {args:?} failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
+}
+
+// ── Story 9.19: the CLI's list arguments and row order ─────────────────────────
+
+/// A row as the CLI names it: `name` or `name@remote`.
+fn label(bookmark: &Bookmark) -> String {
+    match &bookmark.kind {
+        BookmarkKind::Local => bookmark.name.clone(),
+        BookmarkKind::Remote { remote_name, .. } => format!("{}@{remote_name}", bookmark.name),
+    }
+}
+
+/// The labels `options` lists, in order.
+fn labels(repo: &mut Repo, options: &BookmarkListOptions) -> Vec<String> {
+    repo.list_bookmarks(options)
+        .expect("list bookmarks")
+        .iter()
+        .map(label)
+        .collect()
+}
+
+/// The filter fixture on `tiny-3-commits`: parent `P`, its child `C`, and
+/// - `conf` conflicted (`P`, `C`);
+/// - `feat` at `P`, tracked and synced on `origin` and `git`, untracked on `upstream` (at `C`);
+/// - `fix` at `C`, tracked on `origin` at `P` (unsynced);
+/// - `gone` deleted locally, still tracked on `origin` (at `P`);
+/// - `only-remote@origin` untracked at `C`, no local.
+///
+/// Returns the fixture and `(P, C)` as hex.
+fn filter_fixture() -> (FixtureHandle, String, String) {
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let (p, c) = parent_and_child(&fx.path);
+    set_local_bookmark(&fx.path, "conf", &[&p, &c]);
+    set_local_bookmark(&fx.path, "feat", &[&p]);
+    set_remote_bookmark(&fx.path, "feat", "origin", &p, true);
+    set_remote_bookmark(&fx.path, "feat", "git", &p, true);
+    set_remote_bookmark(&fx.path, "feat", "upstream", &c, false);
+    set_local_bookmark(&fx.path, "fix", &[&c]);
+    set_remote_bookmark(&fx.path, "fix", "origin", &p, true);
+    set_local_bookmark(&fx.path, "gone", &[&p]);
+    set_remote_bookmark(&fx.path, "gone", "origin", &p, true);
+    set_local_bookmark(&fx.path, "gone", &[]);
+    set_remote_bookmark(&fx.path, "only-remote", "origin", &c, false);
+    (fx, p, c)
+}
+
+fn strings(list: &[&str]) -> Vec<String> {
+    list.iter().map(|s| (*s).to_owned()).collect()
+}
+
+/// The CLI's default and `--all-remotes` row sets, in its order: each local row, its tracked
+/// remote rows, then the name's untracked remote rows — `feat@upstream` after `feat@origin`.
+#[test]
+fn list_default_and_all_remotes_follow_the_clis_rows_and_order() {
+    test_helpers::pin_test_env();
+    let (fx, _, _) = filter_fixture();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    assert_eq!(
+        labels(&mut repo, &BookmarkListOptions::default()),
+        ["conf", "feat", "fix", "fix@origin", "gone", "gone@origin"]
+    );
+    assert_eq!(
+        labels(&mut repo, &crate::all_remotes()),
+        [
+            "conf",
+            "feat",
+            "feat@git",
+            "feat@origin",
+            "feat@upstream",
+            "fix",
+            "fix@origin",
+            "gone",
+            "gone@origin",
+            "only-remote@origin"
+        ]
+    );
+}
+
+/// `--tracked` (without `--remote` the `git` remote is left out on a Git-backed repo),
+/// `--conflicted`, `--remote`, name patterns, revisions and both OR-ed.
+#[test]
+fn list_filters_match_the_clis_predicates() {
+    test_helpers::pin_test_env();
+    let (fx, _, c) = filter_fixture();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let with = |f: fn(&mut BookmarkListOptions)| {
+        let mut options = BookmarkListOptions::default();
+        f(&mut options);
+        options
+    };
+    assert_eq!(
+        labels(&mut repo, &with(|o| o.tracked = true)),
+        ["feat", "feat@origin", "fix", "fix@origin", "gone", "gone@origin"]
+    );
+    assert_eq!(labels(&mut repo, &with(|o| o.conflicted = true)), ["conf"]);
+    assert_eq!(
+        labels(&mut repo, &with(|o| o.remotes = vec!["upstream".to_owned()])),
+        ["feat@upstream"]
+    );
+    assert_eq!(
+        labels(
+            &mut repo,
+            &BookmarkListOptions {
+                remotes: strings(&["git"]),
+                tracked: true,
+                ..Default::default()
+            }
+        ),
+        ["feat", "feat@git"],
+        "an explicit --remote git lists it"
+    );
+    assert_eq!(
+        labels(&mut repo, &with(|o| o.names = vec!["glob:f*".to_owned()])),
+        ["feat", "fix", "fix@origin"]
+    );
+    let by_revision = BookmarkListOptions {
+        revisions: vec![c.clone()],
+        ..Default::default()
+    };
+    assert_eq!(labels(&mut repo, &by_revision), ["conf", "fix", "fix@origin"]);
+    let either = BookmarkListOptions {
+        names: strings(&["exact:feat"]),
+        ..by_revision
+    };
+    assert_eq!(labels(&mut repo, &either), ["conf", "feat", "fix", "fix@origin"]);
+    assert!(repo.take_warnings().is_empty());
+}
+
+/// An exact name with neither a local nor a remote bookmark warns; one that exists only on a
+/// remote does not.
+#[test]
+fn list_warns_exact_names_that_match_nothing() {
+    test_helpers::pin_test_env();
+    let (fx, _, _) = filter_fixture();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let options = BookmarkListOptions {
+        names: strings(&["nope", "only-remote", "feat"]),
+        ..Default::default()
+    };
+    assert_eq!(labels(&mut repo, &options), ["feat"]);
+    let warnings: Vec<(WarningKind, String)> = repo.take_warnings().into_iter().map(|w| (w.kind, w.message)).collect();
+    assert_eq!(
+        warnings,
+        [(
+            WarningKind::BookmarkNamesUnmatched,
+            "No matching bookmarks for names: nope".to_owned()
+        )]
+    );
+}
+
+/// `--sort` from the argument, else from `ui.bookmark-list-sort-keys`; it sorts ITEMS, so a
+/// tracked remote row stays under its local row.
+#[test]
+fn list_sorts_by_the_argument_or_the_config() {
+    test_helpers::pin_test_env();
+    let (fx, _, _) = filter_fixture();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let reversed = ["gone", "gone@origin", "fix", "fix@origin", "feat", "conf"];
+    let by_argument = BookmarkListOptions {
+        sort: vec![BookmarkSortKey::NameDesc],
+        ..Default::default()
+    };
+    assert_eq!(labels(&mut repo, &by_argument), reversed);
+
+    zanshin_jj::config_set(
+        Some(&fx.path),
+        &zanshin_jj::ConfigTarget::Scope(zanshin_jj::ConfigScope::Repo),
+        "ui.bookmark-list-sort-keys",
+        "[\"name-\"]",
+    )
+    .result
+    .expect("config set");
+    assert_eq!(labels(&mut repo, &BookmarkListOptions::default()), reversed);
+    // The argument wins over the config.
+    let by_name = BookmarkListOptions {
+        sort: vec![BookmarkSortKey::Name],
+        ..Default::default()
+    };
+    assert_eq!(
+        labels(&mut repo, &by_name),
+        ["conf", "feat", "fix", "fix@origin", "gone", "gone@origin"]
+    );
+
+    zanshin_jj::config_set(
+        Some(&fx.path),
+        &zanshin_jj::ConfigTarget::Scope(zanshin_jj::ConfigScope::Repo),
+        "ui.bookmark-list-sort-keys",
+        "\"name\"",
+    )
+    .result
+    .expect("config set");
+    let err = repo
+        .list_bookmarks(&BookmarkListOptions::default())
+        .expect_err("not an array");
+    assert!(
+        matches!(&err, BookmarkError::Config(zanshin_jj::ConfigError::Load { reason })
+            if reason.contains("Expected an array of sort keys as strings")),
+        "{err:?}"
+    );
+}
+
+/// A commit-dependent key reads each item's target commit: `author-date-` orders by the target's
+/// author timestamp, newest first, keeping name order among equal ones (a stable sort).
+#[test]
+fn list_sorts_by_a_commit_dependent_key() {
+    test_helpers::pin_test_env();
+    let (fx, p, c) = filter_fixture();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let (ws, _) = oracle_workspace(&fx.path);
+    let head = pollster::block_on(ws.repo_loader().load_at_head()).unwrap();
+    let author_ms = |hex: &str| {
+        let id = jj_lib::backend::CommitId::try_from_hex(hex).unwrap();
+        head.store().get_commit(&id).unwrap().author().timestamp.timestamp.0
+    };
+    // Items in name order with their primary target: conf (P, first add), feat (P), fix (C), gone (absent).
+    let mut items: Vec<(Vec<&str>, Option<i64>)> = vec![
+        (vec!["conf"], Some(author_ms(&p))),
+        (vec!["feat"], Some(author_ms(&p))),
+        (vec!["fix", "fix@origin"], Some(author_ms(&c))),
+        (vec!["gone", "gone@origin"], None),
+    ];
+    items.sort_by_key(|(_, ms)| std::cmp::Reverse(*ms));
+    let expected: Vec<&str> = items.into_iter().flat_map(|(rows, _)| rows).collect();
+    let options = BookmarkListOptions {
+        sort: vec![BookmarkSortKey::AuthorDateDesc],
+        ..Default::default()
+    };
+    assert_eq!(labels(&mut repo, &options), expected);
+}
+
+/// The refusals: clap's `--all-remotes` conflict BEFORE the snapshot (no operation, even with a
+/// dirty working copy), a bad pattern, and the revset taxonomy for `revisions`.
+#[test]
+fn list_refusals() {
+    test_helpers::pin_test_env();
+    let (fx, _, _) = filter_fixture();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    fs::write(fx.path.join("dirty.txt"), "dirty").unwrap();
+    let head = |root: &Path| {
+        let (ws, _) = oracle_workspace(root);
+        pollster::block_on(ws.repo_loader().load_at_head())
+            .unwrap()
+            .op_id()
+            .clone()
+    };
+    let before = head(&fx.path);
+    let conflict = BookmarkListOptions {
+        all_remotes: true,
+        tracked: true,
+        ..Default::default()
+    };
+    let err = repo.list_bookmarks(&conflict).expect_err("clap conflict");
+    assert!(
+        matches!(&err, BookmarkError::InvalidInput { reason }
+            if reason == "the argument '--all-remotes' cannot be used with '--tracked'"),
+        "{err:?}"
+    );
+    assert_eq!(head(&fx.path), before, "refused before the snapshot");
+    assert!(repo.take_precondition().is_none(), "no precondition ran");
+
+    let bad_pattern = BookmarkListOptions {
+        names: strings(&["bogus:x"]),
+        ..Default::default()
+    };
+    let err = repo.list_bookmarks(&bad_pattern).expect_err("pattern");
+    assert!(matches!(&err, BookmarkError::InvalidInput { .. }), "{err:?}");
+    let bad_remote = BookmarkListOptions {
+        remotes: strings(&["glob:\"[\""]),
+        ..Default::default()
+    };
+    let err = repo.list_bookmarks(&bad_remote).expect_err("remote pattern");
+    assert!(matches!(&err, BookmarkError::InvalidInput { .. }), "{err:?}");
+    let parse = BookmarkListOptions {
+        revisions: strings(&["("]),
+        ..Default::default()
+    };
+    let err = repo.list_bookmarks(&parse).expect_err("parse");
+    assert!(matches!(&err, BookmarkError::RevsetParseError { .. }), "{err:?}");
+    let resolve = BookmarkListOptions {
+        revisions: strings(&["no-such-bookmark"]),
+        ..Default::default()
+    };
+    let err = repo.list_bookmarks(&resolve).expect_err("resolve");
+    assert!(matches!(&err, BookmarkError::RevsetResolutionError { .. }), "{err:?}");
 }

@@ -497,13 +497,23 @@ impl Repo {
         let Err(refusal) = args else {
             return self.with_verb(verb);
         };
+        self.refuse_before_snapshot()?;
+        Err(refusal)
+    }
+
+    /// The part of a clap-level refusal that still runs: the start-up secure-config fix-up, its
+    /// warnings the call's own, and no precondition report — see [`Repo::with_checked_verb`].
+    ///
+    /// # Errors
+    ///
+    /// What [`Repo::refresh_settings`] returns.
+    fn refuse_before_snapshot(&mut self) -> Result<(), crate::MutateError> {
         let mut fix_ups = Vec::new();
         let refreshed = self.refresh_settings(&mut fix_ups);
         self.pending_precondition = None;
         self.pending_warnings = crate::warning::Warnings::default();
         self.pending_warnings.extend(fix_ups);
-        refreshed?;
-        Err(refusal)
+        refreshed
     }
 
     /// [`Repo::with_verb`] with the precondition's snapshot-stats warnings switched by
@@ -617,24 +627,52 @@ impl Repo {
         self.with_verb(|repo, _ctx| crate::op_log::op_log(repo.workspace(), limit))
     }
 
-    /// Lists the `jj bookmark list --all-remotes` row set — local rows (present, or deleted
-    /// while still tracking a remote), tracked remote rows (synced or not, present or not
-    /// created yet) and untracked remote rows — sorted by name, then the local row, then
-    /// remote rows by remote name (FR-JJ-8, Story 9.29).
+    /// Lists the rows `jj bookmark list` prints for `options`, in the CLI's order (FR-JJ-8,
+    /// Stories 9.29 and 9.19). `BookmarkListOptions::default()` is the CLI without arguments: the
+    /// local bookmarks plus the tracked remote rows that differ from them; `all_remotes` is
+    /// `--all-remotes`' row set — every local row (present, or deleted while still tracking a
+    /// remote), every tracked remote row (synced or not, present or not created yet) and every
+    /// untracked remote row.
+    ///
+    /// The filters are the CLI's: `names` (string PATTERNS, a bare one a glob) OR-ed with
+    /// `revisions` (revsets matching LOCAL targets), `remotes` (remote-name patterns), `tracked`,
+    /// `conflicted`. The rows come as the CLI prints them: each local row followed by its tracked
+    /// remote rows, a name's untracked remote rows after that, in name order — then re-sorted by
+    /// `sort` or, when it is empty, `ui.bookmark-list-sort-keys` (default `["name"]`). An exact
+    /// name that matches no local or remote bookmark warns `jj.bookmark_names_unmatched`.
     ///
     /// Each row carries its target change id (`None` when absent; a conflicted target resolves
     /// to the first added commit's change id), `conflicted` and `synced`; a remote row also
     /// carries `tracked` and, when tracked with both targets present, the CLI's ahead/behind
-    /// distances to the local target. Re-resolves to the head operation per call (ADR-0002).
-    /// Read-only; never shells to `jj bookmark list` (AR-AP-1).
+    /// distances to the local target. Runs the pre-verb snapshot first (Story 9.26) and
+    /// re-resolves to the head operation per call (ADR-0002). Read-only; never shells to
+    /// `jj bookmark list` (AR-AP-1).
     ///
     /// # Errors
     ///
+    /// - [`crate::BookmarkError::InvalidInput`] — `all_remotes` with `remotes`, `tracked` or
+    ///   `conflicted` (clap's conflict, refused before the snapshot), or a name or remote pattern
+    ///   does not parse.
+    /// - [`crate::BookmarkError::RevsetParseError`] / [`crate::BookmarkError::RevsetResolutionError`]
+    ///   — a `revisions` text.
+    /// - [`crate::BookmarkError::Config`] — `ui.bookmark-list-sort-keys` is not an array of the
+    ///   CLI's key names, or the revset aliases do not load.
+    /// - [`crate::BookmarkError::Precondition`] — the pre-verb snapshot failed.
     /// - [`crate::BookmarkError::Backend`] — `load_at_head`, a store read or a distance revset
     ///   failed; the jj-lib reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
-    pub fn list_bookmarks(&mut self) -> Result<Vec<crate::Bookmark>, crate::BookmarkError> {
-        self.with_verb(|repo, _ctx| crate::bookmarks::list_bookmarks(repo.workspace()))
+    pub fn list_bookmarks(
+        &mut self,
+        options: &crate::BookmarkListOptions,
+    ) -> Result<Vec<crate::Bookmark>, crate::BookmarkError> {
+        if let Err(refusal) = crate::bookmarks::check_list_flags(options) {
+            self.refuse_before_snapshot()
+                .map_err(|e| crate::BookmarkError::Precondition(e.into()))?;
+            return Err(refusal);
+        }
+        self.with_verb(|repo, ctx| {
+            crate::bookmarks::list_bookmarks(repo.workspace(), &ctx.config, &mut ctx.warnings, options)
+        })
     }
 
     /// Lists local + tracked-remote tags, sorted by name then kind (ADR-0003 §5).
@@ -2309,6 +2347,115 @@ impl Repo {
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn bookmark_delete(&mut self, patterns: &[String]) -> Result<crate::MutationResult, crate::MutateError> {
         self.with_verb(|repo, ctx| crate::bookmark_ops::delete(repo.workspace_mut(), ctx, patterns))
+    }
+
+    /// Moves existing local bookmarks to one revision (Story 9.19) — the CLI's `jj bookmark move`.
+    ///
+    /// `options.names` are EXACT bookmark names (the CLI's `exact:"…"`, never its default glob);
+    /// `options.from` are revset TEXTS (the CLI's `--from`, unioned) — at least one of the two is
+    /// required. A local bookmark moves when its name is in `names` (any name when `names` is
+    /// empty) AND, with `from`, one of its targets is in `from`. `options.to` is the CLI's `--to`,
+    /// whose default `@` applies when it is `None`. Fast-forward is decided per bookmark exactly
+    /// as [`Repo::drop_actions`]' bookmark row decides it.
+    ///
+    /// A bookmark already at the target is skipped; when none is left the call is a SUCCESS that
+    /// writes NO operation (`new_op_id` is the pre-call head — the CLI's "No bookmarks to
+    /// update."). A conflicted bookmark is resolved: every moved bookmark gets a NORMAL target.
+    /// Names that match no local bookmark warn `jj.bookmark_names_unmatched`, an empty,
+    /// undescribed target warns `jj.bookmark_target_empty`. The op-log description is the CLI's
+    /// `point bookmark {names} to commit {hex}`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — neither `names` nor `from` is given (clap's
+    ///   refusal, before the pre-verb snapshot); or, without `allow_backwards`, the first bookmark in name
+    ///   order that would move backwards or sideways ("Refusing to move bookmark backwards or
+    ///   sideways: {name}", hint "Use --allow-backwards to allow it.").
+    /// - [`crate::MutateError::ChangeNotFound`] — `to` is malformed, unknown, hidden or
+    ///   divergent; [`crate::MutateError::RevsetResolutionError`] — no `@` for its default.
+    /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`]
+    ///   — a `from` text.
+    /// - [`crate::MutateError::Config`] — the revset aliases do not load.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn bookmark_move(
+        &mut self,
+        options: &crate::BookmarkMoveOptions,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(crate::bookmark_ops::check_move_args(options), |repo, ctx| {
+            crate::bookmark_ops::r#move(repo.workspace_mut(), ctx, options)
+        })
+    }
+
+    /// Advances the closest bookmarks to a revision (Story 9.19) — the CLI's `jj bookmark
+    /// advance`.
+    ///
+    /// `to` is the CLI's `--to`; `None` applies `revsets.bookmark-advance-to` (default `@`), a
+    /// revset that must resolve to exactly one commit. `names` are EXACT bookmark names; empty
+    /// means the CLI's default candidates — every local bookmark with a target in
+    /// `revsets.bookmark-advance-from` (default `heads(::to & bookmarks())`, `to` bound to the
+    /// target). Then as [`Repo::bookmark_move`] without `allow_backwards`: bookmarks already at
+    /// the target are skipped (none left = no operation), a backwards one refuses, an empty
+    /// target warns, every candidate gets a normal target. Op-log description: `point bookmark
+    /// {names} to commit {hex}`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — a backwards or sideways candidate ("Refusing to
+    ///   advance bookmark backwards or sideways: {name}", no hint).
+    /// - [`crate::MutateError::ChangeNotFound`] — `to` does not resolve.
+    /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`]
+    ///   — the default target does not parse or resolve to exactly one commit (its hints carry
+    ///   the CLI's "`revsets.bookmark-advance-to` controls the default target. …"), or the from
+    ///   revset does not parse or resolve.
+    /// - [`crate::MutateError::Config`] — a `revsets.bookmark-advance-*` value is not a string,
+    ///   or the revset aliases do not load.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn bookmark_advance(
+        &mut self,
+        names: &[String],
+        to: Option<&crate::ChangeId>,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::bookmark_ops::advance(repo.workspace_mut(), ctx, names, to))
+    }
+
+    /// Renames a local bookmark (Story 9.19) — the CLI's `jj bookmark rename`.
+    ///
+    /// `old` and `new` are DECODED names, as [`Repo::bookmark_create`]'s are. The new name points
+    /// where the old one did, the old one is gone, and tracking moves with it: a tracked
+    /// `old@remote` makes `new@remote` tracked — unless `new` already exists untracked on that
+    /// remote, which warns `jj.bookmark_rename_remote_exists` and drops the tracking. The remote
+    /// bookmarks themselves are NOT renamed: present tracked ones warn
+    /// `jj.bookmark_remotes_not_renamed` (push the deletion and the new name to rename them
+    /// there). `overwrite_existing` (the CLI's `--overwrite-existing`) lets `new` replace an
+    /// existing bookmark: its tracked remotes are untracked first, and a present one the old name
+    /// did not track warns `jj.bookmark_tracking_dropped`. Without it, present tracked remotes of
+    /// `new` warn `jj.bookmark_tracked_remotes_exist`. On a Git-backed repo the remote `git` is
+    /// left out, as in the CLI. Renaming a bookmark to its own name with `overwrite_existing`
+    /// writes NO operation. Op-log description: `rename bookmark {old} to {new}`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — a name is empty (clap's refusal, before the
+    ///   pre-verb snapshot), or `old` is not a local bookmark
+    ///   ("No such bookmark: {old}").
+    /// - [`crate::MutateError::BookmarkExists`] — `new` is a local bookmark and
+    ///   `overwrite_existing` is off (also when `old == new`, as in the CLI).
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn bookmark_rename(
+        &mut self,
+        old: &str,
+        new: &str,
+        overwrite_existing: bool,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(crate::bookmark_ops::check_rename_args(old, new), |repo, ctx| {
+            crate::bookmark_ops::rename(repo.workspace_mut(), ctx, old, new, overwrite_existing)
+        })
     }
 
     /// Gives the paths matching `paths` in one commit the content they have in another

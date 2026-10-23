@@ -90,7 +90,7 @@ fn write_repo_config(root: &std::path::Path, toml: &str) {
 /// Reads via `jj_lib` directly (already imported for fixture setup elsewhere in this
 /// file) rather than `zanshin_jj::Repo::list_bookmarks`, because a freshly-fetched
 /// bookmark is UNTRACKED by default (no `remotes.<name>.auto-track-bookmarks` is set in
-/// these tests' config), so `list_bookmarks()` would not surface it even though `git_fetch`
+/// these tests' config), so `list_bookmarks(&crate::all_remotes())` would not surface it even though `git_fetch`
 /// succeeded and imported it into jj's view as `name@remote`.
 fn remote_bookmark_commit_hex(root: &std::path::Path, name: &str, remote: &str) -> Option<String> {
     let settings = test_helpers::test_settings();
@@ -283,7 +283,7 @@ fn git_fetch_honours_remote_auto_track_bookmarks() {
     repo.git_fetch(&zanshin_jj::GitFetchArgs::default(), &|_| {}, None)
         .expect("git_fetch should succeed");
 
-    let bookmarks = repo.list_bookmarks().expect("list_bookmarks");
+    let bookmarks = repo.list_bookmarks(&crate::all_remotes()).expect("list_bookmarks");
     let local = |name: &str| {
         bookmarks
             .iter()

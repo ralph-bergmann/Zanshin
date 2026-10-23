@@ -108,10 +108,13 @@ fn descriptions(repo: &mut Repo, revset: &str) -> Vec<String> {
 
 /// Whether `name@remote` is a tracked remote bookmark.
 fn tracked(repo: &mut Repo, name: &str, remote: &str) -> bool {
-    repo.list_bookmarks().expect("bookmarks").iter().any(|b| {
-        b.name == name
-            && matches!(&b.kind, BookmarkKind::Remote { remote_name, tracked: true, .. } if remote_name == remote)
-    })
+    repo.list_bookmarks(&crate::all_remotes())
+        .expect("bookmarks")
+        .iter()
+        .any(|b| {
+            b.name == name
+                && matches!(&b.kind, BookmarkKind::Remote { remote_name, tracked: true, .. } if remote_name == remote)
+        })
 }
 
 // ── clone ─────────────────────────────────────────────────────────────────────────
@@ -654,7 +657,7 @@ fn track_default_bookmark_on_clone_false_leaves_the_default_branch_untracked() {
             });
             let mut repo = outcome.result.expect("clone succeeds");
             assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
-            let bookmarks = repo.list_bookmarks().expect("bookmarks");
+            let bookmarks = repo.list_bookmarks(&crate::all_remotes()).expect("bookmarks");
             assert!(
                 bookmarks.iter().any(|b| b.name == "main"
                     && matches!(&b.kind, BookmarkKind::Remote { remote_name, tracked: false, .. } if remote_name == "origin")),
@@ -695,7 +698,7 @@ fn remote_fetch_bookmarks_config_limits_the_clone() {
             let mut repo = outcome.result.expect("clone succeeds");
             assert!(outcome.warnings.is_empty(), "{:?}", outcome.warnings);
             let mut remote: Vec<String> = repo
-                .list_bookmarks()
+                .list_bookmarks(&crate::all_remotes())
                 .expect("bookmarks")
                 .into_iter()
                 .filter(|b| matches!(&b.kind, BookmarkKind::Remote { remote_name, .. } if remote_name == "origin"))

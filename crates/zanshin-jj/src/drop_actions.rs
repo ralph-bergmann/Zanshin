@@ -241,8 +241,10 @@ fn view_err(e: CommitViewError) -> MutateError {
         CommitViewError::Precondition(inner) => MutateError::Precondition(inner),
         CommitViewError::ChangeNotFound { id } => MutateError::ChangeNotFound { id },
         CommitViewError::InvalidInput { reason } => MutateError::invalid(reason),
-        CommitViewError::RevsetParseError { reason } => MutateError::RevsetParseError { reason },
-        CommitViewError::RevsetResolutionError { reason } => MutateError::RevsetResolutionError { reason },
+        CommitViewError::RevsetParseError { reason } => MutateError::RevsetParseError { reason, hints: vec![] },
+        CommitViewError::RevsetResolutionError { reason } => {
+            MutateError::RevsetResolutionError { reason, hints: vec![] }
+        }
         CommitViewError::Config { reason } => MutateError::Config { reason },
         CommitViewError::Backend(reason) => MutateError::Backend(reason),
     }
@@ -698,11 +700,17 @@ mod tests {
             (CommitViewError::InvalidInput { reason: r() }, MutateError::invalid(r())),
             (
                 CommitViewError::RevsetParseError { reason: r() },
-                MutateError::RevsetParseError { reason: r() },
+                MutateError::RevsetParseError {
+                    reason: r(),
+                    hints: vec![],
+                },
             ),
             (
                 CommitViewError::RevsetResolutionError { reason: r() },
-                MutateError::RevsetResolutionError { reason: r() },
+                MutateError::RevsetResolutionError {
+                    reason: r(),
+                    hints: vec![],
+                },
             ),
             (
                 CommitViewError::Config { reason: r() },

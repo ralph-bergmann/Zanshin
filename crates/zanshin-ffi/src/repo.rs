@@ -184,8 +184,8 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         // No `context`: this variant names no path and no remote — the fault is the whole
         // workspace's backend, which the code already says.
         MutateError::NotAGitRepo => (JJ_NOT_A_GIT_REPO, None),
-        MutateError::RevsetParseError { reason } => (JJ_REVSET_PARSE_ERROR, Some(reason)),
-        MutateError::RevsetResolutionError { reason } => (JJ_REVSET_RESOLUTION_ERROR, Some(reason)),
+        MutateError::RevsetParseError { reason, .. } => (JJ_REVSET_PARSE_ERROR, Some(reason)),
+        MutateError::RevsetResolutionError { reason, .. } => (JJ_REVSET_RESOLUTION_ERROR, Some(reason)),
         MutateError::BookmarkExists { name, .. } => (JJ_BOOKMARK_EXISTS, Some(name)),
         MutateError::BookmarkTrackedRemoteExists { name } => (JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, Some(name)),
         MutateError::NoWorkingCopy => (JJ_NO_WORKING_COPY, None),
@@ -2114,18 +2114,22 @@ mod tests {
     fn map_mutate_err_revset_parse_error_maps_to_jj_revset_parse_error() {
         let e = map_mutate_err(MutateError::RevsetParseError {
             reason: "unknown function".to_owned(),
+            hints: vec![],
         });
         assert_eq!(e.code, JJ_REVSET_PARSE_ERROR);
         assert_eq!(e.context.unwrap(), "unknown function");
+        assert!(e.hints.is_empty());
     }
 
     #[test]
     fn map_mutate_err_revset_resolution_error_maps_to_jj_revset_resolution_error() {
         let e = map_mutate_err(MutateError::RevsetResolutionError {
             reason: "no such bookmark".to_owned(),
+            hints: vec!["h".to_owned()],
         });
         assert_eq!(e.code, JJ_REVSET_RESOLUTION_ERROR);
         assert_eq!(e.context.unwrap(), "no such bookmark");
+        assert_eq!(e.hints, ["h"], "Story 9.19: the revset variants carry hints now");
     }
 
     #[test]

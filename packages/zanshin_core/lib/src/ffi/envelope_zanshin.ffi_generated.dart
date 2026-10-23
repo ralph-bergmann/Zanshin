@@ -23,7 +23,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 ///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 ///  very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-///  squash, never a different verb. For the other 40 tables the variant name plus `Request` IS
+///  squash, never a different verb. For the other 44 tables the variant name plus `Request` IS
 ///  the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -78,7 +78,11 @@ enum RequestKind {
   Arrange(42),
   Metaedit(43),
   Duplicate(44),
-  Fix(45);
+  Fix(45),
+  BookmarkList(46),
+  BookmarkMove(47),
+  BookmarkAdvance(48),
+  BookmarkRename(49);
 
   final int value;
   const RequestKind(this.value);
@@ -177,6 +181,14 @@ enum RequestKind {
         return RequestKind.Duplicate;
       case 45:
         return RequestKind.Fix;
+      case 46:
+        return RequestKind.BookmarkList;
+      case 47:
+        return RequestKind.BookmarkMove;
+      case 48:
+        return RequestKind.BookmarkAdvance;
+      case 49:
+        return RequestKind.BookmarkRename;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -185,7 +197,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 45;
+  static const int maxValue = 49;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -497,6 +509,84 @@ class _SparseInheritanceReader extends fb.Reader<SparseInheritance> {
   @override
   SparseInheritance read(fb.BufferContext bc, int offset) =>
       SparseInheritance.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  One `--sort` key of `jj bookmark list` (Story 9.19) — the CLI's `SortKey`; a `…Desc` key is
+///  the CLI's spelling with a trailing `-` (`name-`, `author-date-`, …). `Unspecified = 0` is the
+///  default of an unset element and is REFUSED (`ffi.invalid_argument`).
+enum BookmarkSortKey {
+  Unspecified(0),
+  Name(1),
+  NameDesc(2),
+  AuthorName(3),
+  AuthorNameDesc(4),
+  AuthorEmail(5),
+  AuthorEmailDesc(6),
+  AuthorDate(7),
+  AuthorDateDesc(8),
+  CommitterName(9),
+  CommitterNameDesc(10),
+  CommitterEmail(11),
+  CommitterEmailDesc(12),
+  CommitterDate(13),
+  CommitterDateDesc(14);
+
+  final int value;
+  const BookmarkSortKey(this.value);
+
+  factory BookmarkSortKey.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return BookmarkSortKey.Unspecified;
+      case 1:
+        return BookmarkSortKey.Name;
+      case 2:
+        return BookmarkSortKey.NameDesc;
+      case 3:
+        return BookmarkSortKey.AuthorName;
+      case 4:
+        return BookmarkSortKey.AuthorNameDesc;
+      case 5:
+        return BookmarkSortKey.AuthorEmail;
+      case 6:
+        return BookmarkSortKey.AuthorEmailDesc;
+      case 7:
+        return BookmarkSortKey.AuthorDate;
+      case 8:
+        return BookmarkSortKey.AuthorDateDesc;
+      case 9:
+        return BookmarkSortKey.CommitterName;
+      case 10:
+        return BookmarkSortKey.CommitterNameDesc;
+      case 11:
+        return BookmarkSortKey.CommitterEmail;
+      case 12:
+        return BookmarkSortKey.CommitterEmailDesc;
+      case 13:
+        return BookmarkSortKey.CommitterDate;
+      case 14:
+        return BookmarkSortKey.CommitterDateDesc;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static BookmarkSortKey? _createOrNull(int? value) => value == null ? null : BookmarkSortKey.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 14;
+  static const fb.Reader<BookmarkSortKey> reader = _BookmarkSortKeyReader();
+}
+
+class _BookmarkSortKeyReader extends fb.Reader<BookmarkSortKey> {
+  const _BookmarkSortKeyReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  BookmarkSortKey read(fb.BufferContext bc, int offset) =>
+      BookmarkSortKey.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
 ///  The CLI's `--user` / `--repo` / `--workspace`. `Unspecified = 0` is the absent-field default
@@ -5767,6 +5857,488 @@ class BookmarkDeleteRequestObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  Arguments of `zanshin_bookmarks` (Stories 9.29 and 9.19) — the CLI's `jj bookmark list`
+///  without `-T`. ABSENT or EMPTY vectors and `false` flags are the CLI without that argument, so
+///  an all-default buffer lists the CLI's default rows.
+///
+///    names        string PATTERNS (a bare one is a GLOB), unioned; OR-ed with `revisions`
+///    revisions    revset TEXTS, unioned; a bookmark whose LOCAL target is in them is listed
+///    remotes      remote-name PATTERNS (`--remote`)
+///    all_remotes  `--all-remotes`; refused with `jj.invalid_input` together with `remotes`,
+///                 `tracked` or `conflicted` (clap's conflicts_with), before the snapshot
+///    tracked      `--tracked`; conflicted `--conflicted`
+///    sort         `--sort`, most significant first; empty applies `ui.bookmark-list-sort-keys`
+class BookmarkListRequest {
+  BookmarkListRequest._(this._bc, this._bcOffset);
+  factory BookmarkListRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<BookmarkListRequest> reader = _BookmarkListRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get revisions => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get remotes => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  bool get allRemotes => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  bool get tracked => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+  bool get conflicted => const fb.BoolReader().vTableGet(_bc, _bcOffset, 16, false);
+  List<BookmarkSortKey>? get sort =>
+      const fb.ListReader<BookmarkSortKey>(BookmarkSortKey.reader).vTableGetNullable(_bc, _bcOffset, 18);
+
+  @override
+  String toString() {
+    return 'BookmarkListRequest{kind: ${kind}, names: ${names}, revisions: ${revisions}, remotes: ${remotes}, allRemotes: ${allRemotes}, tracked: ${tracked}, conflicted: ${conflicted}, sort: ${sort}}';
+  }
+}
+
+class _BookmarkListRequestReader extends fb.TableReader<BookmarkListRequest> {
+  const _BookmarkListRequestReader();
+
+  @override
+  BookmarkListRequest createObject(fb.BufferContext bc, int offset) => BookmarkListRequest._(bc, offset);
+}
+
+class BookmarkListRequestBuilder {
+  BookmarkListRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(8);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addNamesOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemotesOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAllRemotes(bool? allRemotes) {
+    fbBuilder.addBool(4, allRemotes);
+    return fbBuilder.offset;
+  }
+
+  int addTracked(bool? tracked) {
+    fbBuilder.addBool(5, tracked);
+    return fbBuilder.offset;
+  }
+
+  int addConflicted(bool? conflicted) {
+    fbBuilder.addBool(6, conflicted);
+    return fbBuilder.offset;
+  }
+
+  int addSortOffset(int? offset) {
+    fbBuilder.addOffset(7, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class BookmarkListRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _names;
+  final List<String>? _revisions;
+  final List<String>? _remotes;
+  final bool? _allRemotes;
+  final bool? _tracked;
+  final bool? _conflicted;
+  final List<BookmarkSortKey>? _sort;
+
+  BookmarkListRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? names,
+    List<String>? revisions,
+    List<String>? remotes,
+    bool? allRemotes,
+    bool? tracked,
+    bool? conflicted,
+    List<BookmarkSortKey>? sort,
+  }) : _kind = kind,
+       _names = names,
+       _revisions = revisions,
+       _remotes = remotes,
+       _allRemotes = allRemotes,
+       _tracked = tracked,
+       _conflicted = conflicted,
+       _sort = sort;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
+    final int? revisionsOffset = _revisions == null
+        ? null
+        : fbBuilder.writeList(_revisions!.map(fbBuilder.writeString).toList());
+    final int? remotesOffset = _remotes == null
+        ? null
+        : fbBuilder.writeList(_remotes!.map(fbBuilder.writeString).toList());
+    final int? sortOffset = _sort == null ? null : fbBuilder.writeListUint8(_sort!.map((f) => f.value).toList());
+    fbBuilder.startTable(8);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, namesOffset);
+    fbBuilder.addOffset(2, revisionsOffset);
+    fbBuilder.addOffset(3, remotesOffset);
+    fbBuilder.addBool(4, _allRemotes);
+    fbBuilder.addBool(5, _tracked);
+    fbBuilder.addBool(6, _conflicted);
+    fbBuilder.addOffset(7, sortOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_bookmark_move` (Story 9.19) — the CLI's `jj bookmark move`.
+///
+///  `names` are EXACT, DECODED bookmark names (the CLI's `exact:"…"`, never its default glob);
+///  `from` are revset TEXTS (`--from`, unioned). At least one of the two must be non-empty, else
+///  `jj.invalid_input`. `to` ABSENT is the CLI's `--to` default `@`; present it is a jj reverse-hex
+///  CHANGE ID. `allow_backwards` is `--allow-backwards`. Nothing to move is a SUCCESS that writes
+///  no operation (`MutationResult.new_op_id` is the pre-call head).
+class BookmarkMoveRequest {
+  BookmarkMoveRequest._(this._bc, this._bcOffset);
+  factory BookmarkMoveRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<BookmarkMoveRequest> reader = _BookmarkMoveRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get from => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  String? get to => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  bool get allowBackwards => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+
+  @override
+  String toString() {
+    return 'BookmarkMoveRequest{kind: ${kind}, names: ${names}, from: ${from}, to: ${to}, allowBackwards: ${allowBackwards}}';
+  }
+}
+
+class _BookmarkMoveRequestReader extends fb.TableReader<BookmarkMoveRequest> {
+  const _BookmarkMoveRequestReader();
+
+  @override
+  BookmarkMoveRequest createObject(fb.BufferContext bc, int offset) => BookmarkMoveRequest._(bc, offset);
+}
+
+class BookmarkMoveRequestBuilder {
+  BookmarkMoveRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addNamesOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFromOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addToOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAllowBackwards(bool? allowBackwards) {
+    fbBuilder.addBool(4, allowBackwards);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class BookmarkMoveRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _names;
+  final List<String>? _from;
+  final String? _to;
+  final bool? _allowBackwards;
+
+  BookmarkMoveRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? names,
+    List<String>? from,
+    String? to,
+    bool? allowBackwards,
+  }) : _kind = kind,
+       _names = names,
+       _from = from,
+       _to = to,
+       _allowBackwards = allowBackwards;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
+    final int? fromOffset = _from == null ? null : fbBuilder.writeList(_from!.map(fbBuilder.writeString).toList());
+    final int? toOffset = _to == null ? null : fbBuilder.writeString(_to!);
+    fbBuilder.startTable(5);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, namesOffset);
+    fbBuilder.addOffset(2, fromOffset);
+    fbBuilder.addOffset(3, toOffset);
+    fbBuilder.addBool(4, _allowBackwards);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_bookmark_advance` (Story 9.19) — the CLI's `jj bookmark advance`.
+///
+///  `names` are EXACT bookmark names; ABSENT/EMPTY means the CLI's default candidates
+///  (`revsets.bookmark-advance-from`). `to` ABSENT applies `revsets.bookmark-advance-to`; present
+///  it is a jj reverse-hex CHANGE ID.
+class BookmarkAdvanceRequest {
+  BookmarkAdvanceRequest._(this._bc, this._bcOffset);
+  factory BookmarkAdvanceRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<BookmarkAdvanceRequest> reader = _BookmarkAdvanceRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  String? get to => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'BookmarkAdvanceRequest{kind: ${kind}, names: ${names}, to: ${to}}';
+  }
+}
+
+class _BookmarkAdvanceRequestReader extends fb.TableReader<BookmarkAdvanceRequest> {
+  const _BookmarkAdvanceRequestReader();
+
+  @override
+  BookmarkAdvanceRequest createObject(fb.BufferContext bc, int offset) => BookmarkAdvanceRequest._(bc, offset);
+}
+
+class BookmarkAdvanceRequestBuilder {
+  BookmarkAdvanceRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addNamesOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addToOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class BookmarkAdvanceRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _names;
+  final String? _to;
+
+  BookmarkAdvanceRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? names,
+    String? to,
+  }) : _kind = kind,
+       _names = names,
+       _to = to;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
+    final int? toOffset = _to == null ? null : fbBuilder.writeString(_to!);
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, namesOffset);
+    fbBuilder.addOffset(2, toOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_bookmark_rename` (Story 9.19) — the CLI's `jj bookmark rename`.
+///  `old_name` / `new_name` are DECODED names (ABSENT = empty = refused with `jj.invalid_input`);
+///  `overwrite_existing` is `--overwrite-existing`.
+class BookmarkRenameRequest {
+  BookmarkRenameRequest._(this._bc, this._bcOffset);
+  factory BookmarkRenameRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<BookmarkRenameRequest> reader = _BookmarkRenameRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get oldName => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get newName => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  bool get overwriteExisting => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+
+  @override
+  String toString() {
+    return 'BookmarkRenameRequest{kind: ${kind}, oldName: ${oldName}, newName: ${newName}, overwriteExisting: ${overwriteExisting}}';
+  }
+}
+
+class _BookmarkRenameRequestReader extends fb.TableReader<BookmarkRenameRequest> {
+  const _BookmarkRenameRequestReader();
+
+  @override
+  BookmarkRenameRequest createObject(fb.BufferContext bc, int offset) => BookmarkRenameRequest._(bc, offset);
+}
+
+class BookmarkRenameRequestBuilder {
+  BookmarkRenameRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addOldNameOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNewNameOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addOverwriteExisting(bool? overwriteExisting) {
+    fbBuilder.addBool(3, overwriteExisting);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class BookmarkRenameRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _oldName;
+  final String? _newName;
+  final bool? _overwriteExisting;
+
+  BookmarkRenameRequestObjectBuilder({
+    RequestKind? kind,
+    String? oldName,
+    String? newName,
+    bool? overwriteExisting,
+  }) : _kind = kind,
+       _oldName = oldName,
+       _newName = newName,
+       _overwriteExisting = overwriteExisting;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? oldNameOffset = _oldName == null ? null : fbBuilder.writeString(_oldName!);
+    final int? newNameOffset = _newName == null ? null : fbBuilder.writeString(_newName!);
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, oldNameOffset);
+    fbBuilder.addOffset(2, newNameOffset);
+    fbBuilder.addBool(3, _overwriteExisting);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  Arguments of `zanshin_file_track` (Story 9.22) — the CLI's `jj file track`.
 ///
 ///  `paths` are repo-relative paths interpreted as PREFIXES; the fileset DSL is terminal input
@@ -8518,8 +9090,8 @@ class RefDistanceObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  One row of `jj bookmark list --all-remotes` (FR-JJ-8, Story 9.29). A bookmark that is
-///  both local and on a remote appears as one Local row plus one Remote row per remote.
+///  One row of `jj bookmark list` (FR-JJ-8, Stories 9.29 and 9.19). With `all_remotes` a bookmark
+///  that is both local and on a remote appears as one Local row plus one Remote row per remote.
 ///
 ///  Every row: `target` (ABSENT = null when the row's target is absent — the CLI's `(deleted)`
 ///  local row or a tracked remote `(not created yet)`; a conflicted target carries its first
@@ -8686,8 +9258,10 @@ class BookmarkObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
-///  The bookmark list: the `--all-remotes` row set, sorted by name, then the Local row, then
-///  Remote rows by remote name.
+///  The bookmark list: the rows the CLI prints for the request's arguments, in its order — each
+///  Local row followed by its tracked Remote rows, then the name's untracked Remote rows, in name
+///  order; then re-sorted by the request's `sort` (or `ui.bookmark-list-sort-keys`), which moves
+///  a Local row together with its tracked rows (Story 9.19).
 class Bookmarks {
   Bookmarks._(this._bc, this._bcOffset);
   factory Bookmarks(List<int> bytes) {

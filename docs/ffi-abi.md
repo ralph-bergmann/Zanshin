@@ -284,9 +284,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Forty-six of the 81 exported symbols take their arguments as a **FlatBuffers
+Fifty of the 84 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Thirty-four use the handle-scoped three-parameter shape:
+strings. Thirty-eight use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -537,7 +537,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **81** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **84** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -575,7 +575,7 @@ or no `# Errors` block.
 | `zanshin_file_show` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileShowRequest` | `FileContents` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.path_not_found`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.4 |
 | `zanshin_file_annotate` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileAnnotateRequest` | `FileAnnotation` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.invalid_input`, `jj.path_not_found`, `jj.not_a_file`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.4 |
 | `zanshin_file_search` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileSearchRequest` | `FileSearch` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.4 |
-| `zanshin_bookmarks` | `(uint64_t handle)` | — | `Bookmarks` (rows + tracking facts, see § `Bookmarks` payload) | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b, 9.29 |
+| `zanshin_bookmarks` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkListRequest` | `Bookmarks` (rows + tracking facts, see § `Bookmarks` payload) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b, 9.29, 9.19 |
 | `zanshin_remotes` | `(uint64_t handle)` | — | `Remotes` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
 | `zanshin_git_push_remotes` | `(uint64_t handle)` | — | `GitPushRemotes` (the default push remotes; empty when none matches or on a non-Git backend) | `ffi.invalid_handle`, `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.54 |
 | `zanshin_git_fetch_remotes` | `(uint64_t handle)` | — | `GitFetchRemotes` (the default fetch remotes — the Fetch button's enable rule; empty when none matches or on a non-Git backend) | `ffi.invalid_handle`, `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.30 |
@@ -604,6 +604,9 @@ or no `# Errors` block.
 | `zanshin_undo` | `(uint64_t handle, bool allow_cross_workspace)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.undo_cross_workspace`, `jj.nothing_to_undo`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (+9.39) |
 | `zanshin_bookmark_create` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkCreateRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.8 |
 | `zanshin_bookmark_delete` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkDeleteRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.8 |
+| `zanshin_bookmark_move` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkMoveRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.19 |
+| `zanshin_bookmark_advance` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkAdvanceRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.19 |
+| `zanshin_bookmark_rename` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkRenameRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.bookmark_exists`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.19 |
 | `zanshin_file_track` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileTrackRequest` | `TrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_file_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileUntrackRequest` | `UntrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.path_not_ignored`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_snapshot` | `(uint64_t handle)` | — | — (no-payload success; the report is `Envelope.precondition`) | `ffi.invalid_handle`, `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error` | 9.26 |
@@ -1526,11 +1529,13 @@ parents and, for a merge, merges their trees.
   editable pre-fill for the topology call's required `anchors`
   (`RepoHandle.graphTopology`, Story 4.12); nothing applies it on its own.
 
-## `Bookmarks` payload and `zanshin_bookmarks` (Story 9.29)
+## `Bookmarks` payload and `zanshin_bookmarks` (Stories 9.29 and 9.19)
 
-`zanshin_bookmarks` (handle-only, signature unchanged since Story 3.4b) returns the row set
-`jj bookmark list --all-remotes` prints at the pinned v0.46.0 (`cli/src/commit_ref_list.rs::collect_items`
-with every predicate open), sorted by name, then the `Local` row, then `Remote` rows by remote name:
+`zanshin_bookmarks` takes a `BookmarkListRequest` (Story 9.19 — handle-only before) and returns the
+rows `jj bookmark list` prints for those arguments at the pinned v0.46.0 (`cli/src/commands/bookmark/
+list.rs`, `cli/src/commit_ref_list.rs::{collect_items, sort}`), in the CLI's order. An all-default
+request is the CLI without arguments: present local rows plus the tracked remote rows that differ from
+them. `all_remotes = true` is `--all-remotes`' row set:
 
 - a `Local` row when the local target is present OR the name has at least one tracked remote ref —
   with an absent local target it is the CLI's `(deleted)` row and `target` is ABSENT;
@@ -1538,8 +1543,17 @@ with every predicate open), sorted by name, then the `Local` row, then `Remote` 
   absent target is the CLI's `@origin (not created yet)` row, `target` ABSENT;
 - a `Remote` row for every untracked remote ref (`tracked == false`).
 
-`@git` is a remote like any other: no row is filtered and no sort key applied (both are Story 9.19's
-or the UI's). Each `Bookmark` table carries:
+The other arguments are the CLI's: `names` (string patterns, a bare one a glob) OR-ed with
+`revisions` (revsets on LOCAL targets), `remotes` (remote-name patterns: that remote's tracked and
+untracked rows, synced ones included), `tracked` (tracked rows only; without `remotes` the remote
+`git` is left out on a Git-backed repo), `conflicted` (conflicted local targets only). `all_remotes`
+with `remotes`, `tracked` or `conflicted` is clap's conflict, refused with `jj.invalid_input` before
+the pre-verb snapshot. Order: per name, the `Local` row followed by its tracked `Remote` rows, then
+the name's untracked `Remote` rows; then the items (a `Local` row with its tracked rows, or one
+untracked row) are re-sorted by `sort` — empty applies `ui.bookmark-list-sort-keys` (default
+`["name"]`; malformed → `jj.config_error`), `BookmarkSortKey.Unspecified` is `ffi.invalid_argument`.
+An exact name with neither a local nor a remote bookmark warns `jj.bookmark_names_unmatched`. Each
+`Bookmark` table carries:
 
 | Field | Rows | Meaning |
 |-------|------|---------|

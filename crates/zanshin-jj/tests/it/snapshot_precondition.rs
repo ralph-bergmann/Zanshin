@@ -288,7 +288,7 @@ fn a_refresh_after_a_snapshot_writes_no_further_operation() {
 
     repo.status().expect("status");
     repo.op_log(None).expect("op log");
-    repo.list_bookmarks().expect("bookmarks");
+    repo.list_bookmarks(&crate::all_remotes()).expect("bookmarks");
     let again = repo.snapshot().expect("second snapshot");
 
     assert!(!again.was_snapshot_taken);

@@ -1710,6 +1710,65 @@ pub(crate) fn revsets_git_push(config: &StackedConfig) -> Result<String, ConfigE
     config.get("revsets.git-push").map_err(|e| value_error(&e))
 }
 
+/// Reads the effective `revsets.bookmark-advance-to` revset TEXT (Story 9.19) — the CLI's
+/// `get_string` in `jj bookmark advance` without `--to` (`bookmark/advance.rs:79-85` @ v0.46.0).
+/// Its default `"@"` is jj-cli's own ([`CLI_DEFAULTS`], the CLI's `config/revsets.toml:20`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a string (the key is named).
+pub(crate) fn revsets_bookmark_advance_to(config: &StackedConfig) -> Result<String, ConfigError> {
+    config.get("revsets.bookmark-advance-to").map_err(|e| value_error(&e))
+}
+
+/// Reads the effective `revsets.bookmark-advance-from` revset TEXT (Story 9.19) — the CLI's
+/// `get_string` in `jj bookmark advance` without names (`bookmark/advance.rs:114-116` @ v0.46.0).
+/// Its default `"heads(::to & bookmarks())"` is jj-cli's own ([`CLI_DEFAULTS`], the CLI's
+/// `config/revsets.toml:21`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a string (the key is named).
+pub(crate) fn revsets_bookmark_advance_from(config: &StackedConfig) -> Result<String, ConfigError> {
+    config.get("revsets.bookmark-advance-from").map_err(|e| value_error(&e))
+}
+
+/// Reads the effective `ui.bookmark-list-sort-keys` (Story 9.19) — the CLI's `get_value_with(…,
+/// commit_ref_list::parse_sort_keys)` in `jj bookmark list` without `--sort`
+/// (`bookmark/list.rs:186-190`, `commit_ref_list.rs:169-182` @ v0.46.0): an array of the CLI's
+/// key spellings (`name`, `name-`, `author-date-`, …). Its default `["name"]` is jj-cli's own
+/// ([`CLI_DEFAULTS`], the CLI's `config/misc.toml:48`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not an array ("Expected an array of sort keys as
+///   strings"), an item is not a string ("Expected sort key as a string") or not a key clap
+///   knows ("invalid variant: …"); the key is named.
+pub(crate) fn ui_bookmark_list_sort_keys(
+    config: &StackedConfig,
+) -> Result<Vec<crate::bookmarks::BookmarkSortKey>, ConfigError> {
+    config
+        .get_value_with("ui.bookmark-list-sort-keys", |value| parse_sort_keys(&value))
+        .map_err(|e| value_error(&e))
+}
+
+/// The CLI's `parse_sort_keys` (`commit_ref_list.rs:169-182` @ v0.46.0), its messages verbatim
+/// (the last one is clap's `ValueEnum::from_str`).
+fn parse_sort_keys(value: &ConfigValue) -> Result<Vec<crate::bookmarks::BookmarkSortKey>, String> {
+    let Some(array) = value.as_array() else {
+        return Err("Expected an array of sort keys as strings".to_owned());
+    };
+    array
+        .iter()
+        .map(|item| {
+            let key = item
+                .as_str()
+                .ok_or_else(|| "Expected sort key as a string".to_owned())?;
+            crate::bookmarks::BookmarkSortKey::from_cli_name(key).ok_or_else(|| format!("invalid variant: {key}"))
+        })
+        .collect()
+}
+
 /// Reads the effective `templates.git_push_bookmark` TEXT (Story 9.20) — the CLI's `get_string`
 /// in `jj git push --change` (`push.rs:1323` @ v0.46.0). Its default is jj-cli's own
 /// ([`CLI_DEFAULTS`], the CLI's `config/templates.toml:30`).
@@ -2551,6 +2610,63 @@ mod tests {
         let mut config = load_with(&bare_env(), None).expect("the bare stack loads");
         config.add_layer(ConfigLayer::parse(ConfigSource::User, toml).expect("valid test TOML"));
         config
+    }
+
+    /// Story 9.19: the two `bookmark advance` revsets and the list's sort keys default to the
+    /// CLI's values, a user layer wins, and a wrong type refuses naming the key.
+    #[test]
+    fn bookmark_knobs_default_to_the_cli_builtins_and_read_the_user_layer() {
+        use crate::bookmarks::BookmarkSortKey as K;
+        let config = load_with(&bare_env(), None).expect("the bare stack loads");
+        assert_eq!(super::revsets_bookmark_advance_to(&config).expect("builtin"), "@");
+        assert_eq!(
+            super::revsets_bookmark_advance_from(&config).expect("builtin"),
+            "heads(::to & bookmarks())"
+        );
+        assert_eq!(super::ui_bookmark_list_sort_keys(&config).expect("builtin"), [K::Name]);
+
+        let user = stack_with(
+            "revsets.bookmark-advance-to = \"@-\"\nrevsets.bookmark-advance-from = \"to\"\n\
+             ui.bookmark-list-sort-keys = [\"author-date-\", \"name-\", \"committer-email\"]",
+        );
+        assert_eq!(super::revsets_bookmark_advance_to(&user).expect("user"), "@-");
+        assert_eq!(super::revsets_bookmark_advance_from(&user).expect("user"), "to");
+        assert_eq!(
+            super::ui_bookmark_list_sort_keys(&user).expect("user"),
+            [K::AuthorDateDesc, K::NameDesc, K::CommitterEmail]
+        );
+
+        for (toml, key) in [
+            ("revsets.bookmark-advance-to = 1", "revsets.bookmark-advance-to"),
+            ("revsets.bookmark-advance-from = 1", "revsets.bookmark-advance-from"),
+        ] {
+            let wrong = stack_with(toml);
+            let reader = if key.ends_with("-to") {
+                super::revsets_bookmark_advance_to
+            } else {
+                super::revsets_bookmark_advance_from
+            };
+            let super::ConfigError::Load { reason } = reader(&wrong).expect_err("not a string");
+            assert!(reason.contains(key), "{reason}");
+        }
+    }
+
+    /// Story 9.19: `parse_sort_keys`' three refusals, with the CLI's texts.
+    #[test]
+    fn bookmark_list_sort_keys_refuse_with_the_clis_messages() {
+        for (toml, message) in [
+            (
+                "ui.bookmark-list-sort-keys = \"name\"",
+                "Expected an array of sort keys as strings",
+            ),
+            ("ui.bookmark-list-sort-keys = [1]", "Expected sort key as a string"),
+            ("ui.bookmark-list-sort-keys = [\"bogus\"]", "invalid variant: bogus"),
+        ] {
+            let super::ConfigError::Load { reason } =
+                super::ui_bookmark_list_sort_keys(&stack_with(toml)).expect_err("refused");
+            assert!(reason.contains("ui.bookmark-list-sort-keys"), "{reason}");
+            assert!(reason.contains(message), "{reason}");
+        }
     }
 
     #[test]

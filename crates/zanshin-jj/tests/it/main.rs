@@ -10,8 +10,18 @@
 //! login-shell environment — starts with `test_helpers::own_process!` and runs as the only
 //! test of a child process of this binary, so the shared environment never changes after the pin.
 
+/// `jj bookmark list --all-remotes`' options — the row set the read returned before Story 9.19
+/// gave it the CLI's filters, which the callers outside the list tests still want.
+pub(crate) fn all_remotes() -> zanshin_jj::BookmarkListOptions {
+    zanshin_jj::BookmarkListOptions {
+        all_remotes: true,
+        ..Default::default()
+    }
+}
+
 mod api_stability;
 mod arg_refusals;
+mod bookmark_move;
 mod bookmark_ops;
 mod bookmarks;
 mod change;

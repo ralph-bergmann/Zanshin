@@ -11,6 +11,7 @@ use std::path::Path;
 use jj_lib::backend::CommitId;
 use jj_lib::repo::Repo as _;
 use jj_lib::workspace::Workspace;
+use zanshin_jj::BookmarkMoveOptions;
 use zanshin_jj::CommitOptions;
 use zanshin_jj::ConfigScope;
 use zanshin_jj::ConfigTarget;
@@ -2288,10 +2289,287 @@ pub fn scenarios() -> Vec<Scenario> {
     .chain(metaedit_author_and_refusal_scenarios())
     .chain(duplicate_scenarios())
     .chain(fix_scenarios())
+    .chain(bookmark_move_scenarios())
+    .chain(bookmark_rename_scenarios())
     .chain(crate::git_scenarios::push_scenarios())
     .chain(crate::git_scenarios::bookmark_auto_track_scenarios())
+    .chain(crate::git_scenarios::bookmark_rename_tracked_scenarios())
     .chain(crate::git_scenarios::fetch_scenarios())
     .collect()
+}
+
+// ── Story 9.19: bookmark move / advance / rename ──────────────────────────────────
+
+/// `Repo::bookmark_move` of `names` (EXACT) to `to`.
+fn move_outcome(
+    repo: &mut zanshin_jj::Repo,
+    names: &[&str],
+    to: Option<zanshin_jj::ChangeId>,
+    allow_backwards: bool,
+) -> Outcome {
+    let options = BookmarkMoveOptions {
+        names: args(names),
+        to,
+        allow_backwards,
+        ..Default::default()
+    };
+    let result = repo.bookmark_move(&options);
+    zanshin_outcome(repo, &result)
+}
+
+/// `Repo::bookmark_advance` of `names` to `to`.
+fn advance_outcome(repo: &mut zanshin_jj::Repo, names: &[&str], to: Option<&zanshin_jj::ChangeId>) -> Outcome {
+    let result = repo.bookmark_advance(&args(names), to);
+    zanshin_outcome(repo, &result)
+}
+
+/// `Repo::bookmark_rename`.
+fn rename_outcome(repo: &mut zanshin_jj::Repo, old: &str, new: &str, overwrite_existing: bool) -> Outcome {
+    let result = repo.bookmark_rename(old, new, overwrite_existing);
+    zanshin_outcome(repo, &result)
+}
+
+/// `bookmark move` and `advance` on BASE (`b-mark` on B, `@` = C): forward, backwards refused and
+/// allowed, `--from`, the no-op, an unknown name, an empty target; advance by default, by name,
+/// and backwards refused.
+#[allow(clippy::too_many_lines)] // WHY: one flat table reads better than fourteen helper fns
+fn bookmark_move_scenarios() -> Vec<Scenario> {
+    vec![
+        simple(
+            "bookmark_move_forward",
+            |repo, _, s| move_outcome(repo, &["b-mark"], Some(s.change("C")), false),
+            |s| {
+                vec![
+                    "bookmark".into(),
+                    "move".into(),
+                    "b-mark".into(),
+                    "--to".into(),
+                    s.change_arg("C"),
+                ]
+            },
+        ),
+        simple(
+            "bookmark_move_backwards_refused",
+            |repo, _, s| move_outcome(repo, &["b-mark"], Some(s.change("A")), false),
+            |s| {
+                vec![
+                    "bookmark".into(),
+                    "move".into(),
+                    "b-mark".into(),
+                    "--to".into(),
+                    s.change_arg("A"),
+                ]
+            },
+        ),
+        simple(
+            "bookmark_move_backwards_allowed",
+            |repo, _, s| move_outcome(repo, &["b-mark"], Some(s.change("A")), true),
+            |s| {
+                vec![
+                    "bookmark".into(),
+                    "move".into(),
+                    "b-mark".into(),
+                    "--to".into(),
+                    s.change_arg("A"),
+                    "--allow-backwards".into(),
+                ]
+            },
+        ),
+        Scenario {
+            setup: &[
+                Step::Jj(&["bookmark", "create", "z-mark", "-r", "@-"]),
+                Step::Jj(&["bookmark", "create", "a-mark", "-r", "@--"]),
+            ],
+            ..simple(
+                "bookmark_move_from",
+                |repo, _, s| {
+                    let options = BookmarkMoveOptions {
+                        from: vec![s.change_arg("B")],
+                        to: Some(s.change("C")),
+                        ..Default::default()
+                    };
+                    let result = repo.bookmark_move(&options);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| {
+                    vec![
+                        "bookmark".into(),
+                        "move".into(),
+                        "--from".into(),
+                        s.change_arg("B"),
+                        "--to".into(),
+                        s.change_arg("C"),
+                    ]
+                },
+            )
+        },
+        // Names AND `--from`: `a-mark` is named but not on B, so only `b-mark` moves.
+        Scenario {
+            setup: &[
+                Step::Jj(&["bookmark", "create", "a-mark", "-r", "@--"]),
+                Step::Jj(&["bookmark", "create", "z-mark", "-r", "@-"]),
+            ],
+            ..simple(
+                "bookmark_move_names_and_from",
+                |repo, _, s| {
+                    let options = BookmarkMoveOptions {
+                        names: args(&["a-mark", "b-mark"]),
+                        from: vec![s.change_arg("B")],
+                        to: Some(s.change("C")),
+                        allow_backwards: false,
+                    };
+                    let result = repo.bookmark_move(&options);
+                    zanshin_outcome(repo, &result)
+                },
+                |s| {
+                    vec![
+                        "bookmark".into(),
+                        "move".into(),
+                        "a-mark".into(),
+                        "b-mark".into(),
+                        "--from".into(),
+                        s.change_arg("B"),
+                        "--to".into(),
+                        s.change_arg("C"),
+                    ]
+                },
+            )
+        },
+        // I1: `b-mark` conflicted by two concurrent `bookmark set` (sides D and A), moved to `@` =
+        // C, a descendant of side A: a fast-forward that leaves a normal target.
+        Scenario {
+            setup: &[
+                Step::Jj(&["new", "--no-edit", "-m", "D", "b-mark"]),
+                Step::Jj(&["bookmark", "set", "b-mark", "-r", "description(substring:\"D\")"]),
+                Step::Jj(&[
+                    "bookmark",
+                    "set",
+                    "b-mark",
+                    "-r",
+                    "description(substring:\"A\")",
+                    "--allow-backwards",
+                    "--at-op",
+                    "@-",
+                ]),
+            ],
+            ..simple(
+                "bookmark_move_conflicted_to_descendant",
+                |repo, _, _| move_outcome(repo, &["b-mark"], None, false),
+                |_| args(&["bookmark", "move", "b-mark"]),
+            )
+        },
+        simple(
+            "bookmark_move_noop",
+            |repo, _, s| move_outcome(repo, &["b-mark"], Some(s.change("B")), false),
+            |s| {
+                vec![
+                    "bookmark".into(),
+                    "move".into(),
+                    "b-mark".into(),
+                    "--to".into(),
+                    s.change_arg("B"),
+                ]
+            },
+        ),
+        simple(
+            "bookmark_move_unknown_name",
+            |repo, _, _| move_outcome(repo, &["nope"], None, false),
+            |_| args(&["bookmark", "move", "nope"]),
+        ),
+        Scenario {
+            setup: &[Step::Jj(&["new"])],
+            ..simple(
+                "bookmark_move_empty_target",
+                |repo, _, _| move_outcome(repo, &["b-mark"], None, false),
+                |_| args(&["bookmark", "move", "b-mark"]),
+            )
+        },
+        simple(
+            "bookmark_advance_default",
+            |repo, _, _| advance_outcome(repo, &[], None),
+            |_| args(&["bookmark", "advance"]),
+        ),
+        // `revsets.bookmark-advance-from` with the injected `to`: `a-mark` becomes a candidate.
+        Scenario {
+            setup: &[
+                Step::Jj(&["bookmark", "create", "a-mark", "-r", "@--"]),
+                Step::Jj(&[
+                    "config",
+                    "set",
+                    "--repo",
+                    "revsets.bookmark-advance-from",
+                    "::to & bookmarks()",
+                ]),
+            ],
+            ..simple(
+                "bookmark_advance_from_config",
+                |repo, _, _| advance_outcome(repo, &[], None),
+                |_| args(&["bookmark", "advance"]),
+            )
+        },
+        simple(
+            "bookmark_advance_named",
+            |repo, _, _| advance_outcome(repo, &["b-mark"], None),
+            |_| args(&["bookmark", "advance", "b-mark"]),
+        ),
+        simple(
+            "bookmark_advance_backwards_refused",
+            |repo, _, s| advance_outcome(repo, &["b-mark"], Some(&s.change("A"))),
+            |s| {
+                vec![
+                    "bookmark".into(),
+                    "advance".into(),
+                    "b-mark".into(),
+                    "--to".into(),
+                    s.change_arg("A"),
+                ]
+            },
+        ),
+    ]
+}
+
+/// `bookmark rename` on BASE: the rename, onto an existing name refused and overwritten, a
+/// missing name, and the same name refused and (with overwrite) a no-op.
+fn bookmark_rename_scenarios() -> Vec<Scenario> {
+    const OTHER: &[Step] = &[Step::Jj(&["bookmark", "create", "other"])];
+    vec![
+        simple(
+            "bookmark_rename",
+            |repo, _, _| rename_outcome(repo, "b-mark", "renamed", false),
+            |_| args(&["bookmark", "rename", "b-mark", "renamed"]),
+        ),
+        Scenario {
+            setup: OTHER,
+            ..simple(
+                "bookmark_rename_onto_existing_refused",
+                |repo, _, _| rename_outcome(repo, "b-mark", "other", false),
+                |_| args(&["bookmark", "rename", "b-mark", "other"]),
+            )
+        },
+        Scenario {
+            setup: OTHER,
+            ..simple(
+                "bookmark_rename_overwrite",
+                |repo, _, _| rename_outcome(repo, "b-mark", "other", true),
+                |_| args(&["bookmark", "rename", "b-mark", "other", "--overwrite-existing"]),
+            )
+        },
+        simple(
+            "bookmark_rename_missing",
+            |repo, _, _| rename_outcome(repo, "nope", "x", false),
+            |_| args(&["bookmark", "rename", "nope", "x"]),
+        ),
+        simple(
+            "bookmark_rename_same_refused",
+            |repo, _, _| rename_outcome(repo, "b-mark", "b-mark", false),
+            |_| args(&["bookmark", "rename", "b-mark", "b-mark"]),
+        ),
+        simple(
+            "bookmark_rename_same_overwrite",
+            |repo, _, _| rename_outcome(repo, "b-mark", "b-mark", true),
+            |_| args(&["bookmark", "rename", "b-mark", "b-mark", "--overwrite-existing"]),
+        ),
+    ]
 }
 
 // ── Story 9.16: rebase, parallelize ──────────────────────────────────────────────

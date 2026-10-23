@@ -155,7 +155,7 @@ impl Fx {
     fn remote_bookmark(&mut self, name: &str, remote: &str) -> Option<String> {
         let target = self
             .repo
-            .list_bookmarks()
+            .list_bookmarks(&crate::all_remotes())
             .expect("bookmarks")
             .into_iter()
             .find(|b| {

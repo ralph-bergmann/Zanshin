@@ -74,7 +74,8 @@ pub(crate) mod workspace;
 pub(crate) mod workspace_add;
 
 pub use arrange::{ArrangeAction, ArrangeOptions};
-pub use bookmarks::{Bookmark, BookmarkError, BookmarkKind, RefDistance};
+pub use bookmark_ops::BookmarkMoveOptions;
+pub use bookmarks::{Bookmark, BookmarkError, BookmarkKind, BookmarkListOptions, BookmarkSortKey, RefDistance};
 pub use change::{Change, ChangeError, CommitId, ConflictState, Signature, Timestamp, Timestamps};
 pub use commit::CommitOptions;
 pub use commit_content::{CommitContent, CommitContentError};

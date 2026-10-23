@@ -1,32 +1,109 @@
 // SPDX-License-Identifier: MIT
 
-//! `zanshin_bookmarks` — bookmark-list read FFI wrapper (Story 3.4b, bookmarks slice).
+//! `zanshin_bookmarks` — bookmark-list read FFI wrapper (Story 3.4b, bookmarks slice; the
+//! CLI's list arguments since Story 9.19).
 //!
-//! Calls `zanshin_jj::Repo::list_bookmarks()` and serialises the result into a
-//! `FlatBuffers` `Envelope` carrying a `Bookmarks` payload. The handle is borrowed
-//! (not consumed).
+//! Reads a `BookmarkListRequest` buffer, calls `zanshin_jj::Repo::list_bookmarks` and
+//! serialises the result into a `FlatBuffers` `Envelope` carrying a `Bookmarks` payload. The
+//! handle is borrowed (not consumed).
 
-use flatbuffers::{FlatBufferBuilder, WIPOffset};
+use flatbuffers::{FlatBufferBuilder, VerifierOptions, WIPOffset};
 use tracing::debug;
-use zanshin_jj::{Bookmark, BookmarkError, BookmarkKind, RefDistance};
+use zanshin_jj::{
+    Bookmark, BookmarkError, BookmarkKind, BookmarkListOptions, BookmarkSortKey, ConfigError, RefDistance,
+};
 
+use crate::bookmark_ops::strings;
 use crate::envelope::{
-    catch, finish_envelope, map_precondition_err, precondition_envelope, session_from_handle, FfiErrorObj,
-    JJ_JJ_LIB_ERROR,
+    catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, precondition_envelope,
+    reject_null_request, session_from_handle, FfiErrorObj, FFI_INVALID_ARGUMENT, JJ_CONFIG_ERROR, JJ_INVALID_INPUT,
+    JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 
+/// Maps a [`BookmarkError`] onto its registered code, the reason in `context`; a failed pre-verb
+/// snapshot goes through the shared [`map_precondition_err`]. Story 9.19 adds the four arms of
+/// the list arguments, all onto codes `map_mutate_err` / `map_topology_err` already emit.
 fn map_bookmarks_err(e: BookmarkError) -> FfiErrorObj {
-    match e {
-        BookmarkError::Precondition(e) => map_precondition_err(e),
-        BookmarkError::Backend(reason) => FfiErrorObj {
-            report: None,
-            hints: Vec::new(),
-            code: JJ_JJ_LIB_ERROR.to_owned(),
-            context: Some(reason),
-        },
+    let (code, reason) = match e {
+        BookmarkError::Precondition(e) => return map_precondition_err(e),
+        BookmarkError::InvalidInput { reason } => (JJ_INVALID_INPUT, reason),
+        BookmarkError::RevsetParseError { reason } => (JJ_REVSET_PARSE_ERROR, reason),
+        BookmarkError::RevsetResolutionError { reason } => (JJ_REVSET_RESOLUTION_ERROR, reason),
+        BookmarkError::Config(ConfigError::Load { reason }) => (JJ_CONFIG_ERROR, reason),
+        BookmarkError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
+    };
+    FfiErrorObj {
+        report: None,
+        hints: Vec::new(),
+        code: code.to_owned(),
+        context: Some(reason),
     }
+}
+
+/// The wire sort key as the jj-level one; `Unspecified` (an unset element) and a byte outside
+/// the enum are refused.
+///
+/// # Errors
+/// - `ffi.invalid_argument` — `key` names no sort key.
+fn sort_key(key: fbs::BookmarkSortKey) -> Result<BookmarkSortKey, FfiErrorObj> {
+    use fbs::BookmarkSortKey as W;
+    use BookmarkSortKey as K;
+    Ok(match key {
+        W::Name => K::Name,
+        W::NameDesc => K::NameDesc,
+        W::AuthorName => K::AuthorName,
+        W::AuthorNameDesc => K::AuthorNameDesc,
+        W::AuthorEmail => K::AuthorEmail,
+        W::AuthorEmailDesc => K::AuthorEmailDesc,
+        W::AuthorDate => K::AuthorDate,
+        W::AuthorDateDesc => K::AuthorDateDesc,
+        W::CommitterName => K::CommitterName,
+        W::CommitterNameDesc => K::CommitterNameDesc,
+        W::CommitterEmail => K::CommitterEmail,
+        W::CommitterEmailDesc => K::CommitterEmailDesc,
+        W::CommitterDate => K::CommitterDate,
+        W::CommitterDateDesc => K::CommitterDateDesc,
+        other => {
+            return Err(FfiErrorObj {
+                report: None,
+                hints: Vec::new(),
+                code: FFI_INVALID_ARGUMENT.to_owned(),
+                context: Some(format!("invalid bookmark sort key: {other:?}")),
+            })
+        }
+    })
+}
+
+/// Parse a `BookmarkListRequest` buffer into owned [`BookmarkListOptions`]. Absent vectors are
+/// empty — the CLI without that argument.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkListRequest` buffer, its `kind`
+///   is not `BookmarkList`, or a `sort` element is `Unspecified` or unknown.
+fn read_bookmark_list_request(data: *const u8, len: usize) -> Result<BookmarkListOptions, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (the readers' discipline, `repo.rs`).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::BookmarkListRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::BookmarkList)?;
+    Ok(BookmarkListOptions {
+        names: strings(req.names()),
+        revisions: strings(req.revisions()),
+        remotes: strings(req.remotes()),
+        all_remotes: req.all_remotes(),
+        tracked: req.tracked(),
+        conflicted: req.conflicted(),
+        sort: req
+            .sort()
+            .into_iter()
+            .flatten()
+            .map(sort_key)
+            .collect::<Result<_, _>>()?,
+    })
 }
 
 /// Builds one `RefDistance` table; `upper: None` is the presence pair's `has_upper = false`.
@@ -85,17 +162,32 @@ fn bookmarks_to_envelope(bookmarks: &[Bookmark], report: &crate::envelope::CallR
     finish_envelope(b, fbs::Payload::Bookmarks, Some(bms_off.as_union_value()), report)
 }
 
-/// List the bookmarks of the repo identified by `handle` — the `jj bookmark list --all-remotes`
-/// row set with its tracking facts (Story 9.29).
+/// List the bookmarks of the repo identified by `handle` — the rows `jj bookmark list` prints for
+/// the request's arguments, in its order, with their tracking facts (Stories 9.29 and 9.19).
+///
+/// The arguments cross as a `BookmarkListRequest` `FlatBuffers` request buffer: `names` (string
+/// PATTERNS, a bare one a GLOB) OR-ed with `revisions` (revsets on LOCAL targets), `remotes`
+/// (remote-name patterns), `all_remotes`, `tracked`, `conflicted` and `sort` (empty applies
+/// `ui.bookmark-list-sort-keys`). An all-default buffer lists the CLI's default rows;
+/// `all_remotes` its `--all-remotes` set. Rows: each local row, then its tracked remote rows,
+/// then the name's untracked remote rows, in name order, then re-sorted by the sort keys. An
+/// exact name that matches no local or remote bookmark warns `jj.bookmark_names_unmatched`.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `Bookmarks` payload on success.
 ///
 /// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkListRequest` buffer, its `kind`
+///   is not `BookmarkList`, or a `sort` element is `Unspecified` or unknown.
 /// - `ffi.invalid_handle` — `handle` is `0` or the borrow yields `None`.
+/// - `jj.invalid_input` — `all_remotes` with `remotes`, `tracked` or `conflicted` (clap's
+///   conflict, refused before the snapshot), or a name or remote pattern does not parse.
+/// - `jj.revset_parse_error` / `jj.revset_resolution_error` — a `revisions` text.
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
 ///   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
 ///   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
-///   `precondition` says which.
+///   `precondition` says which. Or `ui.bookmark-list-sort-keys` is not an array of the CLI's key
+///   names, or the revset aliases do not load.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
 ///   the cause and both operation ids in `context`, nothing is written.
 /// - `jj.jj_lib_error` — an unclassified jj-lib error (incl. a failed ahead/behind revset);
@@ -107,14 +199,18 @@ fn bookmarks_to_envelope(bookmarks: &[Bookmark], report: &crate::envelope::CallR
 /// `0` is detected and returned as `ffi.invalid_handle`.
 /// A stale non-zero handle is undefined behaviour; the Dart worker's Model-A
 /// handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkListRequestObjectBuilder(...).toBytes()`); Rust only borrows it for
+/// the duration of the call.
 /// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
 #[no_mangle]
-pub unsafe extern "C" fn zanshin_bookmarks(handle: u64) -> *mut ZanshinBuf {
+pub unsafe extern "C" fn zanshin_bookmarks(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_bookmarks", handle);
     let buf = catch(|| {
+        let options = read_bookmark_list_request(data, len)?;
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let bms = session.repo.list_bookmarks();
+        let bms = session.repo.list_bookmarks(&options);
         precondition_envelope(&mut session.repo, bms, map_bookmarks_err, |bms, p| {
             bookmarks_to_envelope(bms, p)
         })
@@ -125,11 +221,14 @@ pub unsafe extern "C" fn zanshin_bookmarks(handle: u64) -> *mut ZanshinBuf {
 #[cfg(test)]
 mod tests {
     use flatbuffers::root as fb_root;
-    use zanshin_jj::{Bookmark, BookmarkError, BookmarkKind, RefDistance};
+    use zanshin_jj::{Bookmark, BookmarkError, BookmarkKind, ConfigError, RefDistance};
 
-    use super::{bookmarks_to_envelope, map_bookmarks_err};
+    use super::{bookmarks_to_envelope, map_bookmarks_err, sort_key};
     use crate::fbs;
-    use crate::JJ_JJ_LIB_ERROR;
+    use crate::{
+        FFI_INVALID_ARGUMENT, JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_REVSET_PARSE_ERROR,
+        JJ_REVSET_RESOLUTION_ERROR,
+    };
 
     fn make_bookmark(name: &str, target: Option<&str>, kind: BookmarkKind) -> Bookmark {
         Bookmark {
@@ -240,5 +339,59 @@ mod tests {
         let obj = map_bookmarks_err(BookmarkError::Backend("boom".into()));
         assert_eq!(obj.code, JJ_JJ_LIB_ERROR, "code must be jj.jj_lib_error");
         assert_eq!(obj.context, Some("boom".to_owned()), "context must be forwarded");
+    }
+
+    /// Story 9.19: the four list-argument arms map onto the registered codes, reason in context.
+    #[test]
+    fn map_bookmarks_err_maps_the_list_argument_refusals() {
+        for (e, code) in [
+            (BookmarkError::InvalidInput { reason: "r".into() }, JJ_INVALID_INPUT),
+            (
+                BookmarkError::RevsetParseError { reason: "r".into() },
+                JJ_REVSET_PARSE_ERROR,
+            ),
+            (
+                BookmarkError::RevsetResolutionError { reason: "r".into() },
+                JJ_REVSET_RESOLUTION_ERROR,
+            ),
+            (
+                BookmarkError::Config(ConfigError::Load { reason: "r".into() }),
+                JJ_CONFIG_ERROR,
+            ),
+        ] {
+            let obj = map_bookmarks_err(e);
+            assert_eq!((obj.code.as_str(), obj.context.as_deref()), (code, Some("r")));
+            assert!(obj.hints.is_empty());
+        }
+    }
+
+    /// Every wire key maps to its jj-level key; `Unspecified` and an unknown byte are refused.
+    #[test]
+    fn sort_key_maps_every_key_and_refuses_unspecified() {
+        use fbs::BookmarkSortKey as W;
+        use zanshin_jj::BookmarkSortKey as K;
+        let pairs = [
+            (W::Name, K::Name),
+            (W::NameDesc, K::NameDesc),
+            (W::AuthorName, K::AuthorName),
+            (W::AuthorNameDesc, K::AuthorNameDesc),
+            (W::AuthorEmail, K::AuthorEmail),
+            (W::AuthorEmailDesc, K::AuthorEmailDesc),
+            (W::AuthorDate, K::AuthorDate),
+            (W::AuthorDateDesc, K::AuthorDateDesc),
+            (W::CommitterName, K::CommitterName),
+            (W::CommitterNameDesc, K::CommitterNameDesc),
+            (W::CommitterEmail, K::CommitterEmail),
+            (W::CommitterEmailDesc, K::CommitterEmailDesc),
+            (W::CommitterDate, K::CommitterDate),
+            (W::CommitterDateDesc, K::CommitterDateDesc),
+        ];
+        for (wire, key) in pairs {
+            assert_eq!(sort_key(wire).expect("a key"), key);
+        }
+        for bad in [W::Unspecified, W(200)] {
+            let err = sort_key(bad).expect_err("refused");
+            assert_eq!(err.code, FFI_INVALID_ARGUMENT);
+        }
     }
 }

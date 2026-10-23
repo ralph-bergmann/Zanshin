@@ -9,7 +9,7 @@
 //! The test also asserts the leak-free invariant structurally: error variants are
 //! constructed as `Backend(String)` / `JjLibError(String)`, never as a `jj_lib` type.
 
-// --- Type-path aliases: one alias per public type (99 types; the AC-1 table's 30 plus the
+// --- Type-path aliases: one alias per public type (102 types; the AC-1 table's 30 plus the
 // --- types later stories added — CommitMeta/CommitRef (4.8), ConfigError/LogDefaults (4.9),
 // --- MutationResult/MutateError (6.1), ProgressEvent (6.4a), Tag/TagKind/WorkingCopy/
 // --- ViewError (9.2), AbsorbResult/SkippedPath (9.3), FileEntry/FileType/ShownFile/
@@ -19,7 +19,7 @@
 // --- Story 9.8 adds NO public type — both bookmark mutations reuse MutationResult/MutateError —
 // --- so the count moved only when follow-up F turned `interdiff`'s bare Vec into InterdiffView.
 // --- Later stories name their types in their own section below, the last being
-// --- MetaeditOptions/DuplicateOptions/FixOptions/FixResult/FixToolStderr (9.9) --------
+// --- BookmarkMoveOptions/BookmarkListOptions/BookmarkSortKey (9.19) -----------------------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -55,6 +55,9 @@ type _Bookmark = zanshin_jj::Bookmark;
 type _BookmarkKind = zanshin_jj::BookmarkKind;
 type _BookmarkError = zanshin_jj::BookmarkError;
 type _RefDistance = zanshin_jj::RefDistance;
+type _BookmarkListOptions = zanshin_jj::BookmarkListOptions;
+type _BookmarkSortKey = zanshin_jj::BookmarkSortKey;
+type _BookmarkMoveOptions = zanshin_jj::BookmarkMoveOptions;
 
 // remotes
 type _Remote = zanshin_jj::Remote;
@@ -563,8 +566,14 @@ fn api_surface_resolves() {
 /// pinned structurally here.
 #[test]
 fn content_ops_surface_resolves() {
-    _ = zanshin_jj::MutateError::RevsetParseError { reason: String::new() };
-    _ = zanshin_jj::MutateError::RevsetResolutionError { reason: String::new() };
+    _ = zanshin_jj::MutateError::RevsetParseError {
+        reason: String::new(),
+        hints: Vec::new(),
+    };
+    _ = zanshin_jj::MutateError::RevsetResolutionError {
+        reason: String::new(),
+        hints: Vec::new(),
+    };
     _ = sample_absorb_result();
     _ = zanshin_jj::Repo::restore
         as fn(
@@ -922,6 +931,79 @@ fn bookmark_ops_surface_resolves() {
         ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
     _ = zanshin_jj::Repo::bookmark_delete
         as fn(&mut zanshin_jj::Repo, &[String]) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+}
+
+/// Story 9.19: `bookmark move` / `advance` / `rename` reuse `MutationResult`/`MutateError`; the
+/// move takes its options struct (names EXACT, `from` revset texts, `to` a change id), advance
+/// exact names and an optional change id, rename two decoded names and the overwrite flag. The
+/// list's options and sort keys, every field and variant by its public path, and the four new
+/// `BookmarkError` variants with their `Display`.
+#[test]
+fn bookmark_move_and_list_surface_resolves() {
+    use zanshin_jj::BookmarkSortKey as K;
+    let move_options = zanshin_jj::BookmarkMoveOptions {
+        names: vec!["a".to_owned()],
+        from: vec!["@-".to_owned()],
+        to: Some(zanshin_jj::ChangeId(String::new())),
+        allow_backwards: true,
+    };
+    assert_eq!(move_options, move_options.clone());
+    _ = zanshin_jj::Repo::bookmark_move
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::BookmarkMoveOptions,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::bookmark_advance
+        as fn(
+            &mut zanshin_jj::Repo,
+            &[String],
+            Option<&zanshin_jj::ChangeId>,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::bookmark_rename
+        as fn(&mut zanshin_jj::Repo, &str, &str, bool) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+
+    let list = zanshin_jj::BookmarkListOptions {
+        names: vec![],
+        revisions: vec![],
+        remotes: vec![],
+        all_remotes: false,
+        tracked: false,
+        conflicted: false,
+        sort: vec![
+            K::Name,
+            K::NameDesc,
+            K::AuthorName,
+            K::AuthorNameDesc,
+            K::AuthorEmail,
+            K::AuthorEmailDesc,
+            K::AuthorDate,
+            K::AuthorDateDesc,
+            K::CommitterName,
+            K::CommitterNameDesc,
+            K::CommitterEmail,
+            K::CommitterEmailDesc,
+            K::CommitterDate,
+            K::CommitterDateDesc,
+        ],
+    };
+    assert_ne!(list, zanshin_jj::BookmarkListOptions::default());
+
+    let errors = [
+        zanshin_jj::BookmarkError::InvalidInput { reason: "i".to_owned() },
+        zanshin_jj::BookmarkError::RevsetParseError { reason: "p".to_owned() },
+        zanshin_jj::BookmarkError::RevsetResolutionError { reason: "r".to_owned() },
+        zanshin_jj::BookmarkError::Config(zanshin_jj::ConfigError::Load { reason: "c".to_owned() }),
+    ];
+    let shown: Vec<String> = errors.iter().map(ToString::to_string).collect();
+    assert_eq!(
+        shown,
+        [
+            "invalid input: i",
+            "invalid revset: p",
+            "cannot resolve revset: r",
+            &zanshin_jj::ConfigError::Load { reason: "c".to_owned() }.to_string(),
+        ]
+    );
 }
 
 /// Names every `SnapshotStats` / `UntrackedPath` field and BOTH `UntrackedReason` variants by
@@ -1473,7 +1555,10 @@ fn snapshot_precondition_surface_resolves() {
     _ = zanshin_jj::Repo::op_log
         as fn(&mut zanshin_jj::Repo, Option<usize>) -> Result<Vec<zanshin_jj::Operation>, zanshin_jj::OpLogError>;
     _ = zanshin_jj::Repo::list_bookmarks
-        as fn(&mut zanshin_jj::Repo) -> Result<Vec<zanshin_jj::Bookmark>, zanshin_jj::BookmarkError>;
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::BookmarkListOptions,
+        ) -> Result<Vec<zanshin_jj::Bookmark>, zanshin_jj::BookmarkError>;
     _ = zanshin_jj::Repo::list_remotes
         as fn(&mut zanshin_jj::Repo) -> Result<Vec<zanshin_jj::Remote>, zanshin_jj::RemoteError>;
     // A config read with no CLI verb behind it: no snapshot, still `&self`.
@@ -1585,8 +1670,8 @@ fn story_9_28_surface_resolves() {
 
 /// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds;
 /// Story 9.53 the unresolved conflicts; Story 9.51 the template diagnostic; Story 9.54's closing
-/// run the bookmark auto-track warning).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 60] = {
+/// run the bookmark auto-track warning; Story 9.19 the four rename warnings).
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 64] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -1608,6 +1693,10 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 60] = {
         K::BookmarkTargetEmpty,
         K::BookmarkNamesUnmatched,
         K::BookmarkAutoTrackExisting,
+        K::BookmarkRenameRemoteExists,
+        K::BookmarkTrackingDropped,
+        K::BookmarkRemotesNotRenamed,
+        K::BookmarkTrackedRemotesExist,
         K::AbsorbPathSkipped,
         K::PathAccessDenied,
         K::PathNotAFile,
@@ -1727,6 +1816,10 @@ fn story_9_32_warning_surface_resolves() {
             | K::BookmarkTargetEmpty
             | K::BookmarkNamesUnmatched
             | K::BookmarkAutoTrackExisting
+            | K::BookmarkRenameRemoteExists
+            | K::BookmarkTrackingDropped
+            | K::BookmarkRemotesNotRenamed
+            | K::BookmarkTrackedRemotesExist
             | K::AbsorbPathSkipped
             | K::PathAccessDenied
             | K::PathNotAFile
@@ -1770,7 +1863,7 @@ fn story_9_32_warning_surface_resolves() {
             | K::ConfigDeprecated => {}
         }
     }
-    assert_eq!(every.len(), 60);
+    assert_eq!(every.len(), 64);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

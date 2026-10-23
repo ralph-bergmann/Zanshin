@@ -148,7 +148,7 @@ fn create_with_the_default_revision_targets_at_and_writes_the_cli_description() 
         format!("create bookmark feature pointing to commit {}", lay.wc_commit_hex)
     );
     assert_eq!(local_bookmark_target(&fx.path, "feature"), Some(lay.wc_commit_hex));
-    let listed = repo.list_bookmarks().unwrap();
+    let listed = repo.list_bookmarks(&crate::all_remotes()).unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].name, "feature");
     assert_eq!(listed[0].kind, BookmarkKind::Local);
@@ -433,7 +433,7 @@ fn delete_removes_an_exactly_named_bookmark_with_the_cli_description() {
     assert_eq!(result.new_op_id.0, after);
     assert_eq!(description, "delete bookmark feature");
     assert!(local_bookmark_names(&fx.path).is_empty());
-    assert!(repo.list_bookmarks().unwrap().is_empty());
+    assert!(repo.list_bookmarks(&crate::all_remotes()).unwrap().is_empty());
 }
 
 /// A glob deletes every match and leaves the rest; the description lists the MATCHED names in
@@ -549,7 +549,7 @@ fn delete_leaves_a_tracked_remote_bookmark_in_place() {
     repo.bookmark_delete(&["exact:feature".to_owned()]).unwrap();
 
     assert!(local_bookmark_names(&fx.path).is_empty(), "the local row is gone");
-    let listed = repo.list_bookmarks().unwrap();
+    let listed = repo.list_bookmarks(&crate::all_remotes()).unwrap();
     assert_eq!(
         listed.len(),
         2,
@@ -616,7 +616,7 @@ fn create_then_delete_writes_both_cli_descriptions() {
         ops[1].description,
         format!("create bookmark feature pointing to commit {}", lay.wc_commit_hex)
     );
-    assert!(repo.list_bookmarks().unwrap().is_empty());
+    assert!(repo.list_bookmarks(&crate::all_remotes()).unwrap().is_empty());
 }
 
 // ── create: auto-tracking (Story 9.54's closing run) ─────────────────────────
@@ -642,7 +642,7 @@ fn add_remote(repo: &mut Repo, root: &Path, name: &str) {
 
 /// `(name, remote, tracked, target)` of every REMOTE row `list_bookmarks` reports.
 fn remote_rows(repo: &mut Repo) -> Vec<(String, String, bool, Option<ChangeId>)> {
-    repo.list_bookmarks()
+    repo.list_bookmarks(&crate::all_remotes())
         .expect("list bookmarks")
         .into_iter()
         .filter_map(|Bookmark { name, target, kind, .. }| match kind {

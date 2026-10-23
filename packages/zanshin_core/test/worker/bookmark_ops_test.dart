@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-// Worker round-trip tests for Story 9.8's two bookmark mutations
-// (bookmarkCreate / bookmarkDelete) on both [ZanshinWorker] and [RepoHandle].
+// Worker round-trip tests for the bookmark mutations (Story 9.8's bookmarkCreate /
+// bookmarkDelete, Story 9.19's bookmarkMove / bookmarkAdvance / bookmarkRename) on
+// both [ZanshinWorker] and [RepoHandle].
 //
 // These tests boot the REAL Isolate.spawn flow against the REAL compiled cdylib
 // via @ffi.Native native assets. No mocked isolates, no mocked FFI
@@ -18,7 +19,8 @@
 import 'dart:io';
 
 import 'package:test/test.dart';
-import 'package:zanshin_core/src/ffi/bookmarks.dart' show Bookmark;
+import 'package:zanshin_core/src/ffi/bookmarks.dart' show Bookmark, LocalBookmark;
+import 'package:zanshin_core/src/ffi/config.dart';
 import 'package:zanshin_core/src/ffi/mutate.dart' show MutationResult;
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
@@ -193,6 +195,188 @@ void main() {
     });
   });
 
+  // ── Story 9.19: move / advance / rename ─────────────────────────────────────
+
+  group('ZanshinWorker bookmark move / advance / rename (real cdylib)', () {
+    late ZanshinWorker worker;
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = Directory.systemTemp.createTempSync('zanshin_bookmark_move_test_');
+      worker = await ZanshinWorker.start();
+    });
+
+    tearDown(() async {
+      await worker.close();
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    /// The local target of [name].
+    Future<String?> target(RepoHandle handle, String name) async =>
+        (await handle.bookmarks()).singleWhere((b) => b.name == name && b.kind is LocalBookmark).target;
+
+    test('advance_move_and_rename_round_trip_through_the_real_cdylib', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final String a = (await handle.status()).workingCopyChangeId;
+      await handle.describe(changeId: a, description: 'A');
+      await handle.bookmarkCreate(['feature']);
+      await handle.newChange([a]);
+      final String b = (await handle.status()).workingCopyChangeId;
+
+      // Advance by name, `to` absent: the default target `@`.
+      final MutationResult advanced = await handle.bookmarkAdvance(names: ['feature']);
+      expect(advanced.newOpId, (await handle.opLog(limit: 1)).single.id);
+      expect(await target(handle, 'feature'), b);
+
+      // Backwards: refused with the CLI's hint, nothing written.
+      final String before = (await handle.opLog(limit: 1)).single.id;
+      await expectLater(
+        handle.bookmarkMove(['feature'], to: a),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having((e) => e.context, 'context', 'Refusing to move bookmark backwards or sideways: feature')
+              .having((e) => e.hints, 'hints', ['Use --allow-backwards to allow it.']),
+        ),
+      );
+      expect((await handle.opLog(limit: 1)).single.id, before);
+
+      await handle.bookmarkMove(['feature'], to: a, allowBackwards: true);
+      expect(await target(handle, 'feature'), a);
+
+      // Advance with the default candidates: `heads(::@ & bookmarks())`.
+      await handle.bookmarkAdvance();
+      expect(await target(handle, 'feature'), b);
+
+      // Nothing to move is a success that writes no operation.
+      final String head = (await handle.opLog(limit: 1)).single.id;
+      final MutationResult noOp = await handle.bookmarkMove(['feature'], from: ['@']);
+      expect(noOp.newOpId, head);
+
+      await handle.bookmarkRename('feature', 'renamed');
+      expect((await handle.bookmarks()).map((bm) => bm.name), ['renamed']);
+      expect((await handle.opLog(limit: 1)).single.description, 'rename bookmark feature to renamed');
+
+      await expectLater(
+        handle.bookmarkRename('nope', 'x'),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having((e) => e.context, 'context', 'No such bookmark: nope'),
+        ),
+      );
+
+      await handle.close();
+    });
+
+    test('from_advance_to_and_overwrite_cross_through_the_real_cdylib', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final String a = (await handle.status()).workingCopyChangeId;
+      await handle.describe(changeId: a, description: 'A');
+      await handle.bookmarkCreate(['one']);
+      await handle.newChange([a]);
+      final String b = (await handle.status()).workingCopyChangeId;
+      await handle.describe(changeId: b, description: 'B');
+      await handle.bookmarkCreate(['two']);
+      await handle.newChange([b]);
+      final String c = (await handle.status()).workingCopyChangeId;
+
+      // `from` alone: only the bookmark on A moves; `two` (on B) stays.
+      await handle.bookmarkMove(const [], from: [a], to: c);
+      expect((await target(handle, 'one'), await target(handle, 'two')), (c, b));
+
+      // Advance with an explicit `to`.
+      await handle.bookmarkAdvance(names: ['two'], to: c);
+      expect(await target(handle, 'two'), c);
+
+      // Overwrite onto an existing name.
+      await handle.bookmarkRename('two', 'one', overwriteExisting: true);
+      expect((await handle.bookmarks()).map((bm) => bm.name), ['one']);
+
+      await handle.close();
+    });
+
+    test('a_rename_warning_arrives_in_the_result', () async {
+      // The Makefile's XDG_CONFIG_HOME pin keeps the repo-scope write below out of ~/.config/jj.
+      Platform.environment['XDG_CONFIG_HOME'] ?? fail('XDG_CONFIG_HOME is not pinned — run via cargo make');
+      final String root = tempDir.resolveSymbolicLinksSync();
+      Future<void> git(List<String> args) async {
+        final ProcessResult result = await Process.run('git', ['-C', root, ...args]);
+        if (result.exitCode != 0) {
+          fail('git ${args.join(' ')} failed: ${result.stderr}');
+        }
+      }
+
+      await git(['init', '-b', 'feature']);
+      await git(['config', 'user.email', 'test@test.invalid']);
+      await git(['config', 'user.name', 'Test']);
+      File('$root/README.md').writeAsStringSync('hello');
+      await git(['add', '.']);
+      await git(['commit', '-m', 'init', '--no-gpg-sign']);
+      final RepoHandle handle = await worker.convert(root);
+      await worker.configSet(
+        const ConfigScopeTarget(ConfigScope.repo),
+        'remotes.origin.auto-track-bookmarks',
+        'glob:*',
+        workspaceRoot: root,
+      );
+      await git(['update-ref', 'refs/remotes/origin/feature', 'HEAD']);
+
+      final MutationResult renamed = await handle.bookmarkRename('feature', 'renamed');
+      expect(renamed.warnings.map((w) => w.code), contains('jj.bookmark_remotes_not_renamed'));
+
+      await handle.close();
+    });
+
+    test('the_three_verbs_on_a_closed_handle_surface_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      await handle.close();
+
+      final Matcher matcher = throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle'));
+      await expectLater(worker.bookmarkMove(handle.handleId, ['feature']), matcher);
+      await expectLater(worker.bookmarkAdvance(handle.handleId), matcher);
+      await expectLater(worker.bookmarkRename(handle.handleId, 'a', 'b'), matcher);
+    });
+
+    test('interior_NUL_in_the_three_verbs_is_an_ArgumentError', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final nul = String.fromCharCode(0);
+
+      expect(
+        () => handle.bookmarkMove(['a${nul}b']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'names')),
+      );
+      expect(
+        () => handle.bookmarkMove(const [], from: ['@$nul-']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'from')),
+      );
+      expect(
+        () => handle.bookmarkMove(['a'], to: 'q$nul'),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'to')),
+      );
+      expect(
+        () => handle.bookmarkAdvance(names: ['a${nul}b']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'names')),
+      );
+      expect(
+        () => handle.bookmarkAdvance(to: 'q$nul'),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'to')),
+      );
+      expect(
+        () => handle.bookmarkRename('o$nul', 'n'),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'oldName')),
+      );
+      expect(
+        () => handle.bookmarkRename('o', 'n$nul'),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'newName')),
+      );
+
+      await handle.close();
+    });
+  });
+
   // ── RepoHandle closed-handle guards ───────────────────────────────────────
 
   group('RepoHandle bookmark mutation methods closed-handle guard', () {
@@ -223,6 +407,15 @@ void main() {
       await handle.close();
 
       expect(() => handle.bookmarkDelete(['feature']), throwsA(isA<StateError>()));
+    });
+
+    test('the_three_story_9_19_verbs_on_an_explicitly_closed_handle_throw_state_error', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      await handle.close();
+
+      expect(() => handle.bookmarkMove(['feature']), throwsA(isA<StateError>()));
+      expect(handle.bookmarkAdvance, throwsA(isA<StateError>()));
+      expect(() => handle.bookmarkRename('a', 'b'), throwsA(isA<StateError>()));
     });
   });
 }

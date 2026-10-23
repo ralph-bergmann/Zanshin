@@ -201,7 +201,7 @@ fn without_working_copy(fx: &mut Fx) {
 
 fn resolution_reason<T: std::fmt::Debug>(result: Result<T, MutateError>) -> String {
     match result {
-        Err(MutateError::RevsetResolutionError { reason }) => reason,
+        Err(MutateError::RevsetResolutionError { reason, .. }) => reason,
         other => panic!("expected RevsetResolutionError, got {other:?}"),
     }
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import '../ffi/bookmarks.dart' show BookmarkSortKey;
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 import '../ffi/config.dart' show ConfigScope, ConfigTarget;
 import '../ffi/drop_actions.dart' show DropLocation, DropSource;
@@ -142,17 +143,49 @@ final class StatusCommand extends WorkerCommand implements HandleScopedCommand {
   final int handleId;
 }
 
-/// Read the bookmark list for the repo identified by [handleId].
+/// Read the bookmark list for the repo identified by [handleId] — the CLI's
+/// `jj bookmark list` with its arguments (Story 9.19).
 ///
 /// The worker looks up the raw handle in its Model-A table (read — never
-/// remove), calls `zanshin_bookmarks(handle)`, and replies with a
+/// remove), calls `zanshinBookmarks(raw, …)`, and replies with a
 /// `BufferResult` carrying the FlatBuffers `Envelope<Bookmarks>` bytes.
 final class BookmarksCommand extends WorkerCommand implements HandleScopedCommand {
-  const BookmarksCommand({required super.commandId, required this.handleId});
+  const BookmarksCommand({
+    required super.commandId,
+    required this.handleId,
+    this.names = const [],
+    this.revisions = const [],
+    this.remotes = const [],
+    this.allRemotes = false,
+    this.tracked = false,
+    this.conflicted = false,
+    this.sort = const [],
+  });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
   @override
   final int handleId;
+
+  /// Name PATTERNS (a bare one is a glob), OR-ed with [revisions].
+  final List<String> names;
+
+  /// Revsets matching LOCAL targets.
+  final List<String> revisions;
+
+  /// Remote-name patterns (`--remote`).
+  final List<String> remotes;
+
+  /// `--all-remotes`.
+  final bool allRemotes;
+
+  /// `--tracked`.
+  final bool tracked;
+
+  /// `--conflicted`.
+  final bool conflicted;
+
+  /// `--sort`; empty applies `ui.bookmark-list-sort-keys`.
+  final List<BookmarkSortKey> sort;
 }
 
 /// Read the configured git remotes for the repo identified by [handleId].
@@ -1210,6 +1243,93 @@ final class BookmarkDeleteCommand extends WorkerCommand implements HandleScopedC
   /// `exact:"…"` for a name containing `*`, `?` or `[`. An empty list is refused;
   /// a pattern matching nothing succeeds and writes no operation.
   final List<String> names;
+}
+
+/// Move existing local bookmarks to one revision, in the repo identified by
+/// [handleId] (Story 9.19) — the CLI's `jj bookmark move`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinBookmarkMove(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class BookmarkMoveCommand extends WorkerCommand implements HandleScopedCommand {
+  const BookmarkMoveCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.names,
+    required this.from,
+    required this.to,
+    required this.allowBackwards,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// EXACT bookmark names.
+  final List<String> names;
+
+  /// Revset texts (`--from`).
+  final List<String> from;
+
+  /// jj reverse-hex change id of the target; `null` = `@`.
+  final String? to;
+
+  /// `--allow-backwards`.
+  final bool allowBackwards;
+}
+
+/// Advance the closest bookmarks to a revision, in the repo identified by
+/// [handleId] (Story 9.19) — the CLI's `jj bookmark advance`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinBookmarkAdvance(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class BookmarkAdvanceCommand extends WorkerCommand implements HandleScopedCommand {
+  const BookmarkAdvanceCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.names,
+    required this.to,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// EXACT bookmark names; empty = the CLI's default candidates.
+  final List<String> names;
+
+  /// jj reverse-hex change id of the target; `null` = `revsets.bookmark-advance-to`.
+  final String? to;
+}
+
+/// Rename a local bookmark, in the repo identified by [handleId] (Story 9.19) —
+/// the CLI's `jj bookmark rename`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinBookmarkRename(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class BookmarkRenameCommand extends WorkerCommand implements HandleScopedCommand {
+  const BookmarkRenameCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.oldName,
+    required this.newName,
+    required this.overwriteExisting,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The DECODED name to rename.
+  final String oldName;
+
+  /// The DECODED new name.
+  final String newName;
+
+  /// `--overwrite-existing`.
+  final bool overwriteExisting;
 }
 
 /// Start tracking the working-copy paths matching [paths], in the repo

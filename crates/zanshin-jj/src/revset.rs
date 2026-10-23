@@ -340,6 +340,38 @@ pub(crate) fn parse_diagnosed_with(
     )
 }
 
+/// Parses every text in `exprs` and UNIONS them — the CLI's `parse_union_revsets`
+/// (`cli/src/cli_util.rs:1889-1903` @ v0.46.0): one diagnostics sink for all of them, recorded
+/// under "In revset expression" only once EVERY text parsed (Story 9.19).
+///
+/// # Errors
+///
+/// - [`RevsetError::ParseError`] — a text is syntactically invalid or names an unknown function.
+pub(crate) fn parse_union_diagnosed(
+    workspace: &Workspace,
+    parse_config: &RevsetConfig,
+    exprs: &[String],
+    sink: &mut Warnings,
+) -> Result<Arc<UserRevsetExpression>, RevsetError> {
+    let mut diagnostics = RevsetDiagnostics::new();
+    let mut expressions = Vec::with_capacity(exprs.len());
+    for expr in exprs {
+        expressions.push(parse_revset_in(
+            (workspace.workspace_root(), workspace.workspace_name()),
+            parse_config,
+            expr,
+            &[],
+            &mut diagnostics,
+        )?);
+    }
+    sink.extend(warning::parse_diagnostics(
+        WarningKind::RevsetDiagnostic,
+        IN_REVSET_EXPRESSION,
+        &diagnostics,
+    ));
+    Ok(RevsetExpression::union_all(&expressions))
+}
+
 /// [`parse_diagnosed_with`] for a workspace given by its root and name — a template's
 /// `revsets.short-prefixes` parse, which may be for a workspace no [`Workspace`] is at hand for
 /// (`workspace add`'s new one, Story 9.51).

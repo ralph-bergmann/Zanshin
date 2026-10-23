@@ -259,4 +259,59 @@ void main() {
       );
     });
   });
+
+  group('BookmarkListRequest wire shape (Story 9.19)', () {
+    test('an all-default request is the CLI without arguments', () {
+      final req = fbs.BookmarkListRequest(
+        fbs.BookmarkListRequestObjectBuilder(kind: fbs.RequestKind.BookmarkList).toBytes(),
+      );
+      expect(req.kind, fbs.RequestKind.BookmarkList);
+      expect(req.names, isNull);
+      expect(req.revisions, isNull);
+      expect(req.remotes, isNull);
+      expect((req.allRemotes, req.tracked, req.conflicted), (false, false, false));
+      expect(req.sort, isNull);
+    });
+
+    test('every argument and every sort key crosses', () {
+      final req = fbs.BookmarkListRequest(
+        fbs.BookmarkListRequestObjectBuilder(
+          kind: fbs.RequestKind.BookmarkList,
+          names: ['glob:f*'],
+          revisions: ['@-'],
+          remotes: ['origin'],
+          tracked: true,
+          conflicted: true,
+          sort: [for (final BookmarkSortKey key in BookmarkSortKey.values) key.wire],
+        ).toBytes(),
+      );
+      expect(req.names, ['glob:f*']);
+      expect(req.revisions, ['@-']);
+      expect(req.remotes, ['origin']);
+      expect((req.tracked, req.conflicted), (true, true));
+      expect(req.sort, [for (final BookmarkSortKey key in BookmarkSortKey.values) key.wire]);
+      expect(
+        BookmarkSortKey.values.map((k) => k.wire),
+        isNot(contains(fbs.BookmarkSortKey.Unspecified)),
+        reason: 'the Dart enum cannot send the refused Unspecified',
+      );
+      expect(BookmarkSortKey.values.map((k) => k.wire).toSet(), hasLength(14));
+    });
+
+    test('zanshinBookmarks rejects an interior NUL in names, revisions and remotes', () {
+      final nul = String.fromCharCode(0);
+      expect(
+        () => zanshinBookmarks(0, names: ['a${nul}b']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'names')),
+      );
+      expect(
+        () => zanshinBookmarks(0, revisions: ['@$nul-']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'revisions')),
+      );
+      expect(
+        () => zanshinBookmarks(0, remotes: ['o${nul}rigin']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'remotes')),
+      );
+    });
+  });
 }

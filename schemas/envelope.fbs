@@ -82,7 +82,7 @@ table FfiError {
 /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-/// squash, never a different verb. For the other 40 tables the variant name plus `Request` IS
+/// squash, never a different verb. For the other 44 tables the variant name plus `Request` IS
 /// the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -137,7 +137,11 @@ enum RequestKind : ubyte {
   Arrange,
   Metaedit,
   Duplicate,
-  Fix
+  Fix,
+  BookmarkList,
+  BookmarkMove,
+  BookmarkAdvance,
+  BookmarkRename
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -761,6 +765,85 @@ table BookmarkDeleteRequest {
   names: [string];
 }
 
+/// One `--sort` key of `jj bookmark list` (Story 9.19) — the CLI's `SortKey`; a `…Desc` key is
+/// the CLI's spelling with a trailing `-` (`name-`, `author-date-`, …). `Unspecified = 0` is the
+/// default of an unset element and is REFUSED (`ffi.invalid_argument`).
+enum BookmarkSortKey : ubyte {
+  Unspecified,
+  Name,
+  NameDesc,
+  AuthorName,
+  AuthorNameDesc,
+  AuthorEmail,
+  AuthorEmailDesc,
+  AuthorDate,
+  AuthorDateDesc,
+  CommitterName,
+  CommitterNameDesc,
+  CommitterEmail,
+  CommitterEmailDesc,
+  CommitterDate,
+  CommitterDateDesc
+}
+
+/// Arguments of `zanshin_bookmarks` (Stories 9.29 and 9.19) — the CLI's `jj bookmark list`
+/// without `-T`. ABSENT or EMPTY vectors and `false` flags are the CLI without that argument, so
+/// an all-default buffer lists the CLI's default rows.
+///
+///   names        string PATTERNS (a bare one is a GLOB), unioned; OR-ed with `revisions`
+///   revisions    revset TEXTS, unioned; a bookmark whose LOCAL target is in them is listed
+///   remotes      remote-name PATTERNS (`--remote`)
+///   all_remotes  `--all-remotes`; refused with `jj.invalid_input` together with `remotes`,
+///                `tracked` or `conflicted` (clap's conflicts_with), before the snapshot
+///   tracked      `--tracked`; conflicted `--conflicted`
+///   sort         `--sort`, most significant first; empty applies `ui.bookmark-list-sort-keys`
+table BookmarkListRequest {
+  kind: RequestKind;
+  names: [string];
+  revisions: [string];
+  remotes: [string];
+  all_remotes: bool;
+  tracked: bool;
+  conflicted: bool;
+  sort: [BookmarkSortKey];
+}
+
+/// Arguments of `zanshin_bookmark_move` (Story 9.19) — the CLI's `jj bookmark move`.
+///
+/// `names` are EXACT, DECODED bookmark names (the CLI's `exact:"…"`, never its default glob);
+/// `from` are revset TEXTS (`--from`, unioned). At least one of the two must be non-empty, else
+/// `jj.invalid_input`. `to` ABSENT is the CLI's `--to` default `@`; present it is a jj reverse-hex
+/// CHANGE ID. `allow_backwards` is `--allow-backwards`. Nothing to move is a SUCCESS that writes
+/// no operation (`MutationResult.new_op_id` is the pre-call head).
+table BookmarkMoveRequest {
+  kind: RequestKind;
+  names: [string];
+  from: [string];
+  to: string;
+  allow_backwards: bool;
+}
+
+/// Arguments of `zanshin_bookmark_advance` (Story 9.19) — the CLI's `jj bookmark advance`.
+///
+/// `names` are EXACT bookmark names; ABSENT/EMPTY means the CLI's default candidates
+/// (`revsets.bookmark-advance-from`). `to` ABSENT applies `revsets.bookmark-advance-to`; present
+/// it is a jj reverse-hex CHANGE ID.
+table BookmarkAdvanceRequest {
+  kind: RequestKind;
+  names: [string];
+  to: string;
+}
+
+/// Arguments of `zanshin_bookmark_rename` (Story 9.19) — the CLI's `jj bookmark rename`.
+/// `old_name` / `new_name` are DECODED names (ABSENT = empty = refused with `jj.invalid_input`);
+/// `overwrite_existing` is `--overwrite-existing`.
+table BookmarkRenameRequest {
+  kind: RequestKind;
+  old_name: string;
+  new_name: string;
+  overwrite_existing: bool;
+}
+
 /// Arguments of `zanshin_file_track` (Story 9.22) — the CLI's `jj file track`.
 ///
 /// `paths` are repo-relative paths interpreted as PREFIXES; the fileset DSL is terminal input
@@ -1091,8 +1174,8 @@ table RefDistance {
   has_upper: bool;
 }
 
-/// One row of `jj bookmark list --all-remotes` (FR-JJ-8, Story 9.29). A bookmark that is
-/// both local and on a remote appears as one Local row plus one Remote row per remote.
+/// One row of `jj bookmark list` (FR-JJ-8, Stories 9.29 and 9.19). With `all_remotes` a bookmark
+/// that is both local and on a remote appears as one Local row plus one Remote row per remote.
 ///
 /// Every row: `target` (ABSENT = null when the row's target is absent — the CLI's `(deleted)`
 /// local row or a tracked remote `(not created yet)`; a conflicted target carries its first
@@ -1116,8 +1199,10 @@ table Bookmark {
   behind: RefDistance;   // Remote rows only; ABSENT when not computed
 }
 
-/// The bookmark list: the `--all-remotes` row set, sorted by name, then the Local row, then
-/// Remote rows by remote name.
+/// The bookmark list: the rows the CLI prints for the request's arguments, in its order — each
+/// Local row followed by its tracked Remote rows, then the name's untracked Remote rows, in name
+/// order; then re-sorted by the request's `sort` (or `ui.bookmark-list-sort-keys`), which moves
+/// a Local row together with its tracked rows (Story 9.19).
 table Bookmarks {
   bookmarks: [Bookmark];
 }

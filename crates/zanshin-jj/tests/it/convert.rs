@@ -133,7 +133,7 @@ fn convert_git_repo_with_commit_returns_jj() {
     let mut repo = zanshin_jj::Repo::open(tmp.path()).expect("Repo::open after convert");
 
     // The imported `main` bookmark must be present (AC-9 case 1: HEAD commit reachable via bookmark).
-    let bookmarks = repo.list_bookmarks().expect("list_bookmarks");
+    let bookmarks = repo.list_bookmarks(&crate::all_remotes()).expect("list_bookmarks");
     let has_main = bookmarks.iter().any(|b| b.name == "main");
     assert!(
         has_main,
@@ -338,7 +338,7 @@ fn convert_detached_head_imports_head_commit() {
     let mut repo = convert_colocated(tmp.path()).result.expect("convert detached HEAD");
 
     // No bookmark survives the branch deletion …
-    let bookmarks = repo.list_bookmarks().expect("list_bookmarks");
+    let bookmarks = repo.list_bookmarks(&crate::all_remotes()).expect("list_bookmarks");
     assert!(
         bookmarks.is_empty(),
         "no bookmark expected after branch deletion; got: {bookmarks:?}"
@@ -1341,7 +1341,7 @@ fn undo_after_convert_import_reverts_only_the_head_import() {
 
     repo.undo(false).expect("undo must succeed");
 
-    let bookmarks = repo.list_bookmarks().expect("list_bookmarks");
+    let bookmarks = repo.list_bookmarks(&crate::all_remotes()).expect("list_bookmarks");
     assert!(
         bookmarks.iter().any(|b| b.name == "main"),
         "undo must revert only the head import — the bookmark the refs operation imported \

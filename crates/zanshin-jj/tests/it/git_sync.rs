@@ -130,7 +130,7 @@ fn git_import_imports_a_new_git_ref_and_writes_the_cli_operation() {
 
     // The import is real, not cosmetic: the bookmark is now in jj's own listing.
     let names: Vec<String> = repo
-        .list_bookmarks()
+        .list_bookmarks(&crate::all_remotes())
         .expect("bookmarks")
         .into_iter()
         .map(|b| b.name)

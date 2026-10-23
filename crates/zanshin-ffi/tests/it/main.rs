@@ -13,6 +13,33 @@
 //! sink tests: they stay in this process under its `SINK_GUARD` and read only events of their
 //! own session id.
 
+/// A `BookmarkListRequest` buffer for `zanshin_bookmarks` (Story 9.19): every argument absent,
+/// `all_remotes` as given — the row set the read returned before it took the CLI's filters.
+pub(crate) fn bookmark_list_request(all_remotes: bool) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
+    let req = zanshin_ffi::fbs::BookmarkListRequest::create(
+        &mut b,
+        &zanshin_ffi::fbs::BookmarkListRequestArgs {
+            kind: zanshin_ffi::fbs::RequestKind::BookmarkList,
+            all_remotes,
+            ..Default::default()
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// `zanshin_bookmarks` with the `--all-remotes` request of [`bookmark_list_request`].
+///
+/// # Safety
+/// `handle` follows `zanshin_bookmarks`' handle contract; the returned token is the caller's to
+/// free exactly once.
+pub(crate) unsafe fn bookmarks_all_remotes(handle: u64) -> *mut zanshin_ffi::ffi_strings::ZanshinBuf {
+    let req = bookmark_list_request(true);
+    // SAFETY: the caller upholds the handle contract; `req` outlives the call.
+    unsafe { zanshin_ffi::bookmarks::zanshin_bookmarks(handle, req.as_ptr(), req.len()) }
+}
+
 mod bookmark_ops_ffi;
 mod bookmarks_ffi;
 mod change_ffi;

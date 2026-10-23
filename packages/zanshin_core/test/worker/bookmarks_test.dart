@@ -16,6 +16,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/bookmarks.dart';
 import 'package:zanshin_core/src/ffi/config.dart';
+import 'package:zanshin_core/src/ffi/warning.dart' show WarnedList;
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
@@ -124,14 +125,14 @@ void main() {
       );
       await git(['update-ref', 'refs/remotes/origin/feature', 'HEAD']);
 
-      final List<Bookmark> synced = await handle.bookmarks();
+      final List<Bookmark> synced = await handle.bookmarks(allRemotes: true);
       final origin = _row(synced, 'origin').kind as RemoteBookmark;
       expect(origin.tracked, isTrue, reason: 'auto-tracked on import');
       expect((origin.ahead?.lower, origin.ahead?.upper, origin.behind?.lower), (0, 0, 0));
       final String change = synced.first.target!;
 
       await handle.describe(changeId: change, description: 'rewritten');
-      final List<Bookmark> rows = await handle.bookmarks();
+      final List<Bookmark> rows = await handle.bookmarks(allRemotes: true);
 
       final Bookmark local = _row(rows, null);
       final Bookmark remote = _row(rows, 'origin');
@@ -144,11 +145,52 @@ void main() {
 
       // Deleting the local bookmark leaves the CLI's `(deleted)` row next to the still-tracked origin.
       await handle.bookmarkDelete(['exact:feature']);
-      final List<Bookmark> deleted = await handle.bookmarks();
+      final List<Bookmark> deleted = await handle.bookmarks(allRemotes: true);
       final Bookmark gone = _row(deleted, null);
       expect((gone.target, gone.synced), (null, false));
       final stillTracked = _row(deleted, 'origin').kind as RemoteBookmark;
       expect((stillTracked.tracked, stillTracked.ahead, stillTracked.behind), (true, null, null));
+
+      await handle.close();
+    });
+
+    test('the_cli_list_arguments_filter_and_sort_the_rows', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      await handle.bookmarkCreate(['a', 'b']);
+      List<String> names(List<Bookmark> rows) => rows.map((bm) => bm.name).toList();
+
+      expect(names(await handle.bookmarks()), ['a', 'b']);
+      expect(names(await handle.bookmarks(names: ['a'])), ['a'], reason: 'a filter changes the row set');
+      expect(names(await handle.bookmarks(sort: [BookmarkSortKey.nameDesc])), ['b', 'a']);
+      // `revisions`, `remotes` and `conflicted` each change the row set: no bookmark's local
+      // target is the root, there is no remote, and no bookmark is conflicted.
+      expect(await handle.bookmarks(revisions: ['root()']), isEmpty);
+      expect(await handle.bookmarks(remotes: ['origin']), isEmpty);
+      expect(await handle.bookmarks(conflicted: true), isEmpty);
+      final WarnedList<Bookmark> unmatched = await handle.bookmarks(names: ['nope']);
+      expect(unmatched, isEmpty);
+      expect(unmatched.warnings.map((w) => w.code), ['jj.bookmark_names_unmatched']);
+      await expectLater(
+        handle.bookmarks(allRemotes: true, tracked: true),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having((e) => e.context, 'context', "the argument '--all-remotes' cannot be used with '--tracked'"),
+        ),
+      );
+      final nul = String.fromCharCode(0);
+      expect(
+        () => handle.bookmarks(names: ['a$nul']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'names')),
+      );
+      expect(
+        () => handle.bookmarks(revisions: ['@$nul']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'revisions')),
+      );
+      expect(
+        () => handle.bookmarks(remotes: ['o$nul']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'remotes')),
+      );
 
       await handle.close();
     });

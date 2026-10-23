@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import '../ffi/bookmarks.dart' show Bookmark;
+import '../ffi/bookmarks.dart' show Bookmark, BookmarkSortKey;
 import '../ffi/change.dart' show Change;
 import '../ffi/commit_contents.dart' show CommitContent;
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, EvologEntry, InterdiffView, RevisionRef, ShowEntry;
@@ -281,17 +281,49 @@ final class RepoHandle {
     return _worker.opLog(_handleId, limit);
   }
 
-  /// Read the bookmarks of this repository — the `jj bookmark list --all-remotes`
-  /// row set with its tracking facts (Story 9.29).
+  /// Read the bookmarks of this repository — the rows `jj bookmark list`
+  /// prints for these arguments, in its order, with their tracking facts
+  /// (Stories 9.29 and 9.19). Every default is the CLI without that argument:
+  /// the local bookmarks plus the tracked remote rows that differ from them.
   ///
-  /// Throws [StateError] synchronously if the handle is already [_closed].
-  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.jj_lib_error`).
-  Future<WarnedList<Bookmark>> bookmarks() {
+  /// [names] are string PATTERNS (a bare one is a GLOB), OR-ed with
+  /// [revisions] (revsets matching LOCAL targets). [remotes] (remote-name
+  /// patterns) lists those remotes' tracked and untracked rows, [allRemotes]
+  /// every remote row (`--all-remotes`), [tracked] tracked rows only (without
+  /// [remotes] the remote `git` is left out on a Git-backed repo), [conflicted]
+  /// conflicted local bookmarks only. [sort] orders the items — a local row with
+  /// its tracked rows, or one untracked row — most significant key first; empty
+  /// applies `ui.bookmark-list-sort-keys` (default by name). An exact name that
+  /// matches nothing warns `jj.bookmark_names_unmatched`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if a pattern or revset contains an interior NUL
+  /// (U+0000). Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — [allRemotes] with [remotes], [tracked] or
+  /// [conflicted], or a bad pattern — `jj.revset_parse_error`,
+  /// `jj.revset_resolution_error`, `jj.config_error`, `jj.jj_lib_error`).
+  Future<WarnedList<Bookmark>> bookmarks({
+    List<String> names = const [],
+    List<String> revisions = const [],
+    List<String> remotes = const [],
+    bool allRemotes = false,
+    bool tracked = false,
+    bool conflicted = false,
+    List<BookmarkSortKey> sort = const [],
+  }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
-    return _worker.bookmarks(_handleId);
+    return _worker.bookmarks(
+      _handleId,
+      names: names,
+      revisions: revisions,
+      remotes: remotes,
+      allRemotes: allRemotes,
+      tracked: tracked,
+      conflicted: conflicted,
+      sort: sort,
+    );
   }
 
   /// Read the configured git remotes for this repository.
@@ -1724,6 +1756,88 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.bookmarkDelete(_handleId, names);
+  }
+
+  /// Move existing local bookmarks to one revision (Story 9.19) — the CLI's
+  /// `jj bookmark move`.
+  ///
+  /// [names] are EXACT bookmark names (never globs); [from] are revset texts
+  /// (the CLI's `--from`, unioned). At least one of the two is required. A
+  /// bookmark moves when it is named (any, without names) and, with [from], one
+  /// of its targets is in [from]. A `null` [to] is the CLI's `--to` default `@`;
+  /// otherwise a jj reverse-hex change id. Fast-forward is decided exactly as
+  /// [dropActions]' bookmark row decides it: a backwards or sideways move is
+  /// refused unless [allowBackwards].
+  ///
+  /// A bookmark already at the target is skipped; when none is left nothing is
+  /// written and `newOpId` is the pre-call head. Every moved bookmark gets a
+  /// normal target, so a conflicted one is resolved. Warnings:
+  /// `jj.bookmark_names_unmatched`, `jj.bookmark_target_empty`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — no names and no [from], or a backwards move with the
+  /// hint "Use --allow-backwards to allow it." — `jj.change_not_found`,
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`,
+  /// `jj.jj_lib_error`).
+  Future<MutationResult> bookmarkMove(
+    List<String> names, {
+    List<String> from = const [],
+    String? to,
+    bool allowBackwards = false,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.bookmarkMove(_handleId, names, from: from, to: to, allowBackwards: allowBackwards);
+  }
+
+  /// Advance the closest bookmarks to a revision (Story 9.19) — the CLI's
+  /// `jj bookmark advance`.
+  ///
+  /// A `null` [to] applies `revsets.bookmark-advance-to` (default `@`), which
+  /// must resolve to exactly one commit; otherwise a jj reverse-hex change id.
+  /// Empty [names] applies the CLI's default candidates: the local bookmarks
+  /// with a target in `revsets.bookmark-advance-from` (default
+  /// `heads(::to & bookmarks())`); otherwise EXACT names. Then as [bookmarkMove]
+  /// without `allowBackwards`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error` /
+  /// `jj.revset_resolution_error` — a bad default target carries the CLI's
+  /// "`revsets.bookmark-advance-to` controls the default target. …" hint —
+  /// `jj.config_error`, `jj.jj_lib_error`).
+  Future<MutationResult> bookmarkAdvance({List<String> names = const [], String? to}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.bookmarkAdvance(_handleId, names: names, to: to);
+  }
+
+  /// Rename the local bookmark [oldName] to [newName] (Story 9.19) — the CLI's
+  /// `jj bookmark rename`. Both are DECODED names.
+  ///
+  /// The new name points where the old one did; tracking moves with it, but the
+  /// remote bookmarks themselves are not renamed (`jj.bookmark_remotes_not_renamed`).
+  /// [overwriteExisting] (`--overwrite-existing`) lets [newName] replace an
+  /// existing bookmark. Renaming to the same name with [overwriteExisting]
+  /// writes nothing. Warnings: `jj.bookmark_rename_remote_exists`,
+  /// `jj.bookmark_tracking_dropped`, `jj.bookmark_remotes_not_renamed`,
+  /// `jj.bookmark_tracked_remotes_exist`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — an empty name, "No such bookmark: …" —
+  /// `jj.bookmark_exists`, `jj.config_error`, `jj.jj_lib_error`).
+  Future<MutationResult> bookmarkRename(String oldName, String newName, {bool overwriteExisting = false}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.bookmarkRename(_handleId, oldName, newName, overwriteExisting: overwriteExisting);
   }
 
   /// Start tracking the working-copy paths matching [paths] (Story 9.22) — the

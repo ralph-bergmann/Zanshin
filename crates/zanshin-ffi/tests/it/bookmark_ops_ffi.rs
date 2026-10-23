@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! Integration tests for Story 9.8's two bookmark mutation wrappers
-//! (`zanshin_bookmark_create`, `zanshin_bookmark_delete`).
+//! (`zanshin_bookmark_create`, `zanshin_bookmark_delete`) and Story 9.19's three
+//! (`zanshin_bookmark_move`, `zanshin_bookmark_advance`, `zanshin_bookmark_rename`).
 //!
 //! Every buffer is read through the `FlatBuffers` generated typed accessors and the Verifier —
 //! a wrong-shape payload is a compile error, not a runtime assert. Every token is freed via
@@ -20,7 +21,10 @@ use std::path::Path;
 
 use flatbuffers::root as fb_root;
 use test_helpers::{extract_fixture, set_local_bookmark, set_remote_bookmark};
-use zanshin_ffi::bookmark_ops::{zanshin_bookmark_create, zanshin_bookmark_delete};
+use zanshin_ffi::bookmark_ops::{
+    zanshin_bookmark_advance, zanshin_bookmark_create, zanshin_bookmark_delete, zanshin_bookmark_move,
+    zanshin_bookmark_rename,
+};
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::op_log::zanshin_op_log;
@@ -195,7 +199,7 @@ fn wc_commit_hex(handle: u64) -> String {
 /// Local bookmark names the shipped read wrapper reports.
 fn listed_bookmark_names(handle: u64) -> Vec<String> {
     // SAFETY: handle is live and was produced by zanshin_repo_open.
-    let token = unsafe { zanshin_ffi::bookmarks::zanshin_bookmarks(handle) };
+    let token = unsafe { crate::bookmarks_all_remotes(handle) };
     // SAFETY: token is the fresh, non-null token the call just returned.
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
@@ -662,5 +666,397 @@ fn a_null_or_malformed_request_buffer_is_refused_by_both_wrappers() {
         assert_eq!(env.error().and_then(|e| e.code()), Some(FFI_INVALID_ARGUMENT));
     }
 
+    close_handle(handle);
+}
+
+// ── Story 9.19: move / advance / rename ───────────────────────────────────────
+
+/// A `BookmarkMoveRequest`; `None` leaves the vector or `to` ABSENT.
+fn move_request_bytes(
+    names: Option<&[&str]>,
+    from: Option<&[&str]>,
+    to: Option<&str>,
+    allow_backwards: bool,
+) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let names = names.map(|ns| {
+        let offsets: Vec<_> = ns.iter().map(|n| b.create_string(n)).collect();
+        b.create_vector(&offsets)
+    });
+    let from = from.map(|ns| {
+        let offsets: Vec<_> = ns.iter().map(|n| b.create_string(n)).collect();
+        b.create_vector(&offsets)
+    });
+    let to = to.map(|s| b.create_string(s));
+    let req = fbs::BookmarkMoveRequest::create(
+        &mut b,
+        &fbs::BookmarkMoveRequestArgs {
+            kind: fbs::RequestKind::BookmarkMove,
+            names,
+            from,
+            to,
+            allow_backwards,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// A `BookmarkAdvanceRequest`; `None` leaves the field ABSENT.
+fn advance_request_bytes(names: Option<&[&str]>, to: Option<&str>) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let names = names.map(|ns| {
+        let offsets: Vec<_> = ns.iter().map(|n| b.create_string(n)).collect();
+        b.create_vector(&offsets)
+    });
+    let to = to.map(|s| b.create_string(s));
+    let req = fbs::BookmarkAdvanceRequest::create(
+        &mut b,
+        &fbs::BookmarkAdvanceRequestArgs {
+            kind: fbs::RequestKind::BookmarkAdvance,
+            names,
+            to,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// A `BookmarkRenameRequest`; `None` leaves the name ABSENT.
+fn rename_request_bytes(old_name: Option<&str>, new_name: Option<&str>, overwrite_existing: bool) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let old_name = old_name.map(|s| b.create_string(s));
+    let new_name = new_name.map(|s| b.create_string(s));
+    let req = fbs::BookmarkRenameRequest::create(
+        &mut b,
+        &fbs::BookmarkRenameRequestArgs {
+            kind: fbs::RequestKind::BookmarkRename,
+            old_name,
+            new_name,
+            overwrite_existing,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// Calls `wrapper` and returns the verified envelope bytes.
+fn call(wrapper: BufWrapper, handle: u64, req: &[u8]) -> Vec<u8> {
+    // SAFETY: the handle is live or the documented null handle; the buffer outlives the call.
+    let token = unsafe { wrapper(handle, req.as_ptr(), req.len()) };
+    // SAFETY: fresh, non-null token.
+    unsafe { read_and_free(token) }
+}
+
+/// The head operation's description, read back through the op-log wrapper.
+fn head_op_description(handle: u64) -> String {
+    // SAFETY: handle is live; -1 means "no limit".
+    let bytes = unsafe { read_and_free(zanshin_op_log(handle, -1)) };
+    let env = parse_envelope(&bytes);
+    env.data_as_op_log()
+        .expect("OpLog payload")
+        .operations()
+        .expect("operations")
+        .get(0)
+        .description()
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// `(change id, commit hex)` of `@`'s first parent, through the change wrapper.
+fn wc_parent(handle: u64) -> (String, String) {
+    parent_of(handle, &wc_change_id(handle))
+}
+
+/// `(change id, commit hex)` of `change`'s first parent, through the change wrapper.
+fn parent_of(handle: u64, change: &str) -> (String, String) {
+    let read = |id: &str| -> (Vec<String>, String) {
+        let id = cstr(id);
+        // SAFETY: handle is live; id is a valid NUL-terminated C string alive for the call.
+        let bytes = unsafe { read_and_free(zanshin_ffi::change::zanshin_change(handle, id.as_ptr())) };
+        let env = parse_envelope(&bytes);
+        let change = env.data_as_change().expect("Change payload");
+        (
+            change
+                .parents()
+                .expect("parents")
+                .iter()
+                .map(ToOwned::to_owned)
+                .collect(),
+            change.commit_id().expect("commit id").to_owned(),
+        )
+    };
+    let (parents, _) = read(change);
+    let parent = parents[0].clone();
+    let (_, hex) = read(&parent);
+    (parent, hex)
+}
+
+/// The change id of the commit `hex`: a probe bookmark set on it, read back, then deleted.
+fn change_of_hex(handle: u64, root: &Path, hex: &str) -> String {
+    set_local_bookmark(root, "probe", &[hex]);
+    let change = local_target(handle, "probe").expect("probe target");
+    set_local_bookmark(root, "probe", &[]);
+    change
+}
+
+/// The local target (change id) of `name`, read back through `zanshin_bookmarks`.
+fn local_target(handle: u64, name: &str) -> Option<String> {
+    // SAFETY: handle is live and was produced by zanshin_repo_open.
+    let bytes = unsafe { read_and_free(crate::bookmarks_all_remotes(handle)) };
+    let env = parse_envelope(&bytes);
+    let rows = env.data_as_bookmarks().and_then(|p| p.bookmarks())?;
+    rows.iter()
+        .find(|b| b.name() == Some(name) && b.kind() == fbs::BookmarkKind::Local)
+        .and_then(|b| b.target().map(ToOwned::to_owned))
+}
+
+/// A zero handle answers last, after a well-formed buffer of each wrapper's own kind.
+#[test]
+fn a_zero_handle_is_refused_by_the_three_new_wrappers() {
+    test_helpers::pin_test_env();
+    for (wrapper, req) in [
+        (
+            zanshin_bookmark_move as BufWrapper,
+            move_request_bytes(Some(&["a"]), None, None, false),
+        ),
+        (
+            zanshin_bookmark_advance as BufWrapper,
+            advance_request_bytes(None, None),
+        ),
+        (
+            zanshin_bookmark_rename as BufWrapper,
+            rename_request_bytes(Some("a"), Some("b"), false),
+        ),
+    ] {
+        let bytes = call(wrapper, 0, &req);
+        assert_eq!(
+            parse_envelope(&bytes).error().and_then(|e| e.code()),
+            Some(FFI_INVALID_HANDLE)
+        );
+        // Null and malformed buffers, and another wrapper's buffer, are refused first.
+        // SAFETY: a null `data` is the documented null-pointer case.
+        let bytes = unsafe { read_and_free(wrapper(0, std::ptr::null(), 0)) };
+        assert_eq!(
+            parse_envelope(&bytes).error().and_then(|e| e.code()),
+            Some(FFI_NULL_POINTER)
+        );
+        let garbage = [0xffu8; 8];
+        let bytes = call(wrapper, 0, &garbage);
+        assert_eq!(
+            parse_envelope(&bytes).error().and_then(|e| e.code()),
+            Some(FFI_INVALID_ARGUMENT)
+        );
+        let bytes = call(wrapper, 0, &delete_request_bytes(Some(&["a"])));
+        let env = parse_envelope(&bytes);
+        assert_eq!(env.error().and_then(|e| e.code()), Some(FFI_INVALID_ARGUMENT));
+        assert!(env
+            .error()
+            .and_then(|e| e.context())
+            .is_some_and(|c| c.starts_with("request kind mismatch")));
+    }
+}
+
+/// The three verbs over the wire: an advance to the default `@`, a backwards move refused with
+/// its hint in the envelope (no operation), then allowed, a default-candidate advance, and a
+/// rename — each success a `MutationResult` whose `new_op_id` is the new head with the CLI's
+/// description; and the reader's absent fields.
+#[test]
+fn move_advance_and_rename_round_trip_over_the_wire() {
+    test_helpers::pin_test_env();
+    let (handle, root) = open_fixture();
+    let (parent_change, parent_hex) = wc_parent(handle);
+    let wc_hex = wc_commit_hex(handle);
+    set_local_bookmark(&root, "feature", &[&parent_hex]);
+
+    let ok_op = |bytes: &[u8]| -> String {
+        let env = parse_envelope(bytes);
+        assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+        env.data_as_mutation_result()
+            .expect("MutationResult payload")
+            .new_op_id()
+            .expect("op id")
+            .to_owned()
+    };
+
+    // Advance by name, `to` absent: the default target `@`.
+    let op = ok_op(&call(
+        zanshin_bookmark_advance,
+        handle,
+        &advance_request_bytes(Some(&["feature"]), None),
+    ));
+    assert_eq!(op, head_op_id(handle));
+    assert_eq!(
+        head_op_description(handle),
+        format!("point bookmark feature to commit {wc_hex}")
+    );
+
+    // Move back to the parent: refused, with the CLI's hint, and nothing written.
+    let before = head_op_id(handle);
+    let backwards = move_request_bytes(Some(&["feature"]), None, Some(&parent_change), false);
+    let bytes = call(zanshin_bookmark_move, handle, &backwards);
+    let env = parse_envelope(&bytes);
+    let error = env.error().expect("refused");
+    assert_eq!(error.code(), Some(JJ_INVALID_INPUT));
+    assert_eq!(
+        error.context(),
+        Some("Refusing to move bookmark backwards or sideways: feature")
+    );
+    let hints: Vec<&str> = error.hints().expect("hints").iter().collect();
+    assert_eq!(hints, ["Use --allow-backwards to allow it."]);
+    assert_eq!(head_op_id(handle), before);
+
+    let allowed = move_request_bytes(Some(&["feature"]), None, Some(&parent_change), true);
+    ok_op(&call(zanshin_bookmark_move, handle, &allowed));
+    assert_eq!(
+        head_op_description(handle),
+        format!("point bookmark feature to commit {parent_hex}")
+    );
+
+    // Advance with names and `to` absent: `heads(::@ & bookmarks())` is the parent.
+    ok_op(&call(
+        zanshin_bookmark_advance,
+        handle,
+        &advance_request_bytes(None, None),
+    ));
+    assert_eq!(
+        head_op_description(handle),
+        format!("point bookmark feature to commit {wc_hex}")
+    );
+
+    // Move with neither names nor from (both absent) is the jj layer's one refusal.
+    let bytes = call(
+        zanshin_bookmark_move,
+        handle,
+        &move_request_bytes(None, None, None, false),
+    );
+    assert_eq!(
+        parse_envelope(&bytes).error().and_then(|e| e.code()),
+        Some(JJ_INVALID_INPUT)
+    );
+
+    ok_op(&call(
+        zanshin_bookmark_rename,
+        handle,
+        &rename_request_bytes(Some("feature"), Some("renamed"), false),
+    ));
+    assert_eq!(head_op_description(handle), "rename bookmark feature to renamed");
+    assert_eq!(listed_bookmark_names(handle), ["renamed"]);
+
+    // An absent old name is the empty name; a missing bookmark is "No such bookmark".
+    for (req, context) in [
+        (
+            rename_request_bytes(None, Some("x"), false),
+            "bookmark name must not be empty",
+        ),
+        (
+            rename_request_bytes(Some("nope"), Some("x"), false),
+            "No such bookmark: nope",
+        ),
+    ] {
+        let bytes = call(zanshin_bookmark_rename, handle, &req);
+        let error = parse_envelope(&bytes).error().expect("refused");
+        assert_eq!((error.code(), error.context()), (Some(JJ_INVALID_INPUT), Some(context)));
+    }
+    set_local_bookmark(&root, "other", &[&wc_hex]);
+    let before = head_op_id(handle);
+    let bytes = call(
+        zanshin_bookmark_rename,
+        handle,
+        &rename_request_bytes(Some("renamed"), Some("other"), false),
+    );
+    let error = parse_envelope(&bytes).error().expect("refused");
+    assert_eq!(
+        (error.code(), error.context()),
+        (Some(JJ_BOOKMARK_EXISTS), Some("other"))
+    );
+    assert_eq!(head_op_id(handle), before, "the refusal writes no operation");
+    close_handle(handle);
+}
+
+/// Every argument observably crosses the wire: `from` alone and with names, advance's `to` and
+/// names, rename's `overwrite_existing`, and a rename warning in the envelope.
+#[test]
+fn every_move_advance_and_rename_argument_crosses_the_wire() {
+    test_helpers::pin_test_env();
+    let (handle, root) = open_fixture();
+    // `G → P → C`, off root (the fixture's `@` sits on root).
+    let g_hex = test_helpers::add_commit_off_root(&root, "g");
+    let p_hex = test_helpers::add_commit_with_files(&root, &[&g_hex], &[("p.txt", "p")], "p");
+    let c_hex = test_helpers::add_commit_with_files(&root, &[&p_hex], &[("c.txt", "c")], "c");
+    let (p, c) = (
+        change_of_hex(handle, &root, &p_hex),
+        change_of_hex(handle, &root, &c_hex),
+    );
+    let ok = |bytes: &[u8]| {
+        let env = parse_envelope(bytes);
+        assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    };
+
+    // `from` alone moves the bookmark on `G`; a names-only move of `two` would have moved `two`.
+    set_local_bookmark(&root, "one", &[&g_hex]);
+    set_local_bookmark(&root, "two", &[&p_hex]);
+    ok(&call(
+        zanshin_bookmark_move,
+        handle,
+        &move_request_bytes(None, Some(&[&g_hex]), Some(&c), false),
+    ));
+    assert_eq!(local_target(handle, "one").as_deref(), Some(c.as_str()));
+    assert_eq!(local_target(handle, "two").as_deref(), Some(p.as_str()));
+
+    // Names AND from: `one` is named but no longer on `P`, so only `two` moves.
+    ok(&call(
+        zanshin_bookmark_move,
+        handle,
+        &move_request_bytes(Some(&["one", "two"]), Some(&[&p_hex]), Some(&c), false),
+    ));
+    assert_eq!(local_target(handle, "two").as_deref(), Some(c.as_str()));
+    assert_eq!(
+        head_op_description(handle),
+        format!("point bookmark two to commit {c_hex}")
+    );
+
+    // Advance with `to` = `P`.
+    set_local_bookmark(&root, "three", &[&g_hex]);
+    ok(&call(
+        zanshin_bookmark_advance,
+        handle,
+        &advance_request_bytes(Some(&["three"]), Some(&p)),
+    ));
+    assert_eq!(local_target(handle, "three").as_deref(), Some(p.as_str()));
+
+    // Advance by name to `C`: `four` on `G` is no default candidate (`heads(::C & bookmarks())`
+    // is `C`, where `one` and `two` already are), so only the name moves it.
+    set_local_bookmark(&root, "four", &[&g_hex]);
+    ok(&call(
+        zanshin_bookmark_advance,
+        handle,
+        &advance_request_bytes(Some(&["four"]), Some(&c)),
+    ));
+    assert_eq!(local_target(handle, "four").as_deref(), Some(c.as_str()));
+
+    // Overwrite onto an existing name succeeds.
+    ok(&call(
+        zanshin_bookmark_rename,
+        handle,
+        &rename_request_bytes(Some("three"), Some("one"), true),
+    ));
+    assert_eq!(local_target(handle, "one").as_deref(), Some(p.as_str()));
+    assert_eq!(local_target(handle, "three"), None);
+
+    // A rename warning code rides the envelope.
+    set_remote_bookmark(&root, "two", "origin", &c_hex, true);
+    let bytes = call(
+        zanshin_bookmark_rename,
+        handle,
+        &rename_request_bytes(Some("two"), Some("deux"), false),
+    );
+    let env = parse_envelope(&bytes);
+    assert!(env.ok());
+    let codes: Vec<&str> = env
+        .warnings()
+        .map(|w| w.iter().filter_map(|w| w.code()).collect())
+        .unwrap_or_default();
+    assert!(codes.contains(&"jj.bookmark_remotes_not_renamed"), "{codes:?}");
     close_handle(handle);
 }

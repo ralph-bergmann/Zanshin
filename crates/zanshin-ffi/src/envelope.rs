@@ -266,10 +266,21 @@ pub const JJ_SHORT_PREFIXES_FAILED: &str = "jj.short_prefixes_failed";
 pub const JJ_REMOTE_URL_DUPLICATE: &str = "jj.remote_url_duplicate";
 /// Warning: a bookmark was created on an empty, undescribed revision.
 pub const JJ_BOOKMARK_TARGET_EMPTY: &str = "jj.bookmark_target_empty";
-/// Warning: exact names given to `bookmark delete` that match no local bookmark.
+/// Warning: exact names given to `bookmark delete` / `move` / `advance` that match no local
+/// bookmark, or to `bookmark list` that match no local or remote bookmark.
 pub const JJ_BOOKMARK_NAMES_UNMATCHED: &str = "jj.bookmark_names_unmatched";
 /// Warning: `bookmark create` auto-tracked a remote bookmark that already exists on the remote.
 pub const JJ_BOOKMARK_AUTO_TRACK_EXISTING: &str = "jj.bookmark_auto_track_existing";
+/// Warning: `bookmark rename` dropped the tracking of a remote where the new name already exists
+/// untracked (Story 9.19).
+pub const JJ_BOOKMARK_RENAME_REMOTE_EXISTS: &str = "jj.bookmark_rename_remote_exists";
+/// Warning: `bookmark rename --overwrite-existing` untracked a remote bookmark of the overwritten
+/// name (Story 9.19).
+pub const JJ_BOOKMARK_TRACKING_DROPPED: &str = "jj.bookmark_tracking_dropped";
+/// Warning: `bookmark rename` left the old name's tracked remote bookmarks unrenamed (Story 9.19).
+pub const JJ_BOOKMARK_REMOTES_NOT_RENAMED: &str = "jj.bookmark_remotes_not_renamed";
+/// Warning: `bookmark rename` onto a name with tracked remote bookmarks (Story 9.19).
+pub const JJ_BOOKMARK_TRACKED_REMOTES_EXIST: &str = "jj.bookmark_tracked_remotes_exist";
 /// Warning: a path `absorb` could not split.
 pub const JJ_ABSORB_PATH_SKIPPED: &str = "jj.absorb_path_skipped";
 /// Warning: a path whose content could not be read.
@@ -388,6 +399,10 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::BookmarkTargetEmpty => JJ_BOOKMARK_TARGET_EMPTY,
         K::BookmarkNamesUnmatched => JJ_BOOKMARK_NAMES_UNMATCHED,
         K::BookmarkAutoTrackExisting => JJ_BOOKMARK_AUTO_TRACK_EXISTING,
+        K::BookmarkRenameRemoteExists => JJ_BOOKMARK_RENAME_REMOTE_EXISTS,
+        K::BookmarkTrackingDropped => JJ_BOOKMARK_TRACKING_DROPPED,
+        K::BookmarkRemotesNotRenamed => JJ_BOOKMARK_REMOTES_NOT_RENAMED,
+        K::BookmarkTrackedRemotesExist => JJ_BOOKMARK_TRACKED_REMOTES_EXIST,
         K::AbsorbPathSkipped => JJ_ABSORB_PATH_SKIPPED,
         K::PathAccessDenied => JJ_PATH_ACCESS_DENIED,
         K::PathNotAFile => JJ_PATH_NOT_A_FILE,
@@ -1503,6 +1518,10 @@ mod tests {
             K::BookmarkTargetEmpty => "jj.bookmark_target_empty",
             K::BookmarkNamesUnmatched => "jj.bookmark_names_unmatched",
             K::BookmarkAutoTrackExisting => "jj.bookmark_auto_track_existing",
+            K::BookmarkRenameRemoteExists => "jj.bookmark_rename_remote_exists",
+            K::BookmarkTrackingDropped => "jj.bookmark_tracking_dropped",
+            K::BookmarkRemotesNotRenamed => "jj.bookmark_remotes_not_renamed",
+            K::BookmarkTrackedRemotesExist => "jj.bookmark_tracked_remotes_exist",
             K::AbsorbPathSkipped => "jj.absorb_path_skipped",
             K::PathAccessDenied => "jj.path_access_denied",
             K::PathNotAFile => "jj.path_not_a_file",
@@ -1573,6 +1592,10 @@ mod tests {
             K::BookmarkTargetEmpty,
             K::BookmarkNamesUnmatched,
             K::BookmarkAutoTrackExisting,
+            K::BookmarkRenameRemoteExists,
+            K::BookmarkTrackingDropped,
+            K::BookmarkRemotesNotRenamed,
+            K::BookmarkTrackedRemotesExist,
             K::AbsorbPathSkipped,
             K::PathAccessDenied,
             K::PathNotAFile,

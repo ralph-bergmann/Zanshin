@@ -96,12 +96,28 @@ abstract final class ZanshinWarningCode {
   /// A bookmark was created on an empty, undescribed revision.
   static const bookmarkTargetEmpty = 'jj.bookmark_target_empty';
 
-  /// Exact names given to `bookmark delete` that match no local bookmark.
+  /// Exact names given to `bookmark delete` / `move` / `advance` that match no
+  /// local bookmark, or to `bookmark list` that match no local or remote one.
   static const bookmarkNamesUnmatched = 'jj.bookmark_names_unmatched';
 
   /// `bookmark create` auto-tracked a remote bookmark that already exists on
   /// the remote.
   static const bookmarkAutoTrackExisting = 'jj.bookmark_auto_track_existing';
+
+  /// `bookmark rename` dropped the tracking of a remote where the new name
+  /// already exists untracked (Story 9.19).
+  static const bookmarkRenameRemoteExists = 'jj.bookmark_rename_remote_exists';
+
+  /// `bookmark rename` with `overwriteExisting` untracked a remote bookmark of
+  /// the overwritten name (Story 9.19).
+  static const bookmarkTrackingDropped = 'jj.bookmark_tracking_dropped';
+
+  /// `bookmark rename` left the old name's tracked remote bookmarks unrenamed
+  /// (Story 9.19).
+  static const bookmarkRemotesNotRenamed = 'jj.bookmark_remotes_not_renamed';
+
+  /// `bookmark rename` onto a name with tracked remote bookmarks (Story 9.19).
+  static const bookmarkTrackedRemotesExist = 'jj.bookmark_tracked_remotes_exist';
 
   /// A path `absorb` could not split.
   static const absorbPathSkipped = 'jj.absorb_path_skipped';
@@ -283,6 +299,10 @@ abstract final class ZanshinWarningCode {
     bookmarkTargetEmpty,
     bookmarkNamesUnmatched,
     bookmarkAutoTrackExisting,
+    bookmarkRenameRemoteExists,
+    bookmarkTrackingDropped,
+    bookmarkRemotesNotRenamed,
+    bookmarkTrackedRemotesExist,
     absorbPathSkipped,
     pathAccessDenied,
     pathNotAFile,

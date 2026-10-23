@@ -438,14 +438,21 @@ fn abandon_deletes_bookmarks_pointing_only_at_the_abandoned_commit() {
     test_helpers::set_local_bookmark(&fx.path, "doomed", &[&layout.commit1_commit_hex]);
     let mut repo = Repo::open(&fx.path).unwrap();
     assert!(
-        repo.list_bookmarks().unwrap().iter().any(|b| b.name == "doomed"),
+        repo.list_bookmarks(&crate::all_remotes())
+            .unwrap()
+            .iter()
+            .any(|b| b.name == "doomed"),
         "fixture setup: bookmark must exist before abandon"
     );
 
     repo.abandon(&[ChangeId(layout.commit1_change_id)]).unwrap();
 
     assert!(
-        !repo.list_bookmarks().unwrap().iter().any(|b| b.name == "doomed"),
+        !repo
+            .list_bookmarks(&crate::all_remotes())
+            .unwrap()
+            .iter()
+            .any(|b| b.name == "doomed"),
         "abandon's delete_abandoned_bookmarks:true must remove a bookmark that pointed only at the abandoned commit"
     );
 }

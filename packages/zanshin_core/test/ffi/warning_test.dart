@@ -394,6 +394,10 @@ void main() {
         'jj.bookmark_target_empty',
         'jj.bookmark_names_unmatched',
         'jj.bookmark_auto_track_existing',
+        'jj.bookmark_rename_remote_exists',
+        'jj.bookmark_tracking_dropped',
+        'jj.bookmark_remotes_not_renamed',
+        'jj.bookmark_tracked_remotes_exist',
         'jj.absorb_path_skipped',
         'jj.path_access_denied',
         'jj.path_not_a_file',
@@ -437,7 +441,7 @@ void main() {
         'jj.config_deprecated',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(61), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(65), reason: 'no code is registered twice');
     });
   });
 

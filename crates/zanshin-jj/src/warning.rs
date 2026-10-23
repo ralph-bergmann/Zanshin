@@ -76,13 +76,32 @@ pub enum WarningKind {
     RemoteUrlDuplicate,
     /// A bookmark was created on an empty, undescribed revision (`bookmark/create.rs:84-86`).
     BookmarkTargetEmpty,
-    /// Exact names given to `bookmark delete` that match no local bookmark
-    /// (`warn_unmatched_local_bookmarks`, `bookmark/mod.rs:185-203`).
+    /// Exact names given to `bookmark delete`, `move` or `advance` that match no local bookmark
+    /// (`warn_unmatched_local_bookmarks`, `bookmark/mod.rs:185-203`), or to `bookmark list` that
+    /// match no local or remote bookmark (`warn_unmatched_local_or_remote_bookmarks`,
+    /// `bookmark/mod.rs:205-226` @ v0.46.0; Story 9.19).
     BookmarkNamesUnmatched,
     /// `bookmark create` auto-tracked a remote bookmark that already exists on that remote — the
     /// created name matches `remotes.<r>.auto-track-bookmarks` / `auto-track-created-bookmarks`
     /// and the remote's view already holds it (`bookmark/create.rs:104-108` @ v0.46.0).
     BookmarkAutoTrackExisting,
+    /// `bookmark rename` kept a tracked remote of the old name, but the new name already exists,
+    /// untracked, on that remote, so its tracking state was dropped — "The renamed bookmark
+    /// already exists on the remote '{remote}', tracking state was dropped."
+    /// (`bookmark/rename.rs:111-123` @ v0.46.0; Story 9.19).
+    BookmarkRenameRemoteExists,
+    /// `bookmark rename --overwrite-existing` untracked a present remote of the overwritten name
+    /// that the old name did not track — "Tracking of remote bookmark {new}@{remote} was
+    /// dropped." (`bookmark/rename.rs:130-154` @ v0.46.0; Story 9.19).
+    BookmarkTrackingDropped,
+    /// `bookmark rename` of a bookmark with present tracked remotes: those stay under the old
+    /// name — "Tracked remote bookmarks for bookmark {old} were not renamed."
+    /// (`bookmark/rename.rs:167-182` @ v0.46.0; Story 9.19). Recorded after the finish.
+    BookmarkRemotesNotRenamed,
+    /// `bookmark rename` without `--overwrite-existing` onto a name that has present tracked
+    /// remotes — "Tracked remote bookmarks for bookmark {new} exist."
+    /// (`bookmark/rename.rs:183-201` @ v0.46.0; Story 9.19). Recorded after the finish.
+    BookmarkTrackedRemotesExist,
     /// A path `absorb` could not split (`absorb.rs:155-158`).
     AbsorbPathSkipped,
     /// A path whose content could not be read (`file/show.rs:164-170`, `file/search.rs:109-115`).

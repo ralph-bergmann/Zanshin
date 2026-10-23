@@ -13,13 +13,89 @@ import 'warning.dart';
 
 // ── FFI adapter ───────────────────────────────────────────────────────────────
 
-/// Call `zanshin_bookmarks` with the raw `u64` handle and return the
-/// FlatBuffers `Envelope` bytes.
+/// Call `zanshin_bookmarks` with the raw `u64` handle and a
+/// `BookmarkListRequest` request buffer — the CLI's `jj bookmark list`
+/// arguments (Story 9.19) — and return the FlatBuffers `Envelope` bytes.
 ///
 /// Only the worker isolate calls this — raw handles never leave the worker
-/// (Model A, Story 3.9). No CString argument: bookmarks is handle-only,
-/// exactly like `zanshinStatus`.
-Uint8List zanshinBookmarks(int rawHandle) => readToken(zanshin_bookmarks(rawHandle));
+/// (Model A, Story 3.9). Every default is the CLI without that argument; see
+/// `RepoHandle.bookmarks` for each one's meaning.
+Uint8List zanshinBookmarks(
+  int rawHandle, {
+  List<String> names = const [],
+  List<String> revisions = const [],
+  List<String> remotes = const [],
+  bool allRemotes = false,
+  bool tracked = false,
+  bool conflicted = false,
+  List<BookmarkSortKey> sort = const [],
+}) {
+  rejectInteriorNuls(names, 'names');
+  rejectInteriorNuls(revisions, 'revisions');
+  rejectInteriorNuls(remotes, 'remotes');
+  final Uint8List request = fbs.BookmarkListRequestObjectBuilder(
+    kind: fbs.RequestKind.BookmarkList,
+    names: names,
+    revisions: revisions,
+    remotes: remotes,
+    allRemotes: allRemotes,
+    tracked: tracked,
+    conflicted: conflicted,
+    sort: [for (final BookmarkSortKey key in sort) key.wire],
+  ).toBytes();
+  return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmarks(rawHandle, ptr, len)));
+}
+
+/// One `--sort` key of `jj bookmark list` (Story 9.19) — the CLI's `SortKey`. A
+/// `…Desc` key is the CLI's spelling with a trailing `-` (`name-`, …).
+enum BookmarkSortKey {
+  /// `name`: by bookmark name, then remote name (the local row first).
+  name(fbs.BookmarkSortKey.Name),
+
+  /// `name-`: [name] descending.
+  nameDesc(fbs.BookmarkSortKey.NameDesc),
+
+  /// `author-name`: by the target's author name.
+  authorName(fbs.BookmarkSortKey.AuthorName),
+
+  /// `author-name-`.
+  authorNameDesc(fbs.BookmarkSortKey.AuthorNameDesc),
+
+  /// `author-email`: by the target's author email.
+  authorEmail(fbs.BookmarkSortKey.AuthorEmail),
+
+  /// `author-email-`.
+  authorEmailDesc(fbs.BookmarkSortKey.AuthorEmailDesc),
+
+  /// `author-date`: by the target's author timestamp.
+  authorDate(fbs.BookmarkSortKey.AuthorDate),
+
+  /// `author-date-`.
+  authorDateDesc(fbs.BookmarkSortKey.AuthorDateDesc),
+
+  /// `committer-name`: by the target's committer name.
+  committerName(fbs.BookmarkSortKey.CommitterName),
+
+  /// `committer-name-`.
+  committerNameDesc(fbs.BookmarkSortKey.CommitterNameDesc),
+
+  /// `committer-email`: by the target's committer email.
+  committerEmail(fbs.BookmarkSortKey.CommitterEmail),
+
+  /// `committer-email-`.
+  committerEmailDesc(fbs.BookmarkSortKey.CommitterEmailDesc),
+
+  /// `committer-date`: by the target's committer timestamp.
+  committerDate(fbs.BookmarkSortKey.CommitterDate),
+
+  /// `committer-date-`.
+  committerDateDesc(fbs.BookmarkSortKey.CommitterDateDesc);
+
+  const BookmarkSortKey(this.wire);
+
+  /// The wire value.
+  final fbs.BookmarkSortKey wire;
+}
 
 // ── Dart models ───────────────────────────────────────────────────────────────
 
@@ -73,10 +149,10 @@ final class RefDistance {
   final int? upper;
 }
 
-/// One row of `jj bookmark list --all-remotes` (FR-JJ-8, Story 9.29).
+/// One row of `jj bookmark list` (FR-JJ-8, Stories 9.29 and 9.19).
 ///
 /// A bookmark that is both local and on a remote appears as separate [Bookmark]
-/// entries — one [LocalBookmark] and one [RemoteBookmark] per remote.
+/// entries — one [LocalBookmark] and one [RemoteBookmark] per listed remote.
 final class Bookmark {
   const Bookmark({
     required this.name,

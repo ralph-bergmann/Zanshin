@@ -281,6 +281,10 @@ pub enum MutateError {
     RevsetParseError {
         /// Human-readable parse failure from jj-lib.
         reason: String,
+        /// The CLI's hint lines for this refusal — `bookmark advance`'s
+        /// "`revsets.bookmark-advance-to` controls the default target. …" when the default target
+        /// does not parse (Story 9.19). Empty for most sites.
+        hints: Vec<String>,
     },
     /// A caller-supplied revset expression is well-formed but a symbol in it cannot be
     /// resolved (unknown bookmark/tag, no working-copy commit for `@`, ambiguous id) —
@@ -289,6 +293,10 @@ pub enum MutateError {
     RevsetResolutionError {
         /// Human-readable resolution failure from jj-lib.
         reason: String,
+        /// The CLI's hint lines for this refusal — `bookmark advance`'s default-target hint when
+        /// `revsets.bookmark-advance-to` does not resolve to one commit (Story 9.19). Empty for
+        /// most sites.
+        hints: Vec<String>,
     },
     /// [`crate::Repo::bookmark_create`] was called with a name that is already a LOCAL
     /// bookmark (Story 9.8) — the CLI's `Bookmark already exists: {name}`
@@ -495,7 +503,9 @@ impl MutateError {
             | Self::Immutable { hints, .. }
             | Self::BookmarkExists { hints, .. }
             | Self::PushRefRefused { hints, .. }
-            | Self::PushCommitRejected { hints, .. } => hints.clone(),
+            | Self::PushCommitRejected { hints, .. }
+            | Self::RevsetParseError { hints, .. }
+            | Self::RevsetResolutionError { hints, .. } => hints.clone(),
             Self::BookmarkTrackedRemoteExists { name } => vec![tracked_remote_bookmarks_hint(name)],
             Self::PathsNotIgnored { .. } => vec![PATHS_NOT_IGNORED_HINT.to_owned()],
             Self::UndoCrossWorkspace { .. } => vec![UNDO_CROSS_WORKSPACE_HINT.to_owned()],
@@ -533,8 +543,8 @@ pub(crate) fn cfg<E: std::fmt::Display>(e: E) -> MutateError {
 /// failure the same way this module classifies `resolve_expression`'s.
 pub(crate) fn rev(e: crate::RevsetError) -> MutateError {
     match e {
-        crate::RevsetError::ParseError { reason } => MutateError::RevsetParseError { reason },
-        crate::RevsetError::ResolutionError { reason } => MutateError::RevsetResolutionError { reason },
+        crate::RevsetError::ParseError { reason } => MutateError::RevsetParseError { reason, hints: vec![] },
+        crate::RevsetError::ResolutionError { reason } => MutateError::RevsetResolutionError { reason, hints: vec![] },
         crate::RevsetError::Config(inner) => cfg(inner),
         crate::RevsetError::JjLibError(reason) => MutateError::Backend(reason),
         crate::RevsetError::Precondition(inner) => MutateError::Precondition(inner),
@@ -552,7 +562,7 @@ pub(crate) fn res(e: ResolveError, id: Option<&ChangeId>) -> MutateError {
         ResolveError::NotFound => MutateError::ChangeNotFound {
             id: id.map(|i| i.0.clone()).unwrap_or_default(),
         },
-        ResolveError::NoWorkingCopy(reason) => MutateError::RevsetResolutionError { reason },
+        ResolveError::NoWorkingCopy(reason) => MutateError::RevsetResolutionError { reason, hints: vec![] },
         ResolveError::Backend(reason) => MutateError::Backend(reason),
     }
 }
@@ -2062,6 +2072,14 @@ mod tests {
                 message: String::new(),
                 hints: carried.clone(),
             },
+            MutateError::RevsetParseError {
+                reason: String::new(),
+                hints: carried.clone(),
+            },
+            MutateError::RevsetResolutionError {
+                reason: String::new(),
+                hints: carried.clone(),
+            },
         ] {
             assert_eq!(e.hints(), carried, "{e:?}");
         }
@@ -2160,11 +2178,11 @@ mod tests {
     fn rev_preserves_the_three_stage_revset_taxonomy() {
         assert!(matches!(
             rev(RevsetError::ParseError { reason: "p".to_owned() }),
-            MutateError::RevsetParseError { reason } if reason == "p"
+            MutateError::RevsetParseError { reason, hints } if reason == "p" && hints.is_empty()
         ));
         assert!(matches!(
             rev(RevsetError::ResolutionError { reason: "r".to_owned() }),
-            MutateError::RevsetResolutionError { reason } if reason == "r"
+            MutateError::RevsetResolutionError { reason, hints } if reason == "r" && hints.is_empty()
         ));
         assert!(matches!(
             rev(RevsetError::Config(ConfigError::Load { reason: "c".to_owned() })),

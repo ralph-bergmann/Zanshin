@@ -460,7 +460,7 @@ void main() {
 
       final ProjectCreation creation = await repos.convert(path);
       addTearDown(creation.repo.close);
-      final List<Bookmark> bookmarks = await creation.repo.handle.bookmarks();
+      final List<Bookmark> bookmarks = await creation.repo.handle.bookmarks(allRemotes: true);
       expect(
         <(String, String?, bool)>[
           for (final b in bookmarks)
@@ -503,7 +503,7 @@ void main() {
       );
       await git(<String>['update-ref', 'refs/remotes/origin/main', 'HEAD']);
 
-      final Bookmark origin = (await creation.repo.handle.bookmarks()).singleWhere(
+      final Bookmark origin = (await creation.repo.handle.bookmarks(allRemotes: true)).singleWhere(
         (b) => switch (b.kind) {
           RemoteBookmark(remoteName: 'origin') => true,
           _ => false,
@@ -521,7 +521,9 @@ void main() {
     /// ancestry.
     Future<void> moveLocalMain(ProjectRepo repo, Future<String> Function(List<String>) git, String rev) async {
       await git(<String>['update-ref', 'refs/heads/main', rev]);
-      final String main = (await repo.handle.bookmarks()).singleWhere((b) => b.kind is LocalBookmark).target!;
+      final String main = (await repo.handle.bookmarks(allRemotes: true))
+          .singleWhere((b) => b.kind is LocalBookmark)
+          .target!;
       await repo.handle.newChange(<String>[main]);
     }
 
@@ -593,7 +595,7 @@ void main() {
       await handle.newChange(<String>[first.workingCopyChangeId]);
 
       final remoteRows = <(String, String, bool, String?)>[
-        for (final b in await handle.bookmarks())
+        for (final b in await handle.bookmarks(allRemotes: true))
           if (b.kind case RemoteBookmark(:final String remoteName, :final bool tracked))
             (b.name, remoteName, tracked, b.target),
       ];

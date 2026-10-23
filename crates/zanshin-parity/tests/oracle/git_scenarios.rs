@@ -963,6 +963,21 @@ pub fn bookmark_auto_track_scenarios() -> Vec<Scenario> {
     ]
 }
 
+/// `bookmark rename` of the pushed, tracked `b-mark` (Story 9.19): the tracking moves to a
+/// not-yet-created `renamed@origin`, `b-mark@origin` stays, and the CLI warns "Tracked remote
+/// bookmarks for bookmark b-mark were not renamed." — read back with [`push_read_back`].
+pub fn bookmark_rename_tracked_scenarios() -> Vec<Scenario> {
+    vec![push(
+        "bookmark_rename_tracked_pushed",
+        PUSHED,
+        |repo, _, _| {
+            let result = repo.bookmark_rename("b-mark", "renamed", false);
+            crate::compare::zanshin_outcome(repo, &result)
+        },
+        |_| strings(&["bookmark", "rename", "b-mark", "renamed"]),
+    )]
+}
+
 // ── jj git fetch (Story 9.30) ────────────────────────────────────────────────
 
 // Every fetch below but `fetch_nothing_new` brings something new: `git --git-dir <remote> branch
