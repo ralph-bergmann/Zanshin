@@ -494,6 +494,52 @@ fn a_heading_counts_as_documentation() {
     assert_eq!(documented, BTreeSet::from(["zanshin_repo_detect".to_owned()]));
 }
 
+/// The header's include guard — the one `#define` it is allowed to carry.
+const INCLUDE_GUARD: &str = "ZANSHIN_FFI_H";
+
+/// Every macro name `#define`d in `header_src` other than the include guard.
+///
+/// The `FlatBuffers` internals (`<Table>_VT_*`, `ENUM_MIN_*`/`ENUM_MAX_*`) are the macros that
+/// once leaked here from the flatc-generated module; `cbindgen:ignore` on that module keeps
+/// them out, and this is what notices if a new generated module lacks the annotation.
+fn stray_defines(header_src: &str) -> Vec<&str> {
+    header_src
+        .lines()
+        .filter_map(|line| line.trim_start().strip_prefix("#define"))
+        .filter_map(|rest| rest.split_whitespace().next())
+        .filter(|name| *name != INCLUDE_GUARD)
+        .collect()
+}
+
+#[test]
+fn the_header_defines_no_macro_but_its_include_guard() {
+    let header = read_artifact(HEADER_PATH).expect("the generated C header is committed");
+    assert!(
+        header.contains(&format!("#define {INCLUDE_GUARD}")),
+        "the include guard is missing — the scanner would pass vacuously"
+    );
+    let stray = stray_defines(&header);
+    assert!(
+        stray.is_empty(),
+        "{HEADER_PATH} defines {} macro(s) besides its include guard — a flatc-generated \
+         module without `/// cbindgen:ignore` leaks its FlatBuffers internals:\n  {}",
+        stray.len(),
+        stray.join("\n  ")
+    );
+}
+
+#[test]
+fn a_flatbuffers_vtable_define_is_reported_as_stray() {
+    let header = "\
+#ifndef ZANSHIN_FFI_H
+#define ZANSHIN_FFI_H
+#define Envelope_VT_OK 4
+#define ENUM_MAX_PAYLOAD 42
+void zanshin_events_register(void (*callback)(ZanshinBuf *event));
+";
+    assert_eq!(stray_defines(header), ["Envelope_VT_OK", "ENUM_MAX_PAYLOAD"]);
+}
+
 #[test]
 fn reading_a_missing_artifact_fails_with_the_path_in_the_message() {
     let err = read_artifact("docs/no-such-file.md").expect_err("the path does not exist");
