@@ -67,8 +67,8 @@ pub struct FixOptions {
     /// default, the `revsets.fix` setting (jj's default `reachable(@, mutable())`).
     pub source: Vec<ChangeId>,
     /// Fix only these paths — repo-relative PREFIXES as for [`crate::Repo::restore`]; empty is
-    /// every path, `""` the root. A path no fixed revision's tree has warns
-    /// [`WarningKind::PathsUnmatched`].
+    /// every path, `""` the root. A path absent from the tree of every source and descendant
+    /// (fixed or not) warns [`WarningKind::PathsUnmatched`].
     pub paths: Vec<String>,
     /// `--include-unchanged-files`: fix the files a revision did not change too.
     pub include_unchanged_files: bool,
@@ -458,10 +458,21 @@ impl Runner<'_> {
             return None;
         };
         let stdin = child.stdin.take();
-        let output = std::thread::scope(|s| {
+        let waited = std::thread::scope(|s| {
             s.spawn(move || stdin.map(|mut stdin| stdin.write_all(content)));
-            child.wait_with_output().ok()
-        })?;
+            child.wait_with_output()
+        });
+        let output = match waited {
+            Ok(output) => output,
+            // The CLI keeps the old content without a warning. Logged so a silent no-op can be told
+            // from "nothing to fix": under a Dart host the VM may reap the child first (`ECHILD`).
+            // The path is user data, so it is logged at debug only.
+            Err(e) => {
+                tracing::warn!(tool = %tool.split_name(), error = %e, "fix tool's exit status lost; old content kept");
+                tracing::debug!(tool = %tool.split_name(), path = ?file.repo_path, "fix tool's exit status lost");
+                return None;
+            }
+        };
         tracing::debug!(?command, status = ?output.status, "fix tool exited");
         if !output.stderr.is_empty() {
             self.tool_stderr
@@ -559,17 +570,18 @@ pub(crate) fn fix(
     };
     let mut fixer =
         ParallelFileFixer::new(|store: &Store, file: &FileToFix| pollster::block_on(runner.fix_one_file(store, file)));
-    let summary = pollster::block_on(fix_files(
+    let outcome = pollster::block_on(fix_files(
         commit_ids,
         matcher.as_ref(),
         options.include_unchanged_files,
         tx.repo_mut(),
         &mut fixer,
-    ))
-    .map_err(be)?;
+    ));
+    // The tools' warnings are the call's on a failure too: the CLI printed them as they ran.
     let mut warnings = runner.warnings.into_inner().unwrap_or_else(PoisonError::into_inner);
     warnings.sort_by(|a, b| a.message.cmp(&b.message));
     ctx.warnings.extend(warnings);
+    let summary = outcome.map_err(be)?;
     let mut tool_stderr = runner.tool_stderr.into_inner().unwrap_or_else(PoisonError::into_inner);
     tool_stderr.sort_by(|a, b| (&a.path, &a.stderr).cmp(&(&b.path, &b.stderr)));
 

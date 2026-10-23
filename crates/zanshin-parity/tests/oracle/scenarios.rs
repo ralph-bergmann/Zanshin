@@ -2972,6 +2972,44 @@ fn metaedit_scenarios() -> Vec<Scenario> {
             },
             |s| verb_argv(s, "metaedit", &[("-r", "B")], &["--update-change-id"]),
         ),
+        // Two targets: "edit commit metadata for commit <C> and 1 more".
+        simple(
+            "metaedit_two_revisions_message",
+            |repo, _, s| {
+                let options = MetaeditOptions {
+                    revisions: vec![s.change("B"), s.change("C")],
+                    message: Some(vec!["X".to_owned()]),
+                    ..MetaeditOptions::default()
+                };
+                metaedit_outcome(repo, &options)
+            },
+            |s| verb_argv(s, "metaedit", &[("-r", "B"), ("-r", "C")], &["-m", "X"]),
+        ),
+        simple(
+            "metaedit_two_paragraphs",
+            |repo, _, _| {
+                let options = MetaeditOptions {
+                    message: Some(vec!["P1".to_owned(), "P2".to_owned()]),
+                    ..MetaeditOptions::default()
+                };
+                metaedit_outcome(repo, &options)
+            },
+            |_| args(&["metaedit", "-m", "P1", "-m", "P2"]),
+        ),
+        Scenario {
+            extra: Some(author_timestamps),
+            ..simple(
+                "metaedit_update_author_timestamp",
+                |repo, _, _| {
+                    let options = MetaeditOptions {
+                        update_author_timestamp: true,
+                        ..MetaeditOptions::default()
+                    };
+                    metaedit_outcome(repo, &options)
+                },
+                |_| args(&["metaedit", "--update-author-timestamp"]),
+            )
+        },
     ]
 }
 
@@ -3110,6 +3148,14 @@ fn duplicate_scenarios() -> Vec<Scenario> {
             |repo, _, s| duplicate_outcome(repo, &dup(s, &["B"], "-B", &["C"])),
             |s| verb_argv(s, "duplicate", &[("-r", "B"), ("-B", "C")], &[]),
         ),
+        Scenario {
+            setup: X_ON_ROOT,
+            ..simple(
+                "duplicate_onto_two_parents",
+                |repo, _, s| duplicate_outcome(repo, &dup(s, &["C"], "-o", &["A", "X"])),
+                |s| verb_argv(s, "duplicate", &[("-r", "C"), ("-o", "A"), ("-o", "X")], &[]),
+            )
+        },
         simple(
             "duplicate_as_own_descendant",
             |repo, _, s| duplicate_outcome(repo, &dup(s, &["A"], "-o", &["C"])),

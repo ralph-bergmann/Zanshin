@@ -54,7 +54,8 @@ where
 }
 
 /// Parse a `MetaeditRequest` buffer into owned [`MetaeditOptions`]: an ABSENT `revisions` is
-/// empty, an ABSENT `message` / `author` / `author_timestamp` is not given.
+/// empty, an ABSENT `message` / `author` / `author_timestamp` is not given; a present but EMPTY
+/// `message` joins to `""` — `-m ""`, which clears every target's description.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -115,7 +116,8 @@ fn read_fix_request(data: *const u8, len: usize) -> Result<FixOptions, FfiErrorO
 /// `handle` — the CLI's `jj metaedit` (Story 9.9).
 ///
 /// The arguments cross as a `MetaeditRequest` `FlatBuffers` request buffer, one field per CLI
-/// flag: `revisions` (ABSENT or EMPTY = `@`), `message` (the `-m` paragraphs; ABSENT = no `-m`),
+/// flag: `revisions` (ABSENT or EMPTY = `@`), `message` (the `-m` paragraphs; ABSENT = no `-m`;
+/// present but EMPTY = `-m ""`, clearing every target's description),
 /// `author` (`Name <email>`) or `update_author`, `author_timestamp` (RFC 2822 / RFC 3339) or
 /// `update_author_timestamp`, `update_change_id`, `force_rewrite`. A revision is rewritten only
 /// when one of its metadata changes (or `force_rewrite`); its descendants are reparented. A call

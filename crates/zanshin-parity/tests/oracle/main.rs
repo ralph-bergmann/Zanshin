@@ -282,6 +282,9 @@ parity!(
     metaedit_message,
     metaedit_revision_message,
     metaedit_update_change_id,
+    metaedit_two_revisions_message,
+    metaedit_two_paragraphs,
+    metaedit_update_author_timestamp,
     metaedit_author,
     metaedit_author_timestamp,
     metaedit_update_author_noop,
@@ -294,6 +297,7 @@ parity!(
     duplicate_onto_root,
     duplicate_insert_after,
     duplicate_insert_before,
+    duplicate_onto_two_parents,
     duplicate_as_own_descendant,
     duplicate_as_own_ancestor,
     duplicate_two_revisions,
@@ -328,7 +332,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 261);
+    assert_eq!(SCENARIO_IDS.len(), 265);
 }
 
 #[test]

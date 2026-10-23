@@ -262,3 +262,43 @@ fn a_malformed_author_or_timestamp_is_refused_before_anything() {
         );
     }
 }
+
+/// Nested targets: B and its child C each get a new change id, and C is rewritten ONCE — the
+/// operation records one predecessor per new commit, as `transform_descendants` promises.
+#[test]
+fn update_change_id_on_nested_revisions_rewrites_each_once() {
+    let mut fx = base();
+    let (old_b, old_c) = (commit(&fx.root, &fx.b), commit(&fx.root, &fx.c));
+    let result = fx
+        .repo
+        .metaedit(&MetaeditOptions {
+            revisions: vec![fx.b.clone(), fx.c.clone()],
+            update_change_id: true,
+            ..MetaeditOptions::default()
+        })
+        .expect("metaedit");
+    // The rewrite order: parents first.
+    let [new_b, new_c] = <[zanshin_jj::ChangeId; 2]>::try_from(result.new_change_ids).expect("two minted ids");
+    assert!(new_b != fx.b && new_c != fx.c);
+    assert_eq!(commit(&fx.root, &new_b).description(), "B\n");
+    assert_eq!(commit(&fx.root, &new_c).description(), "C\n");
+    assert_eq!(parents(&fx.root, &new_c), std::slice::from_ref(&new_b));
+    assert_eq!(result.working_copy_change_id, new_c);
+
+    let head = crate::rebase::load(&fx.root);
+    let predecessors = head
+        .operation()
+        .store_operation()
+        .commit_predecessors
+        .clone()
+        .expect("recorded");
+    assert_eq!(predecessors.len(), 2, "{predecessors:?}");
+    assert_eq!(
+        predecessors.get(commit(&fx.root, &new_b).id()),
+        Some(&vec![old_b.id().clone()])
+    );
+    assert_eq!(
+        predecessors.get(commit(&fx.root, &new_c).id()),
+        Some(&vec![old_c.id().clone()])
+    );
+}

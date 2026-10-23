@@ -5642,7 +5642,8 @@ pub mod zanshin {
         ///   revisions          change ids (jj reverse-hex); ABSENT or EMPTY = the CLI's default `@`
         ///   update_change_id   `--update-change-id`
         ///   message            the CLI's repeatable `-m`: ABSENT = no `-m` (the description stays),
-        ///                      present (even empty) = the paragraphs, joined as the CLI joins them
+        ///                      present = the paragraphs, joined as the CLI joins them; present but
+        ///                      EMPTY joins to "" = `-m ""` (clears every target's description)
         ///   update_author_timestamp / update_author / force_rewrite   the CLI's
         ///                      `--update-author-timestamp` / `--update-author` / `--force-rewrite`
         ///   author             `--author`, the CLI's `Name <email>` string; ABSENT = not given

@@ -2,14 +2,49 @@
 title: 'Story 9.9: `metaedit`, `duplicate`, `fix`'
 type: 'feature'
 created: '2026-10-23'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'daea9e2797b15296904ca0838cf728a64dd8a380'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: [multiple-goals, oversized]
-deferred: []
+deferred:
+  - summary: >-
+      Under a Dart host the cdylib's `wait_with_output` for a fix tool can lose its exit status (ECHILD), so `jj fix` keeps the old content without a sign in the envelope.
+    evidence: |-
+      Seen on about half of the `dart test` runs while implementing (Dart's exit-code handler reaps any child while one of its own processes runs); the Dart round trip therefore uses an unstartable tool, and a running tool is witnessed only in Rust processes (zanshin-jj tests, the FFI test, the oracle). jj-lib's `git` subprocesses share the hazard. Since the review a `tracing::warn!` marks the case.
+    location: >-
+      crates/zanshin-jj/src/fix.rs (Runner::run_tool); packages/zanshin_core/test/worker/metaedit_duplicate_fix_test.dart
+    severity: medium
+  - summary: >-
+      `jj.fileset_diagnostic` is registered and wired but jj-lib 0.46 emits no fileset diagnostics, so no test reaches it.
+    evidence: |-
+      `get_tools_config` records `print_parse_diagnostics` for `fix.tools.<name>.patterns` as the CLI does; `FilesetDiagnostics` stays empty at the pin. Re-check at the next pin bump.
+    location: >-
+      crates/zanshin-jj/src/fix.rs (get_tools_config); docs/rust-error-codes.md
+    severity: low
+  - summary: >-
+      `jj.config_deprecated` is emitted by the snapshotting verbs and the config verbs only; `config gc`, the non-snapshotting reads (graph, revset, log defaults) and the creation paths run the migration but drop its descriptions, where the CLI warns on every command.
+    evidence: |-
+      `config_cmd.rs` calls `startup(.., None)` for `config gc`; `config::load_with` / `load` discard the `Deprecations` (graph.rs, revset.rs, creation.rs, convert.rs reach config through them). Each needs a warning sink threaded through a path that has none today.
+    location: >-
+      crates/zanshin-jj/src/config.rs (load_with, load); crates/zanshin-jj/src/config_cmd.rs (config gc)
+    severity: medium
+  - summary: >-
+      A configured fix tool that never exits blocks the worker for good; the GUI has no Ctrl-C and `fix` has no cancel.
+    evidence: |-
+      `Runner::run_tool` waits on the child without a deadline, as the CLI does; the CLI's user can interrupt the terminal, the app's cannot, and every later call on the repo queues behind it. A cancel would follow the network verbs' (Story 9.52) helper + process-group kill.
+    location: >-
+      crates/zanshin-jj/src/fix.rs (Runner::run_tool)
+    severity: medium
+  - summary: >-
+      A fix tool that exits without reading stdin could raise SIGPIPE in the host process if the Flutter/Dart host does not ignore SIGPIPE.
+    evidence: |-
+      Unverified: `stdin.write_all` to a closed pipe raises SIGPIPE unless ignored; Rust binaries ignore it in `main`, a cdylib inherits the host's disposition. Settle by checking the Dart VM / Flutter macOS engine's SIGPIPE disposition (or a test that runs a tool that closes stdin early under `dart test`).
+    location: >-
+      crates/zanshin-jj/src/fix.rs (Runner::run_tool)
+    severity: high (unverified)
 ---
 
 <intent-contract>
@@ -137,6 +172,45 @@ CLI anchors at `v0.46.0` (`git -C ../jj show v0.46.0:cli/src/…`); jj-lib in `~
 
 ## Review Triage Log
 
+### 2026-10-23 — Review pass
+- verdicts: 35 findings — high 0, medium 11, low 20, false 3, maybe-false 1
+- findings:
+  - `[low]` `[reject]` (blind) fix `paths` are prefixes, the CLI takes filesets — real, but it is the house contract every paths-taking verb shares (`op_support::build_matcher` "WHY not the fileset DSL"); changing fix alone would split the contract, and a fileset surface is new parsing and API.
+  - `[medium]` `[patch]` (blind) a lost tool exit status (ECHILD under the Dart host) is completely silent — fixed: `tracing::warn!` naming tool and path on the wait-failure branch; the CLI behaviour (old content kept) stays. The hazard itself is deferred (row below).
+  - `[medium]` `[defer]` (blind) fix's success path never runs in its real host (Dart worker test uses an unstartable tool) — the Dart VM reaps the cdylib's child (ECHILD); pre-existing host hazard shared with jj-lib's git subprocesses. Deferred, mirrored to deferred-work.md.
+  - `[low]` `[patch]` (blind) `all_lines` has no behavioural witness — fixed with the line-range tests (see the verification-gap row).
+  - `[low]` `[patch]` (blind) tool-runner paths untested (chaining, run-if-zero, structured env, adopted PATH) — fixed: chaining + disabled-tool, run-tool-if-zero-line-ranges and adopted-PATH tests; the structured `env` stays covered by the `get_envs` unit test (the spawn path is the same `Command`).
+  - `[medium]` `[defer]` (blind) `jj.config_deprecated` only partly emitted (`config gc`, non-snapshot reads, creation paths drop it) — real; each path needs a warning sink it lacks today. Deferred, mirrored. The non-string `line-range-arg` failing every load matches the CLI (unit-tested in `migrate`).
+  - `[low]` `[reject]` (blind) `tool_stderr` cannot be attributed to a tool or commit and the sort loses chained order — the CLI prints neither (its own TODO); attribution would add wire fields for a diagnostic text, and the order across rayon threads is unspecified in the CLI too.
+  - `[low]` `[patch]` (blind) subtle metaedit branches untested — fixed in part: nested targets with `update_change_id` on two revisions (two minted ids, descendant rewritten once). The unset-author branch is rejected: it needs a commit written with an empty author, a fixture this repo cannot produce through the CLI path the oracle compares, for a comment-documented port line.
+  - `[low]` `[patch]` (blind) oracle misses shipped flags — fixed: metaedit several revisions, multi-paragraph `-m`, `--update-author-timestamp`, duplicate onto a merge destination. Malformed values are clap texts (house wording, nothing to compare); `fix -a` needs a line-range tool (covered by the zanshin-jj tests).
+  - `[low]` `[patch]` (blind) `message = Some(vec![])` underspecified — fixed: docs (Rust, FFI, ffi-abi.md, Dart) state it joins to "" and equals `-m ""`.
+  - `[low]` `[patch]` (blind) `PathsUnmatched` docs name the wrong tree set — fixed: "every source's and descendant's tree".
+  - `[low]` `[reject]` (blind) the oracle's `place_keys` tie-break is not total — today's scenarios are deterministic (B carries `b-mark`, C is `@`); a future tie fails loudly as a mislabelled scenario, and a total key needs parent-label propagation.
+  - `[low]` `[patch]` (edge) `fix_files` Err drops the runner's warnings — fixed: the sorted runner warnings are recorded before the error propagates.
+  - `[medium]` `[defer]` (edge) a tool that never exits blocks the worker for good — the CLI waits the same way but its user can Ctrl-C; a cancel is Story 9.52-style infrastructure. Deferred, mirrored.
+  - `[maybe-false]` `[defer]` (edge) a tool closing stdin early could SIGPIPE-kill the host — depends on the Dart VM / Flutter engine's SIGPIPE disposition, unchecked; high if true. Deferred (unverified), mirrored.
+  - `[low]` `[patch]` (edge) `message = Some(vec![])` clears descriptions silently — same as the blind row (documented equivalence with `-m ""`).
+  - `[medium]` `[defer]` (edge) non-snapshotting reads emit no `jj.config_deprecated` — same as the blind config_deprecated row.
+  - `[medium]` `[defer]` (edge) `config gc` drops the deprecations — same as the blind config_deprecated row.
+  - `[low]` `[reject]` (edge) a bad `templates.duplicate_description` makes the drop row say Available while the verb refuses — `drop_actions` is advisory and the verb's refusal wins (epic rule); a broken template is a config error the user meets once, and parsing it in the preview adds a template parse to every drop query.
+  - `[low]` `[patch]` (verification-gap) the config verbs' `jj.config_deprecated` has no witness — fixed: `tests/it/config_cmd.rs` case asserting one `ConfigDeprecated` warning with the CLI's text.
+  - `[medium]` `[patch]` (verification-gap) `revsets.fix` being the key read is unverified — fixed: `[revsets] fix = '@'` case asserting only `@` is checked and fixed.
+  - `[medium]` `[patch]` (verification-gap) line-range modes unverified end to end — fixed: a modified multi-line file with a recording `line-range-args` tool (changed range vs `all_lines`), and `run-tool-if-zero-line-ranges` with `include_unchanged_files`.
+  - `[low]` `[patch]` (verification-gap) multi-tool chaining and disabled tools unverified — fixed: two ordered tools plus a disabled one, final content asserted.
+  - `[medium]` `[patch]` (verification-gap) `environment::apply_to_tool` has no test — fixed: `login_shell_environment.rs` `own_process!` case running a tool found only on the adopted PATH.
+  - `[medium]` `[defer]` (verification-gap, other) creation paths and `config gc` discard the deprecations — same as the blind config_deprecated row.
+  - `[medium]` `[defer]` (intent) fix's success path through the Dart host is not exercised — same as the blind ECHILD row.
+  - `[low]` `[patch]` (intent) the config verbs' deprecation path has no test — same as the verification-gap config-verbs row.
+  - `[low]` `[reject]` (intent) deliberate departures (prefix paths, stderr as data, sorted warnings, counts) — same as the blind paths row; the others are the spec's documented terminal-UX replacements.
+  - `[low]` `[patch]` (intent) deferred-work items had no matching spec `deferred:` entries — fixed: the spec's `deferred:` list now carries every mirrored item.
+  - `[low]` `[patch]` (intent) the fileset-diagnostic item's severity "None" is outside High|Medium|Low — fixed: "Low".
+  - `[low]` `[patch]` (intent) verification outcomes not recorded in the spec — fixed: recorded under Verification at finalisation.
+  - `[false]` `[reject]` (intent) ledger ahead of the spec / tree not clean — the spec's status and the finalisation commit settle both; the in-review edit was this review's own state.
+  - `[false]` `[reject]` (intent) the fix config refusals are tested only at unit level — `tests/it/fix.rs::a_broken_tools_config_is_refused_before_anything` drives `Repo::fix` for the disabled, zero-ranges and bad-pattern refusals.
+  - `[false]` `[reject]` (intent) the duplicate drop-row agreement is tested only in zanshin-jj — that is where the acceptance criterion puts it; the FFI and Dart layers pass the same verb through unchanged.
+  - `[low]` `[defer]` (intent) `jj.fileset_diagnostic` is unreachable at the pin — jj-lib 0.46 emits no fileset diagnostics; re-check at the next pin bump. Deferred, mirrored.
+
 ## Design Notes
 
 - **Author/timestamp as CLI strings.** `author` and `author_timestamp` cross as the CLI's own values and are parsed Rust-side with the CLI's parsers, so the GUI gets the CLI's refusals; a date picker formats RFC 3339. Example: `author = "Foo <foo@bar.com>"` → name `Foo`, email `foo@bar.com`.
@@ -154,3 +228,35 @@ Gate rule for this run: no `cargo make test` / `test-full` / `coverage`; targete
 - `cargo test -p zanshin-parity --test oracle` -- expected: pass.
 - `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity --all-targets -- -D warnings`, `cargo fmt --all --check`, `cargo deny check` -- expected: clean.
 - `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings`, `dart format --set-exit-if-changed lib test`, `dart test` on the new and touched test files -- expected: pass/clean.
+
+**Outcomes (2026-10-23, final tree after the review patches; full gate not run per the run's gate rule):**
+- `cargo make codegen` -- exit 0; re-running it on the patched tree changed nothing further.
+- `cargo fmt --all --check` -- clean. `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity --all-targets -- -D warnings` -- clean. `cargo deny check advisories bans` -- advisories ok, bans ok.
+- `cargo test -p zanshin-jj --lib` -- 330 passed. `cargo test -p zanshin-jj --test it -- metaedit:: duplicate:: fix:: drop_actions:: api_stability:: arg_refusals:: config:: config_cmd:: login_shell_environment::` -- 128 passed.
+- `cargo test -p zanshin-ffi --lib` -- 203 passed. `cargo test -p zanshin-ffi --test it -- metaedit_duplicate_fix_ffi:: ffi_abi_doc_sync::` -- 23 passed (81 exports).
+- `cargo test -p zanshin-parity --test oracle` -- 279 passed (33 new Story 9.9 scenarios, no ledger entry).
+- `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings` -- no issues; `dart format --set-exit-if-changed lib test` -- 0 changed; `dart test test/ffi/metaedit_duplicate_fix_test.dart test/worker/metaedit_duplicate_fix_test.dart test/ffi/warning_test.dart` -- 173 passed (real cdylib).
+- Not run (gate rule): `cargo make test`, `test-full`, `coverage` — the story loop runs the gate once at its end.
+
+## Auto Run Result
+
+Status: done
+
+**Summary.** `jj metaedit`, `jj duplicate` and `jj fix` are ported from the CLI at v0.46.0 and wired end to end (`.fbs` → zanshin-jj → `zanshin_metaedit` / `zanshin_duplicate` / `zanshin_fix` → `RepoHandle.metaedit` / `duplicate` / `fix`, 81 exports). `Repo::metaedit` and `Repo::duplicate` refuse clap's rules before the snapshot (`with_checked_verb`); metaedit takes `--author` / `--author-timestamp` as the CLI's strings and parses them with the CLI's parsers; duplicate runs 9.31's `plan_duplicate` (split into `plan_duplicate_ids` for the `@` default), warns the two self-placement cases and renders `templates.duplicate_description`. `Repo::fix` ports the tool config (`CommandNameAndArgs`, `RawToolConfig`, refusals, fileset parse hints), the tool runner (cwd, `$path`/`$root`, line ranges, the adopted login-shell environment) and returns `FixResult` with the two counts and the tools' stderr. The CLI's `fix.tools.<name>.line-range-arg` → `line-range-args` config migration is applied wherever the stack is resolved and warned (`jj.config_deprecated`) by the snapshotting verbs and the config verbs. Six new warning codes, no new error code.
+
+**Files changed (5e58ec3, review patches in the finalisation commit).**
+- `crates/zanshin-jj/src/metaedit.rs` (new), `fix.rs` (new), `duplicate.rs` — the three verbs.
+- `crates/zanshin-jj/src/{config,config_cmd,repo,warning,template,arrange,environment,lib}.rs` — migration + deprecation warnings, facades, warning kinds, `duplicate_descriptions`, shared config-revset target, `apply_to_tool`.
+- `Cargo.toml`, `crates/zanshin-jj/Cargo.toml`, `Cargo.lock` — `serde`, `shlex`, `regex` exact pins.
+- `schemas/envelope.fbs` + generated files — requests, `FixResult`, `FixToolStderr`, three `RequestKind`s.
+- `crates/zanshin-ffi/src/metaedit_duplicate_fix.rs` (new), `envelope.rs`, `lib.rs` — readers, externs, warning codes, `ok_fix_result`.
+- `packages/zanshin_core/lib/src/ffi/metaedit_duplicate_fix.dart` (new), `warning.dart`, worker `commands`/`isolate`/`handle`, barrel — Dart surface.
+- Tests: `crates/zanshin-jj/tests/it/{metaedit,duplicate,fix,api_stability,arg_refusals,config_cmd,login_shell_environment}.rs`, `crates/zanshin-ffi/tests/it/metaedit_duplicate_fix_ffi.rs`, `packages/zanshin_core/test/{ffi,worker}/metaedit_duplicate_fix_test.dart`, oracle `scenarios.rs`/`main.rs`/`state.rs` (33 scenarios, a deterministic tie-break for identical duplicates).
+- Docs: `docs/ffi-abi.md`, `docs/rust-error-codes.md`.
+- Ledger: this spec, `sprint-status.yaml` (9-9 done), `deferred-work.md` (migration item and the 9.31 contract mention resolved; Story 9.9 section mirroring the five `deferred:` entries).
+
+**Review findings.** 35 findings (medium 11, low 20, false 3, maybe-false 1). Patched: the silent lost exit status (medium, now traced), runner warnings kept on a `fix_files` error, the empty-`message` and `PathsUnmatched` docs, and tests for `revsets.fix`, line ranges / `all_lines` / `run-tool-if-zero-line-ranges` (medium), tool chaining + disabled tools, the adopted-PATH tool (medium), the config verbs' deprecation warning, nested `update_change_id`, four more oracle scenarios, and the deferred-work bookkeeping. Deferred (mirrored to deferred-work.md): the Dart-host ECHILD hazard (medium), `jj.config_deprecated` missing from `config gc` / non-snapshot reads / creation paths (medium), a never-exiting tool blocking the worker (medium), possible SIGPIPE in the host (high, unverified), the unreachable `jj.fileset_diagnostic` (low). Rejected: fix's prefix `paths` (house contract shared by every paths verb), stderr attribution / order (the CLI prints neither), the unset-author metaedit branch (needs a fixture the CLI path cannot make), the oracle tie-break's totality (today deterministic, a future tie fails loudly), a bad `duplicate_description` vs the advisory drop row (the verb's refusal wins), and three false findings.
+
+**Follow-up review recommendation: true.** Patched at entry verdict: high 0, medium 4, low 9. Unverified risk: per-file coverage of the new `fix.rs` (~770 lines) and `metaedit.rs` against the 80 % floor, and the extern-fn guard for the three new externs, are unmeasured until the story loop's final gate — the wait-failure trace and the `FilesetDiagnostic` push are branches no test can reach today.
+
+**Residual risks.** Coverage ratchet not run (gate rule). A fix tool's success path is never exercised under the Dart host (ECHILD, deferred). `jj.config_deprecated` is not yet emitted on every call path (deferred).

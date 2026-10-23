@@ -999,7 +999,7 @@ final class RepoHandle {
   ///
   /// [revisions] are change ids (empty = `@`). A revision is rewritten when
   /// its metadata changes: [message] (the `-m` paragraphs; `null` = leave the
-  /// description), [author] (`"Name <email>"`) or [updateAuthor] (the
+  /// description; an empty list joins to `""` = `-m ""`, clearing it), [author] (`"Name <email>"`) or [updateAuthor] (the
   /// configured user), [authorTimestamp] (RFC 2822 / RFC 3339) or
   /// [updateAuthorTimestamp] (now), [updateChangeId], or [forceRewrite]; its
   /// descendants are reparented. A call that rewrites nothing writes no

@@ -499,3 +499,28 @@ fn gc_lists_and_deletes_the_config_of_a_deleted_repo() {
     assert!(result.warnings.is_empty());
     assert!(!dir.exists());
 }
+
+/// Story 9.9: the config verbs start like a CLI command, so a deprecated key the CLI migrates at
+/// start-up warns there too — once, with the CLI's text — and the verb reads the migrated key.
+#[test]
+fn a_deprecated_line_range_arg_warns_on_the_config_verbs() {
+    test_helpers::own_process!("a_deprecated_line_range_arg_warns_on_the_config_verbs");
+    let (_tmp, root) = workspace(Some(Backend::Git));
+    let path = config_path(Some(&root), ConfigScope::Repo).result.expect("path");
+    fs::write(&path[0], "fix.tools.t.line-range-arg = \"--l\"\n").expect("repo config");
+
+    let got = config_get(Some(&root), "fix.tools.t.line-range-args");
+    assert_eq!(got.result.expect("the migrated key"), "[\"--l\"]");
+    let deprecated: Vec<&str> = got
+        .warnings
+        .iter()
+        .filter(|w| w.kind == WarningKind::ConfigDeprecated)
+        .map(|w| w.message.as_str())
+        .collect();
+    assert_eq!(
+        deprecated,
+        ["Deprecated repo-level config: fix.tools.t.line-range-arg is updated to fix.tools.t.line-range-args = [\"--l\"]"],
+        "{:?}",
+        got.warnings
+    );
+}

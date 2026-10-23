@@ -25,7 +25,8 @@ import 'warning.dart';
 /// the CLI's `jj metaedit`.
 ///
 /// [revisions] are change ids (empty = `@`); a `null` [message] stays ABSENT
-/// on the wire (no `-m`), a list — even empty — is the `-m` paragraphs. A
+/// on the wire (no `-m`), a list is the `-m` paragraphs — an empty one joins to
+/// `""`, i.e. `-m ""`, clearing every target's description. A
 /// `null` [author] / [authorTimestamp] is the flag not given.
 Uint8List zanshinMetaedit(
   int rawHandle, {

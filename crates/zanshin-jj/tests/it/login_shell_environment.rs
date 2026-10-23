@@ -9,8 +9,8 @@
 //! # Why one test in its own process
 //!
 //! The adoption is write-once and process-wide: after it, every environment read in this process
-//! sees the adopted map. So this file holds exactly ONE `#[test]` that walks the rows in order —
-//! before, adopt, after, the second call. The adopted map is the process environment with the
+//! sees the adopted map. So each test here runs alone in a child process (`own_process!`); the
+//! main one walks the rows in order — before, adopt, after, the second call. The adopted map is the process environment with the
 //! edits a login shell's rc file could make: it UNSETS `JJ_CONFIG` (re-enabling user-config
 //! discovery, which is what the XDG row needs), so it also points `XDG_CONFIG_HOME` and `HOME`
 //! into the temp dir: no developer config is ever read.
@@ -21,7 +21,10 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
-use zanshin_jj::{adopt_environment, config_get, find_repo_root, Backend, ConfigCmdError, ProgressEvent, Repo};
+use zanshin_jj::{
+    adopt_environment, config_get, find_repo_root, Backend, ConfigCmdError, FixOptions, ProgressEvent, Repo,
+    WarningKind,
+};
 
 /// Writes an executable `#!/bin/sh` script.
 fn script(path: &Path, body: &str) {
@@ -177,4 +180,57 @@ fn the_adopted_login_shell_environment_reaches_the_config_stack_and_git() {
         OsString::from("Other User"),
     )]));
     assert_eq!(user_name(), "Shell User");
+}
+
+/// Story 9.9: a `jj fix` tool is looked up on the adopted `PATH` — a tool found nowhere else runs.
+#[test]
+fn a_fix_tool_is_found_on_the_adopted_path() {
+    test_helpers::own_process!("a_fix_tool_is_found_on_the_adopted_path");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let process_xdg = tmp.path().join("process-xdg");
+    for (name, value) in test_helpers::TEST_ENV
+        .into_iter()
+        .chain([("XDG_CONFIG_HOME", process_xdg.to_str().expect("utf-8 temp path"))])
+    {
+        // SAFETY: single-threaded — this test runs alone in its own process (`own_process!`), and
+        // nothing reads the environment concurrently.
+        unsafe { std::env::set_var(name, value) };
+    }
+    let bin = tmp.path().join("bin");
+    fs::create_dir_all(&bin).expect("bin dir");
+    script(&bin.join("zanshin-upper"), "tr a-z A-Z");
+
+    let ws = tmp.path().join("ws");
+    fs::create_dir_all(&ws).expect("ws dir");
+    let mut repo = Repo::init(&zanshin_jj::InitOptions {
+        path: std::path::PathBuf::from(&ws),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("init");
+    let root = repo.workspace_root().to_owned();
+    fs::write(
+        root.join(".jj").join("repo").join("config.toml"),
+        "[fix.tools.upper]\ncommand = ['zanshin-upper']\npatterns = ['a.txt']\n",
+    )
+    .expect("repo config");
+    fs::write(root.join("a.txt"), "a\n").expect("a.txt");
+
+    let mut environment: HashMap<OsString, OsString> = std::env::vars_os().collect();
+    let mut shell_path = bin.into_os_string();
+    shell_path.push(":");
+    shell_path.push(std::env::var_os("PATH").unwrap_or_default());
+    environment.insert(OsString::from("PATH"), shell_path);
+    adopt_environment(environment);
+
+    let result = repo.fix(&FixOptions::default()).expect("fix");
+    let warnings = repo.take_warnings();
+    assert!(
+        !warnings.iter().any(|w| w.kind == WarningKind::FixToolStartFailed),
+        "{warnings:?}"
+    );
+    assert_eq!(result.num_fixed_commits, 1);
+    assert_eq!(fs::read_to_string(root.join("a.txt")).expect("a.txt"), "A\n");
 }

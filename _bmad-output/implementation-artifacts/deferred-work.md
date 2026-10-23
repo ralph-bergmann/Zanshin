@@ -1902,7 +1902,16 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **Under a Dart host the VM can reap a child process the cdylib started, so its exit status is lost (`ECHILD`) — `jj fix` then keeps the file's old content silently, as the CLI's runner does for any wait failure.** Medium.
   - Seen in `packages/zanshin_core`'s `dart test`: `zanshin_jj::fix`'s `child.wait_with_output()` failed with "No child processes (os error 10)" on roughly half the tool runs (`crates/zanshin-jj/src/fix.rs` `Runner::run_tool`); Dart's process exit-code handler waits on ANY pid while a Dart-started (non-detached) process is alive — under `dart test` the test runner's own subprocess. The Rust suites (no Dart VM) are deterministic; `test/worker/metaedit_duplicate_fix_test.dart` therefore uses an unstartable tool. The same hazard applies to every subprocess jj-lib spawns from the cdylib (`git` for fetch/push/clone, signing) whenever the app has a Dart-started child running.
   - **Follow-up:** decide whether the app may ever hold a non-detached Dart child while a verb runs; if so, a reap-proof wait (e.g. kqueue `EVFILT_PROC`/`NOTE_EXITSTATUS`) or running such children from Rust only.
-- **`jj.fileset_diagnostic` is registered but unreachable at jj-lib 0.46** (jj-lib emits no fileset diagnostic; `revset.rs` is its only `add_warning` caller). None.
+- **`jj.fileset_diagnostic` is registered but unreachable at jj-lib 0.46** (jj-lib emits no fileset diagnostic; `revset.rs` is its only `add_warning` caller). Low.
   - `crates/zanshin-jj/src/fix.rs` `get_tools_config` records them under "In `fix.tools.<name>`" exactly as the CLI prints them.
   - **Follow-up:** re-check at the next jj-lib pin bump; a test once jj-lib emits one.
+- **`jj.config_deprecated` reaches only the snapshotting verbs and the config verbs; `config gc`, the non-snapshotting reads and the creation paths run the `line-range-arg` migration but drop its "Deprecated … config" warning, which the CLI prints on every command.** Medium.
+  - `crates/zanshin-jj/src/config_cmd.rs` calls `startup(.., None)` for `config gc`; `crates/zanshin-jj/src/config.rs` `load_with` / `load` discard the `Deprecations` (graph.rs, revset.rs, creation.rs, convert.rs reach config through them).
+  - **Follow-up:** thread a warning sink through those paths (or record the descriptions where each already has one) and test one read and one creation path.
+- **A configured fix tool that never exits blocks the repo's worker for good — the CLI's user can Ctrl-C, the app's cannot, and `fix` has no cancel.** Medium.
+  - `crates/zanshin-jj/src/fix.rs` `Runner::run_tool` waits without a deadline, as the CLI's `run_tool` does.
+  - **Follow-up:** give `fix` the network verbs' cancel (Story 9.52: helper + process-group kill), or a per-tool timeout if Ralph wants one.
+- **A fix tool that exits without reading stdin might raise SIGPIPE in the app process, if the Flutter/Dart host does not ignore SIGPIPE (unverified).** High if true.
+  - `crates/zanshin-jj/src/fix.rs` `Runner::run_tool` writes the content with `write_all`; Rust ignores SIGPIPE only in a binary's `main`, a cdylib inherits the host's disposition.
+  - **Follow-up:** check the Dart VM / Flutter macOS engine's SIGPIPE disposition, or run a tool that closes stdin early under `dart test`; if not ignored, set `SIG_IGN` once at FFI init.
 

@@ -10,7 +10,7 @@
 
 use zanshin_jj::{ChangeId, FixOptions, FixResult, MutateError, WarningKind};
 
-use crate::rebase::{assert_op, base, head_op, reconfigure, Fx};
+use crate::rebase::{add, assert_op, base, head_op, reconfigure, Fx};
 
 /// `tr a-z A-Z` on every `*.txt`.
 const UPPER: &str = "[fix.tools.upper]\ncommand = ['tr', 'a-z', 'A-Z']\npatterns = [\"glob:'*.txt'\"]\n";
@@ -279,4 +279,86 @@ fn an_immutable_source_is_refused() {
         .expect_err("refused");
     assert!(matches!(err, MutateError::Immutable { .. }), "{err:?}");
     assert_eq!(head_op(&fx.root), before);
+}
+
+#[test]
+fn revsets_fix_is_the_default_source() {
+    let mut fx = configured(&format!("{UPPER}[revsets]\nfix = '@'\n"));
+    let result = fix(&mut fx, &FixOptions::default());
+    assert_op(&fx, &result.mutation, "fixed 1 commits");
+    assert_eq!((result.num_fixed_commits, result.num_checked_commits), (1, 1));
+    let (a, c) = (fx.a.clone(), fx.c.clone());
+    assert_eq!(file(&mut fx, &a, "a.txt"), "a\n", "A is outside `@`");
+    assert_eq!(file(&mut fx, &c, "c.txt"), "C\n");
+    assert_eq!(file(&mut fx, &c, "a.txt"), "a\n", "C did not change a.txt");
+}
+
+/// A tool appending its arguments: the line-range arguments become the file's last line.
+const ARGS_TOOL: &str = "command = ['sh', '-c', 'cat; echo \"$@\"', 'sh']\nline-range-args = ['--l=$first-$last']\n";
+
+/// `M` adds `lines.txt` (three lines) on C, `N` changes its second line; returns `(M, N)`.
+fn modified_line(fx: &mut Fx) -> (ChangeId, ChangeId) {
+    let c = fx.c.clone();
+    let m = add(fx, &[c], &[("lines.txt", "1\n2\n3\n")], "M\n");
+    let n = add(fx, std::slice::from_ref(&m), &[("lines.txt", "1\ntwo\n3\n")], "N\n");
+    (m, n)
+}
+
+#[test]
+fn line_range_args_get_the_changed_lines_or_every_line() {
+    let config = format!("[fix.tools.args]\n{ARGS_TOOL}patterns = ['lines.txt']\n");
+    for (all_lines, range) in [(false, "--l=2-2"), (true, "--l=1-3")] {
+        let mut fx = configured(&config);
+        let (_, n) = modified_line(&mut fx);
+        let source = n.clone();
+        let result = fix_with(&mut fx, |_| FixOptions {
+            source: vec![source],
+            all_lines,
+            ..FixOptions::default()
+        });
+        assert_eq!(result.num_fixed_commits, 1, "all_lines {all_lines}");
+        assert_eq!(
+            file(&mut fx, &n, "lines.txt"),
+            format!("1\ntwo\n3\n{range}\n"),
+            "all_lines {all_lines}"
+        );
+    }
+}
+
+#[test]
+fn an_unchanged_file_with_no_line_ranges_is_skipped_unless_configured() {
+    for (run_if_zero, a_txt) in [(false, "a\n"), (true, "a\n\n")] {
+        let config = format!(
+            "[fix.tools.args]\n{ARGS_TOOL}patterns = ['a.txt']\nrun-tool-if-zero-line-ranges = {run_if_zero}\n"
+        );
+        let mut fx = configured(&config);
+        let (_, n) = modified_line(&mut fx);
+        let source = n.clone();
+        fix_with(&mut fx, |_| FixOptions {
+            source: vec![source],
+            include_unchanged_files: true,
+            ..FixOptions::default()
+        });
+        assert_eq!(
+            file(&mut fx, &n, "a.txt"),
+            a_txt,
+            "run-tool-if-zero-line-ranges {run_if_zero}"
+        );
+    }
+}
+
+#[test]
+fn tools_chain_in_name_order_and_a_disabled_one_is_dropped() {
+    let mut fx = configured(
+        "[fix.tools.b-second]\ncommand = ['sh', '-c', 'cat; echo second']\npatterns = ['a.txt']\n\
+         [fix.tools.a-first]\ncommand = ['sh', '-c', 'cat; echo first']\npatterns = ['a.txt']\n\
+         [fix.tools.0-off]\ncommand = ['sh', '-c', 'echo off']\npatterns = ['a.txt']\nenabled = false\n",
+    );
+    let result = fix_with(&mut fx, |fx| FixOptions {
+        source: vec![fx.a.clone()],
+        ..FixOptions::default()
+    });
+    assert_eq!(result.num_fixed_commits, 3);
+    let a = fx.a.clone();
+    assert_eq!(file(&mut fx, &a, "a.txt"), "a\nfirst\nsecond\n");
 }

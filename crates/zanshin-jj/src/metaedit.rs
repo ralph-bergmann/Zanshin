@@ -46,7 +46,8 @@ pub struct MetaeditOptions {
     /// `--update-change-id`: give each modified revision a new change id.
     pub update_change_id: bool,
     /// `-m/--message`, repeatable: the new description, the paragraphs joined as the CLI joins
-    /// them. `None` leaves the description alone; `Some(vec![])` is not reachable from the CLI.
+    /// them. `None` leaves the description alone; `Some(vec![])` joins to `""` and so equals `-m
+    /// ""`: it clears every target's description.
     pub message: Option<Vec<String>>,
     /// `--update-author-timestamp`: set the author timestamp to the committer timestamp (now).
     /// Excludes `author_timestamp`.
