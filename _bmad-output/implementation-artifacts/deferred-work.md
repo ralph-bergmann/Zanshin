@@ -1057,7 +1057,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **9.47's ledger row `describe_gui_text` retires with 10.8's Save.** Low.
   - The row exists because the GUI was assumed to send the text without the CLI's trailing newline (`crates/zanshin-parity/tests/oracle/ledger.rs:71-78`).
   - **Follow-up:** when 10.8 lands, its scenario sends "S\n\nD\n" and the row goes.
-- **A hunk selection's staleness under constant snapshots.** Medium.
+- ~~**A hunk selection's staleness under constant snapshots.**~~ — RESOLVED 2026-10-23 (spec-9-50-hunk-selection-select-tree, Story 9.50, I1; commit 90612be): confirmed — stale is the revision's parent tree no longer being the selection's `left` (`ShowEntry.parent_tree_ids`), or a key that is not a current section, refused `jj.stale_selection` by `select_tree` and by each tree arm; an edit to the revision's own content is not stale (`crates/zanshin-jj/tests/it/select_tree.rs::commit_takes_the_tree_and_leaves_the_rest_and_a_later_edit_in_the_new_at`). Medium.
   - Every verb snapshots @ first (9.26), so an editor that autosaves changes @ between selecting hunks and running the composer. If staleness were judged by @'s commit id, commits would keep failing.
   - **Follow-up:** 9.50 judges staleness by the left side, the revision's parent tree (Claude's proposal); confirm it in 9.50's spec.
 - ~~**The combined description must be known before squash runs.**~~ — RESOLVED 2026-10-21 (spec-9-31-drop-actions-capability-query, commit 708deda, I3): every squash row carries `combined_description_needed`; `squash_plan` (9.15) gives the text. Medium.
@@ -1525,7 +1525,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in Story 9.15 (bmad-build-auto, 2026-10-19)
 
-- **The tree arm of `squash` and `split` waits for Story 9.50.** Medium.
+- ~~**The tree arm of `squash` and `split` waits for Story 9.50.**~~ — RESOLVED 2026-10-23 (spec-9-50-hunk-selection-select-tree, Story 9.50, I2; commit 90612be): `SplitOptions.tree` and `SquashOptions.trees` (one `SourceTree` per source; a source without one moves everything) take `select_tree`'s tree plus `left`; a split with neither paths nor a tree still refuses `jj.invalid_input`, now naming the tree arm; oracle `split_tool_sections_1_3`, `squash_tool_sections_1_3`. Medium.
   - A GUI-selected tree plus `left`, its staleness refusal, and split's interactive default with no paths (`cli/src/commands/split.rs:218` @ v0.46.0) are 9.50's to decide ("The verbs that take a tree id (9.15, 9.49) take `left` as well, and refuse the same way. This story decides the refusal code", epics.md Story 9.50 item 3). 9.15 ships the paths arm only and refuses a split without paths (`jj.invalid_input`); `SelectedTree::from_tree_id` (`crates/zanshin-jj/src/op_support.rs`) stays unwired, its WHY naming 9.50.
   - **Follow-up:** 9.50 adds the tree arm to `crates/zanshin-jj/src/squash_split.rs`' selection (`plan_squash` / `prepare_split`).
 - ~~**`jj squash -o/-A/-B` is not ported.**~~ — RECORD 2026-10-20 (Ralph): not ported until a design asks for it. Low.
@@ -1547,7 +1547,7 @@ _Ralph found four defects in the catalogue (Select chevron, a second scroll bar,
 
 ## Surfaced in Story 9.49 (bmad-build-auto, 2026-10-19)
 
-- **The GUI-tree arm of `commit` waits for Story 9.50.** Medium.
+- ~~**The GUI-tree arm of `commit` waits for Story 9.50.**~~ — RESOLVED 2026-10-23 (spec-9-50-hunk-selection-select-tree, Story 9.50, I3; commit 90612be): `CommitOptions.tree` takes `select_tree`'s tree plus `left`, refused `jj.stale_selection` when `@`'s parent tree moved; oracle `commit_tool_sections_1_3`. Medium.
   - A tree from `select_tree` plus `left`, and its staleness refusal, are 9.50's to decide ("The verbs that take a tree id (9.15, 9.49) take `left` as well, and refuse the same way", epics.md Story 9.50 item 3); 9.49 ships the everything / paths arms only, and `SelectedTree::from_tree_id` (`crates/zanshin-jj/src/op_support.rs`) stays unwired.
   - **Follow-up:** 9.50 adds the tree arm to `crates/zanshin-jj/src/commit.rs`' selection, next to squash/split's.
 - ~~**`commit` does not apply `templates.commit_trailers` either.**~~ — RESOLVED 2026-10-20 (spec-9-51-jj-templates-trailers-draft-push-bookmark, commit 74338d0): a non-empty `-m` gets the trailers; the oracle's `commit_trailers` ledger row is gone. Medium.
@@ -1924,3 +1924,12 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **The `jj config edit` halves (`config_file_read` / `config_file_write`) load no config stack, so they never warn `jj.config_deprecated`, where the CLI's `jj config edit` warns whenever its start-up stack loads.** Low.
   - `crates/zanshin-jj/src/config_cmd.rs` `file_read_with` / `file_write_with` run only the secure-config fix-up (Story 9.37: no stack load, so a broken config stays repairable); pre-existing since Story 9.28, outside the two items of this closing run.
   - **Follow-up:** try the start-up load there and record its deprecations only when it succeeds (a failing load must not refuse the repair path).
+
+## Surfaced in Story 9.50 (bmad-build-auto, 2026-10-23)
+
+- **No read yields a file's sections and `HunkKey`s yet, so only the whole-file half of the select_tree contract is usable end to end.** Medium.
+  - `select_tree::sections` (`crates/zanshin-jj/src/select_tree.rs`) is `pub(crate)` and no read calls it; the Dart/Rust tests hard-code the keys. `left` already travels on `ShowEntry.parent_tree_ids`.
+  - **Follow-up:** Story 5.1 emits its hunks' keys from `select_tree::sections` with the same convention (0-based start + count per side, `split_inclusive('\n')` lines), so a key read is a key select_tree accepts.
+- **The builtin diff editor lets a mode change be toggled apart from content sections and sections conflicted files; Zanshin keeps both whole-only.** Medium.
+  - `builtin.rs:296-301` (`Section::FileMode`) and `:423-445` (`conflicts::update_from_content`) @ v0.46.0; epics.md Story 9.50 chose whole-only on the premise that the builtin editor does too — documented as a divergence in `crates/zanshin-jj/src/select_tree.rs`' module doc and ADR-0003.
+  - **Follow-up:** a design decision for the inspector (10.26): whether a mode toggle and conflict-marker sections get UI; if yes, a `FileChoice` arm for the mode and sectioning over the materialized conflict, written back as the builtin editor does.
