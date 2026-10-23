@@ -330,6 +330,34 @@ fn op_show_with_an_unresolvable_show_changes_in_warns_and_has_no_commit_section(
     );
 }
 
+/// A `show_changes_in` that resolves against only one of the two operations is unresolved too:
+/// the CLI's `resolve_op_diff_changes_exprs` resolves it against the from- AND the to-repo
+/// (`cli/src/commands/operation/diff.rs:227-246` @ v0.46.0) — a bookmark the operation created
+/// (missing in the from-repo) and one it deleted (missing in the to-repo).
+#[test]
+fn op_show_with_a_show_changes_in_missing_on_one_side_warns_and_has_no_commit_section() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let name = "only_on_one_side".to_owned();
+
+    repo.bookmark_create(std::slice::from_ref(&name), None).unwrap();
+    let _ = repo.take_warnings();
+    let created = repo.op_show("@", Some(&name)).unwrap().diff.unwrap();
+    assert_eq!(created.commits, None, "missing in the from-operation");
+    let warnings = repo.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, WarningKind::OpDiffChangesUnresolved);
+
+    repo.bookmark_delete(std::slice::from_ref(&name)).unwrap();
+    let _ = repo.take_warnings();
+    let deleted = repo.op_show("@", Some(&name)).unwrap().diff.unwrap();
+    assert_eq!(deleted.commits, None, "missing in the to-operation");
+    let warnings = repo.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, WarningKind::OpDiffChangesUnresolved);
+}
+
 /// `show_changes_in = none()` elides every change; the counts say how many.
 #[test]
 fn op_show_elides_the_changes_outside_show_changes_in() {

@@ -438,7 +438,8 @@ pub unsafe extern "C" fn zanshin_op_show(handle: u64, data: *const u8, len: usiz
 /// The arguments cross as an `OpDiffRequest` `FlatBuffers` request buffer, every string ABSENT
 /// when its flag was not given: `from` / `to` (a missing one `@`), or `operation` (default `@`)
 /// against its parents, and `show_changes_in`. `operation` together with `from` or `to` is clap's
-/// conflict. Runs the pre-verb snapshot; writes no operation of its own.
+/// conflict. Runs the pre-verb snapshot; writes no operation of its own (several from-operations
+/// — a merge op's parents — are merged into an unpublished operation, as the CLI does).
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying an `OpDiffResult` payload: the operations diffed
 /// from, the one diffed to, and the `OpDiff`. Warns as `zanshin_op_show`.

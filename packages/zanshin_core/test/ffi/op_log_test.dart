@@ -374,5 +374,54 @@ void main() {
         expect(() => decode(foreign), throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')));
       }
     });
+
+    test('a payload missing a required table throws ffi.unknown, not a TypeError', () {
+      Matcher unknown(String context) => throwsA(
+        isA<ZanshinFfiException>()
+            .having((e) => e.code, 'code', 'ffi.unknown')
+            .having((e) => e.context, 'context', context),
+      );
+      final Uint8List noOperation = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.OpShow,
+        data: fbs.OpShowObjectBuilder(),
+      ).toBytes();
+      final Uint8List noTo = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.OpDiffResult,
+        data: fbs.OpDiffResultObjectBuilder(diff: diff()),
+      ).toBytes();
+      final Uint8List noDiff = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.OpDiffResult,
+        data: fbs.OpDiffResultObjectBuilder(to: _makeNonRootOp()),
+      ).toBytes();
+
+      expect(() => decodeOpShowEnvelope(noOperation), unknown('OpShow payload is missing its operation'));
+      expect(() => decodeOpDiffResultEnvelope(noTo), unknown('OpDiffResult payload is missing its to'));
+      expect(() => decodeOpDiffResultEnvelope(noDiff), unknown('OpDiffResult payload is missing its diff'));
+    });
+  });
+
+  // ── Adapter guards (no cdylib call; mirrors mutate_test.dart) ──────────────
+
+  group('op_log.dart adapters reject an interior NUL', () {
+    const nul = 'a\u0000b';
+
+    test('zanshinOpShow_rejects_interior_nul_in_every_string', () {
+      expect(() => zanshinOpShow(0, operation: nul), throwsArgumentError);
+      expect(() => zanshinOpShow(0, showChangesIn: nul), throwsArgumentError);
+    });
+
+    test('zanshinOpDiff_rejects_interior_nul_in_every_string', () {
+      expect(() => zanshinOpDiff(0, operation: nul), throwsArgumentError);
+      expect(() => zanshinOpDiff(0, from: nul), throwsArgumentError);
+      expect(() => zanshinOpDiff(0, to: nul), throwsArgumentError);
+      expect(() => zanshinOpDiff(0, showChangesIn: nul), throwsArgumentError);
+    });
+
+    test('zanshinOpAbandon_rejects_interior_nul_in_operation', () {
+      expect(() => zanshinOpAbandon(0, nul), throwsArgumentError);
+    });
   });
 }

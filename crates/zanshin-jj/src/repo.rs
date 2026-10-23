@@ -1466,7 +1466,8 @@ impl Repo {
     /// `options` are the CLI's flags (see [`crate::OpDiffOptions`]): `from` / `to` (a missing one
     /// `@`), or `operation` (default `@`) against its parents; `operation` together with `from` or
     /// `to` is clap's conflict, refused before the snapshot. Writes no operation beyond the
-    /// pre-verb snapshot's.
+    /// pre-verb snapshot's (several from-operations — a merge op's parents — are merged into an
+    /// unpublished operation, as the CLI merges them).
     ///
     /// # Warnings
     ///

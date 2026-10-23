@@ -1251,6 +1251,74 @@ pub fn scenarios() -> Vec<Scenario> {
                 |_| args(&["op", "abandon", ROOT_OPERATION_PREFIX]),
             )
         },
+        Scenario {
+            // `--allow-cross-workspace` redoes the undo `ws2` wrote (`redo.rs:128-143` @ v0.46.0).
+            init: &["git", "init", "--no-colocate"],
+            setup: &[
+                Step::Jj(&["workspace", "add", "../ws2"]),
+                Step::JjAt("../ws2", &["describe", "-m", "from ws2"]),
+                Step::JjAt("../ws2", &["undo"]),
+            ],
+            ..simple(
+                "redo_cross_workspace_allowed",
+                |repo, _, _| {
+                    let result = repo.redo(true);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["redo", "--allow-cross-workspace"]),
+            )
+        },
+        Scenario {
+            // A bounded range: the two operations after `@---` go, `@` is reparented onto it
+            // (`abandon.rs:66-87` @ v0.46.0).
+            setup: SOME_DESCRIBES,
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_abandon_bounded",
+                |repo, _, _| {
+                    let result = repo.op_abandon("@---..@-");
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "abandon", "@---..@-"]),
+            )
+        },
+        Scenario {
+            // `--at-op @-` forks the op log; the next command reconciles the two heads in a merge
+            // operation, which `@-` then is: "Cannot abandon a merge operation" (`abandon.rs:84-88`).
+            setup: &[
+                Step::Jj(&["describe", "-m", "one"]),
+                Step::Jj(&["--at-op", "@-", "describe", "-m", "two"]),
+                Step::Jj(&["describe", "-m", "three"]),
+            ],
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_abandon_merge_refused",
+                |repo, _, _| {
+                    let result = repo.op_abandon("@-");
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "abandon", "@-"]),
+            )
+        },
+        Scenario {
+            // `ws2` moved the head on; this workspace's working copy is recorded at an operation
+            // the range abandons, so it is left as it is with the warning (`abandon.rs:136-154`).
+            init: &["git", "init", "--no-colocate"],
+            setup: &[
+                Step::Jj(&["workspace", "add", "../ws2"]),
+                Step::JjAt("../ws2", &["describe", "-m", "a"]),
+                Step::JjAt("../ws2", &["describe", "-m", "b"]),
+            ],
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_abandon_working_copy_not_updated",
+                |repo, _, _| {
+                    let result = repo.op_abandon("..@-");
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "abandon", "..@-"]),
+            )
+        },
         // ── Story 9.23: workspace add ────────────────────────────────────────
         Scenario {
             init: NO_COLOCATE,

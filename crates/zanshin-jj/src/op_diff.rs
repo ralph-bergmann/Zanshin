@@ -77,7 +77,9 @@ pub struct OpChangedCommit {
     /// The commit the change now is (the CLI's `+` line); empty when abandoned.
     pub added_commit_ids: Vec<CommitId>,
     /// The commits it replaced — its predecessors — or, when abandoned, the commit itself (the
-    /// CLI's `-` lines). Empty for a newly created commit.
+    /// CLI's `-` lines). Empty for a newly created commit. The CLI's `--patch` inter-diffs from
+    /// the FIRST predecessor only, and shows an abandoned commit's own patch
+    /// (`show_change_diff`, `cli/src/commands/operation/diff.rs` @ v0.46.0).
     pub removed_commit_ids: Vec<CommitId>,
 }
 

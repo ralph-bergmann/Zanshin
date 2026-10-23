@@ -134,6 +134,17 @@ void main() {
       expect((await handle.opAbandon('..@-')).nothingChanged, isTrue);
     });
 
+    test('interior_nuls_are_refused_on_the_calling_side', () async {
+      const nul = 'a\u0000b';
+      await expectLater(handle.opShow(operation: nul), throwsArgumentError);
+      await expectLater(handle.opShow(showChangesIn: nul), throwsArgumentError);
+      await expectLater(handle.opDiff(operation: nul), throwsArgumentError);
+      await expectLater(handle.opDiff(from: nul), throwsArgumentError);
+      await expectLater(handle.opDiff(to: nul), throwsArgumentError);
+      await expectLater(handle.opDiff(showChangesIn: nul), throwsArgumentError);
+      await expectLater(handle.opAbandon(nul), throwsArgumentError);
+    });
+
     test('the four verbs refuse on a closed handle', () async {
       final Directory otherDir = Directory.systemTemp.createTempSync('zanshin_op_closed_');
       addTearDown(() => otherDir.deleteSync(recursive: true));

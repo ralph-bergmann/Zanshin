@@ -174,7 +174,9 @@ final class OpChangedCommit {
   /// The commit the change now is; empty when [abandoned].
   final List<String> addedCommitIds;
 
-  /// The commits it replaced (its predecessors), or the abandoned commit.
+  /// The commits it replaced (its predecessors), or the abandoned commit. The
+  /// CLI's `--patch` inter-diffs from the FIRST predecessor only, and shows an
+  /// abandoned commit's own patch (`show_change_diff`).
   final List<String> removedCommitIds;
 }
 
@@ -410,7 +412,9 @@ OpShow decodeOpShowEnvelopeInternal(Uint8List bytes) {
   }
   final fbs.OpDiff? diff = payload.diff;
   return OpShow(
-    operation: _mapOperation(payload.operation!),
+    operation: _mapOperation(
+      payload.operation ?? (throw const ZanshinFfiException('ffi.unknown', 'OpShow payload is missing its operation')),
+    ),
     diff: diff == null ? null : _mapDiff(diff),
     warnings: decodeEnvelopeWarningsInternal(env),
   );
@@ -433,8 +437,12 @@ OpDiffResult decodeOpDiffResultEnvelopeInternal(Uint8List bytes) {
   }
   return OpDiffResult(
     from: payload.from?.map(_mapOperation).toList() ?? const [],
-    to: _mapOperation(payload.to!),
-    diff: _mapDiff(payload.diff!),
+    to: _mapOperation(
+      payload.to ?? (throw const ZanshinFfiException('ffi.unknown', 'OpDiffResult payload is missing its to')),
+    ),
+    diff: _mapDiff(
+      payload.diff ?? (throw const ZanshinFfiException('ffi.unknown', 'OpDiffResult payload is missing its diff')),
+    ),
     warnings: decodeEnvelopeWarningsInternal(env),
   );
 }

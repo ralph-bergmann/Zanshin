@@ -243,9 +243,10 @@ pub enum WarningKind {
     ConfigDeprecated,
     /// `op show` / `op diff` could not resolve `--show-changes-in` (or
     /// `revsets.op-diff-changes-in`) against one of the two operations — "Could not resolve revset
-    /// expression for elision: <error>" and its detail line "   (Use
-    /// `--show-changes-in=all()` to see all changes)" (`cli/src/commands/operation/diff.rs:286-305` @ v0.46.0;
-    /// Story 9.21). The diff goes on without its commit section.
+    /// expression for elision: <error>" and its detail line, three spaces then
+    /// `(Use --show-changes-in=all() to see all changes)` verbatim
+    /// (`cli/src/commands/operation/diff.rs:286-305` @ v0.46.0; Story 9.21). The diff goes on
+    /// without its commit section.
     OpDiffChangesUnresolved,
     /// `op abandon` rewrote the op heads, but this workspace's working copy is recorded at an
     /// operation that is not one of them, so it was left as it is — "The working copy operation

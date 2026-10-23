@@ -454,7 +454,7 @@ fn op_abandon_round_trip_and_refusals() {
 }
 
 /// `show_changes_in` crosses both requests: `none()` elides every changed commit (the describe
-/// rewrote three), and a lone `to` diffs from `@` (an empty diff from the head to itself).
+/// rewrote three), and a lone `to` (here `@-`) diffs from `@`, the missing `from`'s default.
 #[test]
 fn show_changes_in_and_a_lone_to_are_read_off_the_request() {
     let fx = described();
