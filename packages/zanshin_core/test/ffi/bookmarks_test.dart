@@ -298,6 +298,29 @@ void main() {
       expect(BookmarkSortKey.values.map((k) => k.wire).toSet(), hasLength(14));
     });
 
+    test('every sort key maps to its own wire value', () {
+      final Map<BookmarkSortKey, fbs.BookmarkSortKey> expected = {
+        BookmarkSortKey.name: fbs.BookmarkSortKey.Name,
+        BookmarkSortKey.nameDesc: fbs.BookmarkSortKey.NameDesc,
+        BookmarkSortKey.authorName: fbs.BookmarkSortKey.AuthorName,
+        BookmarkSortKey.authorNameDesc: fbs.BookmarkSortKey.AuthorNameDesc,
+        BookmarkSortKey.authorEmail: fbs.BookmarkSortKey.AuthorEmail,
+        BookmarkSortKey.authorEmailDesc: fbs.BookmarkSortKey.AuthorEmailDesc,
+        BookmarkSortKey.authorDate: fbs.BookmarkSortKey.AuthorDate,
+        BookmarkSortKey.authorDateDesc: fbs.BookmarkSortKey.AuthorDateDesc,
+        BookmarkSortKey.committerName: fbs.BookmarkSortKey.CommitterName,
+        BookmarkSortKey.committerNameDesc: fbs.BookmarkSortKey.CommitterNameDesc,
+        BookmarkSortKey.committerEmail: fbs.BookmarkSortKey.CommitterEmail,
+        BookmarkSortKey.committerEmailDesc: fbs.BookmarkSortKey.CommitterEmailDesc,
+        BookmarkSortKey.committerDate: fbs.BookmarkSortKey.CommitterDate,
+        BookmarkSortKey.committerDateDesc: fbs.BookmarkSortKey.CommitterDateDesc,
+      };
+      expect(expected.keys, unorderedEquals(BookmarkSortKey.values));
+      for (final MapEntry(:key, :value) in expected.entries) {
+        expect(key.wire, value, reason: '$key');
+      }
+    });
+
     test('zanshinBookmarks rejects an interior NUL in names, revisions and remotes', () {
       final nul = String.fromCharCode(0);
       expect(

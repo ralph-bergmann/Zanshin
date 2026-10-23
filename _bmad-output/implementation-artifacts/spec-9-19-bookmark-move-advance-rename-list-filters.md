@@ -5,7 +5,7 @@ created: '2026-10-23'
 status: 'done'
 baseline_revision: '6862f48fde062a78bebbac4fb210f6e84c16a948'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: [multiple-goals, oversized]
@@ -196,6 +196,31 @@ CLI anchors @ `v0.46.0` (`git -C ../jj show v0.46.0:<path>`); jj-lib vendored at
   - `[false]` `[reject]` (intent) no commit hash / Auto Run Result yet — written at finalisation, when the commit exists.
   - `[false]` `[reject]` (intent) the list default changed and the app was adapted — that is the intent's reading A1 (the CLI's flags with the CLI's defaults); the app keeps its `--all-remotes` rows, so nothing regresses.
 
+### 2026-10-23 — Review pass (follow-up)
+- verdicts: 21 findings — high 0, medium 0, low 15, false 6, maybe-false 0
+- findings:
+  - `[low]` `[patch]` (blind) the FFI round-trip comment says "Advance with names" over `advance_request_bytes(None, None)` (no names) — fixed: the comment now reads "Advance without names and with `to` absent" (`crates/zanshin-ffi/tests/it/bookmark_ops_ffi.rs:916`).
+  - `[low]` `[reject]` (blind) the list arguments have no parity-oracle scenario — carried: the oracle compares repo state, a read's rows need hand audit; the jj-level filter matrix mirrors the CLI's list tests (first pass, blind oracle row).
+  - `[low]` `[reject]` (blind) three of rename's four warnings and the advance default-target refusal have no oracle scenario — the oracle compares repo state, not warning or hint texts; `tests/it/bookmark_move.rs` pins every warning code and message and the hinted refusal; more scenarios would add no verification of the texts.
+  - `[low]` `[reject]` (blind) `point_bookmarks` runs `plan_bookmark_move`'s ancestry query for every matched bookmark (also with `allow_backwards`), where the CLI's `fallible_find` is lazy — the only observable effect is an index/backend failure no user meets; skipping it needs a separate no-op test beside `plan_bookmark_move`, against the Design Notes' "one fast-forward rule" that keeps verb and `drop_actions` in agreement by construction.
+  - `[false]` `[reject]` (blind) the app call site does not use the new filters — no bad outcome: `trackingStatusOf` filters the same `--all-remotes` rows the read returned before this story (9.29), and `sort: [name]` is the first pass's deliberate fix (medium row) that keeps a malformed `ui.bookmark-list-sort-keys` from failing the status read.
+  - `[low]` `[reject]` (blind) move/advance `to` takes only a change id (no divergent side, no commit id) while the CLI's `--to` is a revset — the intent fixes it ("`--to` is an optional change id"), so it is out of scope by the intent itself.
+  - `[low]` `[reject]` (blind) a default advance target that resolves to several commits refuses without the CLI's candidate-list hints — `push::single_commit` (shared with `git push`) has no candidate hints; reaching it needs a user knob like `bookmark-advance-to = "@-"` on a merge, and adding them means new hint rendering in `single_commit`, more than a direct correction.
+  - `[low]` `[reject]` (blind) `with_advance_hint` decorates only the two revset variants — carried: backend failure during evaluation is unreachable in practice and `Backend` has no hints field (first pass, edge row).
+  - `[low]` `[reject]` (blind) the Dart API takes `bookmarkMove`'s names positionally but `bookmarkAdvance`'s by name — carried: `bookmarkMove(names, …)` follows `bookmarkCreate`/`bookmarkDelete`; advance's names are optional by the CLI's own shape (first pass, blind row).
+  - `[low]` `[reject]` (blind) the ignored-remote rule and the unmatched-name warning exist twice in Rust (`bookmark_ops` vs `bookmarks`) — the split mirrors the CLI's own (`mod.rs` `warn_unmatched_local_bookmarks` vs `warn_unmatched_local_or_remote_bookmarks`; `list.rs` builds its `~git` remote expression inline); merging needs a mode flag and no divergence exists; the Dart `_ignoredRemote` predates this story.
+  - `[low]` `[reject]` (blind) `check_move_args`' text is not clap's — carried: clap's rendering is terminal UX; house style names the flags; the code `jj.invalid_input` is what the UI switches on (first pass, blind row).
+  - `[false]` `[reject]` (blind) rename to the same name with `overwrite_existing` opens a transaction for nothing — `finish_or_no_op_at` writes no operation and returns the pre-call head (matrix row "Rename same name, overwrite", tested); loading the transaction is unobservable.
+  - `[low]` `[reject]` (edge) `allow_backwards` still runs `is_ancestor` per bookmark — same root cause and reason as the blind `point_bookmarks` row.
+  - `[low]` `[reject]` (edge) `with_advance_hint` misses Backend/Config errors — carried (first pass, edge row).
+  - `[false]` `[reject]` (edge, claim) with a dirty working copy the pre-verb snapshot writes an operation before a refusal or no-op — the CLI's `workspace_helper` snapshots before the verb too, so that op is required parity; "pre-call head" is the post-snapshot head by the house convention (`finish_or_no_op_at`), and the clap-level refusals run before the snapshot (`with_checked_verb`, tested).
+  - `[false]` `[reject]` (edge, deletion) the remote rows of one name are no longer sorted by remote name — that is the intent's CLI row order (Design Notes), documented in `envelope.fbs`; the only app consumer (`trackingStatusOf`) is order-independent.
+  - `[low]` `[patch]` (verification-gap) `list_refusals`' "no precondition ran" passes vacuously on a fresh `Repo`, so the list path's pre-snapshot reset is unguarded — fixed: the test runs two successful default lists first (asserting the first left a precondition), so the refusal's `take_precondition().is_none()` now observes the reset; mutation-checked (removing `refuse_before_snapshot` from `Repo::list_bookmarks` fails it with "no precondition ran").
+  - `[low]` `[patch]` (verification-gap) the Dart `BookmarkSortKey` → wire mapping is only checked for distinctness — fixed: `every sort key maps to its own wire value` in `packages/zanshin_core/test/ffi/bookmarks_test.dart` pins all 14 pairs.
+  - `[low]` `[reject]` (intent) the list half is measured against the implementer's reading of the CLI source, not the stock CLI — carried: same as the blind list-oracle row.
+  - `[false]` `[reject]` (intent) the app's rows keep their set but not 9.29's order, and the call adds `sort` — the intent's "project-status behaviour is unchanged" is the tracking dot, which is order-independent; `sort: [name]` keeps it independent of the user's knob.
+  - `[false]` `[reject]` (intent) move/rename/list run through `with_checked_verb`/`refuse_before_snapshot` rather than literally `with_verb` — the verb still runs inside `with_verb`; only the clap-level checks run before it, as the CLI parses arguments before `workspace_helper`.
+
 ## Design Notes
 
 - **Exact names for move/advance.** `names=["a*"]` moves only a bookmark literally named `a*` (the CLI's `jj bookmark move 'exact:"a*"'`). That answers the epic's 2026-10-14 rule. A name pattern would be a hidden glob default the GUI never wants.
@@ -229,6 +254,13 @@ Gate rule for this run: no `cargo make test` / `test-full` / `coverage`; targete
 - `app`: `dart analyze` -- no issues; `dart format --set-exit-if-changed lib test` -- 0 changed; `flutter test test/features/projects` with the gate's pinned env (JJ_*, GIT_CONFIG_GLOBAL, XDG_CONFIG_HOME) -- 194 passed. Without that env five real-worker tests fail on identity/config, as on the baseline; the gate pins it.
 - Not run (gate rule): `cargo make test`, `test-full`, `coverage` -- the story loop runs the gate once at its end.
 
+**Outcomes of the follow-up review pass (2026-10-23; test-only patches; full gate not run per the run's gate rule):**
+- `cargo fmt --all --check` -- clean. `cargo clippy -p zanshin-jj -p zanshin-ffi --all-targets -- -D warnings` -- clean.
+- `cargo test -p zanshin-jj --test it -- bookmarks::` -- 27 passed. Mutation check: with `refuse_before_snapshot` removed from `Repo::list_bookmarks`, `bookmarks::list_refusals` fails ("no precondition ran"); source restored.
+- `cargo test -p zanshin-ffi --test it -- bookmark_ops_ffi::` -- 13 passed.
+- `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings` -- no issues; `dart format --set-exit-if-changed lib test` -- 0 changed; `dart test test/ffi/bookmarks_test.dart` -- 15 passed.
+- No production code, FFI or schema changed in this pass: no codegen, no parity oracle needed.
+
 ## Auto Run Result
 
 Status: done
@@ -253,5 +285,9 @@ Status: done
 **Review findings.** 23 findings (medium 3, low 17, false 3). Patched (in a23ba38): the project-status read depending on the user's sort knob (medium), move/advance/rename arguments and list `revisions`/`remotes`/`conflicted` across the FFI/Dart wire (medium ×2), rename's empty-name refusal before the snapshot, the CLI row-order witness replacing 9.29's order test, rename's `git` exclusion test, advance-path tests, the refused-rename head check over FFI, oracle scenarios (`--from` + names, custom advance-from, conflicted move), conflicted agreement, the duplicated FFI vector reader, `bookmarks()` NUL-guard tests, a rename warning code across FFI and Dart (low). Nothing deferred. Rejected: clap's own required-group text (terminal UX; house style names the flags, as 9.16), list scenarios in the oracle (it compares repo state; reads need hand audit), rename's dropped warning hints (house rule: warnings carry code + message), the Dart `bookmarkMove` positional names (follows `bookmarkCreate`/`Delete`), the advance hint on backend failures (unreachable in practice, needs a field on `Backend`), and three descriptive intent rows (I1 surface, commit hash written here, list default = the CLI's).
 
 **Follow-up review recommendation: true.** Patched at entry verdict: high 0, medium 3, low 12. Unverified risk: the per-file coverage ratchet — `bookmark_ops.rs`, `bookmarks.rs`, `mutate.rs`, `config.rs` and the FFI modules sit at 100% in the baseline, and the new defensive arms (e.g. `sort_key`'s unknown-byte arm, `with_advance_hint`'s non-revset pass-through, `rev`'s backend arm in `bookmarks.rs`) are unmeasured until the story loop's final gate.
+
+**Follow-up review pass (2026-10-23).** 21 findings (low 15, false 6). Patched (test-only): `list_refusals` now observes the list path's pre-snapshot reset (it passed vacuously on a fresh `Repo`; mutation-checked), the Dart `BookmarkSortKey` → wire mapping is pinned pair by pair, and a wrong FFI test comment ("with names" over a no-names advance) is corrected. Nothing deferred. Rejected: the eager per-bookmark ancestry query in `point_bookmarks` (only an unmet index failure is observable; the one-fast-forward rule), missing oracle scenarios for list/rename warnings/advance refusals (the oracle compares repo state; jj-level tests pin the texts), the change-id-only `to` (fixed by the intent), the missing candidate hints of a multi-commit default advance target (rare knob; new hint rendering), the Rust helper split (mirrors the CLI's), and the carried first-pass rejections; false: the app not using filters, the same-name rename transaction, the snapshot-before-refusal claim, the remote-row order change, and two descriptive intent rows. Files changed: `crates/zanshin-jj/tests/it/bookmarks.rs`, `crates/zanshin-ffi/tests/it/bookmark_ops_ffi.rs`, `packages/zanshin_core/test/ffi/bookmarks_test.dart`, this spec.
+
+**Follow-up review recommendation (follow-up pass): false.** Patched at entry verdict: high 0, medium 0, low 3 — no high patched, so the work has converged. The coverage-ratchet risk named above still stands until the story loop's final gate.
 
 **Residual risks.** Coverage ratchet not run (gate rule). `bookmark list` filters and order are compared with the CLI only through jj-level tests mirroring the CLI's list tests (the oracle compares repo state, not read output). The app's real-worker project tests need the gate's pinned environment, as before.

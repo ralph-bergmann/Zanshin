@@ -1030,6 +1030,16 @@ fn list_refusals() {
     test_helpers::pin_test_env();
     let (fx, _, _) = filter_fixture();
     let mut repo = Repo::open(&fx.path).unwrap();
+    // A successful call first leaves a precondition report pending, so the refusal's
+    // "no precondition ran" below observes the pre-snapshot reset, not a fresh handle.
+    repo.list_bookmarks(&BookmarkListOptions::default())
+        .expect("default list");
+    assert!(
+        repo.take_precondition().is_some(),
+        "the default list ran a precondition"
+    );
+    repo.list_bookmarks(&BookmarkListOptions::default())
+        .expect("default list");
     fs::write(fx.path.join("dirty.txt"), "dirty").unwrap();
     let head = |root: &Path| {
         let (ws, _) = oracle_workspace(root);

@@ -913,7 +913,7 @@ fn move_advance_and_rename_round_trip_over_the_wire() {
         format!("point bookmark feature to commit {parent_hex}")
     );
 
-    // Advance with names and `to` absent: `heads(::@ & bookmarks())` is the parent.
+    // Advance without names and with `to` absent: `heads(::@ & bookmarks())` is the parent.
     ok_op(&call(
         zanshin_bookmark_advance,
         handle,
