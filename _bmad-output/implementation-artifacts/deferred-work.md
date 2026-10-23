@@ -1859,3 +1859,14 @@ Spec: spec-loop-9-58-fixup-coverage-revset.
 - ~~**No project rule stops a loop's new test helper from carrying a never-run `panic!` fallback arm, which drops the file below a 100% baseline.**~~ — RESOLVED 2026-10-23 (console session, Ralph: rule in project-context.md; commit 8ffb8b1): testing rules forbid a `match` with a `panic!` arm in test helpers (`expect` / irrefutable `let` / `assert!(matches!(…))` instead). Low.
   - Second occurrence: `remote_changes.rs` / `drop_actions.rs` / `config.rs` (fixed 46031ea) and now `crates/zanshin-jj/src/revset.rs` (593f6c9, fixed b4fff0b); neither `_bmad-output/project-context.md` nor `docs/coverage.md` names the pattern.
   - **Follow-up:** Ralph decides whether `project-context.md` (testing rules) or `docs/coverage.md` gains the rule "no never-run fallback arms in test helpers — `expect`/`assert!(matches!(…))` instead of a `match` with a `panic!` arm".
+
+## Surfaced in Story 9.40 (bmad-build-auto, 2026-10-23)
+
+Spec: spec-9-40-no-change-verbs-write-no-operation.
+
+- **`undo_preserves_current_git_head_and_git_refs_not_targets` no longer proves that `undo` keeps the current `git_refs`: its operations change only Git refs, so its undo now restores an equal view and writes nothing.** Low.
+  - `crates/zanshin-jj/tests/it/op_log.rs` (`undo_preserves_current_git_head_and_git_refs_not_targets`): still green, but since the Story 9.40 gate in `mutate::finish_verb` the undo takes the no-change arm, so its git_refs/git_head assertions hold trivially; the oracle's `undo_no_change` pins only `git_head`.
+  - **Follow-up:** give the test's undone operation a real repo-state change next to the Git-ref move, so the undo writes and the kept `git_refs` are asserted on a written view.
+- **Story 9.38's tracking text still says `mutate.rs::edit` always commits `edit commit <id>`; since Story 9.40 an edit of the current NON-discardable `@` writes nothing.** Low.
+  - sprint-status.yaml `9-38-edit-current-at-is-noop` and the `edit` bullet Story 9.38 owns here; witness `crates/zanshin-jj/tests/it/mutate.rs` `edit_of_the_current_non_discardable_wc_writes_no_operation`. Left for 9.38: the discardable `@` (jj-lib's `MutableRepo::edit` abandons it) and the CLI's early return after the rewritability check.
+  - **Follow-up:** narrow Story 9.38's scope text to the discardable case and the early return.
