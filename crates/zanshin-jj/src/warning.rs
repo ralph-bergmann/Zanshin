@@ -241,6 +241,16 @@ pub enum WarningKind {
     /// `fix.tools.<name>.line-range-arg`; Story 9.9). The call runs with the migrated key; the
     /// file is not rewritten.
     ConfigDeprecated,
+    /// `op show` / `op diff` could not resolve `--show-changes-in` (or
+    /// `revsets.op-diff-changes-in`) against one of the two operations — "Could not resolve revset
+    /// expression for elision: <error>" (`cli/src/commands/operation/diff.rs:286-305` @ v0.46.0;
+    /// Story 9.21). The diff goes on without its commit section.
+    OpDiffChangesUnresolved,
+    /// `op abandon` rewrote the op heads, but this workspace's working copy is recorded at an
+    /// operation that is not one of them, so it was left as it is — "The working copy operation
+    /// <id> is not updated because it differs from the repo <ids>."
+    /// (`cli/src/commands/operation/abandon.rs:136-154` @ v0.46.0; Story 9.21).
+    OpAbandonWorkingCopyNotUpdated,
 }
 
 /// One warning a call produced (Story 9.32).

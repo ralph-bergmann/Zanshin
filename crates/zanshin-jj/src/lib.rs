@@ -50,6 +50,7 @@ pub(crate) mod git;
 pub(crate) mod graph;
 pub(crate) mod metaedit;
 pub(crate) mod mutate;
+pub(crate) mod op_diff;
 pub(crate) mod op_log;
 pub(crate) mod op_support;
 pub(crate) mod parallelize;
@@ -103,7 +104,12 @@ pub use git::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate, 
 pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};
 pub use metaedit::MetaeditOptions;
 pub use mutate::{AbsorbResult, MutateError, MutationResult, SkippedPath};
-pub use op_log::{OpLogError, Operation, OperationId};
+pub use op_diff::{
+    OpChangedCommit, OpCommitsDiff, OpDiff, OpRefChange, OpRefTarget, OpRemoteRefChange, OpWorkingCopyChange,
+};
+pub use op_log::{
+    OpAbandonResult, OpDiffOptions, OpDiffResult, OpLogError, OpShow, Operation, OperationId, OperationTag,
+};
 pub use push::{
     GitPushArgs, GitPushOutcome, PushCommitRejection, PushCreatedBookmark, PushFailure, PushFailureKind, PushPath,
     PushRef, PushRefKind, PushRefName, PushRefStatus, PushRefusal, PushRemote, PushSigning,

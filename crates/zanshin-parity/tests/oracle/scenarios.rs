@@ -116,6 +116,41 @@ fn config_read_back(root: &Path) -> String {
     format!("cli get={:?} file={text:?}", value.trim_end())
 }
 
+/// The root operation's id prefix — jj's root operation id is all zeros.
+const ROOT_OPERATION_PREFIX: &str = "000000000000";
+
+/// The op log's shape after `op abandon` (Story 9.21), which the operation aspects — the
+/// operations "since before", walked until the old head — cannot see once that head is
+/// rewritten: every operation's description (ids masked) and parent count, newest first, and
+/// whether the working copy is recorded at the head.
+fn op_chain_read_back(root: &Path) -> String {
+    let (workspace, repo) = load_workspace(root);
+    let mut rows = Vec::new();
+    let mut cursor = Some(repo.operation().clone());
+    while let Some(op) = cursor {
+        let parents = pollster::block_on(op.parents()).expect("operation parents");
+        let words: Vec<&str> = op
+            .metadata()
+            .description
+            .split(' ')
+            .map(|word| {
+                if word.len() >= 12 && word.chars().all(|c| c.is_ascii_hexdigit()) {
+                    "<id>"
+                } else {
+                    word
+                }
+            })
+            .collect();
+        rows.push(format!("{:?}/{}", words.join(" "), parents.len()));
+        cursor = parents.into_iter().next();
+    }
+    format!(
+        "chain={} wc_at_head={}",
+        rows.join(" <- "),
+        workspace.working_copy().operation_id() == repo.op_id()
+    )
+}
+
 /// Loads the workspace at `dir` and its repo at the head operation.
 fn load_workspace(dir: &Path) -> (Workspace, std::sync::Arc<jj_lib::repo::ReadonlyRepo>) {
     let workspace = Workspace::load(
@@ -1072,6 +1107,94 @@ pub fn scenarios() -> Vec<Scenario> {
                     zanshin_outcome(repo, &result)
                 },
                 |_| args(&["undo"]),
+            )
+        },
+        // ── Story 9.21: redo and op abandon ─────────────────────────────────
+        Scenario {
+            setup: &[Step::Jj(&["describe", "-m", "to be redone"]), Step::Jj(&["undo"])],
+            ..simple(
+                "redo_after_undo",
+                |repo, _, _| {
+                    let result = repo.redo(false);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["redo"]),
+            )
+        },
+        simple(
+            "redo_nothing",
+            |repo, _, _| {
+                let result = repo.redo(false);
+                zanshin_outcome(repo, &result)
+            },
+            |_| args(&["redo"]),
+        ),
+        Scenario {
+            setup: &[
+                Step::Jj(&["describe", "-m", "first"]),
+                Step::Jj(&["describe", "-m", "second"]),
+                Step::Jj(&["undo"]),
+                Step::Jj(&["undo"]),
+            ],
+            ..simple(
+                "redo_stack",
+                |repo, _, _| {
+                    let result = repo.redo(false);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["redo"]),
+            )
+        },
+        Scenario {
+            // The undo to redo ran in `ws2`: refused without --allow-cross-workspace
+            // (`cli/src/commands/redo.rs:128-143` @ v0.46.0). Non-colocated, so `workspace add`
+            // creates no Git worktree.
+            init: &["git", "init", "--no-colocate"],
+            setup: &[
+                Step::Jj(&["workspace", "add", "../ws2"]),
+                Step::JjAt("../ws2", &["describe", "-m", "from ws2"]),
+                Step::JjAt("../ws2", &["undo"]),
+            ],
+            ..simple(
+                "redo_cross_workspace",
+                |repo, _, _| {
+                    let result = repo.redo(false);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["redo"]),
+            )
+        },
+        Scenario {
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_abandon_range",
+                |repo, _, _| {
+                    let result = repo.op_abandon("..@-");
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "abandon", "..@-"]),
+            )
+        },
+        Scenario {
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_abandon_current_refused",
+                |repo, _, _| {
+                    let result = repo.op_abandon("@");
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "abandon", "@"]),
+            )
+        },
+        Scenario {
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_abandon_root_refused",
+                |repo, _, _| {
+                    let result = repo.op_abandon(ROOT_OPERATION_PREFIX);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "abandon", ROOT_OPERATION_PREFIX]),
             )
         },
         // ── Story 9.23: workspace add ────────────────────────────────────────

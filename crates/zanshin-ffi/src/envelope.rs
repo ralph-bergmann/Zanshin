@@ -81,6 +81,13 @@ pub const JJ_NOTHING_TO_UNDO: &str = "jj.nothing_to_undo";
 /// workspace and `allow_cross_workspace` is false (jj 0.46, Story 9.39); `context` is
 /// `"<operation>\n<workspace>"` — the 12-digit short operation id, then the workspace name.
 pub const JJ_UNDO_CROSS_WORKSPACE: &str = "jj.undo_cross_workspace";
+/// AR-P-4: emitted by `repo.rs::zanshin_redo` when the head is no undo operation (nor a redo of
+/// one) — the CLI's "Nothing to redo" in `context` (Story 9.21). Nothing is written.
+pub const JJ_NOTHING_TO_REDO: &str = "jj.nothing_to_redo";
+/// AR-P-4: emitted by `repo.rs::zanshin_redo` when the undo operation to redo was performed in
+/// another workspace and `allow_cross_workspace` is false (Story 9.21); `context` is
+/// `"<operation>\n<workspace>"` — the 12-digit short operation id, then the workspace name.
+pub const JJ_REDO_CROSS_WORKSPACE: &str = "jj.redo_cross_workspace";
 /// AR-P-4: emitted by `repo.rs::zanshin_git_fetch` when `remote_name` has no configured git
 /// remote (a workspace with NO git backend is `jj.not_a_git_repo` instead); and — since Story
 /// 9.5 — by `git.rs::zanshin_git_remote_remove`/`_rename`/`_set_url` when the named remote does
@@ -379,6 +386,12 @@ pub const JJ_FILESET_DIAGNOSTIC: &str = "jj.fileset_diagnostic";
 /// Warning: a config layer uses a deprecated key the CLI migrates at start-up (Story 9.9) — every
 /// verb that runs the pre-verb snapshot, and the config verbs.
 pub const JJ_CONFIG_DEPRECATED: &str = "jj.config_deprecated";
+/// Warning: `zanshin_op_show` / `zanshin_op_diff` could not resolve `show_changes_in`, so the
+/// diff has no commit section (Story 9.21).
+pub const JJ_OP_DIFF_CHANGES_UNRESOLVED: &str = "jj.op_diff_changes_unresolved";
+/// Warning: `zanshin_op_abandon` rewrote the op heads but left this workspace's working copy,
+/// which is recorded at an operation that is not a head (Story 9.21).
+pub const JJ_OP_ABANDON_WORKING_COPY_NOT_UPDATED: &str = "jj.op_abandon_working_copy_not_updated";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -450,6 +463,8 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::FixToolFailed => JJ_FIX_TOOL_FAILED,
         K::FilesetDiagnostic => JJ_FILESET_DIAGNOSTIC,
         K::ConfigDeprecated => JJ_CONFIG_DEPRECATED,
+        K::OpDiffChangesUnresolved => JJ_OP_DIFF_CHANGES_UNRESOLVED,
+        K::OpAbandonWorkingCopyNotUpdated => JJ_OP_ABANDON_WORKING_COPY_NOT_UPDATED,
     }
 }
 
@@ -1590,6 +1605,8 @@ mod tests {
             K::FixToolFailed => "jj.fix_tool_failed",
             K::FilesetDiagnostic => "jj.fileset_diagnostic",
             K::ConfigDeprecated => "jj.config_deprecated",
+            K::OpDiffChangesUnresolved => "jj.op_diff_changes_unresolved",
+            K::OpAbandonWorkingCopyNotUpdated => "jj.op_abandon_working_copy_not_updated",
         }
     }
 
@@ -1664,6 +1681,8 @@ mod tests {
             K::FixToolFailed,
             K::FilesetDiagnostic,
             K::ConfigDeprecated,
+            K::OpDiffChangesUnresolved,
+            K::OpAbandonWorkingCopyNotUpdated,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");

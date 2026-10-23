@@ -23,7 +23,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 ///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 ///  very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-///  squash, never a different verb. For the other 44 tables the variant name plus `Request` IS
+///  squash, never a different verb. For the other 46 tables the variant name plus `Request` IS
 ///  the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -83,7 +83,9 @@ enum RequestKind {
   BookmarkMove(47),
   BookmarkAdvance(48),
   BookmarkRename(49),
-  SelectTree(50);
+  SelectTree(50),
+  OpShow(51),
+  OpDiff(52);
 
   final int value;
   const RequestKind(this.value);
@@ -192,6 +194,10 @@ enum RequestKind {
         return RequestKind.BookmarkRename;
       case 50:
         return RequestKind.SelectTree;
+      case 51:
+        return RequestKind.OpShow;
+      case 52:
+        return RequestKind.OpDiff;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -200,7 +206,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 50;
+  static const int maxValue = 52;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -1609,7 +1615,10 @@ enum PayloadTypeId {
   DropActions(46),
   ChangeActions(47),
   FixResult(48),
-  SelectedTree(49);
+  SelectedTree(49),
+  OpShow(50),
+  OpDiffResult(51),
+  OpAbandonResult(52);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -1716,6 +1725,12 @@ enum PayloadTypeId {
         return PayloadTypeId.FixResult;
       case 49:
         return PayloadTypeId.SelectedTree;
+      case 50:
+        return PayloadTypeId.OpShow;
+      case 51:
+        return PayloadTypeId.OpDiffResult;
+      case 52:
+        return PayloadTypeId.OpAbandonResult;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -1724,7 +1739,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 49;
+  static const int maxValue = 52;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -9317,6 +9332,89 @@ class ChangeObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One tag of an operation (Story 9.21): jj's `OperationMetadata.attributes` entry.
+class OperationTag {
+  OperationTag._(this._bc, this._bcOffset);
+  factory OperationTag(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OperationTag> reader = _OperationTagReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get key => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get value => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'OperationTag{key: ${key}, value: ${value}}';
+  }
+}
+
+class _OperationTagReader extends fb.TableReader<OperationTag> {
+  const _OperationTagReader();
+
+  @override
+  OperationTag createObject(fb.BufferContext bc, int offset) => OperationTag._(bc, offset);
+}
+
+class OperationTagBuilder {
+  OperationTagBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addKeyOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addValueOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OperationTagObjectBuilder extends fb.ObjectBuilder {
+  final String? _key;
+  final String? _value;
+
+  OperationTagObjectBuilder({
+    String? key,
+    String? value,
+  }) : _key = key,
+       _value = value;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? keyOffset = _key == null ? null : fbBuilder.writeString(_key!);
+    final int? valueOffset = _value == null ? null : fbBuilder.writeString(_value!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, keyOffset);
+    fbBuilder.addOffset(1, valueOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  One entry in jj's operation log (FR-JJ-7).
 class Operation {
   Operation._(this._bc, this._bcOffset);
@@ -9339,10 +9437,13 @@ class Operation {
   String? get description => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 16);
   bool get rootOp => const fb.BoolReader().vTableGet(_bc, _bcOffset, 18, false);
   bool get isSnapshot => const fb.BoolReader().vTableGet(_bc, _bcOffset, 20, false);
+  String? get workspaceName => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 22);
+  List<OperationTag>? get tags =>
+      const fb.ListReader<OperationTag>(OperationTag.reader).vTableGetNullable(_bc, _bcOffset, 24);
 
   @override
   String toString() {
-    return 'Operation{id: ${id}, parentIds: ${parentIds}, timestampMillis: ${timestampMillis}, tzOffsetMinutes: ${tzOffsetMinutes}, user: ${user}, host: ${host}, description: ${description}, rootOp: ${rootOp}, isSnapshot: ${isSnapshot}}';
+    return 'Operation{id: ${id}, parentIds: ${parentIds}, timestampMillis: ${timestampMillis}, tzOffsetMinutes: ${tzOffsetMinutes}, user: ${user}, host: ${host}, description: ${description}, rootOp: ${rootOp}, isSnapshot: ${isSnapshot}, workspaceName: ${workspaceName}, tags: ${tags}}';
   }
 }
 
@@ -9359,7 +9460,7 @@ class OperationBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(9);
+    fbBuilder.startTable(11);
   }
 
   int addIdOffset(int? offset) {
@@ -9407,6 +9508,16 @@ class OperationBuilder {
     return fbBuilder.offset;
   }
 
+  int addWorkspaceNameOffset(int? offset) {
+    fbBuilder.addOffset(9, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTagsOffset(int? offset) {
+    fbBuilder.addOffset(10, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -9422,6 +9533,8 @@ class OperationObjectBuilder extends fb.ObjectBuilder {
   final String? _description;
   final bool? _rootOp;
   final bool? _isSnapshot;
+  final String? _workspaceName;
+  final List<OperationTagObjectBuilder>? _tags;
 
   OperationObjectBuilder({
     String? id,
@@ -9433,6 +9546,8 @@ class OperationObjectBuilder extends fb.ObjectBuilder {
     String? description,
     bool? rootOp,
     bool? isSnapshot,
+    String? workspaceName,
+    List<OperationTagObjectBuilder>? tags,
   }) : _id = id,
        _parentIds = parentIds,
        _timestampMillis = timestampMillis,
@@ -9441,7 +9556,9 @@ class OperationObjectBuilder extends fb.ObjectBuilder {
        _host = host,
        _description = description,
        _rootOp = rootOp,
-       _isSnapshot = isSnapshot;
+       _isSnapshot = isSnapshot,
+       _workspaceName = workspaceName,
+       _tags = tags;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -9453,7 +9570,11 @@ class OperationObjectBuilder extends fb.ObjectBuilder {
     final int? userOffset = _user == null ? null : fbBuilder.writeString(_user!);
     final int? hostOffset = _host == null ? null : fbBuilder.writeString(_host!);
     final int? descriptionOffset = _description == null ? null : fbBuilder.writeString(_description!);
-    fbBuilder.startTable(9);
+    final int? workspaceNameOffset = _workspaceName == null ? null : fbBuilder.writeString(_workspaceName!);
+    final int? tagsOffset = _tags == null
+        ? null
+        : fbBuilder.writeList(_tags!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(11);
     fbBuilder.addOffset(0, idOffset);
     fbBuilder.addOffset(1, parentIdsOffset);
     fbBuilder.addInt64(2, _timestampMillis);
@@ -9463,6 +9584,8 @@ class OperationObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(6, descriptionOffset);
     fbBuilder.addBool(7, _rootOp);
     fbBuilder.addBool(8, _isSnapshot);
+    fbBuilder.addOffset(9, workspaceNameOffset);
+    fbBuilder.addOffset(10, tagsOffset);
     return fbBuilder.endTable();
   }
 
@@ -9538,6 +9661,1277 @@ class OpLogObjectBuilder extends fb.ObjectBuilder {
         : fbBuilder.writeList(_operations!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
     fbBuilder.startTable(1);
     fbBuilder.addOffset(0, operationsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_op_show` (Story 9.21) — the CLI's `jj op show`.
+///
+///    operation          the operation expression (`@`, `@-`, an id prefix); ABSENT = `@`
+///    show_changes_in    `--show-changes-in`; ABSENT = `revsets.op-diff-changes-in`
+class OpShowRequest {
+  OpShowRequest._(this._bc, this._bcOffset);
+  factory OpShowRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpShowRequest> reader = _OpShowRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get operation => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get showChangesIn => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'OpShowRequest{kind: ${kind}, operation: ${operation}, showChangesIn: ${showChangesIn}}';
+  }
+}
+
+class _OpShowRequestReader extends fb.TableReader<OpShowRequest> {
+  const _OpShowRequestReader();
+
+  @override
+  OpShowRequest createObject(fb.BufferContext bc, int offset) => OpShowRequest._(bc, offset);
+}
+
+class OpShowRequestBuilder {
+  OpShowRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addOperationOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addShowChangesInOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpShowRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _operation;
+  final String? _showChangesIn;
+
+  OpShowRequestObjectBuilder({
+    RequestKind? kind,
+    String? operation,
+    String? showChangesIn,
+  }) : _kind = kind,
+       _operation = operation,
+       _showChangesIn = showChangesIn;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? operationOffset = _operation == null ? null : fbBuilder.writeString(_operation!);
+    final int? showChangesInOffset = _showChangesIn == null ? null : fbBuilder.writeString(_showChangesIn!);
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, operationOffset);
+    fbBuilder.addOffset(2, showChangesInOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_op_diff` (Story 9.21) — the CLI's `jj op diff`; every string ABSENT =
+///  the flag was not given.
+///
+///    operation          `--operation`: this operation against its parents (default `@`); may NOT
+///                       be combined with from/to (clap's conflict, `jj.invalid_input` before the
+///                       snapshot)
+///    from, to           `--from` / `--to`; with only one given, the other is `@`
+///    show_changes_in    `--show-changes-in`; ABSENT = `revsets.op-diff-changes-in`
+class OpDiffRequest {
+  OpDiffRequest._(this._bc, this._bcOffset);
+  factory OpDiffRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpDiffRequest> reader = _OpDiffRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get operation => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  String? get to => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  String? get showChangesIn => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 12);
+
+  @override
+  String toString() {
+    return 'OpDiffRequest{kind: ${kind}, operation: ${operation}, from: ${from}, to: ${to}, showChangesIn: ${showChangesIn}}';
+  }
+}
+
+class _OpDiffRequestReader extends fb.TableReader<OpDiffRequest> {
+  const _OpDiffRequestReader();
+
+  @override
+  OpDiffRequest createObject(fb.BufferContext bc, int offset) => OpDiffRequest._(bc, offset);
+}
+
+class OpDiffRequestBuilder {
+  OpDiffRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addOperationOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFromOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addToOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addShowChangesInOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpDiffRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _operation;
+  final String? _from;
+  final String? _to;
+  final String? _showChangesIn;
+
+  OpDiffRequestObjectBuilder({
+    RequestKind? kind,
+    String? operation,
+    String? from,
+    String? to,
+    String? showChangesIn,
+  }) : _kind = kind,
+       _operation = operation,
+       _from = from,
+       _to = to,
+       _showChangesIn = showChangesIn;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? operationOffset = _operation == null ? null : fbBuilder.writeString(_operation!);
+    final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
+    final int? toOffset = _to == null ? null : fbBuilder.writeString(_to!);
+    final int? showChangesInOffset = _showChangesIn == null ? null : fbBuilder.writeString(_showChangesIn!);
+    fbBuilder.startTable(5);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, operationOffset);
+    fbBuilder.addOffset(2, fromOffset);
+    fbBuilder.addOffset(3, toOffset);
+    fbBuilder.addOffset(4, showChangesInOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A ref target as `jj op diff` summarises it (Story 9.21): ABSENT = `adds` empty and not
+///  `conflicted`; a normal target = one add; a conflict = its present adds and removes. Hex
+///  commit ids.
+class OpRefTarget {
+  OpRefTarget._(this._bc, this._bcOffset);
+  factory OpRefTarget(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpRefTarget> reader = _OpRefTargetReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<String>? get adds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get removes => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  bool get conflicted => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+
+  @override
+  String toString() {
+    return 'OpRefTarget{adds: ${adds}, removes: ${removes}, conflicted: ${conflicted}}';
+  }
+}
+
+class _OpRefTargetReader extends fb.TableReader<OpRefTarget> {
+  const _OpRefTargetReader();
+
+  @override
+  OpRefTarget createObject(fb.BufferContext bc, int offset) => OpRefTarget._(bc, offset);
+}
+
+class OpRefTargetBuilder {
+  OpRefTargetBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addAddsOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemovesOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addConflicted(bool? conflicted) {
+    fbBuilder.addBool(2, conflicted);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpRefTargetObjectBuilder extends fb.ObjectBuilder {
+  final List<String>? _adds;
+  final List<String>? _removes;
+  final bool? _conflicted;
+
+  OpRefTargetObjectBuilder({
+    List<String>? adds,
+    List<String>? removes,
+    bool? conflicted,
+  }) : _adds = adds,
+       _removes = removes,
+       _conflicted = conflicted;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? addsOffset = _adds == null ? null : fbBuilder.writeList(_adds!.map(fbBuilder.writeString).toList());
+    final int? removesOffset = _removes == null
+        ? null
+        : fbBuilder.writeList(_removes!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, addsOffset);
+    fbBuilder.addOffset(1, removesOffset);
+    fbBuilder.addBool(2, _conflicted);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One changed commit of an operation diff (Story 9.21): `commit_id` is the row's key — the new
+///  commit, or the old one when `abandoned`; `added_commit_ids` the CLI's `+` line (empty when
+///  abandoned), `removed_commit_ids` its `-` lines (the predecessors, or the abandoned commit).
+class OpChangedCommit {
+  OpChangedCommit._(this._bc, this._bcOffset);
+  factory OpChangedCommit(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpChangedCommit> reader = _OpChangedCommitReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get commitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  bool get abandoned => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
+  List<String>? get addedCommitIds =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get removedCommitIds =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'OpChangedCommit{commitId: ${commitId}, abandoned: ${abandoned}, addedCommitIds: ${addedCommitIds}, removedCommitIds: ${removedCommitIds}}';
+  }
+}
+
+class _OpChangedCommitReader extends fb.TableReader<OpChangedCommit> {
+  const _OpChangedCommitReader();
+
+  @override
+  OpChangedCommit createObject(fb.BufferContext bc, int offset) => OpChangedCommit._(bc, offset);
+}
+
+class OpChangedCommitBuilder {
+  OpChangedCommitBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addCommitIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAbandoned(bool? abandoned) {
+    fbBuilder.addBool(1, abandoned);
+    return fbBuilder.offset;
+  }
+
+  int addAddedCommitIdsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemovedCommitIdsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpChangedCommitObjectBuilder extends fb.ObjectBuilder {
+  final String? _commitId;
+  final bool? _abandoned;
+  final List<String>? _addedCommitIds;
+  final List<String>? _removedCommitIds;
+
+  OpChangedCommitObjectBuilder({
+    String? commitId,
+    bool? abandoned,
+    List<String>? addedCommitIds,
+    List<String>? removedCommitIds,
+  }) : _commitId = commitId,
+       _abandoned = abandoned,
+       _addedCommitIds = addedCommitIds,
+       _removedCommitIds = removedCommitIds;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? commitIdOffset = _commitId == null ? null : fbBuilder.writeString(_commitId!);
+    final int? addedCommitIdsOffset = _addedCommitIds == null
+        ? null
+        : fbBuilder.writeList(_addedCommitIds!.map(fbBuilder.writeString).toList());
+    final int? removedCommitIdsOffset = _removedCommitIds == null
+        ? null
+        : fbBuilder.writeList(_removedCommitIds!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, commitIdOffset);
+    fbBuilder.addBool(1, _abandoned);
+    fbBuilder.addOffset(2, addedCommitIdsOffset);
+    fbBuilder.addOffset(3, removedCommitIdsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The commit section of an operation diff (Story 9.21): the rows in revset order, and how many
+///  newly visible / hidden commits outside `show_changes_in` were elided (`count_estimate`).
+class OpCommitsDiff {
+  OpCommitsDiff._(this._bc, this._bcOffset);
+  factory OpCommitsDiff(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpCommitsDiff> reader = _OpCommitsDiffReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<OpChangedCommit>? get changes =>
+      const fb.ListReader<OpChangedCommit>(OpChangedCommit.reader).vTableGetNullable(_bc, _bcOffset, 4);
+  RefDistance? get elidedNewlyVisible => RefDistance.reader.vTableGetNullable(_bc, _bcOffset, 6);
+  RefDistance? get elidedNewlyHidden => RefDistance.reader.vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'OpCommitsDiff{changes: ${changes}, elidedNewlyVisible: ${elidedNewlyVisible}, elidedNewlyHidden: ${elidedNewlyHidden}}';
+  }
+}
+
+class _OpCommitsDiffReader extends fb.TableReader<OpCommitsDiff> {
+  const _OpCommitsDiffReader();
+
+  @override
+  OpCommitsDiff createObject(fb.BufferContext bc, int offset) => OpCommitsDiff._(bc, offset);
+}
+
+class OpCommitsDiffBuilder {
+  OpCommitsDiffBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addChangesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addElidedNewlyVisibleOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addElidedNewlyHiddenOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpCommitsDiffObjectBuilder extends fb.ObjectBuilder {
+  final List<OpChangedCommitObjectBuilder>? _changes;
+  final RefDistanceObjectBuilder? _elidedNewlyVisible;
+  final RefDistanceObjectBuilder? _elidedNewlyHidden;
+
+  OpCommitsDiffObjectBuilder({
+    List<OpChangedCommitObjectBuilder>? changes,
+    RefDistanceObjectBuilder? elidedNewlyVisible,
+    RefDistanceObjectBuilder? elidedNewlyHidden,
+  }) : _changes = changes,
+       _elidedNewlyVisible = elidedNewlyVisible,
+       _elidedNewlyHidden = elidedNewlyHidden;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? changesOffset = _changes == null
+        ? null
+        : fbBuilder.writeList(_changes!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? elidedNewlyVisibleOffset = _elidedNewlyVisible?.getOrCreateOffset(fbBuilder);
+    final int? elidedNewlyHiddenOffset = _elidedNewlyHidden?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, changesOffset);
+    fbBuilder.addOffset(1, elidedNewlyVisibleOffset);
+    fbBuilder.addOffset(2, elidedNewlyHiddenOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A workspace whose working-copy commit changed (Story 9.21); `from` / `to` ABSENT when the
+///  workspace did not exist before / after.
+class OpWorkingCopyChange {
+  OpWorkingCopyChange._(this._bc, this._bcOffset);
+  factory OpWorkingCopyChange(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpWorkingCopyChange> reader = _OpWorkingCopyChangeReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get workspace => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get from => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get to => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'OpWorkingCopyChange{workspace: ${workspace}, from: ${from}, to: ${to}}';
+  }
+}
+
+class _OpWorkingCopyChangeReader extends fb.TableReader<OpWorkingCopyChange> {
+  const _OpWorkingCopyChangeReader();
+
+  @override
+  OpWorkingCopyChange createObject(fb.BufferContext bc, int offset) => OpWorkingCopyChange._(bc, offset);
+}
+
+class OpWorkingCopyChangeBuilder {
+  OpWorkingCopyChangeBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addWorkspaceOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFromOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addToOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpWorkingCopyChangeObjectBuilder extends fb.ObjectBuilder {
+  final String? _workspace;
+  final String? _from;
+  final String? _to;
+
+  OpWorkingCopyChangeObjectBuilder({
+    String? workspace,
+    String? from,
+    String? to,
+  }) : _workspace = workspace,
+       _from = from,
+       _to = to;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? workspaceOffset = _workspace == null ? null : fbBuilder.writeString(_workspace!);
+    final int? fromOffset = _from == null ? null : fbBuilder.writeString(_from!);
+    final int? toOffset = _to == null ? null : fbBuilder.writeString(_to!);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, workspaceOffset);
+    fbBuilder.addOffset(1, fromOffset);
+    fbBuilder.addOffset(2, toOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A local bookmark or tag whose target changed (Story 9.21).
+class OpRefChange {
+  OpRefChange._(this._bc, this._bcOffset);
+  factory OpRefChange(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpRefChange> reader = _OpRefChangeReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  OpRefTarget? get from => OpRefTarget.reader.vTableGetNullable(_bc, _bcOffset, 6);
+  OpRefTarget? get to => OpRefTarget.reader.vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'OpRefChange{name: ${name}, from: ${from}, to: ${to}}';
+  }
+}
+
+class _OpRefChangeReader extends fb.TableReader<OpRefChange> {
+  const _OpRefChangeReader();
+
+  @override
+  OpRefChange createObject(fb.BufferContext bc, int offset) => OpRefChange._(bc, offset);
+}
+
+class OpRefChangeBuilder {
+  OpRefChangeBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFromOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addToOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpRefChangeObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final OpRefTargetObjectBuilder? _from;
+  final OpRefTargetObjectBuilder? _to;
+
+  OpRefChangeObjectBuilder({
+    String? name,
+    OpRefTargetObjectBuilder? from,
+    OpRefTargetObjectBuilder? to,
+  }) : _name = name,
+       _from = from,
+       _to = to;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? fromOffset = _from?.getOrCreateOffset(fbBuilder);
+    final int? toOffset = _to?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, fromOffset);
+    fbBuilder.addOffset(2, toOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  A remote bookmark or tag whose target or tracking state changed (Story 9.21).
+class OpRemoteRefChange {
+  OpRemoteRefChange._(this._bc, this._bcOffset);
+  factory OpRemoteRefChange(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpRemoteRefChange> reader = _OpRemoteRefChangeReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get name => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get remote => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  OpRefTarget? get from => OpRefTarget.reader.vTableGetNullable(_bc, _bcOffset, 8);
+  bool get fromTracked => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+  OpRefTarget? get to => OpRefTarget.reader.vTableGetNullable(_bc, _bcOffset, 12);
+  bool get toTracked => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+
+  @override
+  String toString() {
+    return 'OpRemoteRefChange{name: ${name}, remote: ${remote}, from: ${from}, fromTracked: ${fromTracked}, to: ${to}, toTracked: ${toTracked}}';
+  }
+}
+
+class _OpRemoteRefChangeReader extends fb.TableReader<OpRemoteRefChange> {
+  const _OpRemoteRefChangeReader();
+
+  @override
+  OpRemoteRefChange createObject(fb.BufferContext bc, int offset) => OpRemoteRefChange._(bc, offset);
+}
+
+class OpRemoteRefChangeBuilder {
+  OpRemoteRefChangeBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(6);
+  }
+
+  int addNameOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemoteOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFromOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addFromTracked(bool? fromTracked) {
+    fbBuilder.addBool(3, fromTracked);
+    return fbBuilder.offset;
+  }
+
+  int addToOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addToTracked(bool? toTracked) {
+    fbBuilder.addBool(5, toTracked);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpRemoteRefChangeObjectBuilder extends fb.ObjectBuilder {
+  final String? _name;
+  final String? _remote;
+  final OpRefTargetObjectBuilder? _from;
+  final bool? _fromTracked;
+  final OpRefTargetObjectBuilder? _to;
+  final bool? _toTracked;
+
+  OpRemoteRefChangeObjectBuilder({
+    String? name,
+    String? remote,
+    OpRefTargetObjectBuilder? from,
+    bool? fromTracked,
+    OpRefTargetObjectBuilder? to,
+    bool? toTracked,
+  }) : _name = name,
+       _remote = remote,
+       _from = from,
+       _fromTracked = fromTracked,
+       _to = to,
+       _toTracked = toTracked;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? nameOffset = _name == null ? null : fbBuilder.writeString(_name!);
+    final int? remoteOffset = _remote == null ? null : fbBuilder.writeString(_remote!);
+    final int? fromOffset = _from?.getOrCreateOffset(fbBuilder);
+    final int? toOffset = _to?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(6);
+    fbBuilder.addOffset(0, nameOffset);
+    fbBuilder.addOffset(1, remoteOffset);
+    fbBuilder.addOffset(2, fromOffset);
+    fbBuilder.addBool(3, _fromTracked);
+    fbBuilder.addOffset(4, toOffset);
+    fbBuilder.addBool(5, _toTracked);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The repository changes between two operations (Story 9.21), in the CLI's section order.
+///  `commits` is ABSENT when `show_changes_in` did not resolve (warned
+///  `jj.op_diff_changes_unresolved`); the remote sections leave out a Git repo's `git` remote.
+class OpDiff {
+  OpDiff._(this._bc, this._bcOffset);
+  factory OpDiff(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpDiff> reader = _OpDiffReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  OpCommitsDiff? get commits => OpCommitsDiff.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  List<OpWorkingCopyChange>? get workingCopies =>
+      const fb.ListReader<OpWorkingCopyChange>(OpWorkingCopyChange.reader).vTableGetNullable(_bc, _bcOffset, 6);
+  List<OpRefChange>? get localBookmarks =>
+      const fb.ListReader<OpRefChange>(OpRefChange.reader).vTableGetNullable(_bc, _bcOffset, 8);
+  List<OpRefChange>? get localTags =>
+      const fb.ListReader<OpRefChange>(OpRefChange.reader).vTableGetNullable(_bc, _bcOffset, 10);
+  List<OpRemoteRefChange>? get remoteBookmarks =>
+      const fb.ListReader<OpRemoteRefChange>(OpRemoteRefChange.reader).vTableGetNullable(_bc, _bcOffset, 12);
+  List<OpRemoteRefChange>? get remoteTags =>
+      const fb.ListReader<OpRemoteRefChange>(OpRemoteRefChange.reader).vTableGetNullable(_bc, _bcOffset, 14);
+
+  @override
+  String toString() {
+    return 'OpDiff{commits: ${commits}, workingCopies: ${workingCopies}, localBookmarks: ${localBookmarks}, localTags: ${localTags}, remoteBookmarks: ${remoteBookmarks}, remoteTags: ${remoteTags}}';
+  }
+}
+
+class _OpDiffReader extends fb.TableReader<OpDiff> {
+  const _OpDiffReader();
+
+  @override
+  OpDiff createObject(fb.BufferContext bc, int offset) => OpDiff._(bc, offset);
+}
+
+class OpDiffBuilder {
+  OpDiffBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(6);
+  }
+
+  int addCommitsOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWorkingCopiesOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLocalBookmarksOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLocalTagsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemoteBookmarksOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRemoteTagsOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpDiffObjectBuilder extends fb.ObjectBuilder {
+  final OpCommitsDiffObjectBuilder? _commits;
+  final List<OpWorkingCopyChangeObjectBuilder>? _workingCopies;
+  final List<OpRefChangeObjectBuilder>? _localBookmarks;
+  final List<OpRefChangeObjectBuilder>? _localTags;
+  final List<OpRemoteRefChangeObjectBuilder>? _remoteBookmarks;
+  final List<OpRemoteRefChangeObjectBuilder>? _remoteTags;
+
+  OpDiffObjectBuilder({
+    OpCommitsDiffObjectBuilder? commits,
+    List<OpWorkingCopyChangeObjectBuilder>? workingCopies,
+    List<OpRefChangeObjectBuilder>? localBookmarks,
+    List<OpRefChangeObjectBuilder>? localTags,
+    List<OpRemoteRefChangeObjectBuilder>? remoteBookmarks,
+    List<OpRemoteRefChangeObjectBuilder>? remoteTags,
+  }) : _commits = commits,
+       _workingCopies = workingCopies,
+       _localBookmarks = localBookmarks,
+       _localTags = localTags,
+       _remoteBookmarks = remoteBookmarks,
+       _remoteTags = remoteTags;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? commitsOffset = _commits?.getOrCreateOffset(fbBuilder);
+    final int? workingCopiesOffset = _workingCopies == null
+        ? null
+        : fbBuilder.writeList(_workingCopies!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? localBookmarksOffset = _localBookmarks == null
+        ? null
+        : fbBuilder.writeList(_localBookmarks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? localTagsOffset = _localTags == null
+        ? null
+        : fbBuilder.writeList(_localTags!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? remoteBookmarksOffset = _remoteBookmarks == null
+        ? null
+        : fbBuilder.writeList(_remoteBookmarks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? remoteTagsOffset = _remoteTags == null
+        ? null
+        : fbBuilder.writeList(_remoteTags!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(6);
+    fbBuilder.addOffset(0, commitsOffset);
+    fbBuilder.addOffset(1, workingCopiesOffset);
+    fbBuilder.addOffset(2, localBookmarksOffset);
+    fbBuilder.addOffset(3, localTagsOffset);
+    fbBuilder.addOffset(4, remoteBookmarksOffset);
+    fbBuilder.addOffset(5, remoteTagsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_op_show`'s answer (Story 9.21): the operation and its diff against its parent;
+///  `diff` ABSENT for an operation with more than one parent (the CLI prints none).
+class OpShow {
+  OpShow._(this._bc, this._bcOffset);
+  factory OpShow(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpShow> reader = _OpShowReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  Operation? get operation => Operation.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  OpDiff? get diff => OpDiff.reader.vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'OpShow{operation: ${operation}, diff: ${diff}}';
+  }
+}
+
+class _OpShowReader extends fb.TableReader<OpShow> {
+  const _OpShowReader();
+
+  @override
+  OpShow createObject(fb.BufferContext bc, int offset) => OpShow._(bc, offset);
+}
+
+class OpShowBuilder {
+  OpShowBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addOperationOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addDiffOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpShowObjectBuilder extends fb.ObjectBuilder {
+  final OperationObjectBuilder? _operation;
+  final OpDiffObjectBuilder? _diff;
+
+  OpShowObjectBuilder({
+    OperationObjectBuilder? operation,
+    OpDiffObjectBuilder? diff,
+  }) : _operation = operation,
+       _diff = diff;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? operationOffset = _operation?.getOrCreateOffset(fbBuilder);
+    final int? diffOffset = _diff?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, operationOffset);
+    fbBuilder.addOffset(1, diffOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_op_diff`'s answer (Story 9.21): the operations diffed from (one for `from`, else the
+///  operation's parents — none for the root), the one diffed to, and the diff.
+class OpDiffResult {
+  OpDiffResult._(this._bc, this._bcOffset);
+  factory OpDiffResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpDiffResult> reader = _OpDiffResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<Operation>? get from => const fb.ListReader<Operation>(Operation.reader).vTableGetNullable(_bc, _bcOffset, 4);
+  Operation? get to => Operation.reader.vTableGetNullable(_bc, _bcOffset, 6);
+  OpDiff? get diff => OpDiff.reader.vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'OpDiffResult{from: ${from}, to: ${to}, diff: ${diff}}';
+  }
+}
+
+class _OpDiffResultReader extends fb.TableReader<OpDiffResult> {
+  const _OpDiffResultReader();
+
+  @override
+  OpDiffResult createObject(fb.BufferContext bc, int offset) => OpDiffResult._(bc, offset);
+}
+
+class OpDiffResultBuilder {
+  OpDiffResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addFromOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addToOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addDiffOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpDiffResultObjectBuilder extends fb.ObjectBuilder {
+  final List<OperationObjectBuilder>? _from;
+  final OperationObjectBuilder? _to;
+  final OpDiffObjectBuilder? _diff;
+
+  OpDiffResultObjectBuilder({
+    List<OperationObjectBuilder>? from,
+    OperationObjectBuilder? to,
+    OpDiffObjectBuilder? diff,
+  }) : _from = from,
+       _to = to,
+       _diff = diff;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? fromOffset = _from == null
+        ? null
+        : fbBuilder.writeList(_from!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    final int? toOffset = _to?.getOrCreateOffset(fbBuilder);
+    final int? diffOffset = _diff?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, fromOffset);
+    fbBuilder.addOffset(1, toOffset);
+    fbBuilder.addOffset(2, diffOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_op_abandon`'s answer (Story 9.21): the CLI's status lines as facts —
+///  `nothing_changed` is its "Nothing changed." (both counts 0), else "Abandoned
+///  `abandoned_count` operations and reparented `reparented_count` descendant operations." —
+///  and the op heads afterwards.
+class OpAbandonResult {
+  OpAbandonResult._(this._bc, this._bcOffset);
+  factory OpAbandonResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpAbandonResult> reader = _OpAbandonResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get abandonedCount => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  int get reparentedCount => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  bool get nothingChanged => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+  List<String>? get headOpIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'OpAbandonResult{abandonedCount: ${abandonedCount}, reparentedCount: ${reparentedCount}, nothingChanged: ${nothingChanged}, headOpIds: ${headOpIds}}';
+  }
+}
+
+class _OpAbandonResultReader extends fb.TableReader<OpAbandonResult> {
+  const _OpAbandonResultReader();
+
+  @override
+  OpAbandonResult createObject(fb.BufferContext bc, int offset) => OpAbandonResult._(bc, offset);
+}
+
+class OpAbandonResultBuilder {
+  OpAbandonResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addAbandonedCount(int? abandonedCount) {
+    fbBuilder.addUint64(0, abandonedCount);
+    return fbBuilder.offset;
+  }
+
+  int addReparentedCount(int? reparentedCount) {
+    fbBuilder.addUint64(1, reparentedCount);
+    return fbBuilder.offset;
+  }
+
+  int addNothingChanged(bool? nothingChanged) {
+    fbBuilder.addBool(2, nothingChanged);
+    return fbBuilder.offset;
+  }
+
+  int addHeadOpIdsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpAbandonResultObjectBuilder extends fb.ObjectBuilder {
+  final int? _abandonedCount;
+  final int? _reparentedCount;
+  final bool? _nothingChanged;
+  final List<String>? _headOpIds;
+
+  OpAbandonResultObjectBuilder({
+    int? abandonedCount,
+    int? reparentedCount,
+    bool? nothingChanged,
+    List<String>? headOpIds,
+  }) : _abandonedCount = abandonedCount,
+       _reparentedCount = reparentedCount,
+       _nothingChanged = nothingChanged,
+       _headOpIds = headOpIds;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? headOpIdsOffset = _headOpIds == null
+        ? null
+        : fbBuilder.writeList(_headOpIds!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(4);
+    fbBuilder.addUint64(0, _abandonedCount);
+    fbBuilder.addUint64(1, _reparentedCount);
+    fbBuilder.addBool(2, _nothingChanged);
+    fbBuilder.addOffset(3, headOpIdsOffset);
     return fbBuilder.endTable();
   }
 
@@ -18299,7 +19693,8 @@ class WarningObjectBuilder extends fb.ObjectBuilder {
 ///  envelope and on an error envelope alike (then PARTIAL). It is ABSENT when the call was refused
 ///  before the verb ran (a null pointer, an invalid handle, a request buffer that fails
 ///  validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/detect/close,
-///  `zanshin_workspace_root`, `zanshin_log_defaults`, `zanshin_commit_contents`, events, and every
+///  `zanshin_workspace_root`, `zanshin_log_defaults`, `zanshin_commit_contents`, `zanshin_op_abandon`,
+///  events, and every
 ///  `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
 ///  working-copy check ran the snapshot (Story 9.28). `zanshin_repo_convert` carries the
 ///  conversion's snapshot report (`jj git init`'s `maybe_snapshot`, Story 9.33) iff that snapshot
@@ -18429,6 +19824,12 @@ class Envelope {
         return FixResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 49:
         return SelectedTree.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 50:
+        return OpShow.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 51:
+        return OpDiffResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 52:
+        return OpAbandonResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

@@ -37,7 +37,8 @@ import 'package:zanshin_core/src/ffi/git.dart'
 import 'package:zanshin_core/src/ffi/graph.dart' show GraphTopologyView;
 import 'package:zanshin_core/src/ffi/log_defaults.dart' show decodeLogDefaultsEnvelope;
 import 'package:zanshin_core/src/ffi/mutate.dart' show decodeAbsorbResultEnvelope, decodeMutationResultEnvelope;
-import 'package:zanshin_core/src/ffi/op_log.dart' show decodeOpLogEnvelope;
+import 'package:zanshin_core/src/ffi/op_log.dart'
+    show decodeOpAbandonResultEnvelope, decodeOpDiffResultEnvelope, decodeOpLogEnvelope, decodeOpShowEnvelope;
 import 'package:zanshin_core/src/ffi/precondition.dart' show Precondition, decodeCreationReport, decodeSnapshotEnvelope;
 import 'package:zanshin_core/src/ffi/remotes.dart' show decodeRemotesEnvelope;
 import 'package:zanshin_core/src/ffi/repo_detect.dart' show decodeRepoDetectEnvelope;
@@ -118,6 +119,27 @@ typedef _Case = ({
 });
 
 final List<_Case> _cases = [
+  (
+    name: 'opShow',
+    type: fbs.PayloadTypeId.OpShow,
+    data: () => fbs.OpShowObjectBuilder(operation: fbs.OperationObjectBuilder(id: 'o')),
+    read: (b) => decodeOpShowEnvelope(b).warnings,
+  ),
+  (
+    name: 'opDiff',
+    type: fbs.PayloadTypeId.OpDiffResult,
+    data: () => fbs.OpDiffResultObjectBuilder(
+      to: fbs.OperationObjectBuilder(id: 'o'),
+      diff: fbs.OpDiffObjectBuilder(),
+    ),
+    read: (b) => decodeOpDiffResultEnvelope(b).warnings,
+  ),
+  (
+    name: 'opAbandon',
+    type: fbs.PayloadTypeId.OpAbandonResult,
+    data: fbs.OpAbandonResultObjectBuilder.new,
+    read: (b) => decodeOpAbandonResultEnvelope(b).warnings,
+  ),
   (
     name: 'status',
     type: fbs.PayloadTypeId.Status,
@@ -439,9 +461,11 @@ void main() {
         'jj.fix_tool_failed',
         'jj.fileset_diagnostic',
         'jj.config_deprecated',
+        'jj.op_diff_changes_unresolved',
+        'jj.op_abandon_working_copy_not_updated',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(65), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(67), reason: 'no code is registered twice');
     });
   });
 

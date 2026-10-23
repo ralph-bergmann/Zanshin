@@ -1203,6 +1203,71 @@ class ZanshinWorker {
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
+  /// Redo the most recently undone operation of the repo identified by
+  /// [handleId] — the CLI's `jj redo` (Story 9.21); see [RepoHandle.redo].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (`jj.nothing_to_redo`,
+  /// `jj.redo_cross_workspace`, …). The close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.redo].
+  Future<repo_ffi_mutate.MutationResult> redo(int handleId, {bool allowCrossWorkspace = false}) async {
+    final Uint8List bytes = await send(
+      RedoCommand(commandId: _correlator.allocateId(), handleId: handleId, allowCrossWorkspace: allowCrossWorkspace),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Show one operation of the repo identified by [handleId] — the CLI's
+  /// `jj op show` (Story 9.21); see [RepoHandle.opShow].
+  Future<repo_ffi_op_log.OpShow> opShow(int handleId, {String? operation, String? showChangesIn}) async {
+    rejectInteriorNul(operation, 'operation');
+    rejectInteriorNul(showChangesIn, 'showChangesIn');
+    final Uint8List bytes = await send(
+      OpShowCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        operation: operation,
+        showChangesIn: showChangesIn,
+      ),
+    );
+    return repo_ffi_op_log.decodeOpShowEnvelopeInternal(bytes);
+  }
+
+  /// Compare two operations of the repo identified by [handleId] — the CLI's
+  /// `jj op diff` (Story 9.21); see [RepoHandle.opDiff].
+  Future<repo_ffi_op_log.OpDiffResult> opDiff(
+    int handleId, {
+    String? operation,
+    String? from,
+    String? to,
+    String? showChangesIn,
+  }) async {
+    rejectInteriorNul(operation, 'operation');
+    rejectInteriorNul(from, 'from');
+    rejectInteriorNul(to, 'to');
+    rejectInteriorNul(showChangesIn, 'showChangesIn');
+    final Uint8List bytes = await send(
+      OpDiffCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        operation: operation,
+        from: from,
+        to: to,
+        showChangesIn: showChangesIn,
+      ),
+    );
+    return repo_ffi_op_log.decodeOpDiffResultEnvelopeInternal(bytes);
+  }
+
+  /// Abandon operation history of the repo identified by [handleId] — the
+  /// CLI's `jj op abandon` (Story 9.21); see [RepoHandle.opAbandon].
+  Future<repo_ffi_op_log.OpAbandonResult> opAbandon(int handleId, String operation) async {
+    rejectInteriorNul(operation, 'operation');
+    final Uint8List bytes = await send(
+      OpAbandonCommand(commandId: _correlator.allocateId(), handleId: handleId, operation: operation),
+    );
+    return repo_ffi_op_log.decodeOpAbandonResultEnvelopeInternal(bytes);
+  }
+
   /// Fetch the [remotes] and [refs] selected and import them, in the repo
   /// identified by [handleId] — the CLI's `jj git fetch` (Stories 6.5, 9.30).
   /// See [RepoHandle.gitFetch].
@@ -3240,6 +3305,66 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_mutate.zanshinAbandon(raw, changeIds);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case RedoCommand(:final int handleId, :final bool allowCrossWorkspace):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: RedoCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_mutate.zanshinRedo(raw, allowCrossWorkspace: allowCrossWorkspace);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case OpShowCommand(:final int handleId, :final String? operation, :final String? showChangesIn):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: OpShowCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_op_log.zanshinOpShow(
+              raw,
+              operation: operation,
+              showChangesIn: showChangesIn,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case OpDiffCommand(
+          :final int handleId,
+          :final String? operation,
+          :final String? from,
+          :final String? to,
+          :final String? showChangesIn,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: OpDiffCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_op_log.zanshinOpDiff(
+              raw,
+              operation: operation,
+              from: from,
+              to: to,
+              showChangesIn: showChangesIn,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case OpAbandonCommand(:final int handleId, :final String operation):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: OpAbandonCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_op_log.zanshinOpAbandon(raw, operation);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

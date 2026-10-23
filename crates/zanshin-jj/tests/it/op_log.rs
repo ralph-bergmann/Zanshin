@@ -871,3 +871,38 @@ fn undo_preserves_current_git_head_and_git_refs_not_targets() {
         "git_refs must not revert to the target op's commit"
     );
 }
+
+/// Story 9.21: an entry carries the workspace it was performed in (none for the root and for an
+/// operation that records none) and its tags, sorted by key.
+#[test]
+fn op_log_entries_carry_the_workspace_name_and_the_tags() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let layout = oracle_layout(&fx.path);
+    let mut repo = Repo::open(&fx.path).unwrap();
+    repo.describe(ChangeId(layout.commit1_change_id.clone()), "described")
+        .unwrap();
+    let head = repo.op_log(Some(1)).unwrap().swap_remove(0);
+    assert_eq!(head.workspace_name.as_deref(), Some("default"));
+    assert!(head.tags.is_empty(), "Zanshin records no tags: {:?}", head.tags);
+    let root = repo.op_log(None).unwrap().pop().unwrap();
+    assert_eq!(root.workspace_name, None);
+
+    let (workspace, _settings) = oracle_workspace(&fx.path);
+    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).unwrap();
+    let mut tx = readonly.start_transaction();
+    tx.set_attribute("zeta".to_owned(), "last".to_owned());
+    tx.set_attribute("args".to_owned(), "jj describe".to_owned());
+    pollster::block_on(tx.commit("tagged")).unwrap();
+
+    let tagged = repo.op_log(Some(1)).unwrap().swap_remove(0);
+    assert_eq!(tagged.workspace_name, None, "the foreign op records no workspace");
+    assert_eq!(
+        tagged
+            .tags
+            .iter()
+            .map(|tag| (tag.key.as_str(), tag.value.as_str()))
+            .collect::<Vec<_>>(),
+        [("args", "jj describe"), ("zeta", "last")]
+    );
+}

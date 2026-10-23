@@ -9,11 +9,10 @@
 //! required parity (NFR-R-2) — not decoration. Before this run every Zanshin operation carried
 //! `workspace_name: None`.
 //!
-//! The assertion is deliberately made against jj-lib DIRECTLY rather than through
-//! `Repo::op_log`: `crate::Operation` does not carry the field (exposing it is Story 9.21's
-//! surface), and reading the store is the same oracle `jj op show` reads. Every row therefore
-//! loads the workspace with `jj_lib::workspace::Workspace::load` and walks
-//! `load_at_head().operation()`.
+//! The assertion is made against jj-lib DIRECTLY — reading the store is the same oracle
+//! `jj op show` reads: every row loads the workspace with `jj_lib::workspace::Workspace::load`
+//! and walks `load_at_head().operation()`. Since Story 9.21 `crate::Operation` carries the field
+//! too; the second-workspace row also reads it back through `Repo::op_log`.
 //!
 //! ## Why one row per FAMILY and not per verb
 //!
@@ -334,6 +333,9 @@ fn a_verb_run_in_a_second_workspace_records_that_workspace() {
         "the operation must name the workspace it ran in — a hardcoded `default`, or a name read \
          from anywhere but the workspace handle, shows up exactly here"
     );
+    // Story 9.21: the same field through the public op log.
+    let head = repo.op_log(Some(1)).expect("op log").swap_remove(0);
+    assert_eq!(head.workspace_name.as_deref(), Some("second"));
 }
 
 /// The same anti-requirement at the three OTHER openers a wrong name could hide in, because

@@ -113,6 +113,12 @@ Uint8List zanshinAbandon(int rawHandle, List<String> changeIds) => _withChangeId
 Uint8List zanshinUndo(int rawHandle, {bool allowCrossWorkspace = false}) =>
     readToken(zanshin_undo(rawHandle, allowCrossWorkspace));
 
+/// Call `zanshin_redo` with the raw `u64` handle and [allowCrossWorkspace]
+/// (Story 9.21, `zanshinUndo`'s counterpart), and return the FlatBuffers
+/// `Envelope` bytes.
+Uint8List zanshinRedo(int rawHandle, {bool allowCrossWorkspace = false}) =>
+    readToken(zanshin_redo(rawHandle, allowCrossWorkspace));
+
 /// Call `zanshin_restore` with the raw `u64` handle and a `RestoreRequest`
 /// request buffer, and return the FlatBuffers `Envelope` bytes.
 ///

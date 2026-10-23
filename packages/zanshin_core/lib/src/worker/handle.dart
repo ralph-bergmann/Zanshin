@@ -22,7 +22,7 @@ import '../ffi/graph.dart'
 import '../ffi/log_defaults.dart' show LogDefaults;
 import '../ffi/metaedit_duplicate_fix.dart' show FixResult;
 import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
-import '../ffi/op_log.dart' show Operation;
+import '../ffi/op_log.dart' show OpAbandonResult, OpDiffResult, OpShow, Operation;
 import '../ffi/precondition.dart' show Precondition;
 import '../ffi/push.dart' show GitPushResult;
 import '../ffi/rebase.dart' show ArrangeAction, SwapDownAction, SwapUpAction;
@@ -528,6 +528,73 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.undo(_handleId, allowCrossWorkspace: allowCrossWorkspace);
+  }
+
+  /// Redo the most recently undone operation — the CLI's `jj redo` @ v0.46.0
+  /// (Story 9.21), [undo]'s counterpart: repeated [undo] / [redo] calls act
+  /// like a text editor's undo / redo, and a stack the CLI started is
+  /// continued. [allowCrossWorkspace] is the CLI's `--allow-cross-workspace`
+  /// (default `false`). An equal restored view writes no operation and
+  /// `newOpId` is the head the verb started from (Story 9.40).
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.nothing_to_redo`, `jj.redo_cross_workspace` — `context` is
+  /// `"<operation>\n<workspace>"`).
+  Future<MutationResult> redo({bool allowCrossWorkspace = false}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.redo(_handleId, allowCrossWorkspace: allowCrossWorkspace);
+  }
+
+  /// Show one operation and its repository changes against its parent — the
+  /// CLI's `jj op show` @ v0.46.0 as data (Story 9.21). [operation] is an
+  /// operation expression (`@`, `@-`, an id prefix; `null` = `@`),
+  /// [showChangesIn] the CLI's `--show-changes-in` (`null` =
+  /// `revsets.op-diff-changes-in`). `OpShow.diff` is `null` for an operation
+  /// with more than one parent; `OpDiff.commits` is `null` when
+  /// [showChangesIn] did not resolve (warned `jj.op_diff_changes_unresolved`).
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`jj.operation_not_found`,
+  /// `jj.invalid_input`, `jj.revset_parse_error`, `jj.config_error`, …).
+  Future<OpShow> opShow({String? operation, String? showChangesIn}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.opShow(_handleId, operation: operation, showChangesIn: showChangesIn);
+  }
+
+  /// Compare two operations — the CLI's `jj op diff` @ v0.46.0 as data (Story
+  /// 9.21): [from] / [to] (a missing one `@`), or [operation] (default `@`)
+  /// against its parents; [operation] with [from] or [to] is refused
+  /// `jj.invalid_input` before the snapshot, as the CLI's argument parser
+  /// refuses it.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (as [opShow]).
+  Future<OpDiffResult> opDiff({String? operation, String? from, String? to, String? showChangesIn}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.opDiff(_handleId, operation: operation, from: from, to: to, showChangesIn: showChangesIn);
+  }
+
+  /// Abandon operation history — the CLI's `jj op abandon` @ v0.46.0 (Story
+  /// 9.21). [operation] is a range `a..b` (`..<op>` abandons it and its
+  /// ancestors, `<op>..@-` recent ones) or one operation. Runs no pre-verb
+  /// snapshot; writes no operation, it rewrites the history.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`jj.invalid_input` — "Cannot
+  /// abandon the current operation …", the root or a merge operation —,
+  /// `jj.operation_not_found`).
+  Future<OpAbandonResult> opAbandon(String operation) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.opAbandon(_handleId, operation);
   }
 
   /// `jj git fetch` (Stories 6.5, 9.30): fetch the [remotes] and [refs]

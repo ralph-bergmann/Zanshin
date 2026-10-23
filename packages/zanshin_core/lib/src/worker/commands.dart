@@ -540,6 +540,96 @@ final class UndoCommand extends WorkerCommand implements HandleScopedCommand {
   final bool allowCrossWorkspace;
 }
 
+/// Redo the most recently undone operation of the repo identified by
+/// [handleId] — the CLI's `jj redo` (Story 9.21).
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinRedo(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class RedoCommand extends WorkerCommand implements HandleScopedCommand {
+  const RedoCommand({required super.commandId, required this.handleId, required this.allowCrossWorkspace});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The CLI's `--allow-cross-workspace`: redo an undo performed in another
+  /// workspace instead of refusing (`jj.redo_cross_workspace`).
+  final bool allowCrossWorkspace;
+}
+
+/// Show one operation of the repo identified by [handleId] and its changes —
+/// the CLI's `jj op show` (Story 9.21).
+///
+/// The worker calls `zanshinOpShow(raw, …)` and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<OpShow>` bytes.
+final class OpShowCommand extends WorkerCommand implements HandleScopedCommand {
+  const OpShowCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.operation,
+    required this.showChangesIn,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The operation expression; `null` = `@`.
+  final String? operation;
+
+  /// `--show-changes-in`; `null` = `revsets.op-diff-changes-in`.
+  final String? showChangesIn;
+}
+
+/// Compare two operations of the repo identified by [handleId] — the CLI's
+/// `jj op diff` (Story 9.21).
+///
+/// The worker calls `zanshinOpDiff(raw, …)` and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<OpDiffResult>` bytes.
+final class OpDiffCommand extends WorkerCommand implements HandleScopedCommand {
+  const OpDiffCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.operation,
+    required this.from,
+    required this.to,
+    required this.showChangesIn,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `--operation`; `null` = not given.
+  final String? operation;
+
+  /// `--from`; `null` = not given.
+  final String? from;
+
+  /// `--to`; `null` = not given.
+  final String? to;
+
+  /// `--show-changes-in`; `null` = `revsets.op-diff-changes-in`.
+  final String? showChangesIn;
+}
+
+/// Abandon operation history of the repo identified by [handleId] — the
+/// CLI's `jj op abandon` (Story 9.21).
+///
+/// The worker calls `zanshinOpAbandon(raw, …)` and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<OpAbandonResult>` bytes.
+final class OpAbandonCommand extends WorkerCommand implements HandleScopedCommand {
+  const OpAbandonCommand({required super.commandId, required this.handleId, required this.operation});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The operation or range to abandon (`..@-`, `<id>`, …).
+  final String operation;
+}
+
 /// Fetch the [remotes] and [refs] selected, and import them, in the repo
 /// identified by [handleId] — the CLI's `jj git fetch` (Stories 6.5, 9.30).
 ///

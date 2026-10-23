@@ -194,4 +194,185 @@ void main() {
       expect(ops, isEmpty);
     });
   });
+
+  // ── Story 9.21: Operation's new fields and the three operation-verb payloads ──
+
+  group('Story 9.21 decode contract', () {
+    fbs.OpRefTargetObjectBuilder target(
+      List<String> adds, {
+      List<String> removes = const [],
+      bool conflicted = false,
+    }) => fbs.OpRefTargetObjectBuilder(adds: adds, removes: removes, conflicted: conflicted);
+
+    fbs.OpDiffObjectBuilder diff({bool withCommits = true}) => fbs.OpDiffObjectBuilder(
+      commits: withCommits
+          ? fbs.OpCommitsDiffObjectBuilder(
+              changes: [
+                fbs.OpChangedCommitObjectBuilder(
+                  commitId: 'c2',
+                  abandoned: false,
+                  addedCommitIds: const ['c2'],
+                  removedCommitIds: const ['c1'],
+                ),
+              ],
+              elidedNewlyVisible: fbs.RefDistanceObjectBuilder(lower: 3, upper: 0, hasUpper: false),
+              elidedNewlyHidden: fbs.RefDistanceObjectBuilder(lower: 1, upper: 1, hasUpper: true),
+            )
+          : null,
+      workingCopies: [fbs.OpWorkingCopyChangeObjectBuilder(workspace: 'default', to: 'w2')],
+      localBookmarks: [
+        fbs.OpRefChangeObjectBuilder(name: 'b', from: target(const []), to: target(const ['c2'])),
+      ],
+      localTags: [
+        fbs.OpRefChangeObjectBuilder(
+          name: 't',
+          from: target(const ['a', 'b'], removes: const ['a'], conflicted: true),
+          to: target(const []),
+        ),
+      ],
+      remoteBookmarks: [
+        fbs.OpRemoteRefChangeObjectBuilder(
+          name: 'main',
+          remote: 'origin',
+          from: target(const []),
+          fromTracked: false,
+          to: target(const ['c2']),
+          toTracked: true,
+        ),
+      ],
+      remoteTags: const [],
+    );
+
+    test('an Operation carries its workspace name and tags; absent is null / empty', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.OpLog,
+        data: fbs.OpLogObjectBuilder(
+          operations: [
+            fbs.OperationObjectBuilder(
+              id: 'o1',
+              parentIds: const ['o0'],
+              workspaceName: 'second',
+              tags: [fbs.OperationTagObjectBuilder(key: 'args', value: 'jj new')],
+            ),
+            _makeRootOp(),
+          ],
+        ),
+      ).toBytes();
+
+      final List<Operation> ops = decodeOpLogEnvelope(bytes);
+
+      expect(ops.first.workspaceName, 'second');
+      expect(ops.first.tags.single.key, 'args');
+      expect(ops.first.tags.single.value, 'jj new');
+      expect(ops.last.workspaceName, isNull);
+      expect(ops.last.tags, isEmpty);
+    });
+
+    test('OpShow decodes every diff section', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.OpShow,
+        data: fbs.OpShowObjectBuilder(operation: _makeNonRootOp(), diff: diff()),
+        warnings: [fbs.WarningObjectBuilder(code: 'jj.revset_diagnostic', message: 'm')],
+      ).toBytes();
+
+      final OpShow show = decodeOpShowEnvelope(bytes);
+
+      expect(show.operation.id, 'ddeeff334455');
+      expect(show.warnings.single.code, 'jj.revset_diagnostic');
+      final OpDiff d = show.diff!;
+      final OpCommitsDiff commits = d.commits!;
+      expect(commits.changes.single.commitId, 'c2');
+      expect(commits.changes.single.abandoned, isFalse);
+      expect(commits.changes.single.addedCommitIds, ['c2']);
+      expect(commits.changes.single.removedCommitIds, ['c1']);
+      expect(commits.elidedNewlyVisible.lower, 3);
+      expect(commits.elidedNewlyVisible.upper, isNull, reason: 'has_upper false = unbounded');
+      expect(commits.elidedNewlyHidden.upper, 1);
+      expect(d.workingCopies.single.workspace, 'default');
+      expect(d.workingCopies.single.from, isNull);
+      expect(d.workingCopies.single.to, 'w2');
+      expect(d.localBookmarks.single.from.isAbsent, isTrue);
+      expect(d.localBookmarks.single.to.adds, ['c2']);
+      final OpRefTarget conflicted = d.localTags.single.from;
+      expect(conflicted.conflicted, isTrue);
+      expect(conflicted.adds, ['a', 'b']);
+      expect(conflicted.removes, ['a']);
+      expect(conflicted.isAbsent, isFalse);
+      final OpRemoteRefChange remote = d.remoteBookmarks.single;
+      expect((remote.name, remote.remote, remote.fromTracked, remote.toTracked), ('main', 'origin', false, true));
+      expect(d.remoteTags, isEmpty);
+    });
+
+    test('OpShow of a merge operation has no diff', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.OpShow,
+        data: fbs.OpShowObjectBuilder(operation: _makeNonRootOp()),
+      ).toBytes();
+
+      expect(decodeOpShowEnvelope(bytes).diff, isNull);
+    });
+
+    test('OpDiffResult decodes from / to and an unresolved commit section as null', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.OpDiffResult,
+        data: fbs.OpDiffResultObjectBuilder(
+          from: [_makeRootOp()],
+          to: _makeNonRootOp(),
+          diff: diff(withCommits: false),
+        ),
+      ).toBytes();
+
+      final OpDiffResult result = decodeOpDiffResultEnvelope(bytes);
+
+      expect(result.from.single.rootOp, isTrue);
+      expect(result.to.id, 'ddeeff334455');
+      expect(result.diff.commits, isNull);
+      expect(result.diff.workingCopies, hasLength(1));
+    });
+
+    test('OpAbandonResult decodes its counts and heads', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.OpAbandonResult,
+        data: fbs.OpAbandonResultObjectBuilder(
+          abandonedCount: 4,
+          reparentedCount: 1,
+          nothingChanged: false,
+          headOpIds: const ['h'],
+        ),
+      ).toBytes();
+
+      final OpAbandonResult result = decodeOpAbandonResultEnvelope(bytes);
+
+      expect((result.abandonedCount, result.reparentedCount, result.nothingChanged), (4, 1, false));
+      expect(result.headOpIds, ['h']);
+    });
+
+    test('each decoder throws on an error envelope and on a foreign payload', () {
+      final Uint8List error = fbs.EnvelopeObjectBuilder(
+        ok: false,
+        error: fbs.FfiErrorObjectBuilder(code: 'jj.operation_not_found', context: 'No operation ID matching "ff"'),
+      ).toBytes();
+      final Uint8List foreign = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.RepoHandle,
+        data: fbs.RepoHandleObjectBuilder(handle: 0),
+      ).toBytes();
+      for (final Object Function(Uint8List) decode in [
+        decodeOpShowEnvelope,
+        decodeOpDiffResultEnvelope,
+        decodeOpAbandonResultEnvelope,
+      ]) {
+        expect(
+          () => decode(error),
+          throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.operation_not_found')),
+        );
+        expect(() => decode(foreign), throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')));
+      }
+    });
+  });
 }

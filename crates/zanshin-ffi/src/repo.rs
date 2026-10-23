@@ -29,10 +29,10 @@ use crate::envelope::{
     JJ_BOOKMARK_EXISTS, JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CANCELLED, JJ_CHANGE_NOT_FOUND,
     JJ_CONCURRENT_WORKING_COPY, JJ_CONFIG_ERROR, JJ_CONVERT_FAILED, JJ_DESTINATION_NOT_EMPTY, JJ_DETECT_FAILED,
     JJ_GIT_REPO_EXISTS, JJ_GIT_WORKTREE_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
-    JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY, JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED,
-    JJ_PUSH_COMMIT_REJECTED, JJ_PUSH_REF_REFUSED, JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND,
-    JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR, JJ_REVSET_RESOLUTION_ERROR, JJ_STALE_SELECTION, JJ_UNDO_CROSS_WORKSPACE,
-    JJ_WORKSPACE_EXISTS, WATCHER_IO_ERROR,
+    JJ_NOTHING_TO_REDO, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY, JJ_OPERATION_NOT_FOUND,
+    JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED, JJ_PUSH_COMMIT_REJECTED, JJ_PUSH_REF_REFUSED, JJ_REDO_CROSS_WORKSPACE,
+    JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR,
+    JJ_REVSET_RESOLUTION_ERROR, JJ_STALE_SELECTION, JJ_UNDO_CROSS_WORKSPACE, JJ_WORKSPACE_EXISTS, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
 use crate::events;
@@ -163,7 +163,9 @@ fn map_repo_err_code(e: RepoError) -> FfiErrorObj {
 /// `jj.path_not_ignored` and to the registered `jj.no_working_copy`. Story 9.23's
 /// `zanshin_workspace_add` adds three: `jj.workspace_exists`, `jj.destination_not_empty` and
 /// `jj.git_worktree_failed`. Story 9.20's `zanshin_git_push` adds `jj.push_ref_refused` and
-/// `jj.push_commit_rejected`. Story 9.50's hunk selection adds `jj.stale_selection`.
+/// `jj.push_commit_rejected`. Story 9.50's hunk selection adds `jj.stale_selection`. Story 9.21's
+/// operation verbs add `jj.nothing_to_redo` and `jj.redo_cross_workspace`, and map
+/// `OperationNotFound` to the registered `jj.operation_not_found`.
 pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
     let hints = e.hints();
     let (code, context) = match e {
@@ -176,6 +178,11 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         MutateError::UndoCrossWorkspace { operation, workspace } => {
             (JJ_UNDO_CROSS_WORKSPACE, Some(format!("{operation}\n{workspace}")))
         }
+        MutateError::NothingToRedo => (JJ_NOTHING_TO_REDO, Some("Nothing to redo".to_owned())),
+        MutateError::RedoCrossWorkspace { operation, workspace } => {
+            (JJ_REDO_CROSS_WORKSPACE, Some(format!("{operation}\n{workspace}")))
+        }
+        MutateError::OperationNotFound { reason } => (JJ_OPERATION_NOT_FOUND, Some(reason)),
         MutateError::RemoteNotFound { name } => (JJ_REMOTE_NOT_FOUND, Some(name)),
         MutateError::NetworkError { reason } => (JJ_NETWORK_ERROR, Some(reason)),
         MutateError::Cancelled => (JJ_CANCELLED, Some("Cancelled".to_owned())),
@@ -1371,6 +1378,48 @@ pub unsafe extern "C" fn zanshin_undo(handle: u64, allow_cross_workspace: bool) 
     vec_into_token(buf)
 }
 
+/// Redo the most recently undone operation of the repo referenced by `handle` — the CLI's
+/// `jj redo` @ v0.46.0 (Story 9.21), `zanshin_undo`'s counterpart: calling `zanshin_undo` /
+/// `zanshin_redo` repeatedly acts like a text editor's undo / redo, and a stack the CLI started is
+/// continued. `allow_cross_workspace` is the CLI's `--allow-cross-workspace` (`false` is its
+/// default): without it, an undo performed in another workspace is not redone.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success, the
+/// operation described `redo: restore to operation <hex>`. A restored view equal to the current
+/// one writes no operation and `new_op_id` is the head the verb started from (Story 9.40).
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.nothing_to_redo` — the head is no undo operation (nor a redo of one); "Nothing to redo"
+///   in `context`, nothing is written.
+/// - `jj.redo_cross_workspace` — the undo operation was performed in another workspace and
+///   `allow_cross_workspace` is false; `"<operation>\n<workspace>"` in `context`, the CLI's hint
+///   in `hints`, nothing is written.
+/// - `jj.config_error` — the effective config no longer reads (Story 9.27), the pre-verb snapshot
+///   found a value wrongly typed, or the finish's immutable set does not resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — a redo/undo description names no valid operation id, the undo operation
+///   has more than one parent, or another jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`,
+/// `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+/// been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+/// non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+/// (Story 3.9) makes a stale handle unreachable.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_redo(handle: u64, allow_cross_workspace: bool) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_redo", handle, allow_cross_workspace);
+    let buf = catch(|| {
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.redo(allow_cross_workspace);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
+    });
+    vec_into_token(buf)
+}
+
 /// Parse a `GitFetchRequest` buffer into owned [`GitFetchArgs`] and its `cancel_token` (Story
 /// 9.52, `0` = none). `Named` reads `remotes` and `Patterns` reads `branches` / `tags` (an absent
 /// list is empty); the other modes ignore them.
@@ -2164,6 +2213,26 @@ mod tests {
         assert_eq!(e.code, JJ_STALE_SELECTION);
         assert_eq!(e.context.as_deref(), Some("moved"));
         assert!(e.hints.is_empty());
+    }
+
+    /// Story 9.21: the two redo refusals and an operation expression with no match.
+    #[test]
+    fn map_mutate_err_maps_the_operation_verb_refusals() {
+        let e = map_mutate_err(MutateError::NothingToRedo);
+        assert_eq!(e.code, JJ_NOTHING_TO_REDO);
+        assert_eq!(e.context.as_deref(), Some("Nothing to redo"));
+        let e = map_mutate_err(MutateError::RedoCrossWorkspace {
+            operation: "abcdefabcdef".to_owned(),
+            workspace: "second".to_owned(),
+        });
+        assert_eq!(e.code, JJ_REDO_CROSS_WORKSPACE);
+        assert_eq!(e.context.as_deref(), Some("abcdefabcdef\nsecond"));
+        assert_eq!(e.hints.len(), 1);
+        let e = map_mutate_err(MutateError::OperationNotFound {
+            reason: r#"No operation ID matching "ab""#.to_owned(),
+        });
+        assert_eq!(e.code, JJ_OPERATION_NOT_FOUND);
+        assert_eq!(e.context.as_deref(), Some(r#"No operation ID matching "ab""#));
     }
 
     #[test]

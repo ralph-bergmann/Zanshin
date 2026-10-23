@@ -272,6 +272,14 @@ abstract final class ZanshinWarningCode {
   /// key (Story 9.9).
   static const configDeprecated = 'jj.config_deprecated';
 
+  /// `opShow` / `opDiff` could not resolve `showChangesIn` against one of the
+  /// two operations, so the diff has no commit section (Story 9.21).
+  static const opDiffChangesUnresolved = 'jj.op_diff_changes_unresolved';
+
+  /// `opAbandon` rewrote the op heads but left this workspace's working copy,
+  /// which is recorded at an operation that is not a head (Story 9.21).
+  static const opAbandonWorkingCopyNotUpdated = 'jj.op_abandon_working_copy_not_updated';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -344,6 +352,8 @@ abstract final class ZanshinWarningCode {
     fixToolFailed,
     filesetDiagnostic,
     configDeprecated,
+    opDiffChangesUnresolved,
+    opAbandonWorkingCopyNotUpdated,
     loginShellUnresolved,
   ];
 }

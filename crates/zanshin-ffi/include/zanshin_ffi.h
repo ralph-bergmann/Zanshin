@@ -1842,6 +1842,111 @@ ZanshinBuf *zanshin_fix(uint64_t handle,
 ZanshinBuf *zanshin_op_log(uint64_t handle, int64_t limit);
 
 /**
+ * Show one operation of the repo identified by `handle` and its repository changes against its
+ * parent — the CLI's `jj op show` @ v0.46.0 (Story 9.21), as data.
+ *
+ * The arguments cross as an `OpShowRequest` `FlatBuffers` request buffer: `operation` (an
+ * operation expression — `@`, `@-`, an id prefix; ABSENT = `@`) and `show_changes_in` (the
+ * CLI's `--show-changes-in`; ABSENT = `revsets.op-diff-changes-in`). Runs the pre-verb snapshot;
+ * writes no operation of its own (a merge op's parents are merged into an unpublished operation,
+ * as the CLI does).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying an `OpShow` payload: the `Operation` and its
+ * `OpDiff` — ABSENT for an operation with more than one parent. Warns revset diagnostics
+ * (`jj.revset_diagnostic`) and `jj.op_diff_changes_unresolved` (then `OpDiff.commits` is ABSENT).
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as an `OpShowRequest`, or its `kind` is not
+ *   `OpShow`.
+ * - `jj.operation_not_found` — no operation matches the id prefix; jj-lib's text in `context`.
+ * - `jj.invalid_input` — the expression is no valid prefix, ambiguous, or resolves to no or
+ *   several operations (with the CLI's hint naming them); jj-lib's text in `context`.
+ * - `jj.revset_parse_error` — `show_changes_in` does not parse ("Invalid `--show-changes-in`
+ *   expression: …").
+ * - `jj.config_error` — `revsets.op-diff-changes-in` is not a string or does not parse
+ *   ("Invalid `revsets.op-diff-changes-in`: …"), or the effective config no longer reads.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.OpShowRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_op_show(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * Compare two operations of the repo identified by `handle` — the CLI's `jj op diff` @ v0.46.0
+ * (Story 9.21), as data.
+ *
+ * The arguments cross as an `OpDiffRequest` `FlatBuffers` request buffer, every string ABSENT
+ * when its flag was not given: `from` / `to` (a missing one `@`), or `operation` (default `@`)
+ * against its parents, and `show_changes_in`. `operation` together with `from` or `to` is clap's
+ * conflict. Runs the pre-verb snapshot; writes no operation of its own.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying an `OpDiffResult` payload: the operations diffed
+ * from, the one diffed to, and the `OpDiff`. Warns as `zanshin_op_show`.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as an `OpDiffRequest`, or its `kind` is not
+ *   `OpDiff`.
+ * - `jj.invalid_input` — `operation` with `from` / `to` ("the argument '--operation' cannot be
+ *   used with '--from'"), refused before the snapshot: no `precondition`, nothing written; or an
+ *   operation expression as in `zanshin_op_show`.
+ * - `jj.operation_not_found` — no operation matches an id prefix; jj-lib's text in `context`.
+ * - `jj.revset_parse_error` — `show_changes_in` does not parse.
+ * - `jj.config_error` — `revsets.op-diff-changes-in` is not a string or does not parse, or the
+ *   effective config no longer reads.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * As `zanshin_op_show`; `data` is built by `fbs.OpDiffRequestObjectBuilder(...).toBytes()`.
+ */
+ZanshinBuf *zanshin_op_diff(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * Abandon operation history of the repo identified by `handle` — the CLI's `jj op abandon`
+ * @ v0.46.0 (Story 9.21).
+ *
+ * `operation` is the CLI's argument as a lone string: a range `a..b` (`..<op>` abandons `<op>`
+ * and all its ancestors, `<op>..@-` the recent ones) or one operation. The range's descendants
+ * are reparented onto `a`, the op heads replaced and this workspace's working copy remapped.
+ * Like the CLI it runs NO pre-verb snapshot — only the start-up secure-config fix-up — so the
+ * envelope never carries a `precondition`; it writes no operation, it rewrites the history.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying an `OpAbandonResult` payload: the CLI's status
+ * line as counts, or `nothing_changed`, and the op heads afterwards. Warns
+ * `jj.op_abandon_working_copy_not_updated` when the working copy is recorded at an operation
+ * that is not a head (it is then left as it is).
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `operation` is a null pointer.
+ * - `ffi.utf8_error` — `operation` is not valid UTF-8.
+ * - `jj.invalid_input` — "Cannot abandon the current operation <id>" (with the CLI's hint when
+ *   there is one head), "Cannot abandon the root operation", "Cannot abandon a merge operation",
+ *   or an operation expression that does not resolve to one operation; nothing is written.
+ * - `jj.operation_not_found` — no operation matches an id prefix; jj-lib's text in `context`.
+ * - `jj.config_error` — the effective config stack no longer reads.
+ * - `jj.jj_lib_error` — an op-store, op-heads or working-copy failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` as `zanshin_op_show`. `operation` must be null or a NUL-terminated string Dart
+ * allocates and frees; Rust only borrows it for the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_op_abandon(uint64_t handle, const char *operation);
+
+/**
  * Push bookmarks and tags to git remotes, in the repo identified by `handle` — the CLI's
  * `jj git push` (Story 9.20), every parameter passed through.
  *
@@ -2738,6 +2843,40 @@ ZanshinBuf *zanshin_abandon(uint64_t handle, const uint8_t *data, uintptr_t len)
  * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_undo(uint64_t handle, bool allow_cross_workspace);
+
+/**
+ * Redo the most recently undone operation of the repo referenced by `handle` — the CLI's
+ * `jj redo` @ v0.46.0 (Story 9.21), `zanshin_undo`'s counterpart: calling `zanshin_undo` /
+ * `zanshin_redo` repeatedly acts like a text editor's undo / redo, and a stack the CLI started is
+ * continued. `allow_cross_workspace` is the CLI's `--allow-cross-workspace` (`false` is its
+ * default): without it, an undo performed in another workspace is not redone.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success, the
+ * operation described `redo: restore to operation <hex>`. A restored view equal to the current
+ * one writes no operation and `new_op_id` is the head the verb started from (Story 9.40).
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `jj.nothing_to_redo` — the head is no undo operation (nor a redo of one); "Nothing to redo"
+ *   in `context`, nothing is written.
+ * - `jj.redo_cross_workspace` — the undo operation was performed in another workspace and
+ *   `allow_cross_workspace` is false; `"<operation>\n<workspace>"` in `context`, the CLI's hint
+ *   in `hints`, nothing is written.
+ * - `jj.config_error` — the effective config no longer reads (Story 9.27), the pre-verb snapshot
+ *   found a value wrongly typed, or the finish's immutable set does not resolve.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — a redo/undo description names no valid operation id, the undo operation
+ *   has more than one parent, or another jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`,
+ * `zanshin_repo_init`, `zanshin_repo_clone`, or `zanshin_repo_convert` that has not
+ * been closed. `0` is detected and returned as `ffi.invalid_handle`. A stale
+ * non-zero handle is undefined behaviour; the Dart worker's Model-A handle table
+ * (Story 3.9) makes a stale handle unreachable.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_redo(uint64_t handle, bool allow_cross_workspace);
 
 /**
  * Fetch from git remotes and import the fetched refs, in the repo referenced by `handle` — the

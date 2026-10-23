@@ -208,6 +208,35 @@ pub enum MutateError {
         /// The workspace the target operation was performed in.
         workspace: String,
     },
+    /// [`crate::Repo::redo`]'s target is not an undo operation — the head is neither an undo
+    /// operation nor a redo of one: the CLI's "Nothing to redo" (`cli/src/commands/redo.rs:119-126`
+    /// @ v0.46.0, Story 9.21). Nothing is written.
+    #[error("Nothing to redo")]
+    NothingToRedo,
+    /// [`crate::Repo::redo`]'s target undo operation was performed in ANOTHER workspace and the
+    /// caller did not allow that — the CLI's "Refusing to redo operation {operation} because it
+    /// was performed in workspace {workspace}" (`cli/src/commands/redo.rs:128-143` @ v0.46.0,
+    /// Story 9.21). Nothing is written.
+    ///
+    /// Its own variant for the reason [`MutateError::UndoCrossWorkspace`] is: the remedy is
+    /// specific — redo it anyway (`allow_cross_workspace`), or revert that undo operation.
+    #[error("refusing to redo operation {operation} because it was performed in workspace {workspace}")]
+    RedoCrossWorkspace {
+        /// The target undo operation's id, shortened to the CLI's 12 hex digits.
+        operation: String,
+        /// The workspace the target operation was performed in.
+        workspace: String,
+    },
+    /// An operation expression (`@`, `@-`, an id prefix) names no operation in the op store —
+    /// jj-lib's `OpsetResolutionError::NoSuchOperation`, the CLI's `No operation ID matching
+    /// "<id>"` (Story 9.21: `op show`, `op diff`, `op abandon`). Every other operation-expression
+    /// failure (an invalid or ambiguous prefix, an empty or multiple result) is
+    /// [`MutateError::InvalidInput`] with jj-lib's text. Nothing is written.
+    #[error("{reason}")]
+    OperationNotFound {
+        /// jj-lib's text, e.g. `No operation ID matching "abc"`.
+        reason: String,
+    },
     /// A git remote the verb was about to use has no configuration (FR-JJ-13):
     /// [`crate::Repo::remote_changes`] with a name no remote carries, or a remote
     /// [`crate::Repo::git_fetch`] matched that vanished before its fetch (jj-lib's `NoSuchRemote`).
@@ -487,6 +516,10 @@ const PATHS_NOT_IGNORED_HINT: &str =
 const UNDO_CROSS_WORKSPACE_HINT: &str =
     "Use `--allow-cross-workspace` to undo it anyway, or use `jj op revert` to revert a specific operation";
 
+/// `redo`'s hint for [`MutateError::RedoCrossWorkspace`] (`cli/src/commands/redo.rs:138-141`).
+const REDO_CROSS_WORKSPACE_HINT: &str =
+    "Use `--allow-cross-workspace` to redo it anyway, or use `jj op revert` to revert a specific undo operation";
+
 impl MutateError {
     /// An [`MutateError::InvalidInput`] without hints — what most refusals are.
     #[must_use]
@@ -522,6 +555,7 @@ impl MutateError {
             Self::BookmarkTrackedRemoteExists { name } => vec![tracked_remote_bookmarks_hint(name)],
             Self::PathsNotIgnored { .. } => vec![PATHS_NOT_IGNORED_HINT.to_owned()],
             Self::UndoCrossWorkspace { .. } => vec![UNDO_CROSS_WORKSPACE_HINT.to_owned()],
+            Self::RedoCrossWorkspace { .. } => vec![REDO_CROSS_WORKSPACE_HINT.to_owned()],
             Self::Precondition(inner) => inner.hints(),
             _ => Vec::new(),
         }
@@ -2116,6 +2150,18 @@ mod tests {
             .len(),
             1
         );
+        assert_eq!(
+            MutateError::RedoCrossWorkspace {
+                operation: String::new(),
+                workspace: String::new(),
+            }
+            .hints(),
+            ["Use `--allow-cross-workspace` to redo it anyway, or use `jj op revert` to revert a specific undo operation"]
+        );
+        assert!(MutateError::NothingToRedo.hints().is_empty());
+        assert!(MutateError::OperationNotFound { reason: String::new() }
+            .hints()
+            .is_empty());
         let stale = crate::PreconditionError::StaleWorkingCopy {
             cause: crate::StaleCause::Stale,
             working_copy_op_id: "0".repeat(128),

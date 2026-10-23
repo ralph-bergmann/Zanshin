@@ -1401,6 +1401,120 @@ impl Repo {
         self.with_verb(|repo, ctx| crate::op_log::undo(repo.workspace_mut(), ctx, allow_cross_workspace))
     }
 
+    /// Redoes the most recently undone operation — the CLI's `jj redo` @ v0.46.0 (Story 9.21),
+    /// `undo`'s counterpart: repeated `undo` / `redo` calls act like a text editor's undo / redo,
+    /// and a redo stack the CLI started is continued here (and vice versa) — the stack lives in
+    /// the operation descriptions.
+    ///
+    /// Restores the view of the undone operation's parent (repo state + local bookmarks/tags +
+    /// remote-tracking bookmarks, `git_refs`/`git_heads` untouched), committed as
+    /// `redo: restore to operation <hex>` — or, when that view equals the current one, no
+    /// operation and the pre-call head op id (Story 9.40). `allow_cross_workspace` is the CLI's
+    /// `--allow-cross-workspace` (default `false`). See `op_log::redo` for the step.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::NothingToRedo`] — the head is no undo operation (nor a redo of one).
+    /// - [`crate::MutateError::RedoCrossWorkspace`] — the undo operation to redo was performed in
+    ///   another workspace and `allow_cross_workspace` is `false`.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Config`] — the finish's immutable set does not resolve.
+    /// - [`crate::MutateError::Backend`] — a redo/undo description names no valid operation, the
+    ///   undo operation has more than one parent, or an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn redo(&mut self, allow_cross_workspace: bool) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::op_log::redo(repo.workspace_mut(), ctx, allow_cross_workspace))
+    }
+
+    /// Shows one operation and its repository changes against its parent — the CLI's
+    /// `jj op show` @ v0.46.0 (Story 9.21), as typed data instead of templates.
+    ///
+    /// `operation` is the CLI's argument (`"@"` is its default): `@`, `@-`, `@+`, an id prefix,
+    /// resolved at the head after the pre-verb snapshot. `show_changes_in` is
+    /// `--show-changes-in`; `None` reads `revsets.op-diff-changes-in` (default
+    /// `mutable() | immutable_heads()`). An operation with more than one parent has no diff, as
+    /// in the CLI. Writes no operation beyond the pre-verb snapshot's (a merge op's parents are
+    /// merged into an unpublished operation, as the CLI merges them).
+    ///
+    /// # Warnings
+    ///
+    /// Revset parse diagnostics (`jj.revset_diagnostic`, "In `--show-changes-in`" / "In
+    /// `revsets.op-diff-changes-in`"), and `jj.op_diff_changes_unresolved` when the revset does not
+    /// resolve against one of the two operations — then the diff has no commit section.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::OperationNotFound`] — no operation matches the id prefix.
+    /// - [`crate::MutateError::InvalidInput`] — the expression is no valid prefix, is ambiguous,
+    ///   or resolves to no or several operations (with the CLI's hint naming them).
+    /// - [`crate::MutateError::Config`] — `revsets.op-diff-changes-in` is not a string or does
+    ///   not parse.
+    /// - [`crate::MutateError::RevsetParseError`] — `show_changes_in` does not parse.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn op_show(
+        &mut self,
+        operation: &str,
+        show_changes_in: Option<&str>,
+    ) -> Result<crate::OpShow, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::op_log::op_show(repo.workspace(), ctx, operation, show_changes_in))
+    }
+
+    /// Compares two operations — the CLI's `jj op diff` @ v0.46.0 (Story 9.21), as typed data.
+    ///
+    /// `options` are the CLI's flags (see [`crate::OpDiffOptions`]): `from` / `to` (a missing one
+    /// `@`), or `operation` (default `@`) against its parents; `operation` together with `from` or
+    /// `to` is clap's conflict, refused before the snapshot. Writes no operation beyond the
+    /// pre-verb snapshot's.
+    ///
+    /// # Warnings
+    ///
+    /// As [`Repo::op_show`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `operation` with `from` / `to` (no snapshot, no
+    ///   precondition report), or an operation expression as in [`Repo::op_show`].
+    /// - Every other error of [`Repo::op_show`].
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn op_diff(&mut self, options: &crate::OpDiffOptions) -> Result<crate::OpDiffResult, crate::MutateError> {
+        self.with_checked_verb(crate::op_log::check_op_diff_flags(options), |repo, ctx| {
+            crate::op_log::op_diff(repo.workspace(), ctx, options)
+        })
+    }
+
+    /// Abandons operation history — the CLI's `jj op abandon` @ v0.46.0 (Story 9.21).
+    ///
+    /// `operation` is the CLI's argument: a range `a..b` (`..<op>` abandons `<op>` and all its
+    /// ancestors, `<op>..@-` the recent ones) or one operation. The range's descendants are
+    /// reparented onto `a`, the op heads replaced and this workspace's working copy remapped to
+    /// the new head. Like the CLI it loads no repo and runs no pre-verb snapshot — only the
+    /// start-up secure-config fix-up (so [`Repo::take_precondition`] is `None` afterwards); it
+    /// writes no operation, it rewrites the history.
+    ///
+    /// # Warnings
+    ///
+    /// The fix-up's, then `jj.op_abandon_working_copy_not_updated` when the working copy is
+    /// recorded at an operation that is not a current head.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — the range ends at a current head ("Cannot abandon
+    ///   the current operation <id>"), the root operation, a merge operation, or an operation
+    ///   expression that does not resolve to one operation. Nothing is written.
+    /// - [`crate::MutateError::OperationNotFound`] — no operation matches an id prefix.
+    /// - [`crate::MutateError::Config`] — the effective config stack no longer reads.
+    /// - [`crate::MutateError::Backend`] — an op-store, op-heads or working-copy failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn op_abandon(&mut self, operation: &str) -> Result<crate::OpAbandonResult, crate::MutateError> {
+        self.refuse_before_snapshot()?;
+        let mut warnings = std::mem::take(&mut self.pending_warnings);
+        let result = crate::op_log::op_abandon(&mut self.workspace, operation, &mut warnings);
+        self.pending_warnings = warnings;
+        result
+    }
+
     /// Pushes bookmarks and tags to git remotes — the CLI's `jj git push` (Story 9.20,
     /// FR-JJ-13b), every `GitPushArgs` parameter passed through. See [`crate::GitPushArgs`] for
     /// the parameters and the `push` module doc for what is ported.

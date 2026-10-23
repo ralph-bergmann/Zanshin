@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 50;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 52;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 51] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 53] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -75,6 +75,8 @@ pub mod zanshin {
             RequestKind::BookmarkAdvance,
             RequestKind::BookmarkRename,
             RequestKind::SelectTree,
+            RequestKind::OpShow,
+            RequestKind::OpDiff,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -93,7 +95,7 @@ pub mod zanshin {
         /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
         /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
         /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-        /// squash, never a different verb. For the other 44 tables the variant name plus `Request` IS
+        /// squash, never a different verb. For the other 46 tables the variant name plus `Request` IS
         /// the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -158,9 +160,11 @@ pub mod zanshin {
             pub const BookmarkAdvance: Self = Self(48);
             pub const BookmarkRename: Self = Self(49);
             pub const SelectTree: Self = Self(50);
+            pub const OpShow: Self = Self(51);
+            pub const OpDiff: Self = Self(52);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 50;
+            pub const ENUM_MAX: u8 = 52;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -213,6 +217,8 @@ pub mod zanshin {
                 Self::BookmarkAdvance,
                 Self::BookmarkRename,
                 Self::SelectTree,
+                Self::OpShow,
+                Self::OpDiff,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -268,6 +274,8 @@ pub mod zanshin {
                     Self::BookmarkAdvance => Some("BookmarkAdvance"),
                     Self::BookmarkRename => Some("BookmarkRename"),
                     Self::SelectTree => Some("SelectTree"),
+                    Self::OpShow => Some("OpShow"),
+                    Self::OpDiff => Some("OpDiff"),
                     _ => None,
                 }
             }
@@ -3363,13 +3371,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 49;
+        pub const ENUM_MAX_PAYLOAD: u8 = 52;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 50] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 53] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -3420,6 +3428,9 @@ pub mod zanshin {
             Payload::ChangeActions,
             Payload::FixResult,
             Payload::SelectedTree,
+            Payload::OpShow,
+            Payload::OpDiffResult,
+            Payload::OpAbandonResult,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -3477,9 +3488,12 @@ pub mod zanshin {
             pub const ChangeActions: Self = Self(47);
             pub const FixResult: Self = Self(48);
             pub const SelectedTree: Self = Self(49);
+            pub const OpShow: Self = Self(50);
+            pub const OpDiffResult: Self = Self(51);
+            pub const OpAbandonResult: Self = Self(52);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 49;
+            pub const ENUM_MAX: u8 = 52;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -3531,6 +3545,9 @@ pub mod zanshin {
                 Self::ChangeActions,
                 Self::FixResult,
                 Self::SelectedTree,
+                Self::OpShow,
+                Self::OpDiffResult,
+                Self::OpAbandonResult,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -3585,6 +3602,9 @@ pub mod zanshin {
                     Self::ChangeActions => Some("ChangeActions"),
                     Self::FixResult => Some("FixResult"),
                     Self::SelectedTree => Some("SelectedTree"),
+                    Self::OpShow => Some("OpShow"),
+                    Self::OpDiffResult => Some("OpDiffResult"),
+                    Self::OpAbandonResult => Some("OpAbandonResult"),
                     _ => None,
                 }
             }
@@ -16555,6 +16575,131 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum OperationTagOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One tag of an operation (Story 9.21): jj's `OperationMetadata.attributes` entry.
+        pub struct OperationTag<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OperationTag<'a> {
+            type Inner = OperationTag<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OperationTag<'a> {
+            pub const VT_KEY: ::flatbuffers::VOffsetT = 4;
+            pub const VT_VALUE: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OperationTag { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OperationTagArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OperationTag<'bldr>> {
+                let mut builder = OperationTagBuilder::new(_fbb);
+                if let Some(x) = args.value {
+                    builder.add_value(x);
+                }
+                if let Some(x) = args.key {
+                    builder.add_key(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn key(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OperationTag::VT_KEY, None)
+                }
+            }
+            #[inline]
+            pub fn value(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OperationTag::VT_VALUE, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OperationTag<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("key", Self::VT_KEY, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("value", Self::VT_VALUE, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OperationTagArgs<'a> {
+            pub key: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub value: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for OperationTagArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OperationTagArgs { key: None, value: None }
+            }
+        }
+
+        pub struct OperationTagBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OperationTagBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_key(&mut self, key: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OperationTag::VT_KEY, key);
+            }
+            #[inline]
+            pub fn add_value(&mut self, value: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OperationTag::VT_VALUE, value);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OperationTagBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OperationTagBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OperationTag<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OperationTag<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OperationTag");
+                ds.field("key", &self.key());
+                ds.field("value", &self.value());
+                ds.finish()
+            }
+        }
         pub enum OperationOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -16583,6 +16728,8 @@ pub mod zanshin {
             pub const VT_DESCRIPTION: ::flatbuffers::VOffsetT = 16;
             pub const VT_ROOT_OP: ::flatbuffers::VOffsetT = 18;
             pub const VT_IS_SNAPSHOT: ::flatbuffers::VOffsetT = 20;
+            pub const VT_WORKSPACE_NAME: ::flatbuffers::VOffsetT = 22;
+            pub const VT_TAGS: ::flatbuffers::VOffsetT = 24;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -16595,6 +16742,12 @@ pub mod zanshin {
             ) -> ::flatbuffers::WIPOffset<Operation<'bldr>> {
                 let mut builder = OperationBuilder::new(_fbb);
                 builder.add_timestamp_millis(args.timestamp_millis);
+                if let Some(x) = args.tags {
+                    builder.add_tags(x);
+                }
+                if let Some(x) = args.workspace_name {
+                    builder.add_workspace_name(x);
+                }
                 if let Some(x) = args.description {
                     builder.add_description(x);
                 }
@@ -16695,6 +16848,27 @@ pub mod zanshin {
                 // which contains a valid value in this slot
                 unsafe { self._tab.get::<bool>(Operation::VT_IS_SNAPSHOT, Some(false)).unwrap() }
             }
+            #[inline]
+            pub fn workspace_name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(Operation::VT_WORKSPACE_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn tags(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OperationTag<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OperationTag>>,
+                    >>(Operation::VT_TAGS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Operation<'_> {
@@ -16713,6 +16887,8 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("description", Self::VT_DESCRIPTION, false)?
      .visit_field::<bool>("root_op", Self::VT_ROOT_OP, false)?
      .visit_field::<bool>("is_snapshot", Self::VT_IS_SNAPSHOT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("workspace_name", Self::VT_WORKSPACE_NAME, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<OperationTag>>>>("tags", Self::VT_TAGS, false)?
      .finish();
                 Ok(())
             }
@@ -16728,6 +16904,10 @@ pub mod zanshin {
             pub description: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub root_op: bool,
             pub is_snapshot: bool,
+            pub workspace_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub tags: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OperationTag<'a>>>>,
+            >,
         }
         impl<'a> Default for OperationArgs<'a> {
             #[inline]
@@ -16742,6 +16922,8 @@ pub mod zanshin {
                     description: None,
                     root_op: false,
                     is_snapshot: false,
+                    workspace_name: None,
+                    tags: None,
                 }
             }
         }
@@ -16801,6 +16983,21 @@ pub mod zanshin {
                     .push_slot::<bool>(Operation::VT_IS_SNAPSHOT, is_snapshot, false);
             }
             #[inline]
+            pub fn add_workspace_name(&mut self, workspace_name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Operation::VT_WORKSPACE_NAME, workspace_name);
+            }
+            #[inline]
+            pub fn add_tags(
+                &mut self,
+                tags: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<OperationTag<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(Operation::VT_TAGS, tags);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OperationBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 OperationBuilder {
@@ -16827,6 +17024,8 @@ pub mod zanshin {
                 ds.field("description", &self.description());
                 ds.field("root_op", &self.root_op());
                 ds.field("is_snapshot", &self.is_snapshot());
+                ds.field("workspace_name", &self.workspace_name());
+                ds.field("tags", &self.tags());
                 ds.finish()
             }
         }
@@ -16942,6 +17141,2194 @@ pub mod zanshin {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("OpLog");
                 ds.field("operations", &self.operations());
+                ds.finish()
+            }
+        }
+        pub enum OpShowRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_op_show` (Story 9.21) — the CLI's `jj op show`.
+        ///
+        ///   operation          the operation expression (`@`, `@-`, an id prefix); ABSENT = `@`
+        ///   show_changes_in    `--show-changes-in`; ABSENT = `revsets.op-diff-changes-in`
+        pub struct OpShowRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpShowRequest<'a> {
+            type Inner = OpShowRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpShowRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_OPERATION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SHOW_CHANGES_IN: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpShowRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpShowRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpShowRequest<'bldr>> {
+                let mut builder = OpShowRequestBuilder::new(_fbb);
+                if let Some(x) = args.show_changes_in {
+                    builder.add_show_changes_in(x);
+                }
+                if let Some(x) = args.operation {
+                    builder.add_operation(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(OpShowRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn operation(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpShowRequest::VT_OPERATION, None)
+                }
+            }
+            #[inline]
+            pub fn show_changes_in(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpShowRequest::VT_SHOW_CHANGES_IN, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpShowRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation", Self::VT_OPERATION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "show_changes_in",
+                        Self::VT_SHOW_CHANGES_IN,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OpShowRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub operation: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub show_changes_in: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for OpShowRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpShowRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    operation: None,
+                    show_changes_in: None,
+                }
+            }
+        }
+
+        pub struct OpShowRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpShowRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(OpShowRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_operation(&mut self, operation: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpShowRequest::VT_OPERATION, operation);
+            }
+            #[inline]
+            pub fn add_show_changes_in(&mut self, show_changes_in: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    OpShowRequest::VT_SHOW_CHANGES_IN,
+                    show_changes_in,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpShowRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpShowRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpShowRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpShowRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpShowRequest");
+                ds.field("kind", &self.kind());
+                ds.field("operation", &self.operation());
+                ds.field("show_changes_in", &self.show_changes_in());
+                ds.finish()
+            }
+        }
+        pub enum OpDiffRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_op_diff` (Story 9.21) — the CLI's `jj op diff`; every string ABSENT =
+        /// the flag was not given.
+        ///
+        ///   operation          `--operation`: this operation against its parents (default `@`); may NOT
+        ///                      be combined with from/to (clap's conflict, `jj.invalid_input` before the
+        ///                      snapshot)
+        ///   from, to           `--from` / `--to`; with only one given, the other is `@`
+        ///   show_changes_in    `--show-changes-in`; ABSENT = `revsets.op-diff-changes-in`
+        pub struct OpDiffRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpDiffRequest<'a> {
+            type Inner = OpDiffRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpDiffRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_OPERATION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TO: ::flatbuffers::VOffsetT = 10;
+            pub const VT_SHOW_CHANGES_IN: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpDiffRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpDiffRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpDiffRequest<'bldr>> {
+                let mut builder = OpDiffRequestBuilder::new(_fbb);
+                if let Some(x) = args.show_changes_in {
+                    builder.add_show_changes_in(x);
+                }
+                if let Some(x) = args.to {
+                    builder.add_to(x);
+                }
+                if let Some(x) = args.from {
+                    builder.add_from(x);
+                }
+                if let Some(x) = args.operation {
+                    builder.add_operation(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(OpDiffRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn operation(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpDiffRequest::VT_OPERATION, None)
+                }
+            }
+            #[inline]
+            pub fn from(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpDiffRequest::VT_FROM, None)
+                }
+            }
+            #[inline]
+            pub fn to(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpDiffRequest::VT_TO, None)
+                }
+            }
+            #[inline]
+            pub fn show_changes_in(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpDiffRequest::VT_SHOW_CHANGES_IN, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpDiffRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation", Self::VT_OPERATION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("to", Self::VT_TO, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "show_changes_in",
+                        Self::VT_SHOW_CHANGES_IN,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OpDiffRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub operation: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub to: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub show_changes_in: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for OpDiffRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpDiffRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    operation: None,
+                    from: None,
+                    to: None,
+                    show_changes_in: None,
+                }
+            }
+        }
+
+        pub struct OpDiffRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpDiffRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(OpDiffRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_operation(&mut self, operation: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpDiffRequest::VT_OPERATION, operation);
+            }
+            #[inline]
+            pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpDiffRequest::VT_FROM, from);
+            }
+            #[inline]
+            pub fn add_to(&mut self, to: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpDiffRequest::VT_TO, to);
+            }
+            #[inline]
+            pub fn add_show_changes_in(&mut self, show_changes_in: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    OpDiffRequest::VT_SHOW_CHANGES_IN,
+                    show_changes_in,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpDiffRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpDiffRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpDiffRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpDiffRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpDiffRequest");
+                ds.field("kind", &self.kind());
+                ds.field("operation", &self.operation());
+                ds.field("from", &self.from());
+                ds.field("to", &self.to());
+                ds.field("show_changes_in", &self.show_changes_in());
+                ds.finish()
+            }
+        }
+        pub enum OpRefTargetOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A ref target as `jj op diff` summarises it (Story 9.21): ABSENT = `adds` empty and not
+        /// `conflicted`; a normal target = one add; a conflict = its present adds and removes. Hex
+        /// commit ids.
+        pub struct OpRefTarget<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpRefTarget<'a> {
+            type Inner = OpRefTarget<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpRefTarget<'a> {
+            pub const VT_ADDS: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REMOVES: ::flatbuffers::VOffsetT = 6;
+            pub const VT_CONFLICTED: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpRefTarget { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpRefTargetArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpRefTarget<'bldr>> {
+                let mut builder = OpRefTargetBuilder::new(_fbb);
+                if let Some(x) = args.removes {
+                    builder.add_removes(x);
+                }
+                if let Some(x) = args.adds {
+                    builder.add_adds(x);
+                }
+                builder.add_conflicted(args.conflicted);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn adds(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(OpRefTarget::VT_ADDS, None)
+                }
+            }
+            #[inline]
+            pub fn removes(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(OpRefTarget::VT_REMOVES, None)
+                }
+            }
+            #[inline]
+            pub fn conflicted(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(OpRefTarget::VT_CONFLICTED, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpRefTarget<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("adds", Self::VT_ADDS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("removes", Self::VT_REMOVES, false)?
+     .visit_field::<bool>("conflicted", Self::VT_CONFLICTED, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct OpRefTargetArgs<'a> {
+            pub adds:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub removes:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub conflicted: bool,
+        }
+        impl<'a> Default for OpRefTargetArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpRefTargetArgs {
+                    adds: None,
+                    removes: None,
+                    conflicted: false,
+                }
+            }
+        }
+
+        pub struct OpRefTargetBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpRefTargetBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_adds(
+                &mut self,
+                adds: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpRefTarget::VT_ADDS, adds);
+            }
+            #[inline]
+            pub fn add_removes(
+                &mut self,
+                removes: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpRefTarget::VT_REMOVES, removes);
+            }
+            #[inline]
+            pub fn add_conflicted(&mut self, conflicted: bool) {
+                self.fbb_
+                    .push_slot::<bool>(OpRefTarget::VT_CONFLICTED, conflicted, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpRefTargetBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpRefTargetBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpRefTarget<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpRefTarget<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpRefTarget");
+                ds.field("adds", &self.adds());
+                ds.field("removes", &self.removes());
+                ds.field("conflicted", &self.conflicted());
+                ds.finish()
+            }
+        }
+        pub enum OpChangedCommitOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One changed commit of an operation diff (Story 9.21): `commit_id` is the row's key — the new
+        /// commit, or the old one when `abandoned`; `added_commit_ids` the CLI's `+` line (empty when
+        /// abandoned), `removed_commit_ids` its `-` lines (the predecessors, or the abandoned commit).
+        pub struct OpChangedCommit<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpChangedCommit<'a> {
+            type Inner = OpChangedCommit<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpChangedCommit<'a> {
+            pub const VT_COMMIT_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_ABANDONED: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ADDED_COMMIT_IDS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_REMOVED_COMMIT_IDS: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpChangedCommit { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpChangedCommitArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpChangedCommit<'bldr>> {
+                let mut builder = OpChangedCommitBuilder::new(_fbb);
+                if let Some(x) = args.removed_commit_ids {
+                    builder.add_removed_commit_ids(x);
+                }
+                if let Some(x) = args.added_commit_ids {
+                    builder.add_added_commit_ids(x);
+                }
+                if let Some(x) = args.commit_id {
+                    builder.add_commit_id(x);
+                }
+                builder.add_abandoned(args.abandoned);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn commit_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpChangedCommit::VT_COMMIT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn abandoned(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(OpChangedCommit::VT_ABANDONED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn added_commit_ids(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(OpChangedCommit::VT_ADDED_COMMIT_IDS, None)
+                }
+            }
+            #[inline]
+            pub fn removed_commit_ids(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(OpChangedCommit::VT_REMOVED_COMMIT_IDS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpChangedCommit<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("commit_id", Self::VT_COMMIT_ID, false)?
+     .visit_field::<bool>("abandoned", Self::VT_ABANDONED, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("added_commit_ids", Self::VT_ADDED_COMMIT_IDS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("removed_commit_ids", Self::VT_REMOVED_COMMIT_IDS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct OpChangedCommitArgs<'a> {
+            pub commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub abandoned: bool,
+            pub added_commit_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub removed_commit_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for OpChangedCommitArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpChangedCommitArgs {
+                    commit_id: None,
+                    abandoned: false,
+                    added_commit_ids: None,
+                    removed_commit_ids: None,
+                }
+            }
+        }
+
+        pub struct OpChangedCommitBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpChangedCommitBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_commit_id(&mut self, commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpChangedCommit::VT_COMMIT_ID, commit_id);
+            }
+            #[inline]
+            pub fn add_abandoned(&mut self, abandoned: bool) {
+                self.fbb_
+                    .push_slot::<bool>(OpChangedCommit::VT_ABANDONED, abandoned, false);
+            }
+            #[inline]
+            pub fn add_added_commit_ids(
+                &mut self,
+                added_commit_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    OpChangedCommit::VT_ADDED_COMMIT_IDS,
+                    added_commit_ids,
+                );
+            }
+            #[inline]
+            pub fn add_removed_commit_ids(
+                &mut self,
+                removed_commit_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    OpChangedCommit::VT_REMOVED_COMMIT_IDS,
+                    removed_commit_ids,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpChangedCommitBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpChangedCommitBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpChangedCommit<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpChangedCommit<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpChangedCommit");
+                ds.field("commit_id", &self.commit_id());
+                ds.field("abandoned", &self.abandoned());
+                ds.field("added_commit_ids", &self.added_commit_ids());
+                ds.field("removed_commit_ids", &self.removed_commit_ids());
+                ds.finish()
+            }
+        }
+        pub enum OpCommitsDiffOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The commit section of an operation diff (Story 9.21): the rows in revset order, and how many
+        /// newly visible / hidden commits outside `show_changes_in` were elided (`count_estimate`).
+        pub struct OpCommitsDiff<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpCommitsDiff<'a> {
+            type Inner = OpCommitsDiff<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpCommitsDiff<'a> {
+            pub const VT_CHANGES: ::flatbuffers::VOffsetT = 4;
+            pub const VT_ELIDED_NEWLY_VISIBLE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ELIDED_NEWLY_HIDDEN: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpCommitsDiff { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpCommitsDiffArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpCommitsDiff<'bldr>> {
+                let mut builder = OpCommitsDiffBuilder::new(_fbb);
+                if let Some(x) = args.elided_newly_hidden {
+                    builder.add_elided_newly_hidden(x);
+                }
+                if let Some(x) = args.elided_newly_visible {
+                    builder.add_elided_newly_visible(x);
+                }
+                if let Some(x) = args.changes {
+                    builder.add_changes(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn changes(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpChangedCommit<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpChangedCommit>>,
+                    >>(OpCommitsDiff::VT_CHANGES, None)
+                }
+            }
+            #[inline]
+            pub fn elided_newly_visible(&self) -> Option<RefDistance<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<RefDistance>>(
+                        OpCommitsDiff::VT_ELIDED_NEWLY_VISIBLE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn elided_newly_hidden(&self) -> Option<RefDistance<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<RefDistance>>(OpCommitsDiff::VT_ELIDED_NEWLY_HIDDEN, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpCommitsDiff<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<OpChangedCommit>>,
+                    >>("changes", Self::VT_CHANGES, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<RefDistance>>(
+                        "elided_newly_visible",
+                        Self::VT_ELIDED_NEWLY_VISIBLE,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<RefDistance>>(
+                        "elided_newly_hidden",
+                        Self::VT_ELIDED_NEWLY_HIDDEN,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OpCommitsDiffArgs<'a> {
+            pub changes: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpChangedCommit<'a>>>,
+                >,
+            >,
+            pub elided_newly_visible: Option<::flatbuffers::WIPOffset<RefDistance<'a>>>,
+            pub elided_newly_hidden: Option<::flatbuffers::WIPOffset<RefDistance<'a>>>,
+        }
+        impl<'a> Default for OpCommitsDiffArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpCommitsDiffArgs {
+                    changes: None,
+                    elided_newly_visible: None,
+                    elided_newly_hidden: None,
+                }
+            }
+        }
+
+        pub struct OpCommitsDiffBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpCommitsDiffBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_changes(
+                &mut self,
+                changes: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<OpChangedCommit<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpCommitsDiff::VT_CHANGES, changes);
+            }
+            #[inline]
+            pub fn add_elided_newly_visible(
+                &mut self,
+                elided_newly_visible: ::flatbuffers::WIPOffset<RefDistance<'b>>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<RefDistance>>(
+                    OpCommitsDiff::VT_ELIDED_NEWLY_VISIBLE,
+                    elided_newly_visible,
+                );
+            }
+            #[inline]
+            pub fn add_elided_newly_hidden(&mut self, elided_newly_hidden: ::flatbuffers::WIPOffset<RefDistance<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<RefDistance>>(
+                    OpCommitsDiff::VT_ELIDED_NEWLY_HIDDEN,
+                    elided_newly_hidden,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpCommitsDiffBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpCommitsDiffBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpCommitsDiff<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpCommitsDiff<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpCommitsDiff");
+                ds.field("changes", &self.changes());
+                ds.field("elided_newly_visible", &self.elided_newly_visible());
+                ds.field("elided_newly_hidden", &self.elided_newly_hidden());
+                ds.finish()
+            }
+        }
+        pub enum OpWorkingCopyChangeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A workspace whose working-copy commit changed (Story 9.21); `from` / `to` ABSENT when the
+        /// workspace did not exist before / after.
+        pub struct OpWorkingCopyChange<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpWorkingCopyChange<'a> {
+            type Inner = OpWorkingCopyChange<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpWorkingCopyChange<'a> {
+            pub const VT_WORKSPACE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 6;
+            pub const VT_TO: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpWorkingCopyChange { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpWorkingCopyChangeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpWorkingCopyChange<'bldr>> {
+                let mut builder = OpWorkingCopyChangeBuilder::new(_fbb);
+                if let Some(x) = args.to {
+                    builder.add_to(x);
+                }
+                if let Some(x) = args.from {
+                    builder.add_from(x);
+                }
+                if let Some(x) = args.workspace {
+                    builder.add_workspace(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn workspace(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpWorkingCopyChange::VT_WORKSPACE, None)
+                }
+            }
+            #[inline]
+            pub fn from(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpWorkingCopyChange::VT_FROM, None)
+                }
+            }
+            #[inline]
+            pub fn to(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpWorkingCopyChange::VT_TO, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpWorkingCopyChange<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("workspace", Self::VT_WORKSPACE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("to", Self::VT_TO, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OpWorkingCopyChangeArgs<'a> {
+            pub workspace: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub to: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for OpWorkingCopyChangeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpWorkingCopyChangeArgs {
+                    workspace: None,
+                    from: None,
+                    to: None,
+                }
+            }
+        }
+
+        pub struct OpWorkingCopyChangeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpWorkingCopyChangeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_workspace(&mut self, workspace: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpWorkingCopyChange::VT_WORKSPACE, workspace);
+            }
+            #[inline]
+            pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpWorkingCopyChange::VT_FROM, from);
+            }
+            #[inline]
+            pub fn add_to(&mut self, to: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpWorkingCopyChange::VT_TO, to);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpWorkingCopyChangeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpWorkingCopyChangeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpWorkingCopyChange<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpWorkingCopyChange<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpWorkingCopyChange");
+                ds.field("workspace", &self.workspace());
+                ds.field("from", &self.from());
+                ds.field("to", &self.to());
+                ds.finish()
+            }
+        }
+        pub enum OpRefChangeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A local bookmark or tag whose target changed (Story 9.21).
+        pub struct OpRefChange<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpRefChange<'a> {
+            type Inner = OpRefChange<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpRefChange<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 6;
+            pub const VT_TO: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpRefChange { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpRefChangeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpRefChange<'bldr>> {
+                let mut builder = OpRefChangeBuilder::new(_fbb);
+                if let Some(x) = args.to {
+                    builder.add_to(x);
+                }
+                if let Some(x) = args.from {
+                    builder.add_from(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpRefChange::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn from(&self) -> Option<OpRefTarget<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<OpRefTarget>>(OpRefChange::VT_FROM, None)
+                }
+            }
+            #[inline]
+            pub fn to(&self) -> Option<OpRefTarget<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<OpRefTarget>>(OpRefChange::VT_TO, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpRefChange<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<OpRefTarget>>("from", Self::VT_FROM, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<OpRefTarget>>("to", Self::VT_TO, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OpRefChangeArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub from: Option<::flatbuffers::WIPOffset<OpRefTarget<'a>>>,
+            pub to: Option<::flatbuffers::WIPOffset<OpRefTarget<'a>>>,
+        }
+        impl<'a> Default for OpRefChangeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpRefChangeArgs {
+                    name: None,
+                    from: None,
+                    to: None,
+                }
+            }
+        }
+
+        pub struct OpRefChangeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpRefChangeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpRefChange::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<OpRefTarget<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<OpRefTarget>>(OpRefChange::VT_FROM, from);
+            }
+            #[inline]
+            pub fn add_to(&mut self, to: ::flatbuffers::WIPOffset<OpRefTarget<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<OpRefTarget>>(OpRefChange::VT_TO, to);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpRefChangeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpRefChangeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpRefChange<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpRefChange<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpRefChange");
+                ds.field("name", &self.name());
+                ds.field("from", &self.from());
+                ds.field("to", &self.to());
+                ds.finish()
+            }
+        }
+        pub enum OpRemoteRefChangeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// A remote bookmark or tag whose target or tracking state changed (Story 9.21).
+        pub struct OpRemoteRefChange<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpRemoteRefChange<'a> {
+            type Inner = OpRemoteRefChange<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpRemoteRefChange<'a> {
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REMOTE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 8;
+            pub const VT_FROM_TRACKED: ::flatbuffers::VOffsetT = 10;
+            pub const VT_TO: ::flatbuffers::VOffsetT = 12;
+            pub const VT_TO_TRACKED: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpRemoteRefChange { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpRemoteRefChangeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpRemoteRefChange<'bldr>> {
+                let mut builder = OpRemoteRefChangeBuilder::new(_fbb);
+                if let Some(x) = args.to {
+                    builder.add_to(x);
+                }
+                if let Some(x) = args.from {
+                    builder.add_from(x);
+                }
+                if let Some(x) = args.remote {
+                    builder.add_remote(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                builder.add_to_tracked(args.to_tracked);
+                builder.add_from_tracked(args.from_tracked);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpRemoteRefChange::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn remote(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpRemoteRefChange::VT_REMOTE, None)
+                }
+            }
+            #[inline]
+            pub fn from(&self) -> Option<OpRefTarget<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<OpRefTarget>>(OpRemoteRefChange::VT_FROM, None)
+                }
+            }
+            #[inline]
+            pub fn from_tracked(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(OpRemoteRefChange::VT_FROM_TRACKED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn to(&self) -> Option<OpRefTarget<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<OpRefTarget>>(OpRemoteRefChange::VT_TO, None)
+                }
+            }
+            #[inline]
+            pub fn to_tracked(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(OpRemoteRefChange::VT_TO_TRACKED, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpRemoteRefChange<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("remote", Self::VT_REMOTE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<OpRefTarget>>("from", Self::VT_FROM, false)?
+                    .visit_field::<bool>("from_tracked", Self::VT_FROM_TRACKED, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<OpRefTarget>>("to", Self::VT_TO, false)?
+                    .visit_field::<bool>("to_tracked", Self::VT_TO_TRACKED, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OpRemoteRefChangeArgs<'a> {
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub remote: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub from: Option<::flatbuffers::WIPOffset<OpRefTarget<'a>>>,
+            pub from_tracked: bool,
+            pub to: Option<::flatbuffers::WIPOffset<OpRefTarget<'a>>>,
+            pub to_tracked: bool,
+        }
+        impl<'a> Default for OpRemoteRefChangeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpRemoteRefChangeArgs {
+                    name: None,
+                    remote: None,
+                    from: None,
+                    from_tracked: false,
+                    to: None,
+                    to_tracked: false,
+                }
+            }
+        }
+
+        pub struct OpRemoteRefChangeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpRemoteRefChangeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpRemoteRefChange::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_remote(&mut self, remote: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpRemoteRefChange::VT_REMOTE, remote);
+            }
+            #[inline]
+            pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<OpRefTarget<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<OpRefTarget>>(OpRemoteRefChange::VT_FROM, from);
+            }
+            #[inline]
+            pub fn add_from_tracked(&mut self, from_tracked: bool) {
+                self.fbb_
+                    .push_slot::<bool>(OpRemoteRefChange::VT_FROM_TRACKED, from_tracked, false);
+            }
+            #[inline]
+            pub fn add_to(&mut self, to: ::flatbuffers::WIPOffset<OpRefTarget<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<OpRefTarget>>(OpRemoteRefChange::VT_TO, to);
+            }
+            #[inline]
+            pub fn add_to_tracked(&mut self, to_tracked: bool) {
+                self.fbb_
+                    .push_slot::<bool>(OpRemoteRefChange::VT_TO_TRACKED, to_tracked, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpRemoteRefChangeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpRemoteRefChangeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpRemoteRefChange<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpRemoteRefChange<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpRemoteRefChange");
+                ds.field("name", &self.name());
+                ds.field("remote", &self.remote());
+                ds.field("from", &self.from());
+                ds.field("from_tracked", &self.from_tracked());
+                ds.field("to", &self.to());
+                ds.field("to_tracked", &self.to_tracked());
+                ds.finish()
+            }
+        }
+        pub enum OpDiffOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The repository changes between two operations (Story 9.21), in the CLI's section order.
+        /// `commits` is ABSENT when `show_changes_in` did not resolve (warned
+        /// `jj.op_diff_changes_unresolved`); the remote sections leave out a Git repo's `git` remote.
+        pub struct OpDiff<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpDiff<'a> {
+            type Inner = OpDiff<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpDiff<'a> {
+            pub const VT_COMMITS: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WORKING_COPIES: ::flatbuffers::VOffsetT = 6;
+            pub const VT_LOCAL_BOOKMARKS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_LOCAL_TAGS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_REMOTE_BOOKMARKS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_REMOTE_TAGS: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpDiff { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpDiffArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpDiff<'bldr>> {
+                let mut builder = OpDiffBuilder::new(_fbb);
+                if let Some(x) = args.remote_tags {
+                    builder.add_remote_tags(x);
+                }
+                if let Some(x) = args.remote_bookmarks {
+                    builder.add_remote_bookmarks(x);
+                }
+                if let Some(x) = args.local_tags {
+                    builder.add_local_tags(x);
+                }
+                if let Some(x) = args.local_bookmarks {
+                    builder.add_local_bookmarks(x);
+                }
+                if let Some(x) = args.working_copies {
+                    builder.add_working_copies(x);
+                }
+                if let Some(x) = args.commits {
+                    builder.add_commits(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn commits(&self) -> Option<OpCommitsDiff<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<OpCommitsDiff>>(OpDiff::VT_COMMITS, None)
+                }
+            }
+            #[inline]
+            pub fn working_copies(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpWorkingCopyChange<'a>>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpWorkingCopyChange>>,
+                    >>(OpDiff::VT_WORKING_COPIES, None)
+                }
+            }
+            #[inline]
+            pub fn local_bookmarks(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpRefChange<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpRefChange>>,
+                    >>(OpDiff::VT_LOCAL_BOOKMARKS, None)
+                }
+            }
+            #[inline]
+            pub fn local_tags(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpRefChange<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpRefChange>>,
+                    >>(OpDiff::VT_LOCAL_TAGS, None)
+                }
+            }
+            #[inline]
+            pub fn remote_bookmarks(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpRemoteRefChange<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpRemoteRefChange>>,
+                    >>(OpDiff::VT_REMOTE_BOOKMARKS, None)
+                }
+            }
+            #[inline]
+            pub fn remote_tags(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpRemoteRefChange<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpRemoteRefChange>>,
+                    >>(OpDiff::VT_REMOTE_TAGS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpDiff<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<OpCommitsDiff>>("commits", Self::VT_COMMITS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<OpWorkingCopyChange>>,
+                    >>("working_copies", Self::VT_WORKING_COPIES, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<OpRefChange>>,
+                    >>("local_bookmarks", Self::VT_LOCAL_BOOKMARKS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<OpRefChange>>,
+                    >>("local_tags", Self::VT_LOCAL_TAGS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<OpRemoteRefChange>>,
+                    >>("remote_bookmarks", Self::VT_REMOTE_BOOKMARKS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<OpRemoteRefChange>>,
+                    >>("remote_tags", Self::VT_REMOTE_TAGS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OpDiffArgs<'a> {
+            pub commits: Option<::flatbuffers::WIPOffset<OpCommitsDiff<'a>>>,
+            pub working_copies: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpWorkingCopyChange<'a>>>,
+                >,
+            >,
+            pub local_bookmarks: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpRefChange<'a>>>>,
+            >,
+            pub local_tags: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpRefChange<'a>>>>,
+            >,
+            pub remote_bookmarks: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpRemoteRefChange<'a>>>,
+                >,
+            >,
+            pub remote_tags: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<OpRemoteRefChange<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for OpDiffArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpDiffArgs {
+                    commits: None,
+                    working_copies: None,
+                    local_bookmarks: None,
+                    local_tags: None,
+                    remote_bookmarks: None,
+                    remote_tags: None,
+                }
+            }
+        }
+
+        pub struct OpDiffBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpDiffBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_commits(&mut self, commits: ::flatbuffers::WIPOffset<OpCommitsDiff<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<OpCommitsDiff>>(OpDiff::VT_COMMITS, commits);
+            }
+            #[inline]
+            pub fn add_working_copies(
+                &mut self,
+                working_copies: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<OpWorkingCopyChange<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpDiff::VT_WORKING_COPIES, working_copies);
+            }
+            #[inline]
+            pub fn add_local_bookmarks(
+                &mut self,
+                local_bookmarks: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<OpRefChange<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpDiff::VT_LOCAL_BOOKMARKS, local_bookmarks);
+            }
+            #[inline]
+            pub fn add_local_tags(
+                &mut self,
+                local_tags: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<OpRefChange<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpDiff::VT_LOCAL_TAGS, local_tags);
+            }
+            #[inline]
+            pub fn add_remote_bookmarks(
+                &mut self,
+                remote_bookmarks: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<OpRemoteRefChange<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpDiff::VT_REMOTE_BOOKMARKS, remote_bookmarks);
+            }
+            #[inline]
+            pub fn add_remote_tags(
+                &mut self,
+                remote_tags: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<OpRemoteRefChange<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpDiff::VT_REMOTE_TAGS, remote_tags);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpDiffBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpDiffBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpDiff<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpDiff<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpDiff");
+                ds.field("commits", &self.commits());
+                ds.field("working_copies", &self.working_copies());
+                ds.field("local_bookmarks", &self.local_bookmarks());
+                ds.field("local_tags", &self.local_tags());
+                ds.field("remote_bookmarks", &self.remote_bookmarks());
+                ds.field("remote_tags", &self.remote_tags());
+                ds.finish()
+            }
+        }
+        pub enum OpShowOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_op_show`'s answer (Story 9.21): the operation and its diff against its parent;
+        /// `diff` ABSENT for an operation with more than one parent (the CLI prints none).
+        pub struct OpShow<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpShow<'a> {
+            type Inner = OpShow<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpShow<'a> {
+            pub const VT_OPERATION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_DIFF: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpShow { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpShowArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpShow<'bldr>> {
+                let mut builder = OpShowBuilder::new(_fbb);
+                if let Some(x) = args.diff {
+                    builder.add_diff(x);
+                }
+                if let Some(x) = args.operation {
+                    builder.add_operation(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn operation(&self) -> Option<Operation<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<Operation>>(OpShow::VT_OPERATION, None)
+                }
+            }
+            #[inline]
+            pub fn diff(&self) -> Option<OpDiff<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<OpDiff>>(OpShow::VT_DIFF, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpShow<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<Operation>>("operation", Self::VT_OPERATION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<OpDiff>>("diff", Self::VT_DIFF, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OpShowArgs<'a> {
+            pub operation: Option<::flatbuffers::WIPOffset<Operation<'a>>>,
+            pub diff: Option<::flatbuffers::WIPOffset<OpDiff<'a>>>,
+        }
+        impl<'a> Default for OpShowArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpShowArgs {
+                    operation: None,
+                    diff: None,
+                }
+            }
+        }
+
+        pub struct OpShowBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpShowBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_operation(&mut self, operation: ::flatbuffers::WIPOffset<Operation<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<Operation>>(OpShow::VT_OPERATION, operation);
+            }
+            #[inline]
+            pub fn add_diff(&mut self, diff: ::flatbuffers::WIPOffset<OpDiff<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<OpDiff>>(OpShow::VT_DIFF, diff);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpShowBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpShowBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpShow<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpShow<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpShow");
+                ds.field("operation", &self.operation());
+                ds.field("diff", &self.diff());
+                ds.finish()
+            }
+        }
+        pub enum OpDiffResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_op_diff`'s answer (Story 9.21): the operations diffed from (one for `from`, else the
+        /// operation's parents — none for the root), the one diffed to, and the diff.
+        pub struct OpDiffResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpDiffResult<'a> {
+            type Inner = OpDiffResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpDiffResult<'a> {
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TO: ::flatbuffers::VOffsetT = 6;
+            pub const VT_DIFF: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpDiffResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpDiffResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpDiffResult<'bldr>> {
+                let mut builder = OpDiffResultBuilder::new(_fbb);
+                if let Some(x) = args.diff {
+                    builder.add_diff(x);
+                }
+                if let Some(x) = args.to {
+                    builder.add_to(x);
+                }
+                if let Some(x) = args.from {
+                    builder.add_from(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn from(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Operation<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Operation>>,
+                    >>(OpDiffResult::VT_FROM, None)
+                }
+            }
+            #[inline]
+            pub fn to(&self) -> Option<Operation<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<Operation>>(OpDiffResult::VT_TO, None)
+                }
+            }
+            #[inline]
+            pub fn diff(&self) -> Option<OpDiff<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<OpDiff>>(OpDiffResult::VT_DIFF, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpDiffResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<Operation>>,
+                    >>("from", Self::VT_FROM, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<Operation>>("to", Self::VT_TO, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<OpDiff>>("diff", Self::VT_DIFF, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OpDiffResultArgs<'a> {
+            pub from: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<Operation<'a>>>>,
+            >,
+            pub to: Option<::flatbuffers::WIPOffset<Operation<'a>>>,
+            pub diff: Option<::flatbuffers::WIPOffset<OpDiff<'a>>>,
+        }
+        impl<'a> Default for OpDiffResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpDiffResultArgs {
+                    from: None,
+                    to: None,
+                    diff: None,
+                }
+            }
+        }
+
+        pub struct OpDiffResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpDiffResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_from(
+                &mut self,
+                from: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<Operation<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpDiffResult::VT_FROM, from);
+            }
+            #[inline]
+            pub fn add_to(&mut self, to: ::flatbuffers::WIPOffset<Operation<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<Operation>>(OpDiffResult::VT_TO, to);
+            }
+            #[inline]
+            pub fn add_diff(&mut self, diff: ::flatbuffers::WIPOffset<OpDiff<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<OpDiff>>(OpDiffResult::VT_DIFF, diff);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpDiffResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpDiffResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpDiffResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpDiffResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpDiffResult");
+                ds.field("from", &self.from());
+                ds.field("to", &self.to());
+                ds.field("diff", &self.diff());
+                ds.finish()
+            }
+        }
+        pub enum OpAbandonResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_op_abandon`'s answer (Story 9.21): the CLI's status lines as facts —
+        /// `nothing_changed` is its "Nothing changed." (both counts 0), else "Abandoned
+        /// `abandoned_count` operations and reparented `reparented_count` descendant operations." —
+        /// and the op heads afterwards.
+        pub struct OpAbandonResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpAbandonResult<'a> {
+            type Inner = OpAbandonResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpAbandonResult<'a> {
+            pub const VT_ABANDONED_COUNT: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REPARENTED_COUNT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NOTHING_CHANGED: ::flatbuffers::VOffsetT = 8;
+            pub const VT_HEAD_OP_IDS: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpAbandonResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpAbandonResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpAbandonResult<'bldr>> {
+                let mut builder = OpAbandonResultBuilder::new(_fbb);
+                builder.add_reparented_count(args.reparented_count);
+                builder.add_abandoned_count(args.abandoned_count);
+                if let Some(x) = args.head_op_ids {
+                    builder.add_head_op_ids(x);
+                }
+                builder.add_nothing_changed(args.nothing_changed);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn abandoned_count(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(OpAbandonResult::VT_ABANDONED_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn reparented_count(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(OpAbandonResult::VT_REPARENTED_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn nothing_changed(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(OpAbandonResult::VT_NOTHING_CHANGED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn head_op_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(OpAbandonResult::VT_HEAD_OP_IDS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpAbandonResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<u64>("abandoned_count", Self::VT_ABANDONED_COUNT, false)?
+     .visit_field::<u64>("reparented_count", Self::VT_REPARENTED_COUNT, false)?
+     .visit_field::<bool>("nothing_changed", Self::VT_NOTHING_CHANGED, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("head_op_ids", Self::VT_HEAD_OP_IDS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct OpAbandonResultArgs<'a> {
+            pub abandoned_count: u64,
+            pub reparented_count: u64,
+            pub nothing_changed: bool,
+            pub head_op_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for OpAbandonResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpAbandonResultArgs {
+                    abandoned_count: 0,
+                    reparented_count: 0,
+                    nothing_changed: false,
+                    head_op_ids: None,
+                }
+            }
+        }
+
+        pub struct OpAbandonResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpAbandonResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_abandoned_count(&mut self, abandoned_count: u64) {
+                self.fbb_
+                    .push_slot::<u64>(OpAbandonResult::VT_ABANDONED_COUNT, abandoned_count, 0);
+            }
+            #[inline]
+            pub fn add_reparented_count(&mut self, reparented_count: u64) {
+                self.fbb_
+                    .push_slot::<u64>(OpAbandonResult::VT_REPARENTED_COUNT, reparented_count, 0);
+            }
+            #[inline]
+            pub fn add_nothing_changed(&mut self, nothing_changed: bool) {
+                self.fbb_
+                    .push_slot::<bool>(OpAbandonResult::VT_NOTHING_CHANGED, nothing_changed, false);
+            }
+            #[inline]
+            pub fn add_head_op_ids(
+                &mut self,
+                head_op_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpAbandonResult::VT_HEAD_OP_IDS, head_op_ids);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpAbandonResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpAbandonResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpAbandonResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpAbandonResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpAbandonResult");
+                ds.field("abandoned_count", &self.abandoned_count());
+                ds.field("reparented_count", &self.reparented_count());
+                ds.field("nothing_changed", &self.nothing_changed());
+                ds.field("head_op_ids", &self.head_op_ids());
                 ds.finish()
             }
         }
@@ -31478,7 +33865,8 @@ pub mod zanshin {
         /// envelope and on an error envelope alike (then PARTIAL). It is ABSENT when the call was refused
         /// before the verb ran (a null pointer, an invalid handle, a request buffer that fails
         /// validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/detect/close,
-        /// `zanshin_workspace_root`, `zanshin_log_defaults`, `zanshin_commit_contents`, events, and every
+        /// `zanshin_workspace_root`, `zanshin_log_defaults`, `zanshin_commit_contents`, `zanshin_op_abandon`,
+        /// events, and every
         /// `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
         /// working-copy check ran the snapshot (Story 9.28). `zanshin_repo_convert` carries the
         /// conversion's snapshot report (`jj git init`'s `maybe_snapshot`, Story 9.33) iff that snapshot
@@ -32334,6 +34722,51 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_op_show(&self) -> Option<OpShow<'a>> {
+                if self.data_type() == Payload::OpShow {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { OpShow::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_op_diff_result(&self) -> Option<OpDiffResult<'a>> {
+                if self.data_type() == Payload::OpDiffResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { OpDiffResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_op_abandon_result(&self) -> Option<OpAbandonResult<'a>> {
+                if self.data_type() == Payload::OpAbandonResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { OpAbandonResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -32396,6 +34829,9 @@ pub mod zanshin {
           Payload::ChangeActions => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ChangeActions>>("Payload::ChangeActions", pos),
           Payload::FixResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<FixResult>>("Payload::FixResult", pos),
           Payload::SelectedTree => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<SelectedTree>>("Payload::SelectedTree", pos),
+          Payload::OpShow => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpShow>>("Payload::OpShow", pos),
+          Payload::OpDiffResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpDiffResult>>("Payload::OpDiffResult", pos),
+          Payload::OpAbandonResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpAbandonResult>>("Payload::OpAbandonResult", pos),
           _ => Ok(()),
         }
      })?
@@ -32830,6 +35266,27 @@ pub mod zanshin {
                     }
                     Payload::SelectedTree => {
                         if let Some(x) = self.data_as_selected_tree() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::OpShow => {
+                        if let Some(x) = self.data_as_op_show() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::OpDiffResult => {
+                        if let Some(x) = self.data_as_op_diff_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::OpAbandonResult => {
+                        if let Some(x) = self.data_as_op_abandon_result() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

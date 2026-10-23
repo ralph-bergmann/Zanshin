@@ -1540,6 +1540,126 @@ fn select_tree_surface_resolves() {
         ) -> Result<zanshin_jj::SelectedTreeId, zanshin_jj::MutateError>;
 }
 
+// operation-log surface (Story 9.21)
+type _OpShow = zanshin_jj::OpShow;
+type _OpDiffResult = zanshin_jj::OpDiffResult;
+type _OpAbandonResult = zanshin_jj::OpAbandonResult;
+
+/// Names every `OpDiff` section type field by field (Story 9.21).
+fn sample_op_diff() -> zanshin_jj::OpDiff {
+    let target = zanshin_jj::OpRefTarget {
+        adds: vec![zanshin_jj::CommitId("c".to_owned())],
+        removes: Vec::new(),
+        conflicted: false,
+    };
+    zanshin_jj::OpDiff {
+        commits: Some(zanshin_jj::OpCommitsDiff {
+            changes: vec![zanshin_jj::OpChangedCommit {
+                commit_id: zanshin_jj::CommitId("c".to_owned()),
+                abandoned: false,
+                added_commit_ids: Vec::new(),
+                removed_commit_ids: Vec::new(),
+            }],
+            elided_newly_visible: zanshin_jj::RefDistance {
+                lower: 0,
+                upper: Some(0),
+            },
+            elided_newly_hidden: zanshin_jj::RefDistance { lower: 0, upper: None },
+        }),
+        working_copies: vec![zanshin_jj::OpWorkingCopyChange {
+            workspace: "default".to_owned(),
+            from: None,
+            to: Some(zanshin_jj::CommitId("c".to_owned())),
+        }],
+        local_bookmarks: vec![zanshin_jj::OpRefChange {
+            name: "b".to_owned(),
+            from: target.clone(),
+            to: target.clone(),
+        }],
+        local_tags: Vec::new(),
+        remote_bookmarks: vec![zanshin_jj::OpRemoteRefChange {
+            name: "b".to_owned(),
+            remote: "origin".to_owned(),
+            from: target.clone(),
+            from_tracked: false,
+            to: target,
+            to_tracked: true,
+        }],
+        remote_tags: Vec::new(),
+    }
+}
+
+/// The Story 9.21 surface: `Operation`'s two new fields, the op-show / op-diff / op-abandon
+/// types named field by field, the three new refusals and the four verbs as `fn` pointers.
+#[test]
+fn story_9_21_operation_log_surface_resolves() {
+    let tag = zanshin_jj::OperationTag {
+        key: "args".to_owned(),
+        value: "jj".to_owned(),
+    };
+    let operation = zanshin_jj::Operation {
+        id: zanshin_jj::OperationId("o".to_owned()),
+        parent_ids: Vec::new(),
+        timestamp: zanshin_jj::Timestamp {
+            millis_since_epoch: 0,
+            tz_offset_minutes: 0,
+        },
+        user: String::new(),
+        host: String::new(),
+        description: String::new(),
+        root_op: false,
+        is_snapshot: false,
+        workspace_name: Some("default".to_owned()),
+        tags: vec![tag],
+    };
+    let diff = sample_op_diff();
+    let show = zanshin_jj::OpShow {
+        operation: operation.clone(),
+        diff: Some(diff.clone()),
+    };
+    assert_eq!(show.clone(), show);
+    let result = zanshin_jj::OpDiffResult {
+        from: vec![operation.clone()],
+        to: operation,
+        diff,
+    };
+    assert_eq!(result.clone(), result);
+    let options = zanshin_jj::OpDiffOptions {
+        operation: None,
+        from: Some("@-".to_owned()),
+        to: None,
+        show_changes_in: Some("all()".to_owned()),
+    };
+    assert_eq!(zanshin_jj::OpDiffOptions::default().operation, None);
+    let abandoned = zanshin_jj::OpAbandonResult {
+        abandoned_count: 1,
+        reparented_count: 1,
+        nothing_changed: false,
+        head_op_ids: vec![zanshin_jj::OperationId("o".to_owned())],
+    };
+    assert_eq!(abandoned.clone(), abandoned);
+    _ = (
+        options,
+        zanshin_jj::MutateError::NothingToRedo,
+        zanshin_jj::MutateError::RedoCrossWorkspace {
+            operation: String::new(),
+            workspace: String::new(),
+        },
+        zanshin_jj::MutateError::OperationNotFound { reason: String::new() },
+    );
+    _ = zanshin_jj::Repo::redo
+        as fn(&mut zanshin_jj::Repo, bool) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::op_show
+        as fn(&mut zanshin_jj::Repo, &str, Option<&str>) -> Result<zanshin_jj::OpShow, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::op_diff
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::OpDiffOptions,
+        ) -> Result<zanshin_jj::OpDiffResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::op_abandon
+        as fn(&mut zanshin_jj::Repo, &str) -> Result<zanshin_jj::OpAbandonResult, zanshin_jj::MutateError>;
+}
+
 // snapshot precondition (Story 9.26)
 type _Precondition = zanshin_jj::Precondition;
 type _PreconditionError = zanshin_jj::PreconditionError;
@@ -1734,7 +1854,7 @@ fn story_9_28_surface_resolves() {
 /// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds;
 /// Story 9.53 the unresolved conflicts; Story 9.51 the template diagnostic; Story 9.54's closing
 /// run the bookmark auto-track warning; Story 9.19 the four rename warnings).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 64] = {
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 66] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -1801,6 +1921,8 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 64] = {
         K::FixToolFailed,
         K::FilesetDiagnostic,
         K::ConfigDeprecated,
+        K::OpDiffChangesUnresolved,
+        K::OpAbandonWorkingCopyNotUpdated,
     ]
 };
 
@@ -1923,10 +2045,12 @@ fn story_9_32_warning_surface_resolves() {
             | K::FixToolStartFailed
             | K::FixToolFailed
             | K::FilesetDiagnostic
-            | K::ConfigDeprecated => {}
+            | K::ConfigDeprecated
+            | K::OpDiffChangesUnresolved
+            | K::OpAbandonWorkingCopyNotUpdated => {}
         }
     }
-    assert_eq!(every.len(), 64);
+    assert_eq!(every.len(), 66);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

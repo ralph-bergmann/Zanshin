@@ -82,7 +82,7 @@ table FfiError {
 /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-/// squash, never a different verb. For the other 44 tables the variant name plus `Request` IS
+/// squash, never a different verb. For the other 46 tables the variant name plus `Request` IS
 /// the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -142,7 +142,9 @@ enum RequestKind : ubyte {
   BookmarkMove,
   BookmarkAdvance,
   BookmarkRename,
-  SelectTree
+  SelectTree,
+  OpShow,
+  OpDiff
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -1210,6 +1212,12 @@ table Change {
   divergent: bool;             // change id resolved to >1 visible commit (2.6 D4)
 }
 
+/// One tag of an operation (Story 9.21): jj's `OperationMetadata.attributes` entry.
+table OperationTag {
+  key: string;
+  value: string;
+}
+
 /// One entry in jj's operation log (FR-JJ-7).
 table Operation {
   id: string;                  // op id, plain forward hex (NOT reverse-hex)
@@ -1221,11 +1229,129 @@ table Operation {
   description: string;         // jj's user-friendly summary; always present, may be empty
   root_op: bool;               // true iff the op-store root operation
   is_snapshot: bool;           // pure working-copy-snapshot op (2.7 D6)
+  workspace_name: string;      // the workspace it was performed in; ABSENT when it records none (Story 9.21)
+  tags: [OperationTag];        // its tags, sorted by key; absent/empty when none (Story 9.21)
 }
 
 /// The operation log: reverse-chronological (head op first, root op last).
 table OpLog {
   operations: [Operation];
+}
+
+/// Arguments of `zanshin_op_show` (Story 9.21) — the CLI's `jj op show`.
+///
+///   operation          the operation expression (`@`, `@-`, an id prefix); ABSENT = `@`
+///   show_changes_in    `--show-changes-in`; ABSENT = `revsets.op-diff-changes-in`
+table OpShowRequest {
+  kind: RequestKind;
+  operation: string;
+  show_changes_in: string;
+}
+
+/// Arguments of `zanshin_op_diff` (Story 9.21) — the CLI's `jj op diff`; every string ABSENT =
+/// the flag was not given.
+///
+///   operation          `--operation`: this operation against its parents (default `@`); may NOT
+///                      be combined with from/to (clap's conflict, `jj.invalid_input` before the
+///                      snapshot)
+///   from, to           `--from` / `--to`; with only one given, the other is `@`
+///   show_changes_in    `--show-changes-in`; ABSENT = `revsets.op-diff-changes-in`
+table OpDiffRequest {
+  kind: RequestKind;
+  operation: string;
+  from: string;
+  to: string;
+  show_changes_in: string;
+}
+
+/// A ref target as `jj op diff` summarises it (Story 9.21): ABSENT = `adds` empty and not
+/// `conflicted`; a normal target = one add; a conflict = its present adds and removes. Hex
+/// commit ids.
+table OpRefTarget {
+  adds: [string];
+  removes: [string];
+  conflicted: bool;
+}
+
+/// One changed commit of an operation diff (Story 9.21): `commit_id` is the row's key — the new
+/// commit, or the old one when `abandoned`; `added_commit_ids` the CLI's `+` line (empty when
+/// abandoned), `removed_commit_ids` its `-` lines (the predecessors, or the abandoned commit).
+table OpChangedCommit {
+  commit_id: string;
+  abandoned: bool;
+  added_commit_ids: [string];
+  removed_commit_ids: [string];
+}
+
+/// The commit section of an operation diff (Story 9.21): the rows in revset order, and how many
+/// newly visible / hidden commits outside `show_changes_in` were elided (`count_estimate`).
+table OpCommitsDiff {
+  changes: [OpChangedCommit];
+  elided_newly_visible: RefDistance;
+  elided_newly_hidden: RefDistance;
+}
+
+/// A workspace whose working-copy commit changed (Story 9.21); `from` / `to` ABSENT when the
+/// workspace did not exist before / after.
+table OpWorkingCopyChange {
+  workspace: string;
+  from: string;
+  to: string;
+}
+
+/// A local bookmark or tag whose target changed (Story 9.21).
+table OpRefChange {
+  name: string;
+  from: OpRefTarget;
+  to: OpRefTarget;
+}
+
+/// A remote bookmark or tag whose target or tracking state changed (Story 9.21).
+table OpRemoteRefChange {
+  name: string;
+  remote: string;
+  from: OpRefTarget;
+  from_tracked: bool;
+  to: OpRefTarget;
+  to_tracked: bool;
+}
+
+/// The repository changes between two operations (Story 9.21), in the CLI's section order.
+/// `commits` is ABSENT when `show_changes_in` did not resolve (warned
+/// `jj.op_diff_changes_unresolved`); the remote sections leave out a Git repo's `git` remote.
+table OpDiff {
+  commits: OpCommitsDiff;
+  working_copies: [OpWorkingCopyChange];
+  local_bookmarks: [OpRefChange];
+  local_tags: [OpRefChange];
+  remote_bookmarks: [OpRemoteRefChange];
+  remote_tags: [OpRemoteRefChange];
+}
+
+/// `zanshin_op_show`'s answer (Story 9.21): the operation and its diff against its parent;
+/// `diff` ABSENT for an operation with more than one parent (the CLI prints none).
+table OpShow {
+  operation: Operation;
+  diff: OpDiff;
+}
+
+/// `zanshin_op_diff`'s answer (Story 9.21): the operations diffed from (one for `from`, else the
+/// operation's parents — none for the root), the one diffed to, and the diff.
+table OpDiffResult {
+  from: [Operation];
+  to: Operation;
+  diff: OpDiff;
+}
+
+/// `zanshin_op_abandon`'s answer (Story 9.21): the CLI's status lines as facts —
+/// `nothing_changed` is its "Nothing changed." (both counts 0), else "Abandoned
+/// `abandoned_count` operations and reparented `reparented_count` descendant operations." —
+/// and the op heads afterwards.
+table OpAbandonResult {
+  abandoned_count: ulong;
+  reparented_count: ulong;
+  nothing_changed: bool;
+  head_op_ids: [string];
 }
 
 /// Whether a bookmark row is the local bookmark or a remote one (tracked or not).
@@ -2405,6 +2531,9 @@ union Payload {
   ChangeActions,
   FixResult,
   SelectedTree,
+  OpShow,
+  OpDiffResult,
+  OpAbandonResult,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────
@@ -2435,7 +2564,8 @@ table Warning {
 /// envelope and on an error envelope alike (then PARTIAL). It is ABSENT when the call was refused
 /// before the verb ran (a null pointer, an invalid handle, a request buffer that fails
 /// validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/detect/close,
-/// `zanshin_workspace_root`, `zanshin_log_defaults`, `zanshin_commit_contents`, events, and every
+/// `zanshin_workspace_root`, `zanshin_log_defaults`, `zanshin_commit_contents`, `zanshin_op_abandon`,
+/// events, and every
 /// `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
 /// working-copy check ran the snapshot (Story 9.28). `zanshin_repo_convert` carries the
 /// conversion's snapshot report (`jj git init`'s `maybe_snapshot`, Story 9.33) iff that snapshot

@@ -182,7 +182,8 @@ notices are one-shot — the next call finds nothing left to fix.
 
 Like every jj CLI command, every handle-scoped symbol except `zanshin_repo_close`,
 `zanshin_log_defaults`, `zanshin_workspace_root`, `zanshin_commit_contents` (the
-continuation of the topology call's `jj log`, Story 4.10) and
+continuation of the topology call's `jj log`, Story 4.10), `zanshin_op_abandon` (the CLI's
+`load_workspace`, Story 9.21) and
 `zanshin_workspace_update_stale` (the recovery itself, see below) first runs the CLI's
 `snapshot_impl`: under jj's own `git_import_export.lock` (colocated workspaces
 only) it imports a moved Git HEAD (`import git head`), snapshots the working copy
@@ -199,12 +200,12 @@ notes — `@` was immutable, `.jjconflict` files present, a failed Git HEAD rese
 are not fields: they are `Envelope.warnings` (Story 9.32). On an error it is PARTIAL — every field
 up to the failing step. The field is **absent** on every other symbol (open,
 init, clone, detect, close, `zanshin_log_defaults`,
-`zanshin_workspace_root`, `zanshin_commit_contents`, `zanshin_git_remote_changes` (Story 9.24), the infrastructure symbols, async events, and every
+`zanshin_workspace_root`, `zanshin_commit_contents`, `zanshin_git_remote_changes` (Story 9.24), `zanshin_op_abandon` (Story 9.21), the infrastructure symbols, async events, and every
 `zanshin_config_*` symbol but one) and whenever
 the call was refused before the verb ran (`ffi.null_pointer`, `ffi.invalid_handle`,
 a request buffer that fails validation, and a `jj.invalid_input` that the CLI's clap refuses —
 conflicting flags of `zanshin_rebase`, `zanshin_squash`, `zanshin_squash_plan`, `zanshin_split`,
-`zanshin_new_change`, `zanshin_restore`, `zanshin_git_push` — which, as in the CLI, comes before
+`zanshin_new_change`, `zanshin_restore`, `zanshin_git_push`, `zanshin_op_diff` — which, as in the CLI, comes before
 the snapshot). `zanshin_repo_convert` (Story 9.33) carries
 the conversion's snapshot report — `jj git init`'s `maybe_snapshot` — iff that snapshot
 started, on the ok and the error envelope (the state it describes stays on disk: a
@@ -249,7 +250,7 @@ the unchanged text, a fetch that brought nothing, an `undo` restoring an equal v
 `MutationResult.new_op_id` is the pre-call head op id, `finish` is absent and no finish warning
 is raised.
 
-`Payload` has **41** members. Two of them — `WatcherEvent` and `Progress` — are
+`Payload` has **52** members (Story 9.21 appends `OpShow`, `OpDiffResult` and `OpAbandonResult`). Two of them — `WatcherEvent` and `Progress` — are
 returned by no exported symbol: they arrive asynchronously through the
 `zanshin_events_register` callback (see *Async events* below). Union member order
 is the wire discriminant, so the union is **append-only**.
@@ -284,9 +285,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Fifty-one of the 85 exported symbols take their arguments as a **FlatBuffers
+Fifty-three of the 89 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Thirty-nine use the handle-scoped three-parameter shape:
+strings. Forty-one use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -444,7 +445,7 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **48** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **50** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
@@ -457,13 +458,13 @@ Two tables are shared: `ChangeIdList` by three symbols (`zanshin_new_change`'s
 read only by `zanshin_new_change`, the other two ignore them) and `SquashRequest` by two
 (`zanshin_squash` and `zanshin_squash_plan`, Story 9.15 — the plan previews the
 squash its caller is about to run, with the same arguments). Every other table has
-exactly one caller, and no table is orphaned. 48 tables + 3 shared reuses = the 51
+exactly one caller, and no table is orphaned. 50 tables + 3 shared reuses = the 53
 request-buffer symbols (Story 9.20 adds `GitPushRequest`, `RepoCloneRequest` and
 `RepoInitRequest` — `zanshin_repo_init` / `zanshin_repo_clone` took two C strings / a string and
 an `int32_t` backend before; Story 9.30 adds `GitFetchRequest` — `zanshin_git_fetch` took a
 remote name and a cancel token before; Story 9.31 adds `DropActionsRequest`; Story 9.16 adds `RebaseRequest` and
 `ArrangeRequest`; Story 9.9 adds `MetaeditRequest`, `DuplicateRequest` and `FixRequest`; Story
-9.50 adds `SelectTreeRequest`).
+9.50 adds `SelectTreeRequest`; Story 9.21 adds `OpShowRequest` and `OpDiffRequest`).
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
 members of the `RevisionRef` union carried by `InterdiffRequest`'s `from`/`to`,
@@ -541,7 +542,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **85** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **89** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -569,6 +570,8 @@ or no `# Errors` block.
 | `zanshin_status` | `(uint64_t handle)` | — | `Status` | `ffi.invalid_handle`, `jj.no_working_copy`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
 | `zanshin_change` | `(uint64_t handle, const char *change_id)` | — | `Change` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
 | `zanshin_op_log` | `(uint64_t handle, int64_t limit)` | — | `OpLog` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
+| `zanshin_op_show` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `OpShowRequest` | `OpShow` (see § Operation verbs) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.operation_not_found`, `jj.invalid_input`, `jj.revset_parse_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.21 |
+| `zanshin_op_diff` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `OpDiffRequest` | `OpDiffResult` (see § Operation verbs) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.operation_not_found`, `jj.invalid_input`, `jj.revset_parse_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.21 |
 | `zanshin_log_defaults` | `(uint64_t handle)` | — | `LogDefaults` | `ffi.invalid_handle`, `jj.config_error` | 4.9 |
 | `zanshin_graph_topology` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GraphTopologyRequest` | `GraphTopology` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error`, `graph.dangling_edge` | 4.12 |
 | `zanshin_commit_contents` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitContentsRequest` | `CommitContents` (no `precondition`, no `warnings`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.operation_not_found`, `jj.change_not_found`, `jj.jj_lib_error` | 4.10 |
@@ -607,6 +610,8 @@ or no `# Errors` block.
 | `zanshin_commit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.no_working_copy`, `jj.invalid_input`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.49 (+9.50) |
 | `zanshin_select_tree` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SelectTreeRequest` | `SelectedTree` (see § `zanshin_select_tree` — the GUI diff-editor contract) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.stale_selection`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.50 |
 | `zanshin_undo` | `(uint64_t handle, bool allow_cross_workspace)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.undo_cross_workspace`, `jj.nothing_to_undo`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (+9.39) |
+| `zanshin_redo` | `(uint64_t handle, bool allow_cross_workspace)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.nothing_to_redo`, `jj.redo_cross_workspace`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.21 |
+| `zanshin_op_abandon` | `(uint64_t handle, const char *operation)` | — | `OpAbandonResult` (see § Operation verbs) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.invalid_input`, `jj.operation_not_found`, `jj.config_error`, `jj.jj_lib_error` | 9.21 |
 | `zanshin_bookmark_create` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkCreateRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.8 |
 | `zanshin_bookmark_delete` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkDeleteRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.8 |
 | `zanshin_bookmark_move` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkMoveRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.19 |
@@ -1880,3 +1885,57 @@ v0.46.0). The verbs then take that tree in their **tree arm**.
 Not ported: the CLI's "Empty diff - won't run diff editor." warning, which reports the terminal
 editor not being launched. Dart: `RepoHandle.selectTree(...)` → `SelectedTree`, and the `tree` /
 `trees` parameters of `RepoHandle.commit` / `split` / `squash` / `squashPlan`.
+
+---
+
+## Operation verbs — `zanshin_redo`, `zanshin_op_show`, `zanshin_op_diff`, `zanshin_op_abandon` (Story 9.21)
+
+The CLI's `jj redo`, `jj op show`, `jj op diff` and `jj op abandon` @ v0.46.0, their terminal
+output replaced by typed data; `Operation` (every op-log entry, and the operations these payloads
+carry) gains `workspace_name` (ABSENT when the operation records none — the root, an operation
+another tool wrote) and `tags` (`OperationTag { key, value }`, jj's operation attributes, sorted
+by key).
+
+- **`zanshin_redo(handle, allow_cross_workspace)`** → `MutationResult`: `zanshin_undo`'s
+  counterpart. The head must be an undo operation (or a redo of one, whose original target is
+  used): else `jj.nothing_to_redo`. An undo performed in another workspace refuses
+  `jj.redo_cross_workspace` (`context` `"<12-hex>\n<workspace>"`, the CLI's hint) unless allowed.
+  The undo's parent is restored (through a redo to its original), recorded as
+  `redo: restore to operation <hex>`; an equal view writes nothing (Story 9.40).
+- **Operation expressions** (`@`, `@-`, `@+`, id prefixes) resolve as the CLI resolves them: no
+  match is `jj.operation_not_found` (jj-lib's `No operation ID matching "<id>"`); an invalid or
+  ambiguous prefix, or an expression resolving to no or several operations, is `jj.invalid_input`
+  with jj-lib's text (several: the hint "Try specifying one of the operations by ID: …").
+- **`zanshin_op_show`** (`OpShowRequest { operation, show_changes_in }`, absent = `@` /
+  `revsets.op-diff-changes-in`) → `OpShow { operation, diff }`, `diff` ABSENT for an operation
+  with more than one parent. **`zanshin_op_diff`** (`OpDiffRequest { operation, from, to,
+  show_changes_in }`, absent = not given; `operation` with `from`/`to` is `jj.invalid_input`
+  before the snapshot) → `OpDiffResult { from, to, diff }`. Both run the pre-verb snapshot and
+  write nothing else (a merge op's parents are merged into an unpublished operation, as the CLI
+  merges them).
+- **`OpDiff`** — the CLI's sections in its order: `commits` (`OpCommitsDiff`: `changes`, one
+  `OpChangedCommit { commit_id, abandoned, added_commit_ids, removed_commit_ids }` per changed
+  commit in revset order — the flat `--no-graph` list —, and the elided counts
+  `elided_newly_visible` / `elided_newly_hidden` as `RefDistance`), `working_copies`
+  (`OpWorkingCopyChange { workspace, from, to }`), `local_bookmarks` / `local_tags`
+  (`OpRefChange { name, from, to }`), `remote_bookmarks` / `remote_tags`
+  (`OpRemoteRefChange { name, remote, from, from_tracked, to, to_tracked }`, a Git repo's `git`
+  remote left out). An `OpRefTarget { adds, removes, conflicted }` is absent (`adds` empty), one
+  commit, or a conflict's present adds and removes. A `show_changes_in` that does not resolve
+  against one of the two operations warns `jj.op_diff_changes_unresolved` and leaves `commits`
+  ABSENT; a text that does not parse is `jj.revset_parse_error` ("Invalid `--show-changes-in`
+  expression: …") or, from the config, `jj.config_error` ("Invalid `revsets.op-diff-changes-in`:
+  …"). Patches are not ported: compose them from the ids with `zanshin_interdiff` / `zanshin_show`.
+- **`zanshin_op_abandon(handle, operation)`** → `OpAbandonResult { abandoned_count,
+  reparented_count, nothing_changed, head_op_ids }`: a range `a..b` (empty `a` = the root, empty
+  `b` = the current heads) or one operation (= `<its parent>..<it>`); the range's descendants are
+  reparented, the op heads replaced, this workspace's working copy remapped — or, recorded at an
+  operation that is not a head, left with the warning `jj.op_abandon_working_copy_not_updated`.
+  Like the CLI it runs no pre-verb snapshot (only the start-up secure-config fix-up), so its
+  envelope never carries a `precondition`. Refusals, nothing written: "Cannot abandon the current
+  operation <12-hex>" (with the hint "Run `jj undo` …" when there is one head), "Cannot abandon
+  the root operation", "Cannot abandon a merge operation" — all `jj.invalid_input`.
+
+Dart: `RepoHandle.redo({allowCrossWorkspace})`, `opShow({operation, showChangesIn})`,
+`opDiff({operation, from, to, showChangesIn})`, `opAbandon(operation)`; `Operation.workspaceName`
+/ `.tags` on `opLog`.
