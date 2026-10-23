@@ -17,6 +17,10 @@ deferred:
     location: >-
       crates/zanshin-jj/src/parallelize.rs:102
     severity: medium
+    resolved: >-
+      2026-10-23 — fixed (console session after the loop, commit 3ee3f29): test
+      parallelize_keeps_a_merge_childs_parent_outside_the_set and oracle
+      parallelize_merge_child_keeps_outside_parent.
   - summary: >-
       RewritePlan::execute's cycle-detected error arm (Zanshin returns an error where the CLI panics) has no test.
     evidence: |-
@@ -24,6 +28,9 @@ deferred:
     location: >-
       crates/zanshin-jj/src/arrange.rs:247
     severity: low
+    resolved: >-
+      2026-10-23 — fixed (console session after the loop, commit 3ee3f29): inline test
+      execute_refuses_a_cycle_in_the_new_parents; arrange.rs at 100%.
 ---
 
 <intent-contract>

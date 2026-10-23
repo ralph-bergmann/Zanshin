@@ -1887,9 +1887,12 @@ Spec: spec-9-40-no-change-verbs-write-no-operation.
 
 Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing Story 9.16 code, above the 80% floor; not gate failures.
 
-- **`parallelize`'s merge-child-with-outside-parent arm (a child of the parallelized set that also has a parent outside it keeps that parent) has no test.** Medium.
+- ~~**`parallelize`'s merge-child-with-outside-parent arm (a child of the parallelized set that also has a parent outside it keeps that parent) has no test.**~~ — RESOLVED 2026-10-23 (console session after the loop, commit 3ee3f29): `parallelize_arrange::parallelize_keeps_a_merge_childs_parent_outside_the_set` (M = merge(C, X) ends on B, C, X) and oracle `parallelize_merge_child_keeps_outside_parent`. Medium.
   - Coverage run at cc5e816: `crates/zanshin-jj/src/parallelize.rs` 95.95%, lines 102-104 (`else { new_parents.push(parent.clone()) }`) never executed; no case in `crates/zanshin-jj/tests/it/parallelize_arrange.rs` or the parity-oracle scenarios builds such a merge.
   - **Follow-up:** a `parallelize_arrange` test (and an oracle scenario) with a merge child that has one parent inside and one outside the parallelized set.
-- **`RewritePlan::execute`'s cycle-detected error arm (Zanshin returns an error where the CLI panics) has no test.** Low.
+- ~~**`RewritePlan::execute`'s cycle-detected error arm (Zanshin returns an error where the CLI panics) has no test.**~~ — RESOLVED 2026-10-23 (console session after the loop, commit 3ee3f29): inline `arrange::tests::execute_refuses_a_cycle_in_the_new_parents`; `arrange.rs` at 100%. Low.
   - Coverage run at cc5e816: `crates/zanshin-jj/src/arrange.rs` 99.50%, line 247 (`|_| MutateError::Backend("cycle detected".to_owned())`) never executed; the inline tests build `RewritePlan`s by hand and could add a two-commit cycle.
   - **Follow-up:** an inline test that executes a hand-built two-commit cycle and asserts the error.
+- ~~**Two CLI-parity gaps the Story 9.16 review rejected as "house pattern": clap refusals ran after the pre-verb snapshot, and an omitted `@` in a workspace without a working-copy commit answered `jj.jj_lib_error`.**~~ — RESOLVED 2026-10-23 (console session after the loop, Ralph: fix like the CLI, commit 3ee3f29): `Repo::with_checked_verb` refuses the flag conflicts of rebase, squash, squash_plan, split, new, restore and git push after the start-up fix-up and before the snapshot (no operation, no precondition report; oracle `*_clap_conflict_dirty_wc`, `push_all_with_bookmark_refused_dirty_wc`); `ResolveError::NoWorkingCopy` carries jj-lib's "Workspace `default` doesn't have a working-copy commit" as `RevsetResolutionError` (file reads: `InvalidInput`); witnesses `tests/it/arg_refusals.rs`. Low.
+  - Was: spec-9-16-rebase-parallelize-arrange Review Triage Log (rejected), `rebase.rs` `check_rebase_args` inside `with_verb`, `op_support.rs` `resolve_or_wc` → `ResolveError::Backend`.
+  - **Follow-up:** none.
