@@ -220,7 +220,7 @@ pub fn convert_colocated(path: &Path) -> CreationOutcome {
 /// [`convert_colocated`]'s steps, reporting into `report`.
 fn convert_colocated_steps(path: &Path, report: &mut ConversionReport) -> Result<Repo, RepoError> {
     // The CLI's start-up config check runs before the command touches any path.
-    config::check_startup_stack()?;
+    config::check_startup_stack(&mut report.warnings)?;
     match detect_repo(path) {
         Ok(RepoKind::Jj) => return Err(RepoError::AlreadyJjRepo { path: path.to_owned() }),
         Ok(RepoKind::Git) => {}
@@ -325,7 +325,7 @@ fn convert_import_steps(
     report: &mut ConversionReport,
 ) -> Result<Repo, RepoError> {
     // The CLI's start-up config check runs before the command touches any path.
-    config::check_startup_stack()?;
+    config::check_startup_stack(&mut report.warnings)?;
     // Precondition 1: source must be a Git repo (normal OR bare) and not already jj.
     // Note: detect_repo returns Neither for a bare repo (no `.jj/` and no `.git/`
     // child). We check is_bare_git_dir() locally — do NOT extend detect_repo (D3).

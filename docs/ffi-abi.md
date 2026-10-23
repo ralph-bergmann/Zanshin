@@ -154,9 +154,11 @@ start-up environment's warnings (Story 9.56): a `trunk()` alias that parses but 
 at the head makes the call run with `trunk()` = `root()`, as the CLI's `load_from_workspace` —
 its immutable set, templates and every revset it parses, a graph walk's `builtin_log()` included.
 Right after the start-up fix-up's notices, such a verb — and every `zanshin_config_*` symbol but the
-`gc` pair — warns `jj.config_deprecated` once per deprecated key the CLI's start-up migrates
-(Story 9.9; today only `fix.tools.<name>.line-range-arg` → `line-range-args`): "Deprecated <source>
-config: <description>"; the call runs with the migrated key, the file is not rewritten.
+two `config_file_*` editor halves, which load no stack — warns `jj.config_deprecated` once per
+deprecated key the CLI's start-up migrates (Story 9.9; today only `fix.tools.<name>.line-range-arg`
+→ `line-range-args`): "Deprecated <source> config: <description>"; the call runs with the migrated
+key, the file is not rewritten. The creation paths (`zanshin_repo_init`, `zanshin_repo_clone`,
+`zanshin_repo_convert`) warn it first, at their start-up check, on the ok and the error envelope.
 `zanshin_commit_contents` (Story 4.10) never carries the vector, on the ok or the error
 envelope: the op-pinned read loads no config and runs no snapshot, so it has nothing to warn
 about (Dart still returns a `WarnedList`, always empty).

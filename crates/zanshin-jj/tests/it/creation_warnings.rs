@@ -143,6 +143,7 @@ fn creation_paths_report_what_the_cli_prints() {
     a_refs_step_that_imports_nothing_still_warns();
     a_refs_step_export_failure_warns_first(tmp.path());
     a_bad_alias_entry_warns_between_the_two_imports(tmp.path());
+    a_deprecated_user_key_warns_once_first_on_every_creation_path(tmp.path());
     a_jjconflict_entry_is_reported_by_the_colocated_conversion();
     a_snapshot_failure_keeps_a_partial_report();
     a_refs_step_failure_reports_no_snapshot(tmp.path());
@@ -502,6 +503,83 @@ fn a_bad_alias_entry_warns_between_the_two_imports(tmp: &Path) {
         "{:?}",
         outcome.warnings[1].message
     );
+}
+
+/// Story 9.9 closing run: the CLI prints "Deprecated … config" at the start of every command
+/// (`run_internal`, `cli_util.rs:4646-4740` @ v0.46.0), so every creation path's start-up check
+/// warns a deprecated user key — exactly once, first, on success and on a refusal past the
+/// start-up check; the creation's later loads stay silent.
+fn a_deprecated_user_key_warns_once_first_on_every_creation_path(tmp: &Path) {
+    const DEPRECATED: &str = "Deprecated user-level config: fix.tools.t.line-range-arg is updated to \
+                              fix.tools.t.line-range-args = [\"--l\"]";
+    let user = tmp.join("deprecated.toml");
+    fs::write(&user, "fix.tools.t.line-range-arg = \"--l\"\n").unwrap();
+    set_env("JJ_CONFIG", Some(user.to_str().unwrap()));
+    let deprecations = |outcome: &CreationOutcome| {
+        assert_eq!(
+            outcome.warnings.first().map(|w| (w.kind, w.message.as_str())),
+            Some((WarningKind::ConfigDeprecated, DEPRECATED)),
+            "{:?}",
+            outcome.warnings
+        );
+        outcome
+            .warnings
+            .iter()
+            .filter(|w| w.kind == WarningKind::ConfigDeprecated)
+            .count()
+    };
+
+    let dir = TempDir::new().unwrap();
+    let init = Repo::init(&zanshin_jj::InitOptions {
+        path: dir.path().to_owned(),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    });
+    assert!(init.result.is_ok(), "{:?}", init.result);
+    assert_eq!(warnings(&init), [(WarningKind::ConfigDeprecated, DEPRECATED)]);
+
+    let refused = Repo::init(&zanshin_jj::InitOptions {
+        path: dir.path().join("missing").join("dest"),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    });
+    assert!(
+        matches!(&refused.result, Err(RepoError::InitFailed { reason }) if reason.starts_with("Failed to create workspace: ")),
+        "{:?}",
+        refused.result
+    );
+    assert_eq!(warnings(&refused), [(WarningKind::ConfigDeprecated, DEPRECATED)]);
+
+    let src = TempDir::new().unwrap();
+    git_with_commit(src.path());
+    let dst = TempDir::new().unwrap();
+    let clone = Repo::clone(
+        &zanshin_jj::CloneOptions {
+            source: file_url(src.path()),
+            destination: dst.path().to_owned(),
+            colocate: Some(false),
+            ..Default::default()
+        },
+        &|_: zanshin_jj::ProgressEvent| {},
+        None,
+    );
+    assert!(clone.result.is_ok(), "{:?}", clone.result);
+    assert_eq!(deprecations(&clone), 1);
+
+    let colocated = TempDir::new().unwrap();
+    git_with_commit(colocated.path());
+    let converted = convert_colocated(colocated.path());
+    assert!(converted.result.is_ok(), "{:?}", converted.result);
+    assert_eq!(deprecations(&converted), 1);
+
+    let parent = TempDir::new().unwrap();
+    let imported = convert_import(src.path(), &parent.path().join("dst"));
+    assert!(imported.result.is_ok(), "{:?}", imported.result);
+    assert_eq!(deprecations(&imported), 1);
+
+    set_env("JJ_CONFIG", Some(""));
 }
 
 /// A `.jjconflict`-prefixed entry in the colocated work tree: the conversion's snapshot records

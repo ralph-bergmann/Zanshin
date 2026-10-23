@@ -246,7 +246,7 @@ fn init_steps(
 ) -> Result<Repo, RepoError> {
     // The CLI's start-up config check runs before the command touches any path, and its
     // `command.settings()` is what `git.colocate` / `git.object-hash` are read from.
-    let startup = config::check_startup_stack()?;
+    let startup = config::check_startup_stack(sink)?;
     let Some(Backend::Git) = options.backend else {
         return init_native(options, created);
     };
@@ -378,7 +378,7 @@ fn clone_steps(
     (progress, cancel): (&ProgressFn, Option<&CancelGuard>),
     sink: &mut Warnings,
 ) -> Result<Repo, RepoError> {
-    let startup = config::check_startup_stack()?;
+    let startup = config::check_startup_stack(sink)?;
     let remote: RemoteNameBuf = options.remote_name.as_deref().unwrap_or("origin").into();
     let destination = &options.destination;
     let dest_text = destination.display().to_string();

@@ -8,7 +8,11 @@
 //! standing in for the CLI tests' fake formatter. The CLI comparison of the same rows lives in the
 //! parity oracle (`crates/zanshin-parity`).
 
-use zanshin_jj::{ChangeId, FixOptions, FixResult, MutateError, WarningKind};
+use std::ops::ControlFlow;
+
+use zanshin_jj::{
+    ChangeId, FixOptions, FixResult, MutateError, WarningKind, DEFAULT_GRAPH_PRIORITIZE, DEFAULT_LOG_REVSET,
+};
 
 use crate::rebase::{add, assert_op, base, head_op, reconfigure, Fx};
 
@@ -226,6 +230,35 @@ fn a_deprecated_line_range_arg_warns_on_any_verb_and_is_migrated() {
     );
     let a = fx.a.clone();
     assert_eq!(file(&mut fx, &a, "a.txt"), "a\n--l=1\n");
+}
+
+/// Story 9.9 closing run: the graph and revset reads start like their CLI command too — each call
+/// warns a deprecated key exactly once, though it loads the stack again after its start.
+#[test]
+fn a_deprecated_line_range_arg_warns_once_per_graph_read() {
+    let mut fx = configured("fix.tools.t.line-range-arg = \"--l\"\n");
+    let deprecations = |fx: &mut Fx| {
+        let warnings = fx.repo.take_warnings();
+        warnings
+            .iter()
+            .filter(|w| w.kind == WarningKind::ConfigDeprecated)
+            .count()
+    };
+
+    let walked = fx
+        .repo
+        .walk_graph("all()", DEFAULT_GRAPH_PRIORITIZE, DEFAULT_LOG_REVSET, |_| {
+            ControlFlow::Continue(())
+        })
+        .expect("walk");
+    assert!(walked.is_continue());
+    assert_eq!(deprecations(&mut fx), 1, "walk_graph");
+    let evaluated = fx
+        .repo
+        .eval_revset("all()", |_| ControlFlow::Continue(()))
+        .expect("revset");
+    assert!(evaluated.is_continue());
+    assert_eq!(deprecations(&mut fx), 1, "eval_revset");
 }
 
 #[test]

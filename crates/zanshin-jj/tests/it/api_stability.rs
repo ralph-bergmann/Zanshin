@@ -1513,8 +1513,8 @@ fn story_9_28_surface_resolves() {
         }],
     };
     assert!(outcome.result.is_err() && outcome.warnings.len() == 1);
-    _ = zanshin_jj::config_gc_list as fn() -> Result<Vec<zanshin_jj::MissingRepoConfig>, E>;
-    _ = zanshin_jj::config_gc_delete as fn(&[PathBuf]) -> Result<zanshin_jj::Warned<zanshin_jj::ConfigGcResult>, E>;
+    _ = zanshin_jj::config_gc_list as fn() -> O<Vec<zanshin_jj::MissingRepoConfig>>;
+    _ = zanshin_jj::config_gc_delete as fn(&[PathBuf]) -> O<zanshin_jj::ConfigGcResult>;
 
     _ = zanshin_jj::ConfigEntry {
         name: String::new(),

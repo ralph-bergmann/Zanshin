@@ -1220,12 +1220,20 @@ pub(crate) fn user_settings_for(loader: &dyn WorkspaceLoader) -> Result<UserSett
 /// stack: `jj git init` / `jj git clone` read `git.colocate` and `git.object-hash` from it
 /// (Story 9.20), as the CLI reads them from its start-up `command.settings()`.
 ///
+/// The stack's migrations are recorded into `sink` as the CLI prints them — "Deprecated …
+/// config" warnings ([`deprecation_warnings`]), after its last resolution and before it builds
+/// `UserSettings` (`cli_util.rs:4646-4750` @ v0.46.0) — so a wrong-typed value that refuses
+/// below still leaves them on the error. The creation's later loads
+/// ([`user_settings_for_new_workspace`], the conversions' snapshot) stay silent: the CLI prints
+/// them once per command.
+///
 /// # Errors
 ///
 /// - [`ConfigError::Load`] — as [`user_settings_for`].
-pub(crate) fn check_startup_stack() -> Result<StackedConfig, ConfigError> {
+pub(crate) fn check_startup_stack(sink: &mut crate::warning::Warnings) -> Result<StackedConfig, ConfigError> {
     let env = ConfigEnv::from_env();
-    let config = load_with(&env, None)?;
+    let (config, deprecations) = load_with_migrated(&env, None)?;
+    sink.extend(deprecation_warnings(deprecations));
     settings_from(&env, config.clone())?;
     Ok(config)
 }

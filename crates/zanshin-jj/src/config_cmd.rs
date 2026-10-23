@@ -200,7 +200,8 @@ pub struct ConfigSetOutcome {
 }
 
 /// What a config verb reports (Story 9.37) — [`config_list`], [`config_get`], [`config_path`],
-/// [`config_unset`], [`config_file_read`] and [`config_file_write`]: the result, and the warnings
+/// [`config_unset`], [`config_file_read`], [`config_file_write`], [`config_gc_list`] and
+/// [`config_gc_delete`]: the result, and the warnings
 /// the jj CLI would have printed on the way, on success AND on failure. A verb with a workspace
 /// root starts with the CLI's secure-config fix-up, whose one-shot notices
 /// (`jj.config_migrated`, `jj.config_copied`, `jj.config_regenerated`) must survive a refusal —
@@ -468,27 +469,32 @@ pub fn config_file_write(workspace_root: Option<&Path>, path: &Path, text: &str)
 }
 
 /// `jj config gc`, half 1: the repo config directories under `<config_dir>/jj/repos` whose
-/// recorded repo no longer exists, sorted.
+/// recorded repo no longer exists, sorted. Its start-up warns the stack's migrations
+/// (`jj.config_deprecated`, Story 9.9), on success AND on failure.
 ///
 /// # Errors
 ///
+/// In [`ConfigOutcome::result`]:
 /// - [`ConfigCmdError::Config`] — the stack does not load, or the root cannot be read.
 /// - [`ConfigCmdError::NoConfigPath`] — `No config directory found`.
-pub fn config_gc_list() -> Result<Vec<MissingRepoConfig>, ConfigCmdError> {
-    gc_list_with(&ConfigEnv::from_env())
+#[must_use = "the outcome carries the result and the warnings"]
+pub fn config_gc_list() -> ConfigOutcome<Vec<MissingRepoConfig>> {
+    outcome(|warnings| gc_list_with(&ConfigEnv::from_env(), warnings))
 }
 
 /// `jj config gc`, half 2: deletes those of `dirs` that are still missing repo config
 /// directories; every other request, and every per-directory failure, rides
 /// [`ConfigGcResult::failed`]. A directory that could not be DELETED also warns
-/// `jj.config_gc_delete_failed` (the CLI's "Failed to delete …", `gc.rs:80-84`, Story 9.32); a
-/// request that is not a missing repo config directory has no CLI counterpart and is data only.
+/// `jj.config_gc_delete_failed` (the CLI's "Failed to delete …", `gc.rs:80-84`, Story 9.32),
+/// after the start-up's `jj.config_deprecated` (as [`config_gc_list`]); a request that is not a
+/// missing repo config directory has no CLI counterpart and is data only.
 ///
 /// # Errors
 ///
 /// As [`config_gc_list`].
-pub fn config_gc_delete(dirs: &[PathBuf]) -> Result<crate::Warned<ConfigGcResult>, ConfigCmdError> {
-    gc_delete_with(&ConfigEnv::from_env(), dirs)
+#[must_use = "the outcome carries the result and the warnings"]
+pub fn config_gc_delete(dirs: &[PathBuf]) -> ConfigOutcome<ConfigGcResult> {
+    outcome(|warnings| gc_delete_with(&ConfigEnv::from_env(), dirs, warnings))
 }
 
 // ── Shared steps ──────────────────────────────────────────────────────────────
@@ -1084,9 +1090,10 @@ fn file_write_with(
     std::fs::write(&path, text).map_err(|e| io_error(&path, &e))
 }
 
-/// `<config_dir>/jj/repos`, after the start-up stack (no workspace).
-fn gc_root(env: &ConfigEnv) -> Result<PathBuf, ConfigCmdError> {
-    startup(env, None, "config gc", None)?;
+/// `<config_dir>/jj/repos`, after the start-up stack (no workspace), whose migrations warn into
+/// `warnings`.
+fn gc_root(env: &ConfigEnv, warnings: &mut Vec<crate::Warning>) -> Result<PathBuf, ConfigCmdError> {
+    startup(env, None, "config gc", Some(warnings))?;
     env.root_config_dir()
         .map(|r| r.join("repos"))
         .ok_or_else(|| ConfigCmdError::NoConfigPath {
@@ -1126,14 +1133,17 @@ fn find_missing_repo_configs(root: &Path) -> Result<Vec<MissingRepoConfig>, Conf
     Ok(missing)
 }
 
-fn gc_list_with(env: &ConfigEnv) -> Result<Vec<MissingRepoConfig>, ConfigCmdError> {
-    find_missing_repo_configs(&gc_root(env)?)
+fn gc_list_with(env: &ConfigEnv, warnings: &mut Vec<crate::Warning>) -> Result<Vec<MissingRepoConfig>, ConfigCmdError> {
+    find_missing_repo_configs(&gc_root(env, warnings)?)
 }
 
-fn gc_delete_with(env: &ConfigEnv, dirs: &[PathBuf]) -> Result<crate::Warned<ConfigGcResult>, ConfigCmdError> {
-    let missing = find_missing_repo_configs(&gc_root(env)?)?;
+fn gc_delete_with(
+    env: &ConfigEnv,
+    dirs: &[PathBuf],
+    warnings: &mut Vec<crate::Warning>,
+) -> Result<ConfigGcResult, ConfigCmdError> {
+    let missing = find_missing_repo_configs(&gc_root(env, warnings)?)?;
     let mut result = ConfigGcResult::default();
-    let mut warnings = Vec::new();
     for m in missing.iter().filter(|m| dirs.contains(&m.config_dir)) {
         match secure_config::remove_repo_config_dir(&m.config_dir) {
             Ok(()) => result.deleted.push(m.config_dir.clone()),
@@ -1155,10 +1165,7 @@ fn gc_delete_with(env: &ConfigEnv, dirs: &[PathBuf]) -> Result<crate::Warned<Con
             reason: "not a missing repo config directory".to_owned(),
         });
     }
-    Ok(crate::Warned {
-        value: result,
-        warnings,
-    })
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -1431,8 +1438,8 @@ mod tests {
                 .result
                 .map(|_| ())
                 .unwrap_err(),
-            gc_list_with(&env).map(|_| ()).unwrap_err(),
-            gc_delete_with(&env, &[]).map(|_| ()).unwrap_err(),
+            gc_list_with(&env, &mut Vec::new()).map(|_| ()).unwrap_err(),
+            gc_delete_with(&env, &[], &mut Vec::new()).map(|_| ()).unwrap_err(),
         ] {
             assert!(
                 matches!(&err, ConfigCmdError::Config { reason } if reason.contains("config.toml")),
@@ -1915,7 +1922,7 @@ mod tests {
     fn gc_lists_and_deletes_only_missing_repo_configs() {
         let tmp = tempfile::tempdir().unwrap();
         let env = env_without_user(tmp.path());
-        assert!(gc_list_with(&env).unwrap().is_empty(), "no root yet");
+        assert!(gc_list_with(&env, &mut Vec::new()).unwrap().is_empty(), "no root yet");
 
         let kept = repo_config_for(&env, &tmp.path().join("kept"));
         let gone = repo_config_for(&env, &tmp.path().join("gone"));
@@ -1927,17 +1934,15 @@ mod tests {
         fs::write(repos.join("stray-file"), "").unwrap();
         fs::create_dir(repos.join("no-metadata")).unwrap();
 
-        let missing = gc_list_with(&env).unwrap();
+        let missing = gc_list_with(&env, &mut Vec::new()).unwrap();
         let mut expected = vec![gone.clone(), busy.clone()];
         expected.sort();
         let dirs: Vec<PathBuf> = missing.iter().map(|m| m.config_dir.clone()).collect();
         assert_eq!(dirs, expected);
         assert!(missing.iter().all(|m| m.repo_path.ends_with(".jj/repo")));
 
-        let crate::Warned {
-            value: result,
-            warnings,
-        } = gc_delete_with(&env, &[kept.clone(), gone.clone(), busy.clone()]).unwrap();
+        let mut warnings = Vec::new();
+        let result = gc_delete_with(&env, &[kept.clone(), gone.clone(), busy.clone()], &mut warnings).unwrap();
         assert_eq!(result.deleted, std::slice::from_ref(&gone));
         let failed: Vec<&Path> = result.failed.iter().map(|f| f.config_dir.as_path()).collect();
         assert_eq!(failed, [busy.as_path(), kept.as_path()]);
@@ -1961,13 +1966,13 @@ mod tests {
             ..env_without_user(tmp.path())
         };
         assert!(matches!(
-            gc_list_with(&no_dir),
+            gc_list_with(&no_dir, &mut Vec::new()),
             Err(ConfigCmdError::NoConfigPath { reason }) if reason == "No config directory found"
         ));
         let env = env_without_user(tmp.path());
         write(&tmp.path().join("cfg").join("jj").join("repos"), "a file, not a dir");
         assert!(matches!(
-            gc_list_with(&env),
+            gc_list_with(&env, &mut Vec::new()),
             Err(ConfigCmdError::Config { reason }) if reason.starts_with("Failed to read")
         ));
     }
@@ -1981,12 +1986,64 @@ mod tests {
         let jj = tmp.path().join("cfg").join("jj");
         fs::create_dir_all(&jj).unwrap();
         fs::set_permissions(&jj, fs::Permissions::from_mode(0o000)).unwrap();
-        let result = gc_list_with(&env);
+        let result = gc_list_with(&env, &mut Vec::new());
         fs::set_permissions(&jj, fs::Permissions::from_mode(0o700)).unwrap();
         assert!(matches!(
             result,
             Err(ConfigCmdError::Config { reason }) if reason.starts_with("Failed to check")
         ));
+    }
+
+    /// Story 9.9 closing run: `config gc`'s start-up warns the stack's migrations first — before
+    /// the delete failures, and on a refusal too.
+    #[test]
+    fn gc_warns_a_deprecated_key_at_its_start_up() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env = env_in(tmp.path());
+        write(&user_file(tmp.path()), "[fix.tools.t]\nline-range-arg = \"--l\"\n");
+        let deprecated = "Deprecated user-level config: fix.tools.t.line-range-arg is updated to \
+                          fix.tools.t.line-range-args = [\"--l\"]";
+        let messages = |warnings: &[crate::Warning]| -> Vec<(crate::WarningKind, String)> {
+            warnings.iter().map(|w| (w.kind, w.message.clone())).collect()
+        };
+
+        let mut warnings = Vec::new();
+        assert!(gc_list_with(&env, &mut warnings).unwrap().is_empty());
+        assert_eq!(
+            messages(&warnings),
+            [(crate::WarningKind::ConfigDeprecated, deprecated.to_owned())]
+        );
+
+        let busy = repo_config_for(&env, &tmp.path().join("busy"));
+        fs::remove_dir_all(tmp.path().join("busy")).unwrap();
+        fs::write(busy.join("user-note.txt"), "keep me").unwrap();
+        let mut warnings = Vec::new();
+        let result = gc_delete_with(&env, std::slice::from_ref(&busy), &mut warnings).unwrap();
+        let kinds: Vec<crate::WarningKind> = warnings.iter().map(|w| w.kind).collect();
+        assert_eq!(
+            kinds,
+            [
+                crate::WarningKind::ConfigDeprecated,
+                crate::WarningKind::ConfigGcDeleteFailed
+            ]
+        );
+        assert_eq!(warnings[0].message, deprecated);
+        assert_eq!(result.failed.len(), 1);
+
+        let no_dir = ConfigEnv {
+            config_dir: None,
+            jj_config: Some(user_file(tmp.path()).into_os_string()),
+            ..env_in(tmp.path())
+        };
+        let mut warnings = Vec::new();
+        assert!(matches!(
+            gc_list_with(&no_dir, &mut warnings),
+            Err(ConfigCmdError::NoConfigPath { .. })
+        ));
+        assert_eq!(
+            messages(&warnings),
+            [(crate::WarningKind::ConfigDeprecated, deprecated.to_owned())]
+        );
     }
 
     /// The config verbs resolve with their CLI command name, so a `--when.commands = ["config"]`

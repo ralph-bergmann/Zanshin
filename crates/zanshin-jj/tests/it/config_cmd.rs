@@ -489,15 +489,50 @@ fn gc_lists_and_deletes_the_config_of_a_deleted_repo() {
     let dir = file.parent().unwrap().to_owned();
     fs::remove_dir_all(tmp.path().join("ws")).unwrap();
 
-    let missing = config_gc_list().expect("list");
+    let listed = config_gc_list();
+    assert!(listed.warnings.is_empty(), "{:?}", listed.warnings);
+    let missing = listed.result.expect("list");
     let mine = missing.iter().find(|m| m.config_dir == dir).expect("listed");
     assert_eq!(mine.repo_path, root.join(".jj").join("repo"));
 
-    let result = config_gc_delete(std::slice::from_ref(&dir)).expect("delete");
-    assert_eq!(result.value.deleted, std::slice::from_ref(&dir));
-    assert!(result.value.failed.is_empty());
-    assert!(result.warnings.is_empty());
+    let deleted = config_gc_delete(std::slice::from_ref(&dir));
+    assert!(deleted.warnings.is_empty(), "{:?}", deleted.warnings);
+    let result = deleted.result.expect("delete");
+    assert_eq!(result.deleted, std::slice::from_ref(&dir));
+    assert!(result.failed.is_empty());
     assert!(!dir.exists());
+}
+
+/// Story 9.9 closing run: `config gc` starts like every CLI command, so a deprecated user key
+/// warns on both halves — once, first, with the CLI's text.
+#[test]
+fn a_deprecated_user_key_warns_on_config_gc() {
+    test_helpers::own_process!("a_deprecated_user_key_warns_on_config_gc");
+    xdg();
+    let tmp = TempDir::new().unwrap();
+    let user = tmp.path().join("user.toml");
+    fs::write(&user, "fix.tools.t.line-range-arg = \"--l\"\n").expect("user config");
+    // SAFETY: this test runs alone in its own process (`own_process!`).
+    unsafe { env::set_var("JJ_CONFIG", &user) };
+    let deprecated = "Deprecated user-level config: fix.tools.t.line-range-arg is updated to \
+                      fix.tools.t.line-range-args = [\"--l\"]";
+    let messages = |warnings: &[zanshin_jj::Warning]| -> Vec<(WarningKind, String)> {
+        warnings.iter().map(|w| (w.kind, w.message.clone())).collect()
+    };
+
+    let listed = config_gc_list();
+    assert!(listed.result.is_ok(), "{:?}", listed.result);
+    assert_eq!(
+        messages(&listed.warnings),
+        [(WarningKind::ConfigDeprecated, deprecated.to_owned())]
+    );
+
+    let deleted = config_gc_delete(&[]);
+    assert!(deleted.result.is_ok(), "{:?}", deleted.result);
+    assert_eq!(
+        messages(&deleted.warnings),
+        [(WarningKind::ConfigDeprecated, deprecated.to_owned())]
+    );
 }
 
 /// Story 9.9: the config verbs start like a CLI command, so a deprecated key the CLI migrates at

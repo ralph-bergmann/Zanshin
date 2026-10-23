@@ -15,9 +15,11 @@
 //! but the `gc` pair starts, when the request names a workspace root, with the jj CLI's start-up
 //! secure-config fix-up (Story 9.37) and carries its notices (`jj.config_migrated`,
 //! `jj.config_copied`, `jj.config_regenerated`) as its first `Envelope.warnings`, on the ok AND
-//! the error envelope. After them (Story 9.32): `zanshin_config_set` carries its snapshot's
-//! warnings, then `jj.config_working_copy_author`; `zanshin_config_list`
-//! `jj.config_nothing_listed`; and `zanshin_config_gc_delete` `jj.config_gc_delete_failed`.
+//! the error envelope. Every wrapper but the two editor halves then carries its start-up's
+//! `jj.config_deprecated` (Story 9.9), on either envelope. After them (Story 9.32):
+//! `zanshin_config_set` carries its snapshot's warnings, then `jj.config_working_copy_author`;
+//! `zanshin_config_list` `jj.config_nothing_listed`; and `zanshin_config_gc_delete`
+//! `jj.config_gc_delete_failed`.
 
 use std::path::PathBuf;
 
@@ -406,7 +408,7 @@ fn outcome_to_envelope<T>(
     }
 }
 
-fn gc_list_to_envelope(missing: &[zanshin_jj::MissingRepoConfig]) -> Vec<u8> {
+fn gc_list_to_envelope(missing: &[zanshin_jj::MissingRepoConfig], report: &CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let rows: Vec<_> = missing
         .iter()
@@ -424,12 +426,7 @@ fn gc_list_to_envelope(missing: &[zanshin_jj::MissingRepoConfig]) -> Vec<u8> {
         .collect();
     let rows = b.create_vector(&rows);
     let table = fbs::ConfigGcList::create(&mut b, &fbs::ConfigGcListArgs { missing: Some(rows) });
-    finish_envelope(
-        b,
-        fbs::Payload::ConfigGcList,
-        Some(table.as_union_value()),
-        &CallReport::default(),
-    )
+    finish_envelope(b, fbs::Payload::ConfigGcList, Some(table.as_union_value()), report)
 }
 
 fn gc_result_to_envelope(r: &zanshin_jj::ConfigGcResult, report: &CallReport) -> Vec<u8> {
@@ -723,6 +720,8 @@ pub unsafe extern "C" fn zanshin_config_file_write(data: *const u8, len: usize) 
 /// `jj config gc`, half 1: the repo config directories under `<config_dir>/jj/repos` whose
 /// recorded repo no longer exists, sorted — the CLI's list before its yes/no prompt. The
 /// request is a `ConfigGcListRequest` (the tag only); returns a `ConfigGcList`. Writes nothing.
+/// Its start-up warns the stack's migrations (`jj.config_deprecated`), on the ok AND the error
+/// envelope.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -738,17 +737,17 @@ pub unsafe extern "C" fn zanshin_config_gc_list(data: *const u8, len: usize) -> 
     debug!(fn_name = "zanshin_config_gc_list");
     vec_into_token(catch(|| {
         read_gc_list_request(data, len)?;
-        zanshin_jj::config_gc_list()
-            .map(|missing| gc_list_to_envelope(&missing))
-            .map_err(map_config_cmd_err)
+        outcome_to_envelope(zanshin_jj::config_gc_list(), |missing, report| {
+            gc_list_to_envelope(missing, report)
+        })
     }))
 }
 
 /// `jj config gc`, half 2: delete the requested directories that are still missing repo config
 /// directories; any other request, and every per-directory failure, rides
 /// `ConfigGcResult.failed` (the CLI warns and continues — a directory that could not be deleted
-/// also warns `jj.config_gc_delete_failed`). The arguments cross as a `ConfigGcDeleteRequest`
-/// buffer.
+/// also warns `jj.config_gc_delete_failed`, after the start-up's `jj.config_deprecated` as in
+/// `zanshin_config_gc_list`). The arguments cross as a `ConfigGcDeleteRequest` buffer.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
@@ -764,9 +763,7 @@ pub unsafe extern "C" fn zanshin_config_gc_delete(data: *const u8, len: usize) -
     debug!(fn_name = "zanshin_config_gc_delete");
     vec_into_token(catch(|| {
         let dirs = read_gc_delete_request(data, len)?;
-        zanshin_jj::config_gc_delete(&dirs)
-            .map(|r| gc_result_to_envelope(&r.value, &CallReport::warnings(r.warnings)))
-            .map_err(map_config_cmd_err)
+        outcome_to_envelope(zanshin_jj::config_gc_delete(&dirs), gc_result_to_envelope)
     }))
 }
 
@@ -903,17 +900,25 @@ mod tests {
         assert!(env.precondition().is_none());
         assert!(env.data_as_config_set_result().unwrap().working_copy_author().is_none());
 
-        let gc = gc_list_to_envelope(&[zanshin_jj::MissingRepoConfig {
-            config_dir: "/c".into(),
-            repo_path: "/r".into(),
-        }]);
-        let row = envelope(&gc)
-            .data_as_config_gc_list()
-            .unwrap()
-            .missing()
-            .unwrap()
-            .get(0);
+        let gc = gc_list_to_envelope(
+            &[zanshin_jj::MissingRepoConfig {
+                config_dir: "/c".into(),
+                repo_path: "/r".into(),
+            }],
+            &crate::envelope::CallReport::warnings(vec![zanshin_jj::Warning {
+                kind: zanshin_jj::WarningKind::ConfigDeprecated,
+                message: "Deprecated user-level config: d".into(),
+            }]),
+        );
+        let gc_env = envelope(&gc);
+        let row = gc_env.data_as_config_gc_list().unwrap().missing().unwrap().get(0);
         assert_eq!((row.config_dir(), row.repo_path()), (Some("/c"), Some("/r")));
+        // Story 9.9 closing run: the gc list's start-up warnings ride its envelope.
+        let warning = gc_env.warnings().expect("warnings present").get(0);
+        assert_eq!(
+            (warning.code(), warning.message()),
+            (Some("jj.config_deprecated"), Some("Deprecated user-level config: d"))
+        );
 
         let result = gc_result_to_envelope(
             &zanshin_jj::ConfigGcResult {

@@ -807,10 +807,12 @@ pub unsafe extern "C" fn zanshin_repo_open(path: *const c_char) -> *mut ZanshinB
 ///   `context`.
 ///
 /// # Warnings
-/// `Envelope.warnings` on the ok envelope and on every error envelope: a colocated init's
-/// start-up environment (the alias tables and `immutable_heads()` the CLI's `for_workable_repo`
-/// loads), and the External flow's (as `zanshin_repo_convert`'s), whose snapshot report is
-/// `Envelope.precondition`. The internal and native arms finish no transaction: nothing.
+/// `Envelope.warnings` on the ok envelope and on every error envelope: first the start-up
+/// check's `jj.config_deprecated` (one per deprecated key the CLI migrates, Story 9.9); then a
+/// colocated init's start-up environment (the alias tables and `immutable_heads()` the CLI's
+/// `for_workable_repo` loads), and the External flow's (as `zanshin_repo_convert`'s), whose
+/// snapshot report is `Envelope.precondition`. The internal and native arms finish no
+/// transaction: nothing beyond the start-up check's.
 ///
 /// # Safety
 /// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
@@ -883,8 +885,8 @@ pub unsafe extern "C" fn zanshin_repo_init(data: *const u8, len: usize) -> *mut 
 ///
 /// # Warnings
 /// `Envelope.warnings` carries the clone's warnings on the ok envelope AND on every error
-/// envelope, in the CLI's order: the start-up environment's (twice: before and after the remote
-/// is added), each finish's (`jj.identity_missing` once per operation written, `jj.git_export_failed`
+/// envelope, in the CLI's order: the start-up check's `jj.config_deprecated` (Story 9.9), the
+/// start-up environment's (twice: before and after the remote is added), each finish's (`jj.identity_missing` once per operation written, `jj.git_export_failed`
 /// colocated, `jj.working_copy_immutable`, `jj.checkout_files_skipped`, `jj.unresolved_conflicts`),
 /// `jj.clone_branches_unmatched` and `jj.git_import_failed` before the fetch's finish; on a
 /// failure inside the clean-up scope, `jj.clone_cleanup_failed` last when the clean-up failed.
@@ -1064,8 +1066,9 @@ pub unsafe extern "C" fn zanshin_repo_detect(path: *const c_char) -> *mut Zanshi
 /// Both envelopes — ok AND error — carry the conversion's report (Story 9.33):
 /// `Envelope.precondition` is the report of the CLI's implicit snapshot the conversion runs,
 /// present iff that snapshot started (PARTIAL when it failed; the state it describes stays on
-/// disk). `Envelope.warnings` holds, in the CLI's order:
-/// `jj.git_import_failed` / `jj.git_export_failed` from the refs step; the config-load warnings
+/// disk). `Envelope.warnings` holds, in the CLI's order: the start-up check's
+/// `jj.config_deprecated` (Story 9.9); `jj.git_import_failed` / `jj.git_export_failed` from the
+/// refs step; the config-load warnings
 /// (`jj.config_alias_invalid`, `jj.config_alias_redefined`, `jj.revset_diagnostic`); the
 /// snapshot's own (as every verb's precondition reports them — an unreadable ref a second
 /// time); then, when the snapshot succeeded, `jj.snapshot_files_refused` /
