@@ -195,6 +195,33 @@ pub enum WarningKind {
     /// the start-up fallback of the CLI's `load_from_workspace` (`cli/src/cli_util.rs:540-562` @
     /// v0.46.0; Story 9.56).
     TrunkAliasUnresolved,
+    /// `jj duplicate` with a location: a duplicated commit is an ancestor of one of the new
+    /// parents, so its duplicate lands among its own descendants — "Duplicating commit <12 hex> as
+    /// a descendant of itself." (`cli/src/commands/duplicate.rs:149-162` @ v0.46.0; Story 9.9).
+    /// One per such commit, in the duplicates' order; the duplicate is still made.
+    DuplicateAsOwnDescendant,
+    /// `jj duplicate -A`/`-B`: one of the new children is an ancestor of a duplicated commit, so
+    /// the duplicate lands among its own ancestors — "Duplicating commit <12 hex> as an ancestor of
+    /// itself." (`duplicate.rs:164-176` @ v0.46.0; Story 9.9), after every
+    /// [`WarningKind::DuplicateAsOwnDescendant`].
+    DuplicateAsOwnAncestor,
+    /// `jj fix` could not start a configured tool — "Failed to start `<name>`."
+    /// (`cli/src/commands/fix.rs` `run_tool` @ v0.46.0; Story 9.9). The tool is skipped for that
+    /// file, as if it had changed nothing.
+    FixToolStartFailed,
+    /// A `jj fix` tool exited with a non-zero status — "Fix tool `<name>` exited with non-zero
+    /// exit code for `<path>`" (`run_tool` @ v0.46.0; Story 9.9). Its output is discarded; what it
+    /// wrote to stderr rides [`crate::FixResult::tool_stderr`].
+    FixToolFailed,
+    /// A `fix.tools.<name>.patterns` fileset parsed with a diagnostic — the CLI's
+    /// `print_parse_diagnostics(ui, "In `fix.tools.<name>`", …)` (`get_tools_config` @ v0.46.0;
+    /// Story 9.9). The pattern still applies.
+    FilesetDiagnostic,
+    /// A config layer used a deprecated key the CLI migrates at start-up — "Deprecated <source>
+    /// config: <description>" (`cli/src/cli_util.rs:4726-4741` @ v0.46.0; today only
+    /// `fix.tools.<name>.line-range-arg`; Story 9.9). The call runs with the migrated key; the
+    /// file is not rewritten.
+    ConfigDeprecated,
 }
 
 /// One warning a call produced (Story 9.32).

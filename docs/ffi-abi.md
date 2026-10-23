@@ -153,6 +153,10 @@ Every verb that runs the pre-verb snapshot may warn `jj.trunk_alias_unresolved` 
 start-up environment's warnings (Story 9.56): a `trunk()` alias that parses but does not resolve
 at the head makes the call run with `trunk()` = `root()`, as the CLI's `load_from_workspace` —
 its immutable set, templates and every revset it parses, a graph walk's `builtin_log()` included.
+Right after the start-up fix-up's notices, such a verb — and every `zanshin_config_*` symbol but the
+`gc` pair — warns `jj.config_deprecated` once per deprecated key the CLI's start-up migrates
+(Story 9.9; today only `fix.tools.<name>.line-range-arg` → `line-range-args`): "Deprecated <source>
+config: <description>"; the call runs with the migrated key, the file is not rewritten.
 `zanshin_commit_contents` (Story 4.10) never carries the vector, on the ok or the error
 envelope: the op-pinned read loads no config and runs no snapshot, so it has nothing to warn
 about (Dart still returns a `WarnedList`, always empty).
@@ -278,9 +282,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Forty-three of the 78 exported symbols take their arguments as a **FlatBuffers
+Forty-six of the 81 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Thirty-one use the handle-scoped three-parameter shape:
+strings. Thirty-four use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -438,7 +442,7 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **40** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **43** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
@@ -451,12 +455,12 @@ Two tables are shared: `ChangeIdList` by three symbols (`zanshin_new_change`'s
 read only by `zanshin_new_change`, the other two ignore them) and `SquashRequest` by two
 (`zanshin_squash` and `zanshin_squash_plan`, Story 9.15 — the plan previews the
 squash its caller is about to run, with the same arguments). Every other table has
-exactly one caller, and no table is orphaned. 40 tables + 3 shared reuses = the 43
+exactly one caller, and no table is orphaned. 43 tables + 3 shared reuses = the 46
 request-buffer symbols (Story 9.20 adds `GitPushRequest`, `RepoCloneRequest` and
 `RepoInitRequest` — `zanshin_repo_init` / `zanshin_repo_clone` took two C strings / a string and
 an `int32_t` backend before; Story 9.30 adds `GitFetchRequest` — `zanshin_git_fetch` took a
 remote name and a cancel token before; Story 9.31 adds `DropActionsRequest`; Story 9.16 adds `RebaseRequest` and
-`ArrangeRequest`).
+`ArrangeRequest`; Story 9.9 adds `MetaeditRequest`, `DuplicateRequest` and `FixRequest`).
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
 members of the `RevisionRef` union carried by `InterdiffRequest`'s `from`/`to`,
@@ -480,7 +484,7 @@ request table is therefore `kind: RequestKind`, and every reader refuses a buffe
 whose tag is not its own — row 3 of the ladder above, before any other field is
 read and before the handle is borrowed.
 
-The tag is per-**wrapper**, not per-table. For 38 tables the variant name plus
+The tag is per-**wrapper**, not per-table. For 41 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **three** kinds, `NewChange`,
 `Abandon` and `Parallelize` (Story 9.16), because a per-table tag would have left the sharpest collision
 unrefused — a buffer meant as `parents` abandoning those commits instead. Only
@@ -531,7 +535,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **78** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **81** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -589,6 +593,9 @@ or no `# Errors` block.
 | `zanshin_rebase` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `RebaseRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.16 |
 | `zanshin_parallelize` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` (`kind = Parallelize`) | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.16 |
 | `zanshin_arrange` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ArrangeRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.16 |
+| `zanshin_metaedit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `MetaeditRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 |
+| `zanshin_duplicate` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DuplicateRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 |
+| `zanshin_fix` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FixRequest` | `FixResult` (see § `zanshin_metaedit`, `zanshin_duplicate`, `zanshin_fix`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 |
 | `zanshin_drop_actions` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DropActionsRequest` | `DropActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_change_actions` | `(uint64_t handle, const char *change_id)` | — | `ChangeActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_commit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.no_working_copy`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.49 |
@@ -1739,6 +1746,37 @@ NOT refused up front: the move is jj-lib's `compute_move_commits`, as in the CLI
 settled). Dart: `RepoHandle.rebase(...)`, `RepoHandle.parallelize(changeIds)`,
 `RepoHandle.arrange(revisions:, actions:)` with the sealed `ArrangeAction`
 (`SwapDownAction` / `SwapUpAction` / `AbandonAction` / `KeepAction`).
+
+## `zanshin_metaedit`, `zanshin_duplicate`, `zanshin_fix` (Story 9.9)
+
+The CLI's `jj metaedit`, `jj duplicate` and `jj fix` at v0.46.0. Metaedit and duplicate answer the
+shared `MutationResult`; fix answers a `FixResult`. A metaedit that rewrites nothing and a fix that
+fixes nothing write NO operation and carry the PRE-CALL head in `new_op_id`. Metaedit's
+`new_change_ids` are the change ids `update_change_id` minted; duplicate's are the duplicates', in
+jj-lib's duplication order.
+
+| Table | Fields |
+|-------|--------|
+| `MetaeditRequest` | `kind = Metaedit`; `revisions` (ABSENT or EMPTY = `@`), `update_change_id`, `message` (the `-m` paragraphs; ABSENT = no `-m`, present — even empty — = `-m` given), `update_author_timestamp`, `update_author`, `author` (`Name <email>`; ABSENT = not given), `author_timestamp` (RFC 2822 / RFC 3339; ABSENT = not given), `force_rewrite`. clap's refusals — a malformed `author` / `author_timestamp`, `author` with `update_author`, `author_timestamp` with `update_author_timestamp` — are `jj.invalid_input` before the snapshot (no `precondition`). |
+| `DuplicateRequest` | `kind = Duplicate`; `revisions` (ABSENT or EMPTY = `@`), `onto` / `insert_after` / `insert_before` (`-o` / `-A` / `-B`; none = onto each original's parents; `onto` excludes the others — clap's refusal, before the snapshot). |
+| `FixRequest` | `kind = Fix`; `source` (`-s`; ABSENT or EMPTY = `revsets.fix`, jj's default `reachable(@, mutable())`), `paths` (repo-relative PREFIXES; ABSENT or EMPTY = every path), `include_unchanged_files`, `all_lines`. |
+| `FixResult` | `mutation: MutationResult`, `num_fixed_commits`, `num_checked_commits` (jj-lib's counts, saturating at 4294967295), `tool_stderr: [FixToolStderr]` — one `{path, stderr}` per tool run that wrote to stderr (lossy UTF-8), sorted by path then text. |
+
+The operation descriptions are the CLI's: `edit commit metadata for commit <hex>` / `… <hex> and
+<n> more`, `duplicate <n> commit(s)`, `fixed <n> commits`. Warnings: `jj.duplicate_as_own_descendant`
+/ `jj.duplicate_as_own_ancestor` (a duplicate among its original's descendants / ancestors),
+`jj.fix_tool_start_failed` / `jj.fix_tool_failed` (a tool skipped for a file — sorted by message,
+the CLI's interleaving is rayon's), `jj.fileset_diagnostic` (a `fix.tools` pattern's diagnostic),
+`jj.paths_unmatched` (a fix path in no fixed revision's tree), `jj.config_deprecated` (see
+*`warnings`*). Refusals reuse registered codes only: `jj.invalid_input` (clap's, "Cannot duplicate
+the root commit", the location texts, a `fix.tools` pattern that does not parse — "Failed to parse
+fileset: <kind>" with the CLI's `Caused by:` lines and hint), `jj.change_not_found`,
+`jj.revset_resolution_error` (the `@` default without a working-copy commit; fix's `revsets.fix`
+with `jj.revset_parse_error`), `jj.immutable`, `jj.config_error` (no `fix.tools`, none enabled,
+`run-tool-if-zero-line-ranges` without `line-range-args`, a `templates.duplicate_description` that
+does not parse). The duplicate verb runs `drop_actions`' `duplicate` plan before it writes, so the
+drop menu's row and the verb agree. Dart: `RepoHandle.metaedit(...)`, `RepoHandle.duplicate(...)`,
+`RepoHandle.fix(...)` → `FixResult` with `FixToolStderr` entries.
 
 ## `GitPushResult` payload and `zanshin_git_push` (Story 9.20)
 

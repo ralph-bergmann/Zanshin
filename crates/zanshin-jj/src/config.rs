@@ -115,12 +115,13 @@
 //! start-up, else the process's. A Zanshin launched from Finder therefore resolves the stack a
 //! terminal `jj` would.
 //!
-//! Still absent: the `--config`/`--config-file` command-line layer (Zanshin has no CLI args),
-//! and `jj_lib::config::migrate` — the CLI's `default_config_migrations()`
-//! (`cli/src/config.rs:972-1052` @ v0.46.0) holds one rule, `fix.tools.<name>.line-range-arg` →
-//! `line-range-args` (to be removed in jj 0.51), which only rewrites `fix.tools` — a table no
-//! Zanshin verb reads — so it is not ported yet; whoever ports a `fix` verb ports it. Re-check it
-//! at every pin bump, together with `maybe_migrate_legacy_config`'s TODO (jj 0.49 is to stop
+//! Still absent: the `--config`/`--config-file` command-line layer (Zanshin has no CLI args).
+//! Every resolved stack goes through `jj_lib::config::migrate` with the CLI's
+//! `default_config_migrations()` (`cli/src/config.rs:972-1052` @ v0.46.0; Story 9.9), as the CLI's
+//! `run_internal` migrates after every resolution: one rule, `fix.tools.<name>.line-range-arg` →
+//! `line-range-args` (to be removed in jj 0.51), its descriptions the start of a call's
+//! `jj.config_deprecated` warnings. Re-check it at every pin bump, together with
+//! `maybe_migrate_legacy_config`'s TODO (jj 0.49 is to stop
 //! migrating the legacy files automatically and only warn). `resolve` runs with `command: None`
 //! (a state the CLI itself produces before a subcommand is known) for every verb except the
 //! config verbs, which pass their CLI command name (`"config set"`, …) through
@@ -136,7 +137,8 @@ use std::time::SystemTime;
 use jj_lib::backend::{BackendInitError, BackendLoadError};
 use jj_lib::config::{
     resolve, ConfigFile, ConfigGetError, ConfigGetResultExt as _, ConfigLayer, ConfigLoadError,
-    ConfigResolutionContext, ConfigSource, ConfigValue, StackedConfig,
+    ConfigMigrateLayerError, ConfigMigrationRule, ConfigNamePathBuf, ConfigResolutionContext, ConfigSource,
+    ConfigValue, StackedConfig,
 };
 use jj_lib::git_backend::{GitBackendInitError, GitBackendLoadError};
 use jj_lib::ref_name::RemoteRefSymbolBuf;
@@ -880,6 +882,14 @@ pub(crate) fn secure_layers(env: &ConfigEnv, paths: WorkspacePaths<'_>) -> [Secu
 /// without a workspace. A CREATION path then passes the new workspace's paths
 /// ([`user_settings_for_new_workspace`]).
 fn load_with(env: &ConfigEnv, workspace: Option<WorkspacePaths<'_>>) -> Result<StackedConfig, ConfigError> {
+    load_with_migrated(env, workspace).map(|(config, _)| config)
+}
+
+/// [`load_with`] with the descriptions of the config migrations the stack went through.
+fn load_with_migrated(
+    env: &ConfigEnv,
+    workspace: Option<WorkspacePaths<'_>>,
+) -> Result<(StackedConfig, Deprecations), ConfigError> {
     resolve_raw(env, workspace, &load_raw(env, workspace, None)?, None)
 }
 
@@ -974,22 +984,24 @@ pub(crate) fn fix_up_layers(
 }
 
 /// Flattens `--when` / `[[--scope]]` blocks of a [`load_raw`] stack — the CLI's
-/// `resolve_config` (`cli/src/config.rs:669-679` @ v0.44.0). Skipping this would leave scoped
-/// tables unflattened (their values silently missing) and keep layers the CLI drops.
+/// `resolve_config` (`cli/src/config.rs:669-679` @ v0.44.0) — then applies the CLI's config
+/// migrations ([`migrate`], Story 9.9). Skipping the resolution would leave scoped tables
+/// unflattened (their values silently missing) and keep layers the CLI drops.
 ///
 /// `command` is the CLI's command name (`"config set"`, …) for `--when.commands`; every verb
 /// but the config verbs (Story 9.28) passes `None`, a state the CLI itself produces before a
-/// subcommand is known.
+/// subcommand is known. Returns the descriptions of the migrations applied too — what the CLI
+/// prints as "Deprecated … config" warnings ([`deprecation_warnings`]).
 ///
 /// # Errors
 ///
-/// - [`ConfigError::Load`] — a `--when` condition has the wrong type.
+/// - [`ConfigError::Load`] — a `--when` condition has the wrong type, or a migration failed.
 pub(crate) fn resolve_raw(
     env: &ConfigEnv,
     workspace: Option<WorkspacePaths<'_>>,
     raw: &StackedConfig,
     command: Option<&str>,
-) -> Result<StackedConfig, ConfigError> {
+) -> Result<(StackedConfig, Deprecations), ConfigError> {
     let context = ConfigResolutionContext {
         home_dir: env.home_dir.as_deref(),
         repo_path: workspace.map(|paths| paths.repo_path),
@@ -998,7 +1010,114 @@ pub(crate) fn resolve_raw(
         hostname: env.hostname.as_deref().unwrap_or(""),
         environment: &env.environment,
     };
-    resolve(raw, &context).map_err(|e| value_error(&e))
+    let mut config = resolve(raw, &context).map_err(|e| value_error(&e))?;
+    let deprecations = migrate(&mut config)?;
+    Ok((config, deprecations))
+}
+
+/// The migrations a resolved stack went through: each rewritten layer's source and the
+/// migration's description, in layer order — `jj_lib::config::migrate`'s result.
+pub(crate) type Deprecations = Vec<(ConfigSource, String)>;
+
+/// Applies the CLI's `default_config_migrations()` to `config` (`cli/src/config.rs:972-1052` @
+/// v0.46.0, applied by `CliRunner::run_internal` after every resolution, `cli_util.rs:4646-4740`;
+/// Story 9.9): today one rule, `fix.tools.<name>.line-range-arg` → `line-range-args` (the CLI
+/// drops it in jj 0.51 — re-check at every pin bump).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — a layer could not be rewritten, or a `line-range-arg` is not a
+///   string: the CLI's config error "Migration failed" with its cause, then the file it is in.
+fn migrate(config: &mut StackedConfig) -> Result<Deprecations, ConfigError> {
+    jj_lib::config::migrate(config, &[line_range_arg_rule()]).map_err(|e| {
+        let reason = match &e.source_path {
+            Some(path) => format!("{}\nCheck the config file: {}", describe(&e), path.display()),
+            None => describe(&e),
+        };
+        ConfigError::Load { reason }
+    })
+}
+
+/// The CLI's rule for the deprecated `fix.tools.<name>.line-range-arg` (`cli/src/config.rs:974-1050`
+/// @ v0.46.0), verbatim: each tool's old string becomes a one-element `line-range-args` array,
+/// unless that key is already there (then the old one is just deleted).
+fn line_range_arg_rule() -> ConfigMigrationRule {
+    ConfigMigrationRule::custom(
+        |layer| {
+            let Ok(Some(tools_table)) = layer.look_up_table("fix.tools") else {
+                return false;
+            };
+            tools_table.iter().any(|(_, item)| {
+                item.as_table_like()
+                    .is_some_and(|tool_config| tool_config.contains_key("line-range-arg"))
+            })
+        },
+        |layer| {
+            let bad_tool_names: Vec<String> = if let Ok(Some(tools_table)) = layer.look_up_table("fix.tools") {
+                tools_table
+                    .iter()
+                    .filter(|(_, item)| {
+                        item.as_table_like()
+                            .is_some_and(|tool_config| tool_config.contains_key("line-range-arg"))
+                    })
+                    .map(|(tool_name, _)| tool_name.to_owned())
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            // WHY: unreachable after `matches`, kept as the CLI keeps it.
+            if bad_tool_names.is_empty() {
+                return Ok("`fix.tools.<name>.line-range-arg` is deprecated; use `line-range-args` instead.".into());
+            }
+            let mut messages = Vec::new();
+            for tool_name in bad_tool_names {
+                let old_name = &ConfigNamePathBuf::from_iter(["fix", "tools", &tool_name, "line-range-arg"]);
+                let new_name = &ConfigNamePathBuf::from_iter(["fix", "tools", &tool_name, "line-range-args"]);
+                let Ok(Some(old_value)) = layer.delete_value(old_name) else {
+                    continue;
+                };
+                if matches!(layer.look_up_item(new_name), Ok(Some(_))) {
+                    messages.push(format!("{old_name} is deleted (superseded by {new_name})"));
+                    continue;
+                }
+                let Some(old_value_str) = old_value.as_str() else {
+                    return Err(ConfigMigrateLayerError::Type {
+                        name: old_name.to_string(),
+                        error: format!("Failed to migrate {old_name}, which was expected to be a string").into(),
+                    });
+                };
+                layer.set_value(new_name, ConfigValue::from_iter([old_value_str]))?;
+                messages.push(format!(
+                    "{old_name} is updated to {new_name} = [{}]",
+                    old_value.decorated("", "")
+                ));
+            }
+            Ok(messages.join(", "))
+        },
+    )
+}
+
+/// The CLI's "Deprecated <source> config: <description>" warnings for `deprecations`
+/// (`cli_util.rs:4726-4741` @ v0.46.0), one [`crate::WarningKind::ConfigDeprecated`] each.
+pub(crate) fn deprecation_warnings(deprecations: Deprecations) -> Vec<crate::Warning> {
+    deprecations
+        .into_iter()
+        .map(|(source, description)| {
+            let source = match source {
+                ConfigSource::Default => "default-provided",
+                ConfigSource::System => "system-level",
+                ConfigSource::EnvBase | ConfigSource::EnvOverrides => "environment-provided",
+                ConfigSource::User => "user-level",
+                ConfigSource::Repo => "repo-level",
+                ConfigSource::Workspace => "workspace-level",
+                ConfigSource::CommandArg => "CLI-provided",
+            };
+            crate::warning::local(
+                crate::WarningKind::ConfigDeprecated,
+                format!("Deprecated {source} config: {description}"),
+            )
+        })
+        .collect()
 }
 
 /// Loads `repo`'s effective jj config stack. Re-read on every call — never cached.
@@ -1014,11 +1133,26 @@ pub(crate) fn resolve_raw(
 /// - [`ConfigError::Load`] — a config file is unreadable or not valid TOML, a `config-id`
 ///   is malformed, or a `--when`/`[[--scope]]` condition has the wrong type.
 pub(crate) fn load(repo: &Repo) -> Result<StackedConfig, ConfigError> {
-    let mut config = load_for_workspace(repo.workspace())?;
+    load_migrated(repo).map(|(config, _)| config)
+}
+
+/// [`load`] with the descriptions of the config migrations the stack went through — the start of
+/// a call records them as warnings (Story 9.9).
+///
+/// # Errors
+///
+/// As [`load`].
+pub(crate) fn load_migrated(repo: &Repo) -> Result<(StackedConfig, Deprecations), ConfigError> {
+    let workspace = repo.workspace();
+    let paths = WorkspacePaths {
+        repo_path: workspace.repo_path(),
+        workspace_root: workspace.workspace_root(),
+    };
+    let (mut config, deprecations) = load_with_migrated(&ConfigEnv::from_env(), Some(paths))?;
     if repo.trunk_fallback() {
         config.add_layer(trunk_fallback_layer());
     }
-    Ok(config)
+    Ok((config, deprecations))
 }
 
 /// The topmost layer of a call with the `trunk()` fallback: `trunk()` = `root()`.
@@ -1624,6 +1758,19 @@ pub(crate) fn templates_draft_commit_description(config: &StackedConfig) -> Resu
 /// - [`ConfigError::Load`] — the value is not a string (the key is named).
 pub(crate) fn templates_new_description(config: &StackedConfig) -> Result<String, ConfigError> {
     config.get("templates.new_description").map_err(|e| value_error(&e))
+}
+
+/// Reads the effective `templates.duplicate_description` TEXT (Story 9.9) — the CLI's
+/// `get_string` in `jj duplicate` (`duplicate.rs:168-170` @ v0.46.0). Its default `description`
+/// (the original's description) is jj-cli's own ([`CLI_DEFAULTS`]).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a string (the key is named).
+pub(crate) fn templates_duplicate_description(config: &StackedConfig) -> Result<String, ConfigError> {
+    config
+        .get("templates.duplicate_description")
+        .map_err(|e| value_error(&e))
 }
 
 /// Reads the effective `revsets.short-prefixes` revset TEXT the way the CLI's
@@ -4013,5 +4160,107 @@ fetch-bookmarks = \"main\"
         );
         let entry = stack_with("[remotes]\norigin = 1\n");
         assert!(super::remote_auto_track_bookmarks_for_new_bookmarks(&entry).is_err());
+    }
+
+    /// The CLI's `line-range-arg` migration (Story 9.9): updated to a one-element
+    /// `line-range-args`, deleted when that key is already there, refused for a non-string — each
+    /// layer on its own, its description naming the source the way the CLI's warning does.
+    #[test]
+    fn migrate_rewrites_a_deprecated_line_range_arg_as_the_cli_does() {
+        use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
+
+        let layer = |source, toml: &str| ConfigLayer::parse(source, toml).expect("toml");
+        let mut config = StackedConfig::empty();
+        config.add_layer(layer(
+            ConfigSource::User,
+            "fix.tools.u.line-range-arg = \"--l=$first\"\n",
+        ));
+        config.add_layer(layer(
+            ConfigSource::Repo,
+            "[fix.tools.r]\nline-range-arg = '--r'\nline-range-args = ['--new']\n[fix.tools.plain]\ncommand = 'x'\n",
+        ));
+        config.add_layer(layer(ConfigSource::Workspace, "fix.tools = 1\n"));
+        let deprecations = super::migrate(&mut config).expect("migrates");
+        assert_eq!(
+            deprecations,
+            [
+                (
+                    ConfigSource::User,
+                    "fix.tools.u.line-range-arg is updated to fix.tools.u.line-range-args = [\"--l=$first\"]"
+                        .to_owned()
+                ),
+                (
+                    ConfigSource::Repo,
+                    "fix.tools.r.line-range-arg is deleted (superseded by fix.tools.r.line-range-args)".to_owned()
+                ),
+            ]
+        );
+        let user = &config.layers()[0];
+        assert!(matches!(user.look_up_item("fix.tools.u.line-range-arg"), Ok(None)));
+        let migrated = user.look_up_item("fix.tools.u.line-range-args");
+        assert_eq!(
+            migrated.ok().flatten().map(ToString::to_string).as_deref(),
+            Some("[\"--l=$first\"]"),
+            "the layer holds the new key"
+        );
+        assert!(
+            super::migrate(&mut config).expect("again").is_empty(),
+            "nothing is left to migrate"
+        );
+
+        let mut broken = StackedConfig::empty();
+        broken.add_layer(layer(ConfigSource::User, "fix.tools.t.line-range-arg = 1\n"));
+        let err = super::migrate(&mut broken).expect_err("a non-string refuses");
+        assert!(
+            matches!(&err, crate::ConfigError::Load { reason }
+                if reason.starts_with("Migration failed: Invalid type or value for fix.tools.t.line-range-arg")),
+            "{err:?}"
+        );
+        let mut from_file = StackedConfig::empty();
+        let mut file_layer = layer(ConfigSource::Repo, "fix.tools.t.line-range-arg = 1\n");
+        file_layer.path = Some(std::path::PathBuf::from("/x/config.toml"));
+        from_file.add_layer(file_layer);
+        let err = super::migrate(&mut from_file).expect_err("refuses");
+        assert!(
+            matches!(&err, crate::ConfigError::Load { reason } if reason.ends_with("\nCheck the config file: /x/config.toml")),
+            "{err:?}"
+        );
+    }
+
+    /// One "Deprecated <source> config" warning per migration, the source worded as the CLI's.
+    #[test]
+    fn deprecation_warnings_word_every_source_as_the_cli_does() {
+        use jj_lib::config::ConfigSource as S;
+
+        let warnings = super::deprecation_warnings(
+            [
+                S::Default,
+                S::System,
+                S::EnvBase,
+                S::EnvOverrides,
+                S::User,
+                S::Repo,
+                S::Workspace,
+                S::CommandArg,
+            ]
+            .into_iter()
+            .map(|source| (source, "d".to_owned()))
+            .collect(),
+        );
+        let messages: Vec<&str> = warnings.iter().map(|w| w.message.as_str()).collect();
+        assert_eq!(
+            messages,
+            [
+                "Deprecated default-provided config: d",
+                "Deprecated system-level config: d",
+                "Deprecated environment-provided config: d",
+                "Deprecated environment-provided config: d",
+                "Deprecated user-level config: d",
+                "Deprecated repo-level config: d",
+                "Deprecated workspace-level config: d",
+                "Deprecated CLI-provided config: d",
+            ]
+        );
+        assert!(warnings.iter().all(|w| w.kind == crate::WarningKind::ConfigDeprecated));
     }
 }

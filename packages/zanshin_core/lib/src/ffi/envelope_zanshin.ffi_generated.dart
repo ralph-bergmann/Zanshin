@@ -23,7 +23,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 ///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 ///  very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-///  squash, never a different verb. For the other 37 tables the variant name plus `Request` IS
+///  squash, never a different verb. For the other 40 tables the variant name plus `Request` IS
 ///  the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -75,7 +75,10 @@ enum RequestKind {
   DropActions(39),
   Rebase(40),
   Parallelize(41),
-  Arrange(42);
+  Arrange(42),
+  Metaedit(43),
+  Duplicate(44),
+  Fix(45);
 
   final int value;
   const RequestKind(this.value);
@@ -168,6 +171,12 @@ enum RequestKind {
         return RequestKind.Parallelize;
       case 42:
         return RequestKind.Arrange;
+      case 43:
+        return RequestKind.Metaedit;
+      case 44:
+        return RequestKind.Duplicate;
+      case 45:
+        return RequestKind.Fix;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -176,7 +185,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 42;
+  static const int maxValue = 45;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -1505,7 +1514,8 @@ enum PayloadTypeId {
   GitFetchResult(44),
   GitFetchRemotes(45),
   DropActions(46),
-  ChangeActions(47);
+  ChangeActions(47),
+  FixResult(48);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -1608,6 +1618,8 @@ enum PayloadTypeId {
         return PayloadTypeId.DropActions;
       case 47:
         return PayloadTypeId.ChangeActions;
+      case 48:
+        return PayloadTypeId.FixResult;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -1616,7 +1628,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 47;
+  static const int maxValue = 48;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -2861,6 +2873,426 @@ class ArrangeRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, revisionsOffset);
     fbBuilder.addOffset(2, actionsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_metaedit` (Story 9.9) — the CLI's `jj metaedit` flags, one field each.
+///
+///    revisions          change ids (jj reverse-hex); ABSENT or EMPTY = the CLI's default `@`
+///    update_change_id   `--update-change-id`
+///    message            the CLI's repeatable `-m`: ABSENT = no `-m` (the description stays),
+///                       present (even empty) = the paragraphs, joined as the CLI joins them
+///    update_author_timestamp / update_author / force_rewrite   the CLI's
+///                       `--update-author-timestamp` / `--update-author` / `--force-rewrite`
+///    author             `--author`, the CLI's `Name <email>` string; ABSENT = not given
+///    author_timestamp   `--author-timestamp`, RFC 2822 or RFC 3339; ABSENT = not given
+///
+///  A malformed `author` / `author_timestamp`, `author` with `update_author`, or
+///  `author_timestamp` with `update_author_timestamp` is clap's refusal (`jj.invalid_input`),
+///  before the snapshot.
+class MetaeditRequest {
+  MetaeditRequest._(this._bc, this._bcOffset);
+  factory MetaeditRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<MetaeditRequest> reader = _MetaeditRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get revisions => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  bool get updateChangeId => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+  List<String>? get message => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  bool get updateAuthorTimestamp => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  bool get updateAuthor => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+  String? get author => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 16);
+  String? get authorTimestamp => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 18);
+  bool get forceRewrite => const fb.BoolReader().vTableGet(_bc, _bcOffset, 20, false);
+
+  @override
+  String toString() {
+    return 'MetaeditRequest{kind: ${kind}, revisions: ${revisions}, updateChangeId: ${updateChangeId}, message: ${message}, updateAuthorTimestamp: ${updateAuthorTimestamp}, updateAuthor: ${updateAuthor}, author: ${author}, authorTimestamp: ${authorTimestamp}, forceRewrite: ${forceRewrite}}';
+  }
+}
+
+class _MetaeditRequestReader extends fb.TableReader<MetaeditRequest> {
+  const _MetaeditRequestReader();
+
+  @override
+  MetaeditRequest createObject(fb.BufferContext bc, int offset) => MetaeditRequest._(bc, offset);
+}
+
+class MetaeditRequestBuilder {
+  MetaeditRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(9);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addUpdateChangeId(bool? updateChangeId) {
+    fbBuilder.addBool(2, updateChangeId);
+    return fbBuilder.offset;
+  }
+
+  int addMessageOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addUpdateAuthorTimestamp(bool? updateAuthorTimestamp) {
+    fbBuilder.addBool(4, updateAuthorTimestamp);
+    return fbBuilder.offset;
+  }
+
+  int addUpdateAuthor(bool? updateAuthor) {
+    fbBuilder.addBool(5, updateAuthor);
+    return fbBuilder.offset;
+  }
+
+  int addAuthorOffset(int? offset) {
+    fbBuilder.addOffset(6, offset);
+    return fbBuilder.offset;
+  }
+
+  int addAuthorTimestampOffset(int? offset) {
+    fbBuilder.addOffset(7, offset);
+    return fbBuilder.offset;
+  }
+
+  int addForceRewrite(bool? forceRewrite) {
+    fbBuilder.addBool(8, forceRewrite);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class MetaeditRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _revisions;
+  final bool? _updateChangeId;
+  final List<String>? _message;
+  final bool? _updateAuthorTimestamp;
+  final bool? _updateAuthor;
+  final String? _author;
+  final String? _authorTimestamp;
+  final bool? _forceRewrite;
+
+  MetaeditRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? revisions,
+    bool? updateChangeId,
+    List<String>? message,
+    bool? updateAuthorTimestamp,
+    bool? updateAuthor,
+    String? author,
+    String? authorTimestamp,
+    bool? forceRewrite,
+  }) : _kind = kind,
+       _revisions = revisions,
+       _updateChangeId = updateChangeId,
+       _message = message,
+       _updateAuthorTimestamp = updateAuthorTimestamp,
+       _updateAuthor = updateAuthor,
+       _author = author,
+       _authorTimestamp = authorTimestamp,
+       _forceRewrite = forceRewrite;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionsOffset = _revisions == null
+        ? null
+        : fbBuilder.writeList(_revisions!.map(fbBuilder.writeString).toList());
+    final int? messageOffset = _message == null
+        ? null
+        : fbBuilder.writeList(_message!.map(fbBuilder.writeString).toList());
+    final int? authorOffset = _author == null ? null : fbBuilder.writeString(_author!);
+    final int? authorTimestampOffset = _authorTimestamp == null ? null : fbBuilder.writeString(_authorTimestamp!);
+    fbBuilder.startTable(9);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionsOffset);
+    fbBuilder.addBool(2, _updateChangeId);
+    fbBuilder.addOffset(3, messageOffset);
+    fbBuilder.addBool(4, _updateAuthorTimestamp);
+    fbBuilder.addBool(5, _updateAuthor);
+    fbBuilder.addOffset(6, authorOffset);
+    fbBuilder.addOffset(7, authorTimestampOffset);
+    fbBuilder.addBool(8, _forceRewrite);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_duplicate` (Story 9.9) — the CLI's `jj duplicate` flags; change ids are
+///  jj reverse-hex. ABSENT or EMPTY is the flag not given.
+///
+///    revisions          ABSENT or EMPTY = the CLI's default `@`
+///    onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`; none = each duplicate
+///                       onto its original's parents; `onto` excludes the other two (else
+///                       `jj.invalid_input`, before the snapshot)
+class DuplicateRequest {
+  DuplicateRequest._(this._bc, this._bcOffset);
+  factory DuplicateRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<DuplicateRequest> reader = _DuplicateRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get revisions => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get onto => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get insertAfter => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  List<String>? get insertBefore =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 12);
+
+  @override
+  String toString() {
+    return 'DuplicateRequest{kind: ${kind}, revisions: ${revisions}, onto: ${onto}, insertAfter: ${insertAfter}, insertBefore: ${insertBefore}}';
+  }
+}
+
+class _DuplicateRequestReader extends fb.TableReader<DuplicateRequest> {
+  const _DuplicateRequestReader();
+
+  @override
+  DuplicateRequest createObject(fb.BufferContext bc, int offset) => DuplicateRequest._(bc, offset);
+}
+
+class DuplicateRequestBuilder {
+  DuplicateRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addOntoOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addInsertAfterOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addInsertBeforeOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class DuplicateRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _revisions;
+  final List<String>? _onto;
+  final List<String>? _insertAfter;
+  final List<String>? _insertBefore;
+
+  DuplicateRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? revisions,
+    List<String>? onto,
+    List<String>? insertAfter,
+    List<String>? insertBefore,
+  }) : _kind = kind,
+       _revisions = revisions,
+       _onto = onto,
+       _insertAfter = insertAfter,
+       _insertBefore = insertBefore;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionsOffset = _revisions == null
+        ? null
+        : fbBuilder.writeList(_revisions!.map(fbBuilder.writeString).toList());
+    final int? ontoOffset = _onto == null ? null : fbBuilder.writeList(_onto!.map(fbBuilder.writeString).toList());
+    final int? insertAfterOffset = _insertAfter == null
+        ? null
+        : fbBuilder.writeList(_insertAfter!.map(fbBuilder.writeString).toList());
+    final int? insertBeforeOffset = _insertBefore == null
+        ? null
+        : fbBuilder.writeList(_insertBefore!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(5);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionsOffset);
+    fbBuilder.addOffset(2, ontoOffset);
+    fbBuilder.addOffset(3, insertAfterOffset);
+    fbBuilder.addOffset(4, insertBeforeOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_fix` (Story 9.9) — the CLI's `jj fix` flags.
+///
+///    source             `-s`, change ids (jj reverse-hex); ABSENT or EMPTY = the `revsets.fix`
+///                       setting (jj's default `reachable(@, mutable())`)
+///    paths              repo-relative PREFIXES to fix; ABSENT or EMPTY = every path
+///    include_unchanged_files / all_lines   the CLI's `--include-unchanged-files` / `--all-lines`
+class FixRequest {
+  FixRequest._(this._bc, this._bcOffset);
+  factory FixRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FixRequest> reader = _FixRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get source => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  bool get includeUnchangedFiles => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+  bool get allLines => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+
+  @override
+  String toString() {
+    return 'FixRequest{kind: ${kind}, source: ${source}, paths: ${paths}, includeUnchangedFiles: ${includeUnchangedFiles}, allLines: ${allLines}}';
+  }
+}
+
+class _FixRequestReader extends fb.TableReader<FixRequest> {
+  const _FixRequestReader();
+
+  @override
+  FixRequest createObject(fb.BufferContext bc, int offset) => FixRequest._(bc, offset);
+}
+
+class FixRequestBuilder {
+  FixRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addSourceOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addIncludeUnchangedFiles(bool? includeUnchangedFiles) {
+    fbBuilder.addBool(3, includeUnchangedFiles);
+    return fbBuilder.offset;
+  }
+
+  int addAllLines(bool? allLines) {
+    fbBuilder.addBool(4, allLines);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FixRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _source;
+  final List<String>? _paths;
+  final bool? _includeUnchangedFiles;
+  final bool? _allLines;
+
+  FixRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? source,
+    List<String>? paths,
+    bool? includeUnchangedFiles,
+    bool? allLines,
+  }) : _kind = kind,
+       _source = source,
+       _paths = paths,
+       _includeUnchangedFiles = includeUnchangedFiles,
+       _allLines = allLines;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? sourceOffset = _source == null
+        ? null
+        : fbBuilder.writeList(_source!.map(fbBuilder.writeString).toList());
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(5);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, sourceOffset);
+    fbBuilder.addOffset(2, pathsOffset);
+    fbBuilder.addBool(3, _includeUnchangedFiles);
+    fbBuilder.addBool(4, _allLines);
     return fbBuilder.endTable();
   }
 
@@ -10597,6 +11029,203 @@ class SplitResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  What one `jj fix` tool run wrote to stderr (Story 9.9) — the CLI copies it to the terminal
+///  under `<path>:`.
+class FixToolStderr {
+  FixToolStderr._(this._bc, this._bcOffset);
+  factory FixToolStderr(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FixToolStderr> reader = _FixToolStderrReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get stderr => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'FixToolStderr{path: ${path}, stderr: ${stderr}}';
+  }
+}
+
+class _FixToolStderrReader extends fb.TableReader<FixToolStderr> {
+  const _FixToolStderrReader();
+
+  @override
+  FixToolStderr createObject(fb.BufferContext bc, int offset) => FixToolStderr._(bc, offset);
+}
+
+class FixToolStderrBuilder {
+  FixToolStderrBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addStderrOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FixToolStderrObjectBuilder extends fb.ObjectBuilder {
+  final String? _path;
+  final String? _stderr;
+
+  FixToolStderrObjectBuilder({
+    String? path,
+    String? stderr,
+  }) : _path = path,
+       _stderr = stderr;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    final int? stderrOffset = _stderr == null ? null : fbBuilder.writeString(_stderr!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, pathOffset);
+    fbBuilder.addOffset(1, stderrOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Outcome of a successful `zanshin_fix` (Story 9.9).
+///
+///  `mutation` is NESTED rather than flattened so the op-id / working-copy contract has one
+///  definition; its `new_change_ids` / `abandoned_change_ids` are always empty. With
+///  `num_fixed_commits == 0` no operation was written, so `mutation.new_op_id` is the PRE-CALL
+///  op-log head. The two counts are jj-lib's (`fixed <n> commits`, and the commits whose files the
+///  tools saw), saturating at 4294967295. `tool_stderr` holds one entry per tool run that wrote to
+///  stderr, sorted by path (then text); ABSENT or EMPTY when none did.
+class FixResult {
+  FixResult._(this._bc, this._bcOffset);
+  factory FixResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FixResult> reader = _FixResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  MutationResult? get mutation => MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  int get numFixedCommits => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  int get numCheckedCommits => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  List<FixToolStderr>? get toolStderr =>
+      const fb.ListReader<FixToolStderr>(FixToolStderr.reader).vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'FixResult{mutation: ${mutation}, numFixedCommits: ${numFixedCommits}, numCheckedCommits: ${numCheckedCommits}, toolStderr: ${toolStderr}}';
+  }
+}
+
+class _FixResultReader extends fb.TableReader<FixResult> {
+  const _FixResultReader();
+
+  @override
+  FixResult createObject(fb.BufferContext bc, int offset) => FixResult._(bc, offset);
+}
+
+class FixResultBuilder {
+  FixResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addMutationOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNumFixedCommits(int? numFixedCommits) {
+    fbBuilder.addUint32(1, numFixedCommits);
+    return fbBuilder.offset;
+  }
+
+  int addNumCheckedCommits(int? numCheckedCommits) {
+    fbBuilder.addUint32(2, numCheckedCommits);
+    return fbBuilder.offset;
+  }
+
+  int addToolStderrOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FixResultObjectBuilder extends fb.ObjectBuilder {
+  final MutationResultObjectBuilder? _mutation;
+  final int? _numFixedCommits;
+  final int? _numCheckedCommits;
+  final List<FixToolStderrObjectBuilder>? _toolStderr;
+
+  FixResultObjectBuilder({
+    MutationResultObjectBuilder? mutation,
+    int? numFixedCommits,
+    int? numCheckedCommits,
+    List<FixToolStderrObjectBuilder>? toolStderr,
+  }) : _mutation = mutation,
+       _numFixedCommits = numFixedCommits,
+       _numCheckedCommits = numCheckedCommits,
+       _toolStderr = toolStderr;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? mutationOffset = _mutation?.getOrCreateOffset(fbBuilder);
+    final int? toolStderrOffset = _toolStderr == null
+        ? null
+        : fbBuilder.writeList(_toolStderr!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, mutationOffset);
+    fbBuilder.addUint32(1, _numFixedCommits);
+    fbBuilder.addUint32(2, _numCheckedCommits);
+    fbBuilder.addOffset(3, toolStderrOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  One previewed verb's answer. `refusal` is present exactly when `status` is `Refused`: the
 ///  `FfiError` the verb's own wrapper returns for it (same code, same `context`).
 ///  `combined_description_needed` (a squash row) — the squash would combine two or more non-empty
@@ -16558,6 +17187,8 @@ class Envelope {
         return DropActions.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 47:
         return ChangeActions.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 48:
+        return FixResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

@@ -349,6 +349,19 @@ pub const JJ_FETCH_BRANCHES_UNMATCHED: &str = "jj.fetch_branches_unmatched";
 /// Warning: the `trunk()` alias does not resolve at the start of the call, which runs with
 /// `trunk()` = `root()` (Story 9.56) — every verb that runs the pre-verb snapshot.
 pub const JJ_TRUNK_ALIAS_UNRESOLVED: &str = "jj.trunk_alias_unresolved";
+/// Warning: `zanshin_duplicate` duplicated a commit as a descendant of itself (Story 9.9).
+pub const JJ_DUPLICATE_AS_OWN_DESCENDANT: &str = "jj.duplicate_as_own_descendant";
+/// Warning: `zanshin_duplicate` duplicated a commit as an ancestor of itself (Story 9.9).
+pub const JJ_DUPLICATE_AS_OWN_ANCESTOR: &str = "jj.duplicate_as_own_ancestor";
+/// Warning: `zanshin_fix` could not start a configured tool; it is skipped (Story 9.9).
+pub const JJ_FIX_TOOL_START_FAILED: &str = "jj.fix_tool_start_failed";
+/// Warning: a `zanshin_fix` tool exited non-zero for a file; its output is discarded (Story 9.9).
+pub const JJ_FIX_TOOL_FAILED: &str = "jj.fix_tool_failed";
+/// Warning: a `fix.tools.<name>.patterns` fileset parsed with a diagnostic (Story 9.9).
+pub const JJ_FILESET_DIAGNOSTIC: &str = "jj.fileset_diagnostic";
+/// Warning: a config layer uses a deprecated key the CLI migrates at start-up (Story 9.9) — every
+/// verb that runs the pre-verb snapshot, and the config verbs.
+pub const JJ_CONFIG_DEPRECATED: &str = "jj.config_deprecated";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -410,6 +423,12 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::FetchRefspecIgnored => JJ_FETCH_REFSPEC_IGNORED,
         K::FetchBranchesUnmatched => JJ_FETCH_BRANCHES_UNMATCHED,
         K::TrunkAliasUnresolved => JJ_TRUNK_ALIAS_UNRESOLVED,
+        K::DuplicateAsOwnDescendant => JJ_DUPLICATE_AS_OWN_DESCENDANT,
+        K::DuplicateAsOwnAncestor => JJ_DUPLICATE_AS_OWN_ANCESTOR,
+        K::FixToolStartFailed => JJ_FIX_TOOL_START_FAILED,
+        K::FixToolFailed => JJ_FIX_TOOL_FAILED,
+        K::FilesetDiagnostic => JJ_FILESET_DIAGNOSTIC,
+        K::ConfigDeprecated => JJ_CONFIG_DEPRECATED,
     }
 }
 
@@ -835,6 +854,41 @@ pub fn ok_split_result(r: &zanshin_jj::SplitResult, report: &CallReport) -> Vec<
         },
     );
     finish_envelope(b, fbs::Payload::SplitResult, Some(split.as_union_value()), report)
+}
+
+/// Build a success `Envelope` with a `FixResult` payload and return the finished buffer (Story
+/// 9.9). The nested `MutationResult` is built first through [`build_mutation_result`], then each
+/// `FixToolStderr` — every child completed before the `FixResult` table opens.
+#[must_use]
+pub fn ok_fix_result(r: &zanshin_jj::FixResult, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(512);
+    let mutation = build_mutation_result(&mut b, &r.mutation);
+    let stderr_offs: Vec<_> = r
+        .tool_stderr
+        .iter()
+        .map(|entry| {
+            let path = b.create_string(&entry.path);
+            let stderr = b.create_string(&entry.stderr);
+            fbs::FixToolStderr::create(
+                &mut b,
+                &fbs::FixToolStderrArgs {
+                    path: Some(path),
+                    stderr: Some(stderr),
+                },
+            )
+        })
+        .collect();
+    let tool_stderr = b.create_vector(&stderr_offs);
+    let fix = fbs::FixResult::create(
+        &mut b,
+        &fbs::FixResultArgs {
+            mutation: Some(mutation),
+            num_fixed_commits: r.num_fixed_commits,
+            num_checked_commits: r.num_checked_commits,
+            tool_stderr: Some(tool_stderr),
+        },
+    );
+    finish_envelope(b, fbs::Payload::FixResult, Some(fix.as_union_value()), report)
 }
 
 /// One previewed verb's answer with its refusal already mapped onto the AR-P-4 taxonomy (Story
@@ -1484,6 +1538,12 @@ mod tests {
             K::FetchRefspecIgnored => "jj.fetch_refspec_ignored",
             K::FetchBranchesUnmatched => "jj.fetch_branches_unmatched",
             K::TrunkAliasUnresolved => "jj.trunk_alias_unresolved",
+            K::DuplicateAsOwnDescendant => "jj.duplicate_as_own_descendant",
+            K::DuplicateAsOwnAncestor => "jj.duplicate_as_own_ancestor",
+            K::FixToolStartFailed => "jj.fix_tool_start_failed",
+            K::FixToolFailed => "jj.fix_tool_failed",
+            K::FilesetDiagnostic => "jj.fileset_diagnostic",
+            K::ConfigDeprecated => "jj.config_deprecated",
         }
     }
 
@@ -1548,6 +1608,12 @@ mod tests {
             K::FetchRefspecIgnored,
             K::FetchBranchesUnmatched,
             K::TrunkAliasUnresolved,
+            K::DuplicateAsOwnDescendant,
+            K::DuplicateAsOwnAncestor,
+            K::FixToolStartFailed,
+            K::FixToolFailed,
+            K::FilesetDiagnostic,
+            K::ConfigDeprecated,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");
@@ -1819,6 +1885,31 @@ mod tests {
         assert_eq!(split.mutation().and_then(|m| m.new_op_id()), Some("op99"));
         assert_eq!(split.selected_change_id(), Some("selected"));
         assert_eq!(split.remaining_change_id(), Some("remaining"));
+    }
+
+    #[test]
+    fn ok_fix_result_nests_the_mutation_and_carries_the_counts_and_stderr() {
+        let r = zanshin_jj::FixResult {
+            mutation: sample_mutation_result(),
+            num_fixed_commits: 2,
+            num_checked_commits: 3,
+            tool_stderr: vec![zanshin_jj::FixToolStderr {
+                path: "a.txt".to_owned(),
+                stderr: "oops\n".to_owned(),
+            }],
+        };
+        let buf = ok_fix_result(&r, &CallReport::default());
+        let env = verified_envelope(&buf);
+        assert_eq!(env.data_type(), fbs::Payload::FixResult);
+        let fix = env.data_as_fix_result().expect("FixResult payload");
+        assert_eq!(fix.mutation().and_then(|m| m.new_op_id()), Some("op99"));
+        assert_eq!((fix.num_fixed_commits(), fix.num_checked_commits()), (2, 3));
+        let stderr = fix.tool_stderr().expect("tool_stderr");
+        assert_eq!(stderr.len(), 1);
+        assert_eq!(
+            (stderr.get(0).path(), stderr.get(0).stderr()),
+            (Some("a.txt"), Some("oops\n"))
+        );
     }
 
     #[test]

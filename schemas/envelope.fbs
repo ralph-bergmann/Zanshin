@@ -82,7 +82,7 @@ table FfiError {
 /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-/// squash, never a different verb. For the other 37 tables the variant name plus `Request` IS
+/// squash, never a different verb. For the other 40 tables the variant name plus `Request` IS
 /// the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -134,7 +134,10 @@ enum RequestKind : ubyte {
   DropActions,
   Rebase,
   Parallelize,
-  Arrange
+  Arrange,
+  Metaedit,
+  Duplicate,
+  Fix
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -299,6 +302,61 @@ table ArrangeRequest {
   kind: RequestKind;
   revisions: [string];
   actions: [ArrangeAction];
+}
+
+/// Arguments of `zanshin_metaedit` (Story 9.9) — the CLI's `jj metaedit` flags, one field each.
+///
+///   revisions          change ids (jj reverse-hex); ABSENT or EMPTY = the CLI's default `@`
+///   update_change_id   `--update-change-id`
+///   message            the CLI's repeatable `-m`: ABSENT = no `-m` (the description stays),
+///                      present (even empty) = the paragraphs, joined as the CLI joins them
+///   update_author_timestamp / update_author / force_rewrite   the CLI's
+///                      `--update-author-timestamp` / `--update-author` / `--force-rewrite`
+///   author             `--author`, the CLI's `Name <email>` string; ABSENT = not given
+///   author_timestamp   `--author-timestamp`, RFC 2822 or RFC 3339; ABSENT = not given
+///
+/// A malformed `author` / `author_timestamp`, `author` with `update_author`, or
+/// `author_timestamp` with `update_author_timestamp` is clap's refusal (`jj.invalid_input`),
+/// before the snapshot.
+table MetaeditRequest {
+  kind: RequestKind;
+  revisions: [string];
+  update_change_id: bool;
+  message: [string];
+  update_author_timestamp: bool;
+  update_author: bool;
+  author: string;
+  author_timestamp: string;
+  force_rewrite: bool;
+}
+
+/// Arguments of `zanshin_duplicate` (Story 9.9) — the CLI's `jj duplicate` flags; change ids are
+/// jj reverse-hex. ABSENT or EMPTY is the flag not given.
+///
+///   revisions          ABSENT or EMPTY = the CLI's default `@`
+///   onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`; none = each duplicate
+///                      onto its original's parents; `onto` excludes the other two (else
+///                      `jj.invalid_input`, before the snapshot)
+table DuplicateRequest {
+  kind: RequestKind;
+  revisions: [string];
+  onto: [string];
+  insert_after: [string];
+  insert_before: [string];
+}
+
+/// Arguments of `zanshin_fix` (Story 9.9) — the CLI's `jj fix` flags.
+///
+///   source             `-s`, change ids (jj reverse-hex); ABSENT or EMPTY = the `revsets.fix`
+///                      setting (jj's default `reachable(@, mutable())`)
+///   paths              repo-relative PREFIXES to fix; ABSENT or EMPTY = every path
+///   include_unchanged_files / all_lines   the CLI's `--include-unchanged-files` / `--all-lines`
+table FixRequest {
+  kind: RequestKind;
+  source: [string];
+  paths: [string];
+  include_unchanged_files: bool;
+  all_lines: bool;
 }
 
 /// Arguments of `zanshin_commit` (Story 9.49) — the CLI's `jj commit -m <message> [paths]`.
@@ -1392,6 +1450,28 @@ table SplitResult {
   remaining_change_id: string;
 }
 
+/// What one `jj fix` tool run wrote to stderr (Story 9.9) — the CLI copies it to the terminal
+/// under `<path>:`.
+table FixToolStderr {
+  path: string;      // the file, as the CLI renders it from the workspace root
+  stderr: string;    // the tool's stderr, lossy UTF-8
+}
+
+/// Outcome of a successful `zanshin_fix` (Story 9.9).
+///
+/// `mutation` is NESTED rather than flattened so the op-id / working-copy contract has one
+/// definition; its `new_change_ids` / `abandoned_change_ids` are always empty. With
+/// `num_fixed_commits == 0` no operation was written, so `mutation.new_op_id` is the PRE-CALL
+/// op-log head. The two counts are jj-lib's (`fixed <n> commits`, and the commits whose files the
+/// tools saw), saturating at 4294967295. `tool_stderr` holds one entry per tool run that wrote to
+/// stderr, sorted by path (then text); ABSENT or EMPTY when none did.
+table FixResult {
+  mutation: MutationResult;
+  num_fixed_commits: uint;
+  num_checked_commits: uint;
+  tool_stderr: [FixToolStderr];
+}
+
 // ── Drop actions (Story 9.31) ───────────────────────────────────────────────────
 // Member order of the two enums below IS the wire value — APPEND only.
 
@@ -2154,6 +2234,7 @@ union Payload {
   GitFetchRemotes,
   DropActions,
   ChangeActions,
+  FixResult,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

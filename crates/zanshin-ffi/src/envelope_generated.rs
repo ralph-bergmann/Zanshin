@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 42;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 45;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 43] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 46] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -67,6 +67,9 @@ pub mod zanshin {
             RequestKind::Rebase,
             RequestKind::Parallelize,
             RequestKind::Arrange,
+            RequestKind::Metaedit,
+            RequestKind::Duplicate,
+            RequestKind::Fix,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -85,7 +88,7 @@ pub mod zanshin {
         /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
         /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
         /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-        /// squash, never a different verb. For the other 37 tables the variant name plus `Request` IS
+        /// squash, never a different verb. For the other 40 tables the variant name plus `Request` IS
         /// the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -142,9 +145,12 @@ pub mod zanshin {
             pub const Rebase: Self = Self(40);
             pub const Parallelize: Self = Self(41);
             pub const Arrange: Self = Self(42);
+            pub const Metaedit: Self = Self(43);
+            pub const Duplicate: Self = Self(44);
+            pub const Fix: Self = Self(45);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 42;
+            pub const ENUM_MAX: u8 = 45;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -189,6 +195,9 @@ pub mod zanshin {
                 Self::Rebase,
                 Self::Parallelize,
                 Self::Arrange,
+                Self::Metaedit,
+                Self::Duplicate,
+                Self::Fix,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -236,6 +245,9 @@ pub mod zanshin {
                     Self::Rebase => Some("Rebase"),
                     Self::Parallelize => Some("Parallelize"),
                     Self::Arrange => Some("Arrange"),
+                    Self::Metaedit => Some("Metaedit"),
+                    Self::Duplicate => Some("Duplicate"),
+                    Self::Fix => Some("Fix"),
                     _ => None,
                 }
             }
@@ -3182,13 +3194,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 47;
+        pub const ENUM_MAX_PAYLOAD: u8 = 48;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 48] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 49] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -3237,6 +3249,7 @@ pub mod zanshin {
             Payload::GitFetchRemotes,
             Payload::DropActions,
             Payload::ChangeActions,
+            Payload::FixResult,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -3292,9 +3305,10 @@ pub mod zanshin {
             pub const GitFetchRemotes: Self = Self(45);
             pub const DropActions: Self = Self(46);
             pub const ChangeActions: Self = Self(47);
+            pub const FixResult: Self = Self(48);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 47;
+            pub const ENUM_MAX: u8 = 48;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -3344,6 +3358,7 @@ pub mod zanshin {
                 Self::GitFetchRemotes,
                 Self::DropActions,
                 Self::ChangeActions,
+                Self::FixResult,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -3396,6 +3411,7 @@ pub mod zanshin {
                     Self::GitFetchRemotes => Some("GitFetchRemotes"),
                     Self::DropActions => Some("DropActions"),
                     Self::ChangeActions => Some("ChangeActions"),
+                    Self::FixResult => Some("FixResult"),
                     _ => None,
                 }
             }
@@ -5615,6 +5631,748 @@ pub mod zanshin {
                 ds.field("kind", &self.kind());
                 ds.field("revisions", &self.revisions());
                 ds.field("actions", &self.actions());
+                ds.finish()
+            }
+        }
+        pub enum MetaeditRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_metaedit` (Story 9.9) — the CLI's `jj metaedit` flags, one field each.
+        ///
+        ///   revisions          change ids (jj reverse-hex); ABSENT or EMPTY = the CLI's default `@`
+        ///   update_change_id   `--update-change-id`
+        ///   message            the CLI's repeatable `-m`: ABSENT = no `-m` (the description stays),
+        ///                      present (even empty) = the paragraphs, joined as the CLI joins them
+        ///   update_author_timestamp / update_author / force_rewrite   the CLI's
+        ///                      `--update-author-timestamp` / `--update-author` / `--force-rewrite`
+        ///   author             `--author`, the CLI's `Name <email>` string; ABSENT = not given
+        ///   author_timestamp   `--author-timestamp`, RFC 2822 or RFC 3339; ABSENT = not given
+        ///
+        /// A malformed `author` / `author_timestamp`, `author` with `update_author`, or
+        /// `author_timestamp` with `update_author_timestamp` is clap's refusal (`jj.invalid_input`),
+        /// before the snapshot.
+        pub struct MetaeditRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for MetaeditRequest<'a> {
+            type Inner = MetaeditRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> MetaeditRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISIONS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_UPDATE_CHANGE_ID: ::flatbuffers::VOffsetT = 8;
+            pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_UPDATE_AUTHOR_TIMESTAMP: ::flatbuffers::VOffsetT = 12;
+            pub const VT_UPDATE_AUTHOR: ::flatbuffers::VOffsetT = 14;
+            pub const VT_AUTHOR: ::flatbuffers::VOffsetT = 16;
+            pub const VT_AUTHOR_TIMESTAMP: ::flatbuffers::VOffsetT = 18;
+            pub const VT_FORCE_REWRITE: ::flatbuffers::VOffsetT = 20;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                MetaeditRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args MetaeditRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<MetaeditRequest<'bldr>> {
+                let mut builder = MetaeditRequestBuilder::new(_fbb);
+                if let Some(x) = args.author_timestamp {
+                    builder.add_author_timestamp(x);
+                }
+                if let Some(x) = args.author {
+                    builder.add_author(x);
+                }
+                if let Some(x) = args.message {
+                    builder.add_message(x);
+                }
+                if let Some(x) = args.revisions {
+                    builder.add_revisions(x);
+                }
+                builder.add_force_rewrite(args.force_rewrite);
+                builder.add_update_author(args.update_author);
+                builder.add_update_author_timestamp(args.update_author_timestamp);
+                builder.add_update_change_id(args.update_change_id);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(MetaeditRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revisions(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(MetaeditRequest::VT_REVISIONS, None)
+                }
+            }
+            #[inline]
+            pub fn update_change_id(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(MetaeditRequest::VT_UPDATE_CHANGE_ID, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn message(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(MetaeditRequest::VT_MESSAGE, None)
+                }
+            }
+            #[inline]
+            pub fn update_author_timestamp(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(MetaeditRequest::VT_UPDATE_AUTHOR_TIMESTAMP, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn update_author(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(MetaeditRequest::VT_UPDATE_AUTHOR, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn author(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(MetaeditRequest::VT_AUTHOR, None)
+                }
+            }
+            #[inline]
+            pub fn author_timestamp(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(MetaeditRequest::VT_AUTHOR_TIMESTAMP, None)
+                }
+            }
+            #[inline]
+            pub fn force_rewrite(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(MetaeditRequest::VT_FORCE_REWRITE, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for MetaeditRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("revisions", Self::VT_REVISIONS, false)?
+     .visit_field::<bool>("update_change_id", Self::VT_UPDATE_CHANGE_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("message", Self::VT_MESSAGE, false)?
+     .visit_field::<bool>("update_author_timestamp", Self::VT_UPDATE_AUTHOR_TIMESTAMP, false)?
+     .visit_field::<bool>("update_author", Self::VT_UPDATE_AUTHOR, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("author", Self::VT_AUTHOR, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("author_timestamp", Self::VT_AUTHOR_TIMESTAMP, false)?
+     .visit_field::<bool>("force_rewrite", Self::VT_FORCE_REWRITE, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct MetaeditRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revisions:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub update_change_id: bool,
+            pub message:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub update_author_timestamp: bool,
+            pub update_author: bool,
+            pub author: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub author_timestamp: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub force_rewrite: bool,
+        }
+        impl<'a> Default for MetaeditRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                MetaeditRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revisions: None,
+                    update_change_id: false,
+                    message: None,
+                    update_author_timestamp: false,
+                    update_author: false,
+                    author: None,
+                    author_timestamp: None,
+                    force_rewrite: false,
+                }
+            }
+        }
+
+        pub struct MetaeditRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MetaeditRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(MetaeditRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revisions(
+                &mut self,
+                revisions: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(MetaeditRequest::VT_REVISIONS, revisions);
+            }
+            #[inline]
+            pub fn add_update_change_id(&mut self, update_change_id: bool) {
+                self.fbb_
+                    .push_slot::<bool>(MetaeditRequest::VT_UPDATE_CHANGE_ID, update_change_id, false);
+            }
+            #[inline]
+            pub fn add_message(
+                &mut self,
+                message: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(MetaeditRequest::VT_MESSAGE, message);
+            }
+            #[inline]
+            pub fn add_update_author_timestamp(&mut self, update_author_timestamp: bool) {
+                self.fbb_.push_slot::<bool>(
+                    MetaeditRequest::VT_UPDATE_AUTHOR_TIMESTAMP,
+                    update_author_timestamp,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_update_author(&mut self, update_author: bool) {
+                self.fbb_
+                    .push_slot::<bool>(MetaeditRequest::VT_UPDATE_AUTHOR, update_author, false);
+            }
+            #[inline]
+            pub fn add_author(&mut self, author: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(MetaeditRequest::VT_AUTHOR, author);
+            }
+            #[inline]
+            pub fn add_author_timestamp(&mut self, author_timestamp: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    MetaeditRequest::VT_AUTHOR_TIMESTAMP,
+                    author_timestamp,
+                );
+            }
+            #[inline]
+            pub fn add_force_rewrite(&mut self, force_rewrite: bool) {
+                self.fbb_
+                    .push_slot::<bool>(MetaeditRequest::VT_FORCE_REWRITE, force_rewrite, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MetaeditRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                MetaeditRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<MetaeditRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for MetaeditRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("MetaeditRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revisions", &self.revisions());
+                ds.field("update_change_id", &self.update_change_id());
+                ds.field("message", &self.message());
+                ds.field("update_author_timestamp", &self.update_author_timestamp());
+                ds.field("update_author", &self.update_author());
+                ds.field("author", &self.author());
+                ds.field("author_timestamp", &self.author_timestamp());
+                ds.field("force_rewrite", &self.force_rewrite());
+                ds.finish()
+            }
+        }
+        pub enum DuplicateRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_duplicate` (Story 9.9) — the CLI's `jj duplicate` flags; change ids are
+        /// jj reverse-hex. ABSENT or EMPTY is the flag not given.
+        ///
+        ///   revisions          ABSENT or EMPTY = the CLI's default `@`
+        ///   onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`; none = each duplicate
+        ///                      onto its original's parents; `onto` excludes the other two (else
+        ///                      `jj.invalid_input`, before the snapshot)
+        pub struct DuplicateRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for DuplicateRequest<'a> {
+            type Inner = DuplicateRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> DuplicateRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISIONS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ONTO: ::flatbuffers::VOffsetT = 8;
+            pub const VT_INSERT_AFTER: ::flatbuffers::VOffsetT = 10;
+            pub const VT_INSERT_BEFORE: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DuplicateRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DuplicateRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DuplicateRequest<'bldr>> {
+                let mut builder = DuplicateRequestBuilder::new(_fbb);
+                if let Some(x) = args.insert_before {
+                    builder.add_insert_before(x);
+                }
+                if let Some(x) = args.insert_after {
+                    builder.add_insert_after(x);
+                }
+                if let Some(x) = args.onto {
+                    builder.add_onto(x);
+                }
+                if let Some(x) = args.revisions {
+                    builder.add_revisions(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(DuplicateRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revisions(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(DuplicateRequest::VT_REVISIONS, None)
+                }
+            }
+            #[inline]
+            pub fn onto(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(DuplicateRequest::VT_ONTO, None)
+                }
+            }
+            #[inline]
+            pub fn insert_after(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(DuplicateRequest::VT_INSERT_AFTER, None)
+                }
+            }
+            #[inline]
+            pub fn insert_before(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(DuplicateRequest::VT_INSERT_BEFORE, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for DuplicateRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("revisions", Self::VT_REVISIONS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("onto", Self::VT_ONTO, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_after", Self::VT_INSERT_AFTER, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_before", Self::VT_INSERT_BEFORE, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct DuplicateRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revisions:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub onto:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub insert_after:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub insert_before:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for DuplicateRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DuplicateRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revisions: None,
+                    onto: None,
+                    insert_after: None,
+                    insert_before: None,
+                }
+            }
+        }
+
+        pub struct DuplicateRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DuplicateRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(DuplicateRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revisions(
+                &mut self,
+                revisions: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DuplicateRequest::VT_REVISIONS, revisions);
+            }
+            #[inline]
+            pub fn add_onto(
+                &mut self,
+                onto: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DuplicateRequest::VT_ONTO, onto);
+            }
+            #[inline]
+            pub fn add_insert_after(
+                &mut self,
+                insert_after: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DuplicateRequest::VT_INSERT_AFTER, insert_after);
+            }
+            #[inline]
+            pub fn add_insert_before(
+                &mut self,
+                insert_before: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DuplicateRequest::VT_INSERT_BEFORE, insert_before);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DuplicateRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DuplicateRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DuplicateRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for DuplicateRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DuplicateRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revisions", &self.revisions());
+                ds.field("onto", &self.onto());
+                ds.field("insert_after", &self.insert_after());
+                ds.field("insert_before", &self.insert_before());
+                ds.finish()
+            }
+        }
+        pub enum FixRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_fix` (Story 9.9) — the CLI's `jj fix` flags.
+        ///
+        ///   source             `-s`, change ids (jj reverse-hex); ABSENT or EMPTY = the `revsets.fix`
+        ///                      setting (jj's default `reachable(@, mutable())`)
+        ///   paths              repo-relative PREFIXES to fix; ABSENT or EMPTY = every path
+        ///   include_unchanged_files / all_lines   the CLI's `--include-unchanged-files` / `--all-lines`
+        pub struct FixRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FixRequest<'a> {
+            type Inner = FixRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FixRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SOURCE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_INCLUDE_UNCHANGED_FILES: ::flatbuffers::VOffsetT = 10;
+            pub const VT_ALL_LINES: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FixRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FixRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FixRequest<'bldr>> {
+                let mut builder = FixRequestBuilder::new(_fbb);
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.source {
+                    builder.add_source(x);
+                }
+                builder.add_all_lines(args.all_lines);
+                builder.add_include_unchanged_files(args.include_unchanged_files);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(FixRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn source(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(FixRequest::VT_SOURCE, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(FixRequest::VT_PATHS, None)
+                }
+            }
+            #[inline]
+            pub fn include_unchanged_files(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(FixRequest::VT_INCLUDE_UNCHANGED_FILES, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn all_lines(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(FixRequest::VT_ALL_LINES, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FixRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("source", Self::VT_SOURCE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .visit_field::<bool>("include_unchanged_files", Self::VT_INCLUDE_UNCHANGED_FILES, false)?
+     .visit_field::<bool>("all_lines", Self::VT_ALL_LINES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct FixRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub source:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub include_unchanged_files: bool,
+            pub all_lines: bool,
+        }
+        impl<'a> Default for FixRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FixRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    source: None,
+                    paths: None,
+                    include_unchanged_files: false,
+                    all_lines: false,
+                }
+            }
+        }
+
+        pub struct FixRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FixRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(FixRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_source(
+                &mut self,
+                source: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FixRequest::VT_SOURCE, source);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FixRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn add_include_unchanged_files(&mut self, include_unchanged_files: bool) {
+                self.fbb_
+                    .push_slot::<bool>(FixRequest::VT_INCLUDE_UNCHANGED_FILES, include_unchanged_files, false);
+            }
+            #[inline]
+            pub fn add_all_lines(&mut self, all_lines: bool) {
+                self.fbb_.push_slot::<bool>(FixRequest::VT_ALL_LINES, all_lines, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FixRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FixRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FixRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FixRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FixRequest");
+                ds.field("kind", &self.kind());
+                ds.field("source", &self.source());
+                ds.field("paths", &self.paths());
+                ds.field("include_unchanged_files", &self.include_unchanged_files());
+                ds.field("all_lines", &self.all_lines());
                 ds.finish()
             }
         }
@@ -18676,6 +19434,326 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum FixToolStderrOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// What one `jj fix` tool run wrote to stderr (Story 9.9) — the CLI copies it to the terminal
+        /// under `<path>:`.
+        pub struct FixToolStderr<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FixToolStderr<'a> {
+            type Inner = FixToolStderr<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FixToolStderr<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+            pub const VT_STDERR: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FixToolStderr { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FixToolStderrArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FixToolStderr<'bldr>> {
+                let mut builder = FixToolStderrBuilder::new(_fbb);
+                if let Some(x) = args.stderr {
+                    builder.add_stderr(x);
+                }
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FixToolStderr::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn stderr(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FixToolStderr::VT_STDERR, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FixToolStderr<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("stderr", Self::VT_STDERR, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FixToolStderrArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub stderr: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for FixToolStderrArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FixToolStderrArgs {
+                    path: None,
+                    stderr: None,
+                }
+            }
+        }
+
+        pub struct FixToolStderrBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FixToolStderrBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FixToolStderr::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_stderr(&mut self, stderr: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FixToolStderr::VT_STDERR, stderr);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FixToolStderrBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FixToolStderrBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FixToolStderr<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FixToolStderr<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FixToolStderr");
+                ds.field("path", &self.path());
+                ds.field("stderr", &self.stderr());
+                ds.finish()
+            }
+        }
+        pub enum FixResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of a successful `zanshin_fix` (Story 9.9).
+        ///
+        /// `mutation` is NESTED rather than flattened so the op-id / working-copy contract has one
+        /// definition; its `new_change_ids` / `abandoned_change_ids` are always empty. With
+        /// `num_fixed_commits == 0` no operation was written, so `mutation.new_op_id` is the PRE-CALL
+        /// op-log head. The two counts are jj-lib's (`fixed <n> commits`, and the commits whose files the
+        /// tools saw), saturating at 4294967295. `tool_stderr` holds one entry per tool run that wrote to
+        /// stderr, sorted by path (then text); ABSENT or EMPTY when none did.
+        pub struct FixResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FixResult<'a> {
+            type Inner = FixResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FixResult<'a> {
+            pub const VT_MUTATION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NUM_FIXED_COMMITS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NUM_CHECKED_COMMITS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TOOL_STDERR: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FixResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FixResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FixResult<'bldr>> {
+                let mut builder = FixResultBuilder::new(_fbb);
+                if let Some(x) = args.tool_stderr {
+                    builder.add_tool_stderr(x);
+                }
+                builder.add_num_checked_commits(args.num_checked_commits);
+                builder.add_num_fixed_commits(args.num_fixed_commits);
+                if let Some(x) = args.mutation {
+                    builder.add_mutation(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn mutation(&self) -> Option<MutationResult<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<MutationResult>>(FixResult::VT_MUTATION, None)
+                }
+            }
+            #[inline]
+            pub fn num_fixed_commits(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(FixResult::VT_NUM_FIXED_COMMITS, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn num_checked_commits(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(FixResult::VT_NUM_CHECKED_COMMITS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn tool_stderr(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FixToolStderr<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FixToolStderr>>,
+                    >>(FixResult::VT_TOOL_STDERR, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FixResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<MutationResult>>(
+                        "mutation",
+                        Self::VT_MUTATION,
+                        false,
+                    )?
+                    .visit_field::<u32>("num_fixed_commits", Self::VT_NUM_FIXED_COMMITS, false)?
+                    .visit_field::<u32>("num_checked_commits", Self::VT_NUM_CHECKED_COMMITS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FixToolStderr>>,
+                    >>("tool_stderr", Self::VT_TOOL_STDERR, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FixResultArgs<'a> {
+            pub mutation: Option<::flatbuffers::WIPOffset<MutationResult<'a>>>,
+            pub num_fixed_commits: u32,
+            pub num_checked_commits: u32,
+            pub tool_stderr: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FixToolStderr<'a>>>>,
+            >,
+        }
+        impl<'a> Default for FixResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FixResultArgs {
+                    mutation: None,
+                    num_fixed_commits: 0,
+                    num_checked_commits: 0,
+                    tool_stderr: None,
+                }
+            }
+        }
+
+        pub struct FixResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FixResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_mutation(&mut self, mutation: ::flatbuffers::WIPOffset<MutationResult<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<MutationResult>>(FixResult::VT_MUTATION, mutation);
+            }
+            #[inline]
+            pub fn add_num_fixed_commits(&mut self, num_fixed_commits: u32) {
+                self.fbb_
+                    .push_slot::<u32>(FixResult::VT_NUM_FIXED_COMMITS, num_fixed_commits, 0);
+            }
+            #[inline]
+            pub fn add_num_checked_commits(&mut self, num_checked_commits: u32) {
+                self.fbb_
+                    .push_slot::<u32>(FixResult::VT_NUM_CHECKED_COMMITS, num_checked_commits, 0);
+            }
+            #[inline]
+            pub fn add_tool_stderr(
+                &mut self,
+                tool_stderr: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<FixToolStderr<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FixResult::VT_TOOL_STDERR, tool_stderr);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FixResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FixResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FixResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FixResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FixResult");
+                ds.field("mutation", &self.mutation());
+                ds.field("num_fixed_commits", &self.num_fixed_commits());
+                ds.field("num_checked_commits", &self.num_checked_commits());
+                ds.field("tool_stderr", &self.tool_stderr());
+                ds.finish()
+            }
+        }
         pub enum ActionOutcomeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -29148,6 +30226,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_fix_result(&self) -> Option<FixResult<'a>> {
+                if self.data_type() == Payload::FixResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { FixResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -29208,6 +30301,7 @@ pub mod zanshin {
           Payload::GitFetchRemotes => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitFetchRemotes>>("Payload::GitFetchRemotes", pos),
           Payload::DropActions => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<DropActions>>("Payload::DropActions", pos),
           Payload::ChangeActions => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ChangeActions>>("Payload::ChangeActions", pos),
+          Payload::FixResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<FixResult>>("Payload::FixResult", pos),
           _ => Ok(()),
         }
      })?
@@ -29628,6 +30722,13 @@ pub mod zanshin {
                     }
                     Payload::ChangeActions => {
                         if let Some(x) = self.data_as_change_actions() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::FixResult => {
+                        if let Some(x) = self.data_as_fix_result() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

@@ -45,8 +45,10 @@ pub(crate) mod drop_actions;
 pub(crate) mod duplicate;
 pub(crate) mod environment;
 pub(crate) mod file;
+pub(crate) mod fix;
 pub(crate) mod git;
 pub(crate) mod graph;
+pub(crate) mod metaedit;
 pub(crate) mod mutate;
 pub(crate) mod op_log;
 pub(crate) mod op_support;
@@ -91,10 +93,13 @@ pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};
 pub use drop_actions::{
     ActionOutcome, ActionStatus, ChangeActions, DropAction, DropActions, DropLocation, DropSource, DropVerb,
 };
+pub use duplicate::DuplicateOptions;
 pub use environment::adopt_environment;
 pub use file::{AnnotationLine, FileContents, FileEntry, FileError, FileSearch, FileType, SearchMatch, ShownFile};
+pub use fix::{FixOptions, FixResult, FixToolStderr};
 pub use git::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate, GitRefUpdateKind};
 pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};
+pub use metaedit::MetaeditOptions;
 pub use mutate::{AbsorbResult, MutateError, MutationResult, SkippedPath};
 pub use op_log::{OpLogError, Operation, OperationId};
 pub use push::{

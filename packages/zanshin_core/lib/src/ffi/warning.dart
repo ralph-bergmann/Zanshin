@@ -231,6 +231,31 @@ abstract final class ZanshinWarningCode {
   /// `trunk()` = `root()`, as the jj CLI does (Story 9.56).
   static const trunkAliasUnresolved = 'jj.trunk_alias_unresolved';
 
+  /// `duplicate` duplicated a commit as a descendant of itself; the duplicate
+  /// is still made (Story 9.9).
+  static const duplicateAsOwnDescendant = 'jj.duplicate_as_own_descendant';
+
+  /// `duplicate` duplicated a commit as an ancestor of itself; the duplicate is
+  /// still made (Story 9.9).
+  static const duplicateAsOwnAncestor = 'jj.duplicate_as_own_ancestor';
+
+  /// `fix` could not start a configured tool; it is skipped for that file
+  /// (Story 9.9).
+  static const fixToolStartFailed = 'jj.fix_tool_start_failed';
+
+  /// A `fix` tool exited non-zero for a file; its output is discarded and its
+  /// stderr rides `FixResult.toolStderr` (Story 9.9).
+  static const fixToolFailed = 'jj.fix_tool_failed';
+
+  /// A `fix.tools.<name>.patterns` fileset parsed with a diagnostic; the
+  /// pattern still applies (Story 9.9).
+  static const filesetDiagnostic = 'jj.fileset_diagnostic';
+
+  /// A config layer uses a deprecated key the jj CLI migrates at start-up
+  /// (today `fix.tools.<name>.line-range-arg`); the call runs with the migrated
+  /// key (Story 9.9).
+  static const configDeprecated = 'jj.config_deprecated';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -293,6 +318,12 @@ abstract final class ZanshinWarningCode {
     fetchRefspecIgnored,
     fetchBranchesUnmatched,
     trunkAliasUnresolved,
+    duplicateAsOwnDescendant,
+    duplicateAsOwnAncestor,
+    fixToolStartFailed,
+    fixToolFailed,
+    filesetDiagnostic,
+    configDeprecated,
     loginShellUnresolved,
   ];
 }

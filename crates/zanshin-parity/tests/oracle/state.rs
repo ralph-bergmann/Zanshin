@@ -107,7 +107,7 @@ async fn capture_async(root: &Path, before: Option<&State>) -> State {
     .await
     .expect("load the repo at its operation head");
     let commits = visible_commits(&repo).await;
-    let order = topological_order(repo.store().root_commit_id(), &commits);
+    let order = topological_order(repo.store().root_commit_id(), &commits, &place_keys(&repo, &commits));
     let labels = Labels::new(repo.store().root_commit_id(), &order, &commits);
 
     let mut aspects = commit_aspects(&repo, &order, &commits, &labels, before).await;
@@ -198,9 +198,42 @@ async fn visible_commits(repo: &ReadonlyRepo) -> HashMap<CommitId, Commit> {
     commits
 }
 
-/// Root first. Among the commits whose parents are all placed, (description, tree) decides, so
-/// two repos with the same content produce the same order.
-fn topological_order(root: &CommitId, commits: &HashMap<CommitId, Commit>) -> Vec<CommitId> {
+/// Per commit, where it sits beyond its content: whether it is the default workspace's `@`, how
+/// many visible children it has, and the local bookmarks on it — the tie-break between two
+/// commits of equal description and tree (Story 9.9: a duplicate and its original).
+fn place_keys(repo: &ReadonlyRepo, commits: &HashMap<CommitId, Commit>) -> HashMap<CommitId, String> {
+    let view = repo.view();
+    let at = view.get_wc_commit_id(WorkspaceName::DEFAULT);
+    let mut children: HashMap<&CommitId, usize> = HashMap::new();
+    for commit in commits.values() {
+        for parent in commit.parent_ids() {
+            *children.entry(parent).or_default() += 1;
+        }
+    }
+    commits
+        .keys()
+        .map(|id| {
+            let bookmarks: Vec<&str> = view
+                .local_bookmarks_for_commit(id)
+                .map(|(name, _)| name.as_str())
+                .collect();
+            let key = format!(
+                "at={} children={} bookmarks={bookmarks:?}",
+                at == Some(id),
+                children.get(id).copied().unwrap_or(0)
+            );
+            (id.clone(), key)
+        })
+        .collect()
+}
+
+/// Root first. Among the commits whose parents are all placed, (description, tree, place) decides,
+/// so two repos with the same content produce the same order.
+fn topological_order(
+    root: &CommitId,
+    commits: &HashMap<CommitId, Commit>,
+    places: &HashMap<CommitId, String>,
+) -> Vec<CommitId> {
     let mut children: HashMap<&CommitId, Vec<&CommitId>> = HashMap::new();
     let mut waiting: HashMap<&CommitId, usize> = HashMap::new();
     for (id, commit) in commits {
@@ -209,7 +242,13 @@ fn topological_order(root: &CommitId, commits: &HashMap<CommitId, Commit>) -> Ve
             children.entry(parent).or_default().push(id);
         }
     }
-    let key = |id: &CommitId| (commits[id].description().to_owned(), tree_text(&commits[id]));
+    let key = |id: &CommitId| {
+        (
+            commits[id].description().to_owned(),
+            tree_text(&commits[id]),
+            places[id].clone(),
+        )
+    };
     let mut ready = vec![root];
     let mut order = Vec::new();
     while !ready.is_empty() {

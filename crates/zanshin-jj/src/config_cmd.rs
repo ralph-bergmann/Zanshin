@@ -536,18 +536,22 @@ fn fix_up(
     Ok(())
 }
 
-/// The CLI's start-up: raw stack → resolved with `command` → `UserSettings`. With `fix_ups` (and
-/// a workspace) the raw load is the CLI's start-up load, secure-config fix-up included
-/// (Story 9.37); its warnings land there, on success AND on failure.
+/// The CLI's start-up: raw stack → resolved with `command` (and migrated) → `UserSettings`. With
+/// `fix_ups` (and a workspace) the raw load is the CLI's start-up load, secure-config fix-up
+/// included (Story 9.37); its warnings land there, on success AND on failure, followed by the
+/// migrations' "Deprecated … config" warnings (Story 9.9).
 fn startup(
     env: &ConfigEnv,
     ws: Option<&WorkspaceDirs>,
     command: &str,
-    fix_ups: Option<&mut Vec<crate::Warning>>,
+    mut fix_ups: Option<&mut Vec<crate::Warning>>,
 ) -> Result<UserSettings, ConfigCmdError> {
     let paths = ws.map(WorkspaceDirs::paths);
-    let raw = config::load_raw(env, paths, fix_ups)?;
-    let resolved = config::resolve_raw(env, paths, &raw, Some(command))?;
+    let raw = config::load_raw(env, paths, fix_ups.as_deref_mut())?;
+    let (resolved, deprecations) = config::resolve_raw(env, paths, &raw, Some(command))?;
+    if let Some(sink) = fix_ups {
+        sink.extend(config::deprecation_warnings(deprecations));
+    }
     Ok(config::settings_from(env, resolved)?)
 }
 

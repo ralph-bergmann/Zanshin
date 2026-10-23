@@ -14,6 +14,9 @@ use jj_lib::workspace::Workspace;
 use zanshin_jj::CommitOptions;
 use zanshin_jj::ConfigScope;
 use zanshin_jj::ConfigTarget;
+use zanshin_jj::DuplicateOptions;
+use zanshin_jj::FixOptions;
+use zanshin_jj::MetaeditOptions;
 use zanshin_jj::RebaseOptions;
 use zanshin_jj::SparseInheritance;
 use zanshin_jj::SplitOptions;
@@ -2281,6 +2284,10 @@ pub fn scenarios() -> Vec<Scenario> {
     .chain(rebase_i1_and_immutable_scenarios())
     .chain(rebase_repeated_and_refusal_scenarios())
     .chain(clap_refusal_scenarios())
+    .chain(metaedit_scenarios())
+    .chain(metaedit_author_and_refusal_scenarios())
+    .chain(duplicate_scenarios())
+    .chain(fix_scenarios())
     .chain(crate::git_scenarios::push_scenarios())
     .chain(crate::git_scenarios::bookmark_auto_track_scenarios())
     .chain(crate::git_scenarios::fetch_scenarios())
@@ -2868,6 +2875,444 @@ fn clap_refusal_scenarios() -> Vec<Scenario> {
                         s.change_arg("B"),
                     ]
                 },
+            )
+        },
+    ]
+}
+
+// ── Story 9.9: metaedit, duplicate, fix ──────────────────────────────────────────
+
+/// `Repo::metaedit` with `options`.
+fn metaedit_outcome(repo: &mut zanshin_jj::Repo, options: &MetaeditOptions) -> Outcome {
+    let result = repo.metaedit(options);
+    zanshin_outcome(repo, &result)
+}
+
+/// `Repo::duplicate` with `options`.
+fn duplicate_outcome(repo: &mut zanshin_jj::Repo, options: &DuplicateOptions) -> Outcome {
+    let result = repo.duplicate(options);
+    zanshin_outcome(repo, &result)
+}
+
+/// `Repo::fix` with `options`.
+fn fix_outcome(repo: &mut zanshin_jj::Repo, options: &FixOptions) -> Outcome {
+    let result = repo.fix(options);
+    zanshin_outcome(repo, &result)
+}
+
+/// `jj <verb>`, each `(flag, label)` pair as the flag and the label's change id (`root` as
+/// `root()`), then the plain `tail` arguments.
+fn verb_argv(s: &State, verb: &str, pairs: &[(&str, &str)], tail: &[&str]) -> Vec<String> {
+    let mut argv = rebase_argv_repeated(s, pairs);
+    argv.splice(..1, [verb.to_owned()]);
+    argv.extend(tail.iter().map(|arg| (*arg).to_owned()));
+    argv
+}
+
+/// Every visible commit's author timestamp: a fixed one (before 2001-09-09) as epoch millis and
+/// offset, else `recent` — the timestamps the steps write differ between the two repos.
+fn author_timestamps(root: &Path) -> String {
+    let (_workspace, repo) = load_workspace(root);
+    let mut stack: Vec<CommitId> = repo.view().heads().iter().cloned().collect();
+    let mut seen = std::collections::HashSet::new();
+    let mut lines = Vec::new();
+    while let Some(id) = stack.pop() {
+        if !seen.insert(id.clone()) || &id == repo.store().root_commit_id() {
+            continue;
+        }
+        let commit = repo.store().get_commit(&id).expect("a visible commit");
+        stack.extend(commit.parent_ids().iter().cloned());
+        let timestamp = &commit.author().timestamp;
+        let when = if timestamp.timestamp.0 < 1_000_000_000_000 {
+            format!("{}{:+}", timestamp.timestamp.0, timestamp.tz_offset)
+        } else {
+            "recent".to_owned()
+        };
+        lines.push(format!("{}={when}", first_line(commit.description())));
+    }
+    lines.sort();
+    lines.join("  ")
+}
+
+/// metaedit: the message forms and a new change id.
+fn metaedit_scenarios() -> Vec<Scenario> {
+    vec![
+        simple(
+            "metaedit_message",
+            |repo, _, _| {
+                let options = MetaeditOptions {
+                    message: Some(vec!["X".to_owned()]),
+                    ..MetaeditOptions::default()
+                };
+                metaedit_outcome(repo, &options)
+            },
+            |_| args(&["metaedit", "-m", "X"]),
+        ),
+        simple(
+            "metaedit_revision_message",
+            |repo, _, s| {
+                let options = MetaeditOptions {
+                    revisions: vec![s.change("B")],
+                    message: Some(vec!["X".to_owned()]),
+                    ..MetaeditOptions::default()
+                };
+                metaedit_outcome(repo, &options)
+            },
+            |s| verb_argv(s, "metaedit", &[("-r", "B")], &["-m", "X"]),
+        ),
+        simple(
+            "metaedit_update_change_id",
+            |repo, _, s| {
+                let options = MetaeditOptions {
+                    revisions: vec![s.change("B")],
+                    update_change_id: true,
+                    ..MetaeditOptions::default()
+                };
+                metaedit_outcome(repo, &options)
+            },
+            |s| verb_argv(s, "metaedit", &[("-r", "B")], &["--update-change-id"]),
+        ),
+    ]
+}
+
+/// metaedit: author and timestamp, the no-op gates, the root refusal and a clap refusal on a dirty
+/// working copy.
+fn metaedit_author_and_refusal_scenarios() -> Vec<Scenario> {
+    vec![
+        Scenario {
+            extra: Some(author_timestamps),
+            ..simple(
+                "metaedit_author",
+                |repo, _, _| {
+                    let options = MetaeditOptions {
+                        author: Some("Foo <foo@bar>".to_owned()),
+                        ..MetaeditOptions::default()
+                    };
+                    metaedit_outcome(repo, &options)
+                },
+                |_| args(&["metaedit", "--author", "Foo <foo@bar>"]),
+            )
+        },
+        Scenario {
+            extra: Some(author_timestamps),
+            ..simple(
+                "metaedit_author_timestamp",
+                |repo, _, _| {
+                    let options = MetaeditOptions {
+                        author_timestamp: Some("2000-01-23T01:23:45-08:00".to_owned()),
+                        ..MetaeditOptions::default()
+                    };
+                    metaedit_outcome(repo, &options)
+                },
+                |_| args(&["metaedit", "--author-timestamp", "2000-01-23T01:23:45-08:00"]),
+            )
+        },
+        // The configured identity is the one BASE was written with: nothing to rewrite, no op.
+        simple(
+            "metaedit_update_author_noop",
+            |repo, _, _| {
+                let options = MetaeditOptions {
+                    update_author: true,
+                    ..MetaeditOptions::default()
+                };
+                metaedit_outcome(repo, &options)
+            },
+            |_| args(&["metaedit", "--update-author"]),
+        ),
+        simple(
+            "metaedit_force_rewrite",
+            |repo, _, _| {
+                let options = MetaeditOptions {
+                    force_rewrite: true,
+                    ..MetaeditOptions::default()
+                };
+                metaedit_outcome(repo, &options)
+            },
+            |_| args(&["metaedit", "--force-rewrite"]),
+        ),
+        simple(
+            "metaedit_root_refused",
+            |repo, _, s| {
+                let options = MetaeditOptions {
+                    revisions: vec![s.change("root")],
+                    message: Some(vec!["X".to_owned()]),
+                    ..MetaeditOptions::default()
+                };
+                metaedit_outcome(repo, &options)
+            },
+            |_| args(&["metaedit", "-r", "root()", "-m", "X"]),
+        ),
+        simple(
+            "metaedit_unchanged_message_noop",
+            |repo, _, _| {
+                let options = MetaeditOptions {
+                    message: Some(vec!["C".to_owned()]),
+                    ..MetaeditOptions::default()
+                };
+                metaedit_outcome(repo, &options)
+            },
+            |_| args(&["metaedit", "-m", "C"]),
+        ),
+        Scenario {
+            files: DIRTY_C,
+            extra: Some(author_timestamps),
+            ..simple(
+                "metaedit_clap_conflict_dirty_wc",
+                |repo, _, _| {
+                    let options = MetaeditOptions {
+                        author: Some("Foo <foo@bar>".to_owned()),
+                        update_author: true,
+                        ..MetaeditOptions::default()
+                    };
+                    metaedit_outcome(repo, &options)
+                },
+                |_| args(&["metaedit", "--author", "Foo <foo@bar>", "--update-author"]),
+            )
+        },
+    ]
+}
+
+/// `templates.duplicate_description` prefixing every duplicate's description.
+const DUPLICATE_DESCRIPTION: &[Step] = &[Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "templates.duplicate_description",
+    "'\"dup \" ++ description'",
+])];
+
+/// duplicate: the default, each location flag, the two self-relation warnings, several
+/// revisions, the root refusal and the description template.
+fn duplicate_scenarios() -> Vec<Scenario> {
+    vec![
+        simple(
+            "duplicate_default",
+            |repo, _, _| duplicate_outcome(repo, &DuplicateOptions::default()),
+            |_| args(&["duplicate"]),
+        ),
+        simple(
+            "duplicate_revision",
+            |repo, _, s| duplicate_outcome(repo, &dup(s, &["B"], "", &[])),
+            |s| verb_argv(s, "duplicate", &[("-r", "B")], &[]),
+        ),
+        simple(
+            "duplicate_onto_root",
+            |repo, _, s| duplicate_outcome(repo, &dup(s, &["B"], "-o", &["root"])),
+            |s| verb_argv(s, "duplicate", &[("-r", "B"), ("-o", "root")], &[]),
+        ),
+        simple(
+            "duplicate_insert_after",
+            |repo, _, s| duplicate_outcome(repo, &dup(s, &["C"], "-A", &["A"])),
+            |s| verb_argv(s, "duplicate", &[("-r", "C"), ("-A", "A")], &[]),
+        ),
+        simple(
+            "duplicate_insert_before",
+            |repo, _, s| duplicate_outcome(repo, &dup(s, &["B"], "-B", &["C"])),
+            |s| verb_argv(s, "duplicate", &[("-r", "B"), ("-B", "C")], &[]),
+        ),
+        simple(
+            "duplicate_as_own_descendant",
+            |repo, _, s| duplicate_outcome(repo, &dup(s, &["A"], "-o", &["C"])),
+            |s| verb_argv(s, "duplicate", &[("-r", "A"), ("-o", "C")], &[]),
+        ),
+        simple(
+            "duplicate_as_own_ancestor",
+            |repo, _, s| duplicate_outcome(repo, &dup(s, &["C"], "-B", &["B"])),
+            |s| verb_argv(s, "duplicate", &[("-r", "C"), ("-B", "B")], &[]),
+        ),
+        simple(
+            "duplicate_two_revisions",
+            |repo, _, s| duplicate_outcome(repo, &dup(s, &["B", "C"], "", &[])),
+            |s| verb_argv(s, "duplicate", &[("-r", "B"), ("-r", "C")], &[]),
+        ),
+        simple(
+            "duplicate_root_refused",
+            |repo, _, s| duplicate_outcome(repo, &dup(s, &["root"], "", &[])),
+            |_| args(&["duplicate", "root()"]),
+        ),
+        Scenario {
+            setup: DUPLICATE_DESCRIPTION,
+            ..simple(
+                "duplicate_description_template",
+                |repo, _, s| duplicate_outcome(repo, &dup(s, &["B"], "", &[])),
+                |s| verb_argv(s, "duplicate", &[("-r", "B")], &[]),
+            )
+        },
+    ]
+}
+
+/// `DuplicateOptions` of the commits labelled `revisions` at the location `flag` (`-o`, `-A`,
+/// `-B`, or `""` for none) of the commits labelled `labels`.
+fn dup(s: &State, revisions: &[&str], flag: &str, labels: &[&str]) -> DuplicateOptions {
+    let ids = |labels: &[&str]| labels.iter().map(|label| s.change(label)).collect::<Vec<_>>();
+    let mut options = DuplicateOptions {
+        revisions: ids(revisions),
+        ..DuplicateOptions::default()
+    };
+    match flag {
+        "-o" => options.onto = ids(labels),
+        "-A" => options.insert_after = ids(labels),
+        "-B" => options.insert_before = ids(labels),
+        _ => {}
+    }
+    options
+}
+
+/// The `fix.tools.up.patterns` step every fix scenario's tool shares.
+const FIX_PATTERNS_STEP: Step = Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "fix.tools.up.patterns",
+    r#"["glob:'*.txt'"]"#,
+]);
+
+/// A tool uppercasing every `*.txt` file.
+const FIX_TOOL: &[Step] = &[
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "fix.tools.up.command",
+        r#"["tr", "a-z", "A-Z"]"#,
+    ]),
+    FIX_PATTERNS_STEP,
+];
+
+/// [`FIX_TOOL`], already applied: a second fix has nothing left to change.
+const FIX_TOOL_APPLIED: &[Step] = &[
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "fix.tools.up.command",
+        r#"["tr", "a-z", "A-Z"]"#,
+    ]),
+    FIX_PATTERNS_STEP,
+    Step::Jj(&["fix"]),
+];
+
+/// A tool that always fails (`false`): each file it is run on warns.
+const FIX_TOOL_FAILING: &[Step] = &[
+    Step::Jj(&["config", "set", "--repo", "fix.tools.up.command", r#"["false"]"#]),
+    FIX_PATTERNS_STEP,
+];
+
+/// A tool configured with the deprecated `line-range-arg`: it uppercases and appends its extra
+/// arguments, so the migrated `line-range-args` shows in the fixed trees.
+const FIX_TOOL_DEPRECATED: &[Step] = &[
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "fix.tools.up.command",
+        r#"["sh", "-c", 'tr a-z A-Z; printf "%s\n" "$@"', "sh"]"#,
+    ]),
+    FIX_PATTERNS_STEP,
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "fix.tools.up.line-range-arg",
+        "\"--l=$first\"",
+    ]),
+];
+
+/// A scenario on BASE plus [`FIX_TOOL`].
+fn fix_tool(
+    id: &'static str,
+    zanshin: fn(&mut zanshin_jj::Repo, &Path, &State) -> Outcome,
+    cli: fn(&State) -> Vec<String>,
+) -> Scenario {
+    Scenario {
+        setup: FIX_TOOL,
+        ..simple(id, zanshin, cli)
+    }
+}
+
+/// fix: the default source, `-s`, a path, `--include-unchanged-files`, nothing to fix, a failing
+/// tool, no tools, and the deprecated `line-range-arg` on `fix` and on another verb.
+fn fix_scenarios() -> Vec<Scenario> {
+    vec![
+        fix_tool(
+            "fix_default",
+            |repo, _, _| fix_outcome(repo, &FixOptions::default()),
+            |_| args(&["fix"]),
+        ),
+        fix_tool(
+            "fix_source",
+            |repo, _, s| {
+                let options = FixOptions {
+                    source: vec![s.change("B")],
+                    ..FixOptions::default()
+                };
+                fix_outcome(repo, &options)
+            },
+            |s| verb_argv(s, "fix", &[("-s", "B")], &[]),
+        ),
+        fix_tool(
+            "fix_path",
+            |repo, _, _| {
+                let options = FixOptions {
+                    paths: vec!["b.txt".to_owned()],
+                    ..FixOptions::default()
+                };
+                fix_outcome(repo, &options)
+            },
+            |_| args(&["fix", "b.txt"]),
+        ),
+        // `-s C`: without the flag only C's own `c.txt` is fixed; with it `a.txt` and `b.txt` too
+        // (from the source alone every descendant inherits its ancestors' fixes anyway).
+        fix_tool(
+            "fix_include_unchanged_files",
+            |repo, _, s| {
+                let options = FixOptions {
+                    source: vec![s.change("C")],
+                    include_unchanged_files: true,
+                    ..FixOptions::default()
+                };
+                fix_outcome(repo, &options)
+            },
+            |s| verb_argv(s, "fix", &[("-s", "C")], &["--include-unchanged-files"]),
+        ),
+        Scenario {
+            setup: FIX_TOOL_APPLIED,
+            ..simple(
+                "fix_nothing_to_fix",
+                |repo, _, _| fix_outcome(repo, &FixOptions::default()),
+                |_| args(&["fix"]),
+            )
+        },
+        Scenario {
+            setup: FIX_TOOL_FAILING,
+            ..simple(
+                "fix_failing_tool",
+                |repo, _, _| fix_outcome(repo, &FixOptions::default()),
+                |_| args(&["fix"]),
+            )
+        },
+        simple(
+            "fix_no_tools_refused",
+            |repo, _, _| fix_outcome(repo, &FixOptions::default()),
+            |_| args(&["fix"]),
+        ),
+        Scenario {
+            setup: FIX_TOOL_DEPRECATED,
+            ..simple(
+                "fix_deprecated_line_range_arg",
+                |repo, _, _| fix_outcome(repo, &FixOptions::default()),
+                |_| args(&["fix"]),
+            )
+        },
+        Scenario {
+            setup: FIX_TOOL_DEPRECATED,
+            ..simple(
+                "snapshot_deprecated_line_range_arg",
+                |repo, _, _| {
+                    let result = repo.snapshot();
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["util", "snapshot"]),
             )
         },
     ]

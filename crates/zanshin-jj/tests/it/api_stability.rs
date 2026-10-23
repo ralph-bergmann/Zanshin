@@ -19,7 +19,7 @@
 // --- Story 9.8 adds NO public type — both bookmark mutations reuse MutationResult/MutateError —
 // --- so the count moved only when follow-up F turned `interdiff`'s bare Vec into InterdiffView.
 // --- Later stories name their types in their own section below, the last being
-// --- RebaseOptions/ArrangeOptions/ArrangeAction (9.16) ------------------------------
+// --- MetaeditOptions/DuplicateOptions/FixOptions/FixResult/FixToolStderr (9.9) --------
 
 // repo
 type _Repo = zanshin_jj::Repo;
@@ -1208,6 +1208,81 @@ fn rebase_parallelize_arrange_surface_resolves() {
         ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
 }
 
+// metaedit / duplicate / fix (Story 9.9)
+type _MetaeditOptions = zanshin_jj::MetaeditOptions;
+type _DuplicateOptions = zanshin_jj::DuplicateOptions;
+type _FixOptions = zanshin_jj::FixOptions;
+type _FixResult = zanshin_jj::FixResult;
+type _FixToolStderr = zanshin_jj::FixToolStderr;
+
+/// The Story 9.9 surface: the five new types named field by field (the CLI's `jj metaedit`, `jj
+/// duplicate` and `jj fix` flags, fix's outcome), and the three `Repo` methods as `fn` pointers.
+#[test]
+fn metaedit_duplicate_fix_surface_resolves() {
+    let id = |s: &str| zanshin_jj::ChangeId(s.to_owned());
+    let metaedit = zanshin_jj::MetaeditOptions {
+        revisions: vec![id("r")],
+        update_change_id: true,
+        message: Some(vec!["m".to_owned()]),
+        update_author_timestamp: false,
+        update_author: true,
+        author: None,
+        author_timestamp: Some("2000-01-23T01:23:45-08:00".to_owned()),
+        force_rewrite: false,
+    };
+    assert_eq!(metaedit.clone(), metaedit);
+    assert_eq!(zanshin_jj::MetaeditOptions::default().message, None);
+    let duplicate = zanshin_jj::DuplicateOptions {
+        revisions: vec![id("r")],
+        onto: Vec::new(),
+        insert_after: vec![id("a")],
+        insert_before: vec![id("b")],
+    };
+    assert_eq!(duplicate.clone(), duplicate);
+    assert_eq!(zanshin_jj::DuplicateOptions::default().onto, Vec::new());
+    let fix = zanshin_jj::FixOptions {
+        source: vec![id("s")],
+        paths: vec!["p".to_owned()],
+        include_unchanged_files: true,
+        all_lines: false,
+    };
+    assert_eq!(fix.clone(), fix);
+    assert!(!zanshin_jj::FixOptions::default().all_lines);
+    let stderr = zanshin_jj::FixToolStderr {
+        path: "a.txt".to_owned(),
+        stderr: "oops".to_owned(),
+    };
+    assert_eq!(stderr.clone(), stderr);
+    let result = zanshin_jj::FixResult {
+        mutation: zanshin_jj::MutationResult {
+            new_op_id: zanshin_jj::OperationId(String::new()),
+            new_change_ids: Vec::new(),
+            abandoned_change_ids: Vec::new(),
+            working_copy_change_id: id("w"),
+            finish: None,
+        },
+        num_fixed_commits: 1,
+        num_checked_commits: 2,
+        tool_stderr: vec![stderr],
+    };
+    assert_eq!(result.num_fixed_commits + result.num_checked_commits, 3);
+    assert_eq!(result.tool_stderr.len(), 1);
+    assert!(result.mutation.finish.is_none());
+
+    _ = zanshin_jj::Repo::metaedit
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::MetaeditOptions,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::duplicate
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::DuplicateOptions,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::fix
+        as fn(&mut zanshin_jj::Repo, &zanshin_jj::FixOptions) -> Result<zanshin_jj::FixResult, zanshin_jj::MutateError>;
+}
+
 // drop actions (Story 9.31)
 type _DropSource = zanshin_jj::DropSource;
 type _DropLocation = zanshin_jj::DropLocation;
@@ -1511,7 +1586,7 @@ fn story_9_28_surface_resolves() {
 /// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds;
 /// Story 9.53 the unresolved conflicts; Story 9.51 the template diagnostic; Story 9.54's closing
 /// run the bookmark auto-track warning).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 54] = {
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 60] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -1568,6 +1643,12 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 54] = {
         K::FetchRefspecIgnored,
         K::FetchBranchesUnmatched,
         K::TrunkAliasUnresolved,
+        K::DuplicateAsOwnDescendant,
+        K::DuplicateAsOwnAncestor,
+        K::FixToolStartFailed,
+        K::FixToolFailed,
+        K::FilesetDiagnostic,
+        K::ConfigDeprecated,
     ]
 };
 
@@ -1680,10 +1761,16 @@ fn story_9_32_warning_surface_resolves() {
             | K::FetchRemotesUnmatched
             | K::FetchRefspecIgnored
             | K::FetchBranchesUnmatched
-            | K::TrunkAliasUnresolved => {}
+            | K::TrunkAliasUnresolved
+            | K::DuplicateAsOwnDescendant
+            | K::DuplicateAsOwnAncestor
+            | K::FixToolStartFailed
+            | K::FixToolFailed
+            | K::FilesetDiagnostic
+            | K::ConfigDeprecated => {}
         }
     }
-    assert_eq!(every.len(), 54);
+    assert_eq!(every.len(), 60);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

@@ -395,7 +395,8 @@ impl Repo {
     /// The start of every call that snapshots — the pre-verb precondition and
     /// [`Repo::workspace_update_stale`]: [`Repo::refresh_settings`] (its fix-up warnings the
     /// call's first, also when it fails), a fresh report and warning collector, the effective
-    /// config, the colocation check, the start-up environment
+    /// config (its migrations' "Deprecated … config" warnings right after the fix-up's, Story
+    /// 9.9), the colocation check, the start-up environment
     /// ([`crate::snapshot::CommandEnv`], built before any lock is taken), then the `trunk()`
     /// fallback ([`Repo::fall_back_on_trunk`]).
     ///
@@ -412,7 +413,9 @@ impl Repo {
         self.pending_warnings = crate::warning::Warnings::default();
         self.pending_warnings.extend(fix_ups);
         refreshed?;
-        let config = crate::config::load(self)?;
+        let (config, deprecations) = crate::config::load_migrated(self)?;
+        self.pending_warnings
+            .extend(crate::config::deprecation_warnings(deprecations));
         let colocated = crate::wc_ops::is_colocated_git_workspace(&self.workspace)
             .map_err(|e| crate::PreconditionError::Backend(crate::mutate::flatten_chain(&e)))?;
         let env = crate::snapshot::CommandEnv::load(&self.workspace, &config, &mut self.pending_warnings)?;
@@ -2787,6 +2790,142 @@ impl Repo {
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn arrange(&mut self, options: &crate::ArrangeOptions) -> Result<crate::MutationResult, crate::MutateError> {
         self.with_verb(|repo, ctx| crate::arrange::arrange(repo.workspace_mut(), ctx, options))
+    }
+
+    /// Modifies revisions' metadata without changing their content (Story 9.9) — the CLI's `jj
+    /// metaedit`.
+    ///
+    /// The targets are `options.revisions`, or `@` when empty; each is checked rewritable. A
+    /// target is rewritten when its metadata changes: `message` (the CLI's `-m` paragraphs,
+    /// joined as it joins them) differs from its description, `author` (`"Name <email>"`) or
+    /// `update_author` (the configured user) changes its author's name or email,
+    /// `author_timestamp` (RFC 2822 or RFC 3339) or `update_author_timestamp` (now) changes its
+    /// author timestamp, `update_change_id` gives it a new change id, or `force_rewrite` asks for
+    /// it; a rewrite also renews the committer. Descendants are reparented — their content stays —
+    /// and bookmarks follow.
+    ///
+    /// A call that rewrites nothing writes NO operation (`new_op_id` is the pre-call head);
+    /// otherwise the operation is the CLI's `edit commit metadata for commit <hex>` or `… <hex>
+    /// and <n> more`, full commit ids before the edit. `new_change_ids` names the change ids
+    /// `update_change_id` minted, in the rewritten commits' order; it is empty otherwise.
+    ///
+    /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — clap's refusals, before the snapshot (nothing is
+    ///   written): `author` not `Name <email>` (``invalid value '<v>' for '--author <AUTHOR>':
+    ///   Invalid author string``), `author_timestamp` neither RFC 2822 nor RFC 3339 (``invalid
+    ///   value '<v>' for '--author-timestamp <AUTHOR_TIMESTAMP>': <reason>``), `author` with
+    ///   `update_author`, `author_timestamp` with `update_author_timestamp`.
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
+    ///   commit, or divergent.
+    /// - [`crate::MutateError::RevsetResolutionError`] — the default `@` in a workspace with no
+    ///   working-copy commit.
+    /// - [`crate::MutateError::Immutable`] — a target is inside the repo's effective immutable
+    ///   set (the root commit among them).
+    /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn metaedit(&mut self, options: &crate::MetaeditOptions) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(crate::metaedit::check_metaedit_args(options), |repo, ctx| {
+            crate::metaedit::metaedit(repo.workspace_mut(), ctx, options)
+        })
+    }
+
+    /// Creates new changes with the same content as existing ones (Story 9.9) — the CLI's `jj
+    /// duplicate`.
+    ///
+    /// The originals are `options.revisions`, or `@` when empty. Without a location each
+    /// duplicate goes onto its original's parents — or onto the duplicate of a parent that is
+    /// duplicated too. With `onto` (`-o`) the roots of the originals are duplicated onto those
+    /// parents, the rest onto the new duplicates; `insert_after` / `insert_before` (`-A` / `-B`)
+    /// also rebase the children the location names onto the duplicates' heads — the location as
+    /// `jj new` resolves it, and as `drop_actions`' `duplicate` row previews it. A duplicate that
+    /// lands among its original's descendants warns [`crate::WarningKind::DuplicateAsOwnDescendant`],
+    /// one among its ancestors [`crate::WarningKind::DuplicateAsOwnAncestor`]; it is made anyway.
+    /// Each duplicate's description is `templates.duplicate_description` rendered on its original
+    /// (jj's default: the original's description).
+    ///
+    /// The operation is the CLI's `duplicate <n> commit(s)`; `new_change_ids` names the
+    /// duplicates' change ids, in jj-lib's duplication order.
+    ///
+    /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `onto` with `insert_after`/`insert_before` (clap's
+    ///   refusal: before the snapshot, so nothing is written); "Cannot duplicate the root commit";
+    ///   a location that would create a loop or resolves no parent; or (Git backend) a merge with
+    ///   the root commit as a parent.
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
+    ///   commit, or divergent.
+    /// - [`crate::MutateError::RevsetResolutionError`] — the default `@` in a workspace with no
+    ///   working-copy commit.
+    /// - [`crate::MutateError::Immutable`] — a child `insert_after`/`insert_before` would rewrite
+    ///   is inside the repo's effective immutable set.
+    /// - [`crate::MutateError::Config`] — `templates.duplicate_description` is not a string or does
+    ///   not parse ("Failed to parse template: …"), or the `immutable_heads()` alias does not
+    ///   resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn duplicate(
+        &mut self,
+        options: &crate::DuplicateOptions,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(crate::duplicate::check_duplicate_args(options), |repo, ctx| {
+            crate::duplicate::duplicate(repo.workspace_mut(), ctx, options)
+        })
+    }
+
+    /// Updates files with formatting fixes or other changes (Story 9.9) — the CLI's `jj fix`.
+    ///
+    /// The `fix.tools` config is read first: each entry's `command` (a string, an array, or `{
+    /// env, command }`), its `patterns` (filesets, relative to the workspace root), `enabled`
+    /// (default `true`), `line-range-args` and `run-tool-if-zero-line-ranges`; a deprecated
+    /// `line-range-arg` is migrated (and warned, [`crate::WarningKind::ConfigDeprecated`]) as
+    /// the CLI migrates it. Then the sources — `options.source`, or the `revsets.fix` setting
+    /// (jj's default `reachable(@, mutable())`, parsed like a user revset) — are checked
+    /// rewritable, and the files of the sources and their descendants (only the changed ones,
+    /// unless `include_unchanged_files`; only under `options.paths` when given) are passed through
+    /// every matching tool in key order: stdin the content, stdout the new content, the
+    /// workspace root the working directory, `$path` / `$root` interpolated. Unless `all_lines`,
+    /// a tool with `line-range-args` gets the changed line ranges. A tool that cannot start
+    /// ([`crate::WarningKind::FixToolStartFailed`]) or exits non-zero
+    /// ([`crate::WarningKind::FixToolFailed`]) is skipped for that file. Descendants keep the
+    /// fixes; no new conflicts arise.
+    ///
+    /// A call that fixes nothing writes NO operation (`new_op_id` is the pre-call head);
+    /// otherwise the operation is the CLI's `fixed <n> commits`. The result counts the fixed and
+    /// the checked commits and carries what the tools wrote to stderr.
+    ///
+    /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::Config`] — no `fix.tools` entry ("No `fix.tools` are configured"),
+    ///   none enabled ("At least one entry of `fix.tools` must be enabled."), one sets
+    ///   `run-tool-if-zero-line-ranges` without `line-range-args`, an entry or `revsets.fix` has
+    ///   the wrong type, the alias tables do not read, or the `immutable_heads()` alias does not
+    ///   resolve.
+    /// - [`crate::MutateError::InvalidInput`] — a pattern does not parse ("Failed to parse
+    ///   fileset: <kind>" with the CLI's `Caused by:` lines and hint), or a path is not a valid
+    ///   repo path.
+    /// - [`crate::MutateError::ChangeNotFound`] — a source id is malformed, carried by no VISIBLE
+    ///   commit, or divergent.
+    /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`]
+    ///   — `revsets.fix` does not parse or resolve.
+    /// - [`crate::MutateError::Immutable`] — a source is inside the repo's effective immutable set.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn fix(&mut self, options: &crate::FixOptions) -> Result<crate::FixResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::fix::fix(repo.workspace_mut(), ctx, options))
     }
 
     /// Commits the working-copy commit (Story 9.49) — the CLI's `jj commit -m <message>

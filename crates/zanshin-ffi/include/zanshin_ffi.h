@@ -1529,6 +1529,152 @@ void zanshin_log(int32_t level, const char *target, const char *message);
 void zanshin_logging_init(void);
 
 /**
+ * Modify revisions' metadata without changing their content, in the repo identified by
+ * `handle` — the CLI's `jj metaedit` (Story 9.9).
+ *
+ * The arguments cross as a `MetaeditRequest` `FlatBuffers` request buffer, one field per CLI
+ * flag: `revisions` (ABSENT or EMPTY = `@`), `message` (the `-m` paragraphs; ABSENT = no `-m`),
+ * `author` (`Name <email>`) or `update_author`, `author_timestamp` (RFC 2822 / RFC 3339) or
+ * `update_author_timestamp`, `update_change_id`, `force_rewrite`. A revision is rewritten only
+ * when one of its metadata changes (or `force_rewrite`); its descendants are reparented. A call
+ * that rewrites nothing writes NO operation and `MutationResult.new_op_id` carries the PRE-CALL
+ * head; otherwise the operation is the CLI's `edit commit metadata for commit <hex>` or `… <hex>
+ * and <n> more`. The working copy is snapshotted first (Story 9.26).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success: the change
+ * ids `update_change_id` minted in `new_change_ids`.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `MetaeditRequest` buffer, or its `kind`
+ *   is not `Metaedit`.
+ * - `jj.invalid_input` — clap's refusals, before the snapshot (nothing written, no
+ *   `precondition`): a malformed `author` or `author_timestamp` (``invalid value '<v>' for
+ *   '--author <AUTHOR>': Invalid author string``, ``… for '--author-timestamp
+ *   <AUTHOR_TIMESTAMP>': <reason>``), `author` with `update_author`, `author_timestamp` with
+ *   `update_author_timestamp`; detail in `context`.
+ * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
+ *   in `context`.
+ * - `jj.revset_resolution_error` — the default `@` in a workspace with no working-copy commit.
+ * - `jj.immutable` — a revision is immutable (the root commit among them); its hex commit id in
+ *   `context`.
+ * - `jj.config_error` — the config or its `immutable_heads()` alias does not read or resolve.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.MetaeditRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration
+ * of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_metaedit(uint64_t handle,
+                             const uint8_t *data,
+                             uintptr_t len);
+
+/**
+ * Create new changes with the same content as existing ones, in the repo identified by `handle`
+ * — the CLI's `jj duplicate` (Story 9.9).
+ *
+ * The arguments cross as a `DuplicateRequest` `FlatBuffers` request buffer: `revisions` (ABSENT
+ * or EMPTY = `@`) and the location — `onto` (`-o`) or `insert_after` / `insert_before` (`-A` /
+ * `-B`); none = each duplicate onto its original's parents. A duplicate that lands among its
+ * original's descendants or ancestors warns `jj.duplicate_as_own_descendant` /
+ * `jj.duplicate_as_own_ancestor`. Each duplicate is described with `templates.duplicate_description`
+ * rendered on its original. The operation is the CLI's `duplicate <n> commit(s)`. The working copy
+ * is snapshotted first (Story 9.26).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success: the
+ * duplicates' change ids in `new_change_ids`, in jj-lib's duplication order.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `DuplicateRequest` buffer, or its `kind`
+ *   is not `Duplicate`.
+ * - `jj.invalid_input` — `onto` with `insert_after`/`insert_before` (clap's refusal: before the
+ *   snapshot, nothing written, no `precondition`); "Cannot duplicate the root commit"; a location
+ *   that would create a loop or resolves no parent; a merge with the root commit as a parent in a
+ *   Git repo; detail in `context`.
+ * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
+ *   in `context`.
+ * - `jj.revset_resolution_error` — the default `@` in a workspace with no working-copy commit.
+ * - `jj.immutable` — a child `insert_after`/`insert_before` would rewrite is immutable.
+ * - `jj.config_error` — the duplicate-description template setting is not a string or does not
+ *   parse, or the config or its `immutable_heads()` alias does not read or resolve.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.DuplicateRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+ * duration of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_duplicate(uint64_t handle,
+                              const uint8_t *data,
+                              uintptr_t len);
+
+/**
+ * Update files with formatting fixes or other changes, in the repo identified by `handle` — the
+ * CLI's `jj fix` (Story 9.9).
+ *
+ * The arguments cross as a `FixRequest` `FlatBuffers` request buffer: `source` (`-s`; ABSENT or
+ * EMPTY = the `revsets.fix` setting, jj's default `reachable(@, mutable())`), `paths` (PREFIXES;
+ * ABSENT or EMPTY = every path), `include_unchanged_files`, `all_lines`. The files of the sources
+ * and their descendants run through the `fix.tools` that match them; a tool that cannot start or
+ * exits non-zero is skipped and warns (`jj.fix_tool_start_failed`, `jj.fix_tool_failed`). A
+ * deprecated `fix.tools.<name>.line-range-arg` is migrated and warns `jj.config_deprecated`. A
+ * call that fixes nothing writes NO operation and `FixResult.mutation.new_op_id` carries the
+ * PRE-CALL head; otherwise the operation is the CLI's `fixed <n> commits`. The working copy is
+ * snapshotted first (Story 9.26).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `FixResult` payload on success: the nested
+ * `MutationResult`, the fixed and checked commit counts, and what the tools wrote to stderr.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `FixRequest` buffer, or its `kind` is not
+ *   `Fix`.
+ * - `jj.config_error` — no fix tool is configured, none is enabled, one sets
+ *   `run-tool-if-zero-line-ranges` without `line-range-args`, a tool entry or the fix revset
+ *   setting has the wrong type, or the config or its `immutable_heads()` alias does not read or
+ *   resolve.
+ * - `jj.invalid_input` — a pattern does not parse ("Failed to parse fileset: <kind>" with the CLI's
+ *   `Caused by:` lines in `context`, its hint in `hints`), or a path is not a valid repo path.
+ * - `jj.change_not_found` — a source id is malformed, carried by no VISIBLE commit, or divergent;
+ *   the id in `context`.
+ * - `jj.revset_parse_error` / `jj.revset_resolution_error` — the fix revset setting (the default
+ *   sources) does not parse or resolve.
+ * - `jj.immutable` — a source is immutable; its hex commit id in `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.FixRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration of
+ * the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_fix(uint64_t handle,
+                        const uint8_t *data,
+                        uintptr_t len);
+
+/**
  * Read the operation log of the repo identified by `handle`.
  *
  * `limit < 0` ⇒ all operations; `limit >= 0` ⇒ at most `limit` most-recent ops.

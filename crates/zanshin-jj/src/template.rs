@@ -372,6 +372,27 @@ impl<'c> Templates<'c> {
         )))
     }
 
+    /// `jj duplicate`'s descriptions (`duplicate.rs:167-182` @ v0.46.0): `templates.duplicate_description`
+    /// parsed once over `repo` and rendered on each of `commits` — the originals — newline-completed,
+    /// in order.
+    ///
+    /// # Errors
+    ///
+    /// - [`MutateError::Config`] — the key is not a string, or see [`Templates::parse_commit`].
+    pub(crate) fn duplicate_descriptions(
+        &self,
+        repo: &dyn JjRepo,
+        commits: &[Commit],
+        sink: &mut Warnings,
+    ) -> Result<Vec<String>, MutateError> {
+        let text = crate::config::templates_duplicate_description(self.config).map_err(cfg)?;
+        let renderer = self.parse_commit(repo, &text, sink)?;
+        Ok(commits
+            .iter()
+            .map(|commit| complete_newline(&String::from_utf8_lossy(&renderer.format_plain_text(commit))))
+            .collect())
+    }
+
     /// The CLI's `write_commit_summary` (`cli_util.rs:1995-2033` @ v0.46.0) as plain text:
     /// `templates.commit_summary` rendered on `commit` over `repo` — the summary the
     /// "Could not modify commit:" / "Rejected commit:" hints and push's skipped-signing list show.

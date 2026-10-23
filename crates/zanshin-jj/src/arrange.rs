@@ -267,22 +267,28 @@ impl RewritePlan {
     }
 }
 
-/// The target set: `revisions`, or the `revsets.arrange` setting parsed "In revset expression"
-/// (`arrange.rs:96-104`).
-fn target_expression(
+/// A verb's target set: `revisions`, or — when empty — the revset the config `key` holds,
+/// parsed "In revset expression" like a user revset: `revsets.arrange` (`arrange.rs:96-104`),
+/// `revsets.fix` (`fix.rs` `cmd_fix` @ v0.46.0, Story 9.9).
+///
+/// # Errors
+///
+/// - [`MutateError::ChangeNotFound`] — a revision does not resolve.
+/// - [`MutateError::Config`] — `key` is not a string, or the alias tables do not read.
+/// - [`MutateError::RevsetParseError`] / [`MutateError::RevsetResolutionError`] — the
+///   config's revset does not parse or resolve.
+pub(crate) fn target_expression(
     tx: &Transaction,
     workspace: &Workspace,
     ctx: &mut VerbContext,
     revisions: &[ChangeId],
+    key: &'static str,
 ) -> Result<Arc<ResolvedRevsetExpression>, MutateError> {
     if !revisions.is_empty() {
         let ids = resolve_ordered(tx, Some(revisions))?.unwrap_or_default();
         return Ok(RevsetExpression::commits(ids));
     }
-    let text: String = ctx
-        .config
-        .get("revsets.arrange")
-        .map_err(|e| cfg(crate::config::value_error(&e)))?;
+    let text: String = ctx.config.get(key).map_err(|e| cfg(crate::config::value_error(&e)))?;
     let parse_config = crate::revset::revset_config(&ctx.config, &mut ctx.warnings).map_err(cfg)?;
     let expression = crate::revset::parse_diagnosed(
         workspace,
@@ -295,7 +301,7 @@ fn target_expression(
 }
 
 /// The commits `expression` holds in `repo`, in revset order.
-fn commits_of(
+pub(crate) fn commits_of(
     repo: &dyn jj_lib::repo::Repo,
     expression: &Arc<ResolvedRevsetExpression>,
 ) -> Result<Vec<Commit>, MutateError> {
@@ -337,7 +343,7 @@ pub(crate) fn arrange(
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let repo = readonly.as_ref();
 
-    let target = target_expression(&tx, workspace, ctx, &options.revisions)?;
+    let target = target_expression(&tx, workspace, ctx, &options.revisions, "revsets.arrange")?;
     let commits = commits_of(repo, &target)?;
     let ids: Vec<CommitId> = commits.iter().map(|c| c.id().clone()).collect();
     guard_rewritable(&tx, &ctx.templates(workspace), &ids)?;

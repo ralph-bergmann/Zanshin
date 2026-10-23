@@ -1,27 +1,55 @@
 // SPDX-License-Identifier: MIT
 
-//! `duplicate.rs` — the plan phase of `jj duplicate` (Story 9.31), ported from `cmd_duplicate`
-//! (`cli/src/commands/duplicate.rs` @ v0.46.0) up to its transaction: the root refusal, then the
-//! location. `drop_actions`' `duplicate` row calls [`plan_duplicate`] today; the duplicate verb
-//! (Story 9.9) is meant to call the same fn.
+//! `duplicate.rs` — `jj duplicate` (Story 9.9), ported step for step from `cmd_duplicate`
+//! (`cli/src/commands/duplicate.rs` @ v0.46.0). Its plan phase (Story 9.31) — the root refusal,
+//! then the location — is [`plan_duplicate`], which `drop_actions`' `duplicate` row calls too;
+//! the verb ([`duplicate`]) runs the same fn before its write, so the preview and the verb agree
+//! by construction. After the plan the verb warns a duplicate that lands among its own
+//! descendants or ancestors, renders `templates.duplicate_description` on each original, and
+//! duplicates through jj-lib's `duplicate_commits` / `duplicate_commits_onto_parents`.
+//!
+//! Divergence, deliberate: the status lines (`Duplicated <hash> as …`, `Rebased N commits onto
+//! duplicated commits.`) are terminal UX and not ported; the duplicates' change ids are the
+//! result's `new_change_ids`.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::TryStreamExt as _;
 use jj_lib::backend::CommitId;
+use jj_lib::commit::Commit;
 use jj_lib::repo::Repo as _;
 use jj_lib::revset::{ResolvedRevsetExpression, RevsetExpression};
+use jj_lib::rewrite::{duplicate_commits, duplicate_commits_onto_parents, DuplicateCommitsStats};
 use jj_lib::transaction::Transaction;
+use jj_lib::workspace::Workspace;
 
-use crate::mutate::{be, refuse_git_root_merge, MutateError};
-use crate::op_support::{resolve_commit_location, resolve_immutable, resolve_ordered, LocationArgs};
+use crate::mutate::{
+    be, finish_verb, mutation_result, refuse_git_root_merge, resolve_or_wc, MutateError, MutationResult,
+};
+use crate::op_support::{
+    resolve_commit_location, resolve_immutable, resolve_ordered, start_repo_transaction, LocationArgs, ONTO_WITH_INSERT,
+};
+use crate::snapshot::VerbContext;
 use crate::template::Templates;
+use crate::warning::WarningKind;
 use crate::ChangeId;
 
+/// [`crate::Repo::duplicate`]'s arguments — the CLI's `jj duplicate` flags, one field each (Story
+/// 9.9). An EMPTY location list is a flag that was not given.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DuplicateOptions {
+    /// The revisions to duplicate (`REVSETS` / `-r`). Empty is the CLI's default, `@`.
+    pub revisions: Vec<ChangeId>,
+    /// `-o/--onto`, repeatable: the duplicates' parents. Excludes `insert_after`/`insert_before`.
+    pub onto: Vec<ChangeId>,
+    /// `-A/--insert-after`, repeatable.
+    pub insert_after: Vec<ChangeId>,
+    /// `-B/--insert-before`, repeatable.
+    pub insert_before: Vec<ChangeId>,
+}
+
 /// What [`plan_duplicate`] decided.
-// WHY: the fields are the duplicate verb's input (Story 9.9); its only caller today,
-// `drop_actions`, needs just the refusal. Dropped when the verb lands.
-#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct DuplicatePlan {
     /// The commits to duplicate, in reverse topological order (the CLI's revset order).
@@ -32,12 +60,7 @@ pub(crate) struct DuplicatePlan {
 }
 
 /// `jj duplicate <revisions> [<location>]`'s plan: the revisions resolved in reverse topological
-/// order, the root refusal (`Cannot duplicate the root commit`, when the last — the oldest — is
-/// the root), then the location (`"duplicated commits"`). The immutable set is resolved for
-/// `-A`/`-B` with the location, whose children it rewrites; otherwise last, where the CLI's
-/// `tx.finish` resolves it — every duplicate writes (Story 9.56). Two or more location parents
-/// with the root among them refuse up front on a Git-backed store, with the backend's own text —
-/// the CLI reaches it at the duplicates' write.
+/// order, then [`plan_duplicate_ids`].
 ///
 /// # Errors
 ///
@@ -54,6 +77,28 @@ pub(crate) fn plan_duplicate(
     location: &LocationArgs<'_>,
 ) -> Result<DuplicatePlan, MutateError> {
     let ids = resolve_ordered(tx, Some(revisions))?.unwrap_or_default();
+    plan_duplicate_ids(tx, templates, ids, location)
+}
+
+/// [`plan_duplicate`] over already-resolved commits — the verb's `@` default passes `@`'s commit
+/// itself (the CLI evaluates `@` to its commit id), never its change id, which a divergent `@`
+/// would not resolve. The commits are put in reverse topological order, then the root refusal
+/// (`Cannot duplicate the root commit`, when the last — the oldest — is the root), then the
+/// location (`"duplicated commits"`). The immutable set is resolved for `-A`/`-B` with the
+/// location, whose children it rewrites; otherwise last, where the CLI's `tx.finish` resolves it
+/// — every duplicate writes (Story 9.56). Two or more location parents with the root among them
+/// refuse up front on a Git-backed store, with the backend's own text — the CLI reaches it at the
+/// duplicates' write.
+///
+/// # Errors
+///
+/// As [`plan_duplicate`].
+pub(crate) fn plan_duplicate_ids(
+    tx: &Transaction,
+    templates: &Templates<'_>,
+    ids: Vec<CommitId>,
+    location: &LocationArgs<'_>,
+) -> Result<DuplicatePlan, MutateError> {
     let set = RevsetExpression::commits(ids)
         .evaluate(tx.base_repo().as_ref())
         .map_err(be)?;
@@ -81,6 +126,129 @@ pub(crate) fn plan_duplicate(
         resolve_immutable(tx.base_repo().as_ref(), templates.immutable())?;
     }
     Ok(DuplicatePlan { to_duplicate, location })
+}
+
+/// Refuses what clap refuses, before the pre-verb snapshot ([`crate::Repo::duplicate`]): `onto`
+/// together with `insert_after`/`insert_before` (`conflicts_with = "onto"`).
+///
+/// # Errors
+///
+/// [`MutateError::InvalidInput`] — `--onto cannot be combined with -A/--insert-after or
+/// -B/--insert-before`.
+pub(crate) fn check_duplicate_args(options: &DuplicateOptions) -> Result<(), MutateError> {
+    let inserts = !options.insert_after.is_empty() || !options.insert_before.is_empty();
+    if !options.onto.is_empty() && inserts {
+        return Err(MutateError::invalid(ONTO_WITH_INSERT));
+    }
+    Ok(())
+}
+
+/// The two self-placement warnings (`duplicate.rs:145-178` @ v0.46.0): with location parents, a
+/// duplicated commit that is an ancestor of one of them lands among its own descendants; a new
+/// child that is an ancestor of a duplicated commit puts the duplicate among its ancestors. One
+/// warning per commit, every descendant one before every ancestor one.
+fn warn_self_placement(tx: &Transaction, plan: &DuplicatePlan, ctx: &mut VerbContext) -> Result<(), MutateError> {
+    let Some((parents, children)) = &plan.location else {
+        return Ok(());
+    };
+    if parents.is_empty() {
+        return Ok(());
+    }
+    let index = tx.repo().index();
+    let is_ancestor = |ancestor: &CommitId, descendant: &CommitId| {
+        pollster::block_on(index.is_ancestor(ancestor, descendant)).map_err(be)
+    };
+    for id in &plan.to_duplicate {
+        for parent in parents {
+            if is_ancestor(id, parent)? {
+                ctx.warnings.push(
+                    WarningKind::DuplicateAsOwnDescendant,
+                    format!("Duplicating commit {id:.12} as a descendant of itself."),
+                );
+                break;
+            }
+        }
+    }
+    for id in &plan.to_duplicate {
+        for child in children {
+            if is_ancestor(child, id)? {
+                ctx.warnings.push(
+                    WarningKind::DuplicateAsOwnAncestor,
+                    format!("Duplicating commit {id:.12} as an ancestor of itself."),
+                );
+                break;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `jj duplicate` (Story 9.9) — see [`crate::Repo::duplicate`], which ran
+/// [`check_duplicate_args`] before the snapshot: [`plan_duplicate`] (`@` when no revision is
+/// given), the self-placement warnings, `templates.duplicate_description` on every original, the
+/// duplication, then the finish with the CLI's `duplicate <n> commit(s)`.
+///
+/// # Errors
+///
+/// See [`crate::Repo::duplicate`].
+pub(crate) fn duplicate(
+    workspace: &mut Workspace,
+    ctx: &mut VerbContext,
+    options: &DuplicateOptions,
+) -> Result<MutationResult, MutateError> {
+    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let workspace_name = workspace.workspace_name().to_owned();
+    let mut tx = start_repo_transaction(&readonly, &workspace_name);
+    let location = LocationArgs {
+        onto: &options.onto,
+        insert_after: &options.insert_after,
+        insert_before: &options.insert_before,
+    };
+    let plan = {
+        let templates = ctx.templates(workspace);
+        if options.revisions.is_empty() {
+            let at = resolve_or_wc(tx.repo(), &workspace_name, None)?;
+            plan_duplicate_ids(&tx, &templates, vec![at.id().clone()], &location)?
+        } else {
+            plan_duplicate(&tx, &templates, &options.revisions, &location)?
+        }
+    };
+    warn_self_placement(&tx, &plan, ctx)?;
+
+    let originals: Vec<Commit> = plan
+        .to_duplicate
+        .iter()
+        .map(|id| tx.repo().store().get_commit(id).map_err(be))
+        .collect::<Result<_, _>>()?;
+    let descriptions = {
+        let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, workspace);
+        templates.duplicate_descriptions(tx.repo(), &originals, &mut ctx.warnings)?
+    };
+    let new_descriptions: HashMap<CommitId, String> = plan.to_duplicate.iter().cloned().zip(descriptions).collect();
+
+    let DuplicateCommitsStats { duplicated_commits, .. } = match &plan.location {
+        Some((parents, children)) => pollster::block_on(duplicate_commits(
+            tx.repo_mut(),
+            &plan.to_duplicate,
+            &new_descriptions,
+            parents,
+            children,
+        )),
+        None => pollster::block_on(duplicate_commits_onto_parents(
+            tx.repo_mut(),
+            &plan.to_duplicate,
+            &new_descriptions,
+        )),
+    }
+    .map_err(be)?;
+
+    let description = format!("duplicate {} commit(s)", plan.to_duplicate.len());
+    let finish = finish_verb(workspace, tx, &description, ctx)?;
+    let new_change_ids = duplicated_commits
+        .values()
+        .map(|commit| ChangeId(commit.change_id().reverse_hex()))
+        .collect();
+    mutation_result(&finish, new_change_ids, Vec::new())
 }
 
 #[cfg(test)]

@@ -429,9 +429,15 @@ void main() {
         'jj.fetch_refspec_ignored',
         'jj.fetch_branches_unmatched',
         'jj.trunk_alias_unresolved',
+        'jj.duplicate_as_own_descendant',
+        'jj.duplicate_as_own_ancestor',
+        'jj.fix_tool_start_failed',
+        'jj.fix_tool_failed',
+        'jj.fileset_diagnostic',
+        'jj.config_deprecated',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(55), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(61), reason: 'no code is registered twice');
     });
   });
 

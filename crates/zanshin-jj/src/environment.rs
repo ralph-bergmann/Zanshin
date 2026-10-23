@@ -10,7 +10,8 @@
 //! `readLoginShellEnvironment` — this crate spawns no process) and hands it over ONCE through
 //! [`adopt_environment`], which keeps it as a write-once, process-wide map. Every reader here goes
 //! through [`snapshot`] / [`var_os`] (the config stack, `detect.rs`'s `$HOME`, `wc_ops.rs`'s
-//! `$XDG_CONFIG_HOME`) or [`git_subprocess_options`] (fetch and clone): they see the adopted map
+//! `$XDG_CONFIG_HOME`), [`git_subprocess_options`] (fetch and clone) or [`apply_to_tool`] (`jj
+//! fix`'s tools, Story 9.9): they see the adopted map
 //! when there is one and the live process environment otherwise — so until an adoption happens
 //! (tests, MCP, a login shell that could not be read) everything behaves exactly as before.
 //!
@@ -120,6 +121,13 @@ pub(crate) fn git_subprocess_options(
         .environment
         .extend(cancel.map(crate::cancel::CancelGuard::env_pair));
     Ok(options)
+}
+
+/// Applies the adopted environment to a `jj fix` tool's `command` (Story 9.9): over the inherited
+/// process environment, as jj-lib applies it to `git`, so its `PATH` also selects which tool runs.
+/// With nothing adopted the tool inherits the process environment, as in the CLI.
+pub(crate) fn apply_to_tool(command: &mut std::process::Command) {
+    command.envs(ADOPTED.get().into_iter().flatten());
 }
 
 /// `adopted` minus [`GIT_LOCALE`]; empty when nothing was adopted.

@@ -37,6 +37,7 @@ import '../ffi/git.dart' as repo_ffi_git;
 import '../ffi/graph.dart' as repo_ffi_graph;
 import '../ffi/log_defaults.dart' as repo_ffi_log_defaults;
 import '../ffi/log_forwarder.dart';
+import '../ffi/metaedit_duplicate_fix.dart' as repo_ffi_metaedit_duplicate_fix;
 import '../ffi/mutate.dart' as repo_ffi_mutate;
 import '../ffi/op_log.dart' as repo_ffi_op_log;
 import '../ffi/precondition.dart' as repo_ffi_precondition;
@@ -1691,6 +1692,133 @@ class ZanshinWorker {
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
+  /// Modify revisions' metadata, in the repo identified by [handleId] (Story
+  /// 9.9) — the CLI's `jj metaedit`.
+  ///
+  /// [revisions] (empty = `@`), [message] (`null` = no `-m`), [author] /
+  /// [updateAuthor], [authorTimestamp] / [updateAuthorTimestamp],
+  /// [updateChangeId] and [forceRewrite] cross unchanged.
+  ///
+  /// Sends a [MetaeditCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if a value contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`,
+  /// `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`). Completes with a [StateError] after [close]; the
+  /// close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.metaedit].
+  Future<repo_ffi_mutate.MutationResult> metaedit(
+    int handleId, {
+    List<String> revisions = const [],
+    bool updateChangeId = false,
+    List<String>? message,
+    bool updateAuthorTimestamp = false,
+    bool updateAuthor = false,
+    String? author,
+    String? authorTimestamp,
+    bool forceRewrite = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(revisions, 'revisions');
+    rejectInteriorNuls(message ?? const [], 'message');
+    rejectInteriorNuls([?author], 'author');
+    rejectInteriorNuls([?authorTimestamp], 'authorTimestamp');
+    final Uint8List bytes = await send(
+      MetaeditCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        revisions: revisions,
+        updateChangeId: updateChangeId,
+        message: message,
+        updateAuthorTimestamp: updateAuthorTimestamp,
+        updateAuthor: updateAuthor,
+        author: author,
+        authorTimestamp: authorTimestamp,
+        forceRewrite: forceRewrite,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Duplicate revisions, in the repo identified by [handleId] (Story 9.9) —
+  /// the CLI's `jj duplicate`: [revisions] (empty = `@`) onto their parents, or
+  /// to [onto] / [insertAfter] / [insertBefore] (`-o` / `-A` / `-B`).
+  ///
+  /// Sends a [DuplicateCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if an id contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`,
+  /// `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`). Completes with a [StateError] after [close]; the
+  /// close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.duplicate].
+  Future<repo_ffi_mutate.MutationResult> duplicate(
+    int handleId, {
+    List<String> revisions = const [],
+    List<String> onto = const [],
+    List<String> insertAfter = const [],
+    List<String> insertBefore = const [],
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(revisions, 'revisions');
+    rejectInteriorNuls(onto, 'onto');
+    rejectInteriorNuls(insertAfter, 'insertAfter');
+    rejectInteriorNuls(insertBefore, 'insertBefore');
+    final Uint8List bytes = await send(
+      DuplicateCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        revisions: revisions,
+        onto: onto,
+        insertAfter: insertAfter,
+        insertBefore: insertBefore,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Run the configured fix tools, in the repo identified by [handleId] (Story
+  /// 9.9) — the CLI's `jj fix`: [source] (empty = the `revsets.fix` setting),
+  /// [paths] (prefixes; empty = every path), [includeUnchangedFiles],
+  /// [allLines].
+  ///
+  /// Sends a [FixCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<FixResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if a value contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.config_error`, `jj.invalid_input`, `jj.change_not_found`,
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.immutable`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.fix].
+  Future<repo_ffi_metaedit_duplicate_fix.FixResult> fix(
+    int handleId, {
+    List<String> source = const [],
+    List<String> paths = const [],
+    bool includeUnchangedFiles = false,
+    bool allLines = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(source, 'source');
+    rejectInteriorNuls(paths, 'paths');
+    final Uint8List bytes = await send(
+      FixCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        source: source,
+        paths: paths,
+        includeUnchangedFiles: includeUnchangedFiles,
+        allLines: allLines,
+      ),
+    );
+    return repo_ffi_metaedit_duplicate_fix.decodeFixResultEnvelopeInternal(bytes);
+  }
+
   /// The calling-side interior-NUL guard of [squash] and [squashPlan].
   static void _rejectSquashNuls(
     String? revision,
@@ -3102,6 +3230,83 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_rebase.zanshinArrange(raw, revisions: revisions, actions: actions);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case MetaeditCommand(
+          :final int handleId,
+          :final List<String> revisions,
+          :final bool updateChangeId,
+          :final List<String>? message,
+          :final bool updateAuthorTimestamp,
+          :final bool updateAuthor,
+          :final String? author,
+          :final String? authorTimestamp,
+          :final bool forceRewrite,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: MetaeditCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_metaedit_duplicate_fix.zanshinMetaedit(
+              raw,
+              revisions: revisions,
+              updateChangeId: updateChangeId,
+              message: message,
+              updateAuthorTimestamp: updateAuthorTimestamp,
+              updateAuthor: updateAuthor,
+              author: author,
+              authorTimestamp: authorTimestamp,
+              forceRewrite: forceRewrite,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case DuplicateCommand(
+          :final int handleId,
+          :final List<String> revisions,
+          :final List<String> onto,
+          :final List<String> insertAfter,
+          :final List<String> insertBefore,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: DuplicateCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_metaedit_duplicate_fix.zanshinDuplicate(
+              raw,
+              revisions: revisions,
+              onto: onto,
+              insertAfter: insertAfter,
+              insertBefore: insertBefore,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case FixCommand(
+          :final int handleId,
+          :final List<String> source,
+          :final List<String> paths,
+          :final bool includeUnchangedFiles,
+          :final bool allLines,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: FixCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_metaedit_duplicate_fix.zanshinFix(
+              raw,
+              source: source,
+              paths: paths,
+              includeUnchangedFiles: includeUnchangedFiles,
+              allLines: allLines,
+            );
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

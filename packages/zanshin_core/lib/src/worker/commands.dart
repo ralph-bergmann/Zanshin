@@ -1745,6 +1745,121 @@ final class ArrangeCommand extends WorkerCommand implements HandleScopedCommand 
   final List<ArrangeAction> actions;
 }
 
+/// Modify revisions' metadata, in the repo identified by [handleId] (Story
+/// 9.9) — the CLI's `jj metaedit`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinMetaedit(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class MetaeditCommand extends WorkerCommand implements HandleScopedCommand {
+  const MetaeditCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revisions,
+    required this.updateChangeId,
+    required this.message,
+    required this.updateAuthorTimestamp,
+    required this.updateAuthor,
+    required this.author,
+    required this.authorTimestamp,
+    required this.forceRewrite,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The revisions to modify; empty = `@`.
+  final List<String> revisions;
+
+  /// `--update-change-id`.
+  final bool updateChangeId;
+
+  /// The `-m` paragraphs; `null` = no `-m`.
+  final List<String>? message;
+
+  /// `--update-author-timestamp`.
+  final bool updateAuthorTimestamp;
+
+  /// `--update-author`.
+  final bool updateAuthor;
+
+  /// `--author` (`Name <email>`); `null` = not given.
+  final String? author;
+
+  /// `--author-timestamp` (RFC 2822 / RFC 3339); `null` = not given.
+  final String? authorTimestamp;
+
+  /// `--force-rewrite`.
+  final bool forceRewrite;
+}
+
+/// Duplicate revisions, in the repo identified by [handleId] (Story 9.9) — the
+/// CLI's `jj duplicate`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinDuplicate(raw, …)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class DuplicateCommand extends WorkerCommand implements HandleScopedCommand {
+  const DuplicateCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revisions,
+    required this.onto,
+    required this.insertAfter,
+    required this.insertBefore,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The revisions to duplicate; empty = `@`.
+  final List<String> revisions;
+
+  /// `-o` change ids; empty = the flag not given.
+  final List<String> onto;
+
+  /// `-A` change ids; empty = the flag not given.
+  final List<String> insertAfter;
+
+  /// `-B` change ids; empty = the flag not given.
+  final List<String> insertBefore;
+}
+
+/// Run the configured fix tools, in the repo identified by [handleId] (Story
+/// 9.9) — the CLI's `jj fix`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinFix(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<FixResult>` bytes.
+final class FixCommand extends WorkerCommand implements HandleScopedCommand {
+  const FixCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.source,
+    required this.paths,
+    required this.includeUnchangedFiles,
+    required this.allLines,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `-s` change ids; empty = the `revsets.fix` setting.
+  final List<String> source;
+
+  /// Repo-relative prefixes to fix; empty = every path.
+  final List<String> paths;
+
+  /// `--include-unchanged-files`.
+  final bool includeUnchangedFiles;
+
+  /// `--all-lines`.
+  final bool allLines;
+}
+
 /// Request a graceful worker shutdown (Story 3.6).
 ///
 /// The worker closes every repo left in its handle table (joining each

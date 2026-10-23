@@ -20,6 +20,7 @@ import '../ffi/git.dart' show GitExportResult, GitImportResult;
 import '../ffi/graph.dart'
     show GraphTopologyView, defaultGraphAnchors, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes;
 import '../ffi/log_defaults.dart' show LogDefaults;
+import '../ffi/metaedit_duplicate_fix.dart' show FixResult;
 import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
 import '../ffi/op_log.dart' show Operation;
 import '../ffi/precondition.dart' show Precondition;
@@ -991,6 +992,124 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.arrange(_handleId, revisions: revisions, actions: actions);
+  }
+
+  /// Modify revisions' metadata without changing their content (Story 9.9) —
+  /// the CLI's `jj metaedit`.
+  ///
+  /// [revisions] are change ids (empty = `@`). A revision is rewritten when
+  /// its metadata changes: [message] (the `-m` paragraphs; `null` = leave the
+  /// description), [author] (`"Name <email>"`) or [updateAuthor] (the
+  /// configured user), [authorTimestamp] (RFC 2822 / RFC 3339) or
+  /// [updateAuthorTimestamp] (now), [updateChangeId], or [forceRewrite]; its
+  /// descendants are reparented. A call that rewrites nothing writes no
+  /// operation (the result's `newOpId` is the pre-call head); the change ids
+  /// [updateChangeId] minted are the result's `newChangeIds`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if a value contains an interior NUL (U+0000);
+  /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — a malformed [author] / [authorTimestamp], [author]
+  /// with [updateAuthor], [authorTimestamp] with [updateAuthorTimestamp] —,
+  /// `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`,
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> metaedit({
+    List<String> revisions = const [],
+    bool updateChangeId = false,
+    List<String>? message,
+    bool updateAuthorTimestamp = false,
+    bool updateAuthor = false,
+    String? author,
+    String? authorTimestamp,
+    bool forceRewrite = false,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.metaedit(
+      _handleId,
+      revisions: revisions,
+      updateChangeId: updateChangeId,
+      message: message,
+      updateAuthorTimestamp: updateAuthorTimestamp,
+      updateAuthor: updateAuthor,
+      author: author,
+      authorTimestamp: authorTimestamp,
+      forceRewrite: forceRewrite,
+    );
+  }
+
+  /// Create new changes with the same content as existing ones (Story 9.9) —
+  /// the CLI's `jj duplicate`.
+  ///
+  /// [revisions] are change ids (empty = `@`). Without a location each
+  /// duplicate goes onto its original's parents; [onto] (`-o`) or
+  /// [insertAfter] / [insertBefore] (`-A` / `-B`) place them as `jj new` does.
+  /// Each duplicate is described with `templates.duplicate_description`
+  /// rendered on its original. The duplicates' change ids are the result's
+  /// `newChangeIds`; a duplicate among its original's descendants or ancestors
+  /// warns `jj.duplicate_as_own_descendant` / `jj.duplicate_as_own_ancestor`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an id contains an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — [onto] with an insert, the root commit, a location
+  /// refusal —, `jj.change_not_found`, `jj.revset_resolution_error`,
+  /// `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
+  Future<MutationResult> duplicate({
+    List<String> revisions = const [],
+    List<String> onto = const [],
+    List<String> insertAfter = const [],
+    List<String> insertBefore = const [],
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.duplicate(
+      _handleId,
+      revisions: revisions,
+      onto: onto,
+      insertAfter: insertAfter,
+      insertBefore: insertBefore,
+    );
+  }
+
+  /// Update files with the configured `fix.tools` (Story 9.9) — the CLI's
+  /// `jj fix`.
+  ///
+  /// [source] are change ids (empty = the `revsets.fix` setting, jj's default
+  /// `reachable(@, mutable())`); the files of the sources and their
+  /// descendants — only the changed ones unless [includeUnchangedFiles], only
+  /// under [paths] when given — run through the matching tools; unless
+  /// [allLines], a tool with `line-range-args` gets the changed lines. A call
+  /// that fixes nothing writes no operation (the result's `mutation.newOpId` is
+  /// the pre-call head). A tool that cannot start or fails warns and is
+  /// skipped; what tools wrote to stderr is the result's `toolStderr`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if a value contains an interior NUL (U+0000);
+  /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.config_error` — no usable `fix.tools` —, `jj.invalid_input`,
+  /// `jj.change_not_found`, `jj.revset_parse_error`,
+  /// `jj.revset_resolution_error`, `jj.immutable`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
+  Future<FixResult> fix({
+    List<String> source = const [],
+    List<String> paths = const [],
+    bool includeUnchangedFiles = false,
+    bool allLines = false,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.fix(
+      _handleId,
+      source: source,
+      paths: paths,
+      includeUnchangedFiles: includeUnchangedFiles,
+      allLines: allLines,
+    );
   }
 
   /// Commit the working-copy commit (Story 9.49) — the CLI's

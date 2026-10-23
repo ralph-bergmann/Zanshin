@@ -56,6 +56,7 @@ export 'src/ffi/fetch.dart'
 export 'src/ffi/file_ops.dart' show FileNotAutoTracked, FileTooLarge, SnapshotStats, UntrackedPath, UntrackedReason;
 export 'src/ffi/graph.dart' show GraphTopologyView, TopologyRef, TopologyRefKind;
 export 'src/ffi/log_forwarder.dart' show forwardLogRecord, initLogForwarding;
+export 'src/ffi/metaedit_duplicate_fix.dart' show FixResult, FixToolStderr;
 export 'src/ffi/precondition.dart' show Precondition;
 export 'src/ffi/push.dart'
     show

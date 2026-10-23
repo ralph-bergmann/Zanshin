@@ -278,7 +278,36 @@ parity!(
     squash_clap_conflict_dirty_wc,
     split_clap_conflict_dirty_wc,
     new_clap_conflict_dirty_wc,
-    restore_clap_conflict_dirty_wc;
+    restore_clap_conflict_dirty_wc,
+    metaedit_message,
+    metaedit_revision_message,
+    metaedit_update_change_id,
+    metaedit_author,
+    metaedit_author_timestamp,
+    metaedit_update_author_noop,
+    metaedit_force_rewrite,
+    metaedit_root_refused,
+    metaedit_unchanged_message_noop,
+    metaedit_clap_conflict_dirty_wc,
+    duplicate_default,
+    duplicate_revision,
+    duplicate_onto_root,
+    duplicate_insert_after,
+    duplicate_insert_before,
+    duplicate_as_own_descendant,
+    duplicate_as_own_ancestor,
+    duplicate_two_revisions,
+    duplicate_root_refused,
+    duplicate_description_template,
+    fix_default,
+    fix_source,
+    fix_path,
+    fix_include_unchanged_files,
+    fix_nothing_to_fix,
+    fix_failing_tool,
+    fix_no_tools_refused,
+    fix_deprecated_line_range_arg,
+    snapshot_deprecated_line_range_arg;
     own_process:
     convert_import_unresolvable_immutable,
     convert_colocated_unresolvable_immutable,
@@ -299,7 +328,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 232);
+    assert_eq!(SCENARIO_IDS.len(), 261);
 }
 
 #[test]

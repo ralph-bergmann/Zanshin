@@ -53,6 +53,7 @@ pub mod graph;
 pub mod handle;
 pub mod log_defaults;
 pub mod logging;
+pub mod metaedit_duplicate_fix;
 pub mod op_log;
 pub mod push;
 pub mod rebase;

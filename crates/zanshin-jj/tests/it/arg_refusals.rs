@@ -16,8 +16,8 @@ use std::fs;
 
 use jj_lib::ref_name::WorkspaceName;
 use zanshin_jj::{
-    ChangeId, CommitViewError, FileError, GitPushArgs, MutateError, ProgressEvent, RebaseOptions, Repo, RevisionRef,
-    SplitOptions, SquashOptions,
+    ChangeId, CommitViewError, DuplicateOptions, FileError, GitPushArgs, MetaeditOptions, MutateError, ProgressEvent,
+    RebaseOptions, Repo, RevisionRef, SplitOptions, SquashOptions,
 };
 
 use crate::rebase::{base, head_op, load, Fx};
@@ -116,6 +116,65 @@ fn a_clap_refusal_on_a_dirty_working_copy_snapshots_nothing() {
     assert_ne!(head_op(&fx.root), before);
 }
 
+/// Story 9.9's clap rules, as above: metaedit's value parsers and conflicts, duplicate's `-o`
+/// with `-A`/`-B`.
+#[test]
+fn a_metaedit_or_duplicate_clap_refusal_on_a_dirty_working_copy_snapshots_nothing() {
+    let mut fx = base();
+    let (a, b) = (fx.a.clone(), fx.b.clone());
+    fs::write(fx.root.join("c.txt"), "c, edited before a clap refusal\n").expect("dirty c.txt");
+    let before = head_op(&fx.root);
+    assert_clap_refusal(
+        &mut fx,
+        "metaedit",
+        "--author cannot be used with --update-author",
+        |repo| {
+            invalid_reason(repo.metaedit(&MetaeditOptions {
+                author: Some("Foo <foo@bar>".to_owned()),
+                update_author: true,
+                ..MetaeditOptions::default()
+            }))
+        },
+    );
+    assert_clap_refusal(
+        &mut fx,
+        "metaedit",
+        "--author-timestamp cannot be used with --update-author-timestamp",
+        |repo| {
+            invalid_reason(repo.metaedit(&MetaeditOptions {
+                author_timestamp: Some("2000-01-23T01:23:45-08:00".to_owned()),
+                update_author_timestamp: true,
+                ..MetaeditOptions::default()
+            }))
+        },
+    );
+    assert_clap_refusal(
+        &mut fx,
+        "metaedit",
+        "invalid value 'Foo' for '--author <AUTHOR>': Invalid author string",
+        |repo| {
+            invalid_reason(repo.metaedit(&MetaeditOptions {
+                author: Some("Foo".to_owned()),
+                ..MetaeditOptions::default()
+            }))
+        },
+    );
+    assert_clap_refusal(
+        &mut fx,
+        "duplicate",
+        "--onto cannot be combined with -A/--insert-after or -B/--insert-before",
+        |repo| {
+            invalid_reason(repo.duplicate(&DuplicateOptions {
+                onto: vec![a.clone()],
+                insert_before: vec![b.clone()],
+                ..DuplicateOptions::default()
+            }))
+        },
+    );
+    fx.repo.snapshot().expect("snapshot");
+    assert_ne!(head_op(&fx.root), before, "the next valid call snapshots the edit");
+}
+
 #[test]
 fn a_config_that_no_longer_reads_refuses_before_a_clap_refusal() {
     // The CLI loads its config at start-up, before clap parses anything.
@@ -187,6 +246,16 @@ fn an_omitted_revision_without_a_working_copy_commit_is_the_clis_user_error() {
         Err(CommitViewError::RevsetResolutionError { reason }) => assert_eq!(reason, NO_WC, "interdiff"),
         other => panic!("interdiff: expected RevsetResolutionError, got {other:?}"),
     }
+    let message = MetaeditOptions {
+        message: Some(vec!["x".to_owned()]),
+        ..MetaeditOptions::default()
+    };
+    assert_eq!(resolution_reason(repo.metaedit(&message)), NO_WC, "metaedit");
+    assert_eq!(
+        resolution_reason(repo.duplicate(&DuplicateOptions::default())),
+        NO_WC,
+        "duplicate"
+    );
     // A named revision still resolves.
     repo.file_list(Some(a), &[]).expect("a named revision needs no @");
 }
