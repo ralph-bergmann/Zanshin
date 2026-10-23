@@ -103,6 +103,16 @@ void main() {
       );
     });
 
+    test('showChangesIn crosses the seam: none() elides every changed commit', () async {
+      final OpShow show = await handle.opShow(showChangesIn: 'none()');
+      expect(show.diff!.commits!.changes, isEmpty);
+      expect(show.diff!.commits!.elidedNewlyVisible.lower, greaterThan(0));
+
+      final OpDiffResult diff = await handle.opDiff(from: '@-', showChangesIn: 'none()');
+      expect(diff.diff.commits!.changes, isEmpty);
+      expect(diff.diff.commits!.elidedNewlyVisible.lower, greaterThan(0));
+    });
+
     test('opAbandon of the history below the head reparents it onto the root', () async {
       await expectLater(
         handle.opAbandon('@'),

@@ -89,6 +89,9 @@ parity!(
     redo_nothing,
     redo_stack,
     redo_cross_workspace,
+    redo_of_a_redo,
+    op_abandon_single,
+    op_abandon_nothing,
     op_abandon_range,
     op_abandon_current_refused,
     op_abandon_root_refused,
@@ -363,7 +366,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 296);
+    assert_eq!(SCENARIO_IDS.len(), 299);
 }
 
 #[test]

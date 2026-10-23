@@ -275,11 +275,16 @@ fn op_show_of_a_merge_operation_has_no_diff() {
 
 /// Leaves the repo at `root` with two op heads: two describes from the same base operation.
 pub(crate) fn diverge(root: &Path) {
+    diverge_with(root, ("description(exact:'Commit 1')", "description(exact:'Commit 3')"));
+}
+
+/// [`diverge`] describing the commits `first` and `second` name, one per branch.
+fn diverge_with(root: &Path, (first_revset, second_revset): (&str, &str)) {
     let heads_dir = root.join(".jj").join("repo").join("op_heads").join("heads");
     let mut repo = Repo::open(root).unwrap();
     let base = head_id(&mut repo);
-    let (c1, _) = one(&mut repo, "description(exact:'Commit 1')");
-    let (c3, _) = one(&mut repo, "description(exact:'Commit 3')");
+    let (c1, _) = one(&mut repo, first_revset);
+    let (c3, _) = one(&mut repo, second_revset);
     repo.describe(c1, "A").unwrap();
     let first = head_id(&mut repo);
     drop(repo);
@@ -314,6 +319,13 @@ fn op_show_with_an_unresolvable_show_changes_in_warns_and_has_no_commit_section(
             .message
             .starts_with("Could not resolve revset expression for elision: Revision `nonexistent_xyz` doesn't exist"),
         "{}",
+        warnings[0].message
+    );
+    assert!(
+        warnings[0]
+            .message
+            .ends_with("\n   (Use --show-changes-in=all() to see all changes)"),
+        "the CLI's detail line: {}",
         warnings[0].message
     );
 }
@@ -495,4 +507,95 @@ fn op_show_records_the_show_changes_in_diagnostics_under_their_context() {
     let config = diagnostics(&mut repo);
     assert_eq!(config.len(), 1, "{config:?}");
     assert!(config[0].starts_with("In `revsets.op-diff-changes-in`\n"), "{config:?}");
+}
+
+/// `op diff --op @` of a merge operation merges its two parents as the CLI does: both are `from`,
+/// and since the merge op only reconciles them, no commit changed against their merge. The two
+/// branches describe unrelated leaves, so the merge rebases nothing: with rebased descendants the
+/// pinned CLI itself can fail here ("Internal error: Predecessors cycle detected", in
+/// jj-lib's `accumulate_predecessors`), and Zanshin runs the same jj-lib code.
+#[test]
+fn op_diff_of_a_merge_operation_diffs_against_its_merged_parents() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    diverge_with(&fx.path, ("description(exact:'Commit 3')", "@"));
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let merge = repo.op_show("@", None).unwrap().operation;
+    assert_eq!(merge.parent_ids.len(), 2);
+
+    let result = repo
+        .op_diff(&OpDiffOptions {
+            operation: Some("@".to_owned()),
+            ..Default::default()
+        })
+        .unwrap();
+
+    let mut from: Vec<String> = result.from.iter().map(|op| op.id.0.clone()).collect();
+    let mut parents: Vec<String> = merge.parent_ids.iter().map(|id| id.0.clone()).collect();
+    from.sort();
+    parents.sort();
+    assert_eq!(from, parents);
+    assert_eq!(result.to.id, merge.id);
+    assert!(commits(&result.diff).changes.is_empty(), "{:?}", result.diff);
+}
+
+/// `op diff --op <root>`: the root has no parents, so `from` is empty (their merge is the root).
+#[test]
+fn op_diff_of_the_root_operation_has_no_from_operations() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let root = repo.op_log(None).unwrap().pop().unwrap();
+
+    let result = repo
+        .op_diff(&OpDiffOptions {
+            operation: Some(root.id.0.clone()),
+            ..Default::default()
+        })
+        .unwrap();
+
+    assert!(result.from.is_empty());
+    assert_eq!(result.to.id, root.id);
+    assert!(commits(&result.diff).changes.is_empty());
+}
+
+/// A workspace added in the operation: its working-copy row has no `from`.
+#[test]
+fn op_show_of_a_workspace_add_has_a_working_copy_row_without_from() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let (_second, second_wc) = test_helpers::add_workspace(&fx.path, "second");
+    let mut repo = Repo::open(&fx.path).unwrap();
+
+    let diff = repo.op_show("@", None).unwrap().diff.unwrap();
+
+    assert!(
+        diff.working_copies.contains(&OpWorkingCopyChange {
+            workspace: "second".to_owned(),
+            from: None,
+            to: Some(CommitId(second_wc)),
+        }),
+        "{:?}",
+        diff.working_copies
+    );
+}
+
+/// When the merge op rebased descendants (both branches rewrote `Commit 1`'s line), the CLI's
+/// `jj op diff --op @` fails in `accumulate_predecessors` — "Internal error: Predecessors cycle
+/// detected around commit …" (checked against the pinned CLI); Zanshin reports the same failure.
+#[test]
+fn op_diff_of_a_rebasing_merge_operation_fails_like_the_cli() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    diverge(&fx.path);
+    let mut repo = Repo::open(&fx.path).unwrap();
+
+    let err = repo
+        .op_diff(&OpDiffOptions::default())
+        .expect_err("the CLI's internal error");
+
+    assert!(
+        matches!(&err, MutateError::Backend(reason) if reason.starts_with("Predecessors cycle detected around commit ")),
+        "{err:?}"
+    );
 }

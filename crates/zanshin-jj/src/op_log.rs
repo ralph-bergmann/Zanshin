@@ -663,8 +663,13 @@ pub(crate) fn op_abandon(
     // need to re-abandon their ancestors").
     let mut locked = pollster::block_on(workspace.start_working_copy_mutation()).map_err(mutate::be)?;
     let old_op_id = locked.locked_wc().old_operation_id().clone();
-    if let Some((_, new_id)) = changed.iter().find(|(old, _)| *old.id() == old_op_id) {
-        pollster::block_on(locked.finish((*new_id).clone())).map_err(mutate::be)?;
+    // Every head pair, changed or not, as the CLI's `reparented_head_ops()` search.
+    if let Some((_, new_id)) = current
+        .iter()
+        .zip(&stats.new_head_ids)
+        .find(|(old, _)| *old.id() == old_op_id)
+    {
+        pollster::block_on(locked.finish(new_id.clone())).map_err(mutate::be)?;
     } else {
         drop(locked);
         warnings.push(

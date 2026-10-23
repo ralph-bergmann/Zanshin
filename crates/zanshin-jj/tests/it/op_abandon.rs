@@ -216,3 +216,86 @@ fn op_abandon_warns_when_the_working_copy_operation_is_not_a_head() {
         warnings[0].message
     );
 }
+
+/// A bounded range `<op>..@-`: the operations above `<op>` up to `@-` are abandoned, the head is
+/// reparented onto `<op>`, and the working copy is recorded at the new head.
+#[test]
+fn op_abandon_of_a_bounded_range_reparents_the_head_onto_its_start() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    describe_times(&mut repo, 3);
+    let before = repo.op_log(None).unwrap();
+    let start = before[3].id.clone();
+
+    let result = repo.op_abandon(&format!("{}..@-", start.0)).unwrap();
+
+    assert_eq!((result.abandoned_count, result.reparented_count), (2, 1));
+    let after = repo.op_log(None).unwrap();
+    assert_eq!(after[0].parent_ids, [start]);
+    assert_eq!(after.len(), before.len() - 2);
+    assert_eq!(result.head_op_ids, [after[0].id.clone()]);
+    assert_eq!(working_copy_op(&fx.path), result.head_op_ids[0].0);
+}
+
+/// The operation the workspace at `root` records its working copy at, as hex.
+fn working_copy_op(root: &Path) -> String {
+    let workspace = jj_lib::workspace::Workspace::load(
+        &test_helpers::test_settings(),
+        root,
+        &jj_lib::default_backend_factories::default_backend_factories(),
+        &jj_lib::default_backend_factories::default_working_copy_factories(),
+    )
+    .expect("load the workspace");
+    jj_lib::object_id::ObjectId::hex(workspace.working_copy().operation_id())
+}
+
+/// Two heads, the working copy at the one the range leaves alone: the CLI finds it among the
+/// head pairs, unchanged or not, and records it there — no warning.
+#[test]
+fn op_abandon_keeps_quiet_when_the_working_copy_is_at_an_unchanged_head() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let heads_dir = fx.path.join(".jj").join("repo").join("op_heads").join("heads");
+    let head = |repo: &mut Repo| repo.op_log(Some(1)).unwrap().swap_remove(0).id.0;
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let base = head(&mut repo);
+    let commit = |repo: &mut Repo, revset: &str| {
+        let mut found = None;
+        let _ = repo.eval_revset(revset, |change| {
+            found = Some(change.id);
+            std::ops::ControlFlow::Break(())
+        });
+        found.expect("the revset names a commit")
+    };
+    let c1 = commit(&mut repo, "description(exact:'Commit 1')");
+    let c3 = commit(&mut repo, "description(exact:'Commit 3')");
+    repo.describe(c1.clone(), "A1").unwrap();
+    let a1 = head(&mut repo);
+    repo.describe(c1, "A2").unwrap();
+    let a2 = head(&mut repo);
+    drop(repo);
+    fs::remove_file(heads_dir.join(&a2)).unwrap();
+    fs::write(heads_dir.join(&base), "").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    repo.describe(c3, "B").unwrap();
+    let b = head(&mut repo);
+    drop(repo);
+    fs::write(heads_dir.join(&a2), "").unwrap();
+    assert_eq!(
+        working_copy_op(&fx.path),
+        b,
+        "the working copy is at the second branch's head"
+    );
+    let mut repo = Repo::open(&fx.path).unwrap();
+
+    let result = repo.op_abandon(&a1).unwrap();
+
+    assert!(!result.nothing_changed);
+    assert!(
+        result.head_op_ids.contains(&zanshin_jj::OperationId(b.clone())),
+        "b is left alone"
+    );
+    assert!(repo.take_warnings().is_empty(), "the working copy is at a head");
+    assert_eq!(working_copy_op(&fx.path), b);
+}

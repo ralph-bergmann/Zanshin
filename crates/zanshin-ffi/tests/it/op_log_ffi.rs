@@ -277,10 +277,20 @@ fn show_request(kind: fbs::RequestKind, operation: Option<&str>, show_changes_in
 }
 
 fn diff_request(operation: Option<&str>, from: Option<&str>, to: Option<&str>) -> Vec<u8> {
+    diff_request_in(operation, from, to, None)
+}
+
+fn diff_request_in(
+    operation: Option<&str>,
+    from: Option<&str>,
+    to: Option<&str>,
+    show_changes_in: Option<&str>,
+) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::new();
     let operation = operation.map(|s| b.create_string(s));
     let from = from.map(|s| b.create_string(s));
     let to = to.map(|s| b.create_string(s));
+    let show_changes_in = show_changes_in.map(|s| b.create_string(s));
     let req = fbs::OpDiffRequest::create(
         &mut b,
         &fbs::OpDiffRequestArgs {
@@ -288,7 +298,7 @@ fn diff_request(operation: Option<&str>, from: Option<&str>, to: Option<&str>) -
             operation,
             from,
             to,
-            show_changes_in: None,
+            show_changes_in,
         },
     );
     b.finish(req, None);
@@ -441,4 +451,49 @@ fn op_abandon_round_trip_and_refusals() {
     assert_eq!(error_code(&bytes).as_deref(), Some(FFI_NULL_POINTER));
     let bytes = unsafe { read_and_free(zanshin_op_abandon(0, range.as_ptr())) };
     assert_eq!(error_code(&bytes).as_deref(), Some(FFI_INVALID_HANDLE));
+}
+
+/// `show_changes_in` crosses both requests: `none()` elides every changed commit (the describe
+/// rewrote three), and a lone `to` diffs from `@` (an empty diff from the head to itself).
+#[test]
+fn show_changes_in_and_a_lone_to_are_read_off_the_request() {
+    let fx = described();
+    let req = show_request(fbs::RequestKind::OpShow, None, Some("none()"));
+    let bytes = unsafe { read_and_free(zanshin_op_show(fx.handle, req.as_ptr(), req.len())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let commits = env.data_as_op_show().unwrap().diff().unwrap().commits().unwrap();
+    assert_eq!(commits.changes().map(|c| c.len()), Some(0));
+    assert!(commits.elided_newly_visible().unwrap().lower() > 0);
+
+    let req = diff_request_in(None, Some("@-"), None, Some("none()"));
+    let bytes = unsafe { read_and_free(zanshin_op_diff(fx.handle, req.as_ptr(), req.len())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let commits = env.data_as_op_diff_result().unwrap().diff().unwrap().commits().unwrap();
+    assert_eq!(commits.changes().map(|c| c.len()), Some(0));
+    assert!(commits.elided_newly_visible().unwrap().lower() > 0);
+
+    let req = diff_request(None, None, Some("@-"));
+    let bytes = unsafe { read_and_free(zanshin_op_diff(fx.handle, req.as_ptr(), req.len())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let result = env.data_as_op_diff_result().unwrap();
+    let from = result.from().unwrap();
+    assert_eq!(from.len(), 1);
+    assert_eq!(
+        from.get(0).id(),
+        Some(op_heads(&fx)[0].as_str()),
+        "a lone `to`: from is `@`"
+    );
+    assert_ne!(result.to().and_then(|op| op.id()), from.get(0).id(), "to is `@-`");
+}
+
+/// An `operation` that is not UTF-8 is refused before the handle is touched.
+#[test]
+fn op_abandon_refuses_an_operation_that_is_not_utf8() {
+    let fx = described();
+    let bytes_in: [u8; 2] = [0xff, 0x00];
+    let bytes = unsafe { read_and_free(zanshin_op_abandon(fx.handle, bytes_in.as_ptr().cast())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(zanshin_ffi::FFI_UTF8_ERROR));
 }

@@ -116,6 +116,13 @@ fn config_read_back(root: &Path) -> String {
     format!("cli get={:?} file={text:?}", value.trim_end())
 }
 
+/// A few operations on top of BASE, for `op abandon` to abandon (Story 9.21).
+const SOME_DESCRIBES: &[Step] = &[
+    Step::Jj(&["describe", "-m", "one"]),
+    Step::Jj(&["describe", "-m", "two"]),
+    Step::Jj(&["describe", "-m", "three"]),
+];
+
 /// The root operation's id prefix — jj's root operation id is all zeros.
 const ROOT_OPERATION_PREFIX: &str = "000000000000";
 
@@ -1165,6 +1172,53 @@ pub fn scenarios() -> Vec<Scenario> {
             )
         },
         Scenario {
+            // The head is a redo op: the next redo goes one further forward
+            // (`redo.rs:105-117` @ v0.46.0).
+            setup: &[
+                Step::Jj(&["describe", "-m", "first"]),
+                Step::Jj(&["describe", "-m", "second"]),
+                Step::Jj(&["undo"]),
+                Step::Jj(&["undo"]),
+                Step::Jj(&["redo"]),
+            ],
+            ..simple(
+                "redo_of_a_redo",
+                |repo, _, _| {
+                    let result = repo.redo(false);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["redo"]),
+            )
+        },
+        Scenario {
+            setup: SOME_DESCRIBES,
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_abandon_single",
+                |repo, _, _| {
+                    let result = repo.op_abandon("@-");
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "abandon", "@-"]),
+            )
+        },
+        Scenario {
+            setup: &[
+                Step::Jj(&["describe", "-m", "one"]),
+                Step::Jj(&["op", "abandon", "..@-"]),
+            ],
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_abandon_nothing",
+                |repo, _, _| {
+                    let result = repo.op_abandon("..@-");
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "abandon", "..@-"]),
+            )
+        },
+        Scenario {
+            setup: SOME_DESCRIBES,
             extra: Some(op_chain_read_back),
             ..simple(
                 "op_abandon_range",

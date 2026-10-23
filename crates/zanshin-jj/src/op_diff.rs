@@ -197,7 +197,7 @@ pub(crate) fn op_diff(
         Err(reason) => {
             ctx.warnings.push(
                 WarningKind::OpDiffChangesUnresolved,
-                format!("Could not resolve revset expression for elision: {reason}"),
+                format!("Could not resolve revset expression for elision: {reason}\n   (Use --show-changes-in=all() to see all changes)"),
             );
             None
         }
