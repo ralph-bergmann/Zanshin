@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/commit.rs (selection); Story 9.50
     severity: medium
+    resolved: >-
+      2026-10-23 — fixed (spec-9-50-hunk-selection-select-tree, commit 90612be): `CommitOptions.tree` takes a `select_tree` result plus its `left`; a stale `left` or unknown key refuses `jj.stale_selection`.
   - summary: >-
       `templates.commit_trailers` is not applied by `commit` either: with a non-empty description the CLI renders the trailers template (commit.rs:148-153 @ v0.46.0), Zanshin writes the `-m` text alone — the existing ledgered gap, now witnessed for `commit` too.
     evidence: |-

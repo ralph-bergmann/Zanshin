@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/squash_split.rs (selection), crates/zanshin-jj/src/op_support.rs SelectedTree::from_tree_id; Story 9.50
     severity: medium
+    resolved: >-
+      2026-10-23 — fixed (spec-9-50-hunk-selection-select-tree, commit 90612be): `split` takes one selected tree plus its `left`, `squash` one per source; a stale `left` or unknown key refuses `jj.stale_selection`; a split with neither paths nor a tree still refuses `jj.invalid_input`.
   - summary: >-
       `jj squash -o/-A/-B` (experimental at v0.46.0: the squashed changes go into a NEW commit at that location) is not ported; no design row needs it (the drops "Into a new change after/before" are split -A/-B).
     evidence: |-
