@@ -17,6 +17,10 @@ deferred:
     location: >-
       crates/zanshin-ffi/include/zanshin_ffi.h; the cbindgen config of crates/zanshin-ffi
     severity: low
+    resolved: >-
+      2026-10-23 — fixed (spec-9-16-closing-cbindgen-ignores-flatbuffers-module, commit 3154d45): cbindgen skips
+      the flatc module (`cbindgen:ignore`), so the header carries no VT_*/ENUM_* defines; a guard test fails on any
+      `#define` but the include guard.
   - summary: >-
       No Dart round trip observes `keepDivergent`: dropping it anywhere along `RepoHandle.rebase` → worker → `zanshinRebase` would still pass the zanshin_core suite.
     evidence: |-
