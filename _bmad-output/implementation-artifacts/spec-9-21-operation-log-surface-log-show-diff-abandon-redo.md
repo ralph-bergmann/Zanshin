@@ -2,8 +2,8 @@
 title: 'Story 9.21: Operation-log surface — `op log`, `op show`, `op diff`, `op abandon`, `redo` — CLI parity at v0.46.0'
 type: 'feature'
 created: '2026-10-23'
-status: 'ready-for-dev'
-baseline_revision: 'bf203b8187532d85cb6319bda2f85cf9fcc0c2de'
+status: 'done'
+baseline_revision: 'a951eff8714700d40c6f53d9c51b2268ecb256e7'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -107,6 +107,8 @@ CLI anchors at `v0.46.0` (`git -C ../jj show v0.46.0:<path>`): R = `cli/src/comm
 - Given the end of the run, then the targeted checks named in Verification pass, `git status --porcelain` is clean and every commit ends with the required co-author trailer.
 
 ## Spec Change Log
+
+- 2026-10-23 (implementation): the commit ids of `OpDiff` (`OpChangedCommit`, `OpWorkingCopyChange.from` / `.to`, `OpRefTarget`) are the crate's hex `CommitId` newtype rather than bare `String`s, as every other commit id of the public API; on the wire they are strings. The commit section is its own table, `OpCommitsDiff` (absent = the CLI printed none), beside the tables the Code Map lists. `op diff`'s throw-away transaction is opened through `op_support::start_repo_transaction` (never committed), which `op_support`'s creep guard requires of every transaction in the crate.
 
 ## Review Triage Log
 
