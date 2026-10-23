@@ -507,8 +507,9 @@ fn a_bad_alias_entry_warns_between_the_two_imports(tmp: &Path) {
 
 /// Story 9.9 closing run: the CLI prints "Deprecated … config" at the start of every command
 /// (`run_internal`, `cli_util.rs:4646-4740` @ v0.46.0), so every creation path's start-up check
-/// warns a deprecated user key — exactly once, first, on success and on a refusal past the
-/// start-up check; the creation's later loads stay silent.
+/// warns a deprecated user key — exactly once, first, on success, on a refusal inside the
+/// start-up check (a wrong-typed `user.name`, refused after the deprecations are printed) and on
+/// one past it; the creation's later loads stay silent.
 fn a_deprecated_user_key_warns_once_first_on_every_creation_path(tmp: &Path) {
     const DEPRECATED: &str = "Deprecated user-level config: fix.tools.t.line-range-arg is updated to \
                               fix.tools.t.line-range-args = [\"--l\"]";
@@ -539,8 +540,9 @@ fn a_deprecated_user_key_warns_once_first_on_every_creation_path(tmp: &Path) {
     assert!(init.result.is_ok(), "{:?}", init.result);
     assert_eq!(warnings(&init), [(WarningKind::ConfigDeprecated, DEPRECATED)]);
 
+    let fresh = TempDir::new().unwrap();
     let refused = Repo::init(&zanshin_jj::InitOptions {
-        path: dir.path().join("missing").join("dest"),
+        path: fresh.path().join("missing").join("dest"),
         backend: Some(Backend::Git),
         colocate: Some(false),
         ..Default::default()
@@ -578,6 +580,26 @@ fn a_deprecated_user_key_warns_once_first_on_every_creation_path(tmp: &Path) {
     let imported = convert_import(src.path(), &parent.path().join("dst"));
     assert!(imported.result.is_ok(), "{:?}", imported.result);
     assert_eq!(deprecations(&imported), 1);
+
+    let wrong_type = tmp.join("deprecated-wrong-type.toml");
+    fs::write(&wrong_type, "fix.tools.t.line-range-arg = \"--l\"\n[user]\nname = 1\n").unwrap();
+    set_env("JJ_CONFIG", Some(wrong_type.to_str().unwrap()));
+    // Removed for this row only: the `EnvOverrides` identity would shadow the wrong-typed name.
+    set_env("JJ_USER", None);
+    let target = TempDir::new().unwrap();
+    let broken = Repo::init(&zanshin_jj::InitOptions {
+        path: target.path().to_owned(),
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    });
+    set_env("JJ_USER", Some("Zanshin"));
+    assert!(
+        matches!(&broken.result, Err(RepoError::Config { reason }) if reason.contains("user.name")),
+        "{:?}",
+        broken.result
+    );
+    assert_eq!(warnings(&broken), [(WarningKind::ConfigDeprecated, DEPRECATED)]);
 
     set_env("JJ_CONFIG", Some(""));
 }

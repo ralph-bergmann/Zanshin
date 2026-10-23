@@ -3187,9 +3187,10 @@ impl Repo {
     ///
     /// # Warnings
     ///
-    /// The colocated arm's start-up environment (alias tables, `immutable_heads()`), and the
-    /// External flow's warnings ([`crate::convert_colocated`]'s); none for the internal and
-    /// native arms.
+    /// First the start-up check's `jj.config_deprecated` (one per deprecated key the CLI
+    /// migrates, Story 9.9 — on a refusal too); then the colocated arm's start-up environment
+    /// (alias tables, `immutable_heads()`), and the External flow's warnings
+    /// ([`crate::convert_colocated`]'s); nothing more for the internal and native arms.
     ///
     /// # Errors
     ///
@@ -3235,8 +3236,8 @@ impl Repo {
     ///
     /// # Warnings
     ///
-    /// In the CLI's order: the start-up environment's (twice: before and after the reload), the
-    /// first finish's, `jj.clone_branches_unmatched`, `jj.git_import_failed`, the fetch finish's,
+    /// In the CLI's order: the start-up check's `jj.config_deprecated` (Story 9.9), the start-up
+    /// environment's (twice: before and after the reload), the first finish's, `jj.clone_branches_unmatched`, `jj.git_import_failed`, the fetch finish's,
     /// the checkout finish's (`jj.checkout_files_skipped`, `jj.unresolved_conflicts`,
     /// `jj.identity_missing`, …); on a failure inside the clean-up scope, `jj.clone_cleanup_failed`
     /// last when the clean-up failed.

@@ -543,21 +543,19 @@ fn fix_up(
 }
 
 /// The CLI's start-up: raw stack → resolved with `command` (and migrated) → `UserSettings`. With
-/// `fix_ups` (and a workspace) the raw load is the CLI's start-up load, secure-config fix-up
-/// included (Story 9.37); its warnings land there, on success AND on failure, followed by the
-/// migrations' "Deprecated … config" warnings (Story 9.9).
+/// a workspace the raw load is the CLI's start-up load, secure-config fix-up included (Story
+/// 9.37); its warnings land in `warnings`, on success AND on failure, followed by the migrations'
+/// "Deprecated … config" warnings (Story 9.9).
 fn startup(
     env: &ConfigEnv,
     ws: Option<&WorkspaceDirs>,
     command: &str,
-    mut fix_ups: Option<&mut Vec<crate::Warning>>,
+    warnings: &mut Vec<crate::Warning>,
 ) -> Result<UserSettings, ConfigCmdError> {
     let paths = ws.map(WorkspaceDirs::paths);
-    let raw = config::load_raw(env, paths, fix_ups.as_deref_mut())?;
+    let raw = config::load_raw(env, paths, Some(warnings))?;
     let (resolved, deprecations) = config::resolve_raw(env, paths, &raw, Some(command))?;
-    if let Some(sink) = fix_ups {
-        sink.extend(config::deprecation_warnings(deprecations));
-    }
+    warnings.extend(config::deprecation_warnings(deprecations));
     Ok(config::settings_from(env, resolved)?)
 }
 
@@ -827,7 +825,7 @@ fn list_with(
     warnings: &mut Vec<crate::Warning>,
 ) -> Result<Vec<ConfigEntry>, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
-    let settings = startup(env, ws.as_ref(), "config list", Some(warnings))?;
+    let settings = startup(env, ws.as_ref(), "config list", warnings)?;
     let name = query.name.as_deref().map(parse_name).transpose()?;
     let prefix = name.clone().unwrap_or_else(ConfigNamePathBuf::root);
     let mut values = resolved_config_values(settings.config(), &prefix);
@@ -868,7 +866,7 @@ fn get_with(
     warnings: &mut Vec<crate::Warning>,
 ) -> Result<String, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
-    let settings = startup(env, ws.as_ref(), "config get", Some(warnings))?;
+    let settings = startup(env, ws.as_ref(), "config get", warnings)?;
     let name = parse_name(name)?;
     // WHY every error is NotFound: `get_value`'s conversion is the identity, so `NotFound` is
     // the only `ConfigGetError` it can return.
@@ -891,7 +889,7 @@ fn path_with(
     warnings: &mut Vec<crate::Warning>,
 ) -> Result<Vec<PathBuf>, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
-    startup(env, ws.as_ref(), "config path", Some(warnings))?;
+    startup(env, ws.as_ref(), "config path", warnings)?;
     let paths: Vec<PathBuf> = if scope == ConfigScope::User {
         config::user_config_candidates(env)
     } else {
@@ -916,7 +914,7 @@ fn set_with(
     let mut warnings = Vec::new();
     let result = (|| -> Result<ConfigSetResult, ConfigCmdError> {
         let ws = resolve_workspace(root)?;
-        startup(env, ws.as_ref(), "config set", Some(&mut warnings))?;
+        startup(env, ws.as_ref(), "config set", &mut warnings)?;
         let name = parse_name(name)?;
         let value = parse_value_or_bare_string(value_text)?;
         let (file_path, source) = select_file(env, ws.as_ref(), target)?;
@@ -1015,7 +1013,7 @@ fn unset_with(
     warnings: &mut Vec<crate::Warning>,
 ) -> Result<PathBuf, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
-    startup(env, ws.as_ref(), "config unset", Some(warnings))?;
+    startup(env, ws.as_ref(), "config unset", warnings)?;
     let name = parse_name(name)?;
     let (file_path, source) = select_file(env, ws.as_ref(), target)?;
     let mut file = config::load_config_file(source, &file_path)?;
@@ -1093,7 +1091,7 @@ fn file_write_with(
 /// `<config_dir>/jj/repos`, after the start-up stack (no workspace), whose migrations warn into
 /// `warnings`.
 fn gc_root(env: &ConfigEnv, warnings: &mut Vec<crate::Warning>) -> Result<PathBuf, ConfigCmdError> {
-    startup(env, None, "config gc", Some(warnings))?;
+    startup(env, None, "config gc", warnings)?;
     env.root_config_dir()
         .map(|r| r.join("repos"))
         .ok_or_else(|| ConfigCmdError::NoConfigPath {

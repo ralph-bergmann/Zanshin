@@ -91,20 +91,23 @@
 //! Both return a [`CreationOutcome`]. Its warnings are every `ui.warning_*` the CLI reaches on
 //! the steps above, in the CLI's print order:
 //!
-//! 1. `jj.git_import_failed` — refs the `import git refs` step could not read (`init.rs:304`),
+//! 1. `jj.config_deprecated` — the start-up check's "Deprecated … config", one per deprecated
+//!    key the CLI migrates (`cli_util.rs:4726-4741` @ v0.46.0; Story 9.9), before any path is
+//!    touched — on a refusal too;
+//! 2. `jj.git_import_failed` — refs the `import git refs` step could not read (`init.rs:304`),
 //!    reported even when the step then writes no operation;
-//! 2. colocated only: `jj.git_export_failed` — refs that step's export could not write
+//! 3. colocated only: `jj.git_export_failed` — refs that step's export could not write
 //!    (`init.rs:311-312`);
-//! 3. the start-up environment's warnings (alias tables, builtin redefinitions,
+//! 4. the start-up environment's warnings (alias tables, builtin redefinitions,
 //!    `immutable_heads()` diagnostics), loaded where the CLI's `for_workable_repo` builds the
 //!    workspace command (`init.rs:252`, `cli_util.rs:936-966`): after the refs step, before
 //!    `.jj/.gitignore` and the snapshot — which reads its snapshot knobs itself, inside the
 //!    snapshot step, after the colocated `import git head` (Story 9.34);
-//! 4. the implicit snapshot's own warnings, as every verb's precondition reports them — its
+//! 5. the implicit snapshot's own warnings, as every verb's precondition reports them — its
 //!    colocated refs import reports an unreadable ref a SECOND time, as the CLI does;
-//! 5. on the snapshot's success: `jj.snapshot_files_refused` / `jj.snapshot_paths_not_utf8`
+//! 6. on the snapshot's success: `jj.snapshot_files_refused` / `jj.snapshot_paths_not_utf8`
 //!    (`cli_util.rs:1340`);
-//! 6. non-colocated only: the `import git head` finish — `jj.working_copy_immutable` (the new
+//! 7. non-colocated only: the `import git head` finish — `jj.working_copy_immutable` (the new
 //!    `@` became immutable), `jj.checkout_files_skipped`, `jj.unresolved_conflicts` (the new `@`
 //!    has conflicts) and `jj.identity_missing`.
 //!

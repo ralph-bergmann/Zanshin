@@ -2464,8 +2464,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_remotes(
 /// # Warnings
 /// `Envelope.warnings` carries the clone's warnings on the ok envelope AND on every error
 /// envelope, in the CLI's order: the start-up check's `jj.config_deprecated` (Story 9.9), the
-/// start-up environment's (twice: before and after the remote is added), each finish's (`jj.identity_missing` once per operation written, `jj.git_export_failed`
-/// colocated, `jj.working_copy_immutable`, `jj.checkout_files_skipped`, `jj.unresolved_conflicts`),
+/// start-up environment's (twice: before and after the remote is added), each finish's
+/// (`jj.identity_missing` once per operation written, `jj.git_export_failed` colocated,
+/// `jj.working_copy_immutable`, `jj.checkout_files_skipped`, `jj.unresolved_conflicts`),
 /// `jj.clone_branches_unmatched` and `jj.git_import_failed` before the fetch's finish; on a
 /// failure inside the clean-up scope, `jj.clone_cleanup_failed` last when the clean-up failed.
 /// No `Envelope.precondition`.
@@ -2563,10 +2564,9 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_close(
 /// present iff that snapshot started (PARTIAL when it failed; the state it describes stays on
 /// disk). `Envelope.warnings` holds, in the CLI's order: the start-up check's
 /// `jj.config_deprecated` (Story 9.9); `jj.git_import_failed` / `jj.git_export_failed` from the
-/// refs step; the config-load warnings
-/// (`jj.config_alias_invalid`, `jj.config_alias_redefined`, `jj.revset_diagnostic`); the
-/// snapshot's own (as every verb's precondition reports them — an unreadable ref a second
-/// time); then, when the snapshot succeeded, `jj.snapshot_files_refused` /
+/// refs step; the config-load warnings (`jj.config_alias_invalid`, `jj.config_alias_redefined`,
+/// `jj.revset_diagnostic`); the snapshot's own (as every verb's precondition reports them — an
+/// unreadable ref a second time); then, when the snapshot succeeded, `jj.snapshot_files_refused` /
 /// `jj.snapshot_paths_not_utf8`. The refs step and the snapshot's head import commit without a
 /// finish, as in the CLI, so an empty identity (`jj.identity_missing`) is warned only when the
 /// snapshot's own refs import finishes a change.

@@ -232,8 +232,9 @@ fn a_deprecated_line_range_arg_warns_on_any_verb_and_is_migrated() {
     assert_eq!(file(&mut fx, &a, "a.txt"), "a\n--l=1\n");
 }
 
-/// Story 9.9 closing run: the graph and revset reads start like their CLI command too — each call
-/// warns a deprecated key exactly once, though it loads the stack again after its start.
+/// Story 9.9 closing run: the graph (walk and topology) and revset reads start like their CLI
+/// command too — each call warns a deprecated key exactly once, though it loads the stack again
+/// after its start.
 #[test]
 fn a_deprecated_line_range_arg_warns_once_per_graph_read() {
     let mut fx = configured("fix.tools.t.line-range-arg = \"--l\"\n");
@@ -253,6 +254,10 @@ fn a_deprecated_line_range_arg_warns_once_per_graph_read() {
         .expect("walk");
     assert!(walked.is_continue());
     assert_eq!(deprecations(&mut fx), 1, "walk_graph");
+    fx.repo
+        .graph_topology("all()", DEFAULT_GRAPH_PRIORITIZE, DEFAULT_LOG_REVSET, &[], false)
+        .expect("topology");
+    assert_eq!(deprecations(&mut fx), 1, "graph_topology");
     let evaluated = fx
         .repo
         .eval_revset("all()", |_| ControlFlow::Continue(()))
