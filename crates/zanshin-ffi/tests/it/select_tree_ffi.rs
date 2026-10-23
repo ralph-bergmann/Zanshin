@@ -363,6 +363,116 @@ fn split_and_squash_take_the_tree_arm() {
     assert_eq!(file_at(&fx.root, &fx.at, "f.txt"), "A\nb\nC\nd\nE\n");
 }
 
+/// A `SelectTreeRequest` picking `path` whole in `revision` (`None` = `@`); returns the
+/// `SelectedTree` payload's ids and labels.
+fn select_whole(handle: u64, revision: Option<&str>, left: &[String], path: &str) -> (Vec<String>, Vec<String>) {
+    let mut b = FlatBufferBuilder::with_capacity(256);
+    let path = b.create_string(path);
+    let file = fbs::FileSelection::create(
+        &mut b,
+        &fbs::FileSelectionArgs {
+            path: Some(path),
+            whole: true,
+            hunks: None,
+        },
+    );
+    let files = b.create_vector(&[file]);
+    let left = strings(&mut b, left);
+    let revision = revision.map(|r| b.create_string(r));
+    let req = fbs::SelectTreeRequest::create(
+        &mut b,
+        &fbs::SelectTreeRequestArgs {
+            kind: fbs::RequestKind::SelectTree,
+            revision,
+            left: Some(left),
+            files: Some(files),
+        },
+    );
+    b.finish(req, None);
+    let req = b.finished_data().to_vec();
+    // SAFETY: `handle` is open; `req` is a live buffer for the call.
+    let bytes = unsafe { read_and_free(zanshin_select_tree(handle, req.as_ptr(), req.len())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", error_code(&bytes));
+    let tree = env.data_as_selected_tree().expect("SelectedTree payload");
+    let read = |v: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&str>>>| -> Vec<String> {
+        v.map(|v| v.iter().map(ToOwned::to_owned).collect()).unwrap_or_default()
+    };
+    (read(tree.tree_ids()), read(tree.labels()))
+}
+
+/// A conflicted tree's ids and labels cross the wire both ways: `zanshin_select_tree` returns
+/// them for a merge `@` with a conflicted file, and `zanshin_commit`'s tree arm stores them on
+/// the committed revision (read back with a second whole-file selection on it, whose result is
+/// that revision's own tree).
+#[test]
+fn a_conflicted_trees_ids_and_labels_round_trip_through_the_wire() {
+    test_helpers::pin_test_env();
+    let tmp = tempfile::TempDir::new().expect("tempdir");
+    let main = tmp.path().join("main");
+    fs::create_dir(&main).expect("main dir");
+    let root = Repo::init(&zanshin_jj::InitOptions {
+        path: main,
+        backend: Some(Backend::Git),
+        colocate: Some(false),
+        ..Default::default()
+    })
+    .result
+    .expect("init")
+    .workspace_root()
+    .to_owned();
+    let mut repo = Repo::open(&root).expect("open");
+    let a = repo.status().expect("status").working_copy_change_id;
+    repo.describe(a.clone(), "A\n").expect("describe A");
+    let mut side = |content: &str, message: &str| {
+        repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new");
+        fs::write(root.join("c.txt"), content).expect("write");
+        let id = repo.status().expect("status").working_copy_change_id;
+        repo.describe(id.clone(), message).expect("describe");
+        id
+    };
+    let x = side("x\n", "X\n");
+    let y = side("y\n", "Y\n");
+    repo.new_change(&[x, y], &[], &[]).expect("merge");
+    fs::write(root.join("other.txt"), "o\n").expect("write");
+    let merge = repo.status().expect("status").working_copy_change_id;
+    let left = repo.show(None, None).expect("show").swap_remove(0).parent_tree_ids;
+    drop(repo);
+    let path = CString::new(root.to_str().expect("UTF-8 path")).expect("no NUL");
+    // SAFETY: `path` is a valid NUL-terminated C string alive for the call.
+    let bytes = unsafe { read_and_free(zanshin_repo_open(path.as_ptr())) };
+    let handle = parse_envelope(&bytes)
+        .data_as_repo_handle()
+        .expect("RepoHandle payload")
+        .handle();
+
+    let tree = select_whole(handle, None, &left, "other.txt");
+    assert!(tree.0.len() > 1, "a conflicted tree travels as several ids");
+    assert_eq!(tree.1.len(), tree.0.len(), "one label per id");
+    assert!(tree.1.iter().any(|l| !l.is_empty()), "the labels are carried");
+
+    let req = commit_request(&tree, &left, &[]);
+    // SAFETY: `handle` is open; `req` is a live buffer for the call.
+    let bytes = unsafe { read_and_free(zanshin_commit(handle, req.as_ptr(), req.len())) };
+    assert!(parse_envelope(&bytes).ok(), "{:?}", error_code(&bytes));
+
+    let committed_left = Repo::open(&root)
+        .expect("open")
+        .show(Some(&merge.0), None)
+        .expect("show")
+        .swap_remove(0)
+        .parent_tree_ids;
+    assert_eq!(committed_left, left);
+    assert_eq!(
+        select_whole(handle, Some(&merge.0), &left, "other.txt"),
+        tree,
+        "the committed revision's tree keeps the selected ids and labels"
+    );
+    // SAFETY: the handle came from `zanshin_repo_open` above and is closed exactly once.
+    let bytes = unsafe { read_and_free(zanshin_repo_close(handle)) };
+    assert!(parse_envelope(&bytes).ok());
+}
+
 #[test]
 fn a_zero_handle_and_malformed_buffers_are_refused() {
     test_helpers::pin_test_env();

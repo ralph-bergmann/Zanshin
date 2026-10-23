@@ -687,7 +687,7 @@ fn an_unknown_tree_id_refuses_from_the_backend() {
 // ── split ────────────────────────────────────────────────────────────────────────
 
 /// `split` with a tree: the selected commit holds the tree, the remaining one the full target.
-/// A tree selecting everything warns as the paths arm does.
+/// A tree selecting everything, or nothing, warns as the paths arm does.
 #[test]
 fn split_takes_the_tree_as_the_selected_commit() {
     let mut fx = base();
@@ -725,6 +725,19 @@ fn split_takes_the_tree_as_the_selected_commit() {
         .expect("split");
     let kinds: Vec<WarningKind> = fx.repo.take_warnings().iter().map(|w| w.kind).collect();
     assert_eq!(kinds, [WarningKind::SplitAllSelected]);
+
+    let mut fx = base();
+    let left = left_of(&mut fx.repo, &fx.at.clone());
+    let nothing = select(&mut fx, Vec::new()).expect("select nothing");
+    fx.repo
+        .split(&SplitOptions {
+            message: Some(vec!["first".to_owned()]),
+            tree: Some(TreeSelection { tree: nothing, left }),
+            ..Default::default()
+        })
+        .expect("split");
+    let kinds: Vec<WarningKind> = fx.repo.take_warnings().iter().map(|w| w.kind).collect();
+    assert_eq!(kinds, [WarningKind::SplitNoneSelected]);
 }
 
 /// `split` with neither paths nor a tree refuses, naming the tree arm.

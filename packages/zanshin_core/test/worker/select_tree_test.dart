@@ -157,6 +157,58 @@ void main() {
       expect(squashed.abandonedChangeIds, [selected]);
     });
 
+    test('a_partial_squash_tree_leaves_the_unselected_section_in_the_source', () async {
+      final List<String> left = await leftOf(at);
+      final SelectedTree tree = await selectOneAndThree(left);
+      final MutationResult squashed = await repo.squash(
+        from: [at],
+        into: a,
+        message: const ['A\n'],
+        trees: [
+          SourceTree(
+            source: at,
+            tree: TreeSelection.of(tree, left: left),
+          ),
+        ],
+      );
+      expect(await fileAt(a), fOneAndThree);
+      expect(await fileAt(at), fRight, reason: 'section 2 stays in the source');
+      expect(squashed.abandonedChangeIds, isEmpty);
+    });
+
+    test('a_conflicted_trees_ids_and_labels_survive_select_tree_and_commit', () async {
+      Future<String> side(String content, String message) async {
+        await repo.newChange([a]);
+        File('${tempDir.path}/c.txt').writeAsStringSync(content);
+        final String id = (await repo.status()).workingCopyChangeId;
+        await repo.describe(changeId: id, description: message);
+        return id;
+      }
+
+      final String x = await side('x\n', 'X\n');
+      final String y = await side('y\n', 'Y\n');
+      await repo.newChange([x, y]);
+      File('${tempDir.path}/other.txt').writeAsStringSync('o\n');
+      final String merge = (await repo.status()).workingCopyChangeId;
+      final List<String> left = await leftOf(merge);
+      expect(left, hasLength(3), reason: 'the merge parents form a conflicted tree');
+
+      const files = [FileSelection.whole('other.txt')];
+      final SelectedTree tree = await repo.selectTree(left: left, files: files);
+      expect(tree.treeIds, hasLength(3));
+      expect(tree.labels, hasLength(3));
+      expect(tree.labels.any((l) => l.isNotEmpty), isTrue);
+
+      await repo.commit(
+        message: const ['c'],
+        tree: TreeSelection.of(tree, left: left),
+      );
+      // A whole-file pick on the committed revision rebuilds its own tree.
+      final SelectedTree committed = await repo.selectTree(revision: merge, left: left, files: files);
+      expect(committed.treeIds, tree.treeIds);
+      expect(committed.labels, tree.labels);
+    });
+
     test('a_squash_plan_carries_the_trees_through', () async {
       final List<String> left = await leftOf(at);
       final SelectedTree tree = await selectOneAndThree(left);

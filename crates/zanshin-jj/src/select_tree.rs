@@ -36,7 +36,11 @@
 //! - a conflicted file is whole only: the builtin editor sections its materialized conflict
 //!   markers and writes the result back through `conflicts::update_from_content`
 //!   (`builtin.rs:423-445`), Zanshin selects such a file whole (epics.md Story 9.50, Claude's
-//!   proposal).
+//!   proposal);
+//! - an added or deleted text file is whole only: the builtin editor gives it one line section
+//!   (`builtin.rs:326-345`), Zanshin selects such a file whole (Story 9.50's sectionable rule);
+//! - a section is selected whole: the builtin editor can check single lines inside it
+//!   (`SectionChangedLine::is_checked`, `builtin.rs:211-222`), lines are a non-goal here.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

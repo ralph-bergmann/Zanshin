@@ -12,8 +12,8 @@
 //! (Story 9.50), in place of the CLI's `--interactive`/`--tool`: a tree the GUI selected
 //! ([`crate::Repo::select_tree`]) against the source's parent tree, refused as stale when that
 //! parent tree is no longer its `left`. `squash` takes one tree per source, as the CLI runs its
-//! editor once per source; a source without one gets what the editor saved unchanged gives —
-//! everything.
+//! editor once per source; a source without one gets what an external `--tool` saved unchanged
+//! gives — everything (the builtin editor starts with nothing checked, Story 9.50's rule).
 //!
 //! **No `-m` where the CLI opens its editor = the editor saved unchanged.** A squash whose
 //! abandoned sources and destination carry two or more non-empty descriptions (and no
@@ -114,7 +114,8 @@ pub struct SquashOptions {
     pub edited_description: Option<String>,
     /// The tree arm (Story 9.50): per source, the tree selected in the GUI against that source's
     /// parent tree — the CLI's `--interactive`/`--tool` result, one per source. A source without
-    /// an entry moves everything (the editor saved unchanged). Non-empty conflicts with `paths`;
+    /// an entry moves everything (an external `--tool` saved unchanged; the builtin editor would
+    /// start with nothing checked). Non-empty conflicts with `paths`;
     /// an entry naming no source, or two naming one, refuses.
     pub trees: Vec<crate::SourceTree>,
 }

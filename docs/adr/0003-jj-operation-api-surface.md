@@ -177,6 +177,8 @@ Dart `WorkerCommand` → optional MCP tool → tests (+ coverage attribution + r
   files, mode changes, binary (NUL or non-UTF-8) files, symlinks, submodules and conflicts — for
   mode changes and conflicts a deliberate divergence (epics.md Story 9.50): the builtin editor
   offers a mode change as a separate `FileMode` toggle (`builtin.rs:296-301` @ v0.46.0) and
-  sections a conflicted file over its materialized markers (`:423-445`). The
+  sections a conflicted file over its materialized markers (`:423-445`); likewise an added or
+  deleted text file (one line section there, `:326-345`) and single lines inside a section
+  (checkable there, `:211-222`) are whole-only here. The
   9.47 oracle drives the stock CLI's `--tool` with a scripted editor making the same choice
   (`split_tool_sections_1_3`, `commit_tool_sections_1_3`, `squash_tool_sections_1_3`).

@@ -5,7 +5,7 @@ created: '2026-10-23'
 status: 'done'
 baseline_revision: '5cbb777936d2cf0253ccda46e0c33f5f76a2e57a'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-9-context.md'
@@ -150,6 +150,35 @@ deferred:
   - `[low]` `[reject]` (intent) I1 witness edits a different file — tree arms check `left` only by the intent's rule; a same-file edit is "own content" and not stale.
   - `[low]` `[patch]` (intent) Process items (Auto Run Result, hashes, verification record) — written in this finalize; `packages/zanshin_core` is a pure Dart package, `dart test` is its runner.
 
+### 2026-10-23 — Review pass
+- verdicts: 25 findings — high 0, medium 4, low 15, false 6, maybe-false 0
+- findings:
+  - `[medium]` `[patch]` (verification-gap) Conflict labels and multi-id trees never cross the FFI or Dart layers in a test — added `select_tree_ffi::a_conflicted_trees_ids_and_labels_round_trip_through_the_wire` (merge @ with a conflicted file: `zanshin_select_tree` returns 3 ids + 3 labels, `zanshin_commit`'s tree arm stores them, read back by a whole-file selection on the committed revision; a mutation dropping `labels` in the FFI reader fails it) and the Dart mirror `a_conflicted_trees_ids_and_labels_survive_select_tree_and_commit`.
+  - `[medium]` `[patch]` (verification-gap) The Dart squash tree arm can be dropped without a test noticing — added `a_partial_squash_tree_leaves_the_unselected_section_in_the_source` (squash @'s sections 1+3 into its parent: parent = 1+3, @ keeps section 2, nothing abandoned); a mutation dropping `trees:` at `SquashCommand` fails it.
+  - `[low]` `[reject]` (intent) carried — builtin-editor equivalence is shown against the CLI for one shape only — same claim as the logged "The oracle covers one shape only" row; every matrix row is covered in `tests/it/select_tree.rs`.
+  - `[medium]` `[defer]` (intent) carried — no read emits keys; tests fabricate them — the logged 5.1 deferral; not re-added.
+  - `[low]` `[reject]` (intent) `jj.stale_selection` for split/squash untested at the FFI and Dart layers — each arm's refusal is asserted at the jj level, and the code travels the one `map_mutate_err` arm (unit-tested) shared by every verb; per-layer copies add nothing.
+  - `[false]` `[reject]` (intent) "Nothing selected" with a conflicted left: tree-id equality untested — the intent and the matrix claim content equality only ("left-equal content tree"); nothing claims ids.
+  - `[false]` `[reject]` (intent) carried — an unresolvable squash source gives `jj.change_not_found` — logged row: an unknown change is `change_not_found` in every verb.
+  - `[low]` `[reject]` (edge) carried — a key cannot see changed text under unchanged line ranges — logged row; the intent's staleness rule.
+  - `[false]` `[reject]` (edge) carried — `Whole` on a path absent from the diff selects nothing — logged row; absolute-tree semantics.
+  - `[medium]` `[defer]` (edge) carried — no read exposes `sections()` — the logged 5.1 deferral; not re-added.
+  - `[low]` `[reject]` (edge) carried — Dart `HunkKey` ints not range-checked — logged row.
+  - `[low]` `[reject]` (edge) A tree arm accepts a tree selected in another revision — real only when the caller misroutes a tree between revisions sharing a parent tree; binding the revision is new public surface on the `{tree, left}` contract the intent fixed, and the GUI only passes what `select_tree` returned for that revision.
+  - `[false]` `[reject]` (edge) carried — a stale refusal with a dirty @ still writes the snapshot op — logged row; the CLI's own start-up op.
+  - `[false]` `[reject]` (blind) carried — content removed from the revision after select_tree still lands in the selected commit (add-then-revert in history) — logged "Source content changed after select_tree" row; the intent makes the tree absolute and own-content edits not stale (I1 as confirmed).
+  - `[low]` `[reject]` (blind) A selected tree is not tied to its revision — grouped with the edge provenance row above, same reason.
+  - `[low]` `[patch]` (blind) Squash's "a source without a tree moves everything (the editor saved unchanged)" rationale is wrong for the builtin editor, whose lines start unchecked (`builtin.rs:211-222` @ v0.46.0, verified) — `squash_split.rs` module doc and `SquashOptions.trees` now name an external `--tool` saved unchanged and note the builtin editor starts with nothing checked; the behavior is the intent's.
+  - `[low]` `[patch]` (blind) Two builtin-editor divergences unrecorded: line sections for added/deleted text files (`builtin.rs:326-345`, verified) and per-line checks inside a section — added to `select_tree.rs`' divergence list and the ADR-0003 note.
+  - `[low]` `[reject]` (blind) `Whole` on a directory or vanished path is a silent no-op — the GUI's paths come from `show`'s file changes (files); refusing would add a branch for an input the surface does not produce.
+  - `[low]` `[reject]` (blind) A pruned selected tree surfaces as `jj.jj_lib_error`, not stale — needs a gc pruning objects written seconds earlier (git's default prune expiry is two weeks); a mapping branch for a case nobody meets.
+  - `[low]` `[reject]` (blind) The "as clap refuses them" lists include the paths+tree refusal, which is Zanshin's own — the phrase marks the timing (before the snapshot) for the whole list, which already held a non-clap item (`edited_description`); rewording six doc blocks plus regenerated bindings for no behavioral effect.
+  - `[false]` `[reject]` (blind) Keys go stale on any edit above them — that refusal is the intent's rule ("a key not among the file's current section keys"), with the remedy "the UI re-maps and retries"; the inside-edit half is the carried key-text row.
+  - `[low]` `[patch]` (blind) No test for split's none-selected warning on the tree arm — `split_takes_the_tree_as_the_selected_commit` now also splits with an empty selection and asserts `[SplitNoneSelected]`.
+  - `[low]` `[reject]` (blind) carried — the oracle covers one shape — logged row.
+  - `[low]` `[reject]` (blind) A `SourceTree` without `tree` gets a "left needs an odd number" message; `whole=false` with no hunks selects nothing — hand-built buffers only (the Dart surface always sets both); empty hunks is a legitimate "nothing from this file"; guards for unreachable input.
+  - `[low]` `[patch]` (blind) sprint-status 9-50 note still said "Review + closing run pending" — now records both reviews done, closing run pending.
+
 ## Design Notes
 
 - Why `left` is ids, not one id: `parent_tree` of a merge can be a conflicted `MergedTree` (several tree ids); a single id would misreport it. Why labels travel: `MergedTreeBuilder::write_tree` keeps the right tree's labels when the side count matches (jj-lib `merged_tree_builder.rs:60-80`); rebuilding them from ids alone would change a conflicted commit's stored labels.
@@ -177,6 +206,14 @@ deferred:
 - `packages/zanshin_core`: `dart analyze --fatal-infos` clean, `dart format --set-exit-if-changed` clean, `dart test test/worker/select_tree_test.dart test/worker/commit_test.dart test/worker/squash_split_test.dart test/worker/commit_views_test.dart test/ffi` -- 525 passed (real cdylib).
 - `dart analyze app` -- clean.
 - Coverage not measured (loop gate runs it); the new files `crates/zanshin-jj/src/select_tree.rs` and `crates/zanshin-ffi/src/select_tree.rs` have dedicated unit + integration + real-cdylib tests.
+
+**Verification notes (follow-up review pass, 2026-10-23; full gate deliberately NOT run — story-loop gate rule):**
+- `cargo fmt --all --check` -- clean (after `cargo fmt --all` reflowed one new test struct literal).
+- `cargo clippy -p zanshin-jj -p zanshin-ffi --all-targets -- -D warnings` -- exit 0.
+- `cargo test -p zanshin-jj --test it select_tree::` -- 19 passed; `cargo test -p zanshin-jj --lib` -- 346 passed; `--doc` -- passed.
+- `cargo test -p zanshin-ffi --test it select_tree_ffi::` -- 5 passed (incl. the new label round trip); mutation check: `labels` dropped in `crates/zanshin-ffi/src/select_tree.rs`' reader makes it fail (reverted).
+- `packages/zanshin_core`: `dart test test/worker/select_tree_test.dart` (Makefile `test-core` env) -- 8 passed; mutation check: `trees:` dropped at `SquashCommand` in `isolate.dart` makes the new partial-squash test fail (reverted); `dart analyze --fatal-infos --fatal-warnings` -- no issues; `dart format --set-exit-if-changed` -- 0 changed.
+- No FFI/schema change (no `cargo make codegen`), no jj verb change (no parity oracle run).
 
 ## Auto Run Result
 
@@ -206,3 +243,21 @@ Status: done
 **Residual risks.** Coverage unmeasured in this run; stale-reason texts are Zanshin's own (no CLI counterpart); a whole-file pick on an unchanged path is a no-op by design.
 
 **Commits.** 90612be (code, docs, schema, generated files, epics note); the spec/ledger/sprint-status commit follows.
+
+### Follow-up review pass (2026-10-23)
+
+**Summary.** Fresh four-layer review of the change since `5cbb777`; no code behavior changed. Tests added where the wire and Dart layers were unverified, docs corrected where they misstated the builtin editor.
+
+**Files changed.**
+- `crates/zanshin-ffi/tests/it/select_tree_ffi.rs` -- conflicted tree ids + labels round trip through `zanshin_select_tree` and `zanshin_commit`.
+- `packages/zanshin_core/test/worker/select_tree_test.dart` -- partial squash via `trees`; conflicted ids + labels through `selectTree` and `commit(tree:)`.
+- `crates/zanshin-jj/tests/it/select_tree.rs` -- split's none-selected warning on the tree arm.
+- `crates/zanshin-jj/src/squash_split.rs` -- "moves everything" rationale names an external `--tool` (builtin starts unchecked).
+- `crates/zanshin-jj/src/select_tree.rs`, `docs/adr/0003-jj-operation-api-surface.md` -- divergences: added/deleted text files and per-line checks are whole-only here.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` -- 9-50 note no longer says the review is pending.
+
+**Review.** 25 findings (high 0, medium 4, low 15, false 6). Patched: 2 medium (FFI/Dart label round trip, Dart partial squash), 4 low (squash rationale doc, divergence docs, none-selected test, sprint-status note). Deferred: none new (the two medium rows are the carried 5.1 key-read deferral). Rejected with reasons in the triage log: the carried rows (oracle shape, key text, Whole on absent path, Dart range checks, snapshot op, own-content edits, unresolvable source), tree provenance, stale codes per layer, conflicted-left id equality, directory/vanished `Whole`, pruned trees, clap wording, keys shifting, hand-built FFI buffers.
+
+**Follow-up review recommended: false.** Follow-up pass with no `high` patched (patched at entry verdict: high 0, medium 2, low 4) — converged.
+
+**Residual risks.** Coverage still unmeasured until the loop's final gate; the parity oracle still covers one section shape (accepted).
