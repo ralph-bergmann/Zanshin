@@ -71,8 +71,27 @@ fn several_revisions_are_duplicated_onto_each_others_duplicates() {
         by_description(&fx, "B\n").expect("B'"),
         by_description(&fx, "C\n").expect("C'"),
     );
+    assert_eq!(
+        ids,
+        [b2.clone(), c2.clone()],
+        "jj-lib's duplicated_commits order: parents first"
+    );
     assert_eq!(parents(&fx.root, &b2), [fx.a.clone()]);
     assert_eq!(parents(&fx.root, &c2), [b2]);
+}
+
+#[test]
+fn a_divergent_working_copy_is_the_default_revision() {
+    let mut fx = base();
+    let at = crate::metaedit::divergent_wc(&mut fx);
+    let copy = one(&mut fx, |_| DuplicateOptions::default());
+    let copy = commit(&fx.root, &copy);
+    assert_eq!(
+        copy.description(),
+        "C2\n",
+        "the duplicate is @'s commit, not its divergent twin"
+    );
+    assert_eq!(copy.parent_ids(), at.parent_ids());
 }
 
 #[test]

@@ -281,6 +281,7 @@ parity!(
     restore_clap_conflict_dirty_wc,
     metaedit_message,
     metaedit_revision_message,
+    metaedit_empty_message,
     metaedit_update_change_id,
     metaedit_two_revisions_message,
     metaedit_two_paragraphs,
@@ -332,7 +333,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 265);
+    assert_eq!(SCENARIO_IDS.len(), 266);
 }
 
 #[test]

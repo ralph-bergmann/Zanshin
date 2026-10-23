@@ -1366,7 +1366,8 @@ table LogDefaults {
 }
 
 /// Outcome of a successful mutation (Story 6-1/6-2/6-4a, FR-JJ-10a/FR-JJ-13/FR-JJ-14a):
-/// `zanshin_describe`/`_new_change`/`_edit`/`_abandon`/`_undo`/`_git_fetch`.
+/// `zanshin_describe`/`_new_change`/`_edit`/`_abandon`/`_undo`/`_git_fetch` and the later
+/// mutation verbs (e.g. `_rebase`, `_metaedit`, `_duplicate`; `_fix` nests it in `FixResult`).
 /// `new_change_ids` / `abandoned_change_ids` are empty when the mutation mints
 /// or abandons nothing (see `zanshin_jj::MutationResult`'s field docs for the
 /// per-verb rules).
@@ -1463,8 +1464,8 @@ table FixToolStderr {
 /// `mutation` is NESTED rather than flattened so the op-id / working-copy contract has one
 /// definition; its `new_change_ids` / `abandoned_change_ids` are always empty. With
 /// `num_fixed_commits == 0` no operation was written, so `mutation.new_op_id` is the PRE-CALL
-/// op-log head. The two counts are jj-lib's (`fixed <n> commits`, and the commits whose files the
-/// tools saw), saturating at 4294967295. `tool_stderr` holds one entry per tool run that wrote to
+/// op-log head. The two counts are jj-lib's (`fixed <n> commits`, and every source and
+/// descendant visited, whether or not a file of it matched), saturating at 4294967295. `tool_stderr` holds one entry per tool run that wrote to
 /// stderr, sorted by path (then text); ABSENT or EMPTY when none did.
 table FixResult {
   mutation: MutationResult;

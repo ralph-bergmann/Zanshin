@@ -5,7 +5,7 @@ created: '2026-10-23'
 status: 'done'
 baseline_revision: 'daea9e2797b15296904ca0838cf728a64dd8a380'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: [multiple-goals, oversized]
@@ -211,6 +211,35 @@ CLI anchors at `v0.46.0` (`git -C ../jj show v0.46.0:cli/src/…`); jj-lib in `~
   - `[false]` `[reject]` (intent) the duplicate drop-row agreement is tested only in zanshin-jj — that is where the acceptance criterion puts it; the FFI and Dart layers pass the same verb through unchanged.
   - `[low]` `[defer]` (intent) `jj.fileset_diagnostic` is unreachable at the pin — jj-lib 0.46 emits no fileset diagnostics; re-check at the next pin bump. Deferred, mirrored.
 
+### 2026-10-23 — Review pass (follow-up)
+- verdicts: 25 findings — high 0, medium 8, low 16, false 1, maybe-false 0
+- findings:
+  - `[low]` `[reject]` (edge) `fix_files` returning Err drops the tools' collected stderr — real (the CLI had already printed it), but only a backend error reaches that path, and carrying stderr needs it on the error envelope (new surface).
+  - `[medium]` `[defer]` (edge) a tool that never exits blocks the worker for good — carried: the CLI waits the same way; already deferred, mirrored.
+  - `[medium]` `[defer]` (edge) `config gc` drops the deprecations — carried: same as the first pass's config_deprecated row.
+  - `[medium]` `[defer]` (edge) read-only loads (`load` / `load_with`) migrate silently — carried: same config_deprecated row.
+  - `[low]` `[reject]` (edge) a bad `templates.duplicate_description` makes the drop row say Available while the verb refuses — carried: `drop_actions` is advisory, the verb's refusal wins.
+  - `[medium]` `[patch]` (verification-gap) the default `@` resolved by commit id (a divergent `@`) has no witness — fixed: `metaedit::divergent_wc` helper and `a_divergent_working_copy_is_the_default_revision` in `tests/it/metaedit.rs` and `tests/it/duplicate.rs` (the verb describes / duplicates `@`'s commit, not its twin).
+  - `[low]` `[patch]` (verification-gap) the empty-`message` contract has no verb-level witness — fixed: `metaedit::an_empty_message_clears_the_description` and the oracle scenario `metaedit_empty_message` (`jj metaedit -r B -m ""`, matches the CLI).
+  - `[medium]` `[patch]` (intent) a divergent `@` is stated behaviour witnessed at no surface — same as the verification-gap divergent-`@` row.
+  - `[medium]` `[defer]` (intent) the deprecated-key warning is not on "any verb" (reads, creations) — carried: same config_deprecated row.
+  - `[medium]` `[defer]` (intent) fix's running-tool outcome is untested in the Dart host (ECHILD), SIGPIPE unverified — carried: the first pass's ECHILD and SIGPIPE deferrals.
+  - `[false]` `[reject]` (intent) preview-verb agreement is tested only for `-o` and the `@` default has no preview counterpart — the acceptance criterion is about `drop_actions` rows, which offer duplicate only as `-o` (the intent forbids changing them), and `plan_duplicate` delegates to `plan_duplicate_ids`, so both forms run one plan.
+  - `[low]` `[patch]` (intent) duplicate's `new_change_ids` order is never asserted — fixed: `several_revisions_are_duplicated_onto_each_others_duplicates` asserts `[B', C']` (jj-lib's `duplicated_commits` order, parents first).
+  - `[low]` `[defer]` (intent) `jj.fileset_diagnostic` unreachable at the pin — carried, mirrored in the first pass.
+  - `[low]` `[reject]` (intent) the Rust suites assert `MutateError` variants, wire codes only for a subset — the `jj.*` code comes from `map_mutate_err` per variant, shared by every verb and pinned by its own tests; per-verb wire assertions would only repeat it.
+  - `[low]` `[patch]` (blind) `MutationResult` docs still say a rewrite never mints a change id and omit metaedit / duplicate — fixed: the Rust `new_change_ids` field doc, Dart `MutationResult.newChangeIds` and the fbs header (codegen re-run, generated comments committed).
+  - `[low]` `[reject]` (blind) duplicate / `--update-change-id` lose the old→new pairing and duplicate's `num_rebased` — the intent's Never excludes status-line facts ("Duplicated X as …", "Rebased N …") as result fields.
+  - `[low]` `[reject]` (blind) `fix` drops `FixSummary.rewrites` — the intent's Never allows no result field beyond `FixResult`'s two counts.
+  - `[low]` `[reject]` (blind) fix `paths` are prefixes, not filesets — carried: the house contract every paths verb shares.
+  - `[medium]` `[defer]` (blind) a lost child exit status is invisible to the app user — carried: the first pass traced it (`tracing::warn!`) and deferred the ECHILD hazard; the code reads as that row describes.
+  - `[low]` `[reject]` (blind) sorting `tool_stderr` / the per-file warnings loses the tool-chain order — carried: the intent mandates the message sort; the CLI's order is rayon's.
+  - `[low]` `[patch]` (blind) `docs/ffi-abi.md` says `jj.paths_unmatched` is "a fix path in no fixed revision's tree" — fixed: "in no source's or descendant's tree", as the code and the other docs say.
+  - `[low]` `[patch]` (blind) `num_checked_commits` documented as commits whose files the tools saw — jj-lib counts every commit `transform_descendants` visits (`fix.rs:365`); fixed in the Rust, fbs, Dart and ffi-abi.md docs.
+  - `[low]` `[reject]` (blind) the "saturates at `u32::MAX`" promise can never trigger — the stated bound holds (an `i32` count never exceeds it) and negatives clamp to 0; at most redundant wording, no reader is misled into wrong behaviour.
+  - `[low]` `[reject]` (blind) `drop_actions` offers duplicate only as `-o` — the intent's Never: no change to `drop_actions`' rows.
+  - `[low]` `[reject]` (blind) the oracle lacks fix `--all-lines` / immutable `-s` / `run-tool-if-zero-line-ranges`, duplicate `-A`/`-B` with an immutable child, `--update-author` with a different identity — `-a` and run-if-zero carried (line-range tool, zanshin-jj tests); the rest are witnessed against jj-lib state in `tests/it/{fix,duplicate,metaedit}.rs`; more CLI comparisons add no fix for a defect anyone meets.
+
 ## Design Notes
 
 - **Author/timestamp as CLI strings.** `author` and `author_timestamp` cross as the CLI's own values and are parsed Rust-side with the CLI's parsers, so the GUI gets the CLI's refusals; a date picker formats RFC 3339. Example: `author = "Foo <foo@bar.com>"` → name `Foo`, email `foo@bar.com`.
@@ -238,6 +267,16 @@ Gate rule for this run: no `cargo make test` / `test-full` / `coverage`; targete
 - `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings` -- no issues; `dart format --set-exit-if-changed lib test` -- 0 changed; `dart test test/ffi/metaedit_duplicate_fix_test.dart test/worker/metaedit_duplicate_fix_test.dart test/ffi/warning_test.dart` -- 173 passed (real cdylib).
 - Not run (gate rule): `cargo make test`, `test-full`, `coverage` — the story loop runs the gate once at its end.
 
+**Outcomes of the follow-up review pass (2026-10-23; full gate not run per the run's gate rule):**
+- `cargo make codegen` -- exit 0 after the fbs comment edits; the regenerated `envelope_generated.rs` / `envelope_zanshin.ffi_generated.dart` (comments only) are committed.
+- `cargo fmt --all --check` -- clean. `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity --all-targets -- -D warnings` -- clean.
+- `cargo test -p zanshin-jj --test it -- metaedit:: duplicate::` -- 22 passed (the four new / extended tests included).
+- `cargo test -p zanshin-ffi --test it -- metaedit_duplicate_fix_ffi:: ffi_abi_doc_sync::` -- 23 passed.
+- `cargo test -p zanshin-parity --test oracle` -- 279 passed with `metaedit_empty_message` matching the CLI; `every_scenario_has_a_test` then needed the count bump (265 → 266) and passes on the re-run.
+- `cargo doc -p zanshin-jj --no-deps` -- the new intra-doc links in `mutate.rs` resolve (the remaining private-item warnings predate this pass).
+- `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings` -- no issues; `dart format --set-exit-if-changed lib test` -- 0 changed; `dart test test/ffi/metaedit_duplicate_fix_test.dart test/worker/metaedit_duplicate_fix_test.dart` -- 13 passed.
+- Not run (gate rule): `cargo make test`, `test-full`, `coverage`.
+
 ## Auto Run Result
 
 Status: done
@@ -260,3 +299,7 @@ Status: done
 **Follow-up review recommendation: true.** Patched at entry verdict: high 0, medium 4, low 9. Unverified risk: per-file coverage of the new `fix.rs` (~770 lines) and `metaedit.rs` against the 80 % floor, and the extern-fn guard for the three new externs, are unmeasured until the story loop's final gate — the wait-failure trace and the `FilesetDiagnostic` push are branches no test can reach today.
 
 **Residual risks.** Coverage ratchet not run (gate rule). A fix tool's success path is never exercised under the Dart host (ECHILD, deferred). `jj.config_deprecated` is not yet emitted on every call path (deferred).
+
+**Follow-up review pass (2026-10-23).** 25 findings (medium 8, low 16, false 1). Patched: the divergent-`@` default for metaedit and duplicate (medium — new tests), the empty-`message` contract (test + oracle scenario `metaedit_empty_message`), duplicate's `new_change_ids` order, and the docs of `MutationResult.new_change_ids`, `FixResult.num_checked_commits` and fix's `jj.paths_unmatched` (Rust, fbs + codegen, Dart, ffi-abi.md). Deferred: nothing new (every deferral is carried from the first pass and already mirrored). Rejected: tool stderr lost on a backend error (rare, needs error-envelope surface), old→new pairing / `num_rebased` / `rewrites` (the intent forbids status-line result fields), the `drop_actions` `-A`/`-B` row (intent forbids row changes), wire-code assertions per verb (shared mapping), the saturation wording (bound holds), extra oracle scenarios (witnessed in zanshin-jj), the `-o`-only agreement test (false), and the carried rows. Files: `crates/zanshin-jj/src/{mutate,fix}.rs` (docs), `crates/zanshin-jj/tests/it/{metaedit,duplicate}.rs`, `crates/zanshin-parity/tests/oracle/{scenarios,main}.rs`, `schemas/envelope.fbs` + generated files, `packages/zanshin_core/lib/src/ffi/{mutate,metaedit_duplicate_fix}.dart`, `docs/ffi-abi.md`.
+
+**Follow-up review recommendation (this pass): false.** Patched at entry verdict: high 0, medium 1, low 5; a follow-up pass that patched no high has converged. Residual risks unchanged: coverage unmeasured until the loop's final gate; the carried deferrals.

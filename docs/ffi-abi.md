@@ -1760,14 +1760,14 @@ jj-lib's duplication order.
 | `MetaeditRequest` | `kind = Metaedit`; `revisions` (ABSENT or EMPTY = `@`), `update_change_id`, `message` (the `-m` paragraphs; ABSENT = no `-m`; present but EMPTY joins to `""` = `-m ""`, clearing every target's description), `update_author_timestamp`, `update_author`, `author` (`Name <email>`; ABSENT = not given), `author_timestamp` (RFC 2822 / RFC 3339; ABSENT = not given), `force_rewrite`. clap's refusals — a malformed `author` / `author_timestamp`, `author` with `update_author`, `author_timestamp` with `update_author_timestamp` — are `jj.invalid_input` before the snapshot (no `precondition`). |
 | `DuplicateRequest` | `kind = Duplicate`; `revisions` (ABSENT or EMPTY = `@`), `onto` / `insert_after` / `insert_before` (`-o` / `-A` / `-B`; none = onto each original's parents; `onto` excludes the others — clap's refusal, before the snapshot). |
 | `FixRequest` | `kind = Fix`; `source` (`-s`; ABSENT or EMPTY = `revsets.fix`, jj's default `reachable(@, mutable())`), `paths` (repo-relative PREFIXES; ABSENT or EMPTY = every path), `include_unchanged_files`, `all_lines`. |
-| `FixResult` | `mutation: MutationResult`, `num_fixed_commits`, `num_checked_commits` (jj-lib's counts, saturating at 4294967295), `tool_stderr: [FixToolStderr]` — one `{path, stderr}` per tool run that wrote to stderr (lossy UTF-8), sorted by path then text. |
+| `FixResult` | `mutation: MutationResult`, `num_fixed_commits`, `num_checked_commits` (jj-lib's counts — fixed, and every source and descendant visited — saturating at 4294967295), `tool_stderr: [FixToolStderr]` — one `{path, stderr}` per tool run that wrote to stderr (lossy UTF-8), sorted by path then text. |
 
 The operation descriptions are the CLI's: `edit commit metadata for commit <hex>` / `… <hex> and
 <n> more`, `duplicate <n> commit(s)`, `fixed <n> commits`. Warnings: `jj.duplicate_as_own_descendant`
 / `jj.duplicate_as_own_ancestor` (a duplicate among its original's descendants / ancestors),
 `jj.fix_tool_start_failed` / `jj.fix_tool_failed` (a tool skipped for a file — sorted by message,
 the CLI's interleaving is rayon's), `jj.fileset_diagnostic` (a `fix.tools` pattern's diagnostic),
-`jj.paths_unmatched` (a fix path in no fixed revision's tree), `jj.config_deprecated` (see
+`jj.paths_unmatched` (a fix path in no source's or descendant's tree), `jj.config_deprecated` (see
 *`warnings`*). Refusals reuse registered codes only: `jj.invalid_input` (clap's, "Cannot duplicate
 the root commit", the location texts, a `fix.tools` pattern that does not parse — "Failed to parse
 fileset: <kind>" with the CLI's `Caused by:` lines and hint), `jj.change_not_found`,

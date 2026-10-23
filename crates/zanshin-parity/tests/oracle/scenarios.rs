@@ -2961,6 +2961,18 @@ fn metaedit_scenarios() -> Vec<Scenario> {
             |s| verb_argv(s, "metaedit", &[("-r", "B")], &["-m", "X"]),
         ),
         simple(
+            "metaedit_empty_message",
+            |repo, _, s| {
+                let options = MetaeditOptions {
+                    revisions: vec![s.change("B")],
+                    message: Some(Vec::new()),
+                    ..MetaeditOptions::default()
+                };
+                metaedit_outcome(repo, &options)
+            },
+            |s| verb_argv(s, "metaedit", &[("-r", "B")], &["-m", ""]),
+        ),
+        simple(
             "metaedit_update_change_id",
             |repo, _, s| {
                 let options = MetaeditOptions {

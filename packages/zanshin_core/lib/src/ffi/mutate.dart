@@ -191,7 +191,9 @@ final class MutationResult {
   /// Change ids of genuinely new changes minted by this mutation. Empty for a
   /// rewrite ([MutationResult] of `describe`) or a pointer move (`edit`); empty
   /// for `abandon` — and `squash` — unless `@` itself was abandoned (then the
-  /// replacement `@`); for `split` the one part with a new change id; always
+  /// replacement `@`); for `split` the one part with a new change id; for
+  /// `metaedit` the ids `updateChangeId` minted, for `duplicate` the
+  /// duplicates (parents before children); always
   /// empty for `undo`, `git_fetch` and `git_import` (jj-lib's import stats have
   /// no minted-change concept, and a replacement `@` is reported through
   /// [workingCopyChangeId]).

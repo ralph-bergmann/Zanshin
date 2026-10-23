@@ -84,7 +84,8 @@ pub struct FixResult {
     /// Commits rewritten because a tool changed a file — the operation's `fixed <n> commits`.
     /// Saturates at `u32::MAX`.
     pub num_fixed_commits: u32,
-    /// Commits whose files were handed to the tools. Saturates at `u32::MAX`.
+    /// Commits visited: every source and descendant, whether or not a file of it matched a
+    /// tool's patterns. Saturates at `u32::MAX`.
     pub num_checked_commits: u32,
     /// What the tools wrote to stderr, one entry per tool run that wrote any, sorted by path
     /// (then text).

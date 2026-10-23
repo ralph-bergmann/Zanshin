@@ -142,7 +142,8 @@ final class FixResult {
   /// Commits rewritten because a tool changed a file.
   final int numFixedCommits;
 
-  /// Commits whose files the tools saw.
+  /// Commits visited: every source and descendant, whether or not a file of
+  /// it matched a tool's patterns.
   final int numCheckedCommits;
 
   /// What the tools wrote to stderr, sorted by path (then text).

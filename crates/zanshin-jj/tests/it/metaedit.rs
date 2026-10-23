@@ -302,3 +302,60 @@ fn update_change_id_on_nested_revisions_rewrites_each_once() {
         Some(&vec![old_c.id().clone()])
     );
 }
+
+#[test]
+fn an_empty_message_clears_the_description() {
+    let mut fx = base();
+    let b_hex = hex(&fx.root, &fx.b);
+    let result = fx
+        .repo
+        .metaedit(&MetaeditOptions {
+            revisions: vec![fx.b.clone()],
+            message: Some(Vec::new()),
+            ..MetaeditOptions::default()
+        })
+        .expect("metaedit");
+    assert_op(&fx, &result, &format!("edit commit metadata for commit {b_hex}"));
+    assert_eq!(
+        commit(&fx.root, &fx.b).description(),
+        "",
+        "an empty `message` is `-m \"\"`"
+    );
+}
+
+/// Makes `@` (C) divergent — describes it (`@` follows the rewrite), then makes the old C visible
+/// again — and returns `@`'s commit.
+pub(crate) fn divergent_wc(fx: &mut crate::rebase::Fx) -> jj_lib::commit::Commit {
+    let old_c = commit(&fx.root, &fx.c);
+    fx.repo
+        .metaedit(&MetaeditOptions {
+            message: Some(message("C2")),
+            ..MetaeditOptions::default()
+        })
+        .expect("describe @");
+    let repo = crate::rebase::load(&fx.root);
+    let mut tx = repo.start_transaction();
+    pollster::block_on(tx.repo_mut().add_head(&old_c)).expect("add head");
+    pollster::block_on(tx.commit("make @ divergent")).expect("commit");
+    assert_eq!(visible_all(&fx.root, &fx.c).len(), 2, "@ is divergent");
+    wc(&fx.root)
+}
+
+#[test]
+fn a_divergent_working_copy_is_the_default_revision() {
+    let mut fx = base();
+    let at = divergent_wc(&mut fx);
+    let result = fx
+        .repo
+        .metaedit(&MetaeditOptions {
+            message: Some(message("Y")),
+            ..MetaeditOptions::default()
+        })
+        .expect("a divergent @ is resolved by commit id, not refused");
+    assert_op(
+        &fx,
+        &result,
+        &format!("edit commit metadata for commit {}", at.id().hex()),
+    );
+    assert_eq!(wc(&fx.root).description(), "Y\n");
+}

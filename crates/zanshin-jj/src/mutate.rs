@@ -70,8 +70,12 @@ pub struct MutationResult {
     /// created commit, or the replacement `@` jj-lib auto-creates when [`abandon`] — or
     /// [`crate::Repo::squash`], [`crate::Repo::rebase`] or [`crate::Repo::arrange`] (Story 9.16)
     /// — abandons `@` itself, or the one commit of
-    /// [`crate::Repo::split`] that gets a new change id (Story 9.15). A rewrite ([`describe`]) or a pointer move ([`edit`]) never
-    /// mints a new change id, so this is empty for those. Empty for [`abandon`] unless
+    /// [`crate::Repo::split`] that gets a new change id (Story 9.15), or (Story 9.9) the change
+    /// ids [`crate::Repo::metaedit`]'s `update_change_id` minted (in its rewrite order) and the
+    /// duplicates [`crate::Repo::duplicate`] created (jj-lib's `duplicated_commits` order:
+    /// parents before children). Any other rewrite ([`describe`], a `metaedit` without
+    /// `update_change_id`, [`crate::Repo::fix`]) or a pointer move ([`edit`]) never mints a new
+    /// change id, so this is empty for those. Empty for [`abandon`] unless
     /// `@` itself was among the abandoned ids. Always empty for [`crate::op_log::undo`]
     /// (it restores state, it doesn't mint anything) and for
     /// [`crate::Repo::git_fetch`] and [`crate::Repo::git_import`] — jj-lib's
