@@ -17,8 +17,10 @@ use std::sync::Arc;
 use futures::AsyncReadExt as _;
 use jj_lib::backend::TreeId;
 use jj_lib::backend::TreeValue;
+use jj_lib::backend::{MergedTreeValue, MergedTreeValueExt as _};
 use jj_lib::commit::Commit;
 use jj_lib::conflict_labels::ConflictLabels;
+use jj_lib::diff::{ContentDiff, DiffHunkKind};
 use jj_lib::merge::Merge;
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId as _;
@@ -214,6 +216,13 @@ fn hunks(path: &str, keys: &[HunkKey]) -> FileSelection {
     }
 }
 
+fn mode_and_hunks(path: &str, keys: &[HunkKey]) -> FileSelection {
+    FileSelection {
+        path: path.to_owned(),
+        choice: FileChoice::ModeAndHunks(keys.to_vec()),
+    }
+}
+
 fn whole(path: &str) -> FileSelection {
     FileSelection {
         path: path.to_owned(),
@@ -291,12 +300,15 @@ fn nothing_selected_is_the_left_tree() {
     assert_eq!(empty_hunks.tree_ids, left);
 }
 
-/// Keys on a whole-only change — binary, mode change, addition, deletion — or on an unchanged
-/// path are stale.
+/// Keys on a whole-only change — binary, addition, deletion — or on an unchanged path are stale;
+/// so is a key on a mode change whose texts are equal (it has no sections).
 #[test]
 fn keys_on_a_whole_only_or_unchanged_path_are_stale() {
     let mut fx = base();
-    for path in ["bin.dat", "mode.sh", "new.txt", "gone.txt"] {
+    let err = select(&mut fx, vec![hunks("mode.sh", &[S1])]).expect_err("mode.sh");
+    assert!(is_stale(&err), "{err:?}");
+    assert!(err.to_string().contains("is not a current section of mode.sh"), "{err}");
+    for path in ["bin.dat", "new.txt", "gone.txt"] {
         let err = select(&mut fx, vec![hunks(path, &[S1])]).expect_err(path);
         assert!(is_stale(&err), "{path}: {err:?}");
         assert!(
@@ -460,11 +472,149 @@ fn malformed_input_refuses_before_the_snapshot() {
     assert!(matches!(err, MutateError::ChangeNotFound { .. }), "{err:?}");
 }
 
-/// A conflicted `left` (the merged trees of a merge's parents) travels as several ids; a file
-/// conflicted on the left is whole only.
+// ── the mode toggle and conflicted files (loop 9.9–9.12 second follow-on) ─────────
+
+/// [`base`] with `f.txt` also made executable in `@`: a content AND a mode change.
+fn base_with_executable_f() -> Fx {
+    let fx = base();
+    set_executable(&fx.root, "f.txt", true);
+    fx
+}
+
+/// The builtin editor's mode toggle alone: the left text with the right mode — of a file whose
+/// content changed too, and of one whose content did not.
 #[test]
-fn a_conflicted_left_travels_as_several_ids_and_its_file_is_whole_only() {
+fn the_mode_toggle_alone_keeps_the_left_text_with_the_right_mode() {
+    let mut fx = base_with_executable_f();
+    let selected = select(
+        &mut fx,
+        vec![mode_and_hunks("f.txt", &[]), mode_and_hunks("mode.sh", &[])],
+    )
+    .expect("select");
+    let tree = tree_of(&fx.root, &selected);
+    assert_eq!(file(&tree, "f.txt"), Some((F_LEFT.to_owned(), true)));
+    assert_eq!(file(&tree, "mode.sh"), Some(("m\n".to_owned(), true)));
+    assert_eq!(text(&tree, "bin.dat").as_deref(), Some("x\0y"), "the rest stays left");
+}
+
+/// Sections without the toggle keep the left mode; with it they take the right one.
+#[test]
+fn sections_keep_the_left_mode_unless_the_toggle_is_selected_too() {
+    let mut fx = base_with_executable_f();
+    let without = select(&mut fx, vec![hunks("f.txt", &[S1, S3])]).expect("without the mode");
+    assert_eq!(
+        file(&tree_of(&fx.root, &without), "f.txt"),
+        Some((F_ONE_AND_THREE.to_owned(), false))
+    );
+    let with = select(&mut fx, vec![mode_and_hunks("f.txt", &[S1, S3])]).expect("with the mode");
+    assert_eq!(
+        file(&tree_of(&fx.root, &with), "f.txt"),
+        Some((F_ONE_AND_THREE.to_owned(), true))
+    );
+}
+
+/// The toggle on a file whose mode did not change, an unchanged file, an added and a deleted one
+/// is stale.
+#[test]
+fn the_mode_toggle_without_a_mode_change_is_stale() {
     let mut fx = base();
+    for path in ["f.txt", "same.txt", "new.txt", "gone.txt"] {
+        let err = select(&mut fx, vec![mode_and_hunks(path, &[])]).expect_err(path);
+        assert!(is_stale(&err), "{path}: {err:?}");
+        assert!(
+            err.to_string().contains(&format!("{path} has no mode change")),
+            "{path}: {err}"
+        );
+    }
+}
+
+/// A binary file's mode can be taken alone — its left content with the right mode — but keys on
+/// it stay stale.
+#[test]
+fn a_binary_files_mode_is_taken_alone_and_its_content_only_whole() {
+    let mut fx = base();
+    set_executable(&fx.root, "bin.dat", true);
+    let selected = select(&mut fx, vec![mode_and_hunks("bin.dat", &[])]).expect("select");
+    assert_eq!(
+        file(&tree_of(&fx.root, &selected), "bin.dat"),
+        Some(("x\0y".to_owned(), true))
+    );
+    let err = select(&mut fx, vec![mode_and_hunks("bin.dat", &[S1])]).expect_err("keys");
+    assert!(is_stale(&err), "{err:?}");
+    assert!(err.to_string().contains("bin.dat can only be selected whole"), "{err}");
+}
+
+/// `select_tree` of `revision` (`None`: `@`) against its parent tree as `show` reports it.
+fn select_in(
+    fx: &mut Fx,
+    revision: Option<&ChangeId>,
+    files: Vec<FileSelection>,
+) -> Result<SelectedTreeId, MutateError> {
+    let entries = fx.repo.show(revision.map(|r| r.0.as_str()), None).expect("show");
+    fx.repo.select_tree(&SelectTreeOptions {
+        revision: revision.cloned(),
+        left: entries[0].parent_tree_ids.clone(),
+        files,
+    })
+}
+
+/// `path` of `revision` as `file show` prints it — a conflict materialized with markers.
+fn shown(fx: &mut Fx, revision: &ChangeId, path: &str) -> Vec<u8> {
+    let shown = fx
+        .repo
+        .file_show(Some(revision.clone()), &[path.to_owned()])
+        .expect("file show");
+    let _ = fx.repo.take_warnings();
+    shown.files[0].content.clone()
+}
+
+/// `path`'s value in `tree`.
+fn value_in(tree: &MergedTree, path: &str) -> MergedTreeValue {
+    let path = RepoPathBuf::from_internal_string(path).expect("path");
+    pollster::block_on(tree.path_value(&path)).expect("path value")
+}
+
+/// One piece of `left` → `right` as the builtin editor cuts it: a changed section's key, or
+/// `None` for matching text, with the two sides' text.
+type TestPiece = (Option<HunkKey>, Vec<u8>, Vec<u8>);
+
+/// The builtin editor's sections of `left` → `right` (`ContentDiff::by_line`), keyed in lines.
+fn pieces(left: &[u8], right: &[u8]) -> Vec<TestPiece> {
+    let lines = |text: &[u8]| u32::try_from(text.split_inclusive(|&b| b == b'\n').count()).expect("lines");
+    let (mut old, mut new) = (0, 0);
+    let mut out = Vec::new();
+    for hunk in ContentDiff::by_line([left, right]).hunks() {
+        let (l, r): (&[u8], &[u8]) = (hunk.contents[0].as_ref(), hunk.contents[1].as_ref());
+        let section = (hunk.kind == DiffHunkKind::Different).then(|| key(old, lines(l), new, lines(r)));
+        old += lines(l);
+        new += lines(r);
+        out.push((section, l.to_vec(), r.to_vec()));
+    }
+    out
+}
+
+fn keys_of(pieces: &[TestPiece]) -> Vec<HunkKey> {
+    pieces.iter().filter_map(|(key, _, _)| *key).collect()
+}
+
+/// Matching text, the right side of the `selected` sections and the left side of the others.
+fn assemble(pieces: &[TestPiece], selected: &[HunkKey]) -> Vec<u8> {
+    pieces
+        .iter()
+        .flat_map(|(key, l, r)| {
+            if key.is_some_and(|k| selected.contains(&k)) {
+                r
+            } else {
+                l
+            }
+            .clone()
+        })
+        .collect()
+}
+
+/// `A` → `X` (`c.txt` = `x`) and `A` → `Y` (`c.txt` = `y`) merged into `M`, conflicted on `c.txt`;
+/// `@` is a new change on `M`. Returns `M`.
+fn conflicted_merge(fx: &mut Fx) -> ChangeId {
     let a = fx.a.clone();
     fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new x");
     write(&fx.root, "c.txt", b"x\n");
@@ -473,30 +623,140 @@ fn a_conflicted_left_travels_as_several_ids_and_its_file_is_whole_only() {
     write(&fx.root, "c.txt", b"y\n");
     let y = change_id(&wc(&fx.root));
     fx.repo.new_change(&[x, y], &[], &[]).expect("merge");
-    write(&fx.root, "c.txt", b"z\n");
-    let merge = change_id(&wc(&fx.root));
-    let left = left_of(&mut fx.repo, &merge);
-    assert_eq!(left.len(), 3, "the parents' merged tree is conflicted");
+    let m = change_id(&wc(&fx.root));
+    fx.repo
+        .new_change(std::slice::from_ref(&m), &[], &[])
+        .expect("new on the merge");
+    m
+}
 
-    let err = fx
-        .repo
-        .select_tree(&SelectTreeOptions {
-            revision: None,
-            left: left.clone(),
-            files: vec![hunks("c.txt", &[key(0, 1, 0, 1)])],
+/// A file conflicted on the left and resolved by the revision is sectioned over its materialized
+/// markers: every key gives the revision's text; a subset is what `update_from_content` makes of
+/// the assembled text, as the builtin writes it.
+#[test]
+fn a_conflicted_left_is_sectioned_over_its_markers_and_written_back_through_update_from_content() {
+    let mut fx = base();
+    let m = conflicted_merge(&mut fx);
+    let left_text = shown(&mut fx, &m, "c.txt");
+    write(&fx.root, "c.txt", b"x\ny\n");
+    let pieces = pieces(&left_text, b"x\ny\n");
+    let keys = keys_of(&pieces);
+    assert!(keys.len() >= 2, "{keys:?}");
+
+    let all = select_in(&mut fx, None, vec![hunks("c.txt", &keys)]).expect("every key");
+    assert_eq!(text(&tree_of(&fx.root, &all), "c.txt").as_deref(), Some("x\ny\n"));
+
+    let subset = &keys[..1];
+    let assembled = assemble(&pieces, subset);
+    let left_ids = value_in(&commit(&fx.root, &m).tree(), "c.txt")
+        .to_file_merge()
+        .expect("a file conflict");
+    let (_workspace, repo) = load(&fx.root);
+    let path = RepoPathBuf::from_internal_string("c.txt").expect("path");
+    let expected = pollster::block_on(jj_lib::conflicts::update_from_content(
+        &left_ids,
+        repo.store(),
+        &path,
+        &assembled,
+        jj_lib::conflicts::MIN_CONFLICT_MARKER_LEN,
+    ))
+    .expect("update_from_content");
+    let some = select_in(&mut fx, None, vec![hunks("c.txt", subset)]).expect("a subset");
+    let got = value_in(&tree_of(&fx.root, &some), "c.txt")
+        .to_file_merge()
+        .expect("files");
+    assert_eq!(got.simplify(), expected.simplify());
+}
+
+/// A conflict edited inside one side, on both sides of the diff: taking the edit keeps the
+/// conflict, with the revision's new file ids.
+#[test]
+fn a_conflict_edited_inside_a_side_keeps_the_conflict_with_new_file_ids() {
+    let mut fx = base();
+    let m = conflicted_merge(&mut fx);
+    let left_text = shown(&mut fx, &m, "c.txt");
+    let edited = String::from_utf8(left_text.clone())
+        .expect("utf-8")
+        .replace("\ny\n", "\nY\n");
+    assert_ne!(edited.as_bytes(), left_text.as_slice(), "side y is edited");
+    write(&fx.root, "c.txt", edited.as_bytes());
+    let at = change_id(&wc(&fx.root));
+    let right_text = shown(&mut fx, &at, "c.txt");
+    let keys = keys_of(&pieces(&left_text, &right_text));
+    assert!(!keys.is_empty());
+
+    let selected = select_in(&mut fx, None, vec![hunks("c.txt", &keys)]).expect("select");
+    let got = value_in(&tree_of(&fx.root, &selected), "c.txt");
+    assert!(!got.is_resolved(), "still a conflict");
+    let revision = value_in(&commit(&fx.root, &at).tree(), "c.txt");
+    assert_eq!(
+        got.to_file_merge().expect("files").simplify(),
+        revision.to_file_merge().expect("files").simplify()
+    );
+}
+
+/// A revision conflicted on a file its parent has resolved: the assembled text — conflict markers
+/// included — becomes a resolved file, as the builtin writes it.
+#[test]
+fn a_resolved_left_takes_the_assembled_text_of_a_conflicted_right_markers_included() {
+    let mut fx = base();
+    let a = fx.a.clone();
+    fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new x");
+    write(&fx.root, "c.txt", b"x\n");
+    let x = change_id(&wc(&fx.root));
+    fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new y");
+    write(&fx.root, "c.txt", b"y\n");
+    let y = change_id(&wc(&fx.root));
+    fx.repo
+        .rebase(&zanshin_jj::RebaseOptions {
+            revisions: vec![x.clone()],
+            onto: vec![y],
+            ..Default::default()
         })
-        .expect_err("a conflicted left side has no sections");
+        .expect("rebase x onto y");
+    let right_text = shown(&mut fx, &x, "c.txt");
+    let pieces = pieces(b"y\n", &right_text);
+    let keys = keys_of(&pieces);
+    let subset = &keys[..1];
+
+    let selected = select_in(&mut fx, Some(&x), vec![hunks("c.txt", subset)]).expect("select");
+    let tree = tree_of(&fx.root, &selected);
+    assert_eq!(
+        text(&tree, "c.txt").map(String::into_bytes),
+        Some(assemble(&pieces, subset))
+    );
+}
+
+/// A file/symlink conflict is no file conflict: no sections, no mode toggle — here a revision
+/// adding a file rebased onto one adding a symlink there.
+#[test]
+fn a_non_file_conflict_has_no_sections_and_no_mode_toggle() {
+    let mut fx = base();
+    let a = fx.a.clone();
+    fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new x");
+    write(&fx.root, "c.txt", b"x\n");
+    let x = change_id(&wc(&fx.root));
+    fx.repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new y");
+    std::os::unix::fs::symlink("target", fx.root.join("c.txt")).expect("symlink");
+    let y = change_id(&wc(&fx.root));
+    fx.repo
+        .rebase(&zanshin_jj::RebaseOptions {
+            revisions: vec![x.clone()],
+            onto: vec![y],
+            ..Default::default()
+        })
+        .expect("rebase x onto y");
+    let conflicted = commit(&fx.root, &x).tree();
+    assert!(!value_in(&conflicted, "c.txt").is_resolved(), "x conflicts on c.txt");
+
+    let err = select_in(&mut fx, Some(&x), vec![hunks("c.txt", &[key(0, 1, 0, 1)])]).expect_err("keys");
     assert!(is_stale(&err), "{err:?}");
     assert!(err.to_string().contains("c.txt can only be selected whole"), "{err}");
-    let selected = fx
-        .repo
-        .select_tree(&SelectTreeOptions {
-            revision: None,
-            left,
-            files: vec![whole("c.txt")],
-        })
-        .expect("whole");
-    assert_eq!(text(&tree_of(&fx.root, &selected), "c.txt").as_deref(), Some("z\n"));
+    let err = select_in(&mut fx, Some(&x), vec![mode_and_hunks("c.txt", &[])]).expect_err("the toggle");
+    assert!(is_stale(&err), "{err:?}");
+    assert!(err.to_string().contains("c.txt has no mode change"), "{err}");
+    let selected = select_in(&mut fx, Some(&x), vec![whole("c.txt")]).expect("whole");
+    assert_eq!(selected, ids(&conflicted));
 }
 
 /// A conflicted revision tree's labels round-trip: `select_tree` returns them, and the tree arm

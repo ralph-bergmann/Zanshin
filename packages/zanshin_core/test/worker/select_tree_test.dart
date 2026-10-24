@@ -122,6 +122,30 @@ void main() {
       );
     });
 
+    test('the_mode_toggle_crosses_the_buffer', () async {
+      final List<String> left = await leftOf(at);
+      await expectLater(
+        repo.selectTree(left: left, files: const [FileSelection.modeAndHunks('f.txt', [])]),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.stale_selection')),
+        reason: 'f.txt has no mode change yet',
+      );
+
+      expect(Process.runSync('chmod', ['+x', '${tempDir.path}/f.txt']).exitCode, 0);
+      final SelectedTree withMode = await repo.selectTree(
+        left: left,
+        files: const [
+          FileSelection.modeAndHunks('f.txt', [section1, section3]),
+        ],
+      );
+      final SelectedTree withoutMode = await selectOneAndThree(left);
+      expect(withMode.treeIds, isNot(withoutMode.treeIds), reason: 'only the mode tells them apart');
+      await repo.commit(
+        message: const ['first'],
+        tree: TreeSelection.of(withMode, left: left),
+      );
+      expect(await fileAt(at), fOneAndThree);
+    });
+
     test('split_and_squash_take_the_tree_arm', () async {
       final List<String> left = await leftOf(at);
       final SelectedTree tree = await selectOneAndThree(left);

@@ -591,26 +591,73 @@ const SECTIONS_TOOL: &[Step] = &[
     ]),
 ];
 
-/// `@`'s sections 1 and 3 of `f.txt` through `select_tree` (Story 9.50): `@`'s change id and the
-/// tree arm's selection, its `left` read from `show`.
-fn sections_one_and_three(repo: &mut zanshin_jj::Repo) -> (zanshin_jj::ChangeId, TreeSelection) {
-    let entry = repo.show(None, None).expect("show @").swap_remove(0);
-    let key = |start| HunkKey {
+/// [`SECTIONS_TOOL`]'s `@` with `f.txt` also made executable — a content and a mode change —
+/// and a diff editor `zs` that writes the LEFT text into the right side, keeping its `+x`: the
+/// builtin editor's mode toggle alone (loop 9.9–9.12 second follow-on).
+const MODE_ONLY_TOOL: &[Step] = &[
+    Step::Write("f.txt", "a\nb\nc\nd\ne\n"),
+    Step::Jj(&["new", "-m", "D"]),
+    Step::Write("f.txt", "A\nb\nC\nd\nE\n"),
+    Step::Jj(&["util", "snapshot"]),
+    Step::Jj(&["file", "chmod", "x", "f.txt"]),
+    Step::Jj(&["config", "set", "--repo", "merge-tools.zs.program", "\"sh\""]),
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "merge-tools.zs.edit-args",
+        r#"["-c", 'printf "a\nb\nc\nd\ne\n" > "$1/f.txt"', "sh", "$right"]"#,
+    ]),
+];
+
+/// [`MODE_ONLY_TOOL`]'s `@` and a diff editor `zs` that writes sections 1 and 3, `A b c d E`, and
+/// drops the `+x`: sections without the mode toggle.
+const SECTIONS_NO_MODE_TOOL: &[Step] = &[
+    Step::Write("f.txt", "a\nb\nc\nd\ne\n"),
+    Step::Jj(&["new", "-m", "D"]),
+    Step::Write("f.txt", "A\nb\nC\nd\nE\n"),
+    Step::Jj(&["util", "snapshot"]),
+    Step::Jj(&["file", "chmod", "x", "f.txt"]),
+    Step::Jj(&["config", "set", "--repo", "merge-tools.zs.program", "\"sh\""]),
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "merge-tools.zs.edit-args",
+        r#"["-c", 'printf "A\nb\nc\nd\nE\n" > "$1/f.txt"; chmod -x "$1/f.txt"', "sh", "$right"]"#,
+    ]),
+];
+
+/// A section key of `f.txt`'s one-line sections, starting at line `start`.
+fn f_key(start: u32) -> HunkKey {
+    HunkKey {
         old_start: start,
         old_count: 1,
         new_start: start,
         new_count: 1,
-    };
+    }
+}
+
+/// `@`'s sections 1 and 3 of `f.txt` through `select_tree` (Story 9.50): `@`'s change id and the
+/// tree arm's selection, its `left` read from `show`.
+fn sections_one_and_three(repo: &mut zanshin_jj::Repo) -> (zanshin_jj::ChangeId, TreeSelection) {
+    select_f_txt(repo, FileChoice::Hunks(vec![f_key(0), f_key(4)]))
+}
+
+/// `@`'s `f.txt` selected by `choice` through `select_tree`: `@`'s change id and the tree arm's
+/// selection, its `left` read from `show`.
+fn select_f_txt(repo: &mut zanshin_jj::Repo, choice: FileChoice) -> (zanshin_jj::ChangeId, TreeSelection) {
+    let entry = repo.show(None, None).expect("show @").swap_remove(0);
     let tree = repo
         .select_tree(&SelectTreeOptions {
             revision: None,
             left: entry.parent_tree_ids.clone(),
             files: vec![FileSelection {
                 path: "f.txt".to_owned(),
-                choice: FileChoice::Hunks(vec![key(0), key(4)]),
+                choice,
             }],
         })
-        .expect("select sections 1 and 3");
+        .expect("select f.txt");
     let _ = repo.take_warnings();
     (
         entry.change.id,
@@ -2140,6 +2187,38 @@ pub fn scenarios() -> Vec<Scenario> {
             setup: SECTIONS_TOOL,
             ..simple(
                 "split_tool_sections_1_3",
+                |repo, _, _| {
+                    let (_, tree) = sections_one_and_three(repo);
+                    let options = SplitOptions {
+                        tree: Some(tree),
+                        message: Some(vec!["first".to_owned()]),
+                        ..SplitOptions::default()
+                    };
+                    split_outcome(repo, &options)
+                },
+                |_| args(&["split", "--tool", "zs", "-m", "first"]),
+            )
+        },
+        Scenario {
+            setup: MODE_ONLY_TOOL,
+            ..simple(
+                "split_tool_mode_only",
+                |repo, _, _| {
+                    let (_, tree) = select_f_txt(repo, FileChoice::ModeAndHunks(Vec::new()));
+                    let options = SplitOptions {
+                        tree: Some(tree),
+                        message: Some(vec!["first".to_owned()]),
+                        ..SplitOptions::default()
+                    };
+                    split_outcome(repo, &options)
+                },
+                |_| args(&["split", "--tool", "zs", "-m", "first"]),
+            )
+        },
+        Scenario {
+            setup: SECTIONS_NO_MODE_TOOL,
+            ..simple(
+                "split_tool_sections_no_mode",
                 |repo, _, _| {
                     let (_, tree) = sections_one_and_three(repo);
                     let options = SplitOptions {

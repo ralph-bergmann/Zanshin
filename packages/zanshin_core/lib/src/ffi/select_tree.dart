@@ -58,14 +58,21 @@ final class HunkKey {
 }
 
 /// One file of a selection (mirrors `zanshin_jj::FileSelection`): the whole
-/// file, or some of its sections.
+/// file, or some of its sections, with or without its mode change.
 final class FileSelection {
   /// The whole file at [path]: the revision's value, whatever the change.
-  const FileSelection.whole(this.path) : whole = true, hunks = const [];
+  const FileSelection.whole(this.path) : whole = true, mode = false, hunks = const [];
 
   /// These [hunks] of the file at [path]; the other sections keep the left
-  /// side. An empty list selects nothing of the file.
-  const FileSelection.hunks(this.path, this.hunks) : whole = false;
+  /// side and the file keeps its left mode. An empty list selects nothing of
+  /// the file.
+  const FileSelection.hunks(this.path, this.hunks) : whole = false, mode = false;
+
+  /// The revision's mode of the file at [path] — the builtin diff editor's mode
+  /// toggle — plus these [hunks] (empty: the mode change only). Only a file
+  /// whose two sides are a regular file or a file conflict with different
+  /// modes has one; else `selectTree` refuses `jj.stale_selection`.
+  const FileSelection.modeAndHunks(this.path, this.hunks) : whole = false, mode = true;
 
   /// The repo-relative path, in jj's internal `/`-separated form (what
   /// `ShowEntry.fileChanges` reports).
@@ -73,6 +80,9 @@ final class FileSelection {
 
   /// Whether the whole file is selected.
   final bool whole;
+
+  /// Whether the revision's mode is selected; never with [whole].
+  final bool mode;
 
   /// The selected sections; empty when [whole].
   final List<HunkKey> hunks;
@@ -189,6 +199,7 @@ Uint8List zanshinSelectTree(
         fbs.FileSelectionObjectBuilder(
           path: file.path,
           whole: file.whole,
+          mode: file.mode,
           hunks: [
             for (final HunkKey key in file.hunks)
               fbs.HunkKeyObjectBuilder(

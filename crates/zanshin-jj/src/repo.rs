@@ -3413,10 +3413,13 @@ impl Repo {
     /// The diff is `revision`'s (`None`: `@`) parent tree against its own tree — what those verbs
     /// diff against. `left` is that parent tree as the selection saw it
     /// ([`crate::ShowEntry::parent_tree_ids`]). Each file of `files` is selected
-    /// [`crate::FileChoice::Whole`] (the revision's value, whatever the change) or by
-    /// [`crate::HunkKey`]s — the builtin editor's sections (`ContentDiff::by_line`), which only a
-    /// file that is a regular, same-mode UTF-8 text without NUL bytes on both sides has. A changed
-    /// path not listed keeps its left value, as does every unselected section.
+    /// [`crate::FileChoice::Whole`] (the revision's value, whatever the change), by
+    /// [`crate::HunkKey`]s — the builtin editor's sections (`ContentDiff::by_line`), which a file
+    /// has when both sides are a regular file or a file conflict (materialized with
+    /// `ui.conflict-marker-style`) and UTF-8 text without NUL bytes — or by
+    /// [`crate::FileChoice::ModeAndHunks`], the builtin editor's mode toggle plus sections, for a
+    /// file whose two such sides differ in mode. A changed path not listed keeps its left value,
+    /// as does every unselected section; `select_tree.rs`' module doc has the rules.
     ///
     /// Returns the tree's ids and conflict labels; pass them, with `left`, to a verb's tree arm.
     /// Writes NO operation — only the tree's objects reach the store — beyond the pre-verb
@@ -3433,8 +3436,9 @@ impl Repo {
     /// - [`crate::MutateError::RevsetResolutionError`] — an omitted `revision`'s `@` in a
     ///   workspace with no working-copy commit.
     /// - [`crate::MutateError::StaleSelection`] — the revision's parent tree is not `left`, a key
-    ///   is not a current section of its file, or keys name a path that can only be selected
-    ///   whole or is unchanged.
+    ///   is not a current section of its file, keys name a path that can only be selected whole or
+    ///   is unchanged, or the mode toggle names a path without a mode change.
+    /// - [`crate::MutateError::Config`] — `ui.conflict-marker-style` is not one of jj's styles.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
@@ -3442,8 +3446,8 @@ impl Repo {
         &mut self,
         options: &crate::SelectTreeOptions,
     ) -> Result<crate::SelectedTreeId, crate::MutateError> {
-        self.with_checked_verb(crate::select_tree::check_select_tree_args(options), |repo, _ctx| {
-            crate::select_tree::select_tree(repo.workspace(), options)
+        self.with_checked_verb(crate::select_tree::check_select_tree_args(options), |repo, ctx| {
+            crate::select_tree::select_tree(repo.workspace(), &ctx.config, options)
         })
     }
 

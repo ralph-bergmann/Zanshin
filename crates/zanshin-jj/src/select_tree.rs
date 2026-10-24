@@ -9,18 +9,27 @@
 //! Zanshin replaces the editor (ADR-0003): the GUI shows the diff, the user picks whole files or
 //! sections, [`select_tree`] writes the tree that choice yields and the verb takes it.
 //!
-//! - **Sections** are the builtin editor's (`make_diff_sections`, `cli/src/merge_tools/builtin.rs:
-//!   225-271`): `ContentDiff::by_line([left, right])`, one section per `Different` hunk. A
+//! - **Sides** are read as the builtin editor reads them (`read_file_contents`,
+//!   `cli/src/merge_tools/builtin.rs:124-218`). A side is FILE-LIKE when it is a resolved regular
+//!   file or a file conflict; its text is its content — a conflict materialized with
+//!   `ui.conflict-marker-style` and its tree's labels — and its mode its executable bit (a
+//!   conflict's: executable only when its merged bit is).
+//! - **Sections** are the builtin editor's (`make_diff_sections`, `builtin.rs:225-271`):
+//!   `ContentDiff::by_line([left, right])` over the two texts, one section per `Different` hunk. A
 //!   section's [`HunkKey`] is where it sits on each side, in lines (`split_inclusive('\n')`, so a
-//!   last line without `\n` counts).
-//! - **Sectionable** is a file both sides of which are a resolved regular file with the same
-//!   executable bit and UTF-8 text without a NUL byte. Everything else in the diff — an added or
-//!   deleted file, a mode change, binary content, a symlink, a submodule, a conflict on either
-//!   side — is selected whole only; a key for it is stale.
-//! - **Build** is `apply_diff_builtin` (`builtin.rs:405-465`): start from the right tree, set every
-//!   path of `left.diff_stream(right)` to its left value, then apply each selected file — whole:
-//!   the right value; sections: the matching text, the right side of the selected sections and the
-//!   left side of the others, written as a new file that keeps the left value's copy id.
+//!   last line without `\n` counts). A file has sections when both sides are file-like and both
+//!   texts are UTF-8 without a NUL byte — a conflict's markers included.
+//! - **The mode toggle** is the builtin editor's `FileMode` section (`builtin.rs:296-301`): a
+//!   file whose two file-like sides differ in mode can take the right mode
+//!   ([`FileChoice::ModeAndHunks`]), with or without sections; a binary file's mode can be taken
+//!   alone.
+//! - **Build** is `apply_diff_builtin` / `apply_changes` (`builtin.rs:405-545`): start from the
+//!   right tree, set every path of `left.diff_stream(right)` to its left value, then apply each
+//!   selected file — whole: the right value; the mode alone on a binary file: the left value with
+//!   the right mode; otherwise the matching text, the right side of the selected sections and the
+//!   left side of the others, written as the builtin's `write_file` writes it — over a resolved
+//!   left file a new file with the left copy id, over a conflicted one through
+//!   `conflicts::update_from_content`.
 //! - **Stale** is a selection whose `left` is no longer the revision's parent tree (a rebase, a
 //!   rewritten parent), or a key that is not one of the file's current sections. A change to the
 //!   revision's OWN content is not stale: every verb snapshots first (9.26), the selected tree is
@@ -30,27 +39,26 @@
 //!
 //! - the CLI's "Empty diff - won't run diff editor." warning is not ported — it reports the
 //!   terminal editor not being launched, and the GUI shows the diff itself;
-//! - a mode change is whole only: the builtin editor offers it as a separate `FileMode` toggle
-//!   next to the content sections (`builtin.rs:296-301` @ v0.46.0), Zanshin selects such a file
-//!   whole (epics.md Story 9.50);
-//! - a conflicted file is whole only: the builtin editor sections its materialized conflict
-//!   markers and writes the result back through `conflicts::update_from_content`
-//!   (`builtin.rs:423-445`), Zanshin selects such a file whole (epics.md Story 9.50, Claude's
-//!   proposal);
-//! - an added or deleted text file is whole only: the builtin editor gives it one line section
-//!   (`builtin.rs:326-345`), Zanshin selects such a file whole (Story 9.50's sectionable rule);
+//! - an added or deleted file is whole only: the builtin editor gives it a mode section and one
+//!   line section (`builtin.rs:326-345`), Zanshin selects such a file whole (Story 9.50's rule);
+//! - a symlink, a submodule and a non-file conflict are whole only: the builtin editor sections a
+//!   non-file conflict's description and panics writing it back (`builtin.rs:455-457`);
+//! - a binary file's content is whole only — apart from its mode change, which can be taken alone:
+//!   the builtin editor toggles the binary content as one section of its own;
 //! - a section is selected whole: the builtin editor can check single lines inside it
 //!   (`SectionChangedLine::is_checked`, `builtin.rs:211-222`), lines are a non-goal here.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use futures::{AsyncReadExt as _, StreamExt as _};
-use jj_lib::backend::{FileId, MergedTreeValue, TreeId, TreeValue};
+use futures::StreamExt as _;
+use jj_lib::backend::{CopyId, MergedTreeValue, MergedTreeValueExt as _, TreeId, TreeValue};
+use jj_lib::config::StackedConfig;
 use jj_lib::conflict_labels::ConflictLabels;
+use jj_lib::conflicts::{update_from_content, ConflictMaterializeOptions, MIN_CONFLICT_MARKER_LEN};
 use jj_lib::diff::{ContentDiff, DiffHunkKind};
 use jj_lib::matchers::EverythingMatcher;
-use jj_lib::merge::{Diff, Merge};
+use jj_lib::merge::{Diff, Merge, SameChange};
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::merged_tree_builder::MergedTreeBuilder;
 use jj_lib::object_id::ObjectId;
@@ -58,7 +66,8 @@ use jj_lib::repo_path::{RepoPath, RepoPathBuf};
 use jj_lib::store::Store;
 use jj_lib::workspace::Workspace;
 
-use crate::mutate::{be, res, MutateError};
+use crate::file::{materialize_file_like, FileLike};
+use crate::mutate::{be, cfg, res, MutateError};
 use crate::ChangeId;
 
 /// Where one changed section of a file sits on each side, in lines (Story 9.50) — the key the
@@ -85,9 +94,12 @@ pub struct HunkKey {
 pub enum FileChoice {
     /// The whole file: the revision's value at that path, whatever kind of change it is.
     Whole,
-    /// These sections of a sectionable file (see the module doc); the others keep the left side.
-    /// An empty list selects nothing of the file.
+    /// These sections of a file that has sections (see the module doc); the others keep the
+    /// left side, and the file keeps its left mode. An empty list selects nothing of the file.
     Hunks(Vec<HunkKey>),
+    /// The right side's mode — the builtin editor's `FileMode` toggle — plus these sections (an
+    /// empty list: the mode change only) of a file whose two file-like sides differ in mode.
+    ModeAndHunks(Vec<HunkKey>),
 }
 
 /// One file of a selection (Story 9.50).
@@ -247,15 +259,27 @@ pub(crate) fn check_select_tree_args(options: &SelectTreeOptions) -> Result<(), 
 /// # Errors
 ///
 /// See [`crate::Repo::select_tree`].
-pub(crate) fn select_tree(workspace: &Workspace, options: &SelectTreeOptions) -> Result<SelectedTreeId, MutateError> {
+pub(crate) fn select_tree(
+    workspace: &Workspace,
+    config: &StackedConfig,
+    options: &SelectTreeOptions,
+) -> Result<SelectedTreeId, MutateError> {
     let files = parse_files(&options.files)?;
+    let marker_style = crate::config::conflict_marker_style(config).map_err(cfg)?;
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let repo: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let revision = crate::op_support::resolve_or_wc(repo, workspace.workspace_name(), options.revision.as_ref())
         .map_err(|e| res(e, options.revision.as_ref()))?;
     let parent_tree = pollster::block_on(revision.parent_tree(repo)).map_err(be)?;
     check_left(&parent_tree, &options.left)?;
-    let tree = pollster::block_on(build(repo.store(), &parent_tree, &revision.tree(), &files))?;
+    let materialize = ConflictMaterializeOptions {
+        marker_style,
+        marker_len: None,
+        merge: repo.store().merge_options().clone(),
+    };
+    let tree = revision.tree();
+    let trees = Diff::new(&parent_tree, &tree);
+    let tree = pollster::block_on(build(repo.store(), trees, &materialize, &files))?;
     Ok(SelectedTreeId::of(&tree))
 }
 
@@ -279,23 +303,29 @@ fn parse_files(files: &[FileSelection]) -> Result<Vec<(RepoPathBuf, &FileChoice)
     Ok(parsed)
 }
 
-/// `apply_diff_builtin` (`builtin.rs:405-465` @ v0.46.0) over the GUI's choice.
+/// `apply_diff_builtin` (`builtin.rs:405-465` @ v0.46.0) over the GUI's choice; `trees` are the
+/// diff's left (parent) and right (revision) trees.
 async fn build(
     store: &Arc<Store>,
-    left: &MergedTree,
-    right: &MergedTree,
+    trees: Diff<&MergedTree>,
+    materialize: &ConflictMaterializeOptions,
     files: &[(RepoPathBuf, &FileChoice)],
 ) -> Result<MergedTree, MutateError> {
-    let mut builder = MergedTreeBuilder::new(right.clone());
+    let mut builder = MergedTreeBuilder::new(trees.after.clone());
     let mut changed: HashMap<RepoPathBuf, Diff<MergedTreeValue>> = HashMap::new();
-    let mut stream = left.diff_stream(right, &EverythingMatcher);
+    let mut stream = trees.before.diff_stream(trees.after, &EverythingMatcher);
     while let Some(entry) = stream.next().await {
         let values = entry.values.map_err(be)?;
         builder.set_or_remove(entry.path.clone(), values.before.clone());
         changed.insert(entry.path, values);
     }
+    let sides = Sides {
+        store,
+        labels: trees.map(MergedTree::labels),
+        materialize,
+    };
     for (path, choice) in files {
-        let keys = match choice {
+        let (mode, keys) = match choice {
             FileChoice::Whole => {
                 // An unchanged path already holds the right (= left) value.
                 if let Some(values) = changed.get(path) {
@@ -304,52 +334,76 @@ async fn build(
                 continue;
             }
             FileChoice::Hunks(keys) if keys.is_empty() => continue,
-            FileChoice::Hunks(keys) => keys,
+            FileChoice::Hunks(keys) => (false, keys),
+            FileChoice::ModeAndHunks(keys) => (true, keys),
         };
         let Some(values) = changed.get(path) else {
-            return Err(stale(format!(
-                "{} has no changes, so it has no sections",
-                path.as_internal_file_string()
-            )));
+            return Err(if mode {
+                no_mode_change(path)
+            } else {
+                stale(format!(
+                    "{} has no changes, so it has no sections",
+                    path.as_internal_file_string()
+                ))
+            });
         };
-        let value = select_sections(store, path, values, keys).await?;
+        let value = select_file(&sides, path, values, mode, keys).await?;
         builder.set_or_remove(path.clone(), value);
     }
     builder.write_tree().await.map_err(be)
 }
 
-/// The file `keys` select of a changed path — refused as stale unless the path is sectionable and
-/// every key is one of its current sections.
-async fn select_sections(
-    store: &Store,
+/// Reads a changed path's two sides as the builtin editor does ([`materialize_file_like`]).
+struct Sides<'a> {
+    store: &'a Store,
+    /// Each tree's conflict labels, for its side's materialized conflict.
+    labels: Diff<&'a ConflictLabels>,
+    materialize: &'a ConflictMaterializeOptions,
+}
+
+impl Sides<'_> {
+    async fn read(
+        &self,
+        path: &RepoPath,
+        values: &Diff<MergedTreeValue>,
+    ) -> Result<Diff<Option<FileLike>>, MutateError> {
+        let read = |value: &MergedTreeValue, labels| {
+            materialize_file_like(self.store, path, value.clone(), labels, self.materialize)
+        };
+        Ok(Diff::new(
+            read(&values.before, self.labels.before).await.map_err(be)?,
+            read(&values.after, self.labels.after).await.map_err(be)?,
+        ))
+    }
+}
+
+/// What the mode toggle (`mode`) and `keys` select of a changed path — the builtin editor's
+/// `apply_changes` (`builtin.rs:467-545` @ v0.46.0) for one file. Refused as stale unless the
+/// toggle names a mode change of two file-like sides, and every key is one of the file's current
+/// sections.
+async fn select_file(
+    sides: &Sides<'_>,
     path: &RepoPath,
     values: &Diff<MergedTreeValue>,
+    mode: bool,
     keys: &[HunkKey],
 ) -> Result<MergedTreeValue, MutateError> {
-    let (
-        Some(Some(TreeValue::File {
-            id: left_id,
-            executable,
-            copy_id,
-        })),
-        Some(Some(TreeValue::File {
-            id: right_id,
-            executable: right_executable,
-            ..
-        })),
-    ) = (values.before.as_resolved(), values.after.as_resolved())
-    else {
-        return Err(whole_only(path));
+    let read = sides.read(path, values).await?;
+    let (Some(left), Some(right)) = (read.before, read.after) else {
+        return Err(if mode { no_mode_change(path) } else { whole_only(path) });
     };
-    if executable != right_executable {
-        return Err(whole_only(path));
+    if mode && left.executable == right.executable {
+        return Err(no_mode_change(path));
     }
-    let left = read_file(store, path, left_id).await?;
-    let right = read_file(store, path, right_id).await?;
-    if !is_text(&left) || !is_text(&right) {
-        return Err(whole_only(path));
+    let executable = if mode { right.executable } else { left.executable };
+    if !is_text(&left.content) || !is_text(&right.content) {
+        if !keys.is_empty() {
+            return Err(whole_only(path));
+        }
+        // The mode alone on binary content: `SelectedContents::Unchanged` with the toggle checked.
+        return Ok(with_executable(values.before.clone(), executable));
     }
-    let pieces = sections(&left, &right);
+    let pieces = sections(&left.content, &right.content);
     let current: HashSet<HunkKey> = pieces
         .iter()
         .filter_map(|piece| match piece {
@@ -362,13 +416,59 @@ async fn select_sections(
     }
     let selected: HashSet<HunkKey> = keys.iter().copied().collect();
     let content = assemble(&pieces, &selected);
-    let id = store.write_file(path, &mut content.as_slice()).await.map_err(be)?;
+    write_file(sides.store, path, &values.before, &content, executable).await
+}
+
+/// The builtin editor's `write_file` (`builtin.rs:419-458` @ v0.46.0): `content` with `executable`
+/// over the left value `left` — a new file keeping the left copy id over a resolved file;
+/// `conflicts::update_from_content` over a file conflict, which either resolves it or keeps the
+/// conflict with new file ids (and — the builtin's quirk, kept — the old executable bits).
+async fn write_file(
+    store: &Store,
+    path: &RepoPath,
+    left: &MergedTreeValue,
+    content: &[u8],
+    executable: bool,
+) -> Result<MergedTreeValue, MutateError> {
+    let copy_id = resolve_file_copy_id(left).unwrap_or_else(CopyId::placeholder);
+    if let Some(old_ids) = left.to_file_merge().filter(|_| !left.is_resolved()) {
+        // `MIN_CONFLICT_MARKER_LEN`, as the builtin passes it.
+        let new_ids = update_from_content(&old_ids, store, path, content, MIN_CONFLICT_MARKER_LEN)
+            .await
+            .map_err(be)?;
+        return Ok(match new_ids.into_resolved() {
+            Ok(id) => Merge::resolved(id.map(|id| TreeValue::File {
+                id,
+                executable,
+                copy_id,
+            })),
+            Err(ids) => left.with_new_file_ids(&ids),
+        });
+    }
+    let id = store.write_file(path, &mut &content[..]).await.map_err(be)?;
     Ok(Merge::normal(TreeValue::File {
         id,
-        executable: *executable,
-        // `resolve_file_copy_id` (`builtin.rs:395-403`) of the resolved left file.
-        copy_id: copy_id.clone(),
+        executable,
+        copy_id,
     }))
+}
+
+/// `resolve_file_copy_id` (`builtin.rs:395-403` @ v0.46.0).
+fn resolve_file_copy_id(value: &MergedTreeValue) -> Option<CopyId> {
+    value
+        .to_copy_id_merge()
+        .and_then(|copy_id| copy_id.resolve_trivial(SameChange::Accept).cloned().flatten())
+}
+
+/// `override_file_executable_bit` (`builtin.rs:547-557` @ v0.46.0) over a file-like value: every
+/// file term takes `executable`.
+fn with_executable(mut value: MergedTreeValue, executable: bool) -> MergedTreeValue {
+    for term in value.iter_mut().flatten() {
+        if let TreeValue::File { executable: bit, .. } = term {
+            *bit = executable;
+        }
+    }
+    value
 }
 
 /// A [`MutateError::StaleSelection`] for `reason`.
@@ -376,10 +476,15 @@ fn stale(reason: String) -> MutateError {
     MutateError::StaleSelection { reason }
 }
 
-/// Keys on a changed path that has no sections — an added or deleted file, a mode change, binary
-/// content, a symlink, a submodule or a conflict.
+/// Keys on a changed path that has no sections — an added or deleted file, binary content, a
+/// symlink, a submodule or a non-file conflict.
 fn whole_only(path: &RepoPath) -> MutateError {
     stale(format!("{} can only be selected whole", path.as_internal_file_string()))
+}
+
+/// The mode toggle on a path whose two sides are not file-like with different modes.
+fn no_mode_change(path: &RepoPath) -> MutateError {
+    stale(format!("{} has no mode change", path.as_internal_file_string()))
 }
 
 /// A key that is not one of `path`'s current sections.
@@ -392,19 +497,6 @@ fn stale_key(path: &RepoPath, key: &HunkKey) -> MutateError {
         key.new_count,
         path.as_internal_file_string()
     ))
-}
-
-/// A file's content.
-async fn read_file(store: &Store, path: &RepoPath, id: &FileId) -> Result<Vec<u8>, MutateError> {
-    let mut content = Vec::new();
-    store
-        .read_file(path, id)
-        .await
-        .map_err(be)?
-        .read_to_end(&mut content)
-        .await
-        .map_err(be)?;
-    Ok(content)
 }
 
 /// The builtin editor's text test (`buf_to_file_contents`, `builtin.rs:107-122`): no NUL byte and

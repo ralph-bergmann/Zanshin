@@ -2407,7 +2407,10 @@ class HunkKeyObjectBuilder extends fb.ObjectBuilder {
 ///  One file of a `SelectTreeRequest` (Story 9.50). `path` is repo-relative in jj's internal
 ///  `/`-separated form (what `ShowEntry.file_changes` reports). `whole` selects the revision's
 ///  value at that path, whatever the change; otherwise `hunks` lists the selected sections (absent
-///  or empty: nothing of the file). `whole` together with `hunks` is refused (`jj.invalid_input`).
+///  or empty: nothing of the file) and `mode` takes the revision's mode — the builtin diff
+///  editor's mode toggle, for a file whose two file-like sides (a regular file or a file
+///  conflict) differ in mode; `mode` with no `hunks` is the mode change only. `whole` together
+///  with `hunks` or with `mode` is refused (`jj.invalid_input`).
 class FileSelection {
   FileSelection._(this._bc, this._bcOffset);
   factory FileSelection(List<int> bytes) {
@@ -2423,10 +2426,11 @@ class FileSelection {
   String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
   bool get whole => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
   List<HunkKey>? get hunks => const fb.ListReader<HunkKey>(HunkKey.reader).vTableGetNullable(_bc, _bcOffset, 8);
+  bool get mode => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
 
   @override
   String toString() {
-    return 'FileSelection{path: ${path}, whole: ${whole}, hunks: ${hunks}}';
+    return 'FileSelection{path: ${path}, whole: ${whole}, hunks: ${hunks}, mode: ${mode}}';
   }
 }
 
@@ -2443,7 +2447,7 @@ class FileSelectionBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(4);
   }
 
   int addPathOffset(int? offset) {
@@ -2461,6 +2465,11 @@ class FileSelectionBuilder {
     return fbBuilder.offset;
   }
 
+  int addMode(bool? mode) {
+    fbBuilder.addBool(3, mode);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -2470,14 +2479,17 @@ class FileSelectionObjectBuilder extends fb.ObjectBuilder {
   final String? _path;
   final bool? _whole;
   final List<HunkKeyObjectBuilder>? _hunks;
+  final bool? _mode;
 
   FileSelectionObjectBuilder({
     String? path,
     bool? whole,
     List<HunkKeyObjectBuilder>? hunks,
+    bool? mode,
   }) : _path = path,
        _whole = whole,
-       _hunks = hunks;
+       _hunks = hunks,
+       _mode = mode;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -2486,10 +2498,11 @@ class FileSelectionObjectBuilder extends fb.ObjectBuilder {
     final int? hunksOffset = _hunks == null
         ? null
         : fbBuilder.writeList(_hunks!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
-    fbBuilder.startTable(3);
+    fbBuilder.startTable(4);
     fbBuilder.addOffset(0, pathOffset);
     fbBuilder.addBool(1, _whole);
     fbBuilder.addOffset(2, hunksOffset);
+    fbBuilder.addBool(3, _mode);
     return fbBuilder.endTable();
   }
 

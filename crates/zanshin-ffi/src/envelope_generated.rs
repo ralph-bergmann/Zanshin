@@ -4757,7 +4757,10 @@ pub mod zanshin {
         /// One file of a `SelectTreeRequest` (Story 9.50). `path` is repo-relative in jj's internal
         /// `/`-separated form (what `ShowEntry.file_changes` reports). `whole` selects the revision's
         /// value at that path, whatever the change; otherwise `hunks` lists the selected sections (absent
-        /// or empty: nothing of the file). `whole` together with `hunks` is refused (`jj.invalid_input`).
+        /// or empty: nothing of the file) and `mode` takes the revision's mode — the builtin diff
+        /// editor's mode toggle, for a file whose two file-like sides (a regular file or a file
+        /// conflict) differ in mode; `mode` with no `hunks` is the mode change only. `whole` together
+        /// with `hunks` or with `mode` is refused (`jj.invalid_input`).
         pub struct FileSelection<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -4776,6 +4779,7 @@ pub mod zanshin {
             pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
             pub const VT_WHOLE: ::flatbuffers::VOffsetT = 6;
             pub const VT_HUNKS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_MODE: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -4793,6 +4797,7 @@ pub mod zanshin {
                 if let Some(x) = args.path {
                     builder.add_path(x);
                 }
+                builder.add_mode(args.mode);
                 builder.add_whole(args.whole);
                 builder.finish()
             }
@@ -4825,6 +4830,13 @@ pub mod zanshin {
                     >>(FileSelection::VT_HUNKS, None)
                 }
             }
+            #[inline]
+            pub fn mode(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(FileSelection::VT_MODE, Some(false)).unwrap() }
+            }
         }
 
         impl ::flatbuffers::Verifiable for FileSelection<'_> {
@@ -4837,6 +4849,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
      .visit_field::<bool>("whole", Self::VT_WHOLE, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<HunkKey>>>>("hunks", Self::VT_HUNKS, false)?
+     .visit_field::<bool>("mode", Self::VT_MODE, false)?
      .finish();
                 Ok(())
             }
@@ -4847,6 +4860,7 @@ pub mod zanshin {
             pub hunks: Option<
                 ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<HunkKey<'a>>>>,
             >,
+            pub mode: bool,
         }
         impl<'a> Default for FileSelectionArgs<'a> {
             #[inline]
@@ -4855,6 +4869,7 @@ pub mod zanshin {
                     path: None,
                     whole: false,
                     hunks: None,
+                    mode: false,
                 }
             }
         }
@@ -4882,6 +4897,10 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileSelection::VT_HUNKS, hunks);
             }
             #[inline]
+            pub fn add_mode(&mut self, mode: bool) {
+                self.fbb_.push_slot::<bool>(FileSelection::VT_MODE, mode, false);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileSelectionBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 FileSelectionBuilder {
@@ -4902,6 +4921,7 @@ pub mod zanshin {
                 ds.field("path", &self.path());
                 ds.field("whole", &self.whole());
                 ds.field("hunks", &self.hunks());
+                ds.field("mode", &self.mode());
                 ds.finish()
             }
         }

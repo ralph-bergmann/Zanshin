@@ -1529,6 +1529,10 @@ fn select_tree_surface_resolves() {
                 path: "b".to_owned(),
                 choice: zanshin_jj::FileChoice::Hunks(vec![key]),
             },
+            zanshin_jj::FileSelection {
+                path: "c".to_owned(),
+                choice: zanshin_jj::FileChoice::ModeAndHunks(vec![key]),
+            },
         ],
     };
     assert_eq!(options.clone(), options);

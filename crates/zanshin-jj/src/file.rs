@@ -362,6 +362,53 @@ fn warn_unmatched(
     warning::warn_unmatched_paths(sink, workspace.workspace_root(), &explicit, &[tree]).map_err(be)
 }
 
+/// A conflicted file's text: its terms merged and materialized with conflict markers — what
+/// `file show` prints and the builtin diff editor sections (`read_file_contents`,
+/// `cli/src/merge_tools/builtin.rs:178-198` @ v0.46.0). The one place both cut it.
+fn conflict_text(
+    file: &jj_lib::conflicts::MaterializedFileConflictValue,
+    options: &ConflictMaterializeOptions,
+) -> Vec<u8> {
+    materialize_merge_result_to_bytes(&file.contents, &file.labels, options).into()
+}
+
+/// One side of a changed path as the builtin diff editor reads it, when it is FILE-LIKE: a
+/// resolved regular file, or a file conflict.
+pub(crate) struct FileLike {
+    /// The builtin editor's mode: a resolved file's bit; a conflict's merged bit, `true` only when
+    /// it resolves to executable.
+    pub(crate) executable: bool,
+    /// Its content; a conflict materialized with markers ([`conflict_text`]).
+    pub(crate) content: Vec<u8>,
+}
+
+/// `value` read as the builtin diff editor reads one side of a diff (`read_file_contents`,
+/// `builtin.rs:124-218` @ v0.46.0), with `labels` its tree's conflict labels — `None` unless it
+/// is file-like (absent, a symlink, a submodule, a non-file conflict, an unreadable file).
+///
+/// # Errors
+///
+/// A backend read failed.
+pub(crate) async fn materialize_file_like(
+    store: &Store,
+    path: &RepoPath,
+    value: MergedTreeValue,
+    labels: &ConflictLabels,
+    options: &ConflictMaterializeOptions,
+) -> jj_lib::backend::BackendResult<Option<FileLike>> {
+    Ok(match materialize_tree_value(store, path, value, labels).await? {
+        MaterializedTreeValue::File(mut file) => Some(FileLike {
+            executable: file.executable,
+            content: file.read_all(path).await?,
+        }),
+        MaterializedTreeValue::FileConflict(file) => Some(FileLike {
+            executable: file.executable == Some(true),
+            content: conflict_text(&file, options),
+        }),
+        _ => None,
+    })
+}
+
 /// What [`render_entry`] makes of one tree value: the file, or the path it skipped together with
 /// the warning the CLI prints for it — `None` for the two cases the CLI `panic!`s on instead.
 type Rendered = Result<ShownFile, (SkippedPath, Option<WarningKind>)>;
@@ -397,10 +444,7 @@ fn render_entry(
             let content = pollster::block_on(file.read_all(path)).map_err(be)?;
             Ok(shown(content, false))
         }
-        MaterializedTreeValue::FileConflict(file) => Ok(shown(
-            materialize_merge_result_to_bytes(&file.contents, &file.labels, options).into(),
-            true,
-        )),
+        MaterializedTreeValue::FileConflict(file) => Ok(shown(conflict_text(&file, options), true)),
         MaterializedTreeValue::OtherConflict { id, labels } => Ok(shown(id.describe(&labels).into_bytes(), true)),
         MaterializedTreeValue::Symlink { .. } | MaterializedTreeValue::GitSubmodule(_) => Err(skipped(
             format!("Path '{display}' exists but is not a file."),

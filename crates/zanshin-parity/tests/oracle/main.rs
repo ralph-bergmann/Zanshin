@@ -173,6 +173,8 @@ parity!(
     new_merge_ignores_bad_pattern,
     commit_path_escapes_repo,
     split_tool_sections_1_3,
+    split_tool_mode_only,
+    split_tool_sections_no_mode,
     commit_tool_sections_1_3,
     squash_tool_sections_1_3,
     restore_path_escapes_repo,
@@ -384,7 +386,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 317);
+    assert_eq!(SCENARIO_IDS.len(), 319);
 }
 
 #[test]

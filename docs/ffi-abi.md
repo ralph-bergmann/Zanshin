@@ -614,7 +614,7 @@ or no `# Errors` block.
 | `zanshin_drop_actions` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DropActionsRequest` | `DropActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_change_actions` | `(uint64_t handle, const char *change_id)` | — | `ChangeActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_commit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.no_working_copy`, `jj.invalid_input`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.49 (+9.50) |
-| `zanshin_select_tree` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SelectTreeRequest` | `SelectedTree` (see § `zanshin_select_tree` — the GUI diff-editor contract) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.stale_selection`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.50 |
+| `zanshin_select_tree` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SelectTreeRequest` | `SelectedTree` (see § `zanshin_select_tree` — the GUI diff-editor contract) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.50 (`mode`: loop 9.9–9.12 second follow-on) |
 | `zanshin_undo` | `(uint64_t handle, bool allow_cross_workspace)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.undo_cross_workspace`, `jj.nothing_to_undo`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (+9.39) |
 | `zanshin_redo` | `(uint64_t handle, bool allow_cross_workspace)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.nothing_to_redo`, `jj.redo_cross_workspace`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.21 |
 | `zanshin_op_abandon` | `(uint64_t handle, const char *operation)` | — | `OpAbandonResult` (see § Operation verbs) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.invalid_input`, `jj.operation_not_found`, `jj.config_error`, `jj.jj_lib_error` | 9.21 |
@@ -1893,12 +1893,21 @@ v0.46.0). The verbs then take that tree in their **tree arm**.
    path (jj's internal `/` form) `whole` (the revision's value, whatever the change) or `hunks`, a
    list of `HunkKey { old_start, old_count, new_start, new_count }`: the builtin editor's sections
    (`ContentDiff::by_line`), 0-based line index and line count on each side, lines cut like
-   `split_inclusive('\n')`. Only a file that is a regular file with the same executable bit and
-   UTF-8 text without NUL bytes on both sides has sections; added/deleted files, mode changes,
-   binary files, symlinks, submodules and conflicts are whole only. A changed file not listed,
-   and every unselected section, keeps its left side. `whole` with `hunks`, a path listed twice,
-   the root, an invalid path or a malformed `left`: `jj.invalid_input`, before the snapshot (no
-   `precondition`, nothing written), as the CLI parses its arguments before it snapshots.
+   `split_inclusive('\n')`, plus `mode` (loop 9.9–9.12 second follow-on), the builtin editor's
+   mode toggle: the file takes the revision's executable bit (`mode` with no `hunks` is the mode
+   change alone); without it the file keeps its left bit. Each side is read as the builtin editor
+   reads it: a resolved regular file, or a FILE CONFLICT — its text materialized with
+   `ui.conflict-marker-style` and its tree's labels, its mode executable only when its merged bit
+   is. A file has sections when both sides are such files and both texts are UTF-8 without NUL
+   bytes (a conflict's markers included); it has a mode toggle when both sides are such files
+   with different modes (binary content included — its content then stays whole). The result is
+   written as the builtin's `write_file`: a new file keeping the left copy id over a resolved left
+   file, `conflicts::update_from_content` over a conflicted one (a conflict with new file ids, or
+   a resolved file). Added/deleted files, symlinks, submodules, non-file conflicts and binary
+   content are whole only. A changed file not listed, and every unselected section, keeps its left
+   side. `whole` with `hunks` or with `mode`, a path listed twice, the root, an invalid path or a
+   malformed `left`: `jj.invalid_input`, before the snapshot (no `precondition`, nothing written),
+   as the CLI parses its arguments before it snapshots.
 3. **`SelectedTree { tree_ids, labels }`** is the answer: the tree's ids and conflict labels
    (empty = unlabeled, else one per id), so a conflicted result round-trips unchanged. Writing it
    is not a repo mutation: NO operation beyond the pre-verb snapshot's.
@@ -1910,8 +1919,8 @@ v0.46.0). The verbs then take that tree in their **tree arm**.
    or a tree of the wrong shape, refuses `jj.invalid_input` before the snapshot. An unknown tree
    id is `jj.jj_lib_error`.
 5. **Staleness — `jj.stale_selection`:** the revision's (each source's) parent tree is no longer
-   `left` — a rebase, a rewritten parent — or a key is not one of the file's current sections. It
-   is checked by `zanshin_select_tree` and again by each tree arm where the CLI runs its editor;
+   `left` — a rebase, a rewritten parent — a key is not one of the file's current sections, or
+   `mode` names a file without a mode change ("{path} has no mode change"). It is checked by `zanshin_select_tree` and again by each tree arm where the CLI runs its editor;
    nothing is written. A change to the revision's OWN content after the selection is not stale:
    every verb snapshots first, the tree is absolute, and the rest stays in the revision. The
    remedy is the UI's: re-read the diff, re-map the selection, select again.

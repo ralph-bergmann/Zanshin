@@ -10,6 +10,7 @@
 
 use std::ffi::CString;
 use std::fs;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use flatbuffers::{root as fb_root, FlatBufferBuilder, WIPOffset};
@@ -125,6 +126,17 @@ fn strings<'b>(
 /// A `SelectTreeRequest` for `@`: `f.txt` by `hunks` (`(old_start, old_count, new_start,
 /// new_count)`), or whole when `whole` is set.
 fn select_request(kind: fbs::RequestKind, left: &[String], whole: bool, hunks: &[(u32, u32, u32, u32)]) -> Vec<u8> {
+    select_request_with_mode(kind, left, whole, false, hunks)
+}
+
+/// [`select_request`] with `f.txt`'s `mode` toggle.
+fn select_request_with_mode(
+    kind: fbs::RequestKind,
+    left: &[String],
+    whole: bool,
+    mode: bool,
+    hunks: &[(u32, u32, u32, u32)],
+) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let keys: Vec<_> = hunks
         .iter()
@@ -148,6 +160,7 @@ fn select_request(kind: fbs::RequestKind, left: &[String], whole: bool, hunks: &
             path: Some(path),
             whole,
             hunks: Some(keys),
+            mode,
         },
     );
     let files = b.create_vector(&[file]);
@@ -292,6 +305,37 @@ fn stale_and_malformed_selections_carry_their_codes() {
     assert_eq!(head_op(&fx.root), head, "no refusal wrote an operation");
 }
 
+/// The mode toggle crosses the wire: on a file without a mode change it is stale, on one that
+/// became executable it selects a tree other than the left one; with `whole` it is refused.
+#[test]
+fn the_mode_toggle_crosses_the_wire() {
+    let fx = base();
+    let req = select_request_with_mode(fbs::RequestKind::SelectTree, &fx.left, false, true, &[]);
+    // SAFETY: `fx.handle` is open; `req` is a live buffer for the call.
+    let bytes = unsafe { read_and_free(zanshin_select_tree(fx.handle, req.as_ptr(), req.len())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_STALE_SELECTION));
+
+    fs::set_permissions(fx.root.join("f.txt"), fs::Permissions::from_mode(0o755)).expect("chmod");
+    // SAFETY: as above.
+    let bytes = unsafe { read_and_free(zanshin_select_tree(fx.handle, req.as_ptr(), req.len())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", error_code(&bytes));
+    let tree_ids: Vec<String> = env
+        .data_as_selected_tree()
+        .expect("SelectedTree")
+        .tree_ids()
+        .expect("tree ids")
+        .iter()
+        .map(str::to_owned)
+        .collect();
+    assert_ne!(tree_ids, fx.left, "the right mode is taken");
+
+    let req = select_request_with_mode(fbs::RequestKind::SelectTree, &fx.left, true, true, &[]);
+    // SAFETY: as above.
+    let bytes = unsafe { read_and_free(zanshin_select_tree(fx.handle, req.as_ptr(), req.len())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
+}
+
 /// `split`'s and `squash`'s readers carry the tree arm through.
 #[test]
 fn split_and_squash_take_the_tree_arm() {
@@ -374,6 +418,7 @@ fn select_whole(handle: u64, revision: Option<&str>, left: &[String], path: &str
             path: Some(path),
             whole: true,
             hunks: None,
+            mode: false,
         },
     );
     let files = b.create_vector(&[file]);

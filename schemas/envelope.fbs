@@ -214,11 +214,15 @@ table HunkKey {
 /// One file of a `SelectTreeRequest` (Story 9.50). `path` is repo-relative in jj's internal
 /// `/`-separated form (what `ShowEntry.file_changes` reports). `whole` selects the revision's
 /// value at that path, whatever the change; otherwise `hunks` lists the selected sections (absent
-/// or empty: nothing of the file). `whole` together with `hunks` is refused (`jj.invalid_input`).
+/// or empty: nothing of the file) and `mode` takes the revision's mode — the builtin diff
+/// editor's mode toggle, for a file whose two file-like sides (a regular file or a file
+/// conflict) differ in mode; `mode` with no `hunks` is the mode change only. `whole` together
+/// with `hunks` or with `mode` is refused (`jj.invalid_input`).
 table FileSelection {
   path: string;
   whole: bool;
   hunks: [HunkKey];
+  mode: bool;
 }
 
 /// Arguments of `zanshin_select_tree` (Story 9.50) — a hunk selection, applied as the CLI's

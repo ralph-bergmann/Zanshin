@@ -44,8 +44,8 @@ pub(crate) fn tree_selection(table: fbs::TreeSelection<'_>) -> TreeSelection {
 /// A `FileSelection` table as an owned [`FileSelection`].
 ///
 /// # Errors
-/// - `jj.invalid_input` — `whole` together with a non-empty `hunks`: the two ways of selecting a
-///   file exclude each other.
+/// - `jj.invalid_input` — `whole` together with a non-empty `hunks` or with `mode`: whole excludes
+///   the other ways of selecting a file.
 fn file_selection(table: fbs::FileSelection<'_>) -> Result<FileSelection, FfiErrorObj> {
     let path = table.path().unwrap_or_default().to_owned();
     let hunks: Vec<HunkKey> = table
@@ -62,14 +62,20 @@ fn file_selection(table: fbs::FileSelection<'_>) -> Result<FileSelection, FfiErr
                 .collect()
         })
         .unwrap_or_default();
-    let choice = match (table.whole(), hunks.is_empty()) {
-        (true, true) => FileChoice::Whole,
-        (true, false) => {
+    let choice = match (table.whole(), table.mode(), hunks.is_empty()) {
+        (true, _, false) => {
             return Err(map_mutate_err(MutateError::invalid(format!(
                 "{path} is selected whole and by hunks"
             ))))
         }
-        (false, _) => FileChoice::Hunks(hunks),
+        (true, true, true) => {
+            return Err(map_mutate_err(MutateError::invalid(format!(
+                "{path} is selected whole and by its mode"
+            ))))
+        }
+        (true, false, true) => FileChoice::Whole,
+        (false, true, _) => FileChoice::ModeAndHunks(hunks),
+        (false, false, _) => FileChoice::Hunks(hunks),
     };
     Ok(FileSelection { path, choice })
 }
@@ -85,7 +91,7 @@ fn file_selection(table: fbs::FileSelection<'_>) -> Result<FileSelection, FfiErr
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `SelectTreeRequest` buffer, or its
 ///   `kind` is not `SelectTree`.
-/// - `jj.invalid_input` — a file is selected `whole` and by `hunks`.
+/// - `jj.invalid_input` — a file is selected `whole` and by `hunks` or its `mode`.
 fn read_select_tree_request(data: *const u8, len: usize) -> Result<SelectTreeOptions, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only (see above).
@@ -112,9 +118,12 @@ fn read_select_tree_request(data: *const u8, len: usize) -> Result<SelectTreeOpt
 /// The arguments cross as a `SelectTreeRequest` `FlatBuffers` request buffer: `revision` (absent:
 /// `@`), `left` (the revision's parent tree the selection was made against, as
 /// `ShowEntry.parent_tree_ids` reports it) and `files` (per path `whole`, or the selected `hunks`
-/// by their `HunkKey`; a changed file not listed, and every unselected section, keeps its left
-/// side). Only a file that is a regular, same-mode UTF-8 text without NUL bytes on both sides has
-/// sections; every other change is selected whole. Writes NO operation — only the tree's objects
+/// by their `HunkKey` with or without `mode`, the builtin editor's mode toggle; a changed file not
+/// listed, and every unselected section, keeps its left side). A file has sections when both
+/// sides are a regular file or a file conflict (materialized with `ui.conflict-marker-style`) and
+/// UTF-8 text without NUL bytes, and a mode toggle when both such sides differ in mode; added and
+/// deleted files, symlinks, submodules, non-file conflicts and binary content are selected whole.
+/// Writes NO operation — only the tree's objects
 /// reach the store — beyond the pre-verb snapshot's (Story 9.26). A change to the revision's own
 /// content after the selection is not stale.
 ///
@@ -126,14 +135,16 @@ fn read_select_tree_request(data: *const u8, len: usize) -> Result<SelectTreeOpt
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `SelectTreeRequest` buffer, or its
 ///   `kind` is not `SelectTree`.
-/// - `jj.invalid_input` — a file selected `whole` and by `hunks`, `left` malformed or of an even or
+/// - `jj.invalid_input` — a file selected `whole` and by `hunks` or its `mode`, `left` malformed or of an even or
 ///   zero count, a path invalid, the root or listed twice — all before the snapshot: nothing
 ///   written, no `precondition`; detail in `context`.
 /// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit, or divergent.
 /// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
 ///   commit.
-/// - `jj.stale_selection` — the revision's parent tree is not `left`, or a key is not a current
-///   section of its file; detail in `context`.
+/// - `jj.stale_selection` — the revision's parent tree is not `left`, a key is not a current
+///   section of its file, or `mode` names a file without a mode change; detail in `context`.
+/// - `jj.config_error` — the effective config does not read, or `ui.conflict-marker-style` is not
+///   one of jj's styles.
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///
@@ -167,14 +178,15 @@ mod tests {
     use crate::envelope::{FFI_INVALID_ARGUMENT, JJ_INVALID_INPUT};
     use crate::fbs;
 
-    /// One file: `path`, `whole`, and `hunks` as `(old_start, old_count, new_start, new_count)`.
-    type File<'a> = (&'a str, bool, Option<&'a [(u32, u32, u32, u32)]>);
+    /// One file: `path`, `whole`, `mode`, and `hunks` as `(old_start, old_count, new_start,
+    /// new_count)`.
+    type File<'a> = (&'a str, bool, bool, Option<&'a [(u32, u32, u32, u32)]>);
 
     fn request(kind: fbs::RequestKind, revision: Option<&str>, left: &[&str], files: &[File<'_>]) -> Vec<u8> {
         let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
         let file_offsets: Vec<_> = files
             .iter()
-            .map(|&(path, whole, hunks)| {
+            .map(|&(path, whole, mode, hunks)| {
                 let path = b.create_string(path);
                 let hunks = hunks.map(|hunks| {
                     let keys: Vec<_> = hunks
@@ -199,6 +211,7 @@ mod tests {
                         path: Some(path),
                         whole,
                         hunks,
+                        mode,
                     },
                 )
             })
@@ -220,7 +233,8 @@ mod tests {
         b.finished_data().to_vec()
     }
 
-    /// Every field is read; a file is whole, or its hunks (absent hunks: none).
+    /// Every field is read; a file is whole, or its hunks (absent hunks: none), with or without
+    /// its mode.
     #[test]
     fn the_reader_reads_every_field() {
         let bytes = request(
@@ -228,9 +242,11 @@ mod tests {
             Some("rev"),
             &["l1"],
             &[
-                ("a", true, None),
-                ("b", false, Some(&[(0, 1, 0, 2)])),
-                ("c", false, None),
+                ("a", true, false, None),
+                ("b", false, false, Some(&[(0, 1, 0, 2)])),
+                ("c", false, false, None),
+                ("d", false, true, None),
+                ("e", false, true, Some(&[(0, 1, 0, 2)])),
             ],
         );
         let options = read_select_tree_request(bytes.as_ptr(), bytes.len()).expect("valid");
@@ -248,20 +264,35 @@ mod tests {
         );
         assert_eq!(options.files[2].choice, FileChoice::Hunks(Vec::new()));
         assert_eq!(options.files[1].path, "b");
+        assert_eq!(options.files[3].choice, FileChoice::ModeAndHunks(Vec::new()));
+        assert_eq!(
+            options.files[4].choice,
+            FileChoice::ModeAndHunks(vec![HunkKey {
+                old_start: 0,
+                old_count: 1,
+                new_start: 0,
+                new_count: 2,
+            }])
+        );
     }
 
-    /// `whole` together with hunks refuses `jj.invalid_input`; a request of another kind
-    /// `ffi.invalid_argument`.
+    /// `whole` together with hunks or with the mode refuses `jj.invalid_input`; a request of
+    /// another kind `ffi.invalid_argument`.
     #[test]
-    fn the_reader_refuses_whole_with_hunks_and_another_kind() {
+    fn the_reader_refuses_whole_with_hunks_or_mode_and_another_kind() {
         let bytes = request(
             fbs::RequestKind::SelectTree,
             None,
             &["l1"],
-            &[("a", true, Some(&[(0, 1, 0, 1)]))],
+            &[("a", true, false, Some(&[(0, 1, 0, 1)]))],
         );
         let err = read_select_tree_request(bytes.as_ptr(), bytes.len()).expect_err("whole with hunks");
         assert_eq!(err.code, JJ_INVALID_INPUT);
+
+        let bytes = request(fbs::RequestKind::SelectTree, None, &["l1"], &[("a", true, true, None)]);
+        let err = read_select_tree_request(bytes.as_ptr(), bytes.len()).expect_err("whole with mode");
+        assert_eq!(err.code, JJ_INVALID_INPUT);
+        assert_eq!(err.context.as_deref(), Some("a is selected whole and by its mode"));
 
         let bytes = request(fbs::RequestKind::Commit, None, &["l1"], &[]);
         let err = read_select_tree_request(bytes.as_ptr(), bytes.len()).expect_err("wrong kind");

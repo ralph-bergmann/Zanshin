@@ -173,12 +173,13 @@ Dart `WorkerCommand` → optional MCP tool → tests (+ coverage attribution + r
   rebase), or a key that is not a current section, refuses `jj.stale_selection` (a new code: one
   remedy, re-select) — checked by `select_tree` and again by each tree arm where the CLI runs its
   editor. A change to the revision's own content is NOT stale: every verb snapshots first (Story
-  9.26), the tree is absolute, and the rest stays in the revision. Whole-only: added/deleted
-  files, mode changes, binary (NUL or non-UTF-8) files, symlinks, submodules and conflicts — for
-  mode changes and conflicts a deliberate divergence (epics.md Story 9.50): the builtin editor
-  offers a mode change as a separate `FileMode` toggle (`builtin.rs:296-301` @ v0.46.0) and
-  sections a conflicted file over its materialized markers (`:423-445`); likewise an added or
-  deleted text file (one line section there, `:326-345`) and single lines inside a section
-  (checkable there, `:211-222`) are whole-only here. The
-  9.47 oracle drives the stock CLI's `--tool` with a scripted editor making the same choice
-  (`split_tool_sections_1_3`, `commit_tool_sections_1_3`, `squash_tool_sections_1_3`).
+  9.26), the tree is absolute, and the rest stays in the revision. A mode change is the builtin
+  editor's separate `FileMode` toggle (`builtin.rs:296-301` @ v0.46.0), and a file conflict is
+  sectioned over its materialized markers and written back through `conflicts::update_from_content`
+  (`:405-465`), both as there (loop 9.9–9.12 second follow-on). Whole-only: added/deleted files,
+  binary (NUL or non-UTF-8) content apart from its mode change, symlinks, submodules and non-file
+  conflicts — a deliberate divergence for an added or deleted text file (one line section there,
+  `:326-345`) and single lines inside a section (checkable there, `:211-222`). The 9.47 oracle
+  drives the stock CLI's `--tool` with a scripted editor making the same choice
+  (`split_tool_sections_1_3`, `commit_tool_sections_1_3`, `squash_tool_sections_1_3`, and for the
+  mode toggle `split_tool_mode_only`, `split_tool_sections_no_mode`).

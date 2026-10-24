@@ -3190,9 +3190,12 @@ ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
  * The arguments cross as a `SelectTreeRequest` `FlatBuffers` request buffer: `revision` (absent:
  * `@`), `left` (the revision's parent tree the selection was made against, as
  * `ShowEntry.parent_tree_ids` reports it) and `files` (per path `whole`, or the selected `hunks`
- * by their `HunkKey`; a changed file not listed, and every unselected section, keeps its left
- * side). Only a file that is a regular, same-mode UTF-8 text without NUL bytes on both sides has
- * sections; every other change is selected whole. Writes NO operation — only the tree's objects
+ * by their `HunkKey` with or without `mode`, the builtin editor's mode toggle; a changed file not
+ * listed, and every unselected section, keeps its left side). A file has sections when both
+ * sides are a regular file or a file conflict (materialized with `ui.conflict-marker-style`) and
+ * UTF-8 text without NUL bytes, and a mode toggle when both such sides differ in mode; added and
+ * deleted files, symlinks, submodules, non-file conflicts and binary content are selected whole.
+ * Writes NO operation — only the tree's objects
  * reach the store — beyond the pre-verb snapshot's (Story 9.26). A change to the revision's own
  * content after the selection is not stale.
  *
@@ -3204,14 +3207,16 @@ ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `SelectTreeRequest` buffer, or its
  *   `kind` is not `SelectTree`.
- * - `jj.invalid_input` — a file selected `whole` and by `hunks`, `left` malformed or of an even or
+ * - `jj.invalid_input` — a file selected `whole` and by `hunks` or its `mode`, `left` malformed or of an even or
  *   zero count, a path invalid, the root or listed twice — all before the snapshot: nothing
  *   written, no `precondition`; detail in `context`.
  * - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit, or divergent.
  * - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
  *   commit.
- * - `jj.stale_selection` — the revision's parent tree is not `left`, or a key is not a current
- *   section of its file; detail in `context`.
+ * - `jj.stale_selection` — the revision's parent tree is not `left`, a key is not a current
+ *   section of its file, or `mode` names a file without a mode change; detail in `context`.
+ * - `jj.config_error` — the effective config does not read, or `ui.conflict-marker-style` is not
+ *   one of jj's styles.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *
