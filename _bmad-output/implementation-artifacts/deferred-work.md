@@ -2008,6 +2008,12 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in the closing run of Story 9.18 (bmad-build-auto, 2026-10-24)
 
-- **`new` with both a broken `templates.new_description` and an unresolvable `immutable_heads()` names the immutable set where the CLI names the template.** Low.
+- ~~**`new` with both a broken `templates.new_description` and an unresolvable `immutable_heads()` names the immutable set where the CLI names the template.**~~ — RESOLVED 2026-10-25 (spec-9-18-followup-new-template-before-immutable, commit ac6d0b4): `plan_new` no longer resolves the set up front, the `new` rows resolve it after the plan; oracle `refusal_order.rs`. Low.
   - `plan_new` resolves the set up front for every form (`crates/zanshin-jj/src/mutate.rs:1182`, `:1189`); `cmd_new` @ v0.46.0 resolves it only in `compute_commit_location` for a location with children (`cli/src/commands/new.rs:179`), parses `templates.new_description` after it (`:217-221`) and resolves it again in `tx.finish` (`:284`). Both refuse `jj.config_error` with no operation; only the `context` text differs — the same gap this run closed for `revert`/`duplicate`.
   - **Follow-up:** drop `plan_new`'s two up-front `resolve_immutable` calls (`compute_commit_location` now resolves lazily), let the `new` drop/card rows resolve after the plan as the `revert`/`duplicate` rows do, and add a `new` witness to `crates/zanshin-parity/tests/oracle/refusal_order.rs`.
+
+## Surfaced in the `new` refusal-order fix (bmad-build-auto, 2026-10-25)
+
+- **A `new` merge with the root commit and a broken `templates.new_description` refuses with the Git backend's root-merge text where the CLI names the template.** Low.
+  - `plan_new` refuses the root merge up front (`refuse_git_root_merge`, `crates/zanshin-jj/src/mutate.rs:1186`, `:1195`; Story 9.31); `cmd_new` @ v0.46.0 parses the template (`cli/src/commands/new.rs:217-221`) before the write where the backend refuses. Pinned CLI by hand: `new @ 'root()'` with template `"x" ++` → `Failed to parse template`; empty template → the backend text. Both refuse with no operation.
+  - **Follow-up:** move the verb's root-merge check after the template parse (the rows keep calling it after `plan_new`), or leave it.
