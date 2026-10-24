@@ -2005,3 +2005,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **`revert -o` with both a broken `templates.revert_description` and an unresolvable `immutable_heads()` names the wrong fault first.** Low.
   - `plan_revert` resolves the immutable set at the end of the plan for a non-insert location (`crates/zanshin-jj/src/revert.rs`); the verb parses the template after the plan. The CLI parses the template first and resolves the immutable set in `tx.finish`. Both refuse `jj.config_error` with no operation; only the `context` text differs. `duplicate`'s plan (`plan_duplicate_ids`) has the same order.
   - **Follow-up:** move the non-insert `resolve_immutable` out of the shared plan fns into the verbs' finish path (`drop_actions` keeps its own call), or leave it.
+
+## Surfaced in the closing run of Story 9.18 (bmad-build-auto, 2026-10-24)
+
+- **`new` with both a broken `templates.new_description` and an unresolvable `immutable_heads()` names the immutable set where the CLI names the template.** Low.
+  - `plan_new` resolves the set up front for every form (`crates/zanshin-jj/src/mutate.rs:1182`, `:1189`); `cmd_new` @ v0.46.0 resolves it only in `compute_commit_location` for a location with children (`cli/src/commands/new.rs:179`), parses `templates.new_description` after it (`:217-221`) and resolves it again in `tx.finish` (`:284`). Both refuse `jj.config_error` with no operation; only the `context` text differs — the same gap this run closed for `revert`/`duplicate`.
+  - **Follow-up:** drop `plan_new`'s two up-front `resolve_immutable` calls (`compute_commit_location` now resolves lazily), let the `new` drop/card rows resolve after the plan as the `revert`/`duplicate` rows do, and add a `new` witness to `crates/zanshin-parity/tests/oracle/refusal_order.rs`.
