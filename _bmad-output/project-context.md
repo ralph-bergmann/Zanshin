@@ -126,6 +126,11 @@ the `zanshin-graph` lane crate was removed)*
   (Story 9.52): the worker itself runs each network call (fetch, clone, push, and Story
   9.24's remote-change poll) on a short-lived `Isolate.run` helper, once per call, so its
   event loop keeps forwarding progress; other calls on that handle queue behind it.
+- Dart code starts a child process only with `ProcessStartMode.detached` /
+  `.detachedWithStdio`, or the process is started from Rust. While a non-detached Dart
+  child lives, the VM's exit-code handler `waitpid`s ANY pid and can reap a child the
+  cdylib started (`fix`'s tool, jj-lib's `git`), whose wait then fails with ECHILD.
+  Guard: `app/test/process_spawn_guard_test.dart` (scans every Dart `lib/` tree).
 - Use `sealed class` for `WorkerCommand` hierarchy so the dispatcher's `switch`
   is exhaustive (compile-time guarantee).
 - `NativeFinalizer` MUST be attached to every Dart wrapper holding a Rust handle.

@@ -228,7 +228,10 @@ const RULES: &[(Pattern, &str, Need)] = &[
     // Dart packages: the package plus every package depending on it (by name in a pubspec's
     // `dependencies:` or `dev_dependencies:`, whatever the source — pub resolves a workspace member's
     // name to the member). `a_flutter_package_plans_itself_and_every_package_depending_on_it` checks
-    // these entries against the pubspecs.
+    // these entries against the pubspecs. Every entry also plans `APP`: the app's
+    // `test/process_spawn_guard_test.dart` scans each package's `lib/` for a child process Dart
+    // starts non-detached, so a `lib/` change anywhere must run `test-flutter`
+    // (`every_dart_lib_tree_plans_the_apps_spawn_guard`).
     (
         Pattern::Prefix("packages/zanshin_core/"),
         "zanshin_core",
@@ -899,6 +902,15 @@ mod tests {
             ]
         );
         assert_eq!(plan("app/lib/a.dart"), APP);
+    }
+
+    #[test]
+    fn every_dart_lib_tree_plans_the_apps_spawn_guard() {
+        for (member, _) in OWN_STEPS {
+            let path = format!("{member}/lib/x.dart");
+            let planned = steps(classify(&path).1);
+            assert!(planned.contains(&"test-flutter"), "{path}: {planned:?}");
+        }
     }
 
     #[test]
