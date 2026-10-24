@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! Integration tests for Story 9.16's three wrappers: `zanshin_rebase`, `zanshin_parallelize` and
-//! `zanshin_arrange`.
+//! Integration tests for Story 9.16's three wrappers — `zanshin_rebase`, `zanshin_parallelize` and
+//! `zanshin_arrange` — and Story 9.14's `zanshin_simplify_parents`.
 //!
 //! Every buffer is read through the `FlatBuffers` generated typed accessors and the Verifier;
 //! every token is freed via `zanshin_buffer_free_token`. The repo is built in-test with
@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use flatbuffers::root as fb_root;
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
-use zanshin_ffi::rebase::{zanshin_arrange, zanshin_parallelize, zanshin_rebase};
+use zanshin_ffi::rebase::{zanshin_arrange, zanshin_parallelize, zanshin_rebase, zanshin_simplify_parents};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
 use zanshin_ffi::{
     FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CHANGE_NOT_FOUND, JJ_IMMUTABLE, JJ_INVALID_INPUT,
@@ -364,4 +364,129 @@ fn every_wrapper_refuses_a_zero_handle() {
         ]
     };
     assert_eq!(codes.each_ref().map(Option::as_deref), [Some(FFI_INVALID_HANDLE); 3]);
+}
+
+// ── simplify-parents (Story 9.14) ────────────────────────────────────────────────
+
+/// A `SimplifyParentsRequest` tagged `kind`: `-s source`, `-r revisions` (empty = absent).
+fn simplify_parents_request(kind: fbs::RequestKind, source: &[&str], revisions: &[&str]) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let source = strings(&mut b, source);
+    let revisions = strings(&mut b, revisions);
+    let req = fbs::SimplifyParentsRequest::create(
+        &mut b,
+        &fbs::SimplifyParentsRequestArgs {
+            kind,
+            source,
+            revisions,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// Runs `zanshin_simplify_parents` on `fx` with `-s source -r revisions`.
+fn simplify_parents(fx: &Fx, source: &[&str], revisions: &[&str]) -> Vec<u8> {
+    let req = simplify_parents_request(fbs::RequestKind::SimplifyParents, source, revisions);
+    // SAFETY: `fx.handle` is open; `req` is a live buffer for the call.
+    unsafe { read_and_free(zanshin_simplify_parents(fx.handle, req.as_ptr(), req.len())) }
+}
+
+/// The reply's op id, working-copy change id and its four counts.
+fn simplify_parents_reply(bytes: &[u8]) -> (String, Option<String>, [u32; 4]) {
+    let env = parse_envelope(bytes);
+    assert!(env.ok(), "{:?}", error_code(bytes));
+    let result = env
+        .data_as_simplify_parents_result()
+        .expect("SimplifyParentsResult payload");
+    let mutation = result.mutation().expect("mutation");
+    let op_id = mutation.new_op_id().expect("new_op_id").to_owned();
+    let wc = mutation.working_copy_change_id().map(ToOwned::to_owned);
+    let counts = [
+        result.num_target_commits(),
+        result.num_simplified_commits(),
+        result.num_removed_edges(),
+        result.num_rebased_descendants(),
+    ];
+    (op_id, wc, counts)
+}
+
+/// M = merge(A, B) on `fx`, built through `zanshin_jj`; `@` ends on it. Returns M.
+fn add_redundant_merge(fx: &Fx) -> String {
+    let mut repo = Repo::open(&fx.root).expect("open");
+    let merge_parents = [ChangeId(fx.a.clone()), ChangeId(fx.b.clone())];
+    repo.new_change(&merge_parents, &[], &[]).expect("new merge");
+    repo.status().expect("status").working_copy_change_id.expect("@").0
+}
+
+#[test]
+fn simplify_parents_drops_a_redundant_parent_and_reports_the_counts() {
+    let fx = base();
+    // Linear: `-s B` (B and C) changes nothing and answers the pre-call head.
+    let before = head_op(&fx.root).0;
+    let (op_id, wc, counts) = simplify_parents_reply(&simplify_parents(&fx, &[&fx.b], &[]));
+    assert_eq!((op_id.as_str(), counts), (before.as_str(), [2, 0, 0, 0]));
+    assert_eq!(wc.as_deref(), Some(fx.c.as_str()), "@ is still C");
+    assert_eq!(head_op(&fx.root).0, before);
+
+    // M = merge(A, B): `-s B` is B, C and M; M keeps only B.
+    let m = add_redundant_merge(&fx);
+    let (op_id, wc, counts) = simplify_parents_reply(&simplify_parents(&fx, &[&fx.b], &[]));
+    let (head, description) = head_op(&fx.root);
+    assert_eq!(description, "simplify 3 commits");
+    assert_eq!((op_id, counts), (head, [3, 1, 1, 0]));
+    assert_eq!(wc.as_deref(), Some(m.as_str()));
+    assert_eq!(parent_ids(&fx.root, &m), std::slice::from_ref(&fx.b));
+}
+
+#[test]
+fn simplify_parents_with_absent_vectors_uses_the_setting() {
+    // ABSENT `source` and `revisions`: `reachable(@, mutable())` is A, B, C and M.
+    let fx = base();
+    let m = add_redundant_merge(&fx);
+    let (op_id, _, counts) = simplify_parents_reply(&simplify_parents(&fx, &[], &[]));
+    let (head, description) = head_op(&fx.root);
+    assert_eq!(description, "simplify 4 commits");
+    assert_eq!((op_id, counts), (head, [4, 1, 1, 0]));
+    assert_eq!(parent_ids(&fx.root, &m), std::slice::from_ref(&fx.b));
+}
+
+#[test]
+fn simplify_parents_refusals_carry_their_code_and_write_nothing() {
+    let fx = base();
+    let before = head_op(&fx.root).0;
+    let root_change = "z".repeat(32);
+    let bytes = simplify_parents(&fx, &[], &[&root_change]);
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_IMMUTABLE));
+    let bytes = simplify_parents(&fx, &[&"k".repeat(32)], &[]);
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_CHANGE_NOT_FOUND));
+    assert_eq!(head_op(&fx.root).0, before, "no refusal wrote an operation");
+}
+
+#[test]
+fn simplify_parents_refuses_a_mis_tagged_buffer_a_null_buffer_and_a_zero_handle() {
+    test_helpers::pin_test_env();
+    let mis_tagged = simplify_parents_request(fbs::RequestKind::Arrange, &[], &[]);
+    let valid = simplify_parents_request(fbs::RequestKind::SimplifyParents, &[], &[]);
+    // SAFETY: zero is the documented invalid handle; the buffers are live for each call, and a
+    // null `data` is the documented null-pointer case.
+    let codes = unsafe {
+        [
+            error_code(&read_and_free(zanshin_simplify_parents(
+                0,
+                mis_tagged.as_ptr(),
+                mis_tagged.len(),
+            ))),
+            error_code(&read_and_free(zanshin_simplify_parents(0, std::ptr::null(), 0))),
+            error_code(&read_and_free(zanshin_simplify_parents(0, valid.as_ptr(), valid.len()))),
+        ]
+    };
+    assert_eq!(
+        codes.each_ref().map(Option::as_deref),
+        [
+            Some(FFI_INVALID_ARGUMENT),
+            Some(FFI_NULL_POINTER),
+            Some(FFI_INVALID_HANDLE)
+        ]
+    );
 }

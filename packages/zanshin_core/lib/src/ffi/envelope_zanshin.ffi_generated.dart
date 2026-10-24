@@ -23,7 +23,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 ///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 ///  very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-///  squash, never a different verb. For the other 46 tables the variant name plus `Request` IS
+///  squash, never a different verb. For the other 47 tables the variant name plus `Request` IS
 ///  the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -96,7 +96,8 @@ enum RequestKind {
   FileChmod(60),
   WorkspaceForget(61),
   WorkspaceRename(62),
-  WorkspaceRemove(63);
+  WorkspaceRemove(63),
+  SimplifyParents(64);
 
   final int value;
   const RequestKind(this.value);
@@ -231,6 +232,8 @@ enum RequestKind {
         return RequestKind.WorkspaceRename;
       case 63:
         return RequestKind.WorkspaceRemove;
+      case 64:
+        return RequestKind.SimplifyParents;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -239,7 +242,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 63;
+  static const int maxValue = 64;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -1736,7 +1739,8 @@ enum PayloadTypeId {
   OpAbandonResult(52),
   OpIntegrateResult(53),
   MovementTargets(54),
-  WorkspaceRemoveResult(55);
+  WorkspaceRemoveResult(55),
+  SimplifyParentsResult(56);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -1855,6 +1859,8 @@ enum PayloadTypeId {
         return PayloadTypeId.MovementTargets;
       case 55:
         return PayloadTypeId.WorkspaceRemoveResult;
+      case 56:
+        return PayloadTypeId.SimplifyParentsResult;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -1863,7 +1869,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 55;
+  static const int maxValue = 56;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -3655,6 +3661,110 @@ class ArrangeRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, revisionsOffset);
     fbBuilder.addOffset(2, actionsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_simplify_parents` (Story 9.14) — the CLI's `jj simplify-parents`
+///  flags, change ids (jj reverse-hex) each.
+///
+///    source             `-s`, repeatable: these revisions with their descendants
+///    revisions          `-r`, repeatable: these revisions
+///
+///  Both ABSENT or EMPTY = the `revsets.simplify-parents` setting (jj's default
+///  `reachable(@, mutable())`); one of them alone leaves the other `none()`.
+class SimplifyParentsRequest {
+  SimplifyParentsRequest._(this._bc, this._bcOffset);
+  factory SimplifyParentsRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<SimplifyParentsRequest> reader = _SimplifyParentsRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get source => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get revisions => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'SimplifyParentsRequest{kind: ${kind}, source: ${source}, revisions: ${revisions}}';
+  }
+}
+
+class _SimplifyParentsRequestReader extends fb.TableReader<SimplifyParentsRequest> {
+  const _SimplifyParentsRequestReader();
+
+  @override
+  SimplifyParentsRequest createObject(fb.BufferContext bc, int offset) => SimplifyParentsRequest._(bc, offset);
+}
+
+class SimplifyParentsRequestBuilder {
+  SimplifyParentsRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addSourceOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class SimplifyParentsRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _source;
+  final List<String>? _revisions;
+
+  SimplifyParentsRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? source,
+    List<String>? revisions,
+  }) : _kind = kind,
+       _source = source,
+       _revisions = revisions;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? sourceOffset = _source == null
+        ? null
+        : fbBuilder.writeList(_source!.map(fbBuilder.writeString).toList());
+    final int? revisionsOffset = _revisions == null
+        ? null
+        : fbBuilder.writeList(_revisions!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, sourceOffset);
+    fbBuilder.addOffset(2, revisionsOffset);
     return fbBuilder.endTable();
   }
 
@@ -14977,6 +15087,127 @@ class FixResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  Outcome of a successful `zanshin_simplify_parents` (Story 9.14) — the CLI's status lines
+///  ("Removed <edges> edges from <simplified> out of <targets> commits.", "Rebased <n>
+///  descendant commits.") as typed facts.
+///
+///  `mutation` is NESTED as in `FixResult`; its `new_change_ids` / `abandoned_change_ids` are
+///  always empty. When nothing changed no operation was written, so `mutation.new_op_id` is the
+///  PRE-CALL op-log head and every count but `num_target_commits` is 0. `num_target_commits` is
+///  the size of the target set — the operation's `simplify <n> commits`.
+///  `num_rebased_descendants` counts every rewritten commit that lost no parent edge (rebased
+///  onto a rewritten parent), targets included. All counts saturate at 4294967295.
+class SimplifyParentsResult {
+  SimplifyParentsResult._(this._bc, this._bcOffset);
+  factory SimplifyParentsResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<SimplifyParentsResult> reader = _SimplifyParentsResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  MutationResult? get mutation => MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  int get numTargetCommits => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 6, 0);
+  int get numSimplifiedCommits => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  int get numRemovedEdges => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 10, 0);
+  int get numRebasedDescendants => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 12, 0);
+
+  @override
+  String toString() {
+    return 'SimplifyParentsResult{mutation: ${mutation}, numTargetCommits: ${numTargetCommits}, numSimplifiedCommits: ${numSimplifiedCommits}, numRemovedEdges: ${numRemovedEdges}, numRebasedDescendants: ${numRebasedDescendants}}';
+  }
+}
+
+class _SimplifyParentsResultReader extends fb.TableReader<SimplifyParentsResult> {
+  const _SimplifyParentsResultReader();
+
+  @override
+  SimplifyParentsResult createObject(fb.BufferContext bc, int offset) => SimplifyParentsResult._(bc, offset);
+}
+
+class SimplifyParentsResultBuilder {
+  SimplifyParentsResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addMutationOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addNumTargetCommits(int? numTargetCommits) {
+    fbBuilder.addUint32(1, numTargetCommits);
+    return fbBuilder.offset;
+  }
+
+  int addNumSimplifiedCommits(int? numSimplifiedCommits) {
+    fbBuilder.addUint32(2, numSimplifiedCommits);
+    return fbBuilder.offset;
+  }
+
+  int addNumRemovedEdges(int? numRemovedEdges) {
+    fbBuilder.addUint32(3, numRemovedEdges);
+    return fbBuilder.offset;
+  }
+
+  int addNumRebasedDescendants(int? numRebasedDescendants) {
+    fbBuilder.addUint32(4, numRebasedDescendants);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class SimplifyParentsResultObjectBuilder extends fb.ObjectBuilder {
+  final MutationResultObjectBuilder? _mutation;
+  final int? _numTargetCommits;
+  final int? _numSimplifiedCommits;
+  final int? _numRemovedEdges;
+  final int? _numRebasedDescendants;
+
+  SimplifyParentsResultObjectBuilder({
+    MutationResultObjectBuilder? mutation,
+    int? numTargetCommits,
+    int? numSimplifiedCommits,
+    int? numRemovedEdges,
+    int? numRebasedDescendants,
+  }) : _mutation = mutation,
+       _numTargetCommits = numTargetCommits,
+       _numSimplifiedCommits = numSimplifiedCommits,
+       _numRemovedEdges = numRemovedEdges,
+       _numRebasedDescendants = numRebasedDescendants;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? mutationOffset = _mutation?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(5);
+    fbBuilder.addOffset(0, mutationOffset);
+    fbBuilder.addUint32(1, _numTargetCommits);
+    fbBuilder.addUint32(2, _numSimplifiedCommits);
+    fbBuilder.addUint32(3, _numRemovedEdges);
+    fbBuilder.addUint32(4, _numRebasedDescendants);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  One previewed verb's answer. `refusal` is present exactly when `status` is `Refused`: the
 ///  `FfiError` the verb's own wrapper returns for it (same code, same `context`).
 ///  `combined_description_needed` (a squash row) — the squash would combine two or more non-empty
@@ -21339,6 +21570,8 @@ class Envelope {
         return MovementTargets.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 55:
         return WorkspaceRemoveResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 56:
+        return SimplifyParentsResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

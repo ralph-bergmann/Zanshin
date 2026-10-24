@@ -1881,6 +1881,39 @@ class ZanshinWorker {
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
+  /// Drop redundant parent edges, in the repo identified by [handleId]
+  /// (Story 9.14) — the CLI's `jj simplify-parents`: [source] (`-s`) and
+  /// [revisions] (`-r`); both empty = the `revsets.simplify-parents` setting.
+  ///
+  /// Sends a [SimplifyParentsCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<SimplifyParentsResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if an id contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.change_not_found`, `jj.immutable`, `jj.revset_parse_error`,
+  /// `jj.revset_resolution_error`, `jj.config_error`, `jj.not_a_git_repo`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.simplifyParents].
+  Future<repo_ffi_rebase.SimplifyParentsResult> simplifyParents(
+    int handleId, {
+    List<String> source = const [],
+    List<String> revisions = const [],
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(source, 'source');
+    rejectInteriorNuls(revisions, 'revisions');
+    final Uint8List bytes = await send(
+      SimplifyParentsCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        source: source,
+        revisions: revisions,
+      ),
+    );
+    return repo_ffi_rebase.decodeSimplifyParentsResultEnvelopeInternal(bytes);
+  }
+
   /// Modify revisions' metadata, in the repo identified by [handleId] (Story
   /// 9.9) — the CLI's `jj metaedit`.
   ///
@@ -3914,6 +3947,21 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_rebase.zanshinArrange(raw, revisions: revisions, actions: actions);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case SimplifyParentsCommand(
+          :final int handleId,
+          :final List<String> source,
+          :final List<String> revisions,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: SimplifyParentsCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_rebase.zanshinSimplifyParents(raw, source: source, revisions: revisions);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

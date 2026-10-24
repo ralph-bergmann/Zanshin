@@ -82,6 +82,7 @@ mod revset;
 mod secure_config_fixups;
 mod secure_config_fixups_user;
 mod select_tree;
+mod simplify_parents;
 mod snapshot_colocated;
 mod snapshot_precondition;
 mod snapshot_watchman;

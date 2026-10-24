@@ -2527,6 +2527,54 @@ ZanshinBuf *zanshin_arrange(uint64_t handle,
                             uintptr_t len);
 
 /**
+ * Drop redundant parent edges, in the repo identified by `handle` — the CLI's `jj
+ * simplify-parents` (Story 9.14).
+ *
+ * The arguments cross as a `SimplifyParentsRequest` `FlatBuffers` request buffer: `source` (`-s`,
+ * with their descendants) and `revisions` (`-r`); both ABSENT or EMPTY = the
+ * `revsets.simplify-parents` setting (jj's default `reachable(@, mutable())`, whose parse
+ * diagnostics warn "In revset expression"). Every target must be rewritable. A target with more
+ * than one parent loses each parent that is also an ancestor of another of its parents;
+ * descendants are rebased. A call that changes nothing writes NO operation and
+ * `mutation.new_op_id` carries the PRE-CALL head; otherwise the operation is `simplify <n>
+ * commits`. The working copy is snapshotted first (Story 9.26).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `SimplifyParentsResult` payload on success: the
+ * nested `MutationResult` and the CLI's status-line counts (targets, simplified commits, removed
+ * edges, rebased descendants).
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `SimplifyParentsRequest` buffer, or its
+ *   `kind` is not `SimplifyParents`.
+ * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
+ *   in `context`.
+ * - `jj.immutable` — a target is immutable (the root commit among them); its hex commit id in
+ *   `context`.
+ * - `jj.revset_parse_error` / `jj.revset_resolution_error` — the simplify-parents revset setting
+ *   (the default target set) does not parse or resolve.
+ * - `jj.config_error` — the simplify-parents revset setting is not a string, or the config or its
+ *   `immutable_heads()` alias does not read or resolve.
+ * - `jj.not_a_git_repo` — the colocated finish found no Git backend; no `context`.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.SimplifyParentsRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+ * duration of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_simplify_parents(uint64_t handle,
+                                     const uint8_t *data,
+                                     uintptr_t len);
+
+/**
  * List the configured git remotes of the repo identified by `handle`.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `Remotes` payload on success.

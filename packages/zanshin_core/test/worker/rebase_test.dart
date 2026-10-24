@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-// Worker round-trip tests for Story 9.16's three calls: rebase, parallelize
-// and arrange, on [RepoHandle].
+// Worker round-trip tests for Story 9.16's three calls — rebase, parallelize
+// and arrange — and Story 9.14's simplify-parents, on [RepoHandle].
 //
 // These tests boot the REAL Isolate.spawn flow against the REAL compiled cdylib
 // via @ffi.Native native assets. No mocked isolates, no mocked FFI
 // (project-context: "Worker / isolate testing"). Mirrors
 // test/worker/squash_split_test.dart. They are also what credits each
-// zanshin_rebase / zanshin_parallelize / zanshin_arrange extern "C" function in
+// zanshin_rebase / zanshin_parallelize / zanshin_arrange /
+// zanshin_simplify_parents extern "C" function in
 // the coverage ratchet's extern-fn guard
 // (mem:project-coverage-extern-fn-needs-zanshin-core-test).
 //
@@ -216,10 +217,48 @@ void main() {
       );
     });
 
+    test('simplify_parents_drops_the_redundant_parent_and_reports_the_counts', () async {
+      // M = merge(A, B): `-r M` drops A, B's ancestor.
+      final String m = await add([ids[0], ids[1]], const {}, 'M\n');
+
+      final SimplifyParentsResult result = await repo.simplifyParents(revisions: [m]);
+
+      expect(result.mutation.newOpId, await headOp());
+      expect((await repo.opLog(limit: 1)).single.description, 'simplify 1 commits');
+      expect(await parents(m), [ids[1]]);
+      expect(
+        (result.numTargetCommits, result.numSimplifiedCommits, result.numRemovedEdges, result.numRebasedDescendants),
+        (1, 1, 1, 0),
+      );
+      expect(result.mutation.workingCopyChangeId, m);
+
+      // `-s B` (B, C, M) now changes nothing: the pre-call head, only the target count.
+      final String before = await headOp();
+      final SimplifyParentsResult noOp = await repo.simplifyParents(source: [ids[1]]);
+      expect(noOp.mutation.newOpId, before);
+      expect(
+        (noOp.numTargetCommits, noOp.numSimplifiedCommits, noOp.numRemovedEdges, noOp.numRebasedDescendants),
+        (3, 0, 0, 0),
+      );
+    });
+
+    test('simplify_parents_refusals_surface_their_codes', () async {
+      await expectLater(
+        repo.simplifyParents(revisions: ['z' * 32]),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.immutable')),
+      );
+      await expectLater(
+        repo.simplifyParents(source: ['k' * 32]),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.change_not_found')),
+      );
+    });
+
     test('interior_nuls_are_refused_on_the_calling_side', () async {
       await expectLater(repo.rebase(onto: const ['a\u0000b']), throwsArgumentError);
       await expectLater(repo.parallelize(const ['a\u0000b']), throwsArgumentError);
       await expectLater(repo.arrange(actions: const [KeepAction('a\u0000b')]), throwsArgumentError);
+      await expectLater(repo.simplifyParents(source: const ['a\u0000b']), throwsArgumentError);
+      await expectLater(repo.simplifyParents(revisions: const ['a\u0000b']), throwsArgumentError);
     });
 
     test('a_closed_handle_refuses_synchronously', () async {
@@ -228,6 +267,7 @@ void main() {
       expect(other.rebase, throwsStateError);
       expect(() => other.parallelize(const []), throwsStateError);
       expect(other.arrange, throwsStateError);
+      expect(other.simplifyParents, throwsStateError);
     });
   });
 }

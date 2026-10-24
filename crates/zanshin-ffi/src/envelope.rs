@@ -1019,6 +1019,31 @@ pub fn ok_fix_result(r: &zanshin_jj::FixResult, report: &CallReport) -> Vec<u8> 
     finish_envelope(b, fbs::Payload::FixResult, Some(fix.as_union_value()), report)
 }
 
+/// Build a success `Envelope` with a `SimplifyParentsResult` payload and return the finished
+/// buffer (Story 9.14). The nested `MutationResult` is built first through
+/// [`build_mutation_result`], before the `SimplifyParentsResult` table opens.
+#[must_use]
+pub fn ok_simplify_parents_result(r: &zanshin_jj::SimplifyParentsResult, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(256);
+    let mutation = build_mutation_result(&mut b, &r.mutation);
+    let result = fbs::SimplifyParentsResult::create(
+        &mut b,
+        &fbs::SimplifyParentsResultArgs {
+            mutation: Some(mutation),
+            num_target_commits: r.num_target_commits,
+            num_simplified_commits: r.num_simplified_commits,
+            num_removed_edges: r.num_removed_edges,
+            num_rebased_descendants: r.num_rebased_descendants,
+        },
+    );
+    finish_envelope(
+        b,
+        fbs::Payload::SimplifyParentsResult,
+        Some(result.as_union_value()),
+        report,
+    )
+}
+
 /// One previewed verb's answer with its refusal already mapped onto the AR-P-4 taxonomy (Story
 /// 9.31) — the wire form of `zanshin_jj::ActionOutcome`. The refusal goes through
 /// `map_mutate_err`, the mapping the verb's own wrapper uses, so a row and the verb it previews
@@ -2121,6 +2146,33 @@ mod tests {
         assert_eq!(
             (stderr.get(0).path(), stderr.get(0).stderr()),
             (Some("a.txt"), Some("oops\n"))
+        );
+    }
+
+    #[test]
+    fn ok_simplify_parents_result_nests_the_mutation_and_carries_the_counts() {
+        let r = zanshin_jj::SimplifyParentsResult {
+            mutation: sample_mutation_result(),
+            num_target_commits: 6,
+            num_simplified_commits: 2,
+            num_removed_edges: 3,
+            num_rebased_descendants: 4,
+        };
+        let buf = ok_simplify_parents_result(&r, &CallReport::default());
+        let env = verified_envelope(&buf);
+        assert_eq!(env.data_type(), fbs::Payload::SimplifyParentsResult);
+        let result = env
+            .data_as_simplify_parents_result()
+            .expect("SimplifyParentsResult payload");
+        assert_eq!(result.mutation().and_then(|m| m.new_op_id()), Some("op99"));
+        assert_eq!(
+            (
+                result.num_target_commits(),
+                result.num_simplified_commits(),
+                result.num_removed_edges(),
+                result.num_rebased_descendants()
+            ),
+            (6, 2, 3, 4)
         );
     }
 

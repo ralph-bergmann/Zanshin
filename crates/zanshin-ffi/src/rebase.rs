@@ -1,21 +1,24 @@
 // SPDX-License-Identifier: MIT
 
-//! `zanshin_rebase` / `zanshin_parallelize` / `zanshin_arrange` — the CLI's `jj rebase`,
-//! `jj parallelize` and `jj arrange` (its TUI replaced by key actions as data; Story 9.16).
+//! `zanshin_rebase` / `zanshin_parallelize` / `zanshin_arrange` / `zanshin_simplify_parents` —
+//! the CLI's `jj rebase`, `jj parallelize`, `jj arrange` (its TUI replaced by key actions as
+//! data; Story 9.16) and `jj simplify-parents` (Story 9.14).
 //!
-//! Each calls the matching `zanshin_jj::Repo` method and serialises the shared `MutationResult`
-//! into a `FlatBuffers` `Envelope`. The arguments cross as request BUFFERS (ADR-0001
-//! composite-input pattern): `RebaseRequest`, a `Parallelize`-tagged `ChangeIdList` and
-//! `ArrangeRequest`. The handle is borrowed, never consumed. Every call runs the pre-verb snapshot
-//! (Story 9.26), so every envelope carries the precondition report and the call's warnings.
+//! Each calls the matching `zanshin_jj::Repo` method and serialises its result — the shared
+//! `MutationResult`, or `SimplifyParentsResult` with the CLI's status-line counts — into a
+//! `FlatBuffers` `Envelope`. The arguments cross as request BUFFERS (ADR-0001 composite-input
+//! pattern): `RebaseRequest`, a `Parallelize`-tagged `ChangeIdList`, `ArrangeRequest` and
+//! `SimplifyParentsRequest`. The handle is borrowed, never consumed. Every call runs the pre-verb
+//! snapshot (Story 9.26), so every envelope carries the precondition report and the call's
+//! warnings.
 
 use flatbuffers::{ForwardsUOffset, Vector, VerifierOptions};
 use tracing::debug;
-use zanshin_jj::{ArrangeAction, ArrangeOptions, ChangeId, RebaseOptions};
+use zanshin_jj::{ArrangeAction, ArrangeOptions, ChangeId, RebaseOptions, SimplifyParentsOptions};
 
 use crate::envelope::{
-    catch, expect_request_kind, invalid_request, missing_field, ok_mutation_result, precondition_envelope,
-    reject_null_request, session_from_handle, FfiErrorObj, FFI_INVALID_ARGUMENT,
+    catch, expect_request_kind, invalid_request, missing_field, ok_mutation_result, ok_simplify_parents_result,
+    precondition_envelope, reject_null_request, session_from_handle, FfiErrorObj, FFI_INVALID_ARGUMENT,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -110,6 +113,26 @@ fn read_arrange_request(data: *const u8, len: usize) -> Result<ArrangeOptions, F
     Ok(ArrangeOptions {
         revisions: change_ids(req.revisions()),
         actions,
+    })
+}
+
+/// Parse a `SimplifyParentsRequest` buffer into owned [`SimplifyParentsOptions`]; an ABSENT
+/// vector is empty.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `SimplifyParentsRequest` buffer, or its
+///   `kind` is not `SimplifyParents`.
+fn read_simplify_parents_request(data: *const u8, len: usize) -> Result<SimplifyParentsOptions, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::SimplifyParentsRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::SimplifyParents)?;
+    Ok(SimplifyParentsOptions {
+        source: change_ids(req.source()),
+        revisions: change_ids(req.revisions()),
     })
 }
 
@@ -278,11 +301,66 @@ pub unsafe extern "C" fn zanshin_arrange(handle: u64, data: *const u8, len: usiz
     vec_into_token(buf)
 }
 
+/// Drop redundant parent edges, in the repo identified by `handle` — the CLI's `jj
+/// simplify-parents` (Story 9.14).
+///
+/// The arguments cross as a `SimplifyParentsRequest` `FlatBuffers` request buffer: `source` (`-s`,
+/// with their descendants) and `revisions` (`-r`); both ABSENT or EMPTY = the
+/// `revsets.simplify-parents` setting (jj's default `reachable(@, mutable())`, whose parse
+/// diagnostics warn "In revset expression"). Every target must be rewritable. A target with more
+/// than one parent loses each parent that is also an ancestor of another of its parents;
+/// descendants are rebased. A call that changes nothing writes NO operation and
+/// `mutation.new_op_id` carries the PRE-CALL head; otherwise the operation is `simplify <n>
+/// commits`. The working copy is snapshotted first (Story 9.26).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `SimplifyParentsResult` payload on success: the
+/// nested `MutationResult` and the CLI's status-line counts (targets, simplified commits, removed
+/// edges, rebased descendants).
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `SimplifyParentsRequest` buffer, or its
+///   `kind` is not `SimplifyParents`.
+/// - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
+///   in `context`.
+/// - `jj.immutable` — a target is immutable (the root commit among them); its hex commit id in
+///   `context`.
+/// - `jj.revset_parse_error` / `jj.revset_resolution_error` — the simplify-parents revset setting
+///   (the default target set) does not parse or resolve.
+/// - `jj.config_error` — the simplify-parents revset setting is not a string, or the config or its
+///   `immutable_heads()` alias does not read or resolve.
+/// - `jj.not_a_git_repo` — the colocated finish found no Git backend; no `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.SimplifyParentsRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_simplify_parents(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_simplify_parents", handle);
+    let buf = catch(|| {
+        let options = read_simplify_parents_request(data, len)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.simplify_parents(&options);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_simplify_parents_result)
+    });
+    vec_into_token(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use zanshin_jj::{ArrangeAction, ChangeId};
 
-    use super::{read_arrange_request, read_rebase_request};
+    use super::{read_arrange_request, read_rebase_request, read_simplify_parents_request};
     use crate::envelope::{FFI_INVALID_ARGUMENT, JJ_INVALID_INPUT};
     use crate::fbs;
 
@@ -421,6 +499,42 @@ mod tests {
         assert_eq!(err.code, FFI_INVALID_ARGUMENT);
         let bytes = arrange_request(fbs::RequestKind::Arrange, &[]);
         let err = read_rebase_request(bytes.as_ptr(), bytes.len()).expect_err("an arrange buffer");
+        assert_eq!(err.code, FFI_INVALID_ARGUMENT);
+    }
+
+    fn simplify_parents_request(kind: fbs::RequestKind, source: Option<&str>) -> Vec<u8> {
+        let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
+        let source = source.map(|s| {
+            let s = b.create_string(s);
+            b.create_vector(&[s])
+        });
+        let r = b.create_string("r");
+        let revisions = Some(b.create_vector(&[r]));
+        let req = fbs::SimplifyParentsRequest::create(
+            &mut b,
+            &fbs::SimplifyParentsRequestArgs {
+                kind,
+                source,
+                revisions,
+            },
+        );
+        b.finish(req, None);
+        b.finished_data().to_vec()
+    }
+
+    /// Both vectors cross field for field; an absent one is empty; a foreign tag is refused.
+    #[test]
+    fn the_simplify_parents_reader_carries_both_flags_and_checks_the_tag() {
+        let bytes = simplify_parents_request(fbs::RequestKind::SimplifyParents, Some("s"));
+        let options = read_simplify_parents_request(bytes.as_ptr(), bytes.len()).expect("valid");
+        assert_eq!((options.source, options.revisions), (vec![id("s")], vec![id("r")]));
+
+        let bytes = simplify_parents_request(fbs::RequestKind::SimplifyParents, None);
+        let options = read_simplify_parents_request(bytes.as_ptr(), bytes.len()).expect("valid");
+        assert!(options.source.is_empty(), "absent source is empty");
+
+        let bytes = simplify_parents_request(fbs::RequestKind::Arrange, None);
+        let err = read_simplify_parents_request(bytes.as_ptr(), bytes.len()).expect_err("wrong tag");
         assert_eq!(err.code, FFI_INVALID_ARGUMENT);
     }
 }

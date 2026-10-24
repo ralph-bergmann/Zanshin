@@ -82,7 +82,7 @@ table FfiError {
 /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-/// squash, never a different verb. For the other 46 tables the variant name plus `Request` IS
+/// squash, never a different verb. For the other 47 tables the variant name plus `Request` IS
 /// the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -155,7 +155,8 @@ enum RequestKind : ubyte {
   FileChmod,
   WorkspaceForget,
   WorkspaceRename,
-  WorkspaceRemove
+  WorkspaceRemove,
+  SimplifyParents
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -387,6 +388,20 @@ table ArrangeRequest {
   kind: RequestKind;
   revisions: [string];
   actions: [ArrangeAction];
+}
+
+/// Arguments of `zanshin_simplify_parents` (Story 9.14) — the CLI's `jj simplify-parents`
+/// flags, change ids (jj reverse-hex) each.
+///
+///   source             `-s`, repeatable: these revisions with their descendants
+///   revisions          `-r`, repeatable: these revisions
+///
+/// Both ABSENT or EMPTY = the `revsets.simplify-parents` setting (jj's default
+/// `reachable(@, mutable())`); one of them alone leaves the other `none()`.
+table SimplifyParentsRequest {
+  kind: RequestKind;
+  source: [string];
+  revisions: [string];
 }
 
 /// Arguments of `zanshin_metaedit` (Story 9.9) — the CLI's `jj metaedit` flags, one field each.
@@ -1922,6 +1937,24 @@ table FixResult {
   tool_stderr: [FixToolStderr];
 }
 
+/// Outcome of a successful `zanshin_simplify_parents` (Story 9.14) — the CLI's status lines
+/// ("Removed <edges> edges from <simplified> out of <targets> commits.", "Rebased <n>
+/// descendant commits.") as typed facts.
+///
+/// `mutation` is NESTED as in `FixResult`; its `new_change_ids` / `abandoned_change_ids` are
+/// always empty. When nothing changed no operation was written, so `mutation.new_op_id` is the
+/// PRE-CALL op-log head and every count but `num_target_commits` is 0. `num_target_commits` is
+/// the size of the target set — the operation's `simplify <n> commits`.
+/// `num_rebased_descendants` counts every rewritten commit that lost no parent edge (rebased
+/// onto a rewritten parent), targets included. All counts saturate at 4294967295.
+table SimplifyParentsResult {
+  mutation: MutationResult;
+  num_target_commits: uint;
+  num_simplified_commits: uint;
+  num_removed_edges: uint;
+  num_rebased_descendants: uint;
+}
+
 // ── Drop actions (Story 9.31) ───────────────────────────────────────────────────
 // Member order of the two enums below IS the wire value — APPEND only.
 
@@ -2733,6 +2766,7 @@ union Payload {
   OpIntegrateResult,
   MovementTargets,
   WorkspaceRemoveResult,
+  SimplifyParentsResult,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

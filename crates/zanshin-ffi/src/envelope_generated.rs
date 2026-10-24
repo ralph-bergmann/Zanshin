@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 63;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 64;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 64] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 65] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -88,6 +88,7 @@ pub mod zanshin {
             RequestKind::WorkspaceForget,
             RequestKind::WorkspaceRename,
             RequestKind::WorkspaceRemove,
+            RequestKind::SimplifyParents,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -106,7 +107,7 @@ pub mod zanshin {
         /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
         /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
         /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-        /// squash, never a different verb. For the other 46 tables the variant name plus `Request` IS
+        /// squash, never a different verb. For the other 47 tables the variant name plus `Request` IS
         /// the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -184,9 +185,10 @@ pub mod zanshin {
             pub const WorkspaceForget: Self = Self(61);
             pub const WorkspaceRename: Self = Self(62);
             pub const WorkspaceRemove: Self = Self(63);
+            pub const SimplifyParents: Self = Self(64);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 63;
+            pub const ENUM_MAX: u8 = 64;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -252,6 +254,7 @@ pub mod zanshin {
                 Self::WorkspaceForget,
                 Self::WorkspaceRename,
                 Self::WorkspaceRemove,
+                Self::SimplifyParents,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -320,6 +323,7 @@ pub mod zanshin {
                     Self::WorkspaceForget => Some("WorkspaceForget"),
                     Self::WorkspaceRename => Some("WorkspaceRename"),
                     Self::WorkspaceRemove => Some("WorkspaceRemove"),
+                    Self::SimplifyParents => Some("SimplifyParents"),
                     _ => None,
                 }
             }
@@ -3603,13 +3607,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 55;
+        pub const ENUM_MAX_PAYLOAD: u8 = 56;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 56] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 57] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -3666,6 +3670,7 @@ pub mod zanshin {
             Payload::OpIntegrateResult,
             Payload::MovementTargets,
             Payload::WorkspaceRemoveResult,
+            Payload::SimplifyParentsResult,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -3729,9 +3734,10 @@ pub mod zanshin {
             pub const OpIntegrateResult: Self = Self(53);
             pub const MovementTargets: Self = Self(54);
             pub const WorkspaceRemoveResult: Self = Self(55);
+            pub const SimplifyParentsResult: Self = Self(56);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 55;
+            pub const ENUM_MAX: u8 = 56;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -3789,6 +3795,7 @@ pub mod zanshin {
                 Self::OpIntegrateResult,
                 Self::MovementTargets,
                 Self::WorkspaceRemoveResult,
+                Self::SimplifyParentsResult,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -3849,6 +3856,7 @@ pub mod zanshin {
                     Self::OpIntegrateResult => Some("OpIntegrateResult"),
                     Self::MovementTargets => Some("MovementTargets"),
                     Self::WorkspaceRemoveResult => Some("WorkspaceRemoveResult"),
+                    Self::SimplifyParentsResult => Some("SimplifyParentsResult"),
                     _ => None,
                 }
             }
@@ -7048,6 +7056,175 @@ pub mod zanshin {
                 ds.field("kind", &self.kind());
                 ds.field("revisions", &self.revisions());
                 ds.field("actions", &self.actions());
+                ds.finish()
+            }
+        }
+        pub enum SimplifyParentsRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_simplify_parents` (Story 9.14) — the CLI's `jj simplify-parents`
+        /// flags, change ids (jj reverse-hex) each.
+        ///
+        ///   source             `-s`, repeatable: these revisions with their descendants
+        ///   revisions          `-r`, repeatable: these revisions
+        ///
+        /// Both ABSENT or EMPTY = the `revsets.simplify-parents` setting (jj's default
+        /// `reachable(@, mutable())`); one of them alone leaves the other `none()`.
+        pub struct SimplifyParentsRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for SimplifyParentsRequest<'a> {
+            type Inner = SimplifyParentsRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> SimplifyParentsRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SOURCE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REVISIONS: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                SimplifyParentsRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SimplifyParentsRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SimplifyParentsRequest<'bldr>> {
+                let mut builder = SimplifyParentsRequestBuilder::new(_fbb);
+                if let Some(x) = args.revisions {
+                    builder.add_revisions(x);
+                }
+                if let Some(x) = args.source {
+                    builder.add_source(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(SimplifyParentsRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn source(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SimplifyParentsRequest::VT_SOURCE, None)
+                }
+            }
+            #[inline]
+            pub fn revisions(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SimplifyParentsRequest::VT_REVISIONS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for SimplifyParentsRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("source", Self::VT_SOURCE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("revisions", Self::VT_REVISIONS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct SimplifyParentsRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub source:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub revisions:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for SimplifyParentsRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SimplifyParentsRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    source: None,
+                    revisions: None,
+                }
+            }
+        }
+
+        pub struct SimplifyParentsRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SimplifyParentsRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(SimplifyParentsRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_source(
+                &mut self,
+                source: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SimplifyParentsRequest::VT_SOURCE, source);
+            }
+            #[inline]
+            pub fn add_revisions(
+                &mut self,
+                revisions: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SimplifyParentsRequest::VT_REVISIONS, revisions);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> SimplifyParentsRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SimplifyParentsRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SimplifyParentsRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for SimplifyParentsRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("SimplifyParentsRequest");
+                ds.field("kind", &self.kind());
+                ds.field("source", &self.source());
+                ds.field("revisions", &self.revisions());
                 ds.finish()
             }
         }
@@ -26082,6 +26259,222 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum SimplifyParentsResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of a successful `zanshin_simplify_parents` (Story 9.14) — the CLI's status lines
+        /// ("Removed <edges> edges from <simplified> out of <targets> commits.", "Rebased <n>
+        /// descendant commits.") as typed facts.
+        ///
+        /// `mutation` is NESTED as in `FixResult`; its `new_change_ids` / `abandoned_change_ids` are
+        /// always empty. When nothing changed no operation was written, so `mutation.new_op_id` is the
+        /// PRE-CALL op-log head and every count but `num_target_commits` is 0. `num_target_commits` is
+        /// the size of the target set — the operation's `simplify <n> commits`.
+        /// `num_rebased_descendants` counts every rewritten commit that lost no parent edge (rebased
+        /// onto a rewritten parent), targets included. All counts saturate at 4294967295.
+        pub struct SimplifyParentsResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for SimplifyParentsResult<'a> {
+            type Inner = SimplifyParentsResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> SimplifyParentsResult<'a> {
+            pub const VT_MUTATION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NUM_TARGET_COMMITS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NUM_SIMPLIFIED_COMMITS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_NUM_REMOVED_EDGES: ::flatbuffers::VOffsetT = 10;
+            pub const VT_NUM_REBASED_DESCENDANTS: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                SimplifyParentsResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SimplifyParentsResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SimplifyParentsResult<'bldr>> {
+                let mut builder = SimplifyParentsResultBuilder::new(_fbb);
+                builder.add_num_rebased_descendants(args.num_rebased_descendants);
+                builder.add_num_removed_edges(args.num_removed_edges);
+                builder.add_num_simplified_commits(args.num_simplified_commits);
+                builder.add_num_target_commits(args.num_target_commits);
+                if let Some(x) = args.mutation {
+                    builder.add_mutation(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn mutation(&self) -> Option<MutationResult<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<MutationResult>>(SimplifyParentsResult::VT_MUTATION, None)
+                }
+            }
+            #[inline]
+            pub fn num_target_commits(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(SimplifyParentsResult::VT_NUM_TARGET_COMMITS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn num_simplified_commits(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(SimplifyParentsResult::VT_NUM_SIMPLIFIED_COMMITS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn num_removed_edges(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(SimplifyParentsResult::VT_NUM_REMOVED_EDGES, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn num_rebased_descendants(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(SimplifyParentsResult::VT_NUM_REBASED_DESCENDANTS, Some(0))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for SimplifyParentsResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<MutationResult>>(
+                        "mutation",
+                        Self::VT_MUTATION,
+                        false,
+                    )?
+                    .visit_field::<u32>("num_target_commits", Self::VT_NUM_TARGET_COMMITS, false)?
+                    .visit_field::<u32>("num_simplified_commits", Self::VT_NUM_SIMPLIFIED_COMMITS, false)?
+                    .visit_field::<u32>("num_removed_edges", Self::VT_NUM_REMOVED_EDGES, false)?
+                    .visit_field::<u32>("num_rebased_descendants", Self::VT_NUM_REBASED_DESCENDANTS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct SimplifyParentsResultArgs<'a> {
+            pub mutation: Option<::flatbuffers::WIPOffset<MutationResult<'a>>>,
+            pub num_target_commits: u32,
+            pub num_simplified_commits: u32,
+            pub num_removed_edges: u32,
+            pub num_rebased_descendants: u32,
+        }
+        impl<'a> Default for SimplifyParentsResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SimplifyParentsResultArgs {
+                    mutation: None,
+                    num_target_commits: 0,
+                    num_simplified_commits: 0,
+                    num_removed_edges: 0,
+                    num_rebased_descendants: 0,
+                }
+            }
+        }
+
+        pub struct SimplifyParentsResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SimplifyParentsResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_mutation(&mut self, mutation: ::flatbuffers::WIPOffset<MutationResult<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<MutationResult>>(
+                    SimplifyParentsResult::VT_MUTATION,
+                    mutation,
+                );
+            }
+            #[inline]
+            pub fn add_num_target_commits(&mut self, num_target_commits: u32) {
+                self.fbb_
+                    .push_slot::<u32>(SimplifyParentsResult::VT_NUM_TARGET_COMMITS, num_target_commits, 0);
+            }
+            #[inline]
+            pub fn add_num_simplified_commits(&mut self, num_simplified_commits: u32) {
+                self.fbb_.push_slot::<u32>(
+                    SimplifyParentsResult::VT_NUM_SIMPLIFIED_COMMITS,
+                    num_simplified_commits,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_num_removed_edges(&mut self, num_removed_edges: u32) {
+                self.fbb_
+                    .push_slot::<u32>(SimplifyParentsResult::VT_NUM_REMOVED_EDGES, num_removed_edges, 0);
+            }
+            #[inline]
+            pub fn add_num_rebased_descendants(&mut self, num_rebased_descendants: u32) {
+                self.fbb_.push_slot::<u32>(
+                    SimplifyParentsResult::VT_NUM_REBASED_DESCENDANTS,
+                    num_rebased_descendants,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> SimplifyParentsResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SimplifyParentsResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SimplifyParentsResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for SimplifyParentsResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("SimplifyParentsResult");
+                ds.field("mutation", &self.mutation());
+                ds.field("num_target_commits", &self.num_target_commits());
+                ds.field("num_simplified_commits", &self.num_simplified_commits());
+                ds.field("num_removed_edges", &self.num_removed_edges());
+                ds.field("num_rebased_descendants", &self.num_rebased_descendants());
+                ds.finish()
+            }
+        }
         pub enum ActionOutcomeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -37297,6 +37690,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_simplify_parents_result(&self) -> Option<SimplifyParentsResult<'a>> {
+                if self.data_type() == Payload::SimplifyParentsResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { SimplifyParentsResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -37365,6 +37773,7 @@ pub mod zanshin {
           Payload::OpIntegrateResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpIntegrateResult>>("Payload::OpIntegrateResult", pos),
           Payload::MovementTargets => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<MovementTargets>>("Payload::MovementTargets", pos),
           Payload::WorkspaceRemoveResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<WorkspaceRemoveResult>>("Payload::WorkspaceRemoveResult", pos),
+          Payload::SimplifyParentsResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<SimplifyParentsResult>>("Payload::SimplifyParentsResult", pos),
           _ => Ok(()),
         }
      })?
@@ -37841,6 +38250,13 @@ pub mod zanshin {
                     }
                     Payload::WorkspaceRemoveResult => {
                         if let Some(x) = self.data_as_workspace_remove_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::SimplifyParentsResult => {
+                        if let Some(x) = self.data_as_simplify_parents_result() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

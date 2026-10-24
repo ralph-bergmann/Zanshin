@@ -369,6 +369,21 @@ parity!(
     rebase_immutable_refused,
     parallelize_child_becomes_a_merge,
     parallelize_merge_child_keeps_outside_parent,
+    simplify_parents_revisions,
+    simplify_parents_source,
+    simplify_parents_multiple_with_descendants,
+    simplify_parents_default,
+    simplify_parents_custom_setting,
+    simplify_parents_linear_noop,
+    simplify_parents_diamond_noop,
+    simplify_parents_empty_setting_noop,
+    simplify_parents_root_refused,
+    simplify_parents_immutable_refused,
+    simplify_parents_source_two_merges,
+    simplify_parents_source_and_revisions,
+    simplify_parents_non_target_redundant_descendant,
+    simplify_parents_bad_setting_refused,
+    simplify_parents_deprecated_setting_warns,
     rebase_i1_source_insert_before_merge,
     rebase_source_onto_itself_refused,
     rebase_several_revisions,
@@ -455,7 +470,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 387);
+    assert_eq!(SCENARIO_IDS.len(), 402);
 }
 
 #[test]

@@ -2237,6 +2237,33 @@ final class ArrangeCommand extends WorkerCommand implements HandleScopedCommand 
   final List<ArrangeAction> actions;
 }
 
+/// Drop redundant parent edges, in the repo identified by [handleId] (Story
+/// 9.14) — the CLI's `jj simplify-parents`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinSimplifyParents(raw, …)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<SimplifyParentsResult>`
+/// bytes.
+final class SimplifyParentsCommand extends WorkerCommand implements HandleScopedCommand {
+  const SimplifyParentsCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.source,
+    required this.revisions,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `-s`: these revisions with their descendants.
+  final List<String> source;
+
+  /// `-r`: these revisions. Both empty = the `revsets.simplify-parents`
+  /// setting.
+  final List<String> revisions;
+}
+
 /// Modify revisions' metadata, in the repo identified by [handleId] (Story
 /// 9.9) — the CLI's `jj metaedit`.
 ///

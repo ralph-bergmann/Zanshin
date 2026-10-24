@@ -1348,6 +1348,50 @@ fn rebase_parallelize_arrange_surface_resolves() {
         ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
 }
 
+// simplify-parents (Story 9.14)
+type _SimplifyParentsOptions = zanshin_jj::SimplifyParentsOptions;
+type _SimplifyParentsResult = zanshin_jj::SimplifyParentsResult;
+
+/// The Story 9.14 surface: the options named field by field (the CLI's `-s` / `-r`), the result
+/// by its counts, and the `Repo` method as an `fn` pointer.
+#[test]
+fn simplify_parents_surface_resolves() {
+    let id = |s: &str| zanshin_jj::ChangeId(s.to_owned());
+    let options = zanshin_jj::SimplifyParentsOptions {
+        source: vec![id("s")],
+        revisions: vec![id("r")],
+    };
+    assert_eq!(options.clone(), options);
+    assert_eq!(zanshin_jj::SimplifyParentsOptions::default().source, Vec::new());
+    let result = zanshin_jj::SimplifyParentsResult {
+        mutation: zanshin_jj::MutationResult {
+            new_op_id: zanshin_jj::OperationId("op".to_owned()),
+            new_change_ids: Vec::new(),
+            abandoned_change_ids: Vec::new(),
+            working_copy_change_id: None,
+            finish: None,
+        },
+        num_target_commits: 3,
+        num_simplified_commits: 1,
+        num_removed_edges: 1,
+        num_rebased_descendants: 0,
+    };
+    assert_eq!(
+        (
+            result.num_target_commits,
+            result.num_simplified_commits,
+            result.num_removed_edges,
+            result.num_rebased_descendants
+        ),
+        (3, 1, 1, 0)
+    );
+    _ = zanshin_jj::Repo::simplify_parents
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::SimplifyParentsOptions,
+        ) -> Result<zanshin_jj::SimplifyParentsResult, zanshin_jj::MutateError>;
+}
+
 // metaedit / duplicate / fix (Story 9.9)
 type _MetaeditOptions = zanshin_jj::MetaeditOptions;
 type _DuplicateOptions = zanshin_jj::DuplicateOptions;

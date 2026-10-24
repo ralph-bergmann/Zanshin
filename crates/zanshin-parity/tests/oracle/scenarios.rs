@@ -2947,6 +2947,7 @@ pub fn scenarios() -> Vec<Scenario> {
     .chain(bookmark_set_scenarios())
     .chain(file_chmod_scenarios())
     .chain(workspace_ops_scenarios())
+    .chain(simplify_parents_scenarios())
     .chain(crate::git_scenarios::bookmark_tracking_scenarios())
     .chain(crate::git_scenarios::push_scenarios())
     .chain(crate::git_scenarios::bookmark_auto_track_scenarios())
@@ -5044,6 +5045,202 @@ fn workspace_ops_scenarios() -> Vec<Scenario> {
                 ADD_WS2,
                 |repo, _, _| remove_outcome(repo, &[]),
                 |_| args(&["workspace", "remove"]),
+            )
+        },
+    ]
+}
+
+// ── Story 9.14: simplify-parents ─────────────────────────────────────────────────
+//
+// The graphs are the CLI tests' (`cli/tests/test_simplify_parents_command.rs` @ v0.46.0) on
+// BASE; the counts the CLI prints are asserted in `crates/zanshin-jj/tests/it/simplify_parents.rs`.
+
+/// `Repo::simplify_parents` with `-s source` and `-r revisions`, labels as change ids.
+fn simplify_parents_outcome(repo: &mut zanshin_jj::Repo, s: &State, source: &[&str], revisions: &[&str]) -> Outcome {
+    let options = zanshin_jj::SimplifyParentsOptions {
+        source: source.iter().map(|label| s.change(label)).collect(),
+        revisions: revisions.iter().map(|label| s.change(label)).collect(),
+    };
+    let result = repo.simplify_parents(&options);
+    zanshin_outcome(repo, &result)
+}
+
+/// M = merge(A, B): B is A's descendant, so A is redundant. `@` ends on M.
+const REDUNDANT_MERGE: &[Step] = &[Step::Jj(&["new", "-m", "M", "@--", "@-"])];
+
+/// `REDUNDANT_MERGE`, then D → E on M and F = merge(D, E) — the CLI test's
+/// `multiple_redundant_parents` graph. `@` ends on F.
+const TWO_REDUNDANT_MERGES: &[Step] = &[
+    Step::Jj(&["new", "-m", "M", "@--", "@-"]),
+    Step::Jj(&["new", "-m", "D"]),
+    Step::Jj(&["new", "-m", "E"]),
+    Step::Jj(&["new", "-m", "F", "@-", "@"]),
+];
+
+/// `TWO_REDUNDANT_MERGES` with `revsets.simplify-parents = "@-::"` — D, E and F (the CLI test's
+/// `d::`).
+const TWO_REDUNDANT_MERGES_NARROWED: &[Step] = &[
+    Step::Jj(&["new", "-m", "M", "@--", "@-"]),
+    Step::Jj(&["new", "-m", "D"]),
+    Step::Jj(&["new", "-m", "E"]),
+    Step::Jj(&["new", "-m", "F", "@-", "@"]),
+    Step::Jj(&["config", "set", "--repo", "revsets.simplify-parents", "@-::"]),
+];
+
+/// `REDUNDANT_MERGE`, then N = merge(M, B): redundant too, but a descendant of M, not a target
+/// of `-r M`. `@` ends on N.
+const REDUNDANT_MERGE_AND_NON_TARGET: &[Step] = &[
+    Step::Jj(&["new", "-m", "M", "@--", "@-"]),
+    Step::Jj(&["new", "-m", "N", "@", "b-mark"]),
+];
+
+/// X on A, Y = merge(B, X): no parent is an ancestor of the other. `@` ends on Y.
+const DIAMOND: &[Step] = &[
+    Step::Jj(&["new", "-m", "X", "@--"]),
+    Step::Jj(&["new", "-m", "Y", "b-mark", "@"]),
+];
+
+/// The redundant parent via `-r` and via `-s`, several merges with descendants, the default and a
+/// custom target set — then [`simplify_parents_more_scenarios`].
+fn simplify_parents_scenarios() -> Vec<Scenario> {
+    vec![
+        Scenario {
+            setup: REDUNDANT_MERGE,
+            ..simple(
+                "simplify_parents_revisions",
+                |repo, _, s| simplify_parents_outcome(repo, s, &[], &["M", "A", "B"]),
+                |s| verb_argv(s, "simplify-parents", &[("-r", "M"), ("-r", "A"), ("-r", "B")], &[]),
+            )
+        },
+        Scenario {
+            setup: REDUNDANT_MERGE,
+            ..simple(
+                "simplify_parents_source",
+                |repo, _, s| simplify_parents_outcome(repo, s, &["A"], &[]),
+                |s| verb_argv(s, "simplify-parents", &[("-s", "A")], &[]),
+            )
+        },
+        Scenario {
+            setup: TWO_REDUNDANT_MERGES,
+            ..simple(
+                "simplify_parents_multiple_with_descendants",
+                |repo, _, s| simplify_parents_outcome(repo, s, &[], &["M", "F"]),
+                |s| verb_argv(s, "simplify-parents", &[("-r", "M"), ("-r", "F")], &[]),
+            )
+        },
+        Scenario {
+            setup: TWO_REDUNDANT_MERGES,
+            ..simple(
+                "simplify_parents_default",
+                |repo, _, s| simplify_parents_outcome(repo, s, &[], &[]),
+                |_| args(&["simplify-parents"]),
+            )
+        },
+        Scenario {
+            setup: TWO_REDUNDANT_MERGES_NARROWED,
+            ..simple(
+                "simplify_parents_custom_setting",
+                |repo, _, s| simplify_parents_outcome(repo, s, &[], &[]),
+                |_| args(&["simplify-parents"]),
+            )
+        },
+    ]
+    .into_iter()
+    .chain(simplify_parents_more_scenarios())
+    .collect()
+}
+
+/// Three no-ops, `-s` and the union on the two-merges graph, a redundant merge that is not a
+/// target, a setting that does not parse and one that warns, and the immutable refusals.
+fn simplify_parents_more_scenarios() -> Vec<Scenario> {
+    vec![
+        simple(
+            "simplify_parents_linear_noop",
+            |repo, _, s| simplify_parents_outcome(repo, s, &["B"], &[]),
+            |s| verb_argv(s, "simplify-parents", &[("-s", "B")], &[]),
+        ),
+        Scenario {
+            setup: DIAMOND,
+            ..simple(
+                "simplify_parents_diamond_noop",
+                |repo, _, s| simplify_parents_outcome(repo, s, &[], &["A", "B", "C", "X", "Y"]),
+                |s| {
+                    let pairs = [("-r", "A"), ("-r", "B"), ("-r", "C"), ("-r", "X"), ("-r", "Y")];
+                    verb_argv(s, "simplify-parents", &pairs, &[])
+                },
+            )
+        },
+        Scenario {
+            setup: TWO_REDUNDANT_MERGES,
+            ..simple(
+                "simplify_parents_source_two_merges",
+                |repo, _, s| simplify_parents_outcome(repo, s, &["M"], &[]),
+                |s| verb_argv(s, "simplify-parents", &[("-s", "M")], &[]),
+            )
+        },
+        Scenario {
+            setup: TWO_REDUNDANT_MERGES,
+            ..simple(
+                "simplify_parents_source_and_revisions",
+                |repo, _, s| simplify_parents_outcome(repo, s, &["D"], &["M"]),
+                |s| verb_argv(s, "simplify-parents", &[("-s", "D"), ("-r", "M")], &[]),
+            )
+        },
+        Scenario {
+            setup: REDUNDANT_MERGE_AND_NON_TARGET,
+            ..simple(
+                "simplify_parents_non_target_redundant_descendant",
+                |repo, _, s| simplify_parents_outcome(repo, s, &[], &["M"]),
+                |s| verb_argv(s, "simplify-parents", &[("-r", "M")], &[]),
+            )
+        },
+        Scenario {
+            setup: &[Step::Jj(&["config", "set", "--repo", "revsets.simplify-parents", "("])],
+            ..simple(
+                "simplify_parents_bad_setting_refused",
+                |repo, _, s| simplify_parents_outcome(repo, s, &[], &[]),
+                |_| args(&["simplify-parents"]),
+            )
+        },
+        Scenario {
+            setup: &[Step::Jj(&[
+                "config",
+                "set",
+                "--repo",
+                "revsets.simplify-parents",
+                "none() & diff_contains(\"x\")",
+            ])],
+            ..simple(
+                "simplify_parents_deprecated_setting_warns",
+                |repo, _, s| simplify_parents_outcome(repo, s, &[], &[]),
+                |_| args(&["simplify-parents"]),
+            )
+        },
+        Scenario {
+            setup: &[Step::Jj(&[
+                "config",
+                "set",
+                "--repo",
+                "revsets.simplify-parents",
+                "none()",
+            ])],
+            ..simple(
+                "simplify_parents_empty_setting_noop",
+                |repo, _, s| simplify_parents_outcome(repo, s, &[], &[]),
+                |_| args(&["simplify-parents"]),
+            )
+        },
+        simple(
+            "simplify_parents_root_refused",
+            |repo, _, s| simplify_parents_outcome(repo, s, &[], &["root"]),
+            |s| verb_argv(s, "simplify-parents", &[("-r", "root")], &[]),
+        ),
+        Scenario {
+            setup: B_IMMUTABLE,
+            ..simple(
+                "simplify_parents_immutable_refused",
+                |repo, _, s| simplify_parents_outcome(repo, s, &[], &["B"]),
+                |s| verb_argv(s, "simplify-parents", &[("-r", "B")], &[]),
             )
         },
     ]

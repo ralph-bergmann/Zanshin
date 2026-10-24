@@ -37,7 +37,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 102
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 103
 exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -290,9 +290,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Sixty-five of the 102 exported symbols take their arguments as a **FlatBuffers
+Sixty-six of the 103 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Fifty-three use the handle-scoped three-parameter shape:
+strings. Fifty-four use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -551,7 +551,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **102** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **103** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -614,6 +614,7 @@ or no `# Errors` block.
 | `zanshin_rebase` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `RebaseRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.16 |
 | `zanshin_parallelize` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` (`kind = Parallelize`) | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.16 |
 | `zanshin_arrange` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ArrangeRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.16 |
+| `zanshin_simplify_parents` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `SimplifyParentsRequest` | `SimplifyParentsResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.change_not_found`, `jj.immutable`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.14 |
 | `zanshin_metaedit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `MetaeditRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 |
 | `zanshin_duplicate` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DuplicateRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 |
 | `zanshin_fix` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FixRequest` (+ `cancel_token`, see § Cancel) | `FixResult` (see § `zanshin_metaedit`, `zanshin_duplicate`, `zanshin_fix`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.cancelled`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 (`cancel_token`, `timeout`: loop 9.9–9.12 second follow-on) |
@@ -1857,6 +1858,25 @@ NOT refused up front: the move is jj-lib's `compute_move_commits`, as in the CLI
 settled). Dart: `RepoHandle.rebase(...)`, `RepoHandle.parallelize(changeIds)`,
 `RepoHandle.arrange(revisions:, actions:)` with the sealed `ArrangeAction`
 (`SwapDownAction` / `SwapUpAction` / `AbandonAction` / `KeepAction`).
+
+## `zanshin_simplify_parents` (Story 9.14)
+
+The CLI's `jj simplify-parents` at v0.46.0: every target with more than one parent loses each
+parent that is also an ancestor of another of its parents; contents stay, descendants are rebased.
+A call that changes nothing ("Nothing changed.") writes NO operation and carries the PRE-CALL head
+in `mutation.new_op_id`; otherwise the operation is `simplify <n> commits`, `n` the size of the
+target set.
+
+| Table | Fields |
+|-------|--------|
+| `SimplifyParentsRequest` | `kind = SimplifyParents`; `source` (`-s`, with descendants), `revisions` (`-r`). Both ABSENT or EMPTY = `revsets.simplify-parents`, jj's default `reachable(@, mutable())`, its parse diagnostics warned "In revset expression"; one alone leaves the other `none()`. |
+| `SimplifyParentsResult` | `mutation: MutationResult` (`new_change_ids` / `abandoned_change_ids` always empty), `num_target_commits`, `num_simplified_commits`, `num_removed_edges`, `num_rebased_descendants` (every rewritten commit that lost no edge, targets included) — the CLI's status lines "Removed <edges> edges from <simplified> out of <targets> commits." / "Rebased <n> descendant commits." as counts, saturating at 4294967295; a no-op reports only `num_target_commits`. |
+
+Refusals reuse registered codes only: `jj.change_not_found`, `jj.immutable` (every target is
+checked, the root commit among them), `jj.revset_parse_error` / `jj.revset_resolution_error` (the
+config revset), `jj.config_error` (the setting is not a string, or `immutable_heads()` does not
+resolve), `jj.not_a_git_repo` (the colocated finish found no Git backend). Dart:
+`RepoHandle.simplifyParents(source:, revisions:)` → `SimplifyParentsResult`.
 
 ## `zanshin_metaedit`, `zanshin_duplicate`, `zanshin_fix` (Story 9.9)
 

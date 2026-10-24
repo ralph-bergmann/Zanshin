@@ -190,10 +190,11 @@ use crate::Repo;
 /// the arity semantics wrong.
 ///
 /// The CLI's other `[revsets]` keys (`arrange`, `converge`, `fix`, `run`, `sign`,
-/// `op-diff-changes-in`, `simplify-parents`, `bookmark-advance-*`) are not copied here — no Zanshin
-/// verb consumes them; they reach the stack with the rest of jj-cli's defaults ([`CLI_DEFAULTS`]),
-/// so `config get` / `config list --include-defaults` and a template's `config()` see them as the
-/// CLI does (Ralph, 2026-10-20: the defaults the CLI shows are the defaults Zanshin shows).
+/// `op-diff-changes-in`, `simplify-parents`, `bookmark-advance-*`) are not copied here; they reach
+/// the stack with the rest of jj-cli's defaults ([`CLI_DEFAULTS`]) — which is where the verbs that
+/// consume one (`arrange`, `fix`, `simplify-parents`) read their default — so `config get` /
+/// `config list --include-defaults` and a template's `config()` see them as the CLI does (Ralph,
+/// 2026-10-20: the defaults the CLI shows are the defaults Zanshin shows).
 const BUILTIN_CONFIG_TOML: &str = r#"
 [revsets]
 git-push = "remote_bookmarks(remote=exact:remote)..@"

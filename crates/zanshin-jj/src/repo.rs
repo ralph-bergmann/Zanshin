@@ -3450,6 +3450,43 @@ impl Repo {
         self.with_verb(|repo, ctx| crate::arrange::arrange(repo.workspace_mut(), ctx, options))
     }
 
+    /// Drops redundant parent edges (Story 9.14) — the CLI's `jj simplify-parents`.
+    ///
+    /// The target set is `options.source` with their descendants plus `options.revisions`, or —
+    /// when both are empty — the `revsets.simplify-parents` setting (jj's default
+    /// `reachable(@, mutable())`), parsed like a user revset (its diagnostics are warnings "In
+    /// revset expression"). Every target must be rewritable. A target with more than one parent
+    /// loses each parent that is also an ancestor of another of its parents; its contents stay,
+    /// and descendants are rebased onto the rewritten commits.
+    ///
+    /// A call that changes nothing writes NO operation (`new_op_id` is the pre-call head);
+    /// otherwise the operation is the CLI's `simplify <n> commits`, `n` the size of the target
+    /// set. The result carries the CLI's status-line counts: targets, simplified commits, removed
+    /// edges, rebased descendants. `new_change_ids` and `abandoned_change_ids` are empty.
+    ///
+    /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
+    ///   commit, or divergent.
+    /// - [`crate::MutateError::Immutable`] — a target is inside the repo's effective immutable
+    ///   set (the root commit among them).
+    /// - [`crate::MutateError::RevsetParseError`] / [`crate::MutateError::RevsetResolutionError`]
+    ///   — `revsets.simplify-parents` does not parse or resolve.
+    /// - [`crate::MutateError::Config`] — `revsets.simplify-parents` is not a string, the alias
+    ///   tables do not read, or the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn simplify_parents(
+        &mut self,
+        options: &crate::SimplifyParentsOptions,
+    ) -> Result<crate::SimplifyParentsResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::simplify_parents::simplify_parents(repo.workspace_mut(), ctx, options))
+    }
+
     /// Modifies revisions' metadata without changing their content (Story 9.9) — the CLI's `jj
     /// metaedit`.
     ///

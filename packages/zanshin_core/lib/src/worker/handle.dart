@@ -26,7 +26,7 @@ import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
 import '../ffi/op_log.dart' show OpAbandonResult, OpDiffResult, OpIntegrateResult, OpShow, Operation, RestoreWhat;
 import '../ffi/precondition.dart' show Precondition;
 import '../ffi/push.dart' show GitPushResult;
-import '../ffi/rebase.dart' show ArrangeAction, SwapDownAction, SwapUpAction;
+import '../ffi/rebase.dart' show ArrangeAction, SimplifyParentsResult, SwapDownAction, SwapUpAction;
 import '../ffi/remotes.dart' show Remote, RemoteRefChange;
 import '../ffi/select_tree.dart' show FileSelection, SelectedTree, SourceTree, TreeSelection;
 import '../ffi/squash_split.dart' show SplitResult, SquashPlan;
@@ -1176,6 +1176,30 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.arrange(_handleId, revisions: revisions, actions: actions);
+  }
+
+  /// Drop redundant parent edges (Story 9.14) — the CLI's `jj
+  /// simplify-parents`.
+  ///
+  /// [source] (`-s`, with their descendants) and [revisions] (`-r`) are change
+  /// ids; both empty is the `revsets.simplify-parents` setting (jj's default
+  /// `reachable(@, mutable())`). A target with more than one parent loses each
+  /// parent that is also an ancestor of another of its parents; contents stay
+  /// and descendants are rebased. A call that changes nothing writes no
+  /// operation (the result's `mutation.newOpId` is the pre-call head). The
+  /// result carries the CLI's status-line counts.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an id contains an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.change_not_found`, `jj.immutable`, `jj.revset_parse_error`,
+  /// `jj.revset_resolution_error`, `jj.config_error`, `jj.not_a_git_repo`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<SimplifyParentsResult> simplifyParents({List<String> source = const [], List<String> revisions = const []}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.simplifyParents(_handleId, source: source, revisions: revisions);
   }
 
   /// Modify revisions' metadata without changing their content (Story 9.9) —

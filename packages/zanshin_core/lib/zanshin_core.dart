@@ -91,7 +91,8 @@ export 'src/ffi/push.dart'
         PushRefusal,
         PushRemote,
         PushSigning;
-export 'src/ffi/rebase.dart' show AbandonAction, ArrangeAction, KeepAction, SwapDownAction, SwapUpAction;
+export 'src/ffi/rebase.dart'
+    show AbandonAction, ArrangeAction, KeepAction, SimplifyParentsResult, SwapDownAction, SwapUpAction;
 export 'src/ffi/remotes.dart' show RemoteRefChange, RemoteRefChangeKind, RemoteRefKind;
 export 'src/ffi/repo.dart' show ObjectHash;
 export 'src/ffi/repo_detect.dart' show RepoDetectResult, RepoKind;
