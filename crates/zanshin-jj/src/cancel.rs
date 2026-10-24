@@ -719,7 +719,10 @@ mod tests {
             .process_group(0)
             .spawn()
             .expect("sh spawns");
-        poll_until(|| std::fs::read_to_string(&forked).is_ok_and(|pid| !pid.trim().is_empty()));
+        assert!(
+            poll_until(|| std::fs::read_to_string(&forked).is_ok_and(|pid| !pid.trim().is_empty())),
+            "the leader records its member's pid"
+        );
         let member: libc::pid_t = std::fs::read_to_string(&forked)
             .expect("the member's pid")
             .trim()
@@ -734,15 +737,17 @@ mod tests {
         );
     }
 
-    /// Asks `done` every 10 ms until it answers `true` or 10 s pass; returns its last answer.
+    /// Sleeps 10 ms, then asks `done`, until it answers `true` or 10 s pass; returns its last
+    /// answer.
     #[cfg(target_os = "macos")]
+    #[must_use]
     fn poll_until(mut done: impl FnMut() -> bool) -> bool {
         let deadline = Instant::now() + Duration::from_secs(10);
-        let mut answer = done();
-        while !answer && Instant::now() < deadline {
+        std::iter::repeat_with(|| {
             std::thread::sleep(Duration::from_millis(10));
-            answer = done();
-        }
-        answer
+            done()
+        })
+        .find(|&answer| answer || Instant::now() >= deadline)
+            == Some(true)
     }
 }

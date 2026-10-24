@@ -1152,7 +1152,7 @@ mod tests {
     /// outside comments, is free of the call — [`super::reload_head`] is the head load.
     #[test]
     fn no_production_code_calls_load_at_head() {
-        // The scan finds a production call, wherever it hides, and nothing else.
+        // The scan reports a production `.load_at_head()` call in a nested `.rs` file, and nothing else.
         let scratch = tempfile::TempDir::new().expect("tempdir");
         let sub = scratch.path().join("sub");
         std::fs::create_dir(&sub).expect("subdir");
@@ -1179,7 +1179,7 @@ mod tests {
         let mut dirs = vec![root.to_path_buf()];
         let mut offenders = Vec::new();
         while let Some(dir) = dirs.pop() {
-            for entry in std::fs::read_dir(&dir).expect("src dir") {
+            for entry in std::fs::read_dir(&dir).expect("readable dir") {
                 let path = entry.expect("entry").path();
                 if path.is_dir() {
                     dirs.push(path);
@@ -1188,7 +1188,7 @@ mod tests {
                 if path.extension().is_none_or(|e| e != "rs") {
                     continue;
                 }
-                let text = std::fs::read_to_string(&path).expect("source");
+                let text = std::fs::read_to_string(&path).expect("readable .rs file");
                 let production = text.lines().take_while(|line| line.trim() != "#[cfg(test)]");
                 for (i, line) in production.enumerate() {
                     if !line.trim_start().starts_with("//") && line.contains(".load_at_head()") {
