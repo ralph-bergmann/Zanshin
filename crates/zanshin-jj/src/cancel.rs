@@ -683,10 +683,7 @@ mod tests {
         let script = format!("trap '' TERM; : > '{}'; sleep 30; exit 0", trapped.display());
         let mut child = spawn_marked(id, &dir, &script);
         // The cancel lands only once the shell has installed its trap.
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while !trapped.exists() && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(10));
-        }
+        assert!(poll_until(|| trapped.exists()), "the shell installs its trap");
         register(id);
         let guard = watching(id, &dir);
         let started = Instant::now();

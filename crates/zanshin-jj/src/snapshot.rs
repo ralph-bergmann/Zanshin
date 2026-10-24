@@ -1160,13 +1160,18 @@ mod tests {
         let offending = sub.join("offending.rs");
         std::fs::write(
             &offending,
-            "fn production() {\n    repo.load_at_head();\n}\n// repo.load_at_head() in a comment\n\
+            "fn production() {\n    repo.load_at_head();\n}\nmod inner {\n    #[cfg(test)]\n    fn helper() {}\n\
+             \x20   fn later() { repo.load_at_head(); }\n}\n// repo.load_at_head() in a comment\n\
              #[cfg(test)]\nfn test() { repo.load_at_head(); }\n",
         )
         .expect("offending source");
+        // An indented `#[cfg(test)]` item does not end the production part; the module-level one does.
         assert_eq!(
             load_at_head_offenders(scratch.path()),
-            [format!("{}:2", offending.display())]
+            [
+                format!("{}:2", offending.display()),
+                format!("{}:7", offending.display())
+            ]
         );
 
         let offenders = load_at_head_offenders(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"));
@@ -1189,7 +1194,7 @@ mod tests {
                     continue;
                 }
                 let text = std::fs::read_to_string(&path).expect("readable .rs file");
-                let production = text.lines().take_while(|line| line.trim() != "#[cfg(test)]");
+                let production = text.lines().take_while(|line| *line != "#[cfg(test)]");
                 for (i, line) in production.enumerate() {
                     if !line.trim_start().starts_with("//") && line.contains(".load_at_head()") {
                         offenders.push(format!("{}:{}", path.display(), i + 1));
