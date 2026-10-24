@@ -2,7 +2,7 @@
 title: 'Story 9.11 — Bookmark tracking: `bookmark set`, `forget`, `track`, `untrack`'
 type: 'feature'
 created: '2026-10-24'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'd5f3b74ec43d687313507224721aeefadf02617c'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -118,6 +118,31 @@ CLI anchors @ `v0.46.0`; jj-lib vendored at `~/.cargo/registry/src/index.crates.
 
 ## Review Triage Log
 
+### 2026-10-24 — Review pass
+- verdicts: 21 findings — high 0, medium 0, low 13, false 8, maybe-false 0
+- findings:
+  - `[low]` `[reject]` (blind) a GUI cannot build the revset-quoted `name@remote` symbol track/untrack take; no row field or helper renders it — real for a future row toggle, but no consumer exists in this story (UI is out of scope) and the fix is new public surface (a payload field or a Dart helper), not a direct correction; noted as a residual risk for the UI story.
+  - `[low]` `[patch]` (blind) the symbol branch's "local present, remote view exists, no remote ref" trackable case is untested — fixed: a track test of `x@origin` with no origin row.
+  - `[low]` `[patch]` (blind) the native (non-Git) backend path of `default_ignored_remote` is untested — fixed: a native-backend test (forget untracks `x@git`, untrack of `x@git` succeeds without the Git-tracking warning).
+  - `[low]` `[patch]` (blind) tracking a remote whose target differs from the local bookmark (jj-lib merges → conflicted local) is untested — fixed: a test pins the conflicted local and the tracked remote.
+  - `[low]` `[reject]` (blind) `jj.remote_bookmarks_unmatched`, `jj.bookmark_not_tracked`, `jj.bookmark_git_tracking_untrack` never cross a real envelope — the envelope transport is code-agnostic and already carried by three of the new codes over FFI and Dart; each code's mapping is pinned by the `warning_code()` table tests and the jj-level tests pin each message; another round trip adds no new verification.
+  - `[low]` `[patch]` (blind) the Dart `includeRemotes` test comment claims it checks the dropped remote row — fixed: the comment now says what is asserted (op written vs no-op) and where the row is checked (Rust/oracle).
+  - `[low]` `[patch]` (blind) forget's view-order description with several names is untested — fixed: a two-name forget test pins `forget bookmark a, z`.
+  - `[low]` `[patch]` (blind) remote-name patterns are never matched behaviourally — fixed: a track/untrack with a `glob:"up*"` remote pattern.
+  - `[low]` `[patch]` (blind) the four new Dart docs omit `jj.stale_working_copy` from their thrown codes — fixed: added in the house wording.
+  - `[low]` `[patch]` (blind) CLI line anchors for the two untrack warnings disagree and are wrong — fixed: `untrack.rs:115-121` (Git-tracking) and `:122-126` (not tracked) in `warning.rs` and `docs/rust-error-codes.md`.
+  - `[false]` `[reject]` (blind) the bookkeeping says done before the review — `sprint-status.yaml` and the spec are committed together at finalization with `status: done` and this log; nothing is committed in an inconsistent state.
+  - `[low]` `[patch]` (blind) the `jj.bookmark_exists` row still names `bookmark set` as a future Story 9.11 remedy — fixed: it names the shipped `zanshin_bookmark_set`.
+  - `[false]` `[reject]` (edge, claim) with a dirty working copy the pre-verb snapshot writes an op before a refusal or no-op, so `new_op_id` is not the pre-call head — the CLI's `workspace_helper` snapshots before the verb too (required parity, Story 9.26); "pre-call head" is the post-snapshot head by the house convention (`finish_or_no_op_at`), and clap-level refusals run before the snapshot (tested) — same rejection as 9.19's review.
+  - `[low]` `[patch]` (verification-gap) `set`'s auto-track config refusal is never exercised — fixed: a test with an unparsable `auto-track-created-bookmarks` on an existing name refuses `MutateError::Config` with the head and target unchanged, and a backwards set still refuses the backwards error first.
+  - `[low]` `[patch]` (verification-gap) `resolve_trackable`'s dedup is unpinned — fixed: a repeated symbol yields one symbol in the description and one already-tracked warning.
+  - `[false]` `[reject]` (intent) R3, no UI or 9.29 row action — CLAUDE.md writes UI code only inside a story that asks for it; the story asks for the verbs.
+  - `[false]` `[reject]` (intent) R6, `merge_local_bookmark` not called — the CLI at v0.46.0 never calls it; `track_remote_bookmark` merges inside jj-lib, tested by the track tests.
+  - `[false]` `[reject]` (intent) R4a, `set` takes no patterns — the CLI's `set` parses names with `parse_bookmark_name` (`set.rs:56`); patterns would diverge from the CLI.
+  - `[false]` `[reject]` (intent) R5, track/untrack take pass-through symbol texts — the spec's Design Notes choose it (FR-JJ-17, the CLI's argument language); the GUI-quoting consequence is the blind row above.
+  - `[false]` `[reject]` (intent) verification outcomes not recorded in the spec — recorded at finalization under Verification, after the review patches.
+  - `[false]` `[reject]` (intent) spec `in-review` vs sprint-status `done` — resolved at finalization (same as the blind bookkeeping row).
+
 ## Design Notes
 
 - **Two name currencies, as the CLI has them.** `set` takes decoded names (its clap parser is `parse_bookmark_name`, revset quoting is terminal syntax — 9.8's create rule). `forget`, `track`, `untrack` take the CLI's pattern texts unchanged (FR-JJ-17, 9.8's delete rule; the epic line says "pattern matching"); for track/untrack that includes the `name@remote` symbol syntax, so a GUI tracking one row sends the symbol text `name@origin` (revset-quoting a name or remote that needs it, e.g. `"a b"@origin` — jj-lib's `format_remote_symbol` renders it). The 9.19 exact-name rule is move/advance's alone.
@@ -135,3 +160,33 @@ Gate rule for this run: no `cargo make test` / `test-full` / `coverage`; targete
 - `cargo test -p zanshin-parity --test oracle` -- expected: pass.
 - `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity -p test-helpers --all-targets -- -D warnings`; `cargo fmt --all --check` -- expected: clean.
 - `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings`, `dart format --set-exit-if-changed lib test`, `dart test` on the touched test files (real cdylib, test env as in 9.19) -- expected: pass/clean.
+
+**Outcomes (2026-10-24, final tree after the review patches; full gate not run per the run's gate rule):**
+- `cargo make codegen` -- exit 0; a second run left the tree unchanged.
+- `cargo fmt --all --check` -- clean. `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity -p test-helpers --all-targets -- -D warnings` -- clean.
+- `cargo test -p zanshin-jj --lib` -- 367 passed. `cargo test -p zanshin-jj --test it -- bookmark_tracking:: bookmark_ops:: bookmark_move:: bookmarks:: api_stability:: warnings::` -- 163 passed (156 before the review's 7 added tests).
+- `cargo test -p zanshin-ffi --lib` -- 215 passed. `cargo test -p zanshin-ffi --test it -- bookmark_ops_ffi:: ffi_abi_doc_sync::` -- 34 passed (98 exports).
+- `cargo test -p zanshin-parity --test oracle` -- 380 passed (24 new Story 9.11 scenarios, no ledger entry); run before the review patches, which changed no production code (only `warning.rs` doc anchors).
+- `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings` -- no issues; `dart format --set-exit-if-changed .` -- 0 changed; `dart test test/ffi/bookmark_ops_test.dart test/ffi/warning_test.dart test/worker/bookmark_ops_test.dart test/worker/warnings_test.dart` (test-core env: JJ_*, GIT_CONFIG_GLOBAL, XDG_CONFIG_HOME pinned) -- 236 passed (real cdylib), before and after the review patches.
+- Not run (gate rule): `cargo make test`, `test-full`, `coverage` -- the story loop runs the gate once at its end.
+
+## Auto Run Result
+
+Status: done
+
+**Summary.** `jj bookmark set`, `forget`, `track` and `untrack` are ported from the CLI at v0.46.0 end to end (`.fbs` → zanshin-jj → `zanshin_bookmark_set` / `_forget` / `_track` / `_untrack` → `RepoHandle.bookmarkSet` / `bookmarkForget` / `bookmarkTrack` / `bookmarkUntrack`, 98 exports). `set` takes decoded names, resolves the revision (default `@`), refuses a backwards move per name in argument order (hint "Use --allow-backwards to allow it.") unless allowed, warns an empty target, writes a normal target and auto-tracks only newly created names through the loop now shared with `create`. `forget` takes pass-through patterns over local-or-remote rows, untracks remotes (skipping `git` on a Git backend) or, with `include_remotes`, forgets every remote row. `track` / `untrack` take the CLI's `BOOKMARK[@REMOTE]` texts and `--remote` patterns, port `resolve_trackable_remote_bookmarks` / `trackable_remote_bookmarks_matching` and the mixed-syntax refusals. Clap-level refusals run before the pre-verb snapshot; no-ops write no operation. Five new warning codes (`jj.remote_bookmarks_unmatched`, `jj.bookmark_remotes_unmatched`, `jj.bookmark_already_tracked`, `jj.bookmark_not_tracked`, `jj.bookmark_git_tracking_untrack`); no new error code.
+
+**Files changed.**
+- `crates/zanshin-jj/src/bookmark_ops.rs` — the four verbs, clap checks, shared `auto_track_created`, `default_ignored_remote`, parameterized parse-error head, inline tests.
+- `crates/zanshin-jj/src/{repo,warning,bookmarks}.rs` — facades, five warning kinds, `warn_unmatched` made `pub(crate)`.
+- `schemas/envelope.fbs` + generated files (`zanshin_ffi.h`, `envelope_generated.rs`, `bindings.dart`, `envelope_zanshin.ffi_generated.dart`) — four request kinds, three request tables.
+- `crates/zanshin-ffi/src/{bookmark_ops,envelope}.rs` — readers, four externs, warning codes.
+- `packages/zanshin_core/lib/src/{ffi/bookmark_ops,ffi/warning,worker/commands,worker/isolate,worker/handle}.dart` — builders, codes, commands, worker methods, `RepoHandle` methods.
+- Tests: `crates/zanshin-jj/tests/it/bookmark_tracking.rs` (new), `bookmark_move.rs` (shared helpers), `api_stability.rs`, `main.rs`; `crates/zanshin-ffi/tests/it/{bookmark_ops_ffi,ffi_abi_doc_sync}.rs`; `packages/zanshin_core/test/{ffi,worker}/bookmark_ops_test.dart`, `test/ffi/warning_test.dart`; oracle `scenarios.rs`, `git_scenarios.rs`, `main.rs` (24 scenarios).
+- Docs: `docs/ffi-abi.md`, `docs/rust-error-codes.md`. Ledger: this spec, `sprint-status.yaml` (9-11 done), `deferred-work.md` (Story 9.11 section, nothing deferred).
+
+**Review findings.** 21 findings (low 13, false 8). Patched (11 low, tests and docs only): `set`'s auto-track config refusal, symbol dedup, the local-present/no-remote-row symbol case, the native-backend path, a track that conflicts the local bookmark, forget's multi-name view order, a remote-name glob, the Dart forget test comment, `jj.stale_working_copy` in the Dart docs, the untrack warning CLI anchors, and the `jj.bookmark_exists` remedy row. Nothing deferred. Rejected: no `name@remote` quoting helper for a future GUI row toggle (no consumer in this story; new public surface), three new warning codes not crossing a real envelope (transport is code-agnostic; mapping and messages pinned), the dirty-working-copy snapshot op before a no-op (CLI parity, house convention), and six descriptive intent/bookkeeping rows (no UI by CLAUDE.md, `merge_local_bookmark` not called by the CLI, `set` takes names like the CLI, pass-through symbols by design, outcomes and status written at finalization).
+
+**Follow-up review recommendation: false.** Patched at entry verdict: high 0, medium 0, low 11.
+
+**Residual risks.** Coverage ratchet not run (gate rule); every new extern has a real-cdylib `zanshin_core` test. A GUI row toggle for track/untrack must revset-quote names and remotes in the `name@remote` text itself (jj-lib's `format_remote_symbol` rendering) — no helper exists yet; the UI story that adds the toggle (10.14/10.15) owns it. Track's post-finish listing of conflicted bookmarks is dropped; a GUI re-reads `list_bookmarks` to see a conflict a track created.
