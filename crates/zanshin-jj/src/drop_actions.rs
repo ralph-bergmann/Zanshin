@@ -322,9 +322,12 @@ impl Rows<'_> {
             // A revert that writes resolves the immutable set in the CLI's `tx.finish` (Story
             // 9.56); "No revisions to revert." never reaches it. Rows never parse the description
             // template, so with a broken template the verb's refusal (template parse) differs.
-            if plan.is_some() {
-                resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
-            }
+            // A row reverts exactly one resolved change, so `plan_revert` never returns `None`
+            // here; the `Option` form keeps the CLI's rule (only a writing plan resolves the set)
+            // without a branch no row can take.
+            plan.as_ref()
+                .map(|_| resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable))
+                .transpose()?;
             Ok(Planned {
                 no_op: plan.is_none(),
                 ..Planned::AVAILABLE

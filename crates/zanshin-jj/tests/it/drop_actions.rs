@@ -1004,6 +1004,32 @@ fn change_actions_of_an_unknown_change_are_all_not_found() {
     }
 }
 
+/// A jj-lib failure in a row fails the query: squash is the first row to read `B`'s parent `A`
+/// (its destination), whose loose commit object is removed — the rows before it plan from the
+/// index and `B` alone. (No row reads a tree: squash's whole-commit selection keeps tree ids.)
+#[test]
+fn change_actions_fails_when_the_squash_row_cannot_read_the_parent() {
+    let mut fx = base(None);
+    let b = fx.b.clone();
+    let a = commit_id(&fx, &fx.a).hex();
+    let object = fx
+        .root
+        .join(".jj")
+        .join("repo")
+        .join("store")
+        .join("git")
+        .join("objects")
+        .join(&a[..2])
+        .join(&a[2..]);
+    fs::remove_file(&object).expect("remove A's commit object");
+    // A fresh handle: the store caches the commits it has read.
+    fx.repo = Repo::open(&fx.root).expect("reopen");
+    let before = head_op(&fx.root);
+    let err = fx.repo.change_actions(&b).expect_err("store failure");
+    assert!(matches!(err, MutateError::Backend(_)), "{err:?}");
+    assert_eq!(head_op(&fx.root), before, "no operation written");
+}
+
 // ── Agreement: the shipped verb answers as its row said ─────────────────────────
 
 /// Runs `verb` right after a query answered `expected`, on the same fixture: Available ⇒ Ok with

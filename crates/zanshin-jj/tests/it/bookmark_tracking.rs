@@ -318,6 +318,22 @@ fn track_a_pattern_tracks_a_local_name_absent_on_the_remote() {
     assert!(fx.kinds().is_empty());
 }
 
+/// Without a `git` view the default filter ignores no remote: a pattern matches every remote.
+#[test]
+fn track_a_pattern_without_a_git_view_matches_every_remote() {
+    let mut fx = base();
+    let d = fx.d.clone();
+    let d_hex = hex(&fx.root, &d);
+    fx.set_remote("y", "origin", &d, false);
+    let result = fx.repo.bookmark_track(&names(&["y"]), &[]).expect("track");
+    assert_eq!(remote(&fx.root, "y", "origin"), (Some(d_hex.clone()), true));
+    assert_eq!(fx.normal("y"), Some(d_hex));
+    let (id, description) = head_op(&fx.root);
+    assert_eq!(result.new_op_id.0, id);
+    assert_eq!(description, "track remote bookmark y@origin");
+    assert!(fx.kinds().is_empty());
+}
+
 #[test]
 fn track_of_tracked_or_unmatched_refs_warns_and_writes_no_operation() {
     let mut fx = base();
