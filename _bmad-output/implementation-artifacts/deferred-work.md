@@ -2002,7 +2002,7 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in Story 9.18 (bmad-build-auto, 2026-10-24)
 
-- **`revert -o` with both a broken `templates.revert_description` and an unresolvable `immutable_heads()` names the wrong fault first.** Low.
+- ~~**`revert -o` with both a broken `templates.revert_description` and an unresolvable `immutable_heads()` names the wrong fault first.**~~ — RESOLVED 2026-10-24 (spec-9-18-closing-revert-duplicate-template-before-immutable, commit 3aba05a): `compute_commit_location` resolves the immutable set only for a location with children, as the CLI does, so `revert` and `duplicate` parse their template first; oracle `refusal_order.rs`. Low.
   - `plan_revert` resolves the immutable set at the end of the plan for a non-insert location (`crates/zanshin-jj/src/revert.rs`); the verb parses the template after the plan. The CLI parses the template first and resolves the immutable set in `tx.finish`. Both refuse `jj.config_error` with no operation; only the `context` text differs. `duplicate`'s plan (`plan_duplicate_ids`) has the same order.
   - **Follow-up:** move the non-insert `resolve_immutable` out of the shared plan fns into the verbs' finish path (`drop_actions` keeps its own call), or leave it.
 

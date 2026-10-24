@@ -18,6 +18,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/revert.rs (plan_revert), crates/zanshin-jj/src/duplicate.rs (plan_duplicate_ids)
     severity: low
+    resolved: >-
+      2026-10-24 — fixed (spec-9-18-closing-revert-duplicate-template-before-immutable, commit 3aba05a): compute_commit_location resolves the immutable set only for a location with children, as the CLI does; plan_revert / plan_duplicate_ids no longer resolve it, so the template parse comes first; oracle refusal_order.rs witnesses both verbs.
 ---
 
 <intent-contract>
