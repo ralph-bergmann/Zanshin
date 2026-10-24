@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 
 // Worker round-trip tests for Story 9.22's two working-copy tracking verbs
-// (fileTrack / fileUntrack) on both [ZanshinWorker] and [RepoHandle].
+// (fileTrack / fileUntrack) and Story 9.13's fileChmod on both [ZanshinWorker]
+// and [RepoHandle].
 //
 // These tests boot the REAL Isolate.spawn flow against the REAL compiled cdylib
 // via @ffi.Native native assets. No mocked isolates, no mocked FFI
 // (project-context: "Worker / isolate testing"). They are also what credits
-// zanshin_file_track and zanshin_file_untrack in the coverage ratchet's
+// zanshin_file_track, zanshin_file_untrack and zanshin_file_chmod in the coverage ratchet's
 // extern-fn guard: cargo-llvm-cov does not attribute a #[no_mangle] extern fn
 // hit from a Rust integration test to the cdylib, so each extern fn needs a
 // packages/zanshin_core test calling it through the library
@@ -22,6 +23,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/file.dart' show FileEntry;
 import 'package:zanshin_core/src/ffi/file_ops.dart' show TrackResult, UntrackResult;
+import 'package:zanshin_core/src/ffi/mutate.dart' show MutationResult;
 import 'package:zanshin_core/src/ffi/op_log.dart' show Operation;
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
@@ -220,6 +222,65 @@ void main() {
       await handle.close();
 
       expect(() => handle.fileUntrack(['a']), throwsA(isA<StateError>()));
+    });
+  });
+
+  group('ZanshinWorker file chmod (real cdylib)', () {
+    late ZanshinWorker worker;
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = Directory.systemTemp.createTempSync('zanshin_file_chmod_test_');
+      worker = await ZanshinWorker.start();
+    });
+
+    tearDown(() async {
+      await worker.close();
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('chmod_round_trips_and_refuses', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      File('${tempDir.path}/zanshin_chmod_me.sh').writeAsStringSync('#!/bin/sh');
+      final String at = (await handle.status()).workingCopyChangeId!;
+
+      final MutationResult result = await handle.fileChmod(['zanshin_chmod_me.sh', 'nope'], executable: true);
+      final (String head, String description) = await headOp(handle);
+      expect(result.newOpId, head);
+      expect(description, startsWith('make paths executable in commit '));
+      expect(result.warnings.map((w) => w.code), ['jj.paths_unmatched']);
+      final FileStat stat = File('${tempDir.path}/zanshin_chmod_me.sh').statSync();
+      expect(stat.mode & 0x49, isNonZero, reason: 'the checkout made the file executable');
+
+      // `revision` crosses: a named `@` clears the bit.
+      await handle.fileChmod(['zanshin_chmod_me.sh'], executable: false, revision: at);
+      expect((await headOp(handle)).$2, startsWith('make paths non-executable in commit '));
+
+      await expectLater(
+        handle.fileChmod(const [], executable: true),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+      await expectLater(
+        handle.fileChmod(['zanshin_chmod_me.sh'], executable: true, revision: 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.immutable')),
+      );
+      await handle.close();
+    });
+
+    test('chmod_guards_a_closed_handle_an_unknown_one_and_a_nul', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final nul = String.fromCharCode(0);
+      Matcher argument(String name) => throwsA(isA<ArgumentError>().having((e) => e.name, 'name', name));
+      expect(() => handle.fileChmod(['a${nul}b'], executable: true), argument('paths'));
+      expect(() => handle.fileChmod(['a'], executable: true, revision: 'q$nul'), argument('revision'));
+      await handle.close();
+      expect(() => handle.fileChmod(['a'], executable: true), throwsA(isA<StateError>()));
+      await expectLater(
+        worker.fileChmod(9999, ['a'], executable: true),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
     });
   });
 }

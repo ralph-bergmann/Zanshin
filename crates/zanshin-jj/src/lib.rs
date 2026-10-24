@@ -75,6 +75,7 @@ pub(crate) mod warning;
 pub(crate) mod wc_ops;
 pub(crate) mod workspace;
 pub(crate) mod workspace_add;
+pub(crate) mod workspace_ops;
 
 pub use arrange::{ArrangeAction, ArrangeOptions};
 pub use bookmark_ops::BookmarkMoveOptions;
@@ -138,6 +139,7 @@ pub use warning::{Warned, Warning, WarningKind};
 pub use wc_ops::{SnapshotStats, TrackResult, UntrackResult, UntrackedPath, UntrackedReason};
 pub use workspace::{WorkspaceEntry, WorkspaceError};
 pub use workspace_add::{SparseInheritance, WorkspaceAddResult};
+pub use workspace_ops::WorkspaceRemoveResult;
 
 /// Fixtures shared by the inline `#[cfg(test)]` modules.
 #[cfg(test)]

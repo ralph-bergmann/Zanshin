@@ -26,10 +26,10 @@ use zanshin_jj::{
 };
 
 /// The main workspace at `<tmp>/main`, a second one at `<tmp>/ws2`.
-struct Fx {
+pub(crate) struct Fx {
     _tmp: TempDir,
-    root: PathBuf,
-    ws2: PathBuf,
+    pub(crate) root: PathBuf,
+    pub(crate) ws2: PathBuf,
 }
 
 fn git(args: &[&str], dir: &Path) -> String {
@@ -49,7 +49,7 @@ fn git(args: &[&str], dir: &Path) -> String {
 /// A repo whose default workspace's `@` records `f.txt` and a second workspace `ws2` next to it,
 /// opened as the default workspace's handle. `colocated` builds it through `git init` +
 /// `convert_colocated`; otherwise an internal-git repo.
-fn two_workspaces(colocated: bool, config: &str) -> (Fx, Repo) {
+pub(crate) fn two_workspaces(colocated: bool, config: &str) -> (Fx, Repo) {
     test_helpers::pin_test_env();
     let tmp = TempDir::new().expect("tempdir");
     let main = fs::canonicalize(tmp.path()).expect("canonical").join("main");
@@ -89,7 +89,7 @@ fn two_workspaces(colocated: bool, config: &str) -> (Fx, Repo) {
     (Fx { _tmp: tmp, root, ws2 }, repo)
 }
 
-fn load(root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
+pub(crate) fn load(root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
     let workspace = Workspace::load(
         &test_helpers::test_settings(),
         root,
@@ -101,11 +101,11 @@ fn load(root: &Path) -> (Workspace, Arc<ReadonlyRepo>) {
     (workspace, repo)
 }
 
-fn head_op(root: &Path) -> String {
+pub(crate) fn head_op(root: &Path) -> String {
     load(root).1.op_id().hex()
 }
 
-fn descriptions(root: &Path) -> Vec<String> {
+pub(crate) fn descriptions(root: &Path) -> Vec<String> {
     let (_workspace, head) = load(root);
     let ops: Vec<jj_lib::operation::Operation> =
         pollster::block_on(jj_lib::op_walk::walk_ancestors(std::slice::from_ref(head.operation())).try_collect())

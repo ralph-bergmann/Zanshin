@@ -33,7 +33,13 @@ import '../ffi/squash_split.dart' show SplitResult, SquashPlan;
 import '../ffi/status.dart' show WorkingCopyStatus;
 import '../ffi/warning.dart' show WarnedList, ZanshinWarning;
 import '../ffi/workspace.dart'
-    show SparseInheritance, StaleRecovery, WorkspaceAddResult, WorkspaceEntry, WorkspaceRootResult;
+    show
+        SparseInheritance,
+        StaleRecovery,
+        WorkspaceAddResult,
+        WorkspaceEntry,
+        WorkspaceRemoveResult,
+        WorkspaceRootResult;
 import '../graph_layout/graph_grid_view.dart' show GraphGridView;
 import '../graph_layout/layout_request.dart'
     show LaneOrder, LayoutContractException, LayoutMode, defaultLaneOrder, defaultLayoutBudget, defaultLayoutMode;
@@ -1963,6 +1969,74 @@ final class RepoHandle {
     return _worker.workspaceUpdateStale(_handleId);
   }
 
+  /// Stop tracking workspaces (Story 9.13) — the CLI's `jj workspace forget`.
+  /// Nothing on disk is touched but a workspace's Git worktree link.
+  ///
+  /// Empty [names] forgets THIS workspace. A name no workspace has warns
+  /// `jj.workspace_names_unmatched`; with none left nothing is written
+  /// (`newOpId` is the pre-call head). The rest leave the view in one operation;
+  /// their recorded paths stay (an undo can point a workspace back at its
+  /// directory). Each one's Git worktree is unlinked
+  /// ([WorkspaceRemoveResult.gitWorktreesRemoved]; a failure warns
+  /// `jj.git_worktree_unlink_failed`). Forgetting THIS workspace warns
+  /// `jj.workspace_no_longer_exists`, and every later call that defaults to `@`
+  /// refuses until a working-copy commit is back.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<WorkspaceRemoveResult> workspaceForget([List<String> names = const []]) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.workspaceForget(_handleId, names);
+  }
+
+  /// Rename THIS workspace to [newName] (Story 9.13) — the CLI's `jj workspace
+  /// rename`. The view, the workspace store and the working copy are renamed in
+  /// one operation; this handle then runs as the renamed workspace. The current
+  /// name writes nothing.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — an empty name — `jj.no_working_copy`,
+  /// `jj.workspace_exists`, `jj.concurrent_working_copy`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> workspaceRename(String newName) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.workspaceRename(_handleId, newName);
+  }
+
+  /// Remove workspaces and delete their directories (Story 9.13) — the CLI's
+  /// `jj workspace remove`, new in jj 0.46.
+  ///
+  /// A name no workspace has warns `jj.workspace_names_unmatched`; with none left
+  /// nothing is written. Every remaining workspace is checked before anything is
+  /// written, then snapshotted (its tracked edits survive as a commit; untracked
+  /// and ignored files go with the directory), removed from the view in one
+  /// operation, forgotten in the workspace store, its Git worktree unlinked
+  /// ([WorkspaceRemoveResult.gitWorktreesRemoved]; a failure warns
+  /// `jj.git_worktree_unlink_failed`) and its directory deleted
+  /// ([WorkspaceRemoveResult.directoriesRemoved]; a failure warns
+  /// `jj.workspace_directory_remove_failed`).
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — no names, or a workspace that cannot be removed, most
+  /// with the hint to forget it instead — `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<WorkspaceRemoveResult> workspaceRemove(List<String> names) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.workspaceRemove(_handleId, names);
+  }
+
   /// Create local bookmarks pointing at one revision (Story 9.8) — the CLI's
   /// `jj bookmark create`.
   ///
@@ -2253,6 +2327,28 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.fileUntrack(_handleId, paths);
+  }
+
+  /// Set ([executable] true, the CLI's `x`) or clear (`n`) the executable bit of
+  /// the files matching [paths] (Story 9.13) — the CLI's `jj file chmod`.
+  ///
+  /// A `null` [revision] is the CLI's `-r` default `@`; otherwise a jj
+  /// reverse-hex change id. [paths] are repo-relative PREFIXES (at least one); a
+  /// path matching nothing warns `jj.paths_unmatched`. Every matching entry must
+  /// be a file, or a conflict whose every side is a file. The revision is
+  /// rewritten and its descendants rebased.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — no path, or a non-file entry — `jj.change_not_found`,
+  /// `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> fileChmod(List<String> paths, {required bool executable, String? revision}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.fileChmod(_handleId, paths, executable: executable, revision: revision);
   }
 
   /// Snapshot the working copy right now — and, in a colocated workspace, import

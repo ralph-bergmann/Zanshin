@@ -2511,6 +2511,120 @@ impl Repo {
         self.with_verb(|repo, ctx| crate::workspace_add::add(repo, ctx, &args))
     }
 
+    /// Stops tracking workspaces' working-copy commits (Story 9.13) — the CLI's `jj workspace
+    /// forget [names]` (`cli/src/commands/workspace/forget.rs:43-126` @ v0.46.0). Nothing on disk
+    /// is touched but a workspace's Git worktree link.
+    ///
+    /// `names` empty forgets THIS workspace. A name the view does not have warns
+    /// `jj.workspace_names_unmatched` and is skipped; with none left nothing is written. The rest
+    /// leave the view in ONE operation, `forget workspace <name>` / `forget workspaces <a>, <b>`
+    /// (a discardable `@` is abandoned with it). Their recorded paths STAY in the workspace store,
+    /// so an `undo` can point a workspace back at its directory. Afterwards each forgotten
+    /// workspace whose directory still resolves gets its Git worktree unlinked (the `.git` file
+    /// removed, `git worktree prune`): listed in
+    /// [`crate::WorkspaceRemoveResult::git_worktrees_removed`], a failure warns
+    /// `jj.git_worktree_unlink_failed` and the call still succeeds.
+    ///
+    /// Forgetting THIS workspace leaves its working copy untouched and warns
+    /// `jj.workspace_no_longer_exists`; `working_copy_change_id` is then `None`, and every later
+    /// call that defaults to `@` refuses with the CLI's "Workspace `<name>` doesn't have a
+    /// working-copy commit".
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed.
+    /// - [`crate::MutateError::Config`] — the immutable set does not resolve (nothing written), or
+    ///   `git.executable-path` does not read (the operation is written by then, as in the CLI).
+    /// - [`crate::MutateError::Backend`] — the workspace store or any other jj-lib step failed.
+    pub fn workspace_forget(&mut self, names: &[String]) -> Result<crate::WorkspaceRemoveResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::workspace_ops::forget(repo.workspace_mut(), ctx, names))
+    }
+
+    /// Renames THIS workspace (Story 9.13) — the CLI's `jj workspace rename <new_name>`
+    /// (`cli/src/commands/workspace/rename.rs:30-83` @ v0.46.0).
+    ///
+    /// The view, the workspace store and the working copy are renamed together in one operation,
+    /// `Renamed workspace '<old>' to '<new>'`, committed as the CLI commits it (no finish: no Git
+    /// export, no identity warning). The handle then runs as the renamed workspace. The current
+    /// name writes nothing.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `new_name` is empty ("New workspace name cannot be
+    ///   empty"), refused before the pre-verb snapshot.
+    /// - [`crate::MutateError::NoWorkingCopy`] — this workspace has no `@` in the view: the CLI's
+    ///   refusal "The current workspace '<name>' is not tracked in the repo.", reported without
+    ///   that text.
+    /// - [`crate::MutateError::WorkspaceExists`] — another workspace has `new_name`; nothing is
+    ///   written.
+    /// - [`crate::MutateError::ConcurrentWorkingCopy`] — the working copy's recorded tree is not
+    ///   `@`'s.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed.
+    /// - [`crate::MutateError::Backend`] — the store, the commit, the working-copy finish or the
+    ///   handle's reload failed.
+    pub fn workspace_rename(&mut self, new_name: &str) -> Result<crate::MutationResult, crate::MutateError> {
+        let args = if new_name.is_empty() {
+            Err(crate::MutateError::invalid("New workspace name cannot be empty"))
+        } else {
+            Ok(())
+        };
+        let result = self.with_checked_verb(args, |repo, _ctx| {
+            crate::workspace_ops::rename(repo.workspace_mut(), new_name)
+        })?;
+        // The working copy now names the new workspace; reload so later calls run under it.
+        self.reload_workspace()?;
+        Ok(result)
+    }
+
+    /// Removes workspaces and deletes their directories (Story 9.13) — the CLI's `jj workspace
+    /// remove <names>` (`cli/src/commands/workspace/remove.rs:49-189` @ v0.46.0, new in jj 0.46).
+    ///
+    /// A name the view does not have warns `jj.workspace_names_unmatched` and is skipped; with
+    /// none left nothing is written. Every remaining workspace must be removable, checked in
+    /// order before anything is written: a recorded path that resolves, not containing this
+    /// repository, holding a workspace of THIS repository. Then each is snapshotted in turn (its
+    /// own operation when its files changed, so tracked edits survive as a commit; untracked and
+    /// ignored files go with the directory), all leave the view in ONE operation, `remove
+    /// workspace <name>` / `remove workspaces <a>, <b>`, their store entries are forgotten, their
+    /// Git worktrees unlinked ([`crate::WorkspaceRemoveResult::git_worktrees_removed`], a failure
+    /// warns `jj.git_worktree_unlink_failed`) and their directories deleted
+    /// ([`crate::WorkspaceRemoveResult::directories_removed`], a failure warns
+    /// `jj.workspace_directory_remove_failed`). Each target's start-up environment warns again, as
+    /// the CLI prints it per workspace, and so does this workspace's before the removal.
+    ///
+    /// Removing THIS handle's own (secondary) workspace is allowed, as in the CLI: the result's
+    /// `working_copy_change_id` is `None`, `jj.workspace_no_longer_exists` warns, and the handle is
+    /// left on the removed workspace, as the CLI leaves the shell in the deleted directory.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `names` is empty (before the pre-verb snapshot);
+    ///   a workspace has no recorded path ("Cannot remove unreachable workspace '<name>'"), its
+    ///   directory does not resolve ("Cannot access workspace '<name>' directory: <cause>"), it
+    ///   contains this repository ("… because it contains the repository", e.g. `default`), it
+    ///   belongs to another repository, or no workspace loads there (the CLI's load-error text).
+    ///   The first two and the other-repository refusal carry the hint "Use `jj workspace forget`
+    ///   to stop tracking a workspace without deleting files."; the repository refusal carries
+    ///   none, a load error the CLI's own (none, or its `jj git init` hint). Nothing is written.
+    /// - [`crate::MutateError::Precondition`] — this workspace's pre-verb snapshot, a target's
+    ///   snapshot (e.g. a stale target) or a start-up environment failed; earlier snapshots stay.
+    /// - [`crate::MutateError::Config`] — the immutable set does not resolve, or
+    ///   `git.executable-path` does not read (after the operation).
+    /// - [`crate::MutateError::Backend`] — a workspace load failed internally, or any other
+    ///   jj-lib step.
+    pub fn workspace_remove(&mut self, names: &[String]) -> Result<crate::WorkspaceRemoveResult, crate::MutateError> {
+        let args = if names.is_empty() {
+            Err(crate::MutateError::invalid(
+                "workspace remove requires at least one name",
+            ))
+        } else {
+            Ok(())
+        };
+        self.with_checked_verb(args, |repo, ctx| {
+            crate::workspace_ops::remove(repo.workspace_mut(), ctx, names)
+        })
+    }
+
     /// Creates local bookmarks pointing at one revision (Story 9.8) — the CLI's
     /// `jj bookmark create`.
     ///
@@ -3753,6 +3867,49 @@ impl Repo {
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn file_untrack(&mut self, paths: &[String]) -> Result<crate::UntrackResult, crate::MutateError> {
         self.with_verb(|repo, ctx| crate::wc_ops::file_untrack(repo.workspace_mut(), ctx, paths))
+    }
+
+    /// Sets (`executable`) or clears the executable bit of the files matching `paths` in one
+    /// revision (Story 9.13) — the CLI's `jj file chmod x|n <paths> [-r]`
+    /// (`cli/src/commands/file/chmod.rs:60-138` @ v0.46.0).
+    ///
+    /// `revision` is the CLI's `-r`, a change id; `None` is its default `@`, which the pre-verb
+    /// snapshot has just brought up to date. `paths` are parsed as [`Repo::file_track`]'s (at
+    /// least one, PREFIXES, no fileset DSL); a path that matches nothing in the revision warns
+    /// `jj.paths_unmatched`. Every matching entry must be a file, or a conflict whose every side
+    /// is a file — then each file side takes the bit. The revision is rewritten (descendants
+    /// rebased) as `make paths executable in commit <hex>` / `make paths non-executable in commit
+    /// <hex>`; the rewrite is always recorded, so the operation is always written, as in the
+    /// CLI.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `paths` is empty (before the pre-verb snapshot,
+    ///   clap's `required`), an entry is empty or escapes the workspace, or a matching entry is
+    ///   not a file ("Found neither a file nor a conflict at '<path>'.") or a conflict with a
+    ///   non-file side ("Some of the sides of the conflict are not files at '<path>'.").
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, absent, only-hidden or
+    ///   divergent; [`crate::MutateError::RevsetResolutionError`] — `None` in a workspace with no
+    ///   working-copy commit ("Workspace `<name>` doesn't have a working-copy commit").
+    /// - [`crate::MutateError::Immutable`] — the revision is immutable (the root included).
+    /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn file_chmod(
+        &mut self,
+        executable: bool,
+        revision: Option<&crate::ChangeId>,
+        paths: &[String],
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        let args = if paths.is_empty() {
+            Err(crate::MutateError::invalid("file chmod requires at least one path"))
+        } else {
+            Ok(())
+        };
+        self.with_checked_verb(args, |repo, ctx| {
+            crate::wc_ops::file_chmod(repo.workspace_mut(), ctx, executable, revision, paths)
+        })
     }
 
     /// Opens an existing jj workspace rooted at `path`.

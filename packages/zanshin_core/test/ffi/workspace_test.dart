@@ -310,4 +310,73 @@ void main() {
       expect(() => zanshinWorkspaceRoot(0, name: 'se${String.fromCharCode(0)}cond'), throwsArgumentError);
     });
   });
+
+  group('Story 9.13 workspace forget / rename / remove', () {
+    test('WorkspaceNamesRequest: one table, the kind tells forget from remove', () {
+      for (final fbs.RequestKind kind in [fbs.RequestKind.WorkspaceForget, fbs.RequestKind.WorkspaceRemove]) {
+        final req = fbs.WorkspaceNamesRequest(
+          fbs.WorkspaceNamesRequestObjectBuilder(kind: kind, names: ['ws3', 'ws2']).toBytes(),
+        );
+        expect(req.kind, kind);
+        expect(req.names, ['ws3', 'ws2'], reason: 'names keep argument order');
+      }
+      final empty = fbs.WorkspaceNamesRequest(
+        fbs.WorkspaceNamesRequestObjectBuilder(kind: fbs.RequestKind.WorkspaceForget).toBytes(),
+      );
+      expect(empty.names, isNull, reason: 'absent = the current workspace for forget');
+    });
+
+    test('WorkspaceRenameRequest carries the new name', () {
+      final req = fbs.WorkspaceRenameRequest(
+        fbs.WorkspaceRenameRequestObjectBuilder(kind: fbs.RequestKind.WorkspaceRename, newName: 'main').toBytes(),
+      );
+      expect((req.kind, req.newName), (fbs.RequestKind.WorkspaceRename, 'main'));
+    });
+
+    test('a WorkspaceRemoveResult decodes its lists, mutation and warnings', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.WorkspaceRemoveResult,
+        data: fbs.WorkspaceRemoveResultObjectBuilder(
+          mutation: fbs.MutationResultObjectBuilder(newOpId: 'op1'),
+          gitWorktreesRemoved: ['/r/ws2'],
+          directoriesRemoved: ['/r/ws2', '/r/ws3'],
+        ),
+        warnings: [fbs.WarningObjectBuilder(code: ZanshinWarningCode.workspaceNamesUnmatched, message: 'No such')],
+      ).toBytes();
+      final WorkspaceRemoveResult result = decodeWorkspaceRemoveEnvelope(bytes);
+      expect(result.mutation.newOpId, 'op1');
+      expect(result.mutation.workingCopyChangeId, isNull, reason: 'the current workspace went');
+      expect(result.gitWorktreesRemoved, ['/r/ws2']);
+      expect(result.directoriesRemoved, ['/r/ws2', '/r/ws3']);
+      expect(result.warnings.map((w) => w.code), [ZanshinWarningCode.workspaceNamesUnmatched]);
+
+      final WorkspaceRemoveResult bare = decodeWorkspaceRemoveEnvelope(
+        fbs.EnvelopeObjectBuilder(
+          ok: true,
+          dataType: fbs.PayloadTypeId.WorkspaceRemoveResult,
+          data: fbs.WorkspaceRemoveResultObjectBuilder(mutation: fbs.MutationResultObjectBuilder(newOpId: 'op1')),
+        ).toBytes(),
+      );
+      expect(bare.gitWorktreesRemoved, isEmpty);
+      expect(bare.directoriesRemoved, isEmpty);
+      expect(
+        () => decodeWorkspaceRemoveEnvelope(
+          fbs.EnvelopeObjectBuilder(
+            ok: true,
+            dataType: fbs.PayloadTypeId.MutationResult,
+            data: fbs.MutationResultObjectBuilder(newOpId: 'op1'),
+          ).toBytes(),
+        ),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')),
+      );
+    });
+
+    test('the three adapters reject an interior NUL before any FFI call', () {
+      final nul = String.fromCharCode(0);
+      expect(() => zanshinWorkspaceForget(0, ['a${nul}b']), throwsArgumentError);
+      expect(() => zanshinWorkspaceRename(0, 'a${nul}b'), throwsArgumentError);
+      expect(() => zanshinWorkspaceRemove(0, ['a${nul}b']), throwsArgumentError);
+    });
+  });
 }

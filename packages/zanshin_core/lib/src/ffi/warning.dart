@@ -194,6 +194,15 @@ abstract final class ZanshinWarningCode {
   /// workspace was created inside the current one (Story 9.23).
   static const workspaceInCurrentDirectory = 'jj.workspace_in_current_directory';
 
+  /// `workspace forget` / `remove` with a name no workspace has (Story 9.13).
+  static const workspaceNamesUnmatched = 'jj.workspace_names_unmatched';
+
+  /// `workspace forget` / `remove` could not unlink a Git worktree (Story 9.13).
+  static const gitWorktreeUnlinkFailed = 'jj.git_worktree_unlink_failed';
+
+  /// `workspace remove` could not delete a workspace directory (Story 9.13).
+  static const workspaceDirectoryRemoveFailed = 'jj.workspace_directory_remove_failed';
+
   /// `split` selected every change of the target, so the remaining commit is
   /// empty; the split still ran (Story 9.15).
   static const splitAllSelected = 'jj.split_all_selected';
@@ -359,6 +368,9 @@ abstract final class ZanshinWarningCode {
     colocatedInGitWorktree,
     workspacePathInaccessible,
     workspaceInCurrentDirectory,
+    workspaceNamesUnmatched,
+    gitWorktreeUnlinkFailed,
+    workspaceDirectoryRemoveFailed,
     splitAllSelected,
     splitNoneSelected,
     commitPathsUnmatched,

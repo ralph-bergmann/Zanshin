@@ -2,7 +2,8 @@
 
 //! `wc_ops.rs` — the two working-copy tracking verbs, `file track` and `file untrack`
 //! (Story 9.22), and the snapshot primitives they share with the pre-verb snapshot
-//! ([`crate::snapshot`], Story 9.26).
+//! ([`crate::snapshot`], Story 9.26). `file chmod` ([`file_chmod`], Story 9.13) lives here too:
+//! it parses its paths as these two do.
 //!
 //! Both verbs are step-for-step ports of `cmd_file_track` / `cmd_file_untrack`
 //! (`cli/src/commands/file/{track,untrack}.rs` @ v0.44.0): lock the working copy through
@@ -28,6 +29,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use jj_lib::backend::{MergedTreeValue, TreeValue};
 use jj_lib::commit::Commit;
 use jj_lib::config::StackedConfig;
 use jj_lib::fileset::{self, FilesetAliasesMap, FilesetDiagnostics, FilesetParseContext};
@@ -37,6 +39,7 @@ use jj_lib::gitignore::GitIgnoreFile;
 use jj_lib::matchers::{Matcher, NothingMatcher, PrefixMatcher};
 use jj_lib::merge::Merge;
 use jj_lib::merged_tree_builder::MergedTreeBuilder;
+use jj_lib::object_id::ObjectId as _;
 use jj_lib::repo_path::{RepoPath, RepoPathBuf};
 use jj_lib::transaction::Transaction;
 use jj_lib::ui_path::{parse_fs_path, RepoPathUiConverter};
@@ -45,6 +48,7 @@ use jj_lib::workspace::Workspace;
 
 use crate::git::{map_export_err, project_failures, GitExportFailure};
 use crate::mutate::{self, be, cfg, flatten_chain, MutateError, MutationResult};
+use crate::op_support::start_repo_transaction;
 use crate::snapshot::VerbContext;
 use crate::warning::{self, Load, Warnings};
 
@@ -587,6 +591,66 @@ pub(crate) fn file_untrack(
     })
 }
 
+/// Why `file chmod` refuses `value` (`chmod.rs:94-106` @ v0.46.0): every present side must be a
+/// file. `None` when it may be changed.
+fn chmod_refusal(value: &MergedTreeValue) -> Option<&'static str> {
+    if value.adds().flatten().all(|v| matches!(v, TreeValue::File { .. })) {
+        None
+    } else if value.is_resolved() {
+        Some("Found neither a file nor a conflict")
+    } else {
+        Some("Some of the sides of the conflict are not files")
+    }
+}
+
+/// Sets or clears the executable bit of the files matching `paths` in `revision` (default `@`)
+/// — the port of `cmd_file_chmod` (`cli/src/commands/file/chmod.rs:60-138` @ v0.46.0; Story
+/// 9.13). See [`crate::Repo::file_chmod`] for the contract.
+///
+/// The CLI's order: the revision, its rewritability, the paths and their unmatched-paths
+/// warning, then per matching entry the non-file refusal and the new bit on every file term;
+/// the rewrite finishes through [`mutate::finish_verb`] (descendants rebased) as
+/// `make paths executable|non-executable in commit <hex>`.
+pub(crate) fn file_chmod(
+    workspace: &mut Workspace,
+    ctx: &mut VerbContext,
+    executable: bool,
+    revision: Option<&crate::ChangeId>,
+    paths: &[String],
+) -> Result<MutationResult, MutateError> {
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
+    let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
+    let commit = mutate::resolve_or_wc(tx.repo(), workspace.workspace_name(), revision)?;
+    mutate::guard_rewritable(&tx, &ctx.templates(workspace), std::slice::from_ref(commit.id()))?;
+    let paths = parse_paths(workspace, paths, "file chmod")?;
+    let root = workspace.workspace_root();
+    let tree = commit.tree();
+    warning::warn_unmatched_paths(&mut ctx.warnings, root, &paths, &[&tree]).map_err(be)?;
+
+    let matcher = prefix_matcher(&paths);
+    let mut builder = MergedTreeBuilder::new(tree.clone());
+    for (path, value) in tree.entries_matching(matcher.as_ref()) {
+        let value = value.map_err(be)?;
+        if let Some(reason) = chmod_refusal(&value) {
+            return Err(MutateError::invalid(format!(
+                "{reason} at '{}'.",
+                warning::ui_path(root, &path)
+            )));
+        }
+        builder.set_or_remove(path, crate::select_tree::with_executable(value, executable));
+    }
+    let new_tree = pollster::block_on(builder.write_tree()).map_err(be)?;
+    pollster::block_on(tx.repo_mut().rewrite_commit(&commit).set_tree(new_tree).write()).map_err(be)?;
+    let mode = if executable { "executable" } else { "non-executable" };
+    let finish = mutate::finish_verb(
+        workspace,
+        tx,
+        &format!("make paths {mode} in commit {}", commit.id().hex()),
+        ctx,
+    )?;
+    Ok(mutate::mutation_result(&finish, Vec::new(), Vec::new()))
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
@@ -678,5 +742,35 @@ mod tests {
     fn rebased_counts_saturate_instead_of_wrapping() {
         assert_eq!(saturate(7), 7);
         assert_eq!(saturate(usize::MAX), u32::MAX);
+    }
+
+    /// `file chmod`'s classifier (`chmod.rs:94-106` @ v0.46.0): a file, a file conflict and an
+    /// absent side pass; a resolved non-file and a conflict with a non-file side refuse with the
+    /// CLI's two texts.
+    #[test]
+    fn chmod_refuses_what_the_cli_refuses() {
+        use jj_lib::backend::{CopyId, FileId, SymlinkId, TreeValue};
+        use jj_lib::merge::Merge;
+
+        use super::chmod_refusal;
+
+        let file = || {
+            Some(TreeValue::File {
+                id: FileId::new(vec![1]),
+                executable: false,
+                copy_id: CopyId::placeholder(),
+            })
+        };
+        let link = || Some(TreeValue::Symlink(SymlinkId::new(vec![2])));
+        assert_eq!(chmod_refusal(&Merge::resolved(file())), None);
+        assert_eq!(chmod_refusal(&Merge::from_vec(vec![file(), link(), None])), None);
+        assert_eq!(
+            chmod_refusal(&Merge::resolved(link())),
+            Some("Found neither a file nor a conflict")
+        );
+        assert_eq!(
+            chmod_refusal(&Merge::from_vec(vec![file(), None, link()])),
+            Some("Some of the sides of the conflict are not files")
+        );
     }
 }

@@ -16,7 +16,8 @@ import 'warning.dart';
 // This file owns the Dart half of Story 9.22's two working-copy tracking verbs:
 // the request builders and adapters (fileTrack / fileUntrack), the payload models
 // (TrackResult, UntrackResult and the SnapshotStats shape both share, which Story
-// 9.26's pre-verb snapshot report reuses) and their decoders. `dart:ffi` stays inside
+// 9.26's pre-verb snapshot report reuses) and their decoders — and Story 9.13's
+// fileChmod adapter (its result is the shared MutationResult). `dart:ffi` stays inside
 // `ffi/` — only the worker isolate calls these adapters.
 //
 // The shared `rejectInteriorNuls` calls below are the DIRECT-CALLER backstop: the
@@ -53,6 +54,22 @@ Uint8List zanshinFileUntrack(int rawHandle, List<String> paths) {
     paths: paths,
   ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_file_untrack(rawHandle, ptr, len));
+}
+
+/// Call `zanshin_file_chmod` with the raw `u64` handle and a `FileChmodRequest`
+/// request buffer (Story 9.13), and return the FlatBuffers `Envelope` bytes — the
+/// CLI's `jj file chmod x|n`. [executable] is `x`; a `null` [revision] applies
+/// the CLI's `-r` default `@`. [paths] as for [zanshinFileTrack].
+Uint8List zanshinFileChmod(int rawHandle, List<String> paths, {required bool executable, String? revision}) {
+  rejectInteriorNuls(paths, 'paths');
+  rejectInteriorNul(revision, 'revision');
+  final Uint8List request = fbs.FileChmodRequestObjectBuilder(
+    kind: fbs.RequestKind.FileChmod,
+    executable: executable,
+    revision: revision,
+    paths: paths,
+  ).toBytes();
+  return callWithRequest(request, (ptr, len) => zanshin_file_chmod(rawHandle, ptr, len));
 }
 
 // ── Dart models ──────────────────────────────────────────────────────────────

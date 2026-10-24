@@ -440,6 +440,9 @@ void main() {
         'jj.colocated_in_git_worktree',
         'jj.workspace_path_inaccessible',
         'jj.workspace_in_current_directory',
+        'jj.workspace_names_unmatched',
+        'jj.git_worktree_unlink_failed',
+        'jj.workspace_directory_remove_failed',
         'jj.split_all_selected',
         'jj.split_none_selected',
         'jj.commit_paths_unmatched',
@@ -472,7 +475,7 @@ void main() {
         'jj.workspace_no_longer_exists',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(74), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(77), reason: 'no code is registered twice');
     });
   });
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 //! `zanshin_file_track` / `zanshin_file_untrack` — the two working-copy tracking wrappers
-//! (Story 9.22).
+//! (Story 9.22) — and `zanshin_file_chmod` (Story 9.13).
 //!
 //! Each calls the matching `zanshin_jj::Repo` method and serialises the result into a
 //! `FlatBuffers` `Envelope`. The handle is borrowed (not consumed). Split from `file.rs` — the
@@ -17,8 +17,8 @@ use tracing::debug;
 use zanshin_jj::{SnapshotStats, TrackResult, UntrackResult, UntrackedReason};
 
 use crate::envelope::{
-    build_mutation_result, catch, expect_request_kind, finish_envelope, invalid_request, precondition_envelope,
-    reject_null_request, session_from_handle, FfiErrorObj,
+    build_mutation_result, catch, expect_request_kind, finish_envelope, invalid_request, ok_mutation_result,
+    precondition_envelope, reject_null_request, session_from_handle, FfiErrorObj,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -80,6 +80,34 @@ fn read_file_untrack_request(data: *const u8, len: usize) -> Result<FileUntrackR
         .map_err(|e| invalid_request(&e))?;
     expect_request_kind(req.kind(), fbs::RequestKind::FileUntrack)?;
     Ok(FileUntrackRequestOwned {
+        paths: req.paths().into_iter().flatten().map(ToOwned::to_owned).collect(),
+    })
+}
+
+/// Owned Rust form of a `FileChmodRequest` buffer (Story 9.13). `revision` ABSENT is the CLI's
+/// `-r` default `@`; an absent `paths` vector becomes an empty `Vec`, which the jj layer refuses.
+struct FileChmodRequestOwned {
+    executable: bool,
+    revision: Option<zanshin_jj::ChangeId>,
+    paths: Vec<String>,
+}
+
+/// Parse a `FileChmodRequest` buffer into an owned [`FileChmodRequestOwned`].
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileChmodRequest` buffer, or its
+///   `kind` is not `FileChmod`.
+fn read_file_chmod_request(data: *const u8, len: usize) -> Result<FileChmodRequestOwned, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only.
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::FileChmodRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::FileChmod)?;
+    Ok(FileChmodRequestOwned {
+        executable: req.executable(),
+        revision: req.revision().map(|r| zanshin_jj::ChangeId(r.to_owned())),
         paths: req.paths().into_iter().flatten().map(ToOwned::to_owned).collect(),
     })
 }
@@ -282,6 +310,59 @@ pub unsafe extern "C" fn zanshin_file_untrack(handle: u64, data: *const u8, len:
         let session = unsafe { session_from_handle(handle) }?;
         let result = session.repo.file_untrack(&req.paths);
         precondition_envelope(&mut session.repo, result, map_mutate_err, untrack_result_to_envelope)
+    });
+    vec_into_token(buf)
+}
+
+/// Set (`executable` true) or clear the executable bit of the files matching the requested
+/// prefixes in one revision of the repo referenced by `handle` — the CLI's `jj file chmod x|n
+/// <paths> [-r]` (Story 9.13).
+///
+/// The arguments cross as a `FileChmodRequest` `FlatBuffers` request buffer: `revision` absent is
+/// `-r`'s default `@`, else a reverse-hex change id; `paths` as for `zanshin_file_track`. Every
+/// matching entry must be a file, or a conflict whose every side is a file — each file side takes
+/// the bit. The revision is rewritten (descendants rebased) as `make paths executable in commit
+/// <hex>` / `make paths non-executable in commit <hex>`; the rewrite is always recorded, so the
+/// operation is always written, as in the CLI. A path that matches nothing warns
+/// `jj.paths_unmatched`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileChmodRequest` buffer, or its `kind`
+///   is not `FileChmod`, i.e. the buffer was built for a different wrapper.
+/// - `jj.invalid_input` — `paths` is empty or absent (before the pre-verb snapshot), an entry is
+///   the empty string or escapes the workspace, or a matching entry is not a file ("Found neither
+///   a file nor a conflict at '<path>'.") or a conflict with a non-file side ("Some of the sides
+///   of the conflict are not files at '<path>'."); nothing is written.
+/// - `jj.change_not_found` — `revision` is malformed, absent, only-hidden or divergent.
+/// - `jj.revset_resolution_error` — no `revision` in a workspace without a working-copy commit
+///   ("Workspace `<name>` doesn't have a working-copy commit").
+/// - `jj.immutable` — the revision is immutable (the root included); hints as for every rewrite.
+/// - `jj.config_error` — the effective config no longer reads, or `immutable_heads()` does not
+///   resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_file_track`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.FileChmodRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_file_chmod(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_file_chmod", handle);
+    let buf = catch(|| {
+        let req = read_file_chmod_request(data, len)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session
+            .repo
+            .file_chmod(req.executable, req.revision.as_ref(), &req.paths);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)
 }

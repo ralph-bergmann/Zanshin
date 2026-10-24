@@ -151,7 +151,11 @@ enum RequestKind : ubyte {
   BookmarkSet,
   BookmarkForget,
   BookmarkTrack,
-  BookmarkUntrack
+  BookmarkUntrack,
+  FileChmod,
+  WorkspaceForget,
+  WorkspaceRename,
+  WorkspaceRemove
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -987,6 +991,36 @@ table FileTrackRequest {
 table FileUntrackRequest {
   kind: RequestKind;
   paths: [string];
+}
+
+/// Arguments of `zanshin_file_chmod` (Story 9.13) — the CLI's `jj file chmod x|n <paths> [-r]`.
+///
+/// `executable` true is `x`, false — or ABSENT — `n`. `revision` ABSENT is the CLI's `-r` default `@`; present
+/// it is a jj reverse-hex CHANGE ID. `paths` exactly as in FileTrackRequest: an EMPTY or ABSENT
+/// vector is refused with `jj.invalid_input` before the pre-verb snapshot (clap's `required`).
+table FileChmodRequest {
+  kind: RequestKind;
+  executable: bool;
+  revision: string;
+  paths: [string];
+}
+
+/// Arguments of `zanshin_workspace_forget` and `zanshin_workspace_remove` (Story 9.13) — the
+/// CLI's `jj workspace forget` / `remove`; `kind` (`WorkspaceForget` / `WorkspaceRemove`) tells
+/// them apart. `names` are workspace names. Forget: EMPTY or ABSENT forgets the current
+/// workspace. Remove: EMPTY or ABSENT is refused with `jj.invalid_input` before the pre-verb
+/// snapshot (clap's `required`).
+table WorkspaceNamesRequest {
+  kind: RequestKind;
+  names: [string];
+}
+
+/// Arguments of `zanshin_workspace_rename` (Story 9.13) — the CLI's `jj workspace rename`.
+/// `new_name` ABSENT or EMPTY is refused with `jj.invalid_input` before the pre-verb snapshot
+/// ("New workspace name cannot be empty").
+table WorkspaceRenameRequest {
+  kind: RequestKind;
+  new_name: string;
 }
 
 // ── The config surface (Story 9.28) — the CLI's `jj config` group ───────────────
@@ -2475,6 +2509,19 @@ table WorkspaceAddResult {
   checkout: CheckoutStats;
 }
 
+/// Outcome of a successful `zanshin_workspace_forget` / `zanshin_workspace_remove` (Story 9.13) —
+/// the CLI's status lines as facts. `mutation` is the call's operation (`forget workspace(s) …` /
+/// `remove workspace(s) …`), or the pre-call head when no name named a workspace; its
+/// `working_copy_change_id` is ABSENT when the current workspace itself went.
+/// `git_worktrees_removed`: the canonical directories whose Git worktree was unlinked ("Removed
+/// Git worktree for …"). `directories_removed`: the canonical directories `remove` deleted
+/// ("Removed workspace directory …"); always empty for forget. Both in name order.
+table WorkspaceRemoveResult {
+  mutation: MutationResult;
+  git_worktrees_removed: [string];
+  directories_removed: [string];
+}
+
 /// What the implicit pre-verb snapshot did (Story 9.26) — the snapshot + colocated Git import
 /// every CLI command whose helper is `workspace_helper` runs first, as facts. It rides
 /// `Envelope.precondition`, never the `Payload` union.
@@ -2685,6 +2732,7 @@ union Payload {
   OpAbandonResult,
   OpIntegrateResult,
   MovementTargets,
+  WorkspaceRemoveResult,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

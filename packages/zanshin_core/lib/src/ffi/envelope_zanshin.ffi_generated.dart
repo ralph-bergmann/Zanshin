@@ -92,7 +92,11 @@ enum RequestKind {
   BookmarkSet(56),
   BookmarkForget(57),
   BookmarkTrack(58),
-  BookmarkUntrack(59);
+  BookmarkUntrack(59),
+  FileChmod(60),
+  WorkspaceForget(61),
+  WorkspaceRename(62),
+  WorkspaceRemove(63);
 
   final int value;
   const RequestKind(this.value);
@@ -219,6 +223,14 @@ enum RequestKind {
         return RequestKind.BookmarkTrack;
       case 59:
         return RequestKind.BookmarkUntrack;
+      case 60:
+        return RequestKind.FileChmod;
+      case 61:
+        return RequestKind.WorkspaceForget;
+      case 62:
+        return RequestKind.WorkspaceRename;
+      case 63:
+        return RequestKind.WorkspaceRemove;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -227,7 +239,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 59;
+  static const int maxValue = 63;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -1723,7 +1735,8 @@ enum PayloadTypeId {
   OpDiffResult(51),
   OpAbandonResult(52),
   OpIntegrateResult(53),
-  MovementTargets(54);
+  MovementTargets(54),
+  WorkspaceRemoveResult(55);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -1840,6 +1853,8 @@ enum PayloadTypeId {
         return PayloadTypeId.OpIntegrateResult;
       case 54:
         return PayloadTypeId.MovementTargets;
+      case 55:
+        return PayloadTypeId.WorkspaceRemoveResult;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -1848,7 +1863,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 54;
+  static const int maxValue = 55;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -7520,6 +7535,283 @@ class FileUntrackRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.startTable(2);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, pathsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_file_chmod` (Story 9.13) — the CLI's `jj file chmod x|n <paths> [-r]`.
+///
+///  `executable` true is `x`, false — or ABSENT — `n`. `revision` ABSENT is the CLI's `-r` default `@`; present
+///  it is a jj reverse-hex CHANGE ID. `paths` exactly as in FileTrackRequest: an EMPTY or ABSENT
+///  vector is refused with `jj.invalid_input` before the pre-verb snapshot (clap's `required`).
+class FileChmodRequest {
+  FileChmodRequest._(this._bc, this._bcOffset);
+  factory FileChmodRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileChmodRequest> reader = _FileChmodRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  bool get executable => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'FileChmodRequest{kind: ${kind}, executable: ${executable}, revision: ${revision}, paths: ${paths}}';
+  }
+}
+
+class _FileChmodRequestReader extends fb.TableReader<FileChmodRequest> {
+  const _FileChmodRequestReader();
+
+  @override
+  FileChmodRequest createObject(fb.BufferContext bc, int offset) => FileChmodRequest._(bc, offset);
+}
+
+class FileChmodRequestBuilder {
+  FileChmodRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addExecutable(bool? executable) {
+    fbBuilder.addBool(1, executable);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileChmodRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final bool? _executable;
+  final String? _revision;
+  final List<String>? _paths;
+
+  FileChmodRequestObjectBuilder({
+    RequestKind? kind,
+    bool? executable,
+    String? revision,
+    List<String>? paths,
+  }) : _kind = kind,
+       _executable = executable,
+       _revision = revision,
+       _paths = paths;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addBool(1, _executable);
+    fbBuilder.addOffset(2, revisionOffset);
+    fbBuilder.addOffset(3, pathsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_workspace_forget` and `zanshin_workspace_remove` (Story 9.13) — the
+///  CLI's `jj workspace forget` / `remove`; `kind` (`WorkspaceForget` / `WorkspaceRemove`) tells
+///  them apart. `names` are workspace names. Forget: EMPTY or ABSENT forgets the current
+///  workspace. Remove: EMPTY or ABSENT is refused with `jj.invalid_input` before the pre-verb
+///  snapshot (clap's `required`).
+class WorkspaceNamesRequest {
+  WorkspaceNamesRequest._(this._bc, this._bcOffset);
+  factory WorkspaceNamesRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<WorkspaceNamesRequest> reader = _WorkspaceNamesRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get names => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'WorkspaceNamesRequest{kind: ${kind}, names: ${names}}';
+  }
+}
+
+class _WorkspaceNamesRequestReader extends fb.TableReader<WorkspaceNamesRequest> {
+  const _WorkspaceNamesRequestReader();
+
+  @override
+  WorkspaceNamesRequest createObject(fb.BufferContext bc, int offset) => WorkspaceNamesRequest._(bc, offset);
+}
+
+class WorkspaceNamesRequestBuilder {
+  WorkspaceNamesRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addNamesOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class WorkspaceNamesRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _names;
+
+  WorkspaceNamesRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? names,
+  }) : _kind = kind,
+       _names = names;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? namesOffset = _names == null ? null : fbBuilder.writeList(_names!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, namesOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_workspace_rename` (Story 9.13) — the CLI's `jj workspace rename`.
+///  `new_name` ABSENT or EMPTY is refused with `jj.invalid_input` before the pre-verb snapshot
+///  ("New workspace name cannot be empty").
+class WorkspaceRenameRequest {
+  WorkspaceRenameRequest._(this._bc, this._bcOffset);
+  factory WorkspaceRenameRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<WorkspaceRenameRequest> reader = _WorkspaceRenameRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get newName => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'WorkspaceRenameRequest{kind: ${kind}, newName: ${newName}}';
+  }
+}
+
+class _WorkspaceRenameRequestReader extends fb.TableReader<WorkspaceRenameRequest> {
+  const _WorkspaceRenameRequestReader();
+
+  @override
+  WorkspaceRenameRequest createObject(fb.BufferContext bc, int offset) => WorkspaceRenameRequest._(bc, offset);
+}
+
+class WorkspaceRenameRequestBuilder {
+  WorkspaceRenameRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addNewNameOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class WorkspaceRenameRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _newName;
+
+  WorkspaceRenameRequestObjectBuilder({
+    RequestKind? kind,
+    String? newName,
+  }) : _kind = kind,
+       _newName = newName;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? newNameOffset = _newName == null ? null : fbBuilder.writeString(_newName!);
+    fbBuilder.startTable(2);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, newNameOffset);
     return fbBuilder.endTable();
   }
 
@@ -19043,6 +19335,112 @@ class WorkspaceAddResultObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  Outcome of a successful `zanshin_workspace_forget` / `zanshin_workspace_remove` (Story 9.13) —
+///  the CLI's status lines as facts. `mutation` is the call's operation (`forget workspace(s) …` /
+///  `remove workspace(s) …`), or the pre-call head when no name named a workspace; its
+///  `working_copy_change_id` is ABSENT when the current workspace itself went.
+///  `git_worktrees_removed`: the canonical directories whose Git worktree was unlinked ("Removed
+///  Git worktree for …"). `directories_removed`: the canonical directories `remove` deleted
+///  ("Removed workspace directory …"); always empty for forget. Both in name order.
+class WorkspaceRemoveResult {
+  WorkspaceRemoveResult._(this._bc, this._bcOffset);
+  factory WorkspaceRemoveResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<WorkspaceRemoveResult> reader = _WorkspaceRemoveResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  MutationResult? get mutation => MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  List<String>? get gitWorktreesRemoved =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get directoriesRemoved =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'WorkspaceRemoveResult{mutation: ${mutation}, gitWorktreesRemoved: ${gitWorktreesRemoved}, directoriesRemoved: ${directoriesRemoved}}';
+  }
+}
+
+class _WorkspaceRemoveResultReader extends fb.TableReader<WorkspaceRemoveResult> {
+  const _WorkspaceRemoveResultReader();
+
+  @override
+  WorkspaceRemoveResult createObject(fb.BufferContext bc, int offset) => WorkspaceRemoveResult._(bc, offset);
+}
+
+class WorkspaceRemoveResultBuilder {
+  WorkspaceRemoveResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addMutationOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addGitWorktreesRemovedOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addDirectoriesRemovedOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class WorkspaceRemoveResultObjectBuilder extends fb.ObjectBuilder {
+  final MutationResultObjectBuilder? _mutation;
+  final List<String>? _gitWorktreesRemoved;
+  final List<String>? _directoriesRemoved;
+
+  WorkspaceRemoveResultObjectBuilder({
+    MutationResultObjectBuilder? mutation,
+    List<String>? gitWorktreesRemoved,
+    List<String>? directoriesRemoved,
+  }) : _mutation = mutation,
+       _gitWorktreesRemoved = gitWorktreesRemoved,
+       _directoriesRemoved = directoriesRemoved;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? mutationOffset = _mutation?.getOrCreateOffset(fbBuilder);
+    final int? gitWorktreesRemovedOffset = _gitWorktreesRemoved == null
+        ? null
+        : fbBuilder.writeList(_gitWorktreesRemoved!.map(fbBuilder.writeString).toList());
+    final int? directoriesRemovedOffset = _directoriesRemoved == null
+        ? null
+        : fbBuilder.writeList(_directoriesRemoved!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, mutationOffset);
+    fbBuilder.addOffset(1, gitWorktreesRemovedOffset);
+    fbBuilder.addOffset(2, directoriesRemovedOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  What the implicit pre-verb snapshot did (Story 9.26) — the snapshot + colocated Git import
 ///  every CLI command whose helper is `workspace_helper` runs first, as facts. It rides
 ///  `Envelope.precondition`, never the `Payload` union.
@@ -20939,6 +21337,8 @@ class Envelope {
         return OpIntegrateResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 54:
         return MovementTargets.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 55:
+        return WorkspaceRemoveResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

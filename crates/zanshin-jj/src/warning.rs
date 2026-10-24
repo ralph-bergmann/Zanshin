@@ -163,6 +163,18 @@ pub enum WarningKind {
     /// created INSIDE the current one, perhaps where only a name was meant
     /// (`cli/src/commands/workspace/add.rs:184-191` @ v0.46.0; Story 9.23).
     WorkspaceInCurrentDirectory,
+    /// `workspace forget` / `remove` with a name no workspace of the view has — "No such
+    /// workspace: {name}" (`cli/src/commands/workspace/forget.rs:65-69`, `remove.rs:70-74` @
+    /// v0.46.0; Story 9.13). The other names go on; with none left nothing is written.
+    WorkspaceNamesUnmatched,
+    /// `workspace forget` / `remove` could not unlink a workspace's Git worktree — "Failed to
+    /// remove Git worktree for \"{path}\"." and its `Caused by:` lines (`unlink_git_worktree`,
+    /// `cli/src/git_util.rs:585-591` @ v0.46.0; Story 9.13). The operation stays written.
+    GitWorktreeUnlinkFailed,
+    /// `workspace remove` could not delete a workspace's directory — "Failed to remove workspace
+    /// directory \"{path}\"." and its `Caused by:` lines (`cli/src/commands/workspace/remove.rs:
+    /// 171-178` @ v0.46.0; Story 9.13). The workspace is removed from the repo all the same.
+    WorkspaceDirectoryRemoveFailed,
     /// `split` selected EVERY change of the target, so the remaining commit will be empty
     /// (`cli/src/commands/split.rs:585-589` @ v0.46.0; Story 9.15). The split still runs.
     SplitAllSelected,

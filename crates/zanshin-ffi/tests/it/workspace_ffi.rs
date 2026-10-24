@@ -22,13 +22,14 @@ use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
 use zanshin_ffi::workspace::{
-    zanshin_workspace_add, zanshin_workspace_list, zanshin_workspace_root, zanshin_workspace_update_stale,
+    zanshin_workspace_add, zanshin_workspace_forget, zanshin_workspace_list, zanshin_workspace_remove,
+    zanshin_workspace_rename, zanshin_workspace_root, zanshin_workspace_update_stale,
 };
 use zanshin_ffi::{
     FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CONFIG_DEPRECATED, JJ_CONFIG_ERROR,
     JJ_DESTINATION_NOT_EMPTY, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_EXISTS,
-    JJ_WORKSPACE_IN_CURRENT_DIRECTORY, JJ_WORKSPACE_NOT_FOUND, JJ_WORKSPACE_NO_RECORDED_PATH,
-    JJ_WORKSPACE_PATH_INACCESSIBLE,
+    JJ_WORKSPACE_IN_CURRENT_DIRECTORY, JJ_WORKSPACE_NAMES_UNMATCHED, JJ_WORKSPACE_NOT_FOUND,
+    JJ_WORKSPACE_NO_LONGER_EXISTS, JJ_WORKSPACE_NO_RECORDED_PATH, JJ_WORKSPACE_PATH_INACCESSIBLE,
 };
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
@@ -961,5 +962,238 @@ fn workspace_root_refuses_a_broken_config_stack_on_both_forms() {
         let (error, _warnings) = call_root(handle, name);
         assert_eq!(error.as_deref(), Some(JJ_CONFIG_ERROR), "{name:?}");
     }
+    close_handle(handle);
+}
+
+// ── Story 9.13: workspace forget / rename / remove ────────────────────────────
+
+/// A `WorkspaceNamesRequest` tagged `kind`; `None` leaves `names` genuinely ABSENT.
+fn names_request_bytes(kind: fbs::RequestKind, names: Option<&[&str]>) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
+    let names = names.map(|names| {
+        let offsets: Vec<_> = names.iter().map(|n| b.create_string(n)).collect();
+        b.create_vector(&offsets)
+    });
+    let req = fbs::WorkspaceNamesRequest::create(&mut b, &fbs::WorkspaceNamesRequestArgs { kind, names });
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// A `WorkspaceRenameRequest`; `None` leaves `new_name` ABSENT.
+fn rename_request_bytes(kind: fbs::RequestKind, new_name: Option<&str>) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(64);
+    let new_name = new_name.map(|n| b.create_string(n));
+    let req = fbs::WorkspaceRenameRequest::create(&mut b, &fbs::WorkspaceRenameRequestArgs { kind, new_name });
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+fn call_wrapper(wrapper: BufWrapper, handle: u64, req: &[u8]) -> Vec<u8> {
+    // SAFETY: the handle is live (or the documented null handle); the buffer outlives the call.
+    unsafe { read_and_free(wrapper(handle, req.as_ptr(), req.len())) }
+}
+
+/// `forget` over the wire: the name crosses, the result's lists cross (empty for a
+/// non-colocated workspace), an unknown name's warning rides the ok envelope.
+#[test]
+fn workspace_forget_round_trips_its_result() {
+    test_helpers::pin_test_env();
+    let (handle, _root, second_root) = open_two_workspace_scenario();
+    let req = names_request_bytes(fbs::RequestKind::WorkspaceForget, Some(&["second", "nope"]));
+    let bytes = call_wrapper(zanshin_workspace_forget, handle, &req);
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    assert_eq!(env.data_type(), fbs::Payload::WorkspaceRemoveResult);
+    let result = env.data_as_workspace_remove_result().expect("payload");
+    assert!(result.mutation().and_then(|m| m.working_copy_change_id()).is_some());
+    assert_eq!(result.git_worktrees_removed().map(|v| v.len()), Some(0));
+    assert_eq!(result.directories_removed().map(|v| v.len()), Some(0));
+    assert_eq!(
+        env.warnings().expect("warnings").get(0).code(),
+        Some(JJ_WORKSPACE_NAMES_UNMATCHED)
+    );
+    assert!(second_root.join(".jj").is_dir(), "forget leaves the files");
+
+    // A buffer of another kind, a null buffer and a zero handle are refused before the verb.
+    let other = names_request_bytes(fbs::RequestKind::WorkspaceRemove, Some(&["second"]));
+    let bytes = call_wrapper(zanshin_workspace_forget, handle, &other);
+    assert_eq!(error_code(&bytes).as_deref(), Some(FFI_INVALID_ARGUMENT));
+    // SAFETY: a null request pointer is the case under test.
+    let null = unsafe { read_and_free(zanshin_workspace_forget(handle, std::ptr::null(), 0)) };
+    assert_eq!(error_code(&null).as_deref(), Some(FFI_NULL_POINTER));
+    let zero = call_wrapper(zanshin_workspace_forget, 0, &req);
+    assert_eq!(error_code(&zero).as_deref(), Some(FFI_INVALID_HANDLE));
+    close_handle(handle);
+}
+
+/// `rename` over the wire: the name crosses; a taken, an empty and an absent name refuse.
+#[test]
+fn workspace_rename_round_trips_and_refuses() {
+    test_helpers::pin_test_env();
+    let (handle, _root, _second) = open_two_workspace_scenario();
+    let taken = rename_request_bytes(fbs::RequestKind::WorkspaceRename, Some("second"));
+    let bytes = call_wrapper(zanshin_workspace_rename, handle, &taken);
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_WORKSPACE_EXISTS));
+    for absent in [Some(""), None] {
+        let bytes = call_wrapper(
+            zanshin_workspace_rename,
+            handle,
+            &rename_request_bytes(fbs::RequestKind::WorkspaceRename, absent),
+        );
+        assert_eq!(error_code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
+        assert!(
+            parse_envelope(&bytes).precondition().is_none(),
+            "refused before the snapshot"
+        );
+    }
+    let mismatched = rename_request_bytes(fbs::RequestKind::WorkspaceForget, Some("x"));
+    let bytes = call_wrapper(zanshin_workspace_rename, handle, &mismatched);
+    assert_eq!(error_code(&bytes).as_deref(), Some(FFI_INVALID_ARGUMENT));
+    // SAFETY: a null request pointer is the case under test.
+    let null = unsafe { read_and_free(zanshin_workspace_rename(handle, std::ptr::null(), 0)) };
+    assert_eq!(error_code(&null).as_deref(), Some(FFI_NULL_POINTER));
+    let zero = call_wrapper(
+        zanshin_workspace_rename,
+        0,
+        &rename_request_bytes(fbs::RequestKind::WorkspaceRename, Some("x")),
+    );
+    assert_eq!(error_code(&zero).as_deref(), Some(FFI_INVALID_HANDLE));
+
+    let req = rename_request_bytes(fbs::RequestKind::WorkspaceRename, Some("renamed"));
+    let bytes = call_wrapper(zanshin_workspace_rename, handle, &req);
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    assert_eq!(env.data_type(), fbs::Payload::MutationResult);
+    // The handle runs as the renamed workspace: the listing names it.
+    // SAFETY: handle is live.
+    let list = unsafe { read_and_free(zanshin_workspace_list(handle)) };
+    let names: Vec<_> = parse_envelope(&list)
+        .data_as_workspace_list()
+        .expect("list")
+        .entries()
+        .expect("entries")
+        .iter()
+        .map(|e| e.name().unwrap_or_default().to_owned())
+        .collect();
+    assert_eq!(names, ["renamed", "second"]);
+    close_handle(handle);
+}
+
+/// `remove` over the wire: the deleted directory crosses in `directories_removed`; no names, a
+/// workspace that cannot be removed and a buffer of another kind refuse.
+#[test]
+fn workspace_remove_round_trips_and_refuses() {
+    test_helpers::pin_test_env();
+    let (handle, _root, second_root) = open_two_workspace_scenario();
+    let none = names_request_bytes(fbs::RequestKind::WorkspaceRemove, None);
+    let bytes = call_wrapper(zanshin_workspace_remove, handle, &none);
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
+    assert!(
+        parse_envelope(&bytes).precondition().is_none(),
+        "refused before the snapshot"
+    );
+    // The fixture's own recorded path no longer exists: the CLI's refusal, with its hint.
+    let default = names_request_bytes(fbs::RequestKind::WorkspaceRemove, Some(&["default"]));
+    let bytes = call_wrapper(zanshin_workspace_remove, handle, &default);
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
+    let hints = parse_envelope(&bytes).error().and_then(|e| e.hints()).expect("hints");
+    assert_eq!(
+        hints.get(0),
+        "Use `jj workspace forget` to stop tracking a workspace without deleting files."
+    );
+    let mismatched = names_request_bytes(fbs::RequestKind::WorkspaceForget, Some(&["second"]));
+    let bytes = call_wrapper(zanshin_workspace_remove, handle, &mismatched);
+    assert_eq!(error_code(&bytes).as_deref(), Some(FFI_INVALID_ARGUMENT));
+
+    // A null buffer and a zero handle are refused before the verb.
+    // SAFETY: a null request pointer is the case under test.
+    let null = unsafe { read_and_free(zanshin_workspace_remove(handle, std::ptr::null(), 0)) };
+    assert_eq!(error_code(&null).as_deref(), Some(FFI_NULL_POINTER));
+    let req = names_request_bytes(fbs::RequestKind::WorkspaceRemove, Some(&["second"]));
+    let zero = call_wrapper(zanshin_workspace_remove, 0, &req);
+    assert_eq!(error_code(&zero).as_deref(), Some(FFI_INVALID_HANDLE));
+
+    let canonical = fs::canonicalize(&second_root).expect("second exists");
+    let bytes = call_wrapper(zanshin_workspace_remove, handle, &req);
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let result = env.data_as_workspace_remove_result().expect("payload");
+    assert_eq!(paths(result.directories_removed()), [canonical]);
+    assert!(!second_root.exists());
+    close_handle(handle);
+}
+
+/// A wire list of paths as `PathBuf`s.
+fn paths(list: Option<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<&str>>>) -> Vec<std::path::PathBuf> {
+    list.expect("a present list")
+        .iter()
+        .map(std::path::PathBuf::from)
+        .collect()
+}
+
+/// A colocated repo (`git init` + one commit, converted) with a child workspace `../ws2` that
+/// has a Git worktree. Returns `(handle, canonical ws2)`; the temp dir is leaked.
+fn open_colocated_two_workspaces() -> (u64, std::path::PathBuf) {
+    let tmp = tempfile::TempDir::new().expect("tempdir").keep();
+    let main = fs::canonicalize(&tmp).expect("canonical").join("main");
+    fs::create_dir(&main).expect("main dir");
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .args(["-c", "user.name=Fixture", "-c", "user.email=test@zanshin.test"])
+            .args(args)
+            .current_dir(&main)
+            .output()
+            .expect("spawn git");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    git(&["init", "--initial-branch=main"]);
+    fs::write(main.join("README.md"), "hello").expect("write");
+    git(&["add", "."]);
+    git(&["commit", "-m", "initial"]);
+    zanshin_jj::convert_colocated(&main).result.expect("convert");
+    let ws2 = zanshin_jj::Repo::open(&main)
+        .expect("open")
+        .workspace_add("../ws2", None, &[], &[], None, zanshin_jj::SparseInheritance::Copy)
+        .expect("add ws2")
+        .workspace_root;
+    assert!(ws2.join(".git").is_file(), "ws2 is a Git worktree");
+    (open_handle(&main), ws2)
+}
+
+/// `git_worktrees_removed` crosses the wire non-empty, apart from `directories_removed`.
+#[test]
+fn workspace_remove_of_a_colocated_child_reports_its_worktree_and_directory() {
+    test_helpers::pin_test_env();
+    let (handle, ws2) = open_colocated_two_workspaces();
+    let req = names_request_bytes(fbs::RequestKind::WorkspaceRemove, Some(&["ws2"]));
+    let bytes = call_wrapper(zanshin_workspace_remove, handle, &req);
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let result = env.data_as_workspace_remove_result().expect("payload");
+    assert_eq!(paths(result.git_worktrees_removed()), std::slice::from_ref(&ws2));
+    assert_eq!(paths(result.directories_removed()), std::slice::from_ref(&ws2));
+    assert!(!ws2.exists());
+    close_handle(handle);
+}
+
+/// An ABSENT `names` vector forgets the current workspace: its `@` is gone and the finish warns.
+#[test]
+fn workspace_forget_without_names_forgets_the_current_workspace() {
+    test_helpers::pin_test_env();
+    let (handle, _root, _second) = open_two_workspace_scenario();
+    let req = names_request_bytes(fbs::RequestKind::WorkspaceForget, None);
+    let bytes = call_wrapper(zanshin_workspace_forget, handle, &req);
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let result = env.data_as_workspace_remove_result().expect("payload");
+    assert_eq!(result.mutation().and_then(|m| m.working_copy_change_id()), None);
+    assert_eq!(
+        env.warnings().expect("warnings").get(0).code(),
+        Some(JJ_WORKSPACE_NO_LONGER_EXISTS)
+    );
     close_handle(handle);
 }

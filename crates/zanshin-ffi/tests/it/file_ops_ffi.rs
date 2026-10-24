@@ -15,16 +15,20 @@
 
 use std::ffi::CString;
 use std::fs;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use flatbuffers::root as fb_root;
 use tempfile::TempDir;
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
-use zanshin_ffi::file_ops::{zanshin_file_track, zanshin_file_untrack};
+use zanshin_ffi::file_ops::{zanshin_file_chmod, zanshin_file_track, zanshin_file_untrack};
 use zanshin_ffi::op_log::zanshin_op_log;
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
-use zanshin_ffi::{FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_INVALID_INPUT, JJ_PATH_NOT_IGNORED};
+use zanshin_ffi::{
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CHANGE_NOT_FOUND, JJ_INVALID_INPUT,
+    JJ_PATHS_UNMATCHED, JJ_PATH_NOT_IGNORED,
+};
 use zanshin_jj::{Backend, Repo};
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
@@ -432,5 +436,106 @@ fn a_null_or_malformed_request_buffer_is_refused_by_both_wrappers() {
             Some(FFI_INVALID_ARGUMENT)
         );
     }
+    close_handle(handle);
+}
+
+// ── Story 9.13: file chmod ────────────────────────────────────────────────────
+
+/// A `FileChmodRequest`; `None` leaves `revision` / `paths` genuinely ABSENT.
+fn chmod_request_bytes(
+    kind: fbs::RequestKind,
+    executable: bool,
+    revision: Option<&str>,
+    paths: Option<&[&str]>,
+) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
+    let revision = revision.map(|r| b.create_string(r));
+    let paths = paths.map(|paths| {
+        let offsets: Vec<_> = paths.iter().map(|p| b.create_string(p)).collect();
+        b.create_vector(&offsets)
+    });
+    let req = fbs::FileChmodRequest::create(
+        &mut b,
+        &fbs::FileChmodRequestArgs {
+            kind,
+            executable,
+            revision,
+            paths,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// `chmod` over the wire: every field crosses (the bit, the paths, an absent revision = `@`), the
+/// unmatched path's warning rides the ok envelope, and the operation names `@`'s commit.
+#[test]
+fn chmod_round_trips_through_mutation_result() {
+    let root = untrack_fixture();
+    let handle = open_handle(&root);
+    let req = chmod_request_bytes(fbs::RequestKind::FileChmod, true, None, Some(&["d.txt", "nope"]));
+    let bytes = call(zanshin_file_chmod, handle, &req);
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    assert_eq!(env.data_type(), fbs::Payload::MutationResult);
+    let result = env.data_as_mutation_result().expect("payload");
+    let (head, description) = head_op(handle);
+    assert_eq!(result.new_op_id(), Some(head.as_str()));
+    assert!(
+        description.starts_with("make paths executable in commit "),
+        "{description}"
+    );
+    let warnings = env.warnings().expect("warnings");
+    assert_eq!(warnings.get(0).code(), Some(JJ_PATHS_UNMATCHED));
+    assert!(env.precondition().is_some());
+    let mode = fs::metadata(root.join("d.txt")).expect("stat").permissions().mode();
+    assert_ne!(mode & 0o111, 0, "the checkout made d.txt executable");
+    close_handle(handle);
+}
+
+/// A malformed `revision` crosses and refuses; absent `paths`, a zero handle, a null buffer and a
+/// buffer of another kind are refused before the verb.
+#[test]
+fn chmod_refusals_cross_the_wire() {
+    let root = untrack_fixture();
+    let handle = open_handle(&root);
+    let (before, _) = head_op(handle);
+    let code = |bytes: &[u8]| {
+        parse_envelope(bytes)
+            .error()
+            .and_then(|e| e.code())
+            .map(ToOwned::to_owned)
+    };
+    let req = chmod_request_bytes(
+        fbs::RequestKind::FileChmod,
+        false,
+        Some("zzzz-not-hex"),
+        Some(&["d.txt"]),
+    );
+    assert_eq!(
+        code(&call(zanshin_file_chmod, handle, &req)).as_deref(),
+        Some(JJ_CHANGE_NOT_FOUND)
+    );
+    let req = chmod_request_bytes(fbs::RequestKind::FileChmod, true, None, None);
+    let bytes = call(zanshin_file_chmod, handle, &req);
+    assert_eq!(code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
+    assert!(
+        parse_envelope(&bytes).precondition().is_none(),
+        "refused before the snapshot"
+    );
+    let req = chmod_request_bytes(fbs::RequestKind::FileTrack, true, None, Some(&["d.txt"]));
+    assert_eq!(
+        code(&call(zanshin_file_chmod, handle, &req)).as_deref(),
+        Some(FFI_INVALID_ARGUMENT)
+    );
+    let req = chmod_request_bytes(fbs::RequestKind::FileChmod, true, None, Some(&["d.txt"]));
+    assert_eq!(
+        code(&call(zanshin_file_chmod, 0, &req)).as_deref(),
+        Some(FFI_INVALID_HANDLE)
+    );
+    // SAFETY: a null request pointer is the case under test.
+    let null = unsafe { read_and_free(zanshin_file_chmod(handle, std::ptr::null(), 0)) };
+    assert_eq!(code(&null).as_deref(), Some(FFI_NULL_POINTER));
+    assert_eq!(head_op(handle).0, before, "no refusal writes an operation");
     close_handle(handle);
 }

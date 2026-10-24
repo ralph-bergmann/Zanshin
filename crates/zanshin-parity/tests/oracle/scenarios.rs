@@ -2945,6 +2945,8 @@ pub fn scenarios() -> Vec<Scenario> {
     .chain(bookmark_move_scenarios())
     .chain(bookmark_rename_scenarios())
     .chain(bookmark_set_scenarios())
+    .chain(file_chmod_scenarios())
+    .chain(workspace_ops_scenarios())
     .chain(crate::git_scenarios::bookmark_tracking_scenarios())
     .chain(crate::git_scenarios::push_scenarios())
     .chain(crate::git_scenarios::bookmark_auto_track_scenarios())
@@ -4736,6 +4738,312 @@ fn movement_refusal_scenarios() -> Vec<Scenario> {
                     movement_outcome(repo, &options)
                 },
                 |_| args(&["next", "--conflict", "1"]),
+            )
+        },
+    ]
+}
+
+// ── Story 9.13: file chmod; workspace forget / rename / remove ────────────────────
+
+/// `Repo::file_chmod`.
+fn chmod_outcome(
+    repo: &mut zanshin_jj::Repo,
+    executable: bool,
+    revision: Option<&zanshin_jj::ChangeId>,
+    paths: &[&str],
+) -> Outcome {
+    let result = repo.file_chmod(executable, revision, &args(paths));
+    zanshin_outcome(repo, &result)
+}
+
+/// The executable files of the working copy on disk — the trees aspect pins the bit in the
+/// commits, this the checkout's file modes.
+fn executable_files_read_back(root: &Path) -> String {
+    use std::os::unix::fs::PermissionsExt as _;
+    let mut executable: Vec<String> = std::fs::read_dir(root)
+        .expect("read the root")
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+        .filter(|entry| {
+            entry
+                .metadata()
+                .is_ok_and(|meta| meta.permissions().mode() & 0o111 != 0)
+        })
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    executable.sort();
+    format!("{executable:?}")
+}
+
+/// `file chmod` on BASE (`@` = C holding a.txt, b.txt, c.txt): `x` and `n` on `@`, `-r` on A,
+/// an unmatched path, the immutable root, a symlink, and clap's missing paths on a dirty working
+/// copy.
+fn file_chmod_scenarios() -> Vec<Scenario> {
+    vec![
+        Scenario {
+            extra: Some(executable_files_read_back),
+            ..simple(
+                "file_chmod_x",
+                |repo, _, _| chmod_outcome(repo, true, None, &["c.txt"]),
+                |_| args(&["file", "chmod", "x", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: &[Step::Jj(&["file", "chmod", "x", "c.txt"])],
+            extra: Some(executable_files_read_back),
+            ..simple(
+                "file_chmod_n",
+                |repo, _, _| chmod_outcome(repo, false, None, &["c.txt"]),
+                |_| args(&["file", "chmod", "n", "c.txt"]),
+            )
+        },
+        Scenario {
+            extra: Some(executable_files_read_back),
+            ..simple(
+                "file_chmod_revision",
+                |repo, _, s| chmod_outcome(repo, true, Some(&s.change("A")), &["a.txt"]),
+                |s| {
+                    let mut argv = args(&["file", "chmod", "x", "a.txt", "-r"]);
+                    argv.push(s.change_arg("A"));
+                    argv
+                },
+            )
+        },
+        simple(
+            "file_chmod_unmatched",
+            |repo, _, _| chmod_outcome(repo, true, None, &["nope", "c.txt"]),
+            |_| args(&["file", "chmod", "x", "nope", "c.txt"]),
+        ),
+        simple(
+            "file_chmod_immutable_root",
+            |repo, _, s| chmod_outcome(repo, true, Some(&s.change("root")), &["c.txt"]),
+            |_| args(&["file", "chmod", "x", "c.txt", "-r", "root()"]),
+        ),
+        Scenario {
+            setup: &[Step::Symlink("c.txt", "link"), Step::Jj(&["status"])],
+            ..simple(
+                "file_chmod_symlink_refused",
+                |repo, _, _| chmod_outcome(repo, true, None, &["link"]),
+                |_| args(&["file", "chmod", "x", "link"]),
+            )
+        },
+        Scenario {
+            files: &[("c.txt", "c, edited before a clap refusal\n")],
+            ..simple(
+                "file_chmod_no_paths_dirty_wc",
+                |repo, _, _| chmod_outcome(repo, true, None, &[]),
+                |_| args(&["file", "chmod", "x"]),
+            )
+        },
+    ]
+}
+
+/// The workspace state the view aspects do not cover: per name the store's recorded path
+/// (relative to the repo's parent dir), whether `../ws2` / `../ws3` exist with their `.jj` and
+/// `.git`, and the name the repo's own working copy carries.
+fn workspace_store_read_back(root: &Path) -> String {
+    let root = std::fs::canonicalize(root).expect("canonical root");
+    let parent = root.parent().expect("the temp dir").to_owned();
+    let store = jj_lib::default_backend_factories::default_backend_factories()
+        .load_workspace_store(
+            &test_helpers::test_settings(),
+            &root.join(".jj").join("repo").join("workspace_store"),
+        )
+        .expect("the workspace store");
+    let recorded: Vec<String> = ["default", "new", "ws2", "ws3"]
+        .iter()
+        .map(|name| {
+            let path = store
+                .get_workspace_path(jj_lib::ref_name::WorkspaceName::new(name))
+                .expect("read the store");
+            let path = path.map_or_else(
+                || "<none>".to_owned(),
+                |p| {
+                    p.strip_prefix(&parent)
+                        .map_or_else(|_| p.display().to_string(), |r| r.display().to_string())
+                },
+            );
+            format!("{name}={path}")
+        })
+        .collect();
+    let dirs: Vec<String> = ["ws2", "ws3"]
+        .iter()
+        .map(|dir| {
+            let dir_path = parent.join(dir);
+            format!(
+                "{dir}: exists={} .jj={} .git={}",
+                dir_path.exists(),
+                dir_path.join(".jj").exists(),
+                dir_path.join(".git").exists()
+            )
+        })
+        .collect();
+    let (workspace, _) = load_workspace(&root);
+    format!(
+        "store {} | {} | root workspace={}",
+        recorded.join(" "),
+        dirs.join(" | "),
+        workspace.workspace_name().as_str()
+    )
+}
+
+const ADD_WS2: &[Step] = &[Step::Jj(&["workspace", "add", "../ws2"])];
+/// Two child workspaces; their `@`s are described so the two empty commits keep stable labels.
+const ADD_WS2_WS3: &[Step] = &[
+    Step::Jj(&["workspace", "add", "../ws2", "-m", "W2"]),
+    Step::Jj(&["workspace", "add", "../ws3", "-m", "W3"]),
+];
+
+/// `Repo::workspace_forget`.
+fn forget_outcome(repo: &mut zanshin_jj::Repo, names: &[&str]) -> Outcome {
+    let result = repo.workspace_forget(&args(names));
+    zanshin_outcome(repo, &result)
+}
+
+/// `Repo::workspace_rename`.
+fn ws_rename_outcome(repo: &mut zanshin_jj::Repo, new_name: &str) -> Outcome {
+    let result = repo.workspace_rename(new_name);
+    zanshin_outcome(repo, &result)
+}
+
+/// `Repo::workspace_remove`.
+fn remove_outcome(repo: &mut zanshin_jj::Repo, names: &[&str]) -> Outcome {
+    let result = repo.workspace_remove(&args(names));
+    zanshin_outcome(repo, &result)
+}
+
+/// A scenario on BASE in a non-colocated repo with `setup`, read back through
+/// [`workspace_store_read_back`].
+fn workspace_scenario(
+    id: &'static str,
+    setup: &'static [Step],
+    zanshin: fn(&mut zanshin_jj::Repo, &Path, &State) -> Outcome,
+    cli: fn(&State) -> Vec<String>,
+) -> Scenario {
+    Scenario {
+        init: NO_COLOCATE,
+        setup,
+        extra: Some(workspace_store_read_back),
+        ..simple(id, zanshin, cli)
+    }
+}
+
+/// `workspace forget` (another workspace, this one, two, an unknown name, a colocated child),
+/// `workspace rename` (a new name, the same, a taken one, an empty one on a dirty working copy)
+/// and `workspace remove` (a dirty child, two, an unknown name, `default`, a deleted directory,
+/// no names on a dirty working copy).
+#[allow(clippy::too_many_lines)] // WHY: one flat table reads better than a dozen helper fns
+fn workspace_ops_scenarios() -> Vec<Scenario> {
+    vec![
+        workspace_scenario(
+            "workspace_forget_other",
+            ADD_WS2,
+            |repo, _, _| forget_outcome(repo, &["ws2"]),
+            |_| args(&["workspace", "forget", "ws2"]),
+        ),
+        workspace_scenario(
+            "workspace_forget_current",
+            ADD_WS2,
+            |repo, _, _| forget_outcome(repo, &[]),
+            |_| args(&["workspace", "forget"]),
+        ),
+        workspace_scenario(
+            "workspace_forget_two",
+            ADD_WS2_WS3,
+            |repo, _, _| forget_outcome(repo, &["ws2", "ws3"]),
+            |_| args(&["workspace", "forget", "ws2", "ws3"]),
+        ),
+        workspace_scenario(
+            "workspace_forget_unknown",
+            ADD_WS2,
+            |repo, _, _| forget_outcome(repo, &["nope"]),
+            |_| args(&["workspace", "forget", "nope"]),
+        ),
+        Scenario {
+            init: GIT_INIT,
+            ..workspace_scenario(
+                "workspace_forget_colocated_worktree",
+                ADD_WS2,
+                |repo, _, _| forget_outcome(repo, &["ws2"]),
+                |_| args(&["workspace", "forget", "ws2"]),
+            )
+        },
+        workspace_scenario(
+            "workspace_rename_new",
+            ADD_WS2,
+            |repo, _, _| ws_rename_outcome(repo, "new"),
+            |_| args(&["workspace", "rename", "new"]),
+        ),
+        workspace_scenario(
+            "workspace_rename_same",
+            &[],
+            |repo, _, _| ws_rename_outcome(repo, "default"),
+            |_| args(&["workspace", "rename", "default"]),
+        ),
+        workspace_scenario(
+            "workspace_rename_existing_refused",
+            ADD_WS2,
+            |repo, _, _| ws_rename_outcome(repo, "ws2"),
+            |_| args(&["workspace", "rename", "ws2"]),
+        ),
+        Scenario {
+            files: &[("c.txt", "c, edited before a refusal\n")],
+            ..workspace_scenario(
+                "workspace_rename_empty_dirty_wc",
+                &[],
+                |repo, _, _| ws_rename_outcome(repo, ""),
+                |_| args(&["workspace", "rename", ""]),
+            )
+        },
+        workspace_scenario(
+            "workspace_remove_dirty",
+            &[
+                Step::Jj(&["workspace", "add", "../ws2"]),
+                Step::Write("../ws2/dirty.txt", "dirty\n"),
+            ],
+            |repo, _, _| remove_outcome(repo, &["ws2"]),
+            |_| args(&["workspace", "remove", "ws2"]),
+        ),
+        Scenario {
+            init: GIT_INIT,
+            ..workspace_scenario(
+                "workspace_remove_colocated_worktree",
+                ADD_WS2,
+                |repo, _, _| remove_outcome(repo, &["ws2"]),
+                |_| args(&["workspace", "remove", "ws2"]),
+            )
+        },
+        workspace_scenario(
+            "workspace_remove_two",
+            ADD_WS2_WS3,
+            |repo, _, _| remove_outcome(repo, &["ws2", "ws3"]),
+            |_| args(&["workspace", "remove", "ws2", "ws3"]),
+        ),
+        workspace_scenario(
+            "workspace_remove_unknown",
+            ADD_WS2,
+            |repo, _, _| remove_outcome(repo, &["nope"]),
+            |_| args(&["workspace", "remove", "nope"]),
+        ),
+        workspace_scenario(
+            "workspace_remove_default_refused",
+            ADD_WS2,
+            |repo, _, _| remove_outcome(repo, &["default"]),
+            |_| args(&["workspace", "remove", "default"]),
+        ),
+        workspace_scenario(
+            "workspace_remove_deleted_dir_refused",
+            &[Step::Jj(&["workspace", "add", "../ws2"]), Step::RemoveDir("../ws2")],
+            |repo, _, _| remove_outcome(repo, &["ws2"]),
+            |_| args(&["workspace", "remove", "ws2"]),
+        ),
+        Scenario {
+            files: &[("c.txt", "c, edited before a clap refusal\n")],
+            ..workspace_scenario(
+                "workspace_remove_no_names_dirty_wc",
+                ADD_WS2,
+                |repo, _, _| remove_outcome(repo, &[]),
+                |_| args(&["workspace", "remove"]),
             )
         },
     ]

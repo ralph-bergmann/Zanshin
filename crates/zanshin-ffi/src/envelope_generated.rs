@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 59;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 63;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 60] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 64] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -84,6 +84,10 @@ pub mod zanshin {
             RequestKind::BookmarkForget,
             RequestKind::BookmarkTrack,
             RequestKind::BookmarkUntrack,
+            RequestKind::FileChmod,
+            RequestKind::WorkspaceForget,
+            RequestKind::WorkspaceRename,
+            RequestKind::WorkspaceRemove,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -176,9 +180,13 @@ pub mod zanshin {
             pub const BookmarkForget: Self = Self(57);
             pub const BookmarkTrack: Self = Self(58);
             pub const BookmarkUntrack: Self = Self(59);
+            pub const FileChmod: Self = Self(60);
+            pub const WorkspaceForget: Self = Self(61);
+            pub const WorkspaceRename: Self = Self(62);
+            pub const WorkspaceRemove: Self = Self(63);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 59;
+            pub const ENUM_MAX: u8 = 63;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -240,6 +248,10 @@ pub mod zanshin {
                 Self::BookmarkForget,
                 Self::BookmarkTrack,
                 Self::BookmarkUntrack,
+                Self::FileChmod,
+                Self::WorkspaceForget,
+                Self::WorkspaceRename,
+                Self::WorkspaceRemove,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -304,6 +316,10 @@ pub mod zanshin {
                     Self::BookmarkForget => Some("BookmarkForget"),
                     Self::BookmarkTrack => Some("BookmarkTrack"),
                     Self::BookmarkUntrack => Some("BookmarkUntrack"),
+                    Self::FileChmod => Some("FileChmod"),
+                    Self::WorkspaceForget => Some("WorkspaceForget"),
+                    Self::WorkspaceRename => Some("WorkspaceRename"),
+                    Self::WorkspaceRemove => Some("WorkspaceRemove"),
                     _ => None,
                 }
             }
@@ -3587,13 +3603,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 54;
+        pub const ENUM_MAX_PAYLOAD: u8 = 55;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 55] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 56] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -3649,6 +3665,7 @@ pub mod zanshin {
             Payload::OpAbandonResult,
             Payload::OpIntegrateResult,
             Payload::MovementTargets,
+            Payload::WorkspaceRemoveResult,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -3711,9 +3728,10 @@ pub mod zanshin {
             pub const OpAbandonResult: Self = Self(52);
             pub const OpIntegrateResult: Self = Self(53);
             pub const MovementTargets: Self = Self(54);
+            pub const WorkspaceRemoveResult: Self = Self(55);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 54;
+            pub const ENUM_MAX: u8 = 55;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -3770,6 +3788,7 @@ pub mod zanshin {
                 Self::OpAbandonResult,
                 Self::OpIntegrateResult,
                 Self::MovementTargets,
+                Self::WorkspaceRemoveResult,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -3829,6 +3848,7 @@ pub mod zanshin {
                     Self::OpAbandonResult => Some("OpAbandonResult"),
                     Self::OpIntegrateResult => Some("OpIntegrateResult"),
                     Self::MovementTargets => Some("MovementTargets"),
+                    Self::WorkspaceRemoveResult => Some("WorkspaceRemoveResult"),
                     _ => None,
                 }
             }
@@ -13643,6 +13663,456 @@ pub mod zanshin {
                 let mut ds = f.debug_struct("FileUntrackRequest");
                 ds.field("kind", &self.kind());
                 ds.field("paths", &self.paths());
+                ds.finish()
+            }
+        }
+        pub enum FileChmodRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_file_chmod` (Story 9.13) — the CLI's `jj file chmod x|n <paths> [-r]`.
+        ///
+        /// `executable` true is `x`, false — or ABSENT — `n`. `revision` ABSENT is the CLI's `-r` default `@`; present
+        /// it is a jj reverse-hex CHANGE ID. `paths` exactly as in FileTrackRequest: an EMPTY or ABSENT
+        /// vector is refused with `jj.invalid_input` before the pre-verb snapshot (clap's `required`).
+        pub struct FileChmodRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileChmodRequest<'a> {
+            type Inner = FileChmodRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileChmodRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_EXECUTABLE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileChmodRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileChmodRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileChmodRequest<'bldr>> {
+                let mut builder = FileChmodRequestBuilder::new(_fbb);
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.add_executable(args.executable);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(FileChmodRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn executable(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(FileChmodRequest::VT_EXECUTABLE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileChmodRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(FileChmodRequest::VT_PATHS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileChmodRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<bool>("executable", Self::VT_EXECUTABLE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct FileChmodRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub executable: bool,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for FileChmodRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileChmodRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    executable: false,
+                    revision: None,
+                    paths: None,
+                }
+            }
+        }
+
+        pub struct FileChmodRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileChmodRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(FileChmodRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_executable(&mut self, executable: bool) {
+                self.fbb_
+                    .push_slot::<bool>(FileChmodRequest::VT_EXECUTABLE, executable, false);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileChmodRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileChmodRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileChmodRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileChmodRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileChmodRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileChmodRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileChmodRequest");
+                ds.field("kind", &self.kind());
+                ds.field("executable", &self.executable());
+                ds.field("revision", &self.revision());
+                ds.field("paths", &self.paths());
+                ds.finish()
+            }
+        }
+        pub enum WorkspaceNamesRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_workspace_forget` and `zanshin_workspace_remove` (Story 9.13) — the
+        /// CLI's `jj workspace forget` / `remove`; `kind` (`WorkspaceForget` / `WorkspaceRemove`) tells
+        /// them apart. `names` are workspace names. Forget: EMPTY or ABSENT forgets the current
+        /// workspace. Remove: EMPTY or ABSENT is refused with `jj.invalid_input` before the pre-verb
+        /// snapshot (clap's `required`).
+        pub struct WorkspaceNamesRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WorkspaceNamesRequest<'a> {
+            type Inner = WorkspaceNamesRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WorkspaceNamesRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAMES: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WorkspaceNamesRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WorkspaceNamesRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WorkspaceNamesRequest<'bldr>> {
+                let mut builder = WorkspaceNamesRequestBuilder::new(_fbb);
+                if let Some(x) = args.names {
+                    builder.add_names(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(WorkspaceNamesRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn names(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(WorkspaceNamesRequest::VT_NAMES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WorkspaceNamesRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("names", Self::VT_NAMES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct WorkspaceNamesRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub names:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for WorkspaceNamesRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WorkspaceNamesRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    names: None,
+                }
+            }
+        }
+
+        pub struct WorkspaceNamesRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WorkspaceNamesRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(WorkspaceNamesRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_names(
+                &mut self,
+                names: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WorkspaceNamesRequest::VT_NAMES, names);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> WorkspaceNamesRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WorkspaceNamesRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WorkspaceNamesRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WorkspaceNamesRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WorkspaceNamesRequest");
+                ds.field("kind", &self.kind());
+                ds.field("names", &self.names());
+                ds.finish()
+            }
+        }
+        pub enum WorkspaceRenameRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_workspace_rename` (Story 9.13) — the CLI's `jj workspace rename`.
+        /// `new_name` ABSENT or EMPTY is refused with `jj.invalid_input` before the pre-verb snapshot
+        /// ("New workspace name cannot be empty").
+        pub struct WorkspaceRenameRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WorkspaceRenameRequest<'a> {
+            type Inner = WorkspaceRenameRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WorkspaceRenameRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NEW_NAME: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WorkspaceRenameRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WorkspaceRenameRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WorkspaceRenameRequest<'bldr>> {
+                let mut builder = WorkspaceRenameRequestBuilder::new(_fbb);
+                if let Some(x) = args.new_name {
+                    builder.add_new_name(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(WorkspaceRenameRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn new_name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WorkspaceRenameRequest::VT_NEW_NAME, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WorkspaceRenameRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("new_name", Self::VT_NEW_NAME, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WorkspaceRenameRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub new_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for WorkspaceRenameRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WorkspaceRenameRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    new_name: None,
+                }
+            }
+        }
+
+        pub struct WorkspaceRenameRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WorkspaceRenameRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(WorkspaceRenameRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_new_name(&mut self, new_name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(WorkspaceRenameRequest::VT_NEW_NAME, new_name);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> WorkspaceRenameRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WorkspaceRenameRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WorkspaceRenameRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WorkspaceRenameRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WorkspaceRenameRequest");
+                ds.field("kind", &self.kind());
+                ds.field("new_name", &self.new_name());
                 ds.finish()
             }
         }
@@ -32887,6 +33357,189 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum WorkspaceRemoveResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of a successful `zanshin_workspace_forget` / `zanshin_workspace_remove` (Story 9.13) —
+        /// the CLI's status lines as facts. `mutation` is the call's operation (`forget workspace(s) …` /
+        /// `remove workspace(s) …`), or the pre-call head when no name named a workspace; its
+        /// `working_copy_change_id` is ABSENT when the current workspace itself went.
+        /// `git_worktrees_removed`: the canonical directories whose Git worktree was unlinked ("Removed
+        /// Git worktree for …"). `directories_removed`: the canonical directories `remove` deleted
+        /// ("Removed workspace directory …"); always empty for forget. Both in name order.
+        pub struct WorkspaceRemoveResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WorkspaceRemoveResult<'a> {
+            type Inner = WorkspaceRemoveResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WorkspaceRemoveResult<'a> {
+            pub const VT_MUTATION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_GIT_WORKTREES_REMOVED: ::flatbuffers::VOffsetT = 6;
+            pub const VT_DIRECTORIES_REMOVED: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WorkspaceRemoveResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WorkspaceRemoveResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WorkspaceRemoveResult<'bldr>> {
+                let mut builder = WorkspaceRemoveResultBuilder::new(_fbb);
+                if let Some(x) = args.directories_removed {
+                    builder.add_directories_removed(x);
+                }
+                if let Some(x) = args.git_worktrees_removed {
+                    builder.add_git_worktrees_removed(x);
+                }
+                if let Some(x) = args.mutation {
+                    builder.add_mutation(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn mutation(&self) -> Option<MutationResult<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<MutationResult>>(WorkspaceRemoveResult::VT_MUTATION, None)
+                }
+            }
+            #[inline]
+            pub fn git_worktrees_removed(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(WorkspaceRemoveResult::VT_GIT_WORKTREES_REMOVED, None)
+                }
+            }
+            #[inline]
+            pub fn directories_removed(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(WorkspaceRemoveResult::VT_DIRECTORIES_REMOVED, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WorkspaceRemoveResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<MutationResult>>("mutation", Self::VT_MUTATION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("git_worktrees_removed", Self::VT_GIT_WORKTREES_REMOVED, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("directories_removed", Self::VT_DIRECTORIES_REMOVED, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct WorkspaceRemoveResultArgs<'a> {
+            pub mutation: Option<::flatbuffers::WIPOffset<MutationResult<'a>>>,
+            pub git_worktrees_removed:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub directories_removed:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for WorkspaceRemoveResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WorkspaceRemoveResultArgs {
+                    mutation: None,
+                    git_worktrees_removed: None,
+                    directories_removed: None,
+                }
+            }
+        }
+
+        pub struct WorkspaceRemoveResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WorkspaceRemoveResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_mutation(&mut self, mutation: ::flatbuffers::WIPOffset<MutationResult<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<MutationResult>>(
+                    WorkspaceRemoveResult::VT_MUTATION,
+                    mutation,
+                );
+            }
+            #[inline]
+            pub fn add_git_worktrees_removed(
+                &mut self,
+                git_worktrees_removed: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WorkspaceRemoveResult::VT_GIT_WORKTREES_REMOVED,
+                    git_worktrees_removed,
+                );
+            }
+            #[inline]
+            pub fn add_directories_removed(
+                &mut self,
+                directories_removed: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WorkspaceRemoveResult::VT_DIRECTORIES_REMOVED,
+                    directories_removed,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> WorkspaceRemoveResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WorkspaceRemoveResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WorkspaceRemoveResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WorkspaceRemoveResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WorkspaceRemoveResult");
+                ds.field("mutation", &self.mutation());
+                ds.field("git_worktrees_removed", &self.git_worktrees_removed());
+                ds.field("directories_removed", &self.directories_removed());
+                ds.finish()
+            }
+        }
         pub enum PreconditionOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -36629,6 +37282,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_workspace_remove_result(&self) -> Option<WorkspaceRemoveResult<'a>> {
+                if self.data_type() == Payload::WorkspaceRemoveResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { WorkspaceRemoveResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -36696,6 +37364,7 @@ pub mod zanshin {
           Payload::OpAbandonResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpAbandonResult>>("Payload::OpAbandonResult", pos),
           Payload::OpIntegrateResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpIntegrateResult>>("Payload::OpIntegrateResult", pos),
           Payload::MovementTargets => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<MovementTargets>>("Payload::MovementTargets", pos),
+          Payload::WorkspaceRemoveResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<WorkspaceRemoveResult>>("Payload::WorkspaceRemoveResult", pos),
           _ => Ok(()),
         }
      })?
@@ -37165,6 +37834,13 @@ pub mod zanshin {
                     }
                     Payload::MovementTargets => {
                         if let Some(x) = self.data_as_movement_targets() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::WorkspaceRemoveResult => {
+                        if let Some(x) = self.data_as_workspace_remove_result() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

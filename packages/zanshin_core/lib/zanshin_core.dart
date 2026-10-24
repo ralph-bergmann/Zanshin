@@ -100,7 +100,14 @@ export 'src/ffi/squash_split.dart' show SplitResult, SquashPlan;
 export 'src/ffi/status.dart' show WorkingCopyStatus;
 export 'src/ffi/warning.dart' show WarnedList, ZanshinWarning, ZanshinWarningCode;
 export 'src/ffi/workspace.dart'
-    show CheckoutStats, SparseInheritance, StaleRecovery, StaleRecoveryOutcome, WorkspaceAddResult, WorkspaceRootResult;
+    show
+        CheckoutStats,
+        SparseInheritance,
+        StaleRecovery,
+        StaleRecoveryOutcome,
+        WorkspaceAddResult,
+        WorkspaceRemoveResult,
+        WorkspaceRootResult;
 export 'src/ffi/zanshin_version.dart' show ZanshinFfiModule, ZanshinFfiVersion;
 export 'src/worker/events.dart'
     show OpHeadsChangedEvent, ProgressEvent, RepoEvent, WatchErrorEvent, WorkingCopyHeartbeatEvent;

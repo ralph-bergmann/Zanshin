@@ -1309,6 +1309,54 @@ final class WorkspaceAddCommand extends WorkerCommand implements HandleScopedCom
   final SparseInheritance sparse;
 }
 
+/// Forget ([remove] false) or remove ([remove] true) workspaces of the repo
+/// identified by [handleId] (Story 9.13) — the CLI's `jj workspace forget` /
+/// `remove`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinWorkspaceForget` or `zanshinWorkspaceRemove`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<WorkspaceRemoveResult>`
+/// bytes.
+final class WorkspaceRemoveCommand extends WorkerCommand implements HandleScopedCommand {
+  const WorkspaceRemoveCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.names,
+    required this.remove,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// Workspace names; for forget, empty = the current workspace.
+  final List<String> names;
+
+  /// `remove` rather than `forget`.
+  final bool remove;
+}
+
+/// Rename the current workspace of the repo identified by [handleId] (Story
+/// 9.13) — the CLI's `jj workspace rename`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinWorkspaceRename(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class WorkspaceRenameCommand extends WorkerCommand implements HandleScopedCommand {
+  const WorkspaceRenameCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.newName,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The new name; empty is refused (`jj.invalid_input`).
+  final String newName;
+}
+
 /// Bring the stale working copy of the repo identified by [handleId] up to date
 /// (Story 9.23) — the CLI's `jj workspace update-stale`.
 ///
@@ -1619,6 +1667,35 @@ final class FileUntrackCommand extends WorkerCommand implements HandleScopedComm
   /// Repo-relative PREFIXES, each of which must already be ignored; an empty
   /// list is refused (`jj.invalid_input`).
   final List<String> paths;
+}
+
+/// Set or clear the executable bit of the files matching [paths] in one revision
+/// of the repo identified by [handleId] (Story 9.13) — the CLI's `jj file chmod`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinFileChmod(raw, …)`, and replies with a `BufferResult` carrying
+/// the FlatBuffers `Envelope<MutationResult>` bytes.
+final class FileChmodCommand extends WorkerCommand implements HandleScopedCommand {
+  const FileChmodCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.paths,
+    required this.executable,
+    required this.revision,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// Repo-relative PREFIXES; an empty list is refused (`jj.invalid_input`).
+  final List<String> paths;
+
+  /// `x` (`true`) or `n` (`false`).
+  final bool executable;
+
+  /// jj reverse-hex change id of the revision; `null` = `@`.
+  final String? revision;
 }
 
 /// Snapshot the working copy of the repo identified by [handleId] right now —

@@ -2,7 +2,8 @@
 
 //! `zanshin_workspace_list` / `zanshin_workspace_root` — the two workspace READ verbs
 //! (Story 9.7) — and `zanshin_workspace_add` / `zanshin_workspace_update_stale`, the two
-//! workspace MUTATIONS of Story 9.23.
+//! workspace MUTATIONS of Story 9.23, plus `zanshin_workspace_forget` / `_rename` / `_remove`
+//! (Story 9.13).
 //!
 //! Each calls the matching `zanshin_jj::Repo` method and serialises the result into a
 //! `FlatBuffers` `Envelope`. The handle is borrowed (not consumed), and neither read verb opens
@@ -23,12 +24,14 @@
 
 use flatbuffers::{FlatBufferBuilder, VerifierOptions};
 use tracing::debug;
-use zanshin_jj::{SparseInheritance, StaleRecovery, WorkspaceAddResult, WorkspaceEntry, WorkspaceError};
+use zanshin_jj::{
+    SparseInheritance, StaleRecovery, WorkspaceAddResult, WorkspaceEntry, WorkspaceError, WorkspaceRemoveResult,
+};
 
 use crate::envelope::{
     build_mutation_result, catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err,
-    missing_field, precondition_envelope, reject_null_request, session_from_handle, CallReport, FfiErrorObj,
-    JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND, JJ_WORKSPACE_NO_RECORDED_PATH,
+    missing_field, ok_mutation_result, precondition_envelope, reject_null_request, session_from_handle, CallReport,
+    FfiErrorObj, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_NOT_FOUND, JJ_WORKSPACE_NO_RECORDED_PATH,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -156,6 +159,44 @@ fn read_workspace_add_request(data: *const u8, len: usize) -> Result<WorkspaceAd
     })
 }
 
+/// Parse a `WorkspaceNamesRequest` buffer tagged `kind` into its names (Story 9.13); an ABSENT
+/// vector is an empty one, which the jj layer reads as forget's default or remove's refusal.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceNamesRequest` buffer, or its
+///   `kind` is not `kind`.
+fn read_workspace_names_request(
+    data: *const u8,
+    len: usize,
+    kind: fbs::RequestKind,
+) -> Result<Vec<String>, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::WorkspaceNamesRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), kind)?;
+    Ok(req.names().into_iter().flatten().map(ToOwned::to_owned).collect())
+}
+
+/// Parse a `WorkspaceRenameRequest` buffer into its new name (Story 9.13); ABSENT is the empty
+/// name, which the jj layer refuses with the CLI's one text.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceRenameRequest` buffer, or its
+///   `kind` is not `WorkspaceRename`.
+fn read_workspace_rename_request(data: *const u8, len: usize) -> Result<String, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see the module comment above).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::WorkspaceRenameRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::WorkspaceRename)?;
+    Ok(req.new_name().unwrap_or_default().to_owned())
+}
+
 // ── Payload builders ─────────────────────────────────────────────────────────
 
 /// Serialise `&[WorkspaceEntry]` into a finished `Envelope<WorkspaceList>` buffer.
@@ -221,6 +262,33 @@ fn workspace_add_to_envelope(r: &WorkspaceAddResult, report: &CallReport) -> Vec
     finish_envelope(
         b,
         fbs::Payload::WorkspaceAddResult,
+        Some(table.as_union_value()),
+        report,
+    )
+}
+
+/// Serialise a [`WorkspaceRemoveResult`] into a finished `Envelope<WorkspaceRemoveResult>` buffer
+/// (Story 9.13). Paths cross lossily, the crate's path→wire rule.
+fn workspace_remove_to_envelope(r: &WorkspaceRemoveResult, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(512);
+    let mutation = build_mutation_result(&mut b, &r.mutation);
+    let mut paths = |list: &[std::path::PathBuf]| {
+        let offsets: Vec<_> = list.iter().map(|p| b.create_string(&p.to_string_lossy())).collect();
+        b.create_vector(&offsets)
+    };
+    let git_worktrees_removed = paths(&r.git_worktrees_removed);
+    let directories_removed = paths(&r.directories_removed);
+    let table = fbs::WorkspaceRemoveResult::create(
+        &mut b,
+        &fbs::WorkspaceRemoveResultArgs {
+            mutation: Some(mutation),
+            git_worktrees_removed: Some(git_worktrees_removed),
+            directories_removed: Some(directories_removed),
+        },
+    );
+    finish_envelope(
+        b,
+        fbs::Payload::WorkspaceRemoveResult,
         Some(table.as_union_value()),
         report,
     )
@@ -442,6 +510,144 @@ pub unsafe extern "C" fn zanshin_workspace_update_stale(handle: u64) -> *mut Zan
         let session = unsafe { session_from_handle(handle) }?;
         let result = session.repo.workspace_update_stale();
         precondition_envelope(&mut session.repo, result, map_mutate_err, stale_recovery_to_envelope)
+    });
+    vec_into_token(buf)
+}
+
+/// Stop tracking workspaces in the repo identified by `handle` — the CLI's `jj workspace forget`
+/// (Story 9.13).
+///
+/// The arguments cross as a `WorkspaceNamesRequest` (`kind` `WorkspaceForget`); `names` empty or
+/// absent forgets the CURRENT workspace. A name no workspace has warns
+/// `jj.workspace_names_unmatched`; with none left nothing is written. The rest leave the view in
+/// one operation (`forget workspace <n>` / `forget workspaces <a>, <b>`); their recorded paths
+/// stay in the workspace store, their files on disk. Each one's Git worktree is unlinked
+/// (`WorkspaceRemoveResult.git_worktrees_removed`; a failure warns `jj.git_worktree_unlink_failed`).
+/// Forgetting the current workspace warns `jj.workspace_no_longer_exists` and leaves
+/// `working_copy_change_id` absent.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceRemoveResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceNamesRequest` buffer, or its
+///   `kind` is not `WorkspaceForget`.
+/// - `jj.config_error` — the effective config no longer reads, `immutable_heads()` does not
+///   resolve, or `git.executable-path` does not read (after the operation).
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — the workspace store or any other jj-lib step failed.
+///
+/// # Safety
+/// Same handle contract as `zanshin_workspace_add`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.WorkspaceNamesRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_workspace_forget(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_workspace_forget", handle);
+    let buf = catch(|| {
+        let names = read_workspace_names_request(data, len, fbs::RequestKind::WorkspaceForget)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.workspace_forget(&names);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, workspace_remove_to_envelope)
+    });
+    vec_into_token(buf)
+}
+
+/// Rename the CURRENT workspace of the repo identified by `handle` — the CLI's `jj workspace
+/// rename` (Story 9.13).
+///
+/// The argument crosses as a `WorkspaceRenameRequest`. The view, the workspace store and the
+/// working copy are renamed in one operation, `Renamed workspace '<old>' to '<new>'`, committed
+/// without a finish (no Git export, no identity warning); the handle then runs as the renamed
+/// workspace. The current name writes nothing.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceRenameRequest` buffer, or its
+///   `kind` is not `WorkspaceRename`.
+/// - `jj.invalid_input` — `new_name` is empty or absent ("New workspace name cannot be empty"),
+///   before the pre-verb snapshot.
+/// - `jj.no_working_copy` — the current workspace has no `@` in the view: the CLI's refusal "The
+///   current workspace '<name>' is not tracked in the repo.", reported without that text (no
+///   `context`).
+/// - `jj.workspace_exists` — another workspace has the name; the name in `context`.
+/// - `jj.concurrent_working_copy` — the working copy's recorded tree is not `@`'s.
+/// - `jj.config_error` — the effective config no longer reads.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — the store, the commit or the working-copy finish failed.
+///
+/// # Safety
+/// Same handle contract as `zanshin_workspace_add`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.WorkspaceRenameRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_workspace_rename(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_workspace_rename", handle);
+    let buf = catch(|| {
+        let new_name = read_workspace_rename_request(data, len)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.workspace_rename(&new_name);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
+    });
+    vec_into_token(buf)
+}
+
+/// Remove workspaces and delete their directories in the repo identified by `handle` — the CLI's
+/// `jj workspace remove` (Story 9.13, new in jj 0.46).
+///
+/// The arguments cross as a `WorkspaceNamesRequest` (`kind` `WorkspaceRemove`). A name no
+/// workspace has warns `jj.workspace_names_unmatched`; with none left nothing is written. Every
+/// remaining workspace is checked before anything is written, then snapshotted (its own
+/// operation when its files changed), removed from the view in one operation (`remove workspace
+/// <n>` / `remove workspaces <a>, <b>`), forgotten in the workspace store, its Git worktree
+/// unlinked (`git_worktrees_removed`; a failure warns `jj.git_worktree_unlink_failed`) and its
+/// directory deleted (`directories_removed`; a failure warns `jj.workspace_directory_remove_failed`).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceRemoveResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceNamesRequest` buffer, or its
+///   `kind` is not `WorkspaceRemove`.
+/// - `jj.invalid_input` — `names` is empty or absent (before the pre-verb snapshot), or a
+///   workspace cannot be removed: no recorded path, a directory that does not resolve, the
+///   repository inside it (`default`), another repository's workspace there, or none loads there
+///   — the CLI's texts. The first two and the other-repository refusal carry the hint "Use `jj
+///   workspace forget` to stop tracking a workspace without deleting files."; the repository
+///   refusal carries none, a load error the CLI's own (none, or its `jj git init` hint). Nothing
+///   is written.
+/// - `jj.config_error` — the effective config no longer reads, `immutable_heads()` does not
+///   resolve, or `git.executable-path` does not read (after the operation).
+/// - `jj.stale_working_copy` — the pre-verb snapshot or a target workspace's snapshot found a
+///   stale working copy; earlier snapshots stay.
+/// - `jj.jj_lib_error` — a workspace load failed internally, or any other jj-lib step.
+///
+/// # Safety
+/// Same handle contract as `zanshin_workspace_add`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.WorkspaceNamesRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_workspace_remove(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_workspace_remove", handle);
+    let buf = catch(|| {
+        let names = read_workspace_names_request(data, len, fbs::RequestKind::WorkspaceRemove)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.workspace_remove(&names);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, workspace_remove_to_envelope)
     });
     vec_into_token(buf)
 }

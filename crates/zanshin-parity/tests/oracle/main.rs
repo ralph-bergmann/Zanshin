@@ -310,6 +310,29 @@ parity!(
     bookmark_untrack_pattern,
     bookmark_untrack_not_tracked_and_git,
     bookmark_untrack_remote_git,
+    file_chmod_x,
+    file_chmod_n,
+    file_chmod_revision,
+    file_chmod_unmatched,
+    file_chmod_immutable_root,
+    file_chmod_symlink_refused,
+    file_chmod_no_paths_dirty_wc,
+    workspace_forget_other,
+    workspace_forget_current,
+    workspace_forget_two,
+    workspace_forget_unknown,
+    workspace_forget_colocated_worktree,
+    workspace_rename_new,
+    workspace_rename_same,
+    workspace_rename_existing_refused,
+    workspace_rename_empty_dirty_wc,
+    workspace_remove_dirty,
+    workspace_remove_colocated_worktree,
+    workspace_remove_two,
+    workspace_remove_unknown,
+    workspace_remove_default_refused,
+    workspace_remove_deleted_dir_refused,
+    workspace_remove_no_names_dirty_wc,
     fetch_default,
     fetch_only_remote,
     fetch_no_remote,
@@ -432,7 +455,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 364);
+    assert_eq!(SCENARIO_IDS.len(), 387);
 }
 
 #[test]

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 // Wire-shape, decoder and guard tests for Story 9.22's two working-copy
-// tracking adapters, using synthetic FlatBuffers buffers built via the
+// tracking adapters (and Story 9.13's fileChmod adapter), using synthetic FlatBuffers buffers built via the
 // generated `*ObjectBuilder`s. No real cdylib required — these pin the
 // request encoding, BOTH `UntrackedReason` union arms through the decoder, and
 // the adapters' NUL backstop, mirroring crates/zanshin-ffi/src/file_ops.rs.
@@ -200,6 +200,38 @@ void main() {
       expect(
         () => zanshinFileUntrack(0, ['ok', 'a${nul}b']),
         throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'paths')),
+      );
+    });
+  });
+
+  group('Story 9.13 file chmod', () {
+    test('FileChmodRequest: absent revision is `@`, every field crosses', () {
+      final req = fbs.FileChmodRequest(
+        fbs.FileChmodRequestObjectBuilder(
+          kind: fbs.RequestKind.FileChmod,
+          executable: true,
+          paths: ['b', 'a'],
+        ).toBytes(),
+      );
+      expect(req.kind, fbs.RequestKind.FileChmod);
+      expect(req.executable, isTrue);
+      expect(req.revision, isNull, reason: 'null-for-absence: absent means `@`');
+      expect(req.paths, ['b', 'a']);
+      final named = fbs.FileChmodRequest(
+        fbs.FileChmodRequestObjectBuilder(kind: fbs.RequestKind.FileChmod, revision: 'qpvuntsm').toBytes(),
+      );
+      expect((named.executable, named.revision), (false, 'qpvuntsm'));
+    });
+
+    test('zanshinFileChmod rejects an interior NUL in paths and revision', () {
+      final nul = String.fromCharCode(0);
+      expect(
+        () => zanshinFileChmod(0, ['a${nul}b'], executable: true),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'paths')),
+      );
+      expect(
+        () => zanshinFileChmod(0, ['a'], executable: true, revision: 'q$nul'),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'revision')),
       );
     });
   });

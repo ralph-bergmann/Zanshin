@@ -2,14 +2,16 @@
 
 // Worker round-trip tests for Story 9.7's two workspace READ verbs: workspace
 // list / workspace root, on both [ZanshinWorker] and [RepoHandle] — and for
-// Story 9.23's two workspace MUTATIONS, workspace add / workspace update-stale.
+// Story 9.23's two workspace MUTATIONS, workspace add / workspace update-stale,
+// and Story 9.13's workspace forget / rename / remove.
 //
 // These tests boot the REAL Isolate.spawn flow against the REAL compiled cdylib
 // via @ffi.Native native assets. No mocked isolates, no mocked FFI
 // (project-context: "Worker / isolate testing"). Mirrors
 // test/worker/commit_views_test.dart. They are also what credits each
 // zanshin_workspace_list / zanshin_workspace_root / zanshin_workspace_add /
-// zanshin_workspace_update_stale extern "C" function in the coverage ratchet's
+// zanshin_workspace_update_stale / zanshin_workspace_forget /
+// zanshin_workspace_rename / zanshin_workspace_remove extern "C" function in the coverage ratchet's
 // extern-fn guard (mem:project-coverage-extern-fn-needs-zanshin-core-test).
 //
 // SCOPE NOTE - the Story 9.7 group below uses one workspace: it predates
@@ -31,6 +33,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/config.dart' show ConfigScope, ConfigScopeTarget;
+import 'package:zanshin_core/src/ffi/mutate.dart' show MutationResult;
 import 'package:zanshin_core/src/ffi/status.dart' show WorkingCopyStatus;
 import 'package:zanshin_core/src/ffi/workspace.dart';
 import 'package:zanshin_core/src/worker/handle.dart';
@@ -392,6 +395,113 @@ void main() {
         worker.workspaceUpdateStale(unknown),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
       );
+    });
+  });
+
+  group('ZanshinWorker workspace forget / rename / remove round-trips (real cdylib)', () {
+    late ZanshinWorker worker;
+    late Directory tempDir;
+    late String mainPath;
+
+    setUp(() async {
+      tempDir = Directory.systemTemp.createTempSync('zanshin_workspace_ops_test_');
+      mainPath = '${tempDir.resolveSymbolicLinksSync()}/main';
+      Directory(mainPath).createSync();
+      worker = await ZanshinWorker.start();
+    });
+
+    tearDown(() async {
+      await worker.close();
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    Future<List<String>> names(RepoHandle handle) async => (await handle.workspaces()).map((w) => w.name).toList();
+
+    test('forget_round_trips_names_and_warnings', () async {
+      final RepoHandle a = await worker.initRepo(mainPath, backend: 0);
+      await a.workspaceAdd(destination: '../ws2');
+      final WorkspaceRemoveResult result = await a.workspaceForget(['ws2', 'nope']);
+      expect(result.mutation.workingCopyChangeId, isNotNull);
+      expect(result.gitWorktreesRemoved, isEmpty);
+      expect(result.directoriesRemoved, isEmpty);
+      expect(result.warnings.map((w) => w.code), ['jj.workspace_names_unmatched']);
+      expect(await names(a), ['default']);
+      expect(Directory('${tempDir.path}/ws2').existsSync(), isTrue, reason: 'forget leaves the files');
+
+      // No name: this workspace goes; its `@` is gone afterwards.
+      final WorkspaceRemoveResult own = await a.workspaceForget();
+      expect(own.mutation.workingCopyChangeId, isNull);
+      expect(own.warnings.map((w) => w.code), ['jj.workspace_no_longer_exists']);
+      await a.close();
+    });
+
+    test('rename_round_trips_and_refuses', () async {
+      final RepoHandle a = await worker.initRepo(mainPath, backend: 0);
+      await a.workspaceAdd(destination: '../ws2');
+      await expectLater(
+        a.workspaceRename(''),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having((e) => e.context, 'context', 'New workspace name cannot be empty'),
+        ),
+      );
+      await expectLater(
+        a.workspaceRename('ws2'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.workspace_exists')),
+      );
+      final MutationResult renamed = await a.workspaceRename('main');
+      expect(renamed.newOpId, (await a.opLog(limit: 1)).single.id);
+      expect((await a.opLog(limit: 1)).single.description, "Renamed workspace 'default' to 'main'");
+      expect(await names(a), ['main', 'ws2']);
+      await a.close();
+    });
+
+    test('remove_round_trips_and_refuses', () async {
+      final RepoHandle a = await worker.initRepo(mainPath, backend: 0);
+      await a.workspaceAdd(destination: '../ws2');
+      final ws2 = '${tempDir.resolveSymbolicLinksSync()}/ws2';
+      await expectLater(
+        a.workspaceRemove(const []),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+      await expectLater(
+        a.workspaceRemove(['default']),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having(
+                (e) => e.context,
+                'context',
+                "Cannot remove workspace 'default' because it contains the repository",
+              ),
+        ),
+      );
+      final WorkspaceRemoveResult removed = await a.workspaceRemove(['ws2']);
+      expect(removed.directoriesRemoved, [ws2]);
+      expect((await a.opLog(limit: 1)).single.description, 'remove workspace ws2');
+      expect(Directory(ws2).existsSync(), isFalse);
+      await a.close();
+    });
+
+    test('the_three_verbs_guard_a_closed_handle_an_unknown_one_and_a_nul', () async {
+      final RepoHandle a = await worker.initRepo(mainPath, backend: 0);
+      final nul = String.fromCharCode(0);
+      Matcher argument(String name) => throwsA(isA<ArgumentError>().having((e) => e.name, 'name', name));
+      expect(() => a.workspaceForget(['a${nul}b']), argument('names'));
+      expect(() => a.workspaceRename('a${nul}b'), argument('newName'));
+      expect(() => a.workspaceRemove(['a${nul}b']), argument('names'));
+      await a.close();
+
+      expect(a.workspaceForget, throwsA(isA<StateError>()));
+      expect(() => a.workspaceRename('x'), throwsA(isA<StateError>()));
+      expect(() => a.workspaceRemove(['x']), throwsA(isA<StateError>()));
+      final Matcher invalid = throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle'));
+      await expectLater(worker.workspaceForget(9999, const []), invalid);
+      await expectLater(worker.workspaceRename(9999, 'x'), invalid);
+      await expectLater(worker.workspaceRemove(9999, ['x']), invalid);
     });
   });
 }

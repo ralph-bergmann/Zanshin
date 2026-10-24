@@ -15,8 +15,8 @@
 //! - **No terminal UX**: no templates, `-T`, `templates.workspace_list`, `root.relative()`
 //!   rendering or CWD-relative shortening. The GUI formats; the backend returns ABSOLUTE paths.
 //! - **No mutation**: `workspace add` and `update-stale` live in [`crate::workspace_add`] and
-//!   [`crate::stale`] (Story 9.23), `forget`/`rename` are Story 9.13's, so
-//!   `WorkspaceStore::{add,forget,rename}` is never called from here.
+//!   [`crate::stale`] (Story 9.23), `forget`/`rename`/`remove` in [`crate::workspace_ops`] (Story
+//!   9.13), so `WorkspaceStore::{add,forget,rename}` is never called from here.
 //!
 //! Since jj 0.46 (`d7e6ca981`, "don't overly canonicalize, print unreachable paths") both verbs
 //! report the RECORDED path as the store returns it — never canonicalized, never dropped for not
@@ -135,7 +135,7 @@ fn recorded_root(store: &dyn WorkspaceStore, name: &str) -> Result<PathBuf, Work
 /// this handle's loader captured when it was opened: a store directory deleted under an open
 /// handle is recreated EMPTY here, exactly as the next CLI command recreates it, instead of
 /// failing every read of the captured one.
-fn load_store(workspace: &Workspace) -> Result<Box<dyn WorkspaceStore>, WorkspaceError> {
+pub(crate) fn load_store(workspace: &Workspace) -> Result<Box<dyn WorkspaceStore>, WorkspaceError> {
     default_backend_factories()
         .load_workspace_store(
             workspace.repo_loader().settings(),

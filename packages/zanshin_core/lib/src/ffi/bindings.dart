@@ -1391,6 +1391,51 @@ external ffi.Pointer<ZanshinBuf> zanshin_file_annotate(
   int len,
 );
 
+/// Set (`executable` true) or clear the executable bit of the files matching the requested
+/// prefixes in one revision of the repo referenced by `handle` — the CLI's `jj file chmod x|n
+/// <paths> [-r]` (Story 9.13).
+///
+/// The arguments cross as a `FileChmodRequest` `FlatBuffers` request buffer: `revision` absent is
+/// `-r`'s default `@`, else a reverse-hex change id; `paths` as for `zanshin_file_track`. Every
+/// matching entry must be a file, or a conflict whose every side is a file — each file side takes
+/// the bit. The revision is rewritten (descendants rebased) as `make paths executable in commit
+/// <hex>` / `make paths non-executable in commit <hex>`; the rewrite is always recorded, so the
+/// operation is always written, as in the CLI. A path that matches nothing warns
+/// `jj.paths_unmatched`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileChmodRequest` buffer, or its `kind`
+/// is not `FileChmod`, i.e. the buffer was built for a different wrapper.
+/// - `jj.invalid_input` — `paths` is empty or absent (before the pre-verb snapshot), an entry is
+/// the empty string or escapes the workspace, or a matching entry is not a file ("Found neither
+/// a file nor a conflict at '<path>'.") or a conflict with a non-file side ("Some of the sides
+/// of the conflict are not files at '<path>'."); nothing is written.
+/// - `jj.change_not_found` — `revision` is malformed, absent, only-hidden or divergent.
+/// - `jj.revset_resolution_error` — no `revision` in a workspace without a working-copy commit
+/// ("Workspace `<name>` doesn't have a working-copy commit").
+/// - `jj.immutable` — the revision is immutable (the root included); hints as for every rewrite.
+/// - `jj.config_error` — the effective config no longer reads, or `immutable_heads()` does not
+/// resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_file_track`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.FileChmodRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_file_chmod(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// List the entries of a revision's tree in the repo identified by `handle` — the CLI's
 /// `jj file list`.
 ///
@@ -3882,6 +3927,43 @@ external ffi.Pointer<ZanshinBuf> zanshin_workspace_add(
   int len,
 );
 
+/// Stop tracking workspaces in the repo identified by `handle` — the CLI's `jj workspace forget`
+/// (Story 9.13).
+///
+/// The arguments cross as a `WorkspaceNamesRequest` (`kind` `WorkspaceForget`); `names` empty or
+/// absent forgets the CURRENT workspace. A name no workspace has warns
+/// `jj.workspace_names_unmatched`; with none left nothing is written. The rest leave the view in
+/// one operation (`forget workspace <n>` / `forget workspaces <a>, <b>`); their recorded paths
+/// stay in the workspace store, their files on disk. Each one's Git worktree is unlinked
+/// (`WorkspaceRemoveResult.git_worktrees_removed`; a failure warns `jj.git_worktree_unlink_failed`).
+/// Forgetting the current workspace warns `jj.workspace_no_longer_exists` and leaves
+/// `working_copy_change_id` absent.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceRemoveResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceNamesRequest` buffer, or its
+/// `kind` is not `WorkspaceForget`.
+/// - `jj.config_error` — the effective config no longer reads, `immutable_heads()` does not
+/// resolve, or `git.executable-path` does not read (after the operation).
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — the workspace store or any other jj-lib step failed.
+///
+/// # Safety
+/// Same handle contract as `zanshin_workspace_add`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.WorkspaceNamesRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_workspace_forget(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// List every workspace of the repo identified by `handle`, with its working-copy commit and
 /// root directory — the CLI's `jj workspace list`.
 ///
@@ -3914,6 +3996,89 @@ external ffi.Pointer<ZanshinBuf> zanshin_workspace_add(
 @ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64)>()
 external ffi.Pointer<ZanshinBuf> zanshin_workspace_list(
   int handle,
+);
+
+/// Remove workspaces and delete their directories in the repo identified by `handle` — the CLI's
+/// `jj workspace remove` (Story 9.13, new in jj 0.46).
+///
+/// The arguments cross as a `WorkspaceNamesRequest` (`kind` `WorkspaceRemove`). A name no
+/// workspace has warns `jj.workspace_names_unmatched`; with none left nothing is written. Every
+/// remaining workspace is checked before anything is written, then snapshotted (its own
+/// operation when its files changed), removed from the view in one operation (`remove workspace
+/// <n>` / `remove workspaces <a>, <b>`), forgotten in the workspace store, its Git worktree
+/// unlinked (`git_worktrees_removed`; a failure warns `jj.git_worktree_unlink_failed`) and its
+/// directory deleted (`directories_removed`; a failure warns `jj.workspace_directory_remove_failed`).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceRemoveResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceNamesRequest` buffer, or its
+/// `kind` is not `WorkspaceRemove`.
+/// - `jj.invalid_input` — `names` is empty or absent (before the pre-verb snapshot), or a
+/// workspace cannot be removed: no recorded path, a directory that does not resolve, the
+/// repository inside it (`default`), another repository's workspace there, or none loads there
+/// — the CLI's texts. The first two and the other-repository refusal carry the hint "Use `jj
+/// workspace forget` to stop tracking a workspace without deleting files."; the repository
+/// refusal carries none, a load error the CLI's own (none, or its `jj git init` hint). Nothing
+/// is written.
+/// - `jj.config_error` — the effective config no longer reads, `immutable_heads()` does not
+/// resolve, or `git.executable-path` does not read (after the operation).
+/// - `jj.stale_working_copy` — the pre-verb snapshot or a target workspace's snapshot found a
+/// stale working copy; earlier snapshots stay.
+/// - `jj.jj_lib_error` — a workspace load failed internally, or any other jj-lib step.
+///
+/// # Safety
+/// Same handle contract as `zanshin_workspace_add`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.WorkspaceNamesRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_workspace_remove(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Rename the CURRENT workspace of the repo identified by `handle` — the CLI's `jj workspace
+/// rename` (Story 9.13).
+///
+/// The argument crosses as a `WorkspaceRenameRequest`. The view, the workspace store and the
+/// working copy are renamed in one operation, `Renamed workspace '<old>' to '<new>'`, committed
+/// without a finish (no Git export, no identity warning); the handle then runs as the renamed
+/// workspace. The current name writes nothing.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceRenameRequest` buffer, or its
+/// `kind` is not `WorkspaceRename`.
+/// - `jj.invalid_input` — `new_name` is empty or absent ("New workspace name cannot be empty"),
+/// before the pre-verb snapshot.
+/// - `jj.no_working_copy` — the current workspace has no `@` in the view: the CLI's refusal "The
+/// current workspace '<name>' is not tracked in the repo.", reported without that text (no
+/// `context`).
+/// - `jj.workspace_exists` — another workspace has the name; the name in `context`.
+/// - `jj.concurrent_working_copy` — the working copy's recorded tree is not `@`'s.
+/// - `jj.config_error` — the effective config no longer reads.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — the store, the commit or the working-copy finish failed.
+///
+/// # Safety
+/// Same handle contract as `zanshin_workspace_add`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.WorkspaceRenameRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_workspace_rename(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
 );
 
 /// Return one workspace's root directory in the repo identified by `handle` — the CLI's

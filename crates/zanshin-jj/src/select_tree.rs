@@ -465,7 +465,7 @@ fn resolve_file_copy_id(value: &MergedTreeValue) -> Option<CopyId> {
 
 /// `override_file_executable_bit` (`builtin.rs:547-557` @ v0.46.0) over a file-like value: every
 /// file term takes `executable`.
-fn with_executable(mut value: MergedTreeValue, executable: bool) -> MergedTreeValue {
+pub(crate) fn with_executable(mut value: MergedTreeValue, executable: bool) -> MergedTreeValue {
     for term in value.iter_mut().flatten() {
         if let TreeValue::File { executable: bit, .. } = term {
             *bit = executable;

@@ -1195,6 +1195,30 @@ fn workspace_add_update_stale_surface_resolves() {
         ) -> Result<zanshin_jj::WorkspaceAddResult, zanshin_jj::MutateError>;
 }
 
+/// Story 9.13: `file chmod` reuses `MutationResult`; `workspace forget` / `remove` return the new
+/// `WorkspaceRemoveResult` (the CLI's status lines as facts), `rename` a `MutationResult`.
+#[test]
+fn file_chmod_and_workspace_ops_surface_resolves() {
+    _ = zanshin_jj::Repo::file_chmod
+        as fn(
+            &mut zanshin_jj::Repo,
+            bool,
+            Option<&zanshin_jj::ChangeId>,
+            &[String],
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::workspace_forget
+        as fn(&mut zanshin_jj::Repo, &[String]) -> Result<zanshin_jj::WorkspaceRemoveResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::workspace_rename
+        as fn(&mut zanshin_jj::Repo, &str) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::workspace_remove
+        as fn(&mut zanshin_jj::Repo, &[String]) -> Result<zanshin_jj::WorkspaceRemoveResult, zanshin_jj::MutateError>;
+    let _ = |r: zanshin_jj::WorkspaceRemoveResult| -> (
+        zanshin_jj::MutationResult,
+        Vec<std::path::PathBuf>,
+        Vec<std::path::PathBuf>,
+    ) { (r.mutation, r.git_worktrees_removed, r.directories_removed) };
+}
+
 // squash / split (Story 9.15)
 type _SquashOptions = zanshin_jj::SquashOptions;
 type _SquashPlan = zanshin_jj::SquashPlan;
@@ -1980,8 +2004,8 @@ fn story_9_28_surface_resolves() {
 /// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds;
 /// Story 9.53 the unresolved conflicts; Story 9.51 the template diagnostic; Story 9.54's closing
 /// run the bookmark auto-track warning; Story 9.19 the four rename warnings; Story 9.11 the five
-/// tracking warnings).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 73] = {
+/// tracking warnings; Story 9.13 the three workspace forget/remove warnings).
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 76] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -2027,6 +2051,9 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 73] = {
         K::ColocatedInGitWorktree,
         K::WorkspacePathInaccessible,
         K::WorkspaceInCurrentDirectory,
+        K::WorkspaceNamesUnmatched,
+        K::GitWorktreeUnlinkFailed,
+        K::WorkspaceDirectoryRemoveFailed,
         K::SplitAllSelected,
         K::SplitNoneSelected,
         K::CommitPathsUnmatched,
@@ -2159,6 +2186,9 @@ fn story_9_32_warning_surface_resolves() {
             | K::ColocatedInGitWorktree
             | K::WorkspacePathInaccessible
             | K::WorkspaceInCurrentDirectory
+            | K::WorkspaceNamesUnmatched
+            | K::GitWorktreeUnlinkFailed
+            | K::WorkspaceDirectoryRemoveFailed
             | K::SplitAllSelected
             | K::SplitNoneSelected
             | K::CommitPathsUnmatched
@@ -2191,7 +2221,7 @@ fn story_9_32_warning_surface_resolves() {
             | K::WorkspaceNoLongerExists => {}
         }
     }
-    assert_eq!(every.len(), 73);
+    assert_eq!(every.len(), 76);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

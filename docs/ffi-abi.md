@@ -37,7 +37,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 98
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 102
 exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -290,9 +290,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Sixty-one of the 98 exported symbols take their arguments as a **FlatBuffers
+Sixty-five of the 102 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Forty-nine use the handle-scoped three-parameter shape:
+strings. Fifty-three use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -551,7 +551,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **98** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **102** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -599,6 +599,9 @@ or no `# Errors` block.
 | `zanshin_workspace_root` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceRootRequest` | `WorkspaceRoot` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.workspace_not_found`, `jj.workspace_no_recorded_path`, `jj.jj_lib_error` | 9.7 |
 | `zanshin_workspace_add` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceAddRequest` | `WorkspaceAddResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.workspace_exists`, `jj.destination_not_empty`, `jj.git_worktree_failed`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.jj_lib_error` | 9.23 |
 | `zanshin_workspace_update_stale` | `(uint64_t handle)` | — | `StaleRecovery` (+ `precondition` = the trailing snapshot) | `ffi.invalid_handle`, `jj.concurrent_working_copy`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.23 |
+| `zanshin_workspace_forget` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceNamesRequest` (`kind` `WorkspaceForget`) | `WorkspaceRemoveResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.13 |
+| `zanshin_workspace_rename` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceRenameRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.no_working_copy`, `jj.workspace_exists`, `jj.concurrent_working_copy`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.13 |
+| `zanshin_workspace_remove` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceNamesRequest` (`kind` `WorkspaceRemove`) | `WorkspaceRemoveResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.13 |
 | `zanshin_describe` | `(uint64_t handle, const char *change_id, const char *description)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.invalid_input`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |
 | `zanshin_new_change` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ChangeIdList` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5, 9.48 |
 | `zanshin_edit` | `(uint64_t handle, const char *change_id)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |
@@ -637,6 +640,7 @@ or no `# Errors` block.
 | `zanshin_bookmark_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkTrackRequest` (`kind` `BookmarkUntrack`) | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.11 |
 | `zanshin_file_track` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileTrackRequest` | `TrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_file_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileUntrackRequest` | `UntrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.path_not_ignored`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
+| `zanshin_file_chmod` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileChmodRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.13 |
 | `zanshin_snapshot` | `(uint64_t handle)` | — | — (no-payload success; the report is `Envelope.precondition`) | `ffi.invalid_handle`, `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error` | 9.26 |
 | `zanshin_git_fetch` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitFetchRequest` (+ `cancel_token`, see § Cancel) | `GitFetchResult` (see § `GitFetchResult` payload) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.not_a_git_repo`, `jj.config_error`, `jj.remote_not_found`, `jj.network_error`, `jj.cancelled`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (domain side + `Progress`: 6.4a; `cancel_token`: 9.52; request + `GitFetchResult`: 9.30) |
 | `zanshin_git_remote_changes` | `(uint64_t handle, const char *remote_name, uint64_t cancel_token)` | — | `RemoteChanges` (the refs that moved, are new or were deleted upstream; empty = nothing new) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.invalid_input`, `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error` | 9.24, 9.30 |
@@ -1637,6 +1641,29 @@ that does not parse, patterns mixed with symbols, and `remotes` with symbols ref
 `jj.remote_bookmarks_unmatched` (symbols), `jj.bookmark_remotes_unmatched` (`remotes`),
 `jj.bookmark_already_tracked` (track), `jj.bookmark_git_tracking_untrack` and
 `jj.bookmark_not_tracked` (untrack).
+
+## File chmod; workspace forget, rename and remove (Story 9.13)
+
+The four wrappers port `jj file chmod` and `jj workspace forget` / `rename` / `remove` at v0.46.0
+(`remove` is new in jj 0.46). Only clap's checks refuse before the pre-verb snapshot: `chmod`'s
+empty `paths`, `rename`'s empty `new_name`, `remove`'s empty `names` (all `jj.invalid_input`).
+
+- `FileChmodRequest`: `executable` is `x` (true) / `n` (false), `revision` absent is `-r`'s default
+  `@`, `paths` as `FileTrackRequest`'s. Returns `MutationResult`; a non-file entry refuses with the
+  CLI's text; an unmatched path warns `jj.paths_unmatched`.
+- `WorkspaceNamesRequest` serves `forget` (`kind` `WorkspaceForget`; empty `names` = the current
+  workspace) and `remove` (`kind` `WorkspaceRemove`); a buffer of the other kind is
+  `ffi.invalid_argument`. Both return `WorkspaceRemoveResult` — the CLI's status lines as facts:
+  `git_worktrees_removed` ("Removed Git worktree for …") and `directories_removed` ("Removed
+  workspace directory …", remove only), canonical paths in name order. An unknown name warns
+  `jj.workspace_names_unmatched`; with none left nothing is written (`new_op_id` is the pre-call
+  head). A failed worktree unlink warns `jj.git_worktree_unlink_failed`, a directory that cannot be
+  deleted `jj.workspace_directory_remove_failed`; neither fails the call. `forget` keeps the
+  recorded paths in the workspace store (jj #9991); `remove` forgets them and snapshots each target
+  workspace first (its own operation when its files changed).
+- `WorkspaceRenameRequest`: `new_name`; returns `MutationResult` (`Renamed workspace '<old>' to
+  '<new>'`, no finish: no export, no identity warning). The handle then runs as the renamed
+  workspace.
 
 ---
 

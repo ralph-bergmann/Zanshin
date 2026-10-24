@@ -18,8 +18,9 @@ import 'warning.dart';
 // decoders — and of Story 9.23's two workspace MUTATIONS (workspaceAdd /
 // workspaceUpdateStale): their adapters, models and decoders, including the
 // `StaleRecovery` a `Precondition` carries when `snapshot.auto-update-stale`
-// recovered in front of a verb. `dart:ffi` stays inside `ffi/` — only the worker isolate calls these
-// adapters.
+// recovered in front of a verb — and of Story 9.13's workspaceForget /
+// workspaceRename / workspaceRemove. `dart:ffi` stays inside `ffi/` — only the
+// worker isolate calls these adapters.
 //
 // The two verbs cross the boundary DIFFERENTLY, mirroring the CLI's own argument
 // arity: `workspace list` is handle-only (its lone `-T/--template` flag is
@@ -111,6 +112,43 @@ Uint8List zanshinWorkspaceAdd(
 /// the FlatBuffers `Envelope` bytes (Story 9.23) — the CLI's `jj workspace
 /// update-stale`. No argument: the CLI verb takes none.
 Uint8List zanshinWorkspaceUpdateStale(int rawHandle) => readToken(zanshin_workspace_update_stale(rawHandle));
+
+/// Call `zanshin_workspace_forget` with the raw `u64` handle and a
+/// `WorkspaceNamesRequest` tagged `WorkspaceForget` (Story 9.13), and return the
+/// FlatBuffers `Envelope` bytes — the CLI's `jj workspace forget`. Empty [names]
+/// forgets the current workspace.
+Uint8List zanshinWorkspaceForget(int rawHandle, List<String> names) {
+  rejectInteriorNuls(names, 'names');
+  final Uint8List request = fbs.WorkspaceNamesRequestObjectBuilder(
+    kind: fbs.RequestKind.WorkspaceForget,
+    names: names,
+  ).toBytes();
+  return callWithRequest(request, (ptr, len) => zanshin_workspace_forget(rawHandle, ptr, len));
+}
+
+/// Call `zanshin_workspace_rename` with the raw `u64` handle and a
+/// `WorkspaceRenameRequest` (Story 9.13), and return the FlatBuffers `Envelope`
+/// bytes — the CLI's `jj workspace rename`.
+Uint8List zanshinWorkspaceRename(int rawHandle, String newName) {
+  rejectInteriorNul(newName, 'newName');
+  final Uint8List request = fbs.WorkspaceRenameRequestObjectBuilder(
+    kind: fbs.RequestKind.WorkspaceRename,
+    newName: newName,
+  ).toBytes();
+  return callWithRequest(request, (ptr, len) => zanshin_workspace_rename(rawHandle, ptr, len));
+}
+
+/// Call `zanshin_workspace_remove` with the raw `u64` handle and a
+/// `WorkspaceNamesRequest` tagged `WorkspaceRemove` (Story 9.13), and return the
+/// FlatBuffers `Envelope` bytes — the CLI's `jj workspace remove`.
+Uint8List zanshinWorkspaceRemove(int rawHandle, List<String> names) {
+  rejectInteriorNuls(names, 'names');
+  final Uint8List request = fbs.WorkspaceNamesRequestObjectBuilder(
+    kind: fbs.RequestKind.WorkspaceRemove,
+    names: names,
+  ).toBytes();
+  return callWithRequest(request, (ptr, len) => zanshin_workspace_remove(rawHandle, ptr, len));
+}
 
 // ── Dart models ──────────────────────────────────────────────────────────────
 
@@ -236,6 +274,35 @@ final class WorkspaceAddResult {
   final List<ZanshinWarning> warnings;
 }
 
+/// Outcome of a successful `workspaceForget` / `workspaceRemove` (Story 9.13;
+/// mirrors `zanshin_jj::WorkspaceRemoveResult`) — the CLI's status lines as
+/// facts.
+final class WorkspaceRemoveResult {
+  const WorkspaceRemoveResult({
+    required this.mutation,
+    required this.gitWorktreesRemoved,
+    required this.directoriesRemoved,
+    this.warnings = const [],
+  });
+
+  /// The call's operation (`forget workspace(s) …` / `remove workspace(s) …`),
+  /// or the pre-call head when no name named a workspace. Its
+  /// `workingCopyChangeId` is `null` when the current workspace itself went.
+  final MutationResult mutation;
+
+  /// The canonical directories whose Git worktree was unlinked ("Removed Git
+  /// worktree for …"), in name order.
+  final List<String> gitWorktreesRemoved;
+
+  /// The canonical directories `workspaceRemove` deleted ("Removed workspace
+  /// directory …"), in name order; always empty for `workspaceForget`.
+  final List<String> directoriesRemoved;
+
+  /// The call's warnings, in the CLI's print order (e.g.
+  /// `jj.workspace_names_unmatched`); empty when there were none.
+  final List<ZanshinWarning> warnings;
+}
+
 /// One row of `jj workspace list` (mirrors `zanshin_jj::WorkspaceEntry`).
 final class WorkspaceEntry {
   const WorkspaceEntry({required this.name, required this.wcCommitId, required this.root});
@@ -351,6 +418,29 @@ WorkspaceAddResult decodeWorkspaceAddEnvelopeInternal(Uint8List bytes) {
     workspaceRoot: payload.workspaceRoot ?? _missing('WorkspaceAddResult', 'workspace_root'),
     gitWorktreeCreated: payload.gitWorktreeCreated,
     checkout: _decodeCheckoutStats(payload.checkout) ?? _missing('WorkspaceAddResult', 'checkout'),
+    warnings: decodeEnvelopeWarningsInternal(env),
+  );
+}
+
+/// Decode a `WorkspaceRemoveResult` `Envelope` buffer into a
+/// [WorkspaceRemoveResult] (Story 9.13).
+///
+/// Exposed for decode-contract tests with synthetic buffers; production calls go
+/// through `ZanshinWorker.workspaceForget` / `workspaceRemove`.
+@visibleForTesting
+WorkspaceRemoveResult decodeWorkspaceRemoveEnvelope(Uint8List bytes) => decodeWorkspaceRemoveEnvelopeInternal(bytes);
+
+/// Internal decoder used by production code in `isolate.dart`.
+WorkspaceRemoveResult decodeWorkspaceRemoveEnvelopeInternal(Uint8List bytes) {
+  final fbs.Envelope env = _okEnvelope(bytes);
+  final Object? payload = env.data;
+  if (payload is! fbs.WorkspaceRemoveResult) {
+    throw ZanshinFfiException('ffi.unknown', 'expected WorkspaceRemoveResult payload, got ${env.dataType}');
+  }
+  return WorkspaceRemoveResult(
+    mutation: decodeMutationResultInternal(payload.mutation),
+    gitWorktreesRemoved: payload.gitWorktreesRemoved ?? const [],
+    directoriesRemoved: payload.directoriesRemoved ?? const [],
     warnings: decodeEnvelopeWarningsInternal(env),
   );
 }

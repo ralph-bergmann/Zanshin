@@ -75,6 +75,11 @@ pub enum Step {
     /// `git <args>` in the repo root (Story 9.20: a bare remote beside the repo,
     /// `git init --bare ../remote.git`).
     Git(&'static [&'static str]),
+    /// A symlink `link` (relative to the repo root) pointing at `target` (Story 9.13).
+    Symlink(&'static str, &'static str),
+    /// Removes a directory (relative to the repo root) and everything in it (Story 9.13: a
+    /// workspace directory deleted behind jj's back).
+    RemoveDir(&'static str),
 }
 
 /// Runs `git <args>` in `cwd` with the hermetic environment and fixed author/committer
@@ -131,6 +136,8 @@ pub fn fresh_repo(init: &[&str], steps: &[&[Step]]) -> (tempfile::TempDir, PathB
             Step::Git(args) => {
                 git(&root, args);
             }
+            Step::Symlink(target, link) => std::os::unix::fs::symlink(target, root.join(link)).expect("symlink"),
+            Step::RemoveDir(path) => std::fs::remove_dir_all(root.join(path)).expect("remove a fixture dir"),
         }
     }
     (dir, root)

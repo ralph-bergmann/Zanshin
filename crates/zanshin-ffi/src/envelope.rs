@@ -343,6 +343,12 @@ pub const JJ_WORKSPACE_PATH_INACCESSIBLE: &str = "jj.workspace_path_inaccessible
 /// Warning: `zanshin_workspace_add` created the workspace inside the current one (a destination
 /// without a path separator).
 pub const JJ_WORKSPACE_IN_CURRENT_DIRECTORY: &str = "jj.workspace_in_current_directory";
+/// Warning: `workspace forget` / `remove` names no workspace of the view has (Story 9.13).
+pub const JJ_WORKSPACE_NAMES_UNMATCHED: &str = "jj.workspace_names_unmatched";
+/// Warning: `workspace forget` / `remove` could not unlink a Git worktree (Story 9.13).
+pub const JJ_GIT_WORKTREE_UNLINK_FAILED: &str = "jj.git_worktree_unlink_failed";
+/// Warning: `workspace remove` could not delete a workspace directory (Story 9.13).
+pub const JJ_WORKSPACE_DIRECTORY_REMOVE_FAILED: &str = "jj.workspace_directory_remove_failed";
 /// Warning: `zanshin_split` selected every change, so the remaining commit is empty (Story 9.15).
 pub const JJ_SPLIT_ALL_SELECTED: &str = "jj.split_all_selected";
 /// Warning: `zanshin_split` selected no change, so the selected commit is empty (Story 9.15).
@@ -461,6 +467,9 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::ColocatedInGitWorktree => JJ_COLOCATED_IN_GIT_WORKTREE,
         K::WorkspacePathInaccessible => JJ_WORKSPACE_PATH_INACCESSIBLE,
         K::WorkspaceInCurrentDirectory => JJ_WORKSPACE_IN_CURRENT_DIRECTORY,
+        K::WorkspaceNamesUnmatched => JJ_WORKSPACE_NAMES_UNMATCHED,
+        K::GitWorktreeUnlinkFailed => JJ_GIT_WORKTREE_UNLINK_FAILED,
+        K::WorkspaceDirectoryRemoveFailed => JJ_WORKSPACE_DIRECTORY_REMOVE_FAILED,
         K::SplitAllSelected => JJ_SPLIT_ALL_SELECTED,
         K::SplitNoneSelected => JJ_SPLIT_NONE_SELECTED,
         K::CommitPathsUnmatched => JJ_COMMIT_PATHS_UNMATCHED,
@@ -1657,6 +1666,9 @@ mod tests {
             K::ColocatedInGitWorktree => "jj.colocated_in_git_worktree",
             K::WorkspacePathInaccessible => "jj.workspace_path_inaccessible",
             K::WorkspaceInCurrentDirectory => "jj.workspace_in_current_directory",
+            K::WorkspaceNamesUnmatched => "jj.workspace_names_unmatched",
+            K::GitWorktreeUnlinkFailed => "jj.git_worktree_unlink_failed",
+            K::WorkspaceDirectoryRemoveFailed => "jj.workspace_directory_remove_failed",
             K::SplitAllSelected => "jj.split_all_selected",
             K::SplitNoneSelected => "jj.split_none_selected",
             K::CommitPathsUnmatched => "jj.commit_paths_unmatched",
@@ -1740,6 +1752,9 @@ mod tests {
             K::ColocatedInGitWorktree,
             K::WorkspacePathInaccessible,
             K::WorkspaceInCurrentDirectory,
+            K::WorkspaceNamesUnmatched,
+            K::GitWorktreeUnlinkFailed,
+            K::WorkspaceDirectoryRemoveFailed,
             K::SplitAllSelected,
             K::SplitNoneSelected,
             K::CommitPathsUnmatched,

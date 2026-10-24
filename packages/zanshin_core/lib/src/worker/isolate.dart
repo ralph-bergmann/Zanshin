@@ -2599,6 +2599,55 @@ class ZanshinWorker {
     return repo_ffi_workspace.decodeStaleRecoveryEnvelopeInternal(bytes);
   }
 
+  /// Forget workspaces of the repo identified by [handleId] (Story 9.13) — the
+  /// CLI's `jj workspace forget`. See [RepoHandle.workspaceForget].
+  ///
+  /// Sends a [WorkspaceRemoveCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<WorkspaceRemoveResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if a name contains an interior NUL (U+0000). Throws
+  /// [ZanshinFfiException] on FFI errors. Completes with a [StateError] after
+  /// [close].
+  Future<repo_ffi_workspace.WorkspaceRemoveResult> workspaceForget(int handleId, List<String> names) =>
+      _workspaceRemove(handleId, names, remove: false);
+
+  /// Remove workspaces of the repo identified by [handleId] and delete their
+  /// directories (Story 9.13) — the CLI's `jj workspace remove`. See
+  /// [RepoHandle.workspaceRemove]. Throws as [workspaceForget].
+  Future<repo_ffi_workspace.WorkspaceRemoveResult> workspaceRemove(int handleId, List<String> names) =>
+      _workspaceRemove(handleId, names, remove: true);
+
+  Future<repo_ffi_workspace.WorkspaceRemoveResult> _workspaceRemove(
+    int handleId,
+    List<String> names, {
+    required bool remove,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(names, 'names');
+    final Uint8List bytes = await send(
+      WorkspaceRemoveCommand(commandId: _correlator.allocateId(), handleId: handleId, names: names, remove: remove),
+    );
+    return repo_ffi_workspace.decodeWorkspaceRemoveEnvelopeInternal(bytes);
+  }
+
+  /// Rename the current workspace of the repo identified by [handleId] (Story
+  /// 9.13) — the CLI's `jj workspace rename`. See [RepoHandle.workspaceRename].
+  ///
+  /// Sends a [WorkspaceRenameCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if [newName] contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors. Completes with a [StateError]
+  /// after [close].
+  Future<repo_ffi_mutate.MutationResult> workspaceRename(int handleId, String newName) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNul(newName, 'newName');
+    final Uint8List bytes = await send(
+      WorkspaceRenameCommand(commandId: _correlator.allocateId(), handleId: handleId, newName: newName),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
   /// Return the object half of each commit in [commitIds] — author, committer
   /// timestamp, FULL description, conflict, empty — read at the pinned operation
   /// [operationId], in [commitIds]' order, in the repo identified by [handleId]
@@ -2966,6 +3015,37 @@ class ZanshinWorker {
       FileUntrackCommand(commandId: _correlator.allocateId(), handleId: handleId, paths: paths),
     );
     return repo_ffi_file_ops.decodeUntrackResultEnvelopeInternal(bytes);
+  }
+
+  /// Set ([executable]) or clear the executable bit of the files matching
+  /// [paths] in one revision of the repo identified by [handleId] (Story 9.13)
+  /// — the CLI's `jj file chmod`. See [RepoHandle.fileChmod].
+  ///
+  /// Sends a [FileChmodCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if a path or [revision] contains an interior NUL
+  /// (U+0000). Throws [ZanshinFfiException] on FFI errors. Completes with a
+  /// [StateError] after [close].
+  Future<repo_ffi_mutate.MutationResult> fileChmod(
+    int handleId,
+    List<String> paths, {
+    required bool executable,
+    String? revision,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(paths, 'paths');
+    rejectInteriorNul(revision, 'revision');
+    final Uint8List bytes = await send(
+      FileChmodCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        paths: paths,
+        executable: executable,
+        revision: revision,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
   /// Snapshot the working copy of the repo identified by [handleId] right now —
@@ -4370,6 +4450,30 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
+        case WorkspaceRemoveCommand(:final int handleId, :final List<String> names, :final bool remove):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: WorkspaceRemoveCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = remove
+                ? repo_ffi_workspace.zanshinWorkspaceRemove(raw, names)
+                : repo_ffi_workspace.zanshinWorkspaceForget(raw, names);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case WorkspaceRenameCommand(:final int handleId, :final String newName):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: WorkspaceRenameCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_workspace.zanshinWorkspaceRename(raw, newName);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
         case CommitContentsCommand(
           :final int handleId,
           :final String operationId,
@@ -4539,6 +4643,27 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_file_ops.zanshinFileUntrack(raw, paths);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case FileChmodCommand(
+          :final int handleId,
+          :final List<String> paths,
+          :final bool executable,
+          :final String? revision,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: FileChmodCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_file_ops.zanshinFileChmod(
+              raw,
+              paths,
+              executable: executable,
+              revision: revision,
+            );
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
