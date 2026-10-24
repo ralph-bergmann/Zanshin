@@ -1048,7 +1048,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **Conflicted files have no designed diff view.** Low.
   - `jj diff` materializes conflict markers into the diff text (`cli/src/diff_util.rs:1884`); the design shows only the "Conflict" flag (IN:233).
   - **Follow-up:** 10.24 shows jj's text; a designed conflict view comes with 9.17's `resolve`.
-  - BACKEND PART RESOLVED 2026-10-24 (spec-9-17-resolve-diffedit-gui-editor, Story 9.17; commit aeefd82): `Repo::resolve_list` / `zanshin_resolve_list` / `RepoHandle.resolveList` give each conflicted file its sides and base hunk by hunk (`ConflictedFile.hunks`, `jj_lib::files::merge_hunks` terms in `Merge` order) plus labels and whether `resolve` can take it. The designed conflict view itself stays Epic 10/11 UI work.
+  - **2026-10-24, Story 9.17:** `Repo::resolve_list` / `zanshin_resolve_list` / `RepoHandle.resolveList` give each conflicted file its sides and base hunk by hunk (`ConflictedFile.hunks`, `jj_lib::files::merge_hunks` terms in `Merge` order) plus labels and whether `resolve` can take it (commit aeefd82); left: the designed conflict view itself (Epic 10/11 UI work) and 10.24's jj-text display.
 - **Word-level and syntax marks have no consumer story.** Low.
   - With line-level first (decision (g)), 5.2–5.4 come later, and no Epic 10 story renders segments.
   - **Follow-up:** a follow-up story to 10.24 when 5.2–5.4 are scheduled.
