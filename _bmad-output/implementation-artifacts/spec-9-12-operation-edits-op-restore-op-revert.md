@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/tests/it/op_show_diff.rs op_diff_of_a_rebasing_merge_operation_fails_like_the_cli
     severity: low
+    resolved: >-
+      2026-10-24 — fixed (spec-9-12-closing-status-without-at-and-head-reload, commit 0b70704): the cause was Git's whole-second committer time; the fixture pins `debug.commit-timestamp`, 40 of 40 isolated runs pass.
   - summary: >-
       `Repo::status` still refuses a workspace without `@` (`StatusError::NoWorkingCopy`) where the CLI prints "No working copy.", a state 9.12 made ordinary (root restore, undo to the root view, revert of `add workspace`).
     evidence: |-
@@ -24,6 +26,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/status.rs:102
     severity: medium
+    resolved: >-
+      2026-10-24 — fixed (spec-9-12-closing-status-without-at-and-head-reload, commit 0b70704): `Repo::status` succeeds without `@` as the CLI's "No working copy." does; both change ids are optional end to end (Rust `Option`, absent on the wire, Dart `String?`).
   - summary: >-
       `undo` / `redo` / `op restore` / `op revert` reload the head with jj-lib's `load_at_head`, which reconciles divergent op heads without a workspace name; the CLI reconciles in this workspace.
     evidence: |-
@@ -31,6 +35,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/op_log.rs:765
     severity: low
+    resolved: >-
+      2026-10-24 — fixed (spec-9-12-closing-status-without-at-and-head-reload, commit 0b70704): `undo`, `redo`, `op restore` and `op revert` load the head with `snapshot::load_head`, so divergent op heads are reconciled in this workspace.
 ---
 
 <intent-contract>
