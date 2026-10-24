@@ -924,7 +924,8 @@ mod tests {
     use jj_lib::fix::{LineRange, RegionsToFormat};
 
     use super::{
-        compute_regions_to_format, count, get_tools_config, interpolate, Chunks, CommandNameAndArgs, Event, ToolTimeout,
+        compute_regions_to_format, count, get_tools_config, interpolate, Chunks, CommandNameAndArgs, Event, Run,
+        Runner, ToolConfig, ToolTimeout,
     };
     use crate::mutate::MutateError;
     use crate::warning::Warnings;
@@ -1145,6 +1146,41 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+
+    /// A tool run whose token was cancelled before it starts spawns nothing.
+    #[test]
+    fn a_tool_run_after_the_cancel_starts_nothing() {
+        let id = (1 << 52) + 1;
+        crate::cancel::register(id);
+        crate::cancel::cancel(id);
+        let guard = crate::cancel::attach(id).expect("attaches");
+        let tool = ToolConfig {
+            command: command("command = ['/nonexistent']"),
+            matcher: Box::new(jj_lib::matchers::EverythingMatcher),
+            enabled: true,
+            line_range_args: Vec::new(),
+            run_tool_if_zero_line_ranges: false,
+            timeout: None,
+        };
+        let runner = Runner {
+            workspace_root: std::path::Path::new("/"),
+            tools: &[],
+            all_lines: false,
+            cancel: Some(&guard),
+            warnings: std::sync::Mutex::default(),
+            tool_stderr: std::sync::Mutex::default(),
+        };
+        let file = jj_lib::fix::FileToFix {
+            file_id: jj_lib::backend::FileId::new(vec![0; 20]),
+            base_file_id: None,
+            repo_path: jj_lib::repo_path::RepoPathBuf::from_internal_string("a").expect("a path"),
+        };
+        assert!(matches!(runner.run_tool(&tool, &file, b"x", &[]), Run::Cancelled));
+        assert!(
+            runner.warnings.into_inner().expect("warnings").is_empty(),
+            "no start was attempted"
+        );
     }
 
     #[test]
