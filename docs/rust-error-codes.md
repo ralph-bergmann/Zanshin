@@ -197,7 +197,6 @@ stay data only.
 
 These CLI warnings have no code, each for the reason given (and the story that owns it, if any):
 
-- **`trunk()` fallback** (cu:545-552) — the resolution fallback itself is not ported; its warnings come with it (deferred, `deferred-work.md`).
 - **Secure-config messages** (`secure_config.rs`) — Story 9.37 ported them (`jj.config_migrated` / `_copied` / `_regenerated`). The **deprecated-config** note (cu:4726-4741 @ v0.46.0) is ported since Story 9.9 as `jj.config_deprecated`, with the one rule of `default_config_migrations()` (`fix.tools.<name>.line-range-arg` → `line-range-args`) that `zanshin_fix` reads.
 - **"In template expression" parse diagnostics of the user's own templates** (`templates.*`, printed for `show` / `evolog` / `op log` / `file show` / `config list` — `cli_util.rs:419` / `:1165`, `print_parse_diagnostics`) — Zanshin renders none of these display templates: every result is typed data, so there is nothing to diagnose (`jj.short_prefixes_failed` is the one template-build warning Zanshin keeps for them, because the graph walk builds the same index). The templates the describing verbs and `git push --change` render DO warn, as `jj.template_diagnostic` (Story 9.51).
 - **`jj log`'s own warnings** (`log.rs:367-394`: unmatched FILESETS paths and the "is being interpreted as a fileset expression" notes) — all about its FILESETS arguments; `zanshin_graph_topology` (Story 4.12; `zanshin_graph_slice` before it) takes no FILESETS argument, so they never arise.
