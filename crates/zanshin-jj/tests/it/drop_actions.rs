@@ -1344,8 +1344,11 @@ fn an_unresolvable_alias_refuses_the_unguarded_rows() {
         let (_, _, row) = rows.iter().find(|(v, _, _)| *v == verb).expect("the row");
         assert!(is_config_refusal(row), "{verb:?}: {row:?}");
     }
-    let [new_onto, ..] = card(&mut fx, &c);
-    assert!(is_config_refusal(&new_onto), "{new_onto:?}");
+    // `c` is a leaf: its `-A` row has no child to check, so only the row's own resolution refuses.
+    let [new_onto, new_insert_after, new_insert_before, ..] = card(&mut fx, &c);
+    for row in [&new_onto, &new_insert_after, &new_insert_before] {
+        assert!(is_config_refusal(row), "{row:?}");
+    }
 
     let mark = DropSource::Bookmark("mark".to_owned());
     let rows = query(&mut fx, &mark, &[onto(&[&c]), onto(&[&b])]);

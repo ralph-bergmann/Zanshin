@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-//! The refusal order of `revert` and `duplicate` against the pinned CLI (Story 9.18 closing run):
+//! The refusal order of `revert`, `duplicate` (Story 9.18 closing run) and `new` (its follow-up)
+//! against the pinned CLI:
 //! with both an unresolvable `immutable_heads()` alias and an unparsable description template,
 //! the CLI parses the template before its `tx.finish` resolves the immutable set, unless the
 //! location has children, whose rewritability check resolves it first. Each witness refuses
@@ -18,7 +19,7 @@ use zanshin_jj::{ChangeId, DuplicateOptions, MutateError, Repo, RevertOptions};
 use crate::driver::{fresh_repo, jj, Step};
 use crate::scenarios::BASE;
 
-/// `immutable_heads()` naming no revision, and both description templates unparsable.
+/// `immutable_heads()` naming no revision, and every description template unparsable.
 const BOTH_BROKEN: &[Step] = &[
     Step::Jj(&[
         "config",
@@ -41,6 +42,7 @@ const BOTH_BROKEN: &[Step] = &[
         "templates.duplicate_description",
         "'\"undo \" ++'",
     ]),
+    Step::Jj(&["config", "set", "--repo", "templates.new_description", "'\"undo \" ++'"]),
 ];
 
 /// Which of the two settings a refusal names.
@@ -184,6 +186,27 @@ fn duplicate_parses_its_template_before_the_finish_resolves_the_immutable_set() 
                 insert_after,
                 insert_before,
             })
+        },
+    );
+}
+
+#[test]
+fn new_parses_its_template_before_the_finish_resolves_the_immutable_set() {
+    assert_same_class(
+        &[
+            (&["new", "@"], Class::Template),
+            (&["new", "-o", "@"], Class::Template),
+            (&["new", "-A", "@"], Class::Template),
+            (&["new", "-A", "@--"], Class::ImmutableSet),
+            (&["new", "-B", "@"], Class::ImmutableSet),
+        ],
+        |repo, ids, args| {
+            let [mut parents, insert_after, insert_before] = location(ids, args);
+            // `new @`: the positional revision is the parent, as `-o @` is.
+            if parents.is_empty() && insert_after.is_empty() && insert_before.is_empty() {
+                parents.push(id_of(ids, args[1]));
+            }
+            repo.new_change(&parents, &insert_after, &insert_before)
         },
     );
 }

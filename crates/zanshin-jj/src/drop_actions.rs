@@ -386,6 +386,10 @@ impl Rows<'_> {
     ) -> Result<ActionOutcome, MutateError> {
         self.row(ctx, |tx, ctx| {
             plan_new(tx, &ctx.templates(self.workspace), parents, insert_after, insert_before)?;
+            // Every `new` writes, so the CLI's `tx.finish` resolves the immutable set (Story
+            // 9.56). Rows never parse the description template, so with a broken template the
+            // verb's refusal (template parse) differs.
+            resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
             Ok(Planned::AVAILABLE)
         })
     }

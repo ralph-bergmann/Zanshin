@@ -1136,13 +1136,18 @@ pub(crate) fn check_new_args(
 /// `insert_after`, then `insert_before`.
 ///
 /// - Positional `parents` only: they are the new commit's parents and nothing is rebased — a
-///   plain `new` on an immutable parent is allowed, as in the CLI. The immutable set is still
-///   resolved, last, against `tx.base_repo()`: the CLI's `tx.finish` resolves it for every
-///   transaction with changes, and a `new` always has some (Story 9.56).
-/// - `-A`/`-B`: the immutable set (`immutable`, resolved against `tx.base_repo()`) and
-///   [`crate::op_support::compute_commit_location`] with the CLI's noun `"new commit"` give the
-///   parents and the children to rebase: `-A` alone takes the targets' children, `-B` alone
-///   the targets' parents, both together take both lists verbatim.
+///   plain `new` on an immutable parent is allowed, as in the CLI.
+/// - `-A`/`-B`: [`crate::op_support::compute_commit_location`] against `tx.base_repo()` with the
+///   CLI's noun `"new commit"` gives the parents and the children to rebase: `-A` alone takes
+///   the targets' children, `-B` alone the targets' parents, both together take both lists
+///   verbatim. Only a location with children resolves the immutable set here, for their
+///   rewritability check.
+///
+/// Positional parents and an `-A` without children do not resolve the immutable set here (Story
+/// 9.18 follow-up): the CLI parses the description template (`new.rs:217-221` @ v0.46.0) before
+/// its `tx.finish` resolves the set, which [`new_change`] mirrors through the shared finish
+/// (Story 9.56); `drop_actions`' `Rows::new_change`, the rows' counterpart, resolves it itself
+/// after this plan.
 ///
 /// Either way, two or more resolved parents with the root commit among them refuse up front on a
 /// Git-backed store, with the Git backend's own text (Story 9.31): the CLI reaches it at the
@@ -1164,8 +1169,8 @@ pub(crate) fn check_new_args(
 /// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or divergent.
 /// - [`MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is immutable; the first
 ///   offender's hex.
-/// - [`MutateError::Config`] — the `revset-aliases."immutable_heads()"` alias does not resolve
-///   against the repo.
+/// - [`MutateError::Config`] — (`-A`/`-B` with children to rebase) the
+///   `revset-aliases."immutable_heads()"` alias does not resolve against the repo.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 pub(crate) fn plan_new(
     tx: &Transaction,
@@ -1179,14 +1184,12 @@ pub(crate) fn plan_new(
     let before = resolve_ordered(tx, given(insert_before))?;
     if let Some(parents) = destination {
         refuse_git_root_merge(tx.repo().store(), &parents)?;
-        resolve_immutable(tx.base_repo().as_ref(), templates.immutable())?;
         return Ok(NewLocation {
             parents,
             children: Vec::new(),
         });
     }
     let base: &ReadonlyRepo = tx.base_repo();
-    resolve_immutable(base, templates.immutable())?;
     let (parents, children) =
         compute_commit_location(base, templates, None, after.as_deref(), before.as_deref(), "new commit")?;
     refuse_git_root_merge(tx.repo().store(), &parents)?;
@@ -1241,9 +1244,11 @@ pub(crate) fn given(ids: &[ChangeId]) -> Option<&[ChangeId]> {
 ///   `experimental-advance-branches` pattern does not parse.
 /// - [`MutateError::ChangeNotFound`] — an id is malformed, absent, only-hidden, or divergent.
 /// - [`MutateError::Immutable`] — (`-A`/`-B`) a commit to rebase is immutable.
-/// - [`MutateError::Config`] — the `immutable_heads()` alias does not resolve (with `-A`/`-B` in
-///   the plan, without them where the CLI's `tx.finish` resolves it; Story 9.56); or (advance
-///   case) an `experimental-advance-branches` key is not a list of strings.
+/// - [`MutateError::Config`] — in the CLI's order: the `immutable_heads()` alias does not resolve
+///   for an `-A`/`-B` location with children (in the plan); (advance case) an
+///   `experimental-advance-branches` key is not a list of strings; `templates.new_description`
+///   does not parse; or the alias does not resolve at the finish, where the CLI's `tx.finish`
+///   resolves it (Story 9.56).
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn new_change(

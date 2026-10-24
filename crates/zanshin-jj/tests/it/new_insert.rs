@@ -20,6 +20,8 @@ use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{Backend, ChangeId, MutateError, MutationResult, Repo};
 
+use crate::revert::{assert_config_class, UNRESOLVABLE_ALIAS};
+
 const ADVANCE_ALL: &str = "[experimental-advance-branches]\nenabled-branches = [\"*\"]\n";
 const IMMUTABLE_B_MARK: &str = "[revset-aliases]\n\"immutable_heads()\" = \"b-mark\"\n";
 const BAD_PATTERN: &str = "[experimental-advance-branches]\nenabled-branches = [\"glob:[\"]\n";
@@ -409,6 +411,34 @@ fn insert_after_a_leaf_refuses_an_unresolvable_alias_like_the_cli() {
 
     let err = refused(&mut fx, &[], std::slice::from_ref(&c), &[]);
     assert!(matches!(err, MutateError::Config { .. }), "{err:?}");
+}
+
+/// The CLI's order with both an unresolvable alias and a broken `templates.new_description`
+/// (Story 9.18 follow-up): the template parse refuses first unless the location has children,
+/// whose rewritability check resolves the immutable set; with only the alias broken, the finish
+/// refuses. `refused` checks that no operation is written.
+#[test]
+fn a_broken_template_refuses_before_the_alias_unless_the_location_has_children() {
+    let mut fx = base();
+    let (a, c) = (fx.a.clone(), fx.c.clone());
+    set_repo_config(
+        &mut fx,
+        &format!("{UNRESOLVABLE_ALIAS}[templates]\nnew_description = '\"undo \" ++'\n"),
+    );
+    let one = |id: &ChangeId| vec![id.clone()];
+    for (parents, after, before, template) in [
+        (one(&c), vec![], vec![], true),
+        (vec![], one(&c), vec![], true),
+        (vec![], one(&a), vec![], false),
+        (vec![], vec![], one(&c), false),
+    ] {
+        let err = refused(&mut fx, &parents, &after, &before);
+        assert_config_class(&err, template, &format!("{parents:?} -A {after:?} -B {before:?}"));
+    }
+
+    set_repo_config(&mut fx, UNRESOLVABLE_ALIAS);
+    let err = refused(&mut fx, std::slice::from_ref(&c), &[], &[]);
+    assert_config_class(&err, false, "only the alias broken");
 }
 
 #[test]
