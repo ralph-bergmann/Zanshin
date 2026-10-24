@@ -668,6 +668,61 @@ fn a_conflicted_left_is_sectioned_over_its_markers_and_written_back_through_upda
     assert_eq!(got.simplify(), expected.simplify());
 }
 
+/// Appends `toml` to the repo-level config.
+fn add_repo_config(fx: &Fx, toml: &str) {
+    let path = fx.root.join(".jj").join("repo").join("config.toml");
+    let mut config = fs::read_to_string(&path).unwrap_or_default();
+    config.push_str(toml);
+    fs::write(path, config).expect("repo config");
+}
+
+/// A conflicted side is materialized in `ui.conflict-marker-style`: keys cut from the `git`-style
+/// markers `file show` prints are the current sections, and all of them give the revision's value.
+#[test]
+fn a_conflicted_left_is_sectioned_in_the_configured_marker_style() {
+    let mut fx = base();
+    let m = conflicted_merge(&mut fx);
+    add_repo_config(&fx, "ui.conflict-marker-style = \"git\"\n");
+    let left_text = shown(&mut fx, &m, "c.txt");
+    assert!(
+        String::from_utf8_lossy(&left_text).contains("\n=======\n"),
+        "git-style markers"
+    );
+    write(&fx.root, "c.txt", b"x\ny\n");
+    let at = change_id(&wc(&fx.root));
+    let keys = keys_of(&pieces(&left_text, b"x\ny\n"));
+
+    let selected = select_in(&mut fx, None, vec![hunks("c.txt", &keys)]).expect("every git-style key");
+    assert_eq!(
+        value_in(&tree_of(&fx.root, &selected), "c.txt"),
+        value_in(&commit(&fx.root, &at).tree(), "c.txt")
+    );
+}
+
+/// A marker style that is not one of jj's refuses the call as a config error — at the CLI's
+/// start-up, which reads it before `select_tree` does; nothing is written.
+#[test]
+fn an_unknown_marker_style_refuses_as_a_config_error() {
+    let mut fx = base();
+    let left = left_of(&mut fx.repo, &fx.at.clone());
+    add_repo_config(&fx, "ui.conflict-marker-style = \"nonsense\"\n");
+    let head = head_op(&fx.root);
+    let err = fx
+        .repo
+        .select_tree(&SelectTreeOptions {
+            revision: None,
+            left,
+            files: vec![hunks("f.txt", &[S1])],
+        })
+        .expect_err("refused");
+    assert!(
+        matches!(&err, MutateError::Precondition(zanshin_jj::PreconditionError::Config { reason })
+            if reason.contains("ui.conflict-marker-style")),
+        "{err:?}"
+    );
+    assert_eq!(head_op(&fx.root), head, "no operation");
+}
+
 /// A conflict edited inside one side, on both sides of the diff: taking the edit keeps the
 /// conflict, with the revision's new file ids.
 #[test]

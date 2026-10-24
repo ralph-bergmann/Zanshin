@@ -1781,8 +1781,9 @@ ZanshinBuf *zanshin_duplicate(uint64_t handle,
  * that overruns its `fix.tools.<name>.timeout` (Zanshin-only: seconds, or `<n>ms`/`<n>s`/`<n>m`;
  * absent or `0` = none) has its process group killed, is skipped and warns
  * `jj.fix_tool_timed_out`. `cancel_token` (`0` = not cancellable) is a token from
- * `zanshin_network_token`: `zanshin_network_cancel` kills the running tool's process group (SIGTERM,
- * SIGKILL 2 s later) and the call refuses `jj.cancelled` with no operation, as the CLI's Ctrl-C.
+ * `zanshin_network_token`: `zanshin_network_cancel` kills the running tool's process group
+ * (SIGTERM, SIGKILL 2 s later) and the call refuses `jj.cancelled` with no operation, as the
+ * CLI's Ctrl-C.
  * A deprecated `fix.tools.<name>.line-range-arg` is migrated and warns `jj.config_deprecated`. A
  * call that fixes nothing writes NO operation and `FixResult.mutation.new_op_id` carries the
  * PRE-CALL head; otherwise the operation is the CLI's `fixed <n> commits`. The working copy is
@@ -1800,8 +1801,8 @@ ZanshinBuf *zanshin_duplicate(uint64_t handle,
  *   written.
  * - `jj.config_error` — no fix tool is configured, none is enabled, one sets
  *   `run-tool-if-zero-line-ranges` without `line-range-args`, a tool entry (its `timeout`
- *   included) or the fix revset setting has the wrong type, or the config or its `immutable_heads()` alias does not read or
- *   resolve.
+ *   included) or the fix revset setting has the wrong type, or the config or its
+ *   `immutable_heads()` alias does not read or resolve.
  * - `jj.invalid_input` — a pattern does not parse ("Failed to parse fileset: <kind>" with the CLI's
  *   `Caused by:` lines in `context`, its hint in `hints`), or a path is not a valid repo path.
  * - `jj.change_not_found` — a source id is malformed, carried by no VISIBLE commit, or divergent;
@@ -3195,9 +3196,8 @@ ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
  * sides are a regular file or a file conflict (materialized with `ui.conflict-marker-style`) and
  * UTF-8 text without NUL bytes, and a mode toggle when both such sides differ in mode; added and
  * deleted files, symlinks, submodules, non-file conflicts and binary content are selected whole.
- * Writes NO operation — only the tree's objects
- * reach the store — beyond the pre-verb snapshot's (Story 9.26). A change to the revision's own
- * content after the selection is not stale.
+ * Writes NO operation — only the tree's objects reach the store — beyond the pre-verb snapshot's
+ * (Story 9.26). A change to the revision's own content after the selection is not stale.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `SelectedTree` payload on success: the tree ids
  * and labels to pass, with `left`, as a verb's `TreeSelection`.
@@ -3207,16 +3207,16 @@ ZanshinBuf *zanshin_absorb(uint64_t handle, const uint8_t *data, uintptr_t len);
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `SelectTreeRequest` buffer, or its
  *   `kind` is not `SelectTree`.
- * - `jj.invalid_input` — a file selected `whole` and by `hunks` or its `mode`, `left` malformed or of an even or
- *   zero count, a path invalid, the root or listed twice — all before the snapshot: nothing
- *   written, no `precondition`; detail in `context`.
+ * - `jj.invalid_input` — a file selected `whole` and by `hunks` or its `mode`, `left` malformed
+ *   or of an even or zero count, a path invalid, the root or listed twice — all before the
+ *   snapshot: nothing written, no `precondition`; detail in `context`.
  * - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit, or divergent.
  * - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
  *   commit.
  * - `jj.stale_selection` — the revision's parent tree is not `left`, a key is not a current
  *   section of its file, or `mode` names a file without a mode change; detail in `context`.
- * - `jj.config_error` — the effective config does not read, or `ui.conflict-marker-style` is not
- *   one of jj's styles.
+ * - `jj.config_error` — the effective config does not read (a `ui.conflict-marker-style` that
+ *   is not one of jj's styles included — the start-up refuses it).
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
  * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
  *

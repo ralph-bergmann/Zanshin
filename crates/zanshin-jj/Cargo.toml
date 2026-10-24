@@ -31,9 +31,9 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 whoami = { workspace = true }  # WHY: `config.rs`'s EnvBase layer + resolution-context hostname, exactly as the CLI's `ConfigEnv::from_environment`
 
-# WHY macOS-only: the descendant walk and environment read in `cancel.rs` are libproc / sysctl
-# calls; elsewhere a cancel sets the flag and the checkpoints only (Story 9.52).
-[target.'cfg(target_os = "macos")'.dependencies]
+# WHY unix-only: `cancel.rs` kills a `fix` tool's process group with POSIX `killpg`; its
+# descendant walk and environment read (macOS only) are libproc / sysctl calls (Story 9.52).
+[target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
 
 [dev-dependencies]

@@ -235,8 +235,9 @@ pub unsafe extern "C" fn zanshin_duplicate(handle: u64, data: *const u8, len: us
 /// that overruns its `fix.tools.<name>.timeout` (Zanshin-only: seconds, or `<n>ms`/`<n>s`/`<n>m`;
 /// absent or `0` = none) has its process group killed, is skipped and warns
 /// `jj.fix_tool_timed_out`. `cancel_token` (`0` = not cancellable) is a token from
-/// `zanshin_network_token`: `zanshin_network_cancel` kills the running tool's process group (SIGTERM,
-/// SIGKILL 2 s later) and the call refuses `jj.cancelled` with no operation, as the CLI's Ctrl-C.
+/// `zanshin_network_token`: `zanshin_network_cancel` kills the running tool's process group
+/// (SIGTERM, SIGKILL 2 s later) and the call refuses `jj.cancelled` with no operation, as the
+/// CLI's Ctrl-C.
 /// A deprecated `fix.tools.<name>.line-range-arg` is migrated and warns `jj.config_deprecated`. A
 /// call that fixes nothing writes NO operation and `FixResult.mutation.new_op_id` carries the
 /// PRE-CALL head; otherwise the operation is the CLI's `fixed <n> commits`. The working copy is
@@ -254,8 +255,8 @@ pub unsafe extern "C" fn zanshin_duplicate(handle: u64, data: *const u8, len: us
 ///   written.
 /// - `jj.config_error` — no fix tool is configured, none is enabled, one sets
 ///   `run-tool-if-zero-line-ranges` without `line-range-args`, a tool entry (its `timeout`
-///   included) or the fix revset setting has the wrong type, or the config or its `immutable_heads()` alias does not read or
-///   resolve.
+///   included) or the fix revset setting has the wrong type, or the config or its
+///   `immutable_heads()` alias does not read or resolve.
 /// - `jj.invalid_input` — a pattern does not parse ("Failed to parse fileset: <kind>" with the CLI's
 ///   `Caused by:` lines in `context`, its hint in `hints`), or a path is not a valid repo path.
 /// - `jj.change_not_found` — a source id is malformed, carried by no VISIBLE commit, or divergent;

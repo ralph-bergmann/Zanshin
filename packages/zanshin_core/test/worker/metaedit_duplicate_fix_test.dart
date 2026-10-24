@@ -185,6 +185,7 @@ void main() {
       while (!marker.existsSync() && stopwatch.elapsed < const Duration(seconds: 10)) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
+      expect(marker.existsSync(), isTrue, reason: 'the tool runs when the cancel lands');
       await fix.cancel();
       await expectLater(
         fix.result,
@@ -192,6 +193,30 @@ void main() {
       );
       expect(stopwatch.elapsed, lessThan(const Duration(seconds: 20)), reason: 'the 30 s tool was killed');
       expect(await progress, isEmpty);
+      expect(await headOp(), before, reason: 'no operation');
+    });
+
+    test('a_fix_queued_behind_another_and_cancelled_starts_cancelled', () async {
+      final Directory scratch = Directory.systemTemp.createTempSync('zanshin_fix_queued_cancel_');
+      addTearDown(() => scratch.deleteSync(recursive: true));
+      final marker = File('${scratch.path}/started');
+      File('${tempDir.path}/.jj/repo/config.toml').writeAsStringSync(
+        "[fix.tools.sleep]\ncommand = ['sh', '-c', 'touch \"\$1\"; sleep 30', 'sh', '${marker.path}']\n"
+        "patterns = ['a.txt']\n",
+      );
+      final String before = await headOp();
+      final NetworkOperation<FixResult> first = repo.fix();
+      final stopwatch = Stopwatch()..start();
+      while (!marker.existsSync() && stopwatch.elapsed < const Duration(seconds: 10)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(marker.existsSync(), isTrue, reason: 'the first fix runs its tool');
+      final NetworkOperation<FixResult> queued = repo.fix();
+      await queued.cancel();
+      await first.cancel();
+      final Matcher cancelled = throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.cancelled'));
+      await expectLater(first.result, cancelled);
+      await expectLater(queued.result, cancelled);
       expect(await headOp(), before, reason: 'no operation');
     });
 

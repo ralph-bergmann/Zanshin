@@ -1051,9 +1051,10 @@ has not exited 2 s later (its pipes are then waited for at most another 2 s, so 
 left the group cannot hang the call). Its checkpoints: right after the pre-verb snapshot, before
 each tool run, and after the tools before the finish. A cancelled fix answers `jj.cancelled` and
 writes NO operation (the snapshot's stays, blobs already written are unreferenced) — the CLI's
-Ctrl-C exits before `tx.finish`; the tools' warnings so far ride the refusal. The same group kill
-ends a run that overruns its `fix.tools.<name>.timeout` (see § `zanshin_metaedit`, `zanshin_duplicate`,
-`zanshin_fix`).
+Ctrl-C exits before `tx.finish`; the tools' warnings so far ride the refusal, but — as on any
+refusal — no `FixResult` is returned, so the tools' stderr collected so far is not. The same
+group kill ends a run that overruns its `fix.tools.<name>.timeout` (see § `zanshin_metaedit`,
+`zanshin_duplicate`, `zanshin_fix`).
 
 **Token lifetime.** `zanshin_network_token()` returns a fresh id from the session-id counter
 (never `0`, never reused, never a live session's id) and registers it; the call it is passed to
@@ -1815,8 +1816,8 @@ The operation descriptions are the CLI's: `edit commit metadata for commit <hex>
 <n> more`, `duplicate <n> commit(s)`, `fixed <n> commits`. Warnings: `jj.duplicate_as_own_descendant`
 / `jj.duplicate_as_own_ancestor` (a duplicate among its original's descendants / ancestors),
 `jj.fix_tool_start_failed` / `jj.fix_tool_failed` / `jj.fix_tool_timed_out` (a tool skipped for a
-file — sorted by message, the CLI's interleaving is rayon's), `jj.fileset_diagnostic` (a `fix.tools` pattern's diagnostic),
-`jj.paths_unmatched` (a fix path in no source's or descendant's tree), `jj.config_deprecated` (see
+file — sorted by message, the CLI's interleaving is rayon's), `jj.fileset_diagnostic` (a
+`fix.tools` pattern's diagnostic), `jj.paths_unmatched` (a fix path in no source's or descendant's tree), `jj.config_deprecated` (see
 *`warnings`*). Refusals reuse registered codes only: `jj.invalid_input` (clap's, "Cannot duplicate
 the root commit", the location texts, a `fix.tools` pattern that does not parse — "Failed to parse
 fileset: <kind>" with the CLI's `Caused by:` lines and hint), `jj.change_not_found`,
@@ -1832,8 +1833,8 @@ parses there) bounds ONE run of the tool — one file: a non-negative integer of
 `<n>ms` / `<n>s` / `<n>m` (non-negative integer `n`), the integer-or-unit-string shape of jj's
 `snapshot.max-new-file-size`; absent = no timeout (the CLI's behavior), `0` in any unit = none too,
 so a higher config layer can switch a lower layer's off. A run that overruns it has its process
-group killed (SIGTERM, SIGKILL 2 s later), is a failed run — its output discarded, the file keeps the
-previous tool's content, the next tool runs — and warns `jj.fix_tool_timed_out` "Fix tool `{name}`
+group killed (SIGTERM, SIGKILL 2 s later), is a failed run — its output discarded, the file keeps
+the previous tool's content, the next tool runs — and warns `jj.fix_tool_timed_out` "Fix tool `{name}`
 timed out after {timeout} for `{path}`" ({timeout} normalized: `30s`, `500ms`, `2m`), never also
 `jj.fix_tool_failed`; what it wrote to stderr until then is a `FixToolStderr` entry. A malformed
 value refuses the call as `jj.config_error` naming `fix.tools.<name>`.
@@ -1920,8 +1921,9 @@ v0.46.0). The verbs then take that tree in their **tree arm**.
    id is `jj.jj_lib_error`.
 5. **Staleness — `jj.stale_selection`:** the revision's (each source's) parent tree is no longer
    `left` — a rebase, a rewritten parent — a key is not one of the file's current sections, or
-   `mode` names a file without a mode change ("{path} has no mode change"). It is checked by `zanshin_select_tree` and again by each tree arm where the CLI runs its editor;
-   nothing is written. A change to the revision's OWN content after the selection is not stale:
+   `mode` names a file without a mode change ("{path} has no mode change"). It is checked by
+   `zanshin_select_tree` and again by each tree arm where the CLI runs its editor; nothing is
+   written. A change to the revision's OWN content after the selection is not stale:
    every verb snapshots first, the tree is absolute, and the rest stays in the revision. The
    remedy is the UI's: re-read the diff, re-map the selection, select again.
 

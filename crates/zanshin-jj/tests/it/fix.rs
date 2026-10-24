@@ -522,6 +522,35 @@ fn a_tool_overrunning_its_timeout_is_killed_and_the_next_tool_runs_on_the_old_co
     assert_eq!(file(&mut fx, &a, "a.txt"), "A\n");
 }
 
+/// A timed-out tool group that ignores SIGTERM gets SIGKILL after the grace period.
+#[test]
+fn a_timed_out_tool_ignoring_sigterm_is_killed_after_the_grace() {
+    let scratch = TempDir::new().expect("tempdir");
+    let pid = scratch.path().join("pid");
+    let config = format!(
+        "[fix.tools.stubborn]\ncommand = ['sh', '-c', 'trap \"\" TERM; echo $$ > \"$1\"; sleep 30 & wait', \
+         'sh', '{}']\npatterns = ['a.txt']\ntimeout = '1s'\n",
+        pid.display()
+    );
+    let mut fx = configured(&config);
+    let started = Instant::now();
+    let result = fix(&mut fx, &FixOptions::default());
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed >= Duration::from_millis(2900),
+        "SIGKILL waits for the 1 s timeout and the 2 s grace: {elapsed:?}"
+    );
+    assert!(
+        elapsed < Duration::from_secs(9),
+        "the timeout and two graces at most: {elapsed:?}"
+    );
+    assert_eq!(result.num_fixed_commits, 0);
+    let warnings = fx.repo.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, WarningKind::FixToolTimedOut);
+    assert!(group_gone(&pid), "the stubborn tool and what it forked are gone");
+}
+
 /// What a timed-out tool wrote to stderr before the kill is recorded; the margin is wide, so the
 /// tool has written it before its deadline.
 #[test]

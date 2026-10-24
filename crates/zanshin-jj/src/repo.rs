@@ -3317,7 +3317,9 @@ impl Repo {
     /// `cancel` is the CLI's Ctrl-C: once its token is cancelled the call refuses at its next
     /// checkpoint — right after the snapshot, before each tool run, after the tools — and a
     /// running tool's process group is killed (SIGTERM, SIGKILL [`crate::cancel`]'s grace later);
-    /// nothing is written. Without a token the call is not cancellable.
+    /// nothing is written. Without a token the call is not cancellable. A refusal — a cancel
+    /// included — returns no [`crate::FixResult`], so the tools' stderr collected so far is not
+    /// returned; their warnings are ([`Repo::take_warnings`]).
     ///
     /// A call that fixes nothing writes NO operation (`new_op_id` is the pre-call head);
     /// otherwise the operation is the CLI's `fixed <n> commits`. The result counts the fixed and
@@ -3332,8 +3334,8 @@ impl Repo {
     /// - [`crate::MutateError::Config`] — no `fix.tools` entry ("No `fix.tools` are configured"),
     ///   none enabled ("At least one entry of `fix.tools` must be enabled."), one sets
     ///   `run-tool-if-zero-line-ranges` without `line-range-args`, an entry (a malformed `timeout`
-    ///   included) or `revsets.fix` has the wrong type, the alias tables do not read, or the `immutable_heads()` alias does not
-    ///   resolve.
+    ///   included) or `revsets.fix` has the wrong type, the alias tables do not read, or the
+    ///   `immutable_heads()` alias does not resolve.
     /// - [`crate::MutateError::InvalidInput`] — a pattern does not parse ("Failed to parse
     ///   fileset: <kind>" with the CLI's `Caused by:` lines and hint), or a path is not a valid
     ///   repo path.
@@ -3438,7 +3440,6 @@ impl Repo {
     /// - [`crate::MutateError::StaleSelection`] — the revision's parent tree is not `left`, a key
     ///   is not a current section of its file, keys name a path that can only be selected whole or
     ///   is unchanged, or the mode toggle names a path without a mode change.
-    /// - [`crate::MutateError::Config`] — `ui.conflict-marker-style` is not one of jj's styles.
     /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]

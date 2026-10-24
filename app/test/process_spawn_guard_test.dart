@@ -14,8 +14,11 @@ import 'package:flutter_test/flutter_test.dart';
 /// `packages/*/lib`, generated files included) with comments and string
 /// contents blanked, and names file:line for every `Process.run` /
 /// `Process.runSync` reference and every `Process.start` without a detached
-/// `mode:` (a tear-off included). Every package rule of `cargo xtask gate-plan`
-/// plans this app's `test-flutter`, so a change to any of those trees runs it.
+/// `mode:` (a tear-off included). Known limits: a spawn inside a string
+/// interpolation is blanked with its string, and a detached `mode:` anywhere in
+/// the argument text (a nested call's included) counts. Every package rule of
+/// `cargo xtask gate-plan` plans this app's `test-flutter`, so a change to any
+/// of those trees runs it.
 void main() {
   group('the spawn matcher', () {
     test('flags a run, a runSync, a non-detached start and tear-offs', () {

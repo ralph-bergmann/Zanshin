@@ -182,4 +182,5 @@ Dart `WorkerCommand` → optional MCP tool → tests (+ coverage attribution + r
   `:326-345`) and single lines inside a section (checkable there, `:211-222`). The 9.47 oracle
   drives the stock CLI's `--tool` with a scripted editor making the same choice
   (`split_tool_sections_1_3`, `commit_tool_sections_1_3`, `squash_tool_sections_1_3`, and for the
-  mode toggle `split_tool_mode_only`, `split_tool_sections_no_mode`).
+  mode toggle `split_tool_mode_only`, `split_tool_sections_no_mode`,
+  `split_tool_mode_and_sections`).

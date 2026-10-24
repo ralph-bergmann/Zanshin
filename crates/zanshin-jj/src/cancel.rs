@@ -31,8 +31,9 @@
 //! dropping the guard removes the entry and stops the polling. A cancel of a finished or unknown
 //! token is a no-op.
 //!
-//! Only macOS walks and signals processes; elsewhere a cancel sets the flag and the checkpoints
-//! refuse, nothing more.
+//! Only macOS walks and signals the network verbs' processes; elsewhere a cancel sets the flag
+//! and the checkpoints refuse, nothing more. The process-group kill of a `fix` tool
+//! ([`kill_group`]) is POSIX `killpg` and signals on every unix.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
@@ -212,9 +213,22 @@ pub(crate) enum GroupSignal {
 
 /// Signals every process of the process group `group` — a `fix` tool spawned as the leader of
 /// its own group, so the tool and whatever it forked go together (Story 9.9 follow-on). A group
-/// that is gone makes it a no-op. Only macOS signals; elsewhere nothing is sent.
+/// that is gone makes it a no-op.
 pub(crate) fn kill_group(group: u32, signal: GroupSignal) {
-    process::kill_group(group, signal);
+    let signal = match signal {
+        GroupSignal::Terminate => libc::SIGTERM,
+        GroupSignal::Kill => libc::SIGKILL,
+    };
+    // A group id of 0 or 1 would be ours or init's; a child's pid is neither.
+    let Some(group) = libc::pid_t::try_from(group).ok().filter(|group| *group > 1) else {
+        return;
+    };
+    tracing::debug!(group, signal, "cancel: signalling a fix tool's process group");
+    // SAFETY: `killpg` takes plain integers and touches no memory of ours. A group whose
+    // processes all exited only makes it fail with ESRCH, which is ignored.
+    unsafe {
+        libc::killpg(group, signal);
+    }
 }
 
 fn spawn_poller(id: u64) {
@@ -443,23 +457,6 @@ mod process {
             libc::kill(pid, signal);
         }
     }
-
-    pub(super) fn kill_group(group: u32, signal: super::GroupSignal) {
-        let signal = match signal {
-            super::GroupSignal::Terminate => libc::SIGTERM,
-            super::GroupSignal::Kill => libc::SIGKILL,
-        };
-        // A group id of 0 or 1 would be ours or init's; a child's pid is neither.
-        let Some(group) = pid_t::try_from(group).ok().filter(|group| *group > 1) else {
-            return;
-        };
-        tracing::debug!(group, signal, "cancel: signalling a fix tool's process group");
-        // SAFETY: `killpg` takes plain integers and touches no memory of ours. A group whose
-        // processes all exited only makes it fail with ESRCH, which is ignored.
-        unsafe {
-            libc::killpg(group, signal);
-        }
-    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -475,8 +472,6 @@ mod process {
     pub(super) fn terminate(_pid: i32) {}
 
     pub(super) fn kill(_pid: i32) {}
-
-    pub(super) fn kill_group(_group: u32, _signal: super::GroupSignal) {}
 }
 
 #[cfg(test)]

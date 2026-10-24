@@ -43,6 +43,9 @@
 //!   line section (`builtin.rs:326-345`), Zanshin selects such a file whole (Story 9.50's rule);
 //! - a symlink, a submodule and a non-file conflict are whole only: the builtin editor sections a
 //!   non-file conflict's description and panics writing it back (`builtin.rs:455-457`);
+//! - a side whose file cannot be read (`MaterializedTreeValue::AccessDenied`) is not file-like, so
+//!   whole only: the builtin editor sections it as the text "Access denied: …" in normal mode
+//!   (`builtin.rs:135-142`) and would write that text back;
 //! - a binary file's content is whole only — apart from its mode change, which can be taken alone:
 //!   the builtin editor toggles the binary content as one section of its own;
 //! - a section is selected whole: the builtin editor can check single lines inside it

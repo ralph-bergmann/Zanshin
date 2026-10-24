@@ -340,10 +340,10 @@ struct ToolConfig {
 ///
 /// # Errors
 ///
-/// - [`MutateError::Config`] — an entry does not deserialize (a malformed `timeout` included), sets `run-tool-if-zero-line-ranges`
-///   without `line-range-args`, no entry is configured ("No `fix.tools` are configured"), or none
-///   is enabled ("At least one entry of `fix.tools` must be enabled."); the `[fileset-aliases]`
-///   table does not read.
+/// - [`MutateError::Config`] — an entry does not deserialize (a malformed `timeout` included),
+///   sets `run-tool-if-zero-line-ranges` without `line-range-args`, no entry is configured ("No
+///   `fix.tools` are configured"), or none is enabled ("At least one entry of `fix.tools` must be
+///   enabled."); the `[fileset-aliases]` table does not read.
 /// - [`MutateError::InvalidInput`] — a pattern does not parse: "Failed to parse fileset: <kind>",
 ///   the CLI's `Caused by:` lines, its hint.
 fn get_tools_config(config: &StackedConfig, sink: &mut Warnings) -> Result<Vec<ToolConfig>, MutateError> {

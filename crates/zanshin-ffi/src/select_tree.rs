@@ -123,9 +123,8 @@ fn read_select_tree_request(data: *const u8, len: usize) -> Result<SelectTreeOpt
 /// sides are a regular file or a file conflict (materialized with `ui.conflict-marker-style`) and
 /// UTF-8 text without NUL bytes, and a mode toggle when both such sides differ in mode; added and
 /// deleted files, symlinks, submodules, non-file conflicts and binary content are selected whole.
-/// Writes NO operation — only the tree's objects
-/// reach the store — beyond the pre-verb snapshot's (Story 9.26). A change to the revision's own
-/// content after the selection is not stale.
+/// Writes NO operation — only the tree's objects reach the store — beyond the pre-verb snapshot's
+/// (Story 9.26). A change to the revision's own content after the selection is not stale.
 ///
 /// Returns a `FlatBuffers` `Envelope` carrying a `SelectedTree` payload on success: the tree ids
 /// and labels to pass, with `left`, as a verb's `TreeSelection`.
@@ -135,16 +134,16 @@ fn read_select_tree_request(data: *const u8, len: usize) -> Result<SelectTreeOpt
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `SelectTreeRequest` buffer, or its
 ///   `kind` is not `SelectTree`.
-/// - `jj.invalid_input` — a file selected `whole` and by `hunks` or its `mode`, `left` malformed or of an even or
-///   zero count, a path invalid, the root or listed twice — all before the snapshot: nothing
-///   written, no `precondition`; detail in `context`.
+/// - `jj.invalid_input` — a file selected `whole` and by `hunks` or its `mode`, `left` malformed
+///   or of an even or zero count, a path invalid, the root or listed twice — all before the
+///   snapshot: nothing written, no `precondition`; detail in `context`.
 /// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit, or divergent.
 /// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
 ///   commit.
 /// - `jj.stale_selection` — the revision's parent tree is not `left`, a key is not a current
 ///   section of its file, or `mode` names a file without a mode change; detail in `context`.
-/// - `jj.config_error` — the effective config does not read, or `ui.conflict-marker-style` is not
-///   one of jj's styles.
+/// - `jj.config_error` — the effective config does not read (a `ui.conflict-marker-style` that
+///   is not one of jj's styles included — the start-up refuses it).
 /// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
 /// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
 ///

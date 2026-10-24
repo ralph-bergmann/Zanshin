@@ -175,6 +175,7 @@ parity!(
     split_tool_sections_1_3,
     split_tool_mode_only,
     split_tool_sections_no_mode,
+    split_tool_mode_and_sections,
     commit_tool_sections_1_3,
     squash_tool_sections_1_3,
     restore_path_escapes_repo,
@@ -386,7 +387,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 319);
+    assert_eq!(SCENARIO_IDS.len(), 320);
 }
 
 #[test]

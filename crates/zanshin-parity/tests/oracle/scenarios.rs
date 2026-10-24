@@ -628,6 +628,24 @@ const SECTIONS_NO_MODE_TOOL: &[Step] = &[
     ]),
 ];
 
+/// [`MODE_ONLY_TOOL`]'s `@` and a diff editor `zs` that writes sections 1 and 3, `A b c d E`,
+/// keeping the `+x`: the mode toggle together with sections.
+const MODE_AND_SECTIONS_TOOL: &[Step] = &[
+    Step::Write("f.txt", "a\nb\nc\nd\ne\n"),
+    Step::Jj(&["new", "-m", "D"]),
+    Step::Write("f.txt", "A\nb\nC\nd\nE\n"),
+    Step::Jj(&["util", "snapshot"]),
+    Step::Jj(&["file", "chmod", "x", "f.txt"]),
+    Step::Jj(&["config", "set", "--repo", "merge-tools.zs.program", "\"sh\""]),
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "merge-tools.zs.edit-args",
+        r#"["-c", 'printf "A\nb\nc\nd\nE\n" > "$1/f.txt"', "sh", "$right"]"#,
+    ]),
+];
+
 /// A section key of `f.txt`'s one-line sections, starting at line `start`.
 fn f_key(start: u32) -> HunkKey {
     HunkKey {
@@ -2205,6 +2223,22 @@ pub fn scenarios() -> Vec<Scenario> {
                 "split_tool_mode_only",
                 |repo, _, _| {
                     let (_, tree) = select_f_txt(repo, FileChoice::ModeAndHunks(Vec::new()));
+                    let options = SplitOptions {
+                        tree: Some(tree),
+                        message: Some(vec!["first".to_owned()]),
+                        ..SplitOptions::default()
+                    };
+                    split_outcome(repo, &options)
+                },
+                |_| args(&["split", "--tool", "zs", "-m", "first"]),
+            )
+        },
+        Scenario {
+            setup: MODE_AND_SECTIONS_TOOL,
+            ..simple(
+                "split_tool_mode_and_sections",
+                |repo, _, _| {
+                    let (_, tree) = select_f_txt(repo, FileChoice::ModeAndHunks(vec![f_key(0), f_key(4)]));
                     let options = SplitOptions {
                         tree: Some(tree),
                         message: Some(vec!["first".to_owned()]),
