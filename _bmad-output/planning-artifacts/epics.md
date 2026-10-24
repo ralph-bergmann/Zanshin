@@ -11613,6 +11613,12 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 > - **Depends on** adds 11.11.
 > - **Witness (added):** under every accent family a selected hunk paints `--accent-soft-hi` and the 2 px `--accent-line` edge, and an unselected one `--hunk-bg`.
 
+> **Decision 2026-10-24 (Ralph, console session after the story loop 9.9–9.12):** the inspector offers everything the CLI's builtin diff editor offers. Story 9.50 had kept two cases whole-only on the premise that the builtin editor does too. It does not (`builtin.rs:296-301` `Section::FileMode`, `:423-445` conflict sections @ v0.46.0), so the backend arm follows the CLI. This amends items 1 and 3.
+> - **Item 1, mode changes.** A file whose mode changes (e.g. `+x`) gets its own checkbox row for the mode change, apart from its content hunks.
+> - **Item 1, conflicted files.** A conflicted file gets hunk checkboxes over the sections between its materialized conflict markers.
+> - **Item 3.** Both kinds of selection go through `select_tree`, like any partial file.
+> - **Witnesses (added):** a mode change selected without its content (and the reverse) gives the tree the builtin editor writes; selecting one conflict section of a conflicted file gives the builtin editor's tree.
+
 **Motivation.** The design selects hunks, not only files (IN:96-112; INC:69-70). A partly selected file is the CLI's interactive arm (`-i`), whose editor the GUI replaces with its own selection (ADR-0003). 9.50 turns that selection into a tree, and 9.15 and 9.49 take the tree.
 
 **Scope.**

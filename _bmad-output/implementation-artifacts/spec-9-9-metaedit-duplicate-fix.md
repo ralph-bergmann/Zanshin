@@ -24,6 +24,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/fix.rs (get_tools_config); docs/rust-error-codes.md
     severity: low
+    resolved: >-
+      2026-10-24 — record (Ralph): the code stays as the CLI's; the re-check is an item of the jj pin-bump checklist.
   - summary: >-
       `jj.config_deprecated` is emitted by the snapshotting verbs and the config verbs only; `config gc`, the non-snapshotting reads (graph, revset, log defaults) and the creation paths run the migration but drop its descriptions, where the CLI warns on every command.
     evidence: |-
