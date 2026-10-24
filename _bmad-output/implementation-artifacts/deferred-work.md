@@ -1999,3 +1999,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **`resolve_list` cannot tell an absent side from an empty file.** Low.
   - Both are an empty term in `hunks` (`MaterializedFileConflictValue.contents`); `description` says "including 1 deletion" but not which side. jj-lib also exposes `ids: Merge<Option<FileId>>`.
   - **Follow-up:** the term ids of the item above (absent = none) close it; build them together.
+
+## Surfaced in Story 9.18 (bmad-build-auto, 2026-10-24)
+
+- **`revert -o` with both a broken `templates.revert_description` and an unresolvable `immutable_heads()` names the wrong fault first.** Low.
+  - `plan_revert` resolves the immutable set at the end of the plan for a non-insert location (`crates/zanshin-jj/src/revert.rs`); the verb parses the template after the plan. The CLI parses the template first and resolves the immutable set in `tx.finish`. Both refuse `jj.config_error` with no operation; only the `context` text differs. `duplicate`'s plan (`plan_duplicate_ids`) has the same order.
+  - **Follow-up:** move the non-insert `resolve_immutable` out of the shared plan fns into the verbs' finish path (`drop_actions` keeps its own call), or leave it.
