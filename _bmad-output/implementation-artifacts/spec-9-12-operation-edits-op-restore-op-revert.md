@@ -5,7 +5,7 @@ created: '2026-10-24'
 status: 'done'
 baseline_revision: '12c5b603ffa88aa0f5b263f12747b53375240b6a'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
 warnings: [multiple-goals, oversized]
@@ -16,6 +16,20 @@ deferred:
       Measured 2026-10-24 by the implementation run: 3 of 40 isolated runs fail on the untouched baseline (git archive 12c5b60), 2 of 40 with Story 9.12 applied; the outcome depends on the unpinned timestamps of the two `diverge` describes. Not caused by 9.12; it passed in the two full `cargo test -p zanshin-jj` runs of this run's verification.
     location: >-
       crates/zanshin-jj/tests/it/op_show_diff.rs op_diff_of_a_rebasing_merge_operation_fails_like_the_cli
+    severity: low
+  - summary: >-
+      `Repo::status` still refuses a workspace without `@` (`StatusError::NoWorkingCopy`) where the CLI prints "No working copy.", a state 9.12 made ordinary (root restore, undo to the root view, revert of `add workspace`).
+    evidence: |-
+      crates/zanshin-jj/src/status.rs:102 returns NoWorkingCopy; the CLI's cmd_status prints "No working copy." and succeeds (cli/src/commands/status.rs:195 @ v0.46.0). The Dart Status decoder turns an absent id into '' (packages/zanshin_core/lib/src/ffi/status.dart:109). Pre-existing: a workspace forgotten elsewhere reached it before 9.12.
+    location: >-
+      crates/zanshin-jj/src/status.rs:102
+    severity: medium
+  - summary: >-
+      `undo` / `redo` / `op restore` / `op revert` reload the head with jj-lib's `load_at_head`, which reconciles divergent op heads without a workspace name; the CLI reconciles in this workspace.
+    evidence: |-
+      crates/zanshin-jj/src/op_log.rs:205, :389, :765, :810 call load_at_head after the pre-verb snapshot; snapshot::load_head (crates/zanshin-jj/src/snapshot.rs:313) is the CLI's way. Reached only when another process diverges the op heads between the snapshot and the reload. The pattern predates 9.12 (undo/redo, Story 9.21); 9.12's two verbs copied it.
+    location: >-
+      crates/zanshin-jj/src/op_log.rs:765
     severity: low
 ---
 
@@ -138,6 +152,35 @@ CLI anchors at `v0.46.0`: RS = `cli/src/commands/operation/restore.rs` (`cmd_op_
   - `[false]` `[reject]` (intent f) the "revert already reverted" row bent to the CLI — same as the edge-case `op_revert_twice` row.
   - `[false]` `[reject]` (intent g) the review diff omits the spec and generated code; gate wording — generated code and the claims file are excluded from the reviewers' diff by design; the spec is committed at finalisation; every check is recorded under Verification.
 
+### 2026-10-24 — Review pass (follow-up)
+- verdicts: 25 findings — high 0, medium 1, low 17, false 7, maybe-false 0
+- findings:
+  - `[low]` `[patch]` (blind) an absent `OpRestoreRequest.operation` was `ffi.invalid_argument` through a private helper, against the refusal ladder's row 4 (`missing_field` → `jj.invalid_input` "<field> is required", ffi-abi.md § refusal ladder) — the Code Map's wording conflicted with the documented ladder; now `missing_field("operation")`, rustdoc, `.fbs` doc (regenerated), ffi-abi.md, rust-error-codes.md and the FFI refusal test updated.
+  - `[low]` `[reject]` (blind) `op integrate` drops `merge_operations`' rebase count — carried: the rebase count (a new field, a rare divergent-rewrite case) rejected as low in the first pass.
+  - `[low]` `[patch]` (blind) the documented rule "a head-load reconcile leaves `reconciled = false`" was never tested — `op_integrate_after_a_head_load_reconcile_reports_no_reconcile_of_its_own` (two published sibling ops, `op_integrate("@")`: `reconciled` false, the merge in `default`) added.
+  - `[low]` `[patch]` (blind) the oracle misses risky paths — integrate parts carried (harness cannot capture op ids from setup); `op revert --what` had no scenario: `op_revert_what_remote_tracking` added (DESCRIBE_THEN_PUSH, matches the CLI); undo-to-root / revert-of-`add workspace` scenarios rejected — the harness's base setup leaves no op log reaching the root by `undo`, and the shared finish path with its warning is compared by `op_restore_root`.
+  - `[medium]` `[defer]` (blind) `Repo::status` still refuses a workspace without `@` where the CLI prints "No working copy." — pre-existing (`status.rs:102`; a forgotten workspace reached it before), now ordinary; deferred with the end-to-end optional-`@` fix as follow-up.
+  - `[low]` `[patch]` (blind) `import_git_refs` still skipped the `git_refs` report without `@` (guards that existed only because `no_op_result` / `mutation_result` failed without `@`), against the wire doc "PRESENT exactly when the step ran" — guards removed, Rust docs reworded; `a_workspace_without_at_still_imports_the_refs` now asserts the report (no `@`, `other` imported).
+  - `[low]` `[reject]` (blind) `working_copy_change_id` became `Option` for verbs that always set `@` without a per-verb promise — the wire contract states when it is absent; a sentence on each always-`@` verb adds no safety (test `expect("@")`s fail loudly if it ever changes).
+  - `[low]` `[patch]` (blind) the `RestoreWhat::RemoteTracking` doc paraphrased the CLI wrongly, Dart left the advice out — both now quote "Do not restore these if you'd like to push after the undo".
+  - `[low]` `[patch]` (blind) rust-error-codes.md's `jj.operation_not_found` "Emitted" column lacked the 9.12 sources — sentence added (and the absent-`operation` source on the `jj.invalid_input` row).
+  - `[low]` `[reject]` (blind) revert's default `@` lives in the FFI reader and the Dart API — both are the intent's "defaults to `@`" (the CLI's `default_value`) at two documented surfaces; the absent-means-`@` path is tested from Rust.
+  - `[low]` `[patch]` (blind) the FFI remote-tracking test discarded `eval_revset`'s `Result` — now `.expect("the revset evaluates")`.
+  - `[low]` `[patch]` (blind) `--what` tests leave fields unchecked — refuted for Rust (the inline `view_restore_takes_each_portion_per_what` checks `local_tags` and `wc_commit_ids` per portion); the Dart half (only `[repo]` sent) is the verification-gap row below, fixed with it.
+  - `[low]` `[defer]` (edge-case) `op_restore` / `op_revert` reload the head with jj-lib's `load_at_head` (reconcile without workspace name) instead of the CLI's — same pattern in undo/redo since 9.21, reached only through a concurrent op-head divergence between snapshot and reload; deferred for all four verbs.
+  - `[false]` `[reject]` (edge-case, claim) undo's tests "pass unchanged" hides the undo-to-root change — carried: the Spec Change Log records it; the old test pinned a bug.
+  - `[false]` `[reject]` (edge-case, claim) `op_revert_twice` "no change" — carried: the pinned CLI writes the second op too (Spec Change Log).
+  - `[low]` `[patch]` (verification-gap) the Dart bridge's `what` forwarding was never observed — worker round trip `the chosen --what portion reaches restore and revert` added: `[remoteTracking]` restore writes nothing and keeps `B`; after a bookmark create, `[remoteTracking]` revert is "Nothing changed." and `[repo]` removes the bookmark (both behaviours checked against the pinned CLI binary in a scratch repo; a describe cannot tell revert's portions apart — the merge's recorded rewrite brings `A` back in the CLI too).
+  - `[low]` `[patch]` (verification-gap) the old-`@` half of the `jj.workspace_no_longer_exists` condition was unwitnessed — the root-restore test now writes a bookmark with `@` absent before and after and asserts no such warning (mutation-checked: dropping the old-side test fails it).
+  - `[false]` `[reject]` (intent 1) undo/redo's observable outcome changed — carried (as the edge-case claim row): CLI parity of the root restore, Spec Change Log.
+  - `[false]` `[reject]` (intent 2) the shared `MutationResult` contract widened — carried (first-pass intent a).
+  - `[false]` `[reject]` (intent 3) a new warning code — carried (first-pass intent a): a warning, not an error code.
+  - `[false]` `[reject]` (intent 4) "revert already reverted" — carried (first-pass intent f).
+  - `[low]` `[reject]` (intent 5) integrate's unpublished/sibling rows only at the Rust surface — carried (first-pass blind oracle row / intent c).
+  - `[low]` `[patch]` (intent 6) revert `--what` has no oracle scenario — same as the blind oracle row; `op_revert_what_remote_tracking` added. The merge refusal / rebase staying at Rust + oracle is carried (first-pass intent b).
+  - `[false]` `[reject]` (intent 7) real-cdylib tests are smoke-level — the intent asks every new extern to get one; the matrix rows live at zanshin-jj and the oracle, the seam only marshals.
+  - `[low]` `[patch]` (intent 8) wire-only surfaces: an absent restore `operation` refused as `ffi.invalid_argument` — same as the blind first row; now `jj.invalid_input`. `Unspecified` → `ffi.invalid_argument` matches the sort-key reader.
+
 ## Design Notes
 
 - **Why `op integrate` is in.** 9.21's spec assigned it here ("No `op restore` / `op revert` / `op integrate` (9.12)"), it is the third `operation/` edit verb, and Zanshin's `sibling_operation` stale hint names it — Ralph prefers scoping a story with its obvious siblings over follow-up chains.
@@ -167,6 +210,17 @@ CLI anchors at `v0.46.0`: RS = `cli/src/commands/operation/restore.rs` (`cmd_op_
 - `packages/zanshin_core`: `cargo make --allow-private test-core` (pinned env) — 1029, then 1030 tests passed; `dart analyze --fatal-infos --fatal-warnings` — no issues; `dart format --set-exit-if-changed .` — 0 changed. `app/`: `dart analyze --fatal-infos` — no issues.
 - Coverage not measured (gate rule); every new line got a test.
 
+**Checks run (2026-10-24, follow-up review pass; full gate deliberately not run — story-loop gate rule):**
+- `cargo fmt --all --check` — clean (after `cargo fmt --all`).
+- `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity --all-targets -- -D warnings` — clean.
+- `cargo test -p zanshin-jj` — 349 unit + 1214 integration passed, 1 ignored (pre-existing).
+- `cargo test -p zanshin-ffi` — 213 unit + 347 integration passed.
+- `cargo test -p zanshin-parity --test oracle` — 330 passed (new `op_revert_what_remote_tracking`; `every_scenario_has_a_test` at 316; no ledger entry).
+- `cargo make codegen` — regenerated (the `OpRestoreRequest` doc and the `zanshin_op_restore` rustdoc changed); a rerun leaves no diff.
+- `packages/zanshin_core`: `cargo make --allow-private test-core` — 1031 passed; `dart analyze --fatal-infos --fatal-warnings` — no issues; `dart format --set-exit-if-changed .` — 0 changed. `app/`: `dart analyze --fatal-infos` — no issues.
+- Mutation check: reducing `mutate.rs:887` to `maybe_new_wc_commit.is_none()` fails `op_restore_to_the_root_operation_writes_its_view` (restored afterwards, no diff).
+- CLI check (pinned `target/debug/jj` in a scratch repo under the session scratchpad): `op revert --what remote-tracking` of a describe brings the old description back (recorded rewrite); of a bookmark create it is "Nothing changed."; `--what repo` removes the bookmark — the Dart test pins exactly that.
+
 ## Auto Run Result
 
 Status: done
@@ -189,4 +243,24 @@ Status: done
 
 **Verification.** See `## Verification` → "Checks run": fmt, clippy, zanshin-jj / zanshin-ffi / oracle tests, codegen idempotence, the zanshin_core suite, analyze and format — all green. Full gate and coverage not run (story-loop gate rule).
 
-**Residual risks.** Coverage unmeasured. The pre-existing flaky `op_diff_of_a_rebasing_merge_operation_fails_like_the_cli` may turn the loop's final gate red (deferred). `op integrate`'s real paths (unpublished child, reconciled sibling) are integration-tested only — the oracle compares only the no-effect case.
+### Follow-up review pass (2026-10-24)
+
+**Summary.** A fresh four-layer review of the shipped 9.12 diff. Patched: the absent restore `operation` now follows the refusal ladder (`jj.invalid_input` "operation is required"); `import_git_refs` reports the refs import without `@` too (obsolete guards removed); the `RestoreWhat::RemoteTracking` docs quote the CLI; rust-error-codes.md completed; and tests for the head-load reconcile of `op integrate`, the no-`@`-before-and-after warning condition, the Dart `what` forwarding, plus the oracle scenario `op_revert_what_remote_tracking`.
+
+**Files changed.**
+- `crates/zanshin-ffi/src/op_log.rs` — absent `operation` → `missing_field` (`jj.invalid_input`); docs.
+- `crates/zanshin-jj/src/snapshot.rs` — `git_refs` report without the `@` guards; docs.
+- `crates/zanshin-jj/src/op_log.rs`, `packages/zanshin_core/lib/src/ffi/op_log.dart` — `RemoteTracking` doc quotes the CLI.
+- `schemas/envelope.fbs` + regenerated Rust/Dart/C — `OpRestoreRequest.operation` doc.
+- Tests: `crates/zanshin-jj/tests/it/{op_integrate,op_restore_revert,snapshot_colocated}.rs`, `crates/zanshin-ffi/tests/it/op_log_ffi.rs`, `packages/zanshin_core/test/worker/op_verbs_test.dart`, oracle `scenarios.rs` / `main.rs`.
+- Docs: `docs/ffi-abi.md`, `docs/rust-error-codes.md`; `deferred-work.md` (two items mirrored).
+
+**Review.** 25 findings: 1 medium, 17 low, 7 false. Patched 10 rows in 8 entries, all low (absent-operation code, head-load reconcile test, oracle `op revert --what`, `git_refs` without `@`, `RemoteTracking` doc, error-codes row, `eval_revset` `expect`, Dart `what` forwarding, the old-`@` warning half). Deferred: `Repo::status` without `@` (medium, pre-existing) and the `load_at_head` reload without workspace name (low, pre-existing pattern). Rejected: 7 false (carried claim/intent rows, smoke-level cdylib tests), 5 low (carried rebase count and integrate oracle rows ×2, per-verb `Option` promise, revert default `@` in two layers).
+
+**Follow-up review recommended: false** (follow-up pass, no high patched; patched by verdict: 0 high, 0 medium, 8 low entries).
+
+**Verification.** See `## Verification` → "Checks run (… follow-up review pass)": fmt, clippy, zanshin-jj / zanshin-ffi / oracle tests, codegen idempotence, the zanshin_core suite, analyze and format — all green. Full gate and coverage not run (story-loop gate rule).
+
+**Residual risks.** Coverage unmeasured. `Repo::status` in a workspace without `@` still errors (deferred). The pre-existing flaky `op_diff_of_a_rebasing_merge_operation_fails_like_the_cli` may turn the loop's final gate red (deferred).
+
+**Residual risks (first pass).** Coverage unmeasured. The pre-existing flaky `op_diff_of_a_rebasing_merge_operation_fails_like_the_cli` may turn the loop's final gate red (deferred). `op integrate`'s real paths (unpublished child, reconciled sibling) are integration-tested only — the oracle compares only the no-effect case.
