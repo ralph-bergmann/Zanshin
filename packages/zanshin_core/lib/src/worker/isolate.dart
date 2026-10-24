@@ -2394,14 +2394,18 @@ class ZanshinWorker {
   /// Return one workspace's absolute root directory, in the repo identified by
   /// [handleId] (Story 9.7) — the CLI's `jj workspace root [--name]`.
   ///
-  /// A `null` [name] is the CLI's own default, the CURRENT workspace, and reads
-  /// the workspace loader alone — the one path that cannot fail. A PRESENT
-  /// [name], even the current workspace's own, goes through the workspace store
-  /// and can REFUSE or WARN, because the CLI's named path never shortcuts to the
-  /// loader; a recorded directory that does not exist comes back with a
+  /// Both forms first run the CLI's command start-up (the secure-config fix-up,
+  /// the effective config), which can refuse `jj.config_error`; its warnings
+  /// ride the result and the exception. A `null` [name] is the CLI's own
+  /// default, the CURRENT workspace, and then reads the workspace loader alone.
+  /// A PRESENT [name], even the current workspace's own, also runs the start-up
+  /// environment and goes through the workspace store and can REFUSE or WARN,
+  /// because the CLI's named path never shortcuts to the loader; a recorded
+  /// directory that does not exist comes back with a
   /// `jj.workspace_path_inaccessible` warning. An explicitly empty [name] is a
-  /// VALUE, not an absence. This read writes no operation — not even on a
-  /// refusal.
+  /// VALUE, not an absence. This read opens no transaction; only the named
+  /// form's head load may write an operation, reconciling divergent heads in
+  /// this workspace as the CLI's does.
   ///
   /// Sends a [WorkspaceRootCommand] via [send] and decodes the returned
   /// FlatBuffers `Envelope<WorkspaceRoot>` bytes into the path and the call's
@@ -2409,8 +2413,8 @@ class ZanshinWorker {
   ///
   /// Throws [ArgumentError] if [name] contains an interior NUL (U+0000). Throws
   /// [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.workspace_not_found`, `jj.workspace_no_recorded_path`,
-  /// `jj.jj_lib_error`). Completes with a
+  /// `jj.config_error`, `jj.workspace_not_found`,
+  /// `jj.workspace_no_recorded_path`, `jj.jj_lib_error`). Completes with a
   /// [StateError] after [close]; the close-guard [StateError] is delivered
   /// synchronously by [RepoHandle.workspaceRoot].
   Future<repo_ffi_workspace.WorkspaceRootResult> workspaceRoot(int handleId, {String? name}) async {

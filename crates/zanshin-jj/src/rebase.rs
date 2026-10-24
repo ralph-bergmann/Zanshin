@@ -25,7 +25,6 @@ use jj_lib::backend::{BackendError, CommitId};
 use jj_lib::commit::Commit;
 use jj_lib::config::{ConfigLayer, ConfigSource};
 use jj_lib::object_id::ObjectId as _;
-use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoader};
 use jj_lib::revset::RevsetExpression;
 use jj_lib::rewrite::{
@@ -434,17 +433,18 @@ pub(crate) fn rebase(
     Ok(mutation_result(&finish, new_change_ids, abandoned_change_ids))
 }
 
-/// The repo's head operation loaded through `loader`'s stores with [`dry_run_settings`], once
-/// per query: every transaction started from it writes its commits unsigned. Divergent heads are
-/// reconciled as the CLI reconciles them, in `workspace_name`.
+/// The repo's head operation loaded through `workspace`'s stores with [`dry_run_settings`],
+/// once per query: every transaction started from it writes its commits unsigned. The head is
+/// resolved through the workspace's OWN loader first — divergent heads reconciled as the CLI
+/// reconciles them, in this workspace and with its real settings (a reconcile that rebases
+/// descendants must not drop their signatures) — and only then loaded with the preview settings.
 ///
 /// # Errors
 ///
 /// - [`MutateError::Backend`] — the settings could not be built or the head could not be loaded.
-pub(crate) fn load_dry_run_head(
-    loader: &RepoLoader,
-    workspace_name: &WorkspaceName,
-) -> Result<Arc<ReadonlyRepo>, MutateError> {
+pub(crate) fn load_dry_run_head(workspace: &Workspace) -> Result<Arc<ReadonlyRepo>, MutateError> {
+    let head = crate::snapshot::reload_head(workspace).map_err(be)?;
+    let loader = workspace.repo_loader();
     let preview = RepoLoader::new(
         dry_run_settings(loader.settings())?,
         loader.store().clone(),
@@ -454,7 +454,7 @@ pub(crate) fn load_dry_run_head(
         loader.index_store().clone(),
         loader.submodule_store().clone(),
     );
-    crate::snapshot::load_head_with(&preview, workspace_name).map_err(be)
+    pollster::block_on(preview.load_at(head.operation())).map_err(be)
 }
 
 /// `settings` with `signing.behavior = "drop"` layered on top, so `sign_settings().should_sign`

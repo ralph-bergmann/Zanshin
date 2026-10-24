@@ -46,12 +46,16 @@ Uint8List zanshinWorkspaceList(int rawHandle) => readToken(zanshin_workspace_lis
 /// `WorkspaceRootRequest` request buffer, and return the FlatBuffers `Envelope`
 /// bytes.
 ///
-/// A `null` [name] is the wire form of "the user did not supply `--name`", which
-/// applies the CLI's own default — the CURRENT workspace — and reads the
-/// workspace loader alone, the one path that cannot fail. A PRESENT [name], even
-/// the current workspace's own, goes through the workspace store and can REFUSE
-/// or WARN: the CLI's named path never shortcuts to the loader. An explicitly EMPTY [name]
-/// is a VALUE, not an absence, and refuses as `jj.workspace_not_found`.
+/// Both forms first run the CLI's command start-up (the secure-config fix-up,
+/// the effective config), which can refuse `jj.config_error`; its warnings ride
+/// the envelope either way. A `null` [name] is the wire form of "the user did
+/// not supply `--name`", which applies the CLI's own default — the CURRENT
+/// workspace — and then reads the workspace loader alone. A PRESENT [name], even
+/// the current workspace's own, also runs the start-up environment, goes through
+/// the workspace store and can REFUSE or WARN: the CLI's named path never
+/// shortcuts to the loader, and its head load may reconcile divergent operation
+/// heads in this workspace, as the CLI's does. An explicitly EMPTY [name] is a
+/// VALUE, not an absence, and refuses as `jj.workspace_not_found`.
 Uint8List zanshinWorkspaceRoot(int rawHandle, {String? name}) {
   rejectInteriorNul(name, 'name');
   final Uint8List request = fbs.WorkspaceRootRequestObjectBuilder(

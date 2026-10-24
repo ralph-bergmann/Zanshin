@@ -504,7 +504,7 @@ fn with_rows<T>(
     ctx: &mut VerbContext,
     query: impl FnOnce(&Rows<'_>, &mut VerbContext) -> Result<T, MutateError>,
 ) -> Result<T, MutateError> {
-    let readonly = load_dry_run_head(workspace.repo_loader(), workspace.workspace_name())?;
+    let readonly = load_dry_run_head(workspace)?;
     let precondition_warnings = ctx.warnings.take();
     let result = query(&Rows { workspace, readonly }, ctx);
     let _row_warnings = ctx.warnings.take();

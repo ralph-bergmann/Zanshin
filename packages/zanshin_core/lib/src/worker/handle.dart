@@ -1771,12 +1771,17 @@ final class RepoHandle {
   /// Return one workspace's absolute root directory (Story 9.7) — the CLI's
   /// `jj workspace root [--name]`.
   ///
+  /// Both forms first run the CLI's command start-up — the secure-config fix-up
+  /// and the effective config — so a config stack that does not resolve refuses
+  /// either with `jj.config_error`, and the start-up's warnings (the fix-up
+  /// notices, `jj.config_deprecated`) ride the result and the exception alike.
   /// A `null` [name] is the CLI's own documented default, the CURRENT workspace;
-  /// that path reads the workspace loader alone — no repo load, no store read —
-  /// and cannot fail. A PRESENT [name], even the current workspace's own, goes
-  /// through the workspace store and can REFUSE or WARN, because the CLI's named
-  /// path never shortcuts to the loader. An explicitly empty [name] is a VALUE,
-  /// not an absence: no workspace is named `''`, so it refuses with
+  /// after the start-up that path reads the workspace loader alone — no repo
+  /// load, no store read. A PRESENT [name], even the current workspace's own,
+  /// also runs the start-up environment (alias tables, `immutable_heads()`),
+  /// then goes through the workspace store and can REFUSE or WARN, because the
+  /// CLI's named path never shortcuts to the loader. An explicitly empty [name]
+  /// is a VALUE, not an absence: no workspace is named `''`, so it refuses with
   /// `jj.workspace_not_found`.
   ///
   /// The returned path is absolute. A named workspace's path is the RECORDED one,
@@ -1784,13 +1789,14 @@ final class RepoHandle {
   /// back anyway, with a `jj.workspace_path_inaccessible` warning. CWD-relative
   /// shortening is the UI's job.
   ///
-  /// This read writes no operation — not even on a refusal. Throws [StateError]
-  /// synchronously if the handle is already [_closed]; throws [ArgumentError] if
-  /// [name] contains an interior NUL (U+0000), which a length-prefixed
-  /// FlatBuffers string would carry all the way into a workspace name; throws
-  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.workspace_not_found`, `jj.workspace_no_recorded_path`,
-  /// `jj.jj_lib_error`).
+  /// This read opens no transaction; only the named form's head load may write
+  /// an operation — a reconcile of divergent operation heads in this workspace,
+  /// as the CLI's does. Throws [StateError] synchronously if the handle is
+  /// already [_closed]; throws [ArgumentError] if [name] contains an interior
+  /// NUL (U+0000), which a length-prefixed FlatBuffers string would carry all
+  /// the way into a workspace name; throws [ZanshinFfiException] on FFI errors
+  /// (`ffi.invalid_handle`, `jj.config_error`, `jj.workspace_not_found`,
+  /// `jj.workspace_no_recorded_path`, `jj.jj_lib_error`).
   Future<WorkspaceRootResult> workspaceRoot({String? name}) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');

@@ -388,8 +388,7 @@ fn assert_own_root_resolves(repo: &mut Repo, expected: &std::path::Path) {
     assert_same_dir(&named, expected);
     assert_eq!(
         named,
-        repo.resolve_workspace_root(None)
-            .expect("the no-name default cannot fail"),
+        repo.resolve_workspace_root(None).expect("a clean stack resolves"),
         "naming the current workspace must agree with the no-name default"
     );
 }

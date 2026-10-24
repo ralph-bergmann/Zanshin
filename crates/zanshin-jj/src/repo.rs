@@ -2356,7 +2356,9 @@ impl Repo {
     ///
     /// - [`crate::WorkspaceError::Precondition`] — the start-up failed: a config stack that does
     ///   not resolve (either form); with a name also an alias table, `immutable_heads()` or
-    ///   short-prefixes revset that does not parse.
+    ///   short-prefixes revset that does not parse (all `Config`), or a jj-lib failure of the
+    ///   colocation check, the start-up environment or the `trunk()` fallback's head load
+    ///   (`Backend`).
     /// - [`crate::WorkspaceError::NotFound`] — no workspace of that name is in the head view.
     /// - [`crate::WorkspaceError::NoRecordedPath`] — the workspace exists but the store holds no
     ///   path for it (it predates jj 0.38.0, or its entry was wiped).
@@ -3783,6 +3785,18 @@ mod tests {
                 .iter()
                 .any(|w| w.kind == crate::WarningKind::TrunkAliasUnresolved),
             "workspace_update_stale fell back too"
+        );
+        assert!(!repo.trunk_fallback(), "and ended it");
+        let root = repo.resolve_workspace_root(Some("default")).expect("the named root");
+        assert_eq!(
+            std::fs::canonicalize(root).expect("recorded root"),
+            std::fs::canonicalize(repo.workspace_root()).expect("root")
+        );
+        assert!(
+            repo.take_warnings()
+                .iter()
+                .any(|w| w.kind == crate::WarningKind::TrunkAliasUnresolved),
+            "the named workspace root fell back too"
         );
         assert!(!repo.trunk_fallback(), "and ended it");
     }

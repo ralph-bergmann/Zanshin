@@ -3701,7 +3701,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_workspace_list(
 /// - `jj.workspace_no_recorded_path` — the workspace exists but the store holds no path for it;
 /// the name in `context`.
 /// - `jj.jj_lib_error` — the workspace store could not be loaded or read, or the head load
-/// failed; detail in `context`.
+/// failed; with a name also a jj-lib failure of the start-up (the colocation check, the
+/// start-up environment, the `trunk()` fallback's head load); detail in `context`.
 ///
 /// # Safety
 /// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,

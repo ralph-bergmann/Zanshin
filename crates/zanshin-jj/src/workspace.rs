@@ -4,7 +4,8 @@
 //! `jj workspace root` (Story 9.7, Epic 9 Tier A).
 //!
 //! Both are READS: they resolve to the head operation per call (ADR-0002) and open no
-//! transaction, so neither writes an operation — not even on a refusal.
+//! transaction. Only a head load that reconciles divergent operation heads (as the CLI's does)
+//! — or `list`'s pre-verb snapshot — may write an operation.
 //!
 //! CLI parity is at tag **v0.46.0** (`cli/src/commands/workspace/{list,root}.rs` plus
 //! `cli/src/commit_templater.rs`'s `WorkspaceRef` `root` method) for the observable behavior —
@@ -75,9 +76,10 @@ pub struct WorkspaceEntry {
 #[derive(Debug, thiserror::Error)]
 pub enum WorkspaceError {
     /// The pre-verb snapshot of `list` (Story 9.26) or the command start-up of `root` (the
-    /// secure-config fix-up, the effective config; with a name also the alias tables and the
-    /// `immutable_heads()` parse) failed, so the read never ran — see
-    /// [`crate::PreconditionError`].
+    /// secure-config fix-up, the effective config; with a name also the colocation check, the
+    /// alias tables, the `immutable_heads()` parse and the `trunk()` fallback's head load) failed,
+    /// so the read never ran — see [`crate::PreconditionError`]: a config fault is its `Config`,
+    /// a jj-lib failure of those steps its `Backend`.
     #[error(transparent)]
     Precondition(#[from] crate::PreconditionError),
     /// No workspace of that name is in the head view's `wc_commit_ids()`. The remedy is to pick a

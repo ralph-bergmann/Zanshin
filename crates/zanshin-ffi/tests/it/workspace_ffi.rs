@@ -196,7 +196,7 @@ fn workspace_root_absent_name_answers_quietly_where_the_named_current_workspace_
     // SAFETY: token is fresh and non-null.
     let bytes = unsafe { read_and_free(token) };
     let env = parse_envelope(&bytes);
-    assert!(env.ok(), "the loader-only path cannot fail");
+    assert!(env.ok(), "a clean stack resolves, and the bare form reads no store");
     assert_eq!(env.data_type(), fbs::Payload::WorkspaceRoot);
     let wire_root = env
         .data_as_workspace_root()

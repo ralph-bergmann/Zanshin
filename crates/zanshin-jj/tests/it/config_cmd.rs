@@ -592,6 +592,37 @@ fn a_deprecated_user_key_warns_on_both_config_edit_halves() {
         assert!(written.result.is_ok(), "{ws:?}: {:?}", written.result);
         assert_eq!(messages(&written.warnings), deprecated, "{ws:?}");
     }
+
+    // The write half warns the stack BEFORE the write, as the CLI prints it before `$EDITOR`:
+    // replacing the deprecated key still reports it, once.
+    let replaced = config_file_write(None, &user, "a = 1\n");
+    assert!(replaced.result.is_ok(), "{:?}", replaced.result);
+    assert_eq!(messages(&replaced.warnings), deprecated);
+    assert_eq!(fs::read_to_string(&user).unwrap(), "a = 1\n");
+}
+
+/// The editor halves' warnings come in the CLI's start-up order: the secure-config fix-up's
+/// notices first, then the start-up stack's deprecations.
+#[test]
+fn the_editor_half_warns_the_fix_up_before_the_deprecations() {
+    test_helpers::own_process!("the_editor_half_warns_the_fix_up_before_the_deprecations");
+    let (_tmp, root) = workspace(None);
+    fs::write(
+        root.join(".jj").join("repo").join("config.toml"),
+        "[test]\nmarker = \"legacy\"\n",
+    )
+    .unwrap();
+    let tmp = TempDir::new().unwrap();
+    let user = tmp.path().join("user.toml");
+    fs::write(&user, "fix.tools.t.line-range-arg = \"--l\"\n").expect("user config");
+    // SAFETY: this test runs alone in its own process (`own_process!`).
+    unsafe { env::set_var("JJ_CONFIG", &user) };
+
+    let outcome = config_file_read(Some(&root), &ConfigTarget::Scope(ConfigScope::Repo));
+
+    assert_eq!(outcome.result.expect("read").text, "[test]\nmarker = \"legacy\"\n");
+    let kinds: Vec<WarningKind> = outcome.warnings.iter().map(|w| w.kind).collect();
+    assert_eq!(kinds, [WarningKind::ConfigMigrated, WarningKind::ConfigDeprecated]);
 }
 
 /// The halves are the repair path: a stack that does not load is no refusal and warns nothing —

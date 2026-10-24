@@ -5,9 +5,10 @@
 //! workspace MUTATIONS of Story 9.23.
 //!
 //! Each calls the matching `zanshin_jj::Repo` method and serialises the result into a
-//! `FlatBuffers` `Envelope`. The handle is borrowed (not consumed), and neither verb itself
-//! writes an operation — not even on a refusal; only `zanshin_workspace_list`'s pre-verb
-//! snapshot (Story 9.26) may (`zanshin_workspace_root` runs none, like the CLI's).
+//! `FlatBuffers` `Envelope`. The handle is borrowed (not consumed), and neither read verb opens
+//! a transaction: only `zanshin_workspace_list`'s pre-verb snapshot (Story 9.26) may write an
+//! operation (`zanshin_workspace_root` runs none, like the CLI's), and a head load reconciling
+//! divergent operation heads in this workspace, as the CLI's does.
 //!
 //! The two verbs cross the boundary DIFFERENTLY, mirroring the CLI's own argument arity:
 //! `zanshin_workspace_list` is handle-only, because `jj workspace list` takes no argument at all
@@ -315,7 +316,8 @@ pub unsafe extern "C" fn zanshin_workspace_list(handle: u64) -> *mut ZanshinBuf 
 /// - `jj.workspace_no_recorded_path` — the workspace exists but the store holds no path for it;
 ///   the name in `context`.
 /// - `jj.jj_lib_error` — the workspace store could not be loaded or read, or the head load
-///   failed; detail in `context`.
+///   failed; with a name also a jj-lib failure of the start-up (the colocation check, the
+///   start-up environment, the `trunk()` fallback's head load); detail in `context`.
 ///
 /// # Safety
 /// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,

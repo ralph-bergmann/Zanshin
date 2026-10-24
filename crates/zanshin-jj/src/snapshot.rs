@@ -49,7 +49,7 @@ use jj_lib::op_heads_store;
 use jj_lib::op_store::OpStoreError;
 use jj_lib::operation::Operation;
 use jj_lib::ref_name::WorkspaceName;
-use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoader, RepoLoaderError};
+use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoaderError};
 use jj_lib::revset::{RevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::RebaseOptions;
 use jj_lib::working_copy::{self, LockedWorkingCopy, WorkingCopyFreshness};
@@ -323,16 +323,8 @@ pub(crate) fn load_head(workspace: &Workspace) -> Result<Arc<ReadonlyRepo>, Prec
 ///
 /// The failure's flattened source chain — the heads could not be read, merged or loaded.
 pub(crate) fn reload_head(workspace: &Workspace) -> Result<Arc<ReadonlyRepo>, String> {
-    load_head_with(workspace.repo_loader(), workspace.workspace_name())
-}
-
-/// [`reload_head`] through a given loader — `rebase`'s preview loader (the same stores, other
-/// settings) still reconciles as this workspace would.
-///
-/// # Errors
-///
-/// The failure's flattened source chain — the heads could not be read, merged or loaded.
-pub(crate) fn load_head_with(loader: &RepoLoader, workspace_name: &WorkspaceName) -> Result<Arc<ReadonlyRepo>, String> {
+    let loader = workspace.repo_loader();
+    let workspace_name = workspace.workspace_name();
     let op = pollster::block_on(op_heads_store::resolve_op_heads(
         loader.op_heads_store().as_ref(),
         loader.op_store(),
@@ -1122,9 +1114,8 @@ mod tests {
             ("reload_head", |repo| {
                 super::reload_head(repo.workspace()).expect("reload");
             }),
-            ("load_head_with", |repo| {
-                let workspace = repo.workspace();
-                super::load_head_with(workspace.repo_loader(), workspace.workspace_name()).expect("load");
+            ("load_dry_run_head", |repo| {
+                crate::rebase::load_dry_run_head(repo.workspace()).expect("preview head");
             }),
             ("status", |repo| {
                 crate::status::working_copy_status(repo.workspace()).expect("status");
@@ -1157,22 +1148,28 @@ mod tests {
     }
 
     /// No production code loads the head through jj-lib's nameless `RepoLoader::load_at_head`:
-    /// every `src/*.rs` file, up to its first `#[cfg(test)]` and outside comments, is free of the
-    /// call — [`super::reload_head`] is the head load.
+    /// every `.rs` file under `src/`, up to its first line that is exactly `#[cfg(test)]` and
+    /// outside comments, is free of the call — [`super::reload_head`] is the head load.
     #[test]
     fn no_production_code_calls_load_at_head() {
-        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut dirs = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
         let mut offenders = Vec::new();
-        for entry in std::fs::read_dir(&src).expect("src") {
-            let path = entry.expect("entry").path();
-            if path.extension().is_none_or(|e| e != "rs") {
-                continue;
-            }
-            let text = std::fs::read_to_string(&path).expect("source");
-            let production = text.split("#[cfg(test)]").next().unwrap_or_default();
-            for (i, line) in production.lines().enumerate() {
-                if !line.trim_start().starts_with("//") && line.contains(".load_at_head()") {
-                    offenders.push(format!("{}:{}", path.display(), i + 1));
+        while let Some(dir) = dirs.pop() {
+            for entry in std::fs::read_dir(&dir).expect("src dir") {
+                let path = entry.expect("entry").path();
+                if path.is_dir() {
+                    dirs.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|e| e != "rs") {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path).expect("source");
+                let production = text.lines().take_while(|line| line.trim() != "#[cfg(test)]");
+                for (i, line) in production.enumerate() {
+                    if !line.trim_start().starts_with("//") && line.contains(".load_at_head()") {
+                        offenders.push(format!("{}:{}", path.display(), i + 1));
+                    }
                 }
             }
         }

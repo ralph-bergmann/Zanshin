@@ -242,8 +242,9 @@ fn list_on_a_corrupt_repo_returns_a_backend_error() {
 
 // ── root: the strict half ────────────────────────────────────────────────────
 
-/// `None` reads the loader alone: it returns the open workspace's own root and cannot fail — not
-/// even on the fixture, whose recorded path is stale.
+/// `None`, after the command start-up, reads the loader alone: on a clean stack it returns the
+/// open workspace's own root and warns nothing — not even on the fixture, whose recorded path is
+/// stale.
 #[test]
 fn root_without_a_name_is_the_open_workspace() {
     test_helpers::pin_test_env();
@@ -254,7 +255,7 @@ fn root_without_a_name_is_the_open_workspace() {
     let root = repo.resolve_workspace_root(None).unwrap();
     let warnings = repo.take_warnings();
 
-    assert!(warnings.is_empty(), "the no-name default never warns");
+    assert!(warnings.is_empty(), "a clean stack and the loader root warn nothing");
     assert_same_dir(&root, repo.workspace_root());
     assert_same_dir(&root, &fx.path);
     // The no-name root is ABSOLUTE and canonical (a NAMED root is the store's recorded path,
@@ -526,7 +527,7 @@ fn root_with_a_name_on_a_corrupt_repo_is_a_backend_error() {
     // The no-name path reads the loader alone, so it is unaffected by a broken op-heads dir.
     assert!(
         repo.resolve_workspace_root(None).is_ok(),
-        "the loader-only path cannot fail"
+        "the bare form reads no head: a broken op-heads dir does not reach it"
     );
 }
 
