@@ -59,7 +59,7 @@ fn the_default_fixes_every_mutable_revision_reachable_from_the_working_copy() {
     assert_op(&fx, &result.mutation, "fixed 3 commits");
     assert_eq!((result.num_fixed_commits, result.num_checked_commits), (3, 3));
     assert!(result.tool_stderr.is_empty());
-    assert_eq!(result.mutation.working_copy_change_id, fx.c);
+    assert_eq!(result.mutation.working_copy_change_id, Some(fx.c.clone()));
     let (a, b, c) = (fx.a.clone(), fx.b.clone(), fx.c.clone());
     assert_eq!(file(&mut fx, &a, "a.txt"), "A\n");
     assert_eq!(file(&mut fx, &b, "b.txt"), "B\n");

@@ -165,7 +165,7 @@ fn add_default_creates_a_sibling_workspace_on_ats_parents() {
     assert_eq!(result.workspace_root, ws2);
     assert!(!result.git_worktree_created);
     assert_eq!(result.checkout.added, 1);
-    assert_eq!(result.mutation.working_copy_change_id, change_id(&ws2_at));
+    assert_eq!(result.mutation.working_copy_change_id, Some(change_id(&ws2_at)));
     assert_eq!(result.mutation.new_change_ids, [change_id(&ws2_at)]);
     assert_eq!(result.mutation.new_op_id.0, load(&fx.root).1.op_id().hex());
     assert!(repo

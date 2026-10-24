@@ -846,7 +846,7 @@ fn import_git_refs(
     report.git_refs_rebased = saturate(num_rebased);
     let finish = mutate::finish_transaction(workspace, tx, "import git refs", &ctx.finish_ctx(), sink)?;
     if finish.wc_commit.is_some() {
-        let mutation = mutate::mutation_result(&finish, Vec::new(), Vec::new())?;
+        let mutation = mutate::mutation_result(&finish, Vec::new(), Vec::new());
         report.git_refs = Some(crate::git::project_import(&stats, &finish.repo, true, mutation));
     }
     facts.merge(finish.facts);

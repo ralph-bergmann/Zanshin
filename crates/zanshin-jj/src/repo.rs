@@ -1382,7 +1382,9 @@ impl Repo {
     /// pre-call head op id. `allow_cross_workspace` is the CLI's `--allow-cross-workspace`
     /// (default `false`): without it, an operation performed in another workspace is not undone.
     /// Undoing a push or a workspace removal warns (`jj.undo_push_operation`,
-    /// `jj.undo_workspace_removal`). See `op_log::undo` for the step.
+    /// `jj.undo_workspace_removal`). A restored view without this workspace's working-copy commit
+    /// (undo to the root view) leaves `working_copy_change_id` `None` and warns
+    /// `jj.workspace_no_longer_exists` (Story 9.12). See `op_log::undo` for the step.
     ///
     /// # Errors
     ///
@@ -1410,7 +1412,9 @@ impl Repo {
     /// remote-tracking bookmarks, `git_refs`/`git_heads` untouched), committed as
     /// `redo: restore to operation <hex>` — or, when that view equals the current one, no
     /// operation and the pre-call head op id (Story 9.40). `allow_cross_workspace` is the CLI's
-    /// `--allow-cross-workspace` (default `false`). See `op_log::redo` for the step.
+    /// `--allow-cross-workspace` (default `false`). A restored view without this workspace's
+    /// working-copy commit leaves `working_copy_change_id` `None` and warns
+    /// `jj.workspace_no_longer_exists` (Story 9.12). See `op_log::redo` for the step.
     ///
     /// # Errors
     ///
@@ -1513,6 +1517,101 @@ impl Repo {
         let mut warnings = std::mem::take(&mut self.pending_warnings);
         let result = crate::op_log::op_abandon(&mut self.workspace, operation, &mut warnings);
         self.pending_warnings = warnings;
+        result
+    }
+
+    /// Restores the repo to the state at an operation — the CLI's `jj op restore` @ v0.46.0
+    /// (Story 9.12), "Restore to here" in an undo timeline.
+    ///
+    /// `operation` is the CLI's required argument (`@-`, an id prefix, …), resolved at the head
+    /// after the pre-verb snapshot. `what` is `--what` (repeatable): [`crate::RestoreWhat::Repo`]
+    /// restores heads, local bookmarks/tags and the working-copy commits,
+    /// [`crate::RestoreWhat::RemoteTracking`] the remote-tracking bookmarks; an EMPTY list is the
+    /// flag absent — both. `git_refs` / `git_heads` stay current. Committed as
+    /// `restore to operation <hex>` — or, when the restored view equals the current one, no
+    /// operation and the pre-call head op id (Story 9.40). See `op_log::op_restore` for the step.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::OperationNotFound`] — no operation matches the id prefix.
+    /// - [`crate::MutateError::InvalidInput`] — the expression is no valid prefix, is ambiguous,
+    ///   or resolves to no or several operations (with the CLI's hint naming them).
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Config`] — the finish's immutable set does not resolve.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn op_restore(
+        &mut self,
+        operation: &str,
+        what: &[crate::RestoreWhat],
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::op_log::op_restore(repo.workspace_mut(), ctx, operation, what))
+    }
+
+    /// Reverts one operation by applying its inverse — the CLI's `jj op revert` @ v0.46.0
+    /// (Story 9.12).
+    ///
+    /// `operation` is the CLI's argument; `"@"` is its default (pass it for the CLI without the
+    /// argument). It resolves at the head after the pre-verb snapshot; its parent's state is
+    /// merged in three-way against its own, so later work stays and descendants of rewritten
+    /// commits are rebased. `what` is `--what` as in [`Repo::op_restore`] (empty = both).
+    /// Committed as `revert operation <hex>` — or, when nothing changed (the operation is already
+    /// reverted), no operation and the pre-call head op id (Story 9.40). A revert that drops this
+    /// workspace's working-copy commit (of the `add workspace` operation) leaves
+    /// `working_copy_change_id` `None` and warns `jj.workspace_no_longer_exists`. See
+    /// `op_log::op_revert` for the step.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — "Cannot revert root operation", "Cannot revert a
+    ///   merge operation" (nothing written by the verb), or an operation expression as in
+    ///   [`Repo::op_restore`].
+    /// - Every other error of [`Repo::op_restore`].
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn op_revert(
+        &mut self,
+        operation: &str,
+        what: &[crate::RestoreWhat],
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::op_log::op_revert(repo.workspace_mut(), ctx, operation, what))
+    }
+
+    /// Makes an operation part of the operation log — the CLI's `jj op integrate` @ v0.46.0
+    /// (Story 9.12): the remedy for an operation jj wrote but never published (an interrupted
+    /// command, `--no-integrate-operation`).
+    ///
+    /// `operation` resolves at the head (an id prefix names an unpublished operation too). The
+    /// op heads gain it in place of its parents; when it is a descendant of the head it simply
+    /// becomes the head, when it diverges it is merged with the other heads into a
+    /// `reconcile divergent operations` operation in this workspace (`reconciled`), and when it
+    /// is already in the log nothing changes. Like the CLI's `workspace_helper_no_snapshot`
+    /// (`cli/src/cli_util.rs:522-562` @ v0.46.0) it runs the start-up — the secure-config
+    /// fix-up, the effective config and its deprecation warnings, the alias tables, the
+    /// `immutable_heads()` / short-prefixes parse and the `trunk()` fallback — and the CLI's head
+    /// load (which may reconcile divergent heads itself), but NO pre-verb snapshot and no Git
+    /// import; [`Repo::take_precondition`] is `None` afterwards, [`Repo::take_warnings`] holds
+    /// the start-up's warnings.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::OperationNotFound`] — no operation matches the id prefix; nothing
+    ///   is written.
+    /// - [`crate::MutateError::InvalidInput`] — the expression is no valid prefix, is ambiguous,
+    ///   or resolves to no or several operations.
+    /// - [`crate::MutateError::Precondition`] — the start-up failed (a config that no longer
+    ///   reads, an alias table, `immutable_heads()` or short-prefixes revset that does not
+    ///   parse), or the head could not be loaded; nothing is written.
+    /// - [`crate::MutateError::Backend`] — an op-store or op-heads failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn op_integrate(&mut self, operation: &str) -> Result<crate::OpIntegrateResult, crate::MutateError> {
+        let result = self
+            .start_call()
+            .map_err(crate::MutateError::from)
+            .and_then(|_| crate::op_log::op_integrate(&self.workspace, operation));
+        // No snapshot ran: no report. The `trunk()` fallback is the call's alone, as in
+        // `with_verb_stats`.
+        self.pending_precondition = None;
+        self.trunk_fallback = false;
         result
     }
 

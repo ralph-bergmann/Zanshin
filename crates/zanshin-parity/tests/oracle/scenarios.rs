@@ -123,6 +123,15 @@ const SOME_DESCRIBES: &[Step] = &[
     Step::Jj(&["describe", "-m", "three"]),
 ];
 
+/// A bare remote, then a describe of `@` and a push of `b-mark` — a repo change and a
+/// remote-tracking change on top of `@--` (Story 9.12's `--what` scenarios).
+const DESCRIBE_THEN_PUSH: &[Step] = &[
+    Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+    Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+    Step::Jj(&["describe", "-m", "C described"]),
+    Step::Jj(&["git", "push", "-b", "b-mark"]),
+];
+
 /// The root operation's id prefix — jj's root operation id is all zeros.
 const ROOT_OPERATION_PREFIX: &str = "000000000000";
 
@@ -1317,6 +1326,167 @@ pub fn scenarios() -> Vec<Scenario> {
                     zanshin_outcome(repo, &result)
                 },
                 |_| args(&["op", "abandon", "..@-"]),
+            )
+        },
+        // ── Story 9.12: op restore, op revert, op integrate ─────────────────
+        Scenario {
+            setup: SOME_DESCRIBES,
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_restore_earlier",
+                |repo, _, _| {
+                    let result = repo.op_restore("@--", &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "restore", "@--"]),
+            )
+        },
+        Scenario {
+            // The restored view is the current one: "Nothing changed." (Story 9.40).
+            setup: SOME_DESCRIBES,
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_restore_current",
+                |repo, _, _| {
+                    let result = repo.op_restore("@", &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "restore", "@"]),
+            )
+        },
+        Scenario {
+            // The root operation's view has no working-copy commit.
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_restore_root",
+                |repo, _, _| {
+                    let result = repo.op_restore(ROOT_OPERATION_PREFIX, &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "restore", ROOT_OPERATION_PREFIX]),
+            )
+        },
+        Scenario {
+            // `@--` is before the describe AND the push: `--what repo` brings `C`'s description
+            // back and keeps `b-mark@origin` (`operation/mod.rs:93-117` @ v0.46.0).
+            setup: DESCRIBE_THEN_PUSH,
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_restore_what_repo",
+                |repo, _, _| {
+                    let result = repo.op_restore("@--", &[zanshin_jj::RestoreWhat::Repo]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "restore", "@--", "--what", "repo"]),
+            )
+        },
+        Scenario {
+            // `--what remote-tracking`: `b-mark@origin` goes, the describe stays.
+            setup: DESCRIBE_THEN_PUSH,
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_restore_what_remote_tracking",
+                |repo, _, _| {
+                    let result = repo.op_restore("@--", &[zanshin_jj::RestoreWhat::RemoteTracking]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "restore", "@--", "--what", "remote-tracking"]),
+            )
+        },
+        Scenario {
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_restore_not_found",
+                |repo, _, _| {
+                    let result = repo.op_restore("ffffffffffff", &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "restore", "ffffffffffff"]),
+            )
+        },
+        Scenario {
+            setup: &[Step::Jj(&["describe", "-m", "to be reverted"])],
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_revert_default",
+                |repo, _, _| {
+                    let result = repo.op_revert("@", &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "revert"]),
+            )
+        },
+        Scenario {
+            // The describe is reverted under the later `new`: `D` is rebased onto the old `C`.
+            setup: &[
+                Step::Jj(&["describe", "-m", "C described"]),
+                Step::Jj(&["new", "-m", "D"]),
+            ],
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_revert_rebases_descendants",
+                |repo, _, _| {
+                    let result = repo.op_revert("@-", &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "revert", "@-"]),
+            )
+        },
+        Scenario {
+            // The describe (`@-`) is already reverted.
+            setup: &[
+                Step::Jj(&["describe", "-m", "to be reverted"]),
+                Step::Jj(&["op", "revert"]),
+            ],
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_revert_twice",
+                |repo, _, _| {
+                    let result = repo.op_revert("@-", &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "revert", "@-"]),
+            )
+        },
+        Scenario {
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_revert_root_refused",
+                |repo, _, _| {
+                    let result = repo.op_revert(ROOT_OPERATION_PREFIX, &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "revert", ROOT_OPERATION_PREFIX]),
+            )
+        },
+        Scenario {
+            // `@-` is the merge operation reconciling the `--at-op` fork (`revert.rs:61-65`).
+            setup: &[
+                Step::Jj(&["describe", "-m", "one"]),
+                Step::Jj(&["--at-op", "@-", "describe", "-m", "two"]),
+                Step::Jj(&["describe", "-m", "three"]),
+            ],
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_revert_merge_refused",
+                |repo, _, _| {
+                    let result = repo.op_revert("@-", &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "revert", "@-"]),
+            )
+        },
+        Scenario {
+            // An operation already in the log: no effect (`integrate.rs:29-30`).
+            setup: SOME_DESCRIBES,
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_integrate_in_log",
+                |repo, _, _| {
+                    let result = repo.op_integrate("@-");
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "integrate", "@-"]),
             )
         },
         // ── Story 9.23: workspace add ────────────────────────────────────────

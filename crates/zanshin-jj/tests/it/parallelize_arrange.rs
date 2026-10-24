@@ -25,7 +25,7 @@ fn parallelize_makes_siblings_and_their_child_a_merge() {
     // D descended from both: it keeps both as parents, B (C's in-set parent) first.
     assert_eq!(parents(&fx.root, &d), [fx.b.clone(), fx.c.clone()]);
     assert!(result.abandoned_change_ids.is_empty() && result.new_change_ids.is_empty());
-    assert_eq!(result.working_copy_change_id, d);
+    assert_eq!(result.working_copy_change_id, Some(d));
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn arrange_swap_down_and_up_trade_places() {
         assert_op(&fx, &result, "arrange revisions");
         assert_eq!(parents(&fx.root, &fx.c), [fx.a.clone()], "up: {up}");
         assert_eq!(parents(&fx.root, &fx.b), [fx.c.clone()], "up: {up}");
-        assert_eq!(result.working_copy_change_id, fx.c, "@ stays on C");
+        assert_eq!(result.working_copy_change_id, Some(fx.c), "@ stays on C");
         assert_eq!(
             bookmark(&fx.root, "b-mark"),
             Some(fx.b.clone()),

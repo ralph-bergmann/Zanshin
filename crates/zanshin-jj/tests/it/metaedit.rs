@@ -38,7 +38,7 @@ fn a_message_describes_the_revision_and_reparents_its_descendants() {
     assert_eq!(commit(&fx.root, &fx.c).description(), "C\n");
     assert_eq!(bookmark(&fx.root, "b-mark"), Some(fx.b.clone()));
     assert!(result.new_change_ids.is_empty() && result.abandoned_change_ids.is_empty());
-    assert_eq!(result.working_copy_change_id, fx.c);
+    assert_eq!(result.working_copy_change_id, Some(fx.c));
 }
 
 #[test]
@@ -283,7 +283,7 @@ fn update_change_id_on_nested_revisions_rewrites_each_once() {
     assert_eq!(commit(&fx.root, &new_b).description(), "B\n");
     assert_eq!(commit(&fx.root, &new_c).description(), "C\n");
     assert_eq!(parents(&fx.root, &new_c), std::slice::from_ref(&new_b));
-    assert_eq!(result.working_copy_change_id, new_c);
+    assert_eq!(result.working_copy_change_id, Some(new_c.clone()));
 
     let head = crate::rebase::load(&fx.root);
     let predecessors = head

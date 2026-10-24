@@ -120,7 +120,11 @@ fn assert_no_change_churn(result: &MutationResult, expected_wc: &ChangeId) {
         result.abandoned_change_ids.is_empty(),
         "a bookmark verb abandons no change"
     );
-    assert_eq!(&result.working_copy_change_id, expected_wc, "`@` does not move");
+    assert_eq!(
+        result.working_copy_change_id.as_ref(),
+        Some(expected_wc),
+        "`@` does not move"
+    );
 }
 
 // ── create: the happy paths ───────────────────────────────────────────────────

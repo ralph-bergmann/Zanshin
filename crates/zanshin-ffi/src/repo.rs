@@ -1340,6 +1340,8 @@ pub unsafe extern "C" fn zanshin_abandon(handle: u64, data: *const u8, len: usiz
 /// push or a workspace removal warns (`jj.undo_push_operation`, `jj.undo_workspace_removal`). An
 /// equal restored view writes no operation and `new_op_id` is the head the verb started from
 /// (Story 9.40).
+/// A restored view without this workspace's working-copy commit (undo to the root view) leaves
+/// `working_copy_change_id` ABSENT and warns `jj.workspace_no_longer_exists`.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -1387,6 +1389,8 @@ pub unsafe extern "C" fn zanshin_undo(handle: u64, allow_cross_workspace: bool) 
 /// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success, the
 /// operation described `redo: restore to operation <hex>`. A restored view equal to the current
 /// one writes no operation and `new_op_id` is the head the verb started from (Story 9.40).
+/// A restored view without this workspace's working-copy commit leaves `working_copy_change_id`
+/// ABSENT and warns `jj.workspace_no_longer_exists`.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -1870,7 +1874,7 @@ mod tests {
                 new_op_id: zanshin_jj::OperationId("op".to_owned()),
                 new_change_ids: Vec::new(),
                 abandoned_change_ids: vec![ChangeId("zz".to_owned())],
-                working_copy_change_id: ChangeId("wc".to_owned()),
+                working_copy_change_id: Some(ChangeId("wc".to_owned())),
                 finish: None,
             },
             remotes: vec!["origin".to_owned(), "up".to_owned()],

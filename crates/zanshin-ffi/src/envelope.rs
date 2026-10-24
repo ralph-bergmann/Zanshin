@@ -392,6 +392,9 @@ pub const JJ_OP_DIFF_CHANGES_UNRESOLVED: &str = "jj.op_diff_changes_unresolved";
 /// Warning: `zanshin_op_abandon` rewrote the op heads but left this workspace's working copy,
 /// which is recorded at an operation that is not a head (Story 9.21).
 pub const JJ_OP_ABANDON_WORKING_COPY_NOT_UPDATED: &str = "jj.op_abandon_working_copy_not_updated";
+/// Warning: the finished operation's view no longer has this workspace's working-copy commit
+/// (e.g. `zanshin_op_restore` of the root operation); the working copy was left (Story 9.12).
+pub const JJ_WORKSPACE_NO_LONGER_EXISTS: &str = "jj.workspace_no_longer_exists";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -465,6 +468,7 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::ConfigDeprecated => JJ_CONFIG_DEPRECATED,
         K::OpDiffChangesUnresolved => JJ_OP_DIFF_CHANGES_UNRESOLVED,
         K::OpAbandonWorkingCopyNotUpdated => JJ_OP_ABANDON_WORKING_COPY_NOT_UPDATED,
+        K::WorkspaceNoLongerExists => JJ_WORKSPACE_NO_LONGER_EXISTS,
     }
 }
 
@@ -772,8 +776,8 @@ pub(crate) fn build_mutation_result<'a>(
     let abandoned_offs: Vec<_> = r.abandoned_change_ids.iter().map(|c| b.create_string(&c.0)).collect();
     let abandoned_vec = b.create_vector(&abandoned_offs);
     let new_op_id_off = b.create_string(&r.new_op_id.0);
-    let working_copy_change_id_off = b.create_string(&r.working_copy_change_id.0);
-    // Written iff `Some`: null for absence (Story 9.26).
+    // Both written iff `Some`: null for absence (Stories 9.26, 9.12).
+    let working_copy_change_id_off = r.working_copy_change_id.as_ref().map(|id| b.create_string(&id.0));
     let finish_off = r.finish.as_ref().map(|f| crate::snapshot::build_finish_facts(b, f));
     fbs::MutationResult::create(
         b,
@@ -781,7 +785,7 @@ pub(crate) fn build_mutation_result<'a>(
             new_op_id: Some(new_op_id_off),
             new_change_ids: Some(new_change_vec),
             abandoned_change_ids: Some(abandoned_vec),
-            working_copy_change_id: Some(working_copy_change_id_off),
+            working_copy_change_id: working_copy_change_id_off,
             finish: finish_off,
         },
     )
@@ -1433,7 +1437,7 @@ mod tests {
                 zanshin_jj::ChangeId("rlvkpnrz".to_owned()),
                 zanshin_jj::ChangeId("zsuskuln".to_owned()),
             ],
-            working_copy_change_id: zanshin_jj::ChangeId("qpvuntsm".to_owned()),
+            working_copy_change_id: Some(zanshin_jj::ChangeId("qpvuntsm".to_owned())),
         };
         let buf = ok_mutation_result(&r, &CallReport::default());
         let env = verified_envelope(&buf);
@@ -1455,6 +1459,17 @@ mod tests {
         assert_eq!(mr.working_copy_change_id(), Some("qpvuntsm"));
         assert!(mr.finish().is_none(), "None must be ABSENT on the wire");
         assert!(env.warnings().is_none(), "no warnings: the field is ABSENT");
+
+        // No working-copy commit afterwards (a restore to the root operation, Story 9.12).
+        let r = zanshin_jj::MutationResult {
+            working_copy_change_id: None,
+            ..r
+        };
+        let buf = ok_mutation_result(&r, &CallReport::default());
+        let mr = verified_envelope(&buf)
+            .data_as_mutation_result()
+            .expect("MutationResult");
+        assert_eq!(mr.working_copy_change_id(), None, "None must be ABSENT on the wire");
     }
 
     fn warning(kind: zanshin_jj::WarningKind, message: &str) -> zanshin_jj::Warning {
@@ -1607,6 +1622,7 @@ mod tests {
             K::ConfigDeprecated => "jj.config_deprecated",
             K::OpDiffChangesUnresolved => "jj.op_diff_changes_unresolved",
             K::OpAbandonWorkingCopyNotUpdated => "jj.op_abandon_working_copy_not_updated",
+            K::WorkspaceNoLongerExists => "jj.workspace_no_longer_exists",
         }
     }
 
@@ -1683,6 +1699,7 @@ mod tests {
             K::ConfigDeprecated,
             K::OpDiffChangesUnresolved,
             K::OpAbandonWorkingCopyNotUpdated,
+            K::WorkspaceNoLongerExists,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");
@@ -1697,7 +1714,7 @@ mod tests {
             new_op_id: zanshin_jj::OperationId("op99".to_owned()),
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
-            working_copy_change_id: zanshin_jj::ChangeId("qpvuntsm".to_owned()),
+            working_copy_change_id: Some(zanshin_jj::ChangeId("qpvuntsm".to_owned())),
         }
     }
 

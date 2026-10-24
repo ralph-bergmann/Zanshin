@@ -22,7 +22,7 @@ import '../ffi/graph.dart'
 import '../ffi/log_defaults.dart' show LogDefaults;
 import '../ffi/metaedit_duplicate_fix.dart' show FixResult;
 import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
-import '../ffi/op_log.dart' show OpAbandonResult, OpDiffResult, OpShow, Operation;
+import '../ffi/op_log.dart' show OpAbandonResult, OpDiffResult, OpIntegrateResult, OpShow, Operation, RestoreWhat;
 import '../ffi/precondition.dart' show Precondition;
 import '../ffi/push.dart' show GitPushResult;
 import '../ffi/rebase.dart' show ArrangeAction, SwapDownAction, SwapUpAction;
@@ -517,7 +517,9 @@ final class RepoHandle {
   /// operation performed in another workspace is refused. Undoing a push or a
   /// workspace removal warns (`jj.undo_push_operation`,
   /// `jj.undo_workspace_removal`). An equal restored view writes no operation
-  /// and `newOpId` is the head the verb started from (Story 9.40).
+  /// and `newOpId` is the head the verb started from (Story 9.40). A restored
+  /// view without this workspace's working copy (undo to the root view) leaves
+  /// `workingCopyChangeId` `null` and warns `jj.workspace_no_longer_exists`.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
@@ -535,7 +537,9 @@ final class RepoHandle {
   /// like a text editor's undo / redo, and a stack the CLI started is
   /// continued. [allowCrossWorkspace] is the CLI's `--allow-cross-workspace`
   /// (default `false`). An equal restored view writes no operation and
-  /// `newOpId` is the head the verb started from (Story 9.40).
+  /// `newOpId` is the head the verb started from (Story 9.40). A restored view
+  /// without this workspace's working copy leaves `workingCopyChangeId` `null`
+  /// and warns `jj.workspace_no_longer_exists`.
   ///
   /// Throws [StateError] synchronously if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
@@ -595,6 +599,60 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.opAbandon(_handleId, operation);
+  }
+
+  /// Restore the repo to the state at [operation] — the CLI's `jj op restore`
+  /// @ v0.46.0 (Story 9.12), "Restore to here" in an undo timeline.
+  /// [operation] is an operation expression (`@-`, an id prefix); [what] is
+  /// the CLI's repeatable `--what` (empty = both portions: the repo state and
+  /// local bookmarks, and the remote-tracking bookmarks). Recorded as
+  /// `restore to operation <hex>`; an equal restored view writes no operation
+  /// and `newOpId` is the head the verb started from (Story 9.40). A view
+  /// without this workspace's working copy (the root operation's) warns
+  /// `jj.workspace_no_longer_exists` and leaves `workingCopyChangeId` `null`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`jj.operation_not_found`,
+  /// `jj.invalid_input`, `jj.config_error`, …).
+  Future<MutationResult> opRestore(String operation, {List<RestoreWhat> what = const []}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.opRestore(_handleId, operation, what: what);
+  }
+
+  /// Revert one operation by applying its inverse — the CLI's `jj op revert`
+  /// @ v0.46.0 (Story 9.12). [operation] defaults to `@`, as in the CLI;
+  /// [what] as in [opRestore]. Later work stays; descendants of rewritten
+  /// commits are rebased. Recorded as `revert operation <hex>`; nothing changed
+  /// writes no operation (Story 9.40). A revert that drops this workspace's
+  /// working copy (of the `add workspace` operation) leaves
+  /// `workingCopyChangeId` `null` and warns `jj.workspace_no_longer_exists`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`jj.invalid_input` — "Cannot
+  /// revert root operation", "Cannot revert a merge operation" —,
+  /// `jj.operation_not_found`, …).
+  Future<MutationResult> opRevert({String operation = '@', List<RestoreWhat> what = const []}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.opRevert(_handleId, operation: operation, what: what);
+  }
+
+  /// Make [operation] part of the operation log — the CLI's `jj op integrate`
+  /// @ v0.46.0 (Story 9.12). A descendant of the head becomes the head, a
+  /// divergent one is reconciled with it (`OpIntegrateResult.reconciled`), one
+  /// already in the log changes nothing. Runs no pre-verb snapshot.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ZanshinFfiException] on FFI errors (`jj.operation_not_found`,
+  /// `jj.invalid_input`, …).
+  Future<OpIntegrateResult> opIntegrate(String operation) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.opIntegrate(_handleId, operation);
   }
 
   /// `jj git fetch` (Stories 6.5, 9.30): fetch the [remotes] and [refs]

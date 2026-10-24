@@ -374,14 +374,15 @@ fn undo_reverts_a_new_change_and_moves_wc_back() {
         .new_change(&[ChangeId(layout.wc_change_id.clone())], &[], &[])
         .unwrap();
     let new_change_id = new_result.new_change_ids[0].clone();
-    assert_eq!(new_result.working_copy_change_id, new_change_id);
+    assert_eq!(new_result.working_copy_change_id, Some(new_change_id.clone()));
     assert!(repo.get_change(&new_change_id).is_ok());
 
     let undo_result = repo.undo(false).unwrap();
     assert!(undo_result.new_change_ids.is_empty());
     assert!(undo_result.abandoned_change_ids.is_empty());
     assert_eq!(
-        undo_result.working_copy_change_id.0, layout.wc_change_id,
+        undo_result.working_copy_change_id.expect("@").0,
+        layout.wc_change_id,
         "@ must return to the prior change id"
     );
 
@@ -694,7 +695,7 @@ fn undo_on_corrupt_repo_returns_backend_error() {
 }
 
 #[test]
-fn undo_immediately_after_init_returns_backend_error_no_working_copy() {
+fn undo_immediately_after_init_leaves_no_working_copy_and_warns() {
     test_helpers::pin_test_env();
     let tmp = TempDir::new().unwrap();
     Repo::init(&zanshin_jj::InitOptions {
@@ -708,13 +709,15 @@ fn undo_immediately_after_init_returns_backend_error_no_working_copy() {
     // The head op right after Repo::init is "add workspace 'default'", whose single
     // parent IS the root op (Workspace::init_* always commits that op on top of root —
     // see the NothingToUndo test above). Undoing restores the root op's empty view,
-    // which has no wc_commit_id entry for any workspace -- sync_working_copy's own
-    // guard surfaces that as a Backend error rather than panicking.
-    let result = repo.undo(false);
+    // which has no wc_commit_id entry for any workspace: as in the CLI the operation is
+    // written, nothing is checked out, and the finish warns (Story 9.12).
+    let result = repo.undo(false).expect("the undo is written");
 
-    assert!(
-        matches!(result, Err(MutateError::Backend(ref msg)) if msg.contains("working-copy")),
-        "undo to the root op's empty view must surface sync_working_copy's own guard, got: {result:?}"
+    assert_eq!(result.working_copy_change_id, None, "no working copy in the root view");
+    let warnings = repo.take_warnings();
+    assert_eq!(
+        warnings.iter().map(|w| w.kind).collect::<Vec<_>>(),
+        [zanshin_jj::WarningKind::WorkspaceNoLongerExists]
     );
 }
 

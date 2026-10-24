@@ -25,8 +25,8 @@ use jj_lib::working_copy::SnapshotOptions;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use zanshin_jj::{
-    convert_colocated, Backend, ChangeId, MutateError, PreconditionError, Repo, SnapshotStats, StaleCause,
-    UntrackedPath, UntrackedReason, WarningKind,
+    convert_colocated, Backend, MutateError, PreconditionError, Repo, SnapshotStats, StaleCause, UntrackedPath,
+    UntrackedReason, WarningKind,
 };
 
 /// Pins the shared test environment (`test_helpers::pin_test_env`, whose `$XDG_CONFIG_HOME` keeps
@@ -981,14 +981,14 @@ fn working_copy_verbs_after_track_snapshot_the_tracked_path_into_at_first() {
     assert_eq!(wc_state_paths(&fx.root), strings(&["a.txt", "b.txt"]));
 
     let described = repo
-        .describe(second.mutation.working_copy_change_id.clone(), "tracked")
+        .describe(second.mutation.working_copy_change_id.clone().expect("@"), "tracked")
         .expect("describe after track");
     assert_eq!(
         at_paths(&fx.root),
         strings(&["a.txt", "b.txt"]),
         "describe's own pre-verb snapshot moved the second tracked path in"
     );
-    repo.new_change(&[ChangeId(described.working_copy_change_id.0)], &[], &[])
+    repo.new_change(&[described.working_copy_change_id.expect("@")], &[], &[])
         .expect("new_change after track");
     assert!(at_paths(&fx.root).contains(&"a.txt".to_owned()));
 }

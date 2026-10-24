@@ -85,7 +85,9 @@ enum RequestKind {
   BookmarkRename(49),
   SelectTree(50),
   OpShow(51),
-  OpDiff(52);
+  OpDiff(52),
+  OpRestore(53),
+  OpRevert(54);
 
   final int value;
   const RequestKind(this.value);
@@ -198,6 +200,10 @@ enum RequestKind {
         return RequestKind.OpShow;
       case 52:
         return RequestKind.OpDiff;
+      case 53:
+        return RequestKind.OpRestore;
+      case 54:
+        return RequestKind.OpRevert;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -206,7 +212,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 52;
+  static const int maxValue = 54;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -763,6 +769,51 @@ class _ConflictStateReader extends fb.Reader<ConflictState> {
   @override
   ConflictState read(fb.BufferContext bc, int offset) =>
       ConflictState.fromValue(const fb.Int8Reader().read(bc, offset));
+}
+
+///  One `--what` value of `jj op restore` / `jj op revert` (Story 9.12) — the CLI's
+///  `RevertWhatToRestore`. `Unspecified = 0` is the default of an unset element and is REFUSED
+///  (`ffi.invalid_argument`).
+///
+///    Repo             the jj repo state and local bookmarks (heads, local bookmarks/tags, the
+///                     working-copy commits)
+///    RemoteTracking   the remote-tracking bookmarks
+enum RestoreWhat {
+  Unspecified(0),
+  Repo(1),
+  RemoteTracking(2);
+
+  final int value;
+  const RestoreWhat(this.value);
+
+  factory RestoreWhat.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return RestoreWhat.Unspecified;
+      case 1:
+        return RestoreWhat.Repo;
+      case 2:
+        return RestoreWhat.RemoteTracking;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static RestoreWhat? _createOrNull(int? value) => value == null ? null : RestoreWhat.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 2;
+  static const fb.Reader<RestoreWhat> reader = _RestoreWhatReader();
+}
+
+class _RestoreWhatReader extends fb.Reader<RestoreWhat> {
+  const _RestoreWhatReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  RestoreWhat read(fb.BufferContext bc, int offset) => RestoreWhat.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
 ///  Whether a bookmark row is the local bookmark or a remote one (tracked or not).
@@ -1618,7 +1669,8 @@ enum PayloadTypeId {
   SelectedTree(49),
   OpShow(50),
   OpDiffResult(51),
-  OpAbandonResult(52);
+  OpAbandonResult(52),
+  OpIntegrateResult(53);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -1731,6 +1783,8 @@ enum PayloadTypeId {
         return PayloadTypeId.OpDiffResult;
       case 52:
         return PayloadTypeId.OpAbandonResult;
+      case 53:
+        return PayloadTypeId.OpIntegrateResult;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -1739,7 +1793,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 52;
+  static const int maxValue = 53;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -9891,6 +9945,201 @@ class OpDiffRequestObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  Arguments of `zanshin_op_restore` (Story 9.12) — the CLI's `jj op restore`.
+///
+///    operation   the operation expression (`@-`, an id prefix); REQUIRED — ABSENT is refused
+///                (`ffi.invalid_argument`), as the CLI's positional is required
+///    what        `--what`, repeatable; ABSENT or EMPTY = the flag absent (both portions)
+class OpRestoreRequest {
+  OpRestoreRequest._(this._bc, this._bcOffset);
+  factory OpRestoreRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpRestoreRequest> reader = _OpRestoreRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get operation => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<RestoreWhat>? get what =>
+      const fb.ListReader<RestoreWhat>(RestoreWhat.reader).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'OpRestoreRequest{kind: ${kind}, operation: ${operation}, what: ${what}}';
+  }
+}
+
+class _OpRestoreRequestReader extends fb.TableReader<OpRestoreRequest> {
+  const _OpRestoreRequestReader();
+
+  @override
+  OpRestoreRequest createObject(fb.BufferContext bc, int offset) => OpRestoreRequest._(bc, offset);
+}
+
+class OpRestoreRequestBuilder {
+  OpRestoreRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addOperationOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWhatOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpRestoreRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _operation;
+  final List<RestoreWhat>? _what;
+
+  OpRestoreRequestObjectBuilder({
+    RequestKind? kind,
+    String? operation,
+    List<RestoreWhat>? what,
+  }) : _kind = kind,
+       _operation = operation,
+       _what = what;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? operationOffset = _operation == null ? null : fbBuilder.writeString(_operation!);
+    final int? whatOffset = _what == null ? null : fbBuilder.writeListUint8(_what!.map((f) => f.value).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, operationOffset);
+    fbBuilder.addOffset(2, whatOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_op_revert` (Story 9.12) — the CLI's `jj op revert`.
+///
+///    operation   the operation expression; ABSENT = `@` (the CLI's default)
+///    what        `--what`, repeatable; ABSENT or EMPTY = the flag absent (both portions)
+class OpRevertRequest {
+  OpRevertRequest._(this._bc, this._bcOffset);
+  factory OpRevertRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpRevertRequest> reader = _OpRevertRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get operation => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<RestoreWhat>? get what =>
+      const fb.ListReader<RestoreWhat>(RestoreWhat.reader).vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'OpRevertRequest{kind: ${kind}, operation: ${operation}, what: ${what}}';
+  }
+}
+
+class _OpRevertRequestReader extends fb.TableReader<OpRevertRequest> {
+  const _OpRevertRequestReader();
+
+  @override
+  OpRevertRequest createObject(fb.BufferContext bc, int offset) => OpRevertRequest._(bc, offset);
+}
+
+class OpRevertRequestBuilder {
+  OpRevertRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addOperationOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addWhatOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpRevertRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _operation;
+  final List<RestoreWhat>? _what;
+
+  OpRevertRequestObjectBuilder({
+    RequestKind? kind,
+    String? operation,
+    List<RestoreWhat>? what,
+  }) : _kind = kind,
+       _operation = operation,
+       _what = what;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? operationOffset = _operation == null ? null : fbBuilder.writeString(_operation!);
+    final int? whatOffset = _what == null ? null : fbBuilder.writeListUint8(_what!.map((f) => f.value).toList());
+    fbBuilder.startTable(3);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, operationOffset);
+    fbBuilder.addOffset(2, whatOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  A ref target as `jj op diff` summarises it (Story 9.21): ABSENT = `adds` empty and not
 ///  `conflicted`; a normal target = one add; a conflict = its present adds and removes. Hex
 ///  commit ids.
@@ -10932,6 +11181,92 @@ class OpAbandonResultObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addUint64(1, _reparentedCount);
     fbBuilder.addBool(2, _nothingChanged);
     fbBuilder.addOffset(3, headOpIdsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_op_integrate`'s answer (Story 9.12): the head operation afterwards (the integrated
+///  operation, the merge that reconciled it, or the unchanged head for an operation already in the
+///  log) and `reconciled` — the integrate itself merged the heads (the CLI's status line "The
+///  specified operation has been integrated with other existing operations."); a reconcile the
+///  head load wrote first does not count.
+class OpIntegrateResult {
+  OpIntegrateResult._(this._bc, this._bcOffset);
+  factory OpIntegrateResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<OpIntegrateResult> reader = _OpIntegrateResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get headOpId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  bool get reconciled => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
+
+  @override
+  String toString() {
+    return 'OpIntegrateResult{headOpId: ${headOpId}, reconciled: ${reconciled}}';
+  }
+}
+
+class _OpIntegrateResultReader extends fb.TableReader<OpIntegrateResult> {
+  const _OpIntegrateResultReader();
+
+  @override
+  OpIntegrateResult createObject(fb.BufferContext bc, int offset) => OpIntegrateResult._(bc, offset);
+}
+
+class OpIntegrateResultBuilder {
+  OpIntegrateResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addHeadOpIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addReconciled(bool? reconciled) {
+    fbBuilder.addBool(1, reconciled);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class OpIntegrateResultObjectBuilder extends fb.ObjectBuilder {
+  final String? _headOpId;
+  final bool? _reconciled;
+
+  OpIntegrateResultObjectBuilder({
+    String? headOpId,
+    bool? reconciled,
+  }) : _headOpId = headOpId,
+       _reconciled = reconciled;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? headOpIdOffset = _headOpId == null ? null : fbBuilder.writeString(_headOpId!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, headOpIdOffset);
+    fbBuilder.addBool(1, _reconciled);
     return fbBuilder.endTable();
   }
 
@@ -12945,6 +13280,9 @@ class MutationResult {
   List<String>? get newChangeIds => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
   List<String>? get abandonedChangeIds =>
       const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+
+  ///  `@`'s change id after the mutation; ABSENT when the workspace has no working-copy commit
+  ///  afterwards (e.g. `zanshin_op_restore` of the root operation, Story 9.12).
   String? get workingCopyChangeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
 
   ///  The refs the colocated export could not write while the CLI's `finish_transaction`
@@ -19830,6 +20168,8 @@ class Envelope {
         return OpDiffResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 52:
         return OpAbandonResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 53:
+        return OpIntegrateResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

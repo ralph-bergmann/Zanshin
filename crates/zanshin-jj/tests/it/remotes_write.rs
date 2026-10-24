@@ -249,7 +249,8 @@ fn git_fetch_happy_path_imports_commits_and_reports_progress() {
 
     let status = repo.status().unwrap();
     assert_eq!(
-        status.working_copy_change_id, result.mutation.working_copy_change_id,
+        Some(status.working_copy_change_id),
+        result.mutation.working_copy_change_id,
         "git_fetch must never move @"
     );
 }

@@ -1948,6 +1948,106 @@ ZanshinBuf *zanshin_op_diff(uint64_t handle, const uint8_t *data, uintptr_t len)
 ZanshinBuf *zanshin_op_abandon(uint64_t handle, const char *operation);
 
 /**
+ * Restore the repo identified by `handle` to the state at an operation — the CLI's
+ * `jj op restore` @ v0.46.0 (Story 9.12).
+ *
+ * The arguments cross as an `OpRestoreRequest` `FlatBuffers` request buffer: `operation` (an
+ * operation expression — `@-`, an id prefix; REQUIRED) and `what` (the CLI's repeatable
+ * `--what`; ABSENT or EMPTY = both portions). Runs the pre-verb snapshot, then restores the
+ * chosen portions of the operation's view (`git_refs` / `git_heads` stay current).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload, the operation
+ * described `restore to operation <hex>`. A restored view equal to the current one writes no
+ * operation and `new_op_id` is the head the verb started from (Story 9.40). A view without this
+ * workspace's working-copy commit (the root operation's) leaves `working_copy_change_id` ABSENT
+ * and warns `jj.workspace_no_longer_exists`.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as an `OpRestoreRequest`, its `kind` is not
+ *   `OpRestore`, `operation` is ABSENT, or a `what` member is `Unspecified` or unknown.
+ * - `jj.operation_not_found` — no operation matches the id prefix; jj-lib's text in `context`.
+ * - `jj.invalid_input` — the expression is no valid prefix, ambiguous, or resolves to no or
+ *   several operations (with the CLI's hint naming them); jj-lib's text in `context`.
+ * - `jj.config_error` — the effective config no longer reads, the pre-verb snapshot found a
+ *   value wrongly typed, or the finish's immutable set does not resolve.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * As `zanshin_op_show`; `data` is built by `fbs.OpRestoreRequestObjectBuilder(...).toBytes()`.
+ */
+ZanshinBuf *zanshin_op_restore(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * Revert one operation of the repo identified by `handle` by applying its inverse — the CLI's
+ * `jj op revert` @ v0.46.0 (Story 9.12).
+ *
+ * The arguments cross as an `OpRevertRequest` `FlatBuffers` request buffer: `operation` (ABSENT =
+ * `@`, the CLI's default) and `what` (`--what`; ABSENT or EMPTY = both portions). Runs the
+ * pre-verb snapshot; the operation's parent state is merged in three-way against its own, so
+ * later work stays and descendants of rewritten commits are rebased.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload, the operation
+ * described `revert operation <hex>`; when nothing changed, no operation and `new_op_id` is the
+ * head the verb started from (Story 9.40). A revert that drops this workspace's working-copy
+ * commit (of the `add workspace` operation) leaves `working_copy_change_id` ABSENT and warns
+ * `jj.workspace_no_longer_exists`.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as an `OpRevertRequest`, its `kind` is not
+ *   `OpRevert`, or a `what` member is `Unspecified` or unknown.
+ * - `jj.invalid_input` — "Cannot revert root operation", "Cannot revert a merge operation"
+ *   (nothing written by the verb), or an operation expression as in `zanshin_op_restore`.
+ * - `jj.operation_not_found` — no operation matches the id prefix; jj-lib's text in `context`.
+ * - `jj.config_error` / `jj.stale_working_copy` / `jj.jj_lib_error` — as `zanshin_op_restore`.
+ *
+ * # Safety
+ * As `zanshin_op_show`; `data` is built by `fbs.OpRevertRequestObjectBuilder(...).toBytes()`.
+ */
+ZanshinBuf *zanshin_op_revert(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * Make an operation part of the operation log of the repo identified by `handle` — the CLI's
+ * `jj op integrate` @ v0.46.0 (Story 9.12).
+ *
+ * `operation` is the CLI's argument as a lone string (an id prefix names an unpublished
+ * operation too). The op heads gain it in place of its parents: a descendant of the head becomes
+ * the head, a divergent one is merged with the other heads into a
+ * `reconcile divergent operations` operation in this workspace, one already in the log changes
+ * nothing. Like the CLI's `workspace_helper_no_snapshot` it runs the start-up (the secure-config
+ * fix-up, the effective config, the alias tables, the `immutable_heads()` / short-prefixes parse,
+ * the `trunk()` fallback, each with its warnings) but NO pre-verb snapshot and no Git import, so
+ * the envelope never carries a `precondition`.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying an `OpIntegrateResult` payload: the head operation
+ * afterwards and `reconciled` (the integrate itself merged the heads; a reconcile the head load
+ * wrote first does not count).
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `operation` is a null pointer.
+ * - `ffi.utf8_error` — `operation` is not valid UTF-8.
+ * - `jj.operation_not_found` — no operation matches the id prefix; nothing is written.
+ * - `jj.invalid_input` — the expression is no valid prefix, ambiguous, or resolves to no or
+ *   several operations; nothing is written.
+ * - `jj.config_error` — the start-up found the effective config unreadable, or an alias table,
+ *   `immutable_heads()` or short-prefixes revset that does not parse; nothing is written.
+ * - `jj.jj_lib_error` — the head could not be loaded, or an op-store / op-heads failure; detail in
+ *   `context`.
+ *
+ * # Safety
+ * `handle` as `zanshin_op_show`. `operation` must be null or a NUL-terminated string Dart
+ * allocates and frees; Rust only borrows it for the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_op_integrate(uint64_t handle,
+                                 const char *operation);
+
+/**
  * Push bookmarks and tags to git remotes, in the repo identified by `handle` — the CLI's
  * `jj git push` (Story 9.20), every parameter passed through.
  *
@@ -2816,6 +2916,8 @@ ZanshinBuf *zanshin_abandon(uint64_t handle, const uint8_t *data, uintptr_t len)
  * push or a workspace removal warns (`jj.undo_push_operation`, `jj.undo_workspace_removal`). An
  * equal restored view writes no operation and `new_op_id` is the head the verb started from
  * (Story 9.40).
+ * A restored view without this workspace's working-copy commit (undo to the root view) leaves
+ * `working_copy_change_id` ABSENT and warns `jj.workspace_no_longer_exists`.
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
@@ -2855,6 +2957,8 @@ ZanshinBuf *zanshin_undo(uint64_t handle, bool allow_cross_workspace);
  * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success, the
  * operation described `redo: restore to operation <hex>`. A restored view equal to the current
  * one writes no operation and `new_op_id` is the head the verb started from (Story 9.40).
+ * A restored view without this workspace's working-copy commit leaves `working_copy_change_id`
+ * ABSENT and warns `jj.workspace_no_longer_exists`.
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.

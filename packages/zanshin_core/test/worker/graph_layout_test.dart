@@ -47,8 +47,8 @@ Future<void> buildDag(RepoHandle handle, List<(String, List<String>)> commits) a
   final ids = <String, String>{'root': root.changeId(0)};
   for (final (String name, List<String> parents) in commits) {
     final MutationResult created = await handle.newChange([for (final p in parents) ids[p]!]);
-    await handle.describe(changeId: created.workingCopyChangeId, description: name);
-    ids[name] = created.workingCopyChangeId;
+    await handle.describe(changeId: created.workingCopyChangeId!, description: name);
+    ids[name] = created.workingCopyChangeId!;
   }
 }
 

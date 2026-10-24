@@ -243,7 +243,7 @@ pub(crate) fn metaedit(
     } else {
         Vec::new()
     };
-    mutation_result(&finish, new_change_ids, Vec::new())
+    Ok(mutation_result(&finish, new_change_ids, Vec::new()))
 }
 
 #[cfg(test)]

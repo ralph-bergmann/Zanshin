@@ -697,7 +697,7 @@ fn new_change_moves_git_head_to_the_new_at_parent() {
     assert_eq!(git(&["rev-parse", "HEAD"], &root), parent, "Git HEAD equals @-");
 
     // A second new_change on top of `@` moves HEAD along.
-    let at_change = result.working_copy_change_id;
+    let at_change = result.working_copy_change_id.expect("@");
     repo.new_change(&[at_change], &[], &[]).expect("new_change on @");
     let (_at, parent) = at(&root);
     assert_eq!(git(&["rev-parse", "HEAD"], &root), parent, "Git HEAD follows @-");

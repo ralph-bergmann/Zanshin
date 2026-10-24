@@ -221,7 +221,7 @@ mod tests {
                     new_op_id: OperationId("op42".to_owned()),
                     new_change_ids: Vec::new(),
                     abandoned_change_ids: Vec::new(),
-                    working_copy_change_id: ChangeId("qpvuntsm".to_owned()),
+                    working_copy_change_id: Some(ChangeId("qpvuntsm".to_owned())),
                 },
                 changed_bookmarks: vec![GitRefUpdate {
                     name: "main".to_owned(),

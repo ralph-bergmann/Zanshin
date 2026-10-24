@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 52;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 54;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 53] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 55] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -77,6 +77,8 @@ pub mod zanshin {
             RequestKind::SelectTree,
             RequestKind::OpShow,
             RequestKind::OpDiff,
+            RequestKind::OpRestore,
+            RequestKind::OpRevert,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -162,9 +164,11 @@ pub mod zanshin {
             pub const SelectTree: Self = Self(50);
             pub const OpShow: Self = Self(51);
             pub const OpDiff: Self = Self(52);
+            pub const OpRestore: Self = Self(53);
+            pub const OpRevert: Self = Self(54);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 52;
+            pub const ENUM_MAX: u8 = 54;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -219,6 +223,8 @@ pub mod zanshin {
                 Self::SelectTree,
                 Self::OpShow,
                 Self::OpDiff,
+                Self::OpRestore,
+                Self::OpRevert,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -276,6 +282,8 @@ pub mod zanshin {
                     Self::SelectTree => Some("SelectTree"),
                     Self::OpShow => Some("OpShow"),
                     Self::OpDiff => Some("OpDiff"),
+                    Self::OpRestore => Some("OpRestore"),
+                    Self::OpRevert => Some("OpRevert"),
                     _ => None,
                 }
             }
@@ -1550,6 +1558,104 @@ pub mod zanshin {
         }
 
         impl ::flatbuffers::SimpleToVerifyInSlice for ConflictState {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_RESTORE_WHAT: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_RESTORE_WHAT: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_RESTORE_WHAT: [RestoreWhat; 3] =
+            [RestoreWhat::Unspecified, RestoreWhat::Repo, RestoreWhat::RemoteTracking];
+
+        /// One `--what` value of `jj op restore` / `jj op revert` (Story 9.12) — the CLI's
+        /// `RevertWhatToRestore`. `Unspecified = 0` is the default of an unset element and is REFUSED
+        /// (`ffi.invalid_argument`).
+        ///
+        ///   Repo             the jj repo state and local bookmarks (heads, local bookmarks/tags, the
+        ///                    working-copy commits)
+        ///   RemoteTracking   the remote-tracking bookmarks
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct RestoreWhat(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl RestoreWhat {
+            pub const Unspecified: Self = Self(0);
+            pub const Repo: Self = Self(1);
+            pub const RemoteTracking: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Unspecified, Self::Repo, Self::RemoteTracking];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Unspecified => Some("Unspecified"),
+                    Self::Repo => Some("Repo"),
+                    Self::RemoteTracking => Some("RemoteTracking"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for RestoreWhat {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for RestoreWhat {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for RestoreWhat {
+            type Output = RestoreWhat;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for RestoreWhat {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for RestoreWhat {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for RestoreWhat {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -3371,13 +3477,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 52;
+        pub const ENUM_MAX_PAYLOAD: u8 = 53;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 53] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 54] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -3431,6 +3537,7 @@ pub mod zanshin {
             Payload::OpShow,
             Payload::OpDiffResult,
             Payload::OpAbandonResult,
+            Payload::OpIntegrateResult,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -3491,9 +3598,10 @@ pub mod zanshin {
             pub const OpShow: Self = Self(50);
             pub const OpDiffResult: Self = Self(51);
             pub const OpAbandonResult: Self = Self(52);
+            pub const OpIntegrateResult: Self = Self(53);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 52;
+            pub const ENUM_MAX: u8 = 53;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -3548,6 +3656,7 @@ pub mod zanshin {
                 Self::OpShow,
                 Self::OpDiffResult,
                 Self::OpAbandonResult,
+                Self::OpIntegrateResult,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -3605,6 +3714,7 @@ pub mod zanshin {
                     Self::OpShow => Some("OpShow"),
                     Self::OpDiffResult => Some("OpDiffResult"),
                     Self::OpAbandonResult => Some("OpAbandonResult"),
+                    Self::OpIntegrateResult => Some("OpIntegrateResult"),
                     _ => None,
                 }
             }
@@ -17512,6 +17622,327 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum OpRestoreRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_op_restore` (Story 9.12) — the CLI's `jj op restore`.
+        ///
+        ///   operation   the operation expression (`@-`, an id prefix); REQUIRED — ABSENT is refused
+        ///               (`ffi.invalid_argument`), as the CLI's positional is required
+        ///   what        `--what`, repeatable; ABSENT or EMPTY = the flag absent (both portions)
+        pub struct OpRestoreRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpRestoreRequest<'a> {
+            type Inner = OpRestoreRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpRestoreRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_OPERATION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_WHAT: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpRestoreRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpRestoreRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpRestoreRequest<'bldr>> {
+                let mut builder = OpRestoreRequestBuilder::new(_fbb);
+                if let Some(x) = args.what {
+                    builder.add_what(x);
+                }
+                if let Some(x) = args.operation {
+                    builder.add_operation(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(OpRestoreRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn operation(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpRestoreRequest::VT_OPERATION, None)
+                }
+            }
+            #[inline]
+            pub fn what(&self) -> Option<::flatbuffers::Vector<'a, RestoreWhat>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, RestoreWhat>>>(
+                            OpRestoreRequest::VT_WHAT,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpRestoreRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation", Self::VT_OPERATION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, RestoreWhat>>>(
+                        "what",
+                        Self::VT_WHAT,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OpRestoreRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub operation: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub what: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, RestoreWhat>>>,
+        }
+        impl<'a> Default for OpRestoreRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpRestoreRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    operation: None,
+                    what: None,
+                }
+            }
+        }
+
+        pub struct OpRestoreRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpRestoreRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(OpRestoreRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_operation(&mut self, operation: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpRestoreRequest::VT_OPERATION, operation);
+            }
+            #[inline]
+            pub fn add_what(&mut self, what: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, RestoreWhat>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpRestoreRequest::VT_WHAT, what);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpRestoreRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpRestoreRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpRestoreRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpRestoreRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpRestoreRequest");
+                ds.field("kind", &self.kind());
+                ds.field("operation", &self.operation());
+                ds.field("what", &self.what());
+                ds.finish()
+            }
+        }
+        pub enum OpRevertRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_op_revert` (Story 9.12) — the CLI's `jj op revert`.
+        ///
+        ///   operation   the operation expression; ABSENT = `@` (the CLI's default)
+        ///   what        `--what`, repeatable; ABSENT or EMPTY = the flag absent (both portions)
+        pub struct OpRevertRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpRevertRequest<'a> {
+            type Inner = OpRevertRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpRevertRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_OPERATION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_WHAT: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpRevertRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpRevertRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpRevertRequest<'bldr>> {
+                let mut builder = OpRevertRequestBuilder::new(_fbb);
+                if let Some(x) = args.what {
+                    builder.add_what(x);
+                }
+                if let Some(x) = args.operation {
+                    builder.add_operation(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(OpRevertRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn operation(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpRevertRequest::VT_OPERATION, None)
+                }
+            }
+            #[inline]
+            pub fn what(&self) -> Option<::flatbuffers::Vector<'a, RestoreWhat>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, RestoreWhat>>>(
+                            OpRevertRequest::VT_WHAT,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpRevertRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation", Self::VT_OPERATION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, RestoreWhat>>>(
+                        "what",
+                        Self::VT_WHAT,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OpRevertRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub operation: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub what: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, RestoreWhat>>>,
+        }
+        impl<'a> Default for OpRevertRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpRevertRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    operation: None,
+                    what: None,
+                }
+            }
+        }
+
+        pub struct OpRevertRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpRevertRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(OpRevertRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_operation(&mut self, operation: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpRevertRequest::VT_OPERATION, operation);
+            }
+            #[inline]
+            pub fn add_what(&mut self, what: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, RestoreWhat>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpRevertRequest::VT_WHAT, what);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpRevertRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpRevertRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpRevertRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpRevertRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpRevertRequest");
+                ds.field("kind", &self.kind());
+                ds.field("operation", &self.operation());
+                ds.field("what", &self.what());
+                ds.finish()
+            }
+        }
         pub enum OpRefTargetOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -19329,6 +19760,137 @@ pub mod zanshin {
                 ds.field("reparented_count", &self.reparented_count());
                 ds.field("nothing_changed", &self.nothing_changed());
                 ds.field("head_op_ids", &self.head_op_ids());
+                ds.finish()
+            }
+        }
+        pub enum OpIntegrateResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_op_integrate`'s answer (Story 9.12): the head operation afterwards (the integrated
+        /// operation, the merge that reconciled it, or the unchanged head for an operation already in the
+        /// log) and `reconciled` — the integrate itself merged the heads (the CLI's status line "The
+        /// specified operation has been integrated with other existing operations."); a reconcile the
+        /// head load wrote first does not count.
+        pub struct OpIntegrateResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for OpIntegrateResult<'a> {
+            type Inner = OpIntegrateResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> OpIntegrateResult<'a> {
+            pub const VT_HEAD_OP_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_RECONCILED: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                OpIntegrateResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args OpIntegrateResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<OpIntegrateResult<'bldr>> {
+                let mut builder = OpIntegrateResultBuilder::new(_fbb);
+                if let Some(x) = args.head_op_id {
+                    builder.add_head_op_id(x);
+                }
+                builder.add_reconciled(args.reconciled);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn head_op_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(OpIntegrateResult::VT_HEAD_OP_ID, None)
+                }
+            }
+            #[inline]
+            pub fn reconciled(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(OpIntegrateResult::VT_RECONCILED, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for OpIntegrateResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("head_op_id", Self::VT_HEAD_OP_ID, false)?
+                    .visit_field::<bool>("reconciled", Self::VT_RECONCILED, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct OpIntegrateResultArgs<'a> {
+            pub head_op_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub reconciled: bool,
+        }
+        impl<'a> Default for OpIntegrateResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                OpIntegrateResultArgs {
+                    head_op_id: None,
+                    reconciled: false,
+                }
+            }
+        }
+
+        pub struct OpIntegrateResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> OpIntegrateResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_head_op_id(&mut self, head_op_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(OpIntegrateResult::VT_HEAD_OP_ID, head_op_id);
+            }
+            #[inline]
+            pub fn add_reconciled(&mut self, reconciled: bool) {
+                self.fbb_
+                    .push_slot::<bool>(OpIntegrateResult::VT_RECONCILED, reconciled, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> OpIntegrateResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                OpIntegrateResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<OpIntegrateResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for OpIntegrateResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("OpIntegrateResult");
+                ds.field("head_op_id", &self.head_op_id());
+                ds.field("reconciled", &self.reconciled());
                 ds.finish()
             }
         }
@@ -22774,6 +23336,8 @@ pub mod zanshin {
                     >>(MutationResult::VT_ABANDONED_CHANGE_IDS, None)
                 }
             }
+            /// `@`'s change id after the mutation; ABSENT when the workspace has no working-copy commit
+            /// afterwards (e.g. `zanshin_op_restore` of the root operation, Story 9.12).
             #[inline]
             pub fn working_copy_change_id(&self) -> Option<&'a str> {
                 // Safety:
@@ -34767,6 +35331,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_op_integrate_result(&self) -> Option<OpIntegrateResult<'a>> {
+                if self.data_type() == Payload::OpIntegrateResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { OpIntegrateResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -34832,6 +35411,7 @@ pub mod zanshin {
           Payload::OpShow => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpShow>>("Payload::OpShow", pos),
           Payload::OpDiffResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpDiffResult>>("Payload::OpDiffResult", pos),
           Payload::OpAbandonResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpAbandonResult>>("Payload::OpAbandonResult", pos),
+          Payload::OpIntegrateResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpIntegrateResult>>("Payload::OpIntegrateResult", pos),
           _ => Ok(()),
         }
      })?
@@ -35287,6 +35867,13 @@ pub mod zanshin {
                     }
                     Payload::OpAbandonResult => {
                         if let Some(x) = self.data_as_op_abandon_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::OpIntegrateResult => {
+                        if let Some(x) = self.data_as_op_integrate_result() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

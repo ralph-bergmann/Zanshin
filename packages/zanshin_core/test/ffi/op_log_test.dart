@@ -423,5 +423,66 @@ void main() {
     test('zanshinOpAbandon_rejects_interior_nul_in_operation', () {
       expect(() => zanshinOpAbandon(0, nul), throwsArgumentError);
     });
+
+    test('zanshinOpRestore_zanshinOpRevert_zanshinOpIntegrate_reject_interior_nul_in_operation', () {
+      expect(() => zanshinOpRestore(0, nul), throwsArgumentError);
+      expect(() => zanshinOpRevert(0, nul), throwsArgumentError);
+      expect(() => zanshinOpIntegrate(0, nul), throwsArgumentError);
+    });
+  });
+
+  group('Story 9.12 decode contract', () {
+    test('OpIntegrateResult decodes its head and flag', () {
+      for (final reconciled in [false, true]) {
+        final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+          ok: true,
+          dataType: fbs.PayloadTypeId.OpIntegrateResult,
+          data: fbs.OpIntegrateResultObjectBuilder(headOpId: 'h', reconciled: reconciled),
+        ).toBytes();
+
+        final OpIntegrateResult result = decodeOpIntegrateResultEnvelope(bytes);
+
+        expect((result.headOpId, result.reconciled), ('h', reconciled));
+        expect(result.warnings, isEmpty);
+      }
+    });
+
+    test('OpIntegrateResult throws on an error envelope, a foreign payload and a missing head', () {
+      final Uint8List error = fbs.EnvelopeObjectBuilder(
+        ok: false,
+        error: fbs.FfiErrorObjectBuilder(code: 'jj.operation_not_found', context: 'No operation ID matching "ff"'),
+      ).toBytes();
+      final Uint8List foreign = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.RepoHandle,
+        data: fbs.RepoHandleObjectBuilder(handle: 0),
+      ).toBytes();
+      final Uint8List noHead = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.OpIntegrateResult,
+        data: fbs.OpIntegrateResultObjectBuilder(reconciled: true),
+      ).toBytes();
+
+      expect(
+        () => decodeOpIntegrateResultEnvelope(error),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.operation_not_found')),
+      );
+      expect(
+        () => decodeOpIntegrateResultEnvelope(foreign),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')),
+      );
+      expect(
+        () => decodeOpIntegrateResultEnvelope(noHead),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'ffi.unknown')
+              .having((e) => e.context, 'context', 'OpIntegrateResult payload is missing its head_op_id'),
+        ),
+      );
+    });
+
+    test('RestoreWhat maps onto its wire members', () {
+      expect(RestoreWhat.values.map((w) => w.wire), [fbs.RestoreWhat.Repo, fbs.RestoreWhat.RemoteTracking]);
+    });
   });
 }

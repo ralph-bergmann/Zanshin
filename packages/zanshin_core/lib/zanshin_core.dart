@@ -65,13 +65,15 @@ export 'src/ffi/op_log.dart'
         OpCommitsDiff,
         OpDiff,
         OpDiffResult,
+        OpIntegrateResult,
         OpRefChange,
         OpRefTarget,
         OpRemoteRefChange,
         OpShow,
         OpWorkingCopyChange,
         Operation,
-        OperationTag;
+        OperationTag,
+        RestoreWhat;
 export 'src/ffi/precondition.dart' show Precondition;
 export 'src/ffi/push.dart'
     show

@@ -5,6 +5,7 @@ import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 import '../ffi/config.dart' show ConfigScope, ConfigTarget;
 import '../ffi/drop_actions.dart' show DropLocation, DropSource;
 import '../ffi/fetch.dart' show FetchRefs, FetchRemotes;
+import '../ffi/op_log.dart' show RestoreWhat;
 import '../ffi/rebase.dart' show ArrangeAction;
 import '../ffi/repo.dart' show ObjectHash;
 import '../ffi/select_tree.dart' show FileSelection, SourceTree, TreeSelection;
@@ -627,6 +628,70 @@ final class OpAbandonCommand extends WorkerCommand implements HandleScopedComman
   final int handleId;
 
   /// The operation or range to abandon (`..@-`, `<id>`, …).
+  final String operation;
+}
+
+/// Restore the repo identified by [handleId] to the state at an operation —
+/// the CLI's `jj op restore` (Story 9.12).
+///
+/// The worker calls `zanshinOpRestore(raw, …)` and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class OpRestoreCommand extends WorkerCommand implements HandleScopedCommand {
+  const OpRestoreCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.operation,
+    required this.what,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The operation expression to restore to.
+  final String operation;
+
+  /// `--what`; empty = both portions.
+  final List<RestoreWhat> what;
+}
+
+/// Revert one operation of the repo identified by [handleId] — the CLI's
+/// `jj op revert` (Story 9.12).
+///
+/// The worker calls `zanshinOpRevert(raw, …)` and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class OpRevertCommand extends WorkerCommand implements HandleScopedCommand {
+  const OpRevertCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.operation,
+    required this.what,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The operation expression to revert (`@` is the CLI's default).
+  final String operation;
+
+  /// `--what`; empty = both portions.
+  final List<RestoreWhat> what;
+}
+
+/// Make an operation part of the operation log of the repo identified by
+/// [handleId] — the CLI's `jj op integrate` (Story 9.12).
+///
+/// The worker calls `zanshinOpIntegrate(raw, …)` and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<OpIntegrateResult>` bytes.
+final class OpIntegrateCommand extends WorkerCommand implements HandleScopedCommand {
+  const OpIntegrateCommand({required super.commandId, required this.handleId, required this.operation});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The operation to integrate (an id prefix names an unpublished one too).
   final String operation;
 }
 

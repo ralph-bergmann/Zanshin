@@ -1268,6 +1268,45 @@ class ZanshinWorker {
     return repo_ffi_op_log.decodeOpAbandonResultEnvelopeInternal(bytes);
   }
 
+  /// Restore the repo identified by [handleId] to the state at an operation —
+  /// the CLI's `jj op restore` (Story 9.12); see [RepoHandle.opRestore].
+  Future<repo_ffi_mutate.MutationResult> opRestore(
+    int handleId,
+    String operation, {
+    List<repo_ffi_op_log.RestoreWhat> what = const [],
+  }) async {
+    rejectInteriorNul(operation, 'operation');
+    final Uint8List bytes = await send(
+      OpRestoreCommand(commandId: _correlator.allocateId(), handleId: handleId, operation: operation, what: what),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Revert one operation of the repo identified by [handleId] — the CLI's
+  /// `jj op revert` (Story 9.12); see [RepoHandle.opRevert].
+  Future<repo_ffi_mutate.MutationResult> opRevert(
+    int handleId, {
+    String operation = '@',
+    List<repo_ffi_op_log.RestoreWhat> what = const [],
+  }) async {
+    rejectInteriorNul(operation, 'operation');
+    final Uint8List bytes = await send(
+      OpRevertCommand(commandId: _correlator.allocateId(), handleId: handleId, operation: operation, what: what),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Make an operation part of the operation log of the repo identified by
+  /// [handleId] — the CLI's `jj op integrate` (Story 9.12); see
+  /// [RepoHandle.opIntegrate].
+  Future<repo_ffi_op_log.OpIntegrateResult> opIntegrate(int handleId, String operation) async {
+    rejectInteriorNul(operation, 'operation');
+    final Uint8List bytes = await send(
+      OpIntegrateCommand(commandId: _correlator.allocateId(), handleId: handleId, operation: operation),
+    );
+    return repo_ffi_op_log.decodeOpIntegrateResultEnvelopeInternal(bytes);
+  }
+
   /// Fetch the [remotes] and [refs] selected and import them, in the repo
   /// identified by [handleId] — the CLI's `jj git fetch` (Stories 6.5, 9.30).
   /// See [RepoHandle.gitFetch].
@@ -3365,6 +3404,47 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_op_log.zanshinOpAbandon(raw, operation);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case OpRestoreCommand(
+          :final int handleId,
+          :final String operation,
+          :final List<repo_ffi_op_log.RestoreWhat> what,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: OpRestoreCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_op_log.zanshinOpRestore(raw, operation, what: what);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case OpRevertCommand(
+          :final int handleId,
+          :final String operation,
+          :final List<repo_ffi_op_log.RestoreWhat> what,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: OpRevertCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_op_log.zanshinOpRevert(raw, operation, what: what);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case OpIntegrateCommand(:final int handleId, :final String operation):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: OpIntegrateCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_op_log.zanshinOpIntegrate(raw, operation);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

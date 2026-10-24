@@ -280,6 +280,11 @@ abstract final class ZanshinWarningCode {
   /// which is recorded at an operation that is not a head (Story 9.21).
   static const opAbandonWorkingCopyNotUpdated = 'jj.op_abandon_working_copy_not_updated';
 
+  /// The finished operation's view no longer has this workspace's
+  /// working-copy commit (e.g. `opRestore` of the root operation); the working
+  /// copy was left untouched (Story 9.12).
+  static const workspaceNoLongerExists = 'jj.workspace_no_longer_exists';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -354,6 +359,7 @@ abstract final class ZanshinWarningCode {
     configDeprecated,
     opDiffChangesUnresolved,
     opAbandonWorkingCopyNotUpdated,
+    workspaceNoLongerExists,
     loginShellUnresolved,
   ];
 }

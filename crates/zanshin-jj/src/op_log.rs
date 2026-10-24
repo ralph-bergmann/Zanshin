@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! `op_log.rs` — jj operation-log read (FR-JJ-7) and the operation verbs: `undo` (Story 9.39),
-//! `redo`, `op show`, `op diff` and `op abandon` (Story 9.21).
+//! `redo`, `op show`, `op diff` and `op abandon` (Story 9.21), `op restore`, `op revert` and
+//! `op integrate` (Story 9.12).
 //!
 //! Exposes a `jj_lib`-type-free view of jj's operation log: a reverse-
 //! chronological list of operations (head first, root last). The read
@@ -9,18 +10,20 @@
 //! the `jj` CLI (AR-AP-1).
 //!
 //! Operation expressions (`@`, `@-`, `@+`, id prefixes) resolve through jj-lib's `op_walk`
-//! exactly as the CLI resolves them: `op show` / `op diff` at the head repo (the CLI's
-//! `resolve_single_op`), `op abandon` at the current, unmerged op heads.
+//! exactly as the CLI resolves them: `op show` / `op diff` / `op restore` / `op revert` /
+//! `op integrate` at the head repo (the CLI's `resolve_single_op`), `op abandon` at the current,
+//! unmerged op heads.
 
 use std::slice;
 use std::sync::Arc;
 
 use futures::StreamExt as _;
 use jj_lib::object_id::ObjectId as _;
+use jj_lib::op_heads_store;
 use jj_lib::op_store;
 use jj_lib::op_walk::{self, OpsetEvaluationError, OpsetResolutionError};
 use jj_lib::operation::Operation as JjOperation;
-use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoader};
+use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoader, RepoLoaderError};
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, MutateError, MutationResult};
@@ -251,11 +254,14 @@ pub(crate) fn undo(
     let target_view = pollster::block_on(target_parent.view()).map_err(mutate::be)?;
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    tx.repo_mut()
-        .set_view(restored_view(target_view.store_view(), readonly.view().store_view()));
+    tx.repo_mut().set_view(view_with_desired_portions_restored(
+        target_view.store_view(),
+        readonly.view().store_view(),
+        &DEFAULT_RESTORE_WHAT,
+    ));
     let description = format!("{UNDO_OP_DESC_PREFIX}{}", target_parent.id().hex());
     let finish = mutate::finish_verb(workspace, tx, &description, ctx)?;
-    mutate::mutation_result(&finish, Vec::new(), Vec::new())
+    Ok(mutate::mutation_result(&finish, Vec::new(), Vec::new()))
 }
 
 /// The description prefix that makes an operation an undo operation — the CLI's
@@ -291,22 +297,57 @@ fn through_prefix(
     pollster::block_on(workspace.repo_loader().load_operation(&id)).map_err(mutate::be)
 }
 
-/// Restores only the portions of the view the CLI's default (unflagged) `jj undo`
-/// restores — `DEFAULT_REVERT_WHAT` = Repo + `RemoteTracking`, both always on for plain
-/// `undo` (no flag exists on `undo` itself to change this). Reimplements
-/// `cli/src/commands/operation/mod.rs`'s `view_with_desired_portions_restored` inline
-/// (small, pure, single-use — CLI-only orchestration jj-lib doesn't expose): `head_ids`,
-/// local bookmarks/tags, remote-tracking views, and `wc_commit_ids` come from `target`;
-/// `git_refs`/`git_heads` stay at `current`.
-fn restored_view(target: &op_store::View, current: &op_store::View) -> op_store::View {
+/// What portions of the local state `op restore` / `op revert` restore (Story 9.12) — the CLI's
+/// `RevertWhatToRestore` (`cli/src/commands/operation/mod.rs:76-84` @ v0.46.0), one `--what`
+/// value each.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RestoreWhat {
+    /// `repo`: the jj repo state and local bookmarks — `head_ids`, local bookmarks and tags, the
+    /// working-copy commits.
+    Repo,
+    /// `remote-tracking`: the remote-tracking bookmarks (`remote_views`). Do not restore these to
+    /// push after the restore.
+    RemoteTracking,
+}
+
+/// The CLI's `DEFAULT_REVERT_WHAT` (`operation/mod.rs:87-90` @ v0.46.0): both portions — what
+/// `undo` / `redo` always restore and what an empty `what` list (the flag absent) means.
+const DEFAULT_RESTORE_WHAT: [RestoreWhat; 2] = [RestoreWhat::Repo, RestoreWhat::RemoteTracking];
+
+/// The port of the CLI's `view_with_desired_portions_restored` (`operation/mod.rs:93-117` @
+/// v0.46.0), shared by `undo`, `redo`, `op restore` and `op revert`: the repo portion (`head_ids`,
+/// local bookmarks/tags, `wc_commit_ids`) comes from `being_restored` when `what` contains
+/// [`RestoreWhat::Repo`], the remote portion (`remote_views`) when it contains
+/// [`RestoreWhat::RemoteTracking`], each else from `current`; `git_refs` / `git_heads` always stay
+/// at `current`. An empty `what` is the CLI without `--what`: [`DEFAULT_RESTORE_WHAT`].
+fn view_with_desired_portions_restored(
+    being_restored: &op_store::View,
+    current: &op_store::View,
+    what: &[RestoreWhat],
+) -> op_store::View {
+    let what = if what.is_empty() {
+        &DEFAULT_RESTORE_WHAT[..]
+    } else {
+        what
+    };
+    let repo_source = if what.contains(&RestoreWhat::Repo) {
+        being_restored
+    } else {
+        current
+    };
+    let remote_source = if what.contains(&RestoreWhat::RemoteTracking) {
+        being_restored
+    } else {
+        current
+    };
     op_store::View {
-        head_ids: target.head_ids.clone(),
-        local_bookmarks: target.local_bookmarks.clone(),
-        local_tags: target.local_tags.clone(),
-        remote_views: target.remote_views.clone(),
+        head_ids: repo_source.head_ids.clone(),
+        local_bookmarks: repo_source.local_bookmarks.clone(),
+        local_tags: repo_source.local_tags.clone(),
+        remote_views: remote_source.remote_views.clone(),
         git_refs: current.git_refs.clone(),
         git_heads: current.git_heads.clone(),
-        wc_commit_ids: target.wc_commit_ids.clone(),
+        wc_commit_ids: repo_source.wc_commit_ids.clone(),
     }
 }
 
@@ -327,9 +368,9 @@ const REDO_OP_DESC_PREFIX: &str = "redo: restore to operation ";
 ///    [`MutateError::RedoCrossWorkspace`]; an operation that records no workspace never refuses.
 /// 4. The undo operation's single parent is restored; when that parent is a redo operation
 ///    itself, the operation IT restored to is used instead, so redos never form a linked list.
-/// 5. The restored view is `undo`'s ([`restored_view`], the CLI's `DEFAULT_REVERT_WHAT`),
-///    committed as `redo: restore to operation <hex>` — or, equal to the current view, no
-///    operation at all and the pre-call head op id (Story 9.40).
+/// 5. The restored view is `undo`'s ([`view_with_desired_portions_restored`] with the CLI's
+///    `DEFAULT_REVERT_WHAT`), committed as `redo: restore to operation <hex>` — or, equal to the
+///    current view, no operation at all and the pre-call head op id (Story 9.40).
 ///
 /// # Errors
 ///
@@ -386,11 +427,14 @@ pub(crate) fn redo(
     let target_view = pollster::block_on(target_parent.view()).map_err(mutate::be)?;
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
-    tx.repo_mut()
-        .set_view(restored_view(target_view.store_view(), readonly.view().store_view()));
+    tx.repo_mut().set_view(view_with_desired_portions_restored(
+        target_view.store_view(),
+        readonly.view().store_view(),
+        &DEFAULT_RESTORE_WHAT,
+    ));
     let description = format!("{REDO_OP_DESC_PREFIX}{}", target_parent.id().hex());
     let finish = mutate::finish_verb(workspace, tx, &description, ctx)?;
-    mutate::mutation_result(&finish, Vec::new(), Vec::new())
+    Ok(mutate::mutation_result(&finish, Vec::new(), Vec::new()))
 }
 
 /// What `op show` returns (Story 9.21): the operation and its changes against its parent.
@@ -692,6 +736,161 @@ pub(crate) fn op_abandon(
     })
 }
 
+/// Restores the repo to the state at an operation — the port of the CLI's `cmd_op_restore`
+/// (`cli/src/commands/operation/restore.rs:48-70` @ v0.46.0, Story 9.12).
+///
+/// The step, as in the CLI:
+///
+/// 1. `operation_str` resolves at the head repo (`resolve_single_op`, as `op show`).
+/// 2. The restored view is [`view_with_desired_portions_restored`] of the target operation's
+///    view over the head's, `what` choosing the portions (empty = both, `DEFAULT_REVERT_WHAT`).
+/// 3. It is committed as `restore to operation <hex>` — or, equal to the current view, no
+///    operation at all and the pre-call head op id (the CLI's "Nothing changed.", Story 9.40).
+///
+/// A raw `set_view` records no rewrites, so the finish rebases nothing, as in the CLI.
+///
+/// # Errors
+///
+/// - [`MutateError::OperationNotFound`] / [`MutateError::InvalidInput`] — `operation_str` does
+///   not resolve to one operation (see [`opset`]).
+/// - [`MutateError::Config`] — the finish's immutable set does not resolve.
+/// - [`MutateError::Backend`] — an underlying jj-lib failure.
+#[must_use = "the Result must be used; drop it explicitly if intentional"]
+pub(crate) fn op_restore(
+    workspace: &mut Workspace,
+    ctx: &mut VerbContext,
+    operation_str: &str,
+    what: &[RestoreWhat],
+) -> Result<MutationResult, MutateError> {
+    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let target_op = pollster::block_on(op_walk::resolve_op_with_repo(&readonly, operation_str)).map_err(opset)?;
+    let target_view = pollster::block_on(target_op.view()).map_err(mutate::be)?;
+    let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
+    tx.repo_mut().set_view(view_with_desired_portions_restored(
+        target_view.store_view(),
+        readonly.view().store_view(),
+        what,
+    ));
+    let description = format!("restore to operation {}", target_op.id().hex());
+    let finish = mutate::finish_verb(workspace, tx, &description, ctx)?;
+    Ok(mutate::mutation_result(&finish, Vec::new(), Vec::new()))
+}
+
+/// Reverts one operation by applying its inverse — the port of the CLI's `cmd_op_revert`
+/// (`cli/src/commands/operation/revert.rs:53-85` @ v0.46.0, Story 9.12).
+///
+/// The step, as in the CLI:
+///
+/// 1. `operation_str` (the CLI's default `@`) resolves at the head repo (`resolve_single_op`).
+/// 2. Its parents are `at_most_one` (`:61-65`): none refuses "Cannot revert root operation",
+///    several "Cannot revert a merge operation" — before any transaction.
+/// 3. `merge(repo at the target, repo at its parent)` applies the inverse onto the head repo
+///    (`:67-73`): the indexes merge, the views merge three-way, and the rewrites the merge
+///    records are rebased by the finish.
+/// 4. The restored portions of that merged view are taken over the head's
+///    ([`view_with_desired_portions_restored`], `:74-79`; `what` empty = both), so `git_refs` /
+///    `git_heads` (and an unselected portion) stay current.
+/// 5. Committed as `revert operation <hex>` (`tx_description`, `:49-51`) — or, when nothing
+///    changed, no operation and the pre-call head op id (Story 9.40).
+///
+/// # Errors
+///
+/// - [`MutateError::OperationNotFound`] / [`MutateError::InvalidInput`] — `operation_str` does
+///   not resolve to one operation (see [`opset`]).
+/// - [`MutateError::InvalidInput`] — the target is the root operation or a merge operation.
+/// - [`MutateError::Config`] — the finish's immutable set does not resolve.
+/// - [`MutateError::Backend`] — an underlying jj-lib failure.
+#[must_use = "the Result must be used; drop it explicitly if intentional"]
+pub(crate) fn op_revert(
+    workspace: &mut Workspace,
+    ctx: &mut VerbContext,
+    operation_str: &str,
+    what: &[RestoreWhat],
+) -> Result<MutationResult, MutateError> {
+    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let target_op = pollster::block_on(op_walk::resolve_op_with_repo(&readonly, operation_str)).map_err(opset)?;
+    let parents = pollster::block_on(target_op.parents()).map_err(mutate::be)?;
+    let target_parent = match <[JjOperation; 1]>::try_from(parents) {
+        Ok([parent]) => parent,
+        Err(parents) if parents.is_empty() => return Err(MutateError::invalid("Cannot revert root operation")),
+        Err(_) => return Err(MutateError::invalid("Cannot revert a merge operation")),
+    };
+
+    let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
+    let loader = readonly.loader();
+    let repo_at_target = pollster::block_on(loader.load_at(&target_op)).map_err(mutate::be)?;
+    let repo_at_parent = pollster::block_on(loader.load_at(&target_parent)).map_err(mutate::be)?;
+    pollster::block_on(tx.repo_mut().merge(&repo_at_target, &repo_at_parent)).map_err(mutate::be)?;
+    let new_view =
+        view_with_desired_portions_restored(tx.repo().view().store_view(), tx.base_repo().view().store_view(), what);
+    tx.repo_mut().set_view(new_view);
+    let description = format!("revert operation {}", target_op.id().hex());
+    let finish = mutate::finish_verb(workspace, tx, &description, ctx)?;
+    Ok(mutate::mutation_result(&finish, Vec::new(), Vec::new()))
+}
+
+/// What `op integrate` did (Story 9.12) — the CLI's effect as facts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpIntegrateResult {
+    /// The head operation afterwards: the integrated operation, the merge operation that
+    /// reconciled it with the other heads, or — for an operation already in the log — the
+    /// unchanged head.
+    pub head_op_id: OperationId,
+    /// The integrate itself merged the op heads into a `reconcile divergent operations`
+    /// operation — the CLI's status line "The specified operation has been integrated with other
+    /// existing operations.", printed only from integrate's own resolver. A reconcile the head
+    /// load wrote first (divergent heads before the call) does not count.
+    pub reconciled: bool,
+}
+
+/// The description of the merge operation `op integrate` (and every head load) writes for
+/// divergent op heads — the CLI's (`cli/src/commands/operation/integrate.rs:54` @ v0.46.0).
+const RECONCILE_DESCRIPTION: &str = "reconcile divergent operations";
+
+/// Makes an operation part of the operation log — the port of the CLI's `cmd_op_integrate`
+/// (`cli/src/commands/operation/integrate.rs:36-66` @ v0.46.0, Story 9.12).
+///
+/// As the CLI's `workspace_helper_no_snapshot` (`cli/src/cli_util.rs:522-529`): no snapshot and
+/// no Git import. The head is loaded the CLI's way ([`crate::snapshot::load_head`], which may
+/// reconcile divergent heads), `operation_str` resolves at it, the op heads gain the target in
+/// place of its parents (`update_op_heads`), and `resolve_op_heads` drops heads that are
+/// ancestors of others — merging what remains, when more than one, into a
+/// `reconcile divergent operations` operation in this workspace (`merge_operations`, without the
+/// CLI's `args` attribute). An operation already in the log changes nothing.
+///
+/// # Errors
+///
+/// - [`MutateError::OperationNotFound`] / [`MutateError::InvalidInput`] — `operation_str` does
+///   not resolve to one operation (see [`opset`]); nothing is written.
+/// - [`MutateError::Precondition`] — the head could not be loaded.
+/// - [`MutateError::Backend`] — an op-store or op-heads failure, or the merge failed.
+#[must_use = "the Result must be used; drop it explicitly if intentional"]
+pub(crate) fn op_integrate(workspace: &Workspace, operation_str: &str) -> Result<OpIntegrateResult, MutateError> {
+    let head = crate::snapshot::load_head(workspace)?;
+    let target_op = pollster::block_on(op_walk::resolve_op_with_repo(&head, operation_str)).map_err(opset)?;
+    let loader = workspace.repo_loader();
+    let op_heads_store = loader.op_heads_store();
+    pollster::block_on(op_heads_store.update_op_heads(target_op.parent_ids(), target_op.id())).map_err(mutate::be)?;
+    let workspace_name = workspace.workspace_name();
+    let mut reconciled = false;
+    let head_op = pollster::block_on(op_heads_store::resolve_op_heads(
+        op_heads_store.as_ref(),
+        loader.op_store(),
+        async |op_heads| -> Result<JjOperation, RepoLoaderError> {
+            let (merged, _num_rebased) = loader
+                .merge_operations(op_heads, Some(workspace_name), Some(RECONCILE_DESCRIPTION), [])
+                .await?;
+            reconciled = true;
+            Ok(merged.operation().clone())
+        },
+    ))
+    .map_err(mutate::be)?;
+    Ok(OpIntegrateResult {
+        head_op_id: OperationId(head_op.id().hex()),
+        reconciled,
+    })
+}
+
 /// An operation-expression failure as the CLI reports it (`command_error.rs:376-389`,
 /// `:876-890` @ v0.46.0): no operation for an id prefix is [`MutateError::OperationNotFound`];
 /// every other resolution failure is [`MutateError::InvalidInput`] with jj-lib's text — an
@@ -727,8 +926,71 @@ mod tests {
     use jj_lib::op_store::{OpStoreError, OperationId as JjOperationId};
     use jj_lib::op_walk::{OpsetEvaluationError, OpsetResolutionError};
 
-    use super::{op_log, opset, OpLogError};
+    use std::collections::{BTreeMap, HashSet};
+
+    use jj_lib::backend::CommitId;
+    use jj_lib::op_store::{RefTarget, RemoteRef, RemoteRefState, RemoteView, View};
+
+    use super::{op_log, opset, view_with_desired_portions_restored, OpLogError, RestoreWhat};
     use crate::MutateError;
+
+    /// A view whose every field names commit `n`, so each field's source is visible.
+    fn view(n: u8) -> View {
+        let id = CommitId::new(vec![n]);
+        let target = RefTarget::normal(id.clone());
+        let remote = RemoteView {
+            bookmarks: BTreeMap::from([(
+                "main".into(),
+                RemoteRef {
+                    target: target.clone(),
+                    state: RemoteRefState::Tracked,
+                },
+            )]),
+            tags: BTreeMap::new(),
+        };
+        View {
+            head_ids: HashSet::from([id.clone()]),
+            local_bookmarks: BTreeMap::from([("b".into(), target.clone())]),
+            local_tags: BTreeMap::from([("t".into(), target.clone())]),
+            remote_views: BTreeMap::from([("origin".into(), remote)]),
+            git_refs: BTreeMap::from([("refs/heads/b".into(), target.clone())]),
+            git_heads: BTreeMap::from([("default".into(), target)]),
+            wc_commit_ids: BTreeMap::from([("default".into(), id)]),
+        }
+    }
+
+    /// The CLI's `view_with_desired_portions_restored`: `Repo` takes heads, local bookmarks/tags
+    /// and the working-copy commits from the restored view, `RemoteTracking` the remote views;
+    /// `git_refs` / `git_heads` always stay current; an empty list is both (the flag absent).
+    #[test]
+    fn view_restore_takes_each_portion_per_what() {
+        let (restored, current) = (view(1), view(2));
+        let restore = |what: &[RestoreWhat]| view_with_desired_portions_restored(&restored, &current, what);
+        let repo_from = |v: &View, from: &View| {
+            v.head_ids == from.head_ids
+                && v.local_bookmarks == from.local_bookmarks
+                && v.local_tags == from.local_tags
+                && v.wc_commit_ids == from.wc_commit_ids
+        };
+        for (what, repo, remote) in [
+            (&[][..], true, true),
+            (&[RestoreWhat::Repo, RestoreWhat::RemoteTracking][..], true, true),
+            (&[RestoreWhat::Repo][..], true, false),
+            (&[RestoreWhat::RemoteTracking][..], false, true),
+            (
+                &[RestoreWhat::RemoteTracking, RestoreWhat::RemoteTracking][..],
+                false,
+                true,
+            ),
+        ] {
+            let v = restore(what);
+            assert!(repo_from(&v, if repo { &restored } else { &current }), "{what:?}");
+            let remote_source = if remote { &restored } else { &current };
+            assert_eq!(v.remote_views, remote_source.remote_views, "{what:?}");
+            assert_eq!(v.git_refs, current.git_refs, "{what:?}: git refs stay current");
+            assert_eq!(v.git_heads, current.git_heads, "{what:?}: git heads stay current");
+        }
+    }
 
     /// The CLI's opset error mapping: no match is its own variant, the other resolution failures
     /// are invalid input with jj-lib's text (several matches with the hint naming them, 12 hex

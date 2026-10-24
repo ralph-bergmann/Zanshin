@@ -183,7 +183,7 @@ fn sample_mutation_result() -> zanshin_jj::MutationResult {
         new_op_id: zanshin_jj::OperationId(String::new()),
         new_change_ids: vec![zanshin_jj::ChangeId(String::new())],
         abandoned_change_ids: vec![zanshin_jj::ChangeId(String::new())],
-        working_copy_change_id: zanshin_jj::ChangeId(String::new()),
+        working_copy_change_id: Some(zanshin_jj::ChangeId(String::new())),
         finish: Some(sample_finish_facts()),
     }
 }
@@ -1126,7 +1126,7 @@ fn workspace_add_update_stale_surface_resolves() {
             new_op_id: zanshin_jj::OperationId("o".to_owned()),
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
-            working_copy_change_id: zanshin_jj::ChangeId("w".to_owned()),
+            working_copy_change_id: Some(zanshin_jj::ChangeId("w".to_owned())),
             finish: None,
         },
         workspace_name: "ws2".to_owned(),
@@ -1216,7 +1216,7 @@ fn squash_split_surface_resolves() {
             new_op_id: zanshin_jj::OperationId("o".to_owned()),
             new_change_ids: vec![id("n")],
             abandoned_change_ids: Vec::new(),
-            working_copy_change_id: id("w"),
+            working_copy_change_id: Some(id("w")),
             finish: None,
         },
         selected_change_id: id("s"),
@@ -1346,7 +1346,7 @@ fn metaedit_duplicate_fix_surface_resolves() {
             new_op_id: zanshin_jj::OperationId(String::new()),
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
-            working_copy_change_id: id("w"),
+            working_copy_change_id: Some(id("w")),
             finish: None,
         },
         num_fixed_commits: 1,
@@ -1660,6 +1660,38 @@ fn story_9_21_operation_log_surface_resolves() {
         as fn(&mut zanshin_jj::Repo, &str) -> Result<zanshin_jj::OpAbandonResult, zanshin_jj::MutateError>;
 }
 
+/// The Story 9.12 surface: `RestoreWhat`'s two members, `OpIntegrateResult` field by field, the
+/// optional working-copy change id, and the three verbs as `fn` pointers.
+#[test]
+fn story_9_12_operation_edit_surface_resolves() {
+    let what = [zanshin_jj::RestoreWhat::Repo, zanshin_jj::RestoreWhat::RemoteTracking];
+    assert!(
+        what[0] < what[1],
+        "declaration order, as the CLI's `RevertWhatToRestore`"
+    );
+    let integrated = zanshin_jj::OpIntegrateResult {
+        head_op_id: zanshin_jj::OperationId("o".to_owned()),
+        reconciled: false,
+    };
+    assert_eq!(integrated.clone(), integrated);
+    let no_working_copy: Option<zanshin_jj::ChangeId> = sample_mutation_result().working_copy_change_id;
+    _ = (no_working_copy, zanshin_jj::WarningKind::WorkspaceNoLongerExists);
+    _ = zanshin_jj::Repo::op_restore
+        as fn(
+            &mut zanshin_jj::Repo,
+            &str,
+            &[zanshin_jj::RestoreWhat],
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::op_revert
+        as fn(
+            &mut zanshin_jj::Repo,
+            &str,
+            &[zanshin_jj::RestoreWhat],
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::op_integrate
+        as fn(&mut zanshin_jj::Repo, &str) -> Result<zanshin_jj::OpIntegrateResult, zanshin_jj::MutateError>;
+}
+
 // snapshot precondition (Story 9.26)
 type _Precondition = zanshin_jj::Precondition;
 type _PreconditionError = zanshin_jj::PreconditionError;
@@ -1854,7 +1886,7 @@ fn story_9_28_surface_resolves() {
 /// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds;
 /// Story 9.53 the unresolved conflicts; Story 9.51 the template diagnostic; Story 9.54's closing
 /// run the bookmark auto-track warning; Story 9.19 the four rename warnings).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 66] = {
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 67] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -1923,6 +1955,7 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 66] = {
         K::ConfigDeprecated,
         K::OpDiffChangesUnresolved,
         K::OpAbandonWorkingCopyNotUpdated,
+        K::WorkspaceNoLongerExists,
     ]
 };
 
@@ -2047,10 +2080,11 @@ fn story_9_32_warning_surface_resolves() {
             | K::FilesetDiagnostic
             | K::ConfigDeprecated
             | K::OpDiffChangesUnresolved
-            | K::OpAbandonWorkingCopyNotUpdated => {}
+            | K::OpAbandonWorkingCopyNotUpdated
+            | K::WorkspaceNoLongerExists => {}
         }
     }
-    assert_eq!(every.len(), 66);
+    assert_eq!(every.len(), 67);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

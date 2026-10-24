@@ -236,13 +236,14 @@ fn git_import_abandoning_the_working_copy_reports_it_and_moves_at() {
         "the commit that lost its only git ref is abandoned"
     );
     assert_ne!(
-        result.mutation.working_copy_change_id, change,
+        result.mutation.working_copy_change_id,
+        Some(change),
         "an abandoned `@` is replaced by a fresh, empty commit"
     );
     // The on-disk working copy really moved, not just the view: a fresh handle agrees.
     let mut reopened = Repo::open(tmp.path()).expect("reopen");
     assert_eq!(
-        reopened.status().expect("status").working_copy_change_id,
+        Some(reopened.status().expect("status").working_copy_change_id),
         result.mutation.working_copy_change_id
     );
 }
@@ -273,7 +274,8 @@ fn git_import_honours_abandon_unreachable_commits_false() {
         "the user disabled abandoning; nothing may be abandoned"
     );
     assert_eq!(
-        result.mutation.working_copy_change_id, change,
+        result.mutation.working_copy_change_id,
+        Some(change),
         "`@` stays exactly where the user left it"
     );
 }

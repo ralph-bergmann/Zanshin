@@ -241,7 +241,7 @@ pub(crate) fn add(
         &finish,
         vec![ChangeId(new_wc_commit.change_id().reverse_hex())],
         Vec::new(),
-    )?;
+    );
     Ok(WorkspaceAddResult {
         mutation,
         workspace_name: name.as_str().to_owned(),

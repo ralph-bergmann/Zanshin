@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: MIT
 
 // Worker round-trip tests for Story 9.21's operation verbs — redo, opShow,
-// opDiff, opAbandon — and the op log's workspace name, against the REAL
-// compiled cdylib through the REAL worker isolate (no mocks; project-context
-// "Worker / isolate testing"). They also credit `zanshin_redo`,
-// `zanshin_op_show`, `zanshin_op_diff` and `zanshin_op_abandon` in the coverage
-// ratchet's extern-fn guard (mem:project-coverage-extern-fn-needs-zanshin-core-test).
+// opDiff, opAbandon — and the op log's workspace name, and Story 9.12's
+// opRestore, opRevert and opIntegrate, against the REAL compiled cdylib through
+// the REAL worker isolate (no mocks; project-context "Worker / isolate
+// testing"). They also credit `zanshin_redo`, `zanshin_op_show`,
+// `zanshin_op_diff`, `zanshin_op_abandon`, `zanshin_op_restore`,
+// `zanshin_op_revert` and `zanshin_op_integrate` in the coverage ratchet's
+// extern-fn guard (mem:project-coverage-extern-fn-needs-zanshin-core-test).
 
 import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/mutate.dart' show MutationResult;
 import 'package:zanshin_core/src/ffi/op_log.dart';
+import 'package:zanshin_core/src/ffi/warning.dart' show ZanshinWarningCode;
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
@@ -134,6 +137,58 @@ void main() {
       expect((await handle.opAbandon('..@-')).nothingChanged, isTrue);
     });
 
+    test('opRestore to before the second describe brings A back', () async {
+      final String describeA = (await handle.opLog(limit: 2)).last.id;
+
+      final MutationResult result = await handle.opRestore('@-', what: const [RestoreWhat.repo]);
+
+      expect((await handle.getChange(wc)).description, 'A');
+      final Operation head = (await handle.opLog(limit: 1)).single;
+      expect(head.id, result.newOpId);
+      expect(head.description, 'restore to operation $describeA');
+      expect(result.workingCopyChangeId, wc);
+      final MutationResult again = await handle.opRestore('@');
+      expect(again.newOpId, result.newOpId, reason: 'an equal view writes nothing');
+    });
+
+    test('opRestore of the root operation leaves no working copy and warns', () async {
+      final MutationResult result = await handle.opRestore('000000000000');
+
+      expect(result.workingCopyChangeId, isNull);
+      expect(result.warnings.map((w) => w.code), [ZanshinWarningCode.workspaceNoLongerExists]);
+      expect((await handle.opLog(limit: 1)).single.id, result.newOpId);
+    });
+
+    test('opRevert of the head undoes the describe; the root is refused', () async {
+      final String describeB = (await handle.opLog(limit: 1)).single.id;
+
+      await handle.opRevert();
+
+      expect((await handle.getChange(wc)).description, 'A');
+      expect((await handle.opLog(limit: 1)).single.description, 'revert operation $describeB');
+      await expectLater(
+        handle.opRevert(operation: '000000000000'),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having((e) => e.context, 'context', 'Cannot revert root operation'),
+        ),
+      );
+    });
+
+    test('opIntegrate of an operation in the log changes nothing', () async {
+      final String head = (await handle.opLog(limit: 1)).single.id;
+
+      final OpIntegrateResult result = await handle.opIntegrate('@-');
+
+      expect(result.headOpId, head);
+      expect(result.reconciled, isFalse);
+      await expectLater(
+        handle.opIntegrate('ffffffffffff'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.operation_not_found')),
+      );
+    });
+
     test('interior_nuls_are_refused_on_the_calling_side', () async {
       const nul = 'a\u0000b';
       await expectLater(handle.opShow(operation: nul), throwsArgumentError);
@@ -143,9 +198,12 @@ void main() {
       await expectLater(handle.opDiff(to: nul), throwsArgumentError);
       await expectLater(handle.opDiff(showChangesIn: nul), throwsArgumentError);
       await expectLater(handle.opAbandon(nul), throwsArgumentError);
+      await expectLater(handle.opRestore(nul), throwsArgumentError);
+      await expectLater(handle.opRevert(operation: nul), throwsArgumentError);
+      await expectLater(handle.opIntegrate(nul), throwsArgumentError);
     });
 
-    test('the four verbs refuse on a closed handle', () async {
+    test('the seven verbs refuse on a closed handle', () async {
       final Directory otherDir = Directory.systemTemp.createTempSync('zanshin_op_closed_');
       addTearDown(() => otherDir.deleteSync(recursive: true));
       final RepoHandle other = await worker.initRepo(otherDir.path, backend: 0);
@@ -157,6 +215,9 @@ void main() {
         () => worker.opShow(id),
         () => worker.opDiff(id),
         () => worker.opAbandon(id, '..@-'),
+        () => worker.opRestore(id, '@-'),
+        () => worker.opRevert(id),
+        () => worker.opIntegrate(id, '@-'),
       ]) {
         await expectLater(
           call(),
@@ -167,6 +228,9 @@ void main() {
       expect(other.opShow, throwsA(isA<StateError>()));
       expect(other.opDiff, throwsA(isA<StateError>()));
       expect(() => other.opAbandon('..@-'), throwsA(isA<StateError>()));
+      expect(() => other.opRestore('@-'), throwsA(isA<StateError>()));
+      expect(other.opRevert, throwsA(isA<StateError>()));
+      expect(() => other.opIntegrate('@-'), throwsA(isA<StateError>()));
     });
   });
 }

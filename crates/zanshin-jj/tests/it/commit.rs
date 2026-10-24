@@ -191,7 +191,7 @@ fn assert_committed(fx: &Fx, result: &MutationResult, old_tree: &Commit) -> (Com
     assert_eq!(at.description(), "");
     assert_eq!(result.new_change_ids, [change_id(&at)]);
     assert!(result.abandoned_change_ids.is_empty());
-    assert_eq!(result.working_copy_change_id, change_id(&at));
+    assert_eq!(result.working_copy_change_id, Some(change_id(&at)));
     (committed, at)
 }
 
@@ -395,7 +395,7 @@ fn a_child_of_at_is_rebased_onto_the_committed_commit() {
     assert_eq!(files(&committed), ["a.txt", "b.txt", "x.txt"]);
     let at = wc(&fx.root);
     assert_eq!(parents(&fx.root, &at), std::slice::from_ref(&fx.c));
-    assert_eq!(result.working_copy_change_id, change_id(&at));
+    assert_eq!(result.working_copy_change_id, Some(change_id(&at)));
 }
 
 #[test]

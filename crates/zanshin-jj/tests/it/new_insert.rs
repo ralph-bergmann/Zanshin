@@ -178,7 +178,7 @@ fn assert_new(fx: &Fx, result: &MutationResult) -> ChangeId {
     let [n] = result.new_change_ids.as_slice() else {
         panic!("one minted change: {result:?}");
     };
-    assert_eq!(result.working_copy_change_id, *n);
+    assert_eq!(result.working_copy_change_id.as_ref(), Some(n));
     assert_eq!(change_id(&wc(&fx.root)), *n, "@ is the new change");
     assert_eq!(head_op(&fx.root).1, "new empty commit");
     let new = commit(&fx.root, n);

@@ -187,7 +187,11 @@ fn restore_with_only_from_uses_the_working_copy_as_destination() {
     let chain = restore_chain();
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
     // Move `@` onto `B` so the omitted `--into` has something with content to restore into.
-    let wc = repo.edit(chain.b.clone()).expect("edit B").working_copy_change_id;
+    let wc = repo
+        .edit(chain.b.clone())
+        .expect("edit B")
+        .working_copy_change_id
+        .expect("@");
     assert_eq!(wc.0, chain.b.0, "@ is now B");
     let a_tree = tree_hex_of_change(&chain.fx.path, &chain.a);
 
@@ -196,7 +200,7 @@ fn restore_with_only_from_uses_the_working_copy_as_destination() {
         .expect("restore @ from A");
 
     assert_eq!(tree_hex_of_change(&chain.fx.path, &chain.b), a_tree);
-    assert_eq!(result.working_copy_change_id.0, chain.b.0, "@ stays on B");
+    assert_eq!(result.working_copy_change_id.expect("@").0, chain.b.0, "@ stays on B");
 }
 
 #[test]
@@ -240,7 +244,7 @@ fn restore_with_neither_side_restores_the_working_copy_from_its_parent() {
         "content B",
         "the description survives — this is `jj restore`, not `jj abandon`"
     );
-    assert_eq!(result.working_copy_change_id.0, chain.b.0);
+    assert_eq!(result.working_copy_change_id.expect("@").0, chain.b.0);
 }
 
 #[test]

@@ -253,6 +253,11 @@ pub enum WarningKind {
     /// <id> is not updated because it differs from the repo <ids>."
     /// (`cli/src/commands/operation/abandon.rs:136-154` @ v0.46.0; Story 9.21).
     OpAbandonWorkingCopyNotUpdated,
+    /// A finished operation's view no longer has this workspace's working-copy commit — e.g.
+    /// `op restore` of the root operation — so the working copy was left as it is: "The current
+    /// workspace '<name>' no longer exists after this operation. The working copy was left
+    /// untouched." (`report_repo_changes`, `cli/src/cli_util.rs:2489-2503` @ v0.46.0; Story 9.12).
+    WorkspaceNoLongerExists,
 }
 
 /// One warning a call produced (Story 9.32).

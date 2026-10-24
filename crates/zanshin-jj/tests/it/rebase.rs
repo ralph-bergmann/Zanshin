@@ -217,7 +217,7 @@ fn source_onto_moves_the_source_and_its_descendants() {
     assert_op(&fx, &result, &format!("rebase commit {c_hex} and descendants"));
     assert_eq!(parents(&fx.root, &fx.c), [fx.a.clone()]);
     assert_eq!(parents(&fx.root, &fx.b), [fx.a.clone()]);
-    assert_eq!(result.working_copy_change_id, fx.c);
+    assert_eq!(result.working_copy_change_id, Some(fx.c));
     assert!(result.abandoned_change_ids.is_empty() && result.new_change_ids.is_empty());
 }
 

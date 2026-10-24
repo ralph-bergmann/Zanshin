@@ -487,7 +487,7 @@ pub(crate) fn squash(
         (Some(new_wc_commit), true) => vec![ChangeId(new_wc_commit.change_id().reverse_hex())],
         _ => Vec::new(),
     };
-    mutation_result(&finish, new_change_ids, abandoned_change_ids)
+    Ok(mutation_result(&finish, new_change_ids, abandoned_change_ids))
 }
 
 /// `squash`'s description without the squash (Story 9.15) — see [`crate::Repo::squash_plan`].
@@ -808,7 +808,7 @@ pub(crate) fn split(
         remaining_change_id.clone()
     };
     Ok(SplitResult {
-        mutation: mutation_result(&finish, vec![minted], Vec::new())?,
+        mutation: mutation_result(&finish, vec![minted], Vec::new()),
         selected_change_id,
         remaining_change_id,
     })

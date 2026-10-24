@@ -144,7 +144,9 @@ enum RequestKind : ubyte {
   BookmarkRename,
   SelectTree,
   OpShow,
-  OpDiff
+  OpDiff,
+  OpRestore,
+  OpRevert
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -1264,6 +1266,40 @@ table OpDiffRequest {
   show_changes_in: string;
 }
 
+/// One `--what` value of `jj op restore` / `jj op revert` (Story 9.12) — the CLI's
+/// `RevertWhatToRestore`. `Unspecified = 0` is the default of an unset element and is REFUSED
+/// (`ffi.invalid_argument`).
+///
+///   Repo             the jj repo state and local bookmarks (heads, local bookmarks/tags, the
+///                    working-copy commits)
+///   RemoteTracking   the remote-tracking bookmarks
+enum RestoreWhat : ubyte {
+  Unspecified,
+  Repo,
+  RemoteTracking
+}
+
+/// Arguments of `zanshin_op_restore` (Story 9.12) — the CLI's `jj op restore`.
+///
+///   operation   the operation expression (`@-`, an id prefix); REQUIRED — ABSENT is refused
+///               (`ffi.invalid_argument`), as the CLI's positional is required
+///   what        `--what`, repeatable; ABSENT or EMPTY = the flag absent (both portions)
+table OpRestoreRequest {
+  kind: RequestKind;
+  operation: string;
+  what: [RestoreWhat];
+}
+
+/// Arguments of `zanshin_op_revert` (Story 9.12) — the CLI's `jj op revert`.
+///
+///   operation   the operation expression; ABSENT = `@` (the CLI's default)
+///   what        `--what`, repeatable; ABSENT or EMPTY = the flag absent (both portions)
+table OpRevertRequest {
+  kind: RequestKind;
+  operation: string;
+  what: [RestoreWhat];
+}
+
 /// A ref target as `jj op diff` summarises it (Story 9.21): ABSENT = `adds` empty and not
 /// `conflicted`; a normal target = one add; a conflict = its present adds and removes. Hex
 /// commit ids.
@@ -1352,6 +1388,16 @@ table OpAbandonResult {
   reparented_count: ulong;
   nothing_changed: bool;
   head_op_ids: [string];
+}
+
+/// `zanshin_op_integrate`'s answer (Story 9.12): the head operation afterwards (the integrated
+/// operation, the merge that reconciled it, or the unchanged head for an operation already in the
+/// log) and `reconciled` — the integrate itself merged the heads (the CLI's status line "The
+/// specified operation has been integrated with other existing operations."); a reconcile the
+/// head load wrote first does not count.
+table OpIntegrateResult {
+  head_op_id: string;
+  reconciled: bool;
 }
 
 /// Whether a bookmark row is the local bookmark or a remote one (tracked or not).
@@ -1654,6 +1700,8 @@ table MutationResult {
   new_op_id: string;
   new_change_ids: [string];
   abandoned_change_ids: [string];
+  /// `@`'s change id after the mutation; ABSENT when the workspace has no working-copy commit
+  /// afterwards (e.g. `zanshin_op_restore` of the root operation, Story 9.12).
   working_copy_change_id: string;
   /// The refs the colocated export could not write while the CLI's `finish_transaction`
   /// committed this call's operation (Story 9.26) — the data behind its `jj.git_export_failed`
@@ -2534,6 +2582,7 @@ union Payload {
   OpShow,
   OpDiffResult,
   OpAbandonResult,
+  OpIntegrateResult,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

@@ -592,7 +592,7 @@ pub(crate) fn fix(
     let mutation = if tx.repo().has_changes() {
         let description = format!("fixed {} commits", summary.num_fixed_commits);
         let finish = finish_verb(workspace, tx, &description, ctx)?;
-        mutation_result(&finish, Vec::new(), Vec::new())?
+        mutation_result(&finish, Vec::new(), Vec::new())
     } else {
         drop(tx);
         no_op_result(&workspace_name, &readonly)?

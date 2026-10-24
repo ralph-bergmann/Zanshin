@@ -108,7 +108,8 @@ pub use op_diff::{
     OpChangedCommit, OpCommitsDiff, OpDiff, OpRefChange, OpRefTarget, OpRemoteRefChange, OpWorkingCopyChange,
 };
 pub use op_log::{
-    OpAbandonResult, OpDiffOptions, OpDiffResult, OpLogError, OpShow, Operation, OperationId, OperationTag,
+    OpAbandonResult, OpDiffOptions, OpDiffResult, OpIntegrateResult, OpLogError, OpShow, Operation, OperationId,
+    OperationTag, RestoreWhat,
 };
 pub use push::{
     GitPushArgs, GitPushOutcome, PushCommitRejection, PushCreatedBookmark, PushFailure, PushFailureKind, PushPath,

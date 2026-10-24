@@ -120,5 +120,5 @@ pub(crate) fn parallelize(
     }
     let description = format!("parallelize {} commits", target_commits.len());
     let finish = finish_verb(workspace, tx, &description, ctx)?;
-    mutation_result(&finish, Vec::new(), Vec::new())
+    Ok(mutation_result(&finish, Vec::new(), Vec::new()))
 }

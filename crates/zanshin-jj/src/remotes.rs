@@ -587,7 +587,7 @@ pub(crate) fn git_fetch(
     // reports abandonments, changed remote refs, rewritten commit ids and failed ref names.
     // `git_import` leaves this field empty for the same reason. When `@` itself was abandoned,
     // jj-lib's replacement is already reported via `working_copy_change_id`.
-    let mutation = mutate::mutation_result(&finish, Vec::new(), crate::git::project_abandoned(&stats))?;
+    let mutation = mutate::mutation_result(&finish, Vec::new(), crate::git::project_abandoned(&stats));
     let import = crate::git::project_import(&stats, &finish.repo, finish.committed, mutation);
     Ok(GitFetchOutcome {
         mutation: import.mutation,

@@ -463,9 +463,10 @@ void main() {
         'jj.config_deprecated',
         'jj.op_diff_changes_unresolved',
         'jj.op_abandon_working_copy_not_updated',
+        'jj.workspace_no_longer_exists',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(67), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(68), reason: 'no code is registered twice');
     });
   });
 

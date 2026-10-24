@@ -102,7 +102,10 @@ fn describe_happy_path_rewrites_description_and_records_op_log() {
     assert!(result.abandoned_change_ids.is_empty());
     // Commit 1 is unrelated to `@` (a separate branch off root) — describing it must
     // not move the working copy.
-    assert_eq!(result.working_copy_change_id.0, layout.wc_change_id);
+    assert_eq!(
+        result.working_copy_change_id.as_ref().expect("@").0,
+        layout.wc_change_id
+    );
 
     let change = repo.get_change(&ChangeId(layout.commit1_change_id)).unwrap();
     assert_eq!(change.description, "New description");
@@ -149,7 +152,10 @@ fn describe_with_the_unchanged_text_writes_no_operation() {
 
     assert_eq!(result.new_op_id, before, "the result is the pre-call head");
     assert_eq!(repo.op_log(Some(1)).unwrap()[0].id, before, "no operation is written");
-    assert_eq!(result.working_copy_change_id.0, layout.wc_change_id);
+    assert_eq!(
+        result.working_copy_change_id.as_ref().expect("@").0,
+        layout.wc_change_id
+    );
     assert!(result.finish.is_none());
     let change = repo.get_change(&ChangeId(layout.commit1_change_id)).unwrap();
     assert_eq!(change.description, "Commit 1");
@@ -227,7 +233,7 @@ fn new_change_single_parent_creates_empty_child_and_switches_wc() {
         .unwrap();
 
     assert_eq!(result.new_change_ids.len(), 1);
-    assert_eq!(result.working_copy_change_id, result.new_change_ids[0]);
+    assert_eq!(result.working_copy_change_id.as_ref(), Some(&result.new_change_ids[0]));
     assert!(result.abandoned_change_ids.is_empty());
 
     let new_change = repo.get_change(&result.new_change_ids[0]).unwrap();
@@ -297,7 +303,10 @@ fn edit_switches_wc_without_creating_a_new_commit() {
 
     let result = repo.edit(ChangeId(layout.commit3_change_id.clone())).unwrap();
 
-    assert_eq!(result.working_copy_change_id.0, layout.commit3_change_id);
+    assert_eq!(
+        result.working_copy_change_id.as_ref().expect("@").0,
+        layout.commit3_change_id
+    );
     assert!(result.new_change_ids.is_empty());
     assert!(result.abandoned_change_ids.is_empty());
 
@@ -328,7 +337,10 @@ fn edit_of_the_current_non_discardable_wc_writes_no_operation() {
 
     assert_eq!(result.new_op_id, before, "the result is the pre-call head");
     assert_eq!(repo.op_log(Some(1)).unwrap()[0].id, before, "no operation is written");
-    assert_eq!(result.working_copy_change_id.0, layout.commit3_change_id);
+    assert_eq!(
+        result.working_copy_change_id.as_ref().expect("@").0,
+        layout.commit3_change_id
+    );
 }
 
 // ── abandon ──────────────────────────────────────────────────────────────────────
@@ -348,7 +360,10 @@ fn abandon_non_wc_change_rebases_descendants_and_echoes_input() {
         vec![ChangeId(layout.commit1_change_id.clone())]
     );
     // Commit 1 is unrelated to `@` — abandoning it must not move the working copy.
-    assert_eq!(result.working_copy_change_id.0, layout.wc_change_id);
+    assert_eq!(
+        result.working_copy_change_id.as_ref().expect("@").0,
+        layout.wc_change_id
+    );
 
     let not_found = repo.get_change(&ChangeId(layout.commit1_change_id));
     assert!(not_found.is_err(), "abandoned change must no longer resolve");
@@ -383,7 +398,7 @@ fn abandon_wc_itself_creates_new_empty_wc() {
         result.new_change_ids[0].0, layout.wc_change_id,
         "abandoning @ must mint a fresh change"
     );
-    assert_eq!(result.working_copy_change_id, result.new_change_ids[0]);
+    assert_eq!(result.working_copy_change_id.as_ref(), Some(&result.new_change_ids[0]));
     assert_eq!(result.abandoned_change_ids, vec![ChangeId(layout.wc_change_id)]);
 
     let ops = repo.op_log(Some(1)).unwrap();

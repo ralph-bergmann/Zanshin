@@ -9,7 +9,8 @@
 //! No null-pointer or UTF-8 tests for `zanshin_op_log` — it has no `CString` arg; this
 //! asymmetry vs. `change` is deliberate. Story 9.21's four operation verbs (`zanshin_redo`,
 //! `zanshin_op_show`, `zanshin_op_diff`, `zanshin_op_abandon`) follow at the end: their readers,
-//! a payload of each on the wire and their refusal envelopes.
+//! a payload of each on the wire and their refusal envelopes — then Story 9.12's three
+//! (`zanshin_op_restore`, `zanshin_op_revert`, `zanshin_op_integrate`) the same way.
 
 use std::ffi::CString;
 
@@ -18,7 +19,10 @@ use test_helpers::extract_fixture;
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::{
-    op_log::{zanshin_op_abandon, zanshin_op_diff, zanshin_op_log, zanshin_op_show},
+    op_log::{
+        zanshin_op_abandon, zanshin_op_diff, zanshin_op_integrate, zanshin_op_log, zanshin_op_restore,
+        zanshin_op_revert, zanshin_op_show,
+    },
     repo::{zanshin_redo, zanshin_repo_close, zanshin_repo_open, zanshin_undo},
     FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_INVALID_INPUT, JJ_NOTHING_TO_REDO,
     JJ_OPERATION_NOT_FOUND,
@@ -496,4 +500,249 @@ fn op_abandon_refuses_an_operation_that_is_not_utf8() {
     let bytes_in: [u8; 2] = [0xff, 0x00];
     let bytes = unsafe { read_and_free(zanshin_op_abandon(fx.handle, bytes_in.as_ptr().cast())) };
     assert_eq!(error_code(&bytes).as_deref(), Some(zanshin_ffi::FFI_UTF8_ERROR));
+}
+
+// ── Story 9.12: op restore / op revert / op integrate ────────────────────────
+
+/// An `OpRestoreRequest` buffer tagged `kind`.
+fn restore_request(kind: fbs::RequestKind, operation: Option<&str>, what: Option<&[fbs::RestoreWhat]>) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::new();
+    let operation = operation.map(|s| b.create_string(s));
+    let what = what.map(|what| b.create_vector(what));
+    let req = fbs::OpRestoreRequest::create(&mut b, &fbs::OpRestoreRequestArgs { kind, operation, what });
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// An `OpRevertRequest` buffer tagged `kind`.
+fn revert_request(kind: fbs::RequestKind, operation: Option<&str>, what: Option<&[fbs::RestoreWhat]>) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::new();
+    let operation = operation.map(|s| b.create_string(s));
+    let what = what.map(|what| b.create_vector(what));
+    let req = fbs::OpRevertRequest::create(&mut b, &fbs::OpRevertRequestArgs { kind, operation, what });
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// [`restore_request`] / [`revert_request`] with their own kind.
+fn edit_request(kind: fbs::RequestKind, operation: Option<&str>, what: Option<&[fbs::RestoreWhat]>) -> Vec<u8> {
+    if kind == fbs::RequestKind::OpRestore {
+        restore_request(kind, operation, what)
+    } else {
+        revert_request(kind, operation, what)
+    }
+}
+
+/// `zanshin_op_restore` to `@-` (before the describe): a `MutationResult` with the restore op as
+/// the only head; `@` stays; restoring the current state again writes nothing.
+#[test]
+fn op_restore_round_trip_and_no_change() {
+    let fx = described();
+    let req = edit_request(fbs::RequestKind::OpRestore, Some("@-"), Some(&[fbs::RestoreWhat::Repo]));
+    let bytes = unsafe { read_and_free(zanshin_op_restore(fx.handle, req.as_ptr(), req.len())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    assert!(env.precondition().is_some(), "restore runs the pre-verb snapshot");
+    let mutation = env.data_as_mutation_result().expect("MutationResult");
+    let new_op = mutation.new_op_id().expect("new op").to_owned();
+    assert!(mutation.working_copy_change_id().is_some());
+    assert_eq!(op_heads(&fx), std::slice::from_ref(&new_op));
+
+    let req = edit_request(fbs::RequestKind::OpRestore, Some("@"), None);
+    let bytes = unsafe { read_and_free(zanshin_op_restore(fx.handle, req.as_ptr(), req.len())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok());
+    assert_eq!(
+        env.data_as_mutation_result().unwrap().new_op_id(),
+        Some(new_op.as_str()),
+        "no change"
+    );
+    assert_eq!(op_heads(&fx), [new_op]);
+}
+
+/// `zanshin_op_restore` of the root operation: the operation is written, `@` is ABSENT, and the
+/// finish warns that the workspace no longer exists.
+#[test]
+fn op_restore_of_the_root_leaves_no_working_copy() {
+    let fx = described();
+    let req = edit_request(fbs::RequestKind::OpRestore, Some("000000000000"), None);
+    let bytes = unsafe { read_and_free(zanshin_op_restore(fx.handle, req.as_ptr(), req.len())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    assert_eq!(env.data_as_mutation_result().unwrap().working_copy_change_id(), None);
+    let codes: Vec<&str> = env.warnings().unwrap().iter().filter_map(|w| w.code()).collect();
+    assert_eq!(codes, [zanshin_ffi::JJ_WORKSPACE_NO_LONGER_EXISTS]);
+}
+
+/// The restore reader's refusals: an ABSENT operation, an `Unspecified` `what` member, the wrong
+/// kind, a malformed or null buffer, a zero handle; the opset errors. None touches the op heads.
+#[test]
+fn op_restore_refusals_leave_the_op_heads() {
+    let fx = described();
+    let heads = op_heads(&fx);
+    let call = |req: &[u8]| unsafe { read_and_free(zanshin_op_restore(fx.handle, req.as_ptr(), req.len())) };
+    let cases: [(Vec<u8>, &str); 6] = [
+        (
+            edit_request(fbs::RequestKind::OpRestore, None, None),
+            FFI_INVALID_ARGUMENT,
+        ),
+        (
+            edit_request(
+                fbs::RequestKind::OpRestore,
+                Some("@-"),
+                Some(&[fbs::RestoreWhat::Unspecified]),
+            ),
+            FFI_INVALID_ARGUMENT,
+        ),
+        (
+            restore_request(fbs::RequestKind::OpRevert, Some("@-"), None),
+            FFI_INVALID_ARGUMENT,
+        ),
+        (vec![1, 2, 3], FFI_INVALID_ARGUMENT),
+        (
+            edit_request(fbs::RequestKind::OpRestore, Some("ffffffffffff"), None),
+            JJ_OPERATION_NOT_FOUND,
+        ),
+        (
+            edit_request(fbs::RequestKind::OpRestore, Some("zz"), None),
+            JJ_INVALID_INPUT,
+        ),
+    ];
+    for (req, code) in &cases {
+        assert_eq!(error_code(&call(req)).as_deref(), Some(*code));
+    }
+    let absent = call(&cases[0].0);
+    assert_eq!(
+        parse_envelope(&absent).error().and_then(|e| e.context()),
+        Some("operation is required")
+    );
+    let bytes = unsafe { read_and_free(zanshin_op_restore(fx.handle, std::ptr::null(), 0)) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(FFI_NULL_POINTER));
+    let req = edit_request(fbs::RequestKind::OpRestore, Some("@-"), None);
+    let bytes = unsafe { read_and_free(zanshin_op_restore(0, req.as_ptr(), req.len())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(FFI_INVALID_HANDLE));
+    assert_eq!(op_heads(&fx), heads);
+}
+
+/// `zanshin_op_revert` with an ABSENT operation reverts `@` (the describe); then the root
+/// operation is refused with the CLI's text, and the reader refuses like the restore reader.
+#[test]
+fn op_revert_round_trip_and_refusals() {
+    let fx = described();
+    let previous_head = op_heads(&fx).remove(0);
+    let req = edit_request(
+        fbs::RequestKind::OpRevert,
+        None,
+        Some(&[fbs::RestoreWhat::RemoteTracking, fbs::RestoreWhat::Repo]),
+    );
+    let bytes = unsafe { read_and_free(zanshin_op_revert(fx.handle, req.as_ptr(), req.len())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let new_op = env.data_as_mutation_result().unwrap().new_op_id().unwrap().to_owned();
+    assert_eq!(op_heads(&fx), [new_op]);
+    let bytes = unsafe { read_and_free(zanshin_op_log(fx.handle, 1)) };
+    let log = parse_envelope(&bytes).data_as_op_log().unwrap().operations().unwrap();
+    assert_eq!(
+        log.get(0).description(),
+        Some(format!("revert operation {previous_head}").as_str()),
+        "an ABSENT operation reverts `@`"
+    );
+    let heads = op_heads(&fx);
+
+    let req = edit_request(fbs::RequestKind::OpRevert, Some("000000000000"), None);
+    let bytes = unsafe { read_and_free(zanshin_op_revert(fx.handle, req.as_ptr(), req.len())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
+    assert_eq!(
+        parse_envelope(&bytes).error().and_then(|e| e.context()),
+        Some("Cannot revert root operation")
+    );
+    for (req, code) in [
+        (
+            edit_request(fbs::RequestKind::OpRevert, None, Some(&[fbs::RestoreWhat::Unspecified])),
+            FFI_INVALID_ARGUMENT,
+        ),
+        (
+            revert_request(fbs::RequestKind::OpRestore, Some("@"), None),
+            FFI_INVALID_ARGUMENT,
+        ),
+        (vec![1, 2, 3], FFI_INVALID_ARGUMENT),
+        (
+            edit_request(fbs::RequestKind::OpRevert, None, Some(&[fbs::RestoreWhat(7)])),
+            FFI_INVALID_ARGUMENT,
+        ),
+        (
+            edit_request(fbs::RequestKind::OpRevert, Some("ffffffffffff"), None),
+            JJ_OPERATION_NOT_FOUND,
+        ),
+    ] {
+        let bytes = unsafe { read_and_free(zanshin_op_revert(fx.handle, req.as_ptr(), req.len())) };
+        assert_eq!(error_code(&bytes).as_deref(), Some(code));
+    }
+    let bytes = unsafe { read_and_free(zanshin_op_revert(fx.handle, std::ptr::null(), 0)) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(FFI_NULL_POINTER));
+    let req = edit_request(fbs::RequestKind::OpRevert, None, None);
+    let bytes = unsafe { read_and_free(zanshin_op_revert(0, req.as_ptr(), req.len())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(FFI_INVALID_HANDLE));
+    assert_eq!(op_heads(&fx), heads);
+}
+
+/// `zanshin_op_integrate @-`: in the log, so nothing changes — the head on the wire, not
+/// reconciled, no precondition; an unknown id, a null, non-UTF-8 argument and a zero handle refuse.
+#[test]
+fn op_integrate_round_trip_and_refusals() {
+    let fx = described();
+    let heads = op_heads(&fx);
+    let parent = cstr("@-");
+    let bytes = unsafe { read_and_free(zanshin_op_integrate(fx.handle, parent.as_ptr())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    assert!(env.precondition().is_none(), "no pre-verb snapshot");
+    let result = env.data_as_op_integrate_result().expect("OpIntegrateResult");
+    assert_eq!(result.head_op_id(), Some(heads[0].as_str()));
+    assert!(!result.reconciled());
+
+    let unknown = cstr("ffffffffffff");
+    let bytes = unsafe { read_and_free(zanshin_op_integrate(fx.handle, unknown.as_ptr())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_OPERATION_NOT_FOUND));
+    let bytes = unsafe { read_and_free(zanshin_op_integrate(fx.handle, std::ptr::null())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(FFI_NULL_POINTER));
+    let bytes_in: [u8; 2] = [0xff, 0x00];
+    let bytes = unsafe { read_and_free(zanshin_op_integrate(fx.handle, bytes_in.as_ptr().cast())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(zanshin_ffi::FFI_UTF8_ERROR));
+    let bytes = unsafe { read_and_free(zanshin_op_integrate(0, parent.as_ptr())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(FFI_INVALID_HANDLE));
+    assert_eq!(op_heads(&fx), heads);
+}
+
+/// `RemoteTracking` crosses the wire as itself: a remote bookmark set after the target is dropped,
+/// the describe before it is kept.
+#[test]
+fn op_restore_of_the_remote_tracking_portion_only() {
+    let fx = described();
+    let mut repo = zanshin_jj::Repo::open(&fx.fixture.path).expect("open");
+    let mut commit1 = None;
+    let _ = repo.eval_revset("description(exact:'described')", |change| {
+        commit1 = Some(change.id);
+        std::ops::ControlFlow::Break(())
+    });
+    let commit1 = repo
+        .get_change(&commit1.expect("the described commit"))
+        .expect("change");
+    test_helpers::set_remote_bookmark(&fx.fixture.path, "main", "origin", &commit1.commit_id.0, true);
+
+    let req = edit_request(
+        fbs::RequestKind::OpRestore,
+        Some("@--"),
+        Some(&[fbs::RestoreWhat::RemoteTracking]),
+    );
+    let bytes = unsafe { read_and_free(zanshin_op_restore(fx.handle, req.as_ptr(), req.len())) };
+    assert!(parse_envelope(&bytes).ok(), "{:?}", error_code(&bytes));
+
+    let options = zanshin_jj::BookmarkListOptions {
+        all_remotes: true,
+        ..Default::default()
+    };
+    let bookmarks = repo.list_bookmarks(&options).expect("bookmarks");
+    assert!(bookmarks.iter().all(|b| b.name != "main"), "{bookmarks:?}");
+    assert_eq!(repo.get_change(&commit1.id).expect("change").description, "described");
 }

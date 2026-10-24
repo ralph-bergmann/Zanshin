@@ -99,6 +99,18 @@ parity!(
     op_abandon_bounded,
     op_abandon_merge_refused,
     op_abandon_working_copy_not_updated,
+    op_restore_earlier,
+    op_restore_current,
+    op_restore_root,
+    op_restore_what_repo,
+    op_restore_what_remote_tracking,
+    op_restore_not_found,
+    op_revert_default,
+    op_revert_rebases_descendants,
+    op_revert_twice,
+    op_revert_root_refused,
+    op_revert_merge_refused,
+    op_integrate_in_log,
     init_colocated,
     init_no_colocate,
     workspace_add_default,
@@ -370,7 +382,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 303);
+    assert_eq!(SCENARIO_IDS.len(), 315);
 }
 
 #[test]

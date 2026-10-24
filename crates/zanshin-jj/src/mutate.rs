@@ -107,8 +107,10 @@ pub struct MutationResult {
     /// the destination.
     pub abandoned_change_ids: Vec<ChangeId>,
     /// Change id of the working-copy commit (`@`) after this mutation — whether or not
-    /// this mutation is what moved it.
-    pub working_copy_change_id: ChangeId,
+    /// this mutation is what moved it. `None` when the workspace has no working-copy commit
+    /// afterwards — a view restored without one, e.g. [`crate::Repo::op_restore`] of the root
+    /// operation (Story 9.12).
+    pub working_copy_change_id: Option<ChangeId>,
     /// The refs the colocated export could not write while the CLI's `finish_transaction`
     /// committed this call's operation (Story 9.26) — the data behind its
     /// `jj.git_export_failed` warnings. `None` when both lists are empty — always for a result
@@ -804,8 +806,8 @@ fn wc_is_immutable(
 ///
 /// Its warnings land in `sink` in the CLI's print order: became-immutable, the HEAD reset, the
 /// export failures, the skipped checkout files, the unresolved conflicts of a NEW `@` (only when
-/// `@` is not the commit it was, as the CLI's `Some(new) != old`; Story 9.53), the identity
-/// (Story 9.32).
+/// `@` is not the commit it was, as the CLI's `Some(new) != old`; Story 9.53), a view that lost
+/// this workspace's `@` (`report_repo_changes`; Story 9.12), the identity (Story 9.32).
 ///
 /// The old `@` whose tree `check_out` verifies the working copy against is read from
 /// `tx.base_repo()`, as in the CLI.
@@ -880,6 +882,17 @@ pub(crate) fn finish_transaction(
         }
         checkout = Some(crate::CheckoutStats::project(&stats));
     }
+    // `report_repo_changes`' one warning (`cli_util.rs:2489-2503` @ v0.46.0, Story 9.12): the
+    // view lost this workspace's working-copy commit, so nothing was checked out.
+    if maybe_old_wc_commit.is_some() && maybe_new_wc_commit.is_none() {
+        sink.push(
+            WarningKind::WorkspaceNoLongerExists,
+            format!(
+                "The current workspace '{}' no longer exists after this operation. The working copy was left untouched.",
+                workspace_name.as_symbol()
+            ),
+        );
+    }
     sink.extend(warning::identity_missing(new_repo.settings()));
     Ok(Finish {
         repo: new_repo,
@@ -950,28 +963,23 @@ pub(crate) fn finish_verb(
     )
 }
 
-/// The shared mutation contract out of a [`Finish`]: the committed op id, `@`'s change id and
-/// the finish facts.
-///
-/// # Errors
-///
-/// - [`MutateError::Backend`] — the workspace has no working-copy commit after the finish.
+/// The shared mutation contract out of a [`Finish`]: the committed op id, `@`'s change id
+/// (`None` when the workspace has no working-copy commit afterwards) and the finish facts.
 pub(crate) fn mutation_result(
     finish: &Finish,
     new_change_ids: Vec<ChangeId>,
     abandoned_change_ids: Vec<ChangeId>,
-) -> Result<MutationResult, MutateError> {
-    let wc_commit = finish
-        .wc_commit
-        .as_ref()
-        .ok_or_else(|| MutateError::Backend("workspace has no working-copy commit".to_owned()))?;
-    Ok(MutationResult {
+) -> MutationResult {
+    MutationResult {
         new_op_id: crate::OperationId(finish.repo.op_id().hex()),
         new_change_ids,
         abandoned_change_ids,
-        working_copy_change_id: ChangeId(wc_commit.change_id().reverse_hex()),
+        working_copy_change_id: finish
+            .wc_commit
+            .as_ref()
+            .map(|commit| ChangeId(commit.change_id().reverse_hex())),
         finish: finish.facts.clone().into_option(),
-    })
+    }
 }
 
 /// The read-only part of [`describe`] (Story 9.31): the target resolved, the root guard and the
@@ -1056,7 +1064,7 @@ pub(crate) fn describe(
         pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
     }
     let finish = finish_verb(workspace, tx, &format!("describe commit {}", commit.id().hex()), ctx)?;
-    mutation_result(&finish, Vec::new(), Vec::new())
+    Ok(mutation_result(&finish, Vec::new(), Vec::new()))
 }
 
 /// Where [`new_change`] puts the new commit — what [`plan_new`] decides before anything is
@@ -1299,7 +1307,7 @@ pub(crate) fn new_change(
     // descendants clears it, as the CLI's `tx.finish` does (Story 9.56).
     let new_change_id = ChangeId(new_commit.change_id().reverse_hex());
     let finish = finish_verb(workspace, tx, "new empty commit", ctx)?;
-    mutation_result(&finish, vec![new_change_id], Vec::new())
+    Ok(mutation_result(&finish, vec![new_change_id], Vec::new()))
 }
 
 /// The read-only part of [`edit`] (Story 9.31): the target resolved and the rewritability guard.
@@ -1357,7 +1365,7 @@ pub(crate) fn edit(
     // `@`, leaving an un-rebased rewrite that would trip tx.commit()'s assertion.
     pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
     let finish = finish_verb(workspace, tx, &format!("edit commit {}", commit.id().hex()), ctx)?;
-    mutation_result(&finish, Vec::new(), Vec::new())
+    Ok(mutation_result(&finish, Vec::new(), Vec::new()))
 }
 
 /// The read-only part of [`abandon`] (Story 9.31): each target resolved with its root guard, then
@@ -1477,7 +1485,7 @@ pub(crate) fn abandon(
         (Some(new_wc_commit), true) => vec![ChangeId(new_wc_commit.change_id().reverse_hex())],
         _ => Vec::new(),
     };
-    mutation_result(&finish, new_change_ids, change_ids.to_vec())
+    Ok(mutation_result(&finish, new_change_ids, change_ids.to_vec()))
 }
 
 /// Builds the result of a mutation that deliberately wrote NOTHING.
@@ -1491,24 +1499,27 @@ pub(crate) fn abandon(
 /// transaction at all — and the precondition's refs import build the same shape instead of a
 /// second, desyncable copy (Story 9.5).
 ///
+/// A workspace without a working-copy commit (a view restored to the root operation, Story
+/// 9.12) has `working_copy_change_id: None`, as [`mutation_result`] reports it.
+///
 /// # Errors
 ///
-/// - [`MutateError::Backend`] — the workspace has no working-copy commit, or it could not be
-///   read.
+/// - [`MutateError::Backend`] — the working-copy commit could not be read.
 pub(crate) fn no_op_result(
     workspace_name: &WorkspaceName,
     readonly: &Arc<ReadonlyRepo>,
 ) -> Result<MutationResult, MutateError> {
-    let wc_id = readonly
+    let wc = readonly
         .view()
         .get_wc_commit_id(workspace_name)
-        .ok_or_else(|| MutateError::Backend("workspace has no working-copy commit".to_owned()))?;
-    let wc = readonly.store().get_commit(wc_id).map_err(be)?;
+        .map(|id| readonly.store().get_commit(id))
+        .transpose()
+        .map_err(be)?;
     Ok(MutationResult {
         new_op_id: crate::OperationId(readonly.op_id().hex()),
         new_change_ids: Vec::new(),
         abandoned_change_ids: Vec::new(),
-        working_copy_change_id: ChangeId(wc.change_id().reverse_hex()),
+        working_copy_change_id: wc.map(|commit| ChangeId(commit.change_id().reverse_hex())),
         finish: None,
     })
 }
@@ -1628,7 +1639,7 @@ where
     }
 
     let finish = finish_verb(workspace, tx, description, ctx)?;
-    let mutation = mutation_result(&finish, Vec::new(), Vec::new())?;
+    let mutation = mutation_result(&finish, Vec::new(), Vec::new());
     Ok(Finished {
         value,
         mutation,
@@ -1727,7 +1738,7 @@ where
             new_op_id: crate::OperationId(new_repo.op_id().hex()),
             new_change_ids: Vec::new(),
             abandoned_change_ids: Vec::new(),
-            working_copy_change_id: ChangeId(new_wc.change_id().reverse_hex()),
+            working_copy_change_id: Some(ChangeId(new_wc.change_id().reverse_hex())),
             // WHY `None`: `track`/`untrack` commit the raw transaction and never reach
             // `finish_transaction` — so they never warn about the identity either, the CLI's
             // "Name and email not configured" living there (`cli/src/cli_util.rs:2387-2415`).
@@ -1898,7 +1909,7 @@ pub(crate) fn restore(
         &format!("restore into commit {}", to_commit.id().hex()),
         ctx,
     )?;
-    mutation_result(&finish, Vec::new(), Vec::new())
+    Ok(mutation_result(&finish, Vec::new(), Vec::new()))
 }
 
 /// What [`plan_absorb`] decided.
@@ -2075,7 +2086,7 @@ pub(crate) fn absorb(
     let description = format!("absorb changes into {} commits", stats.rewritten_destinations.len());
     let finish = finish_verb(workspace, tx, &description, ctx)?;
     Ok(AbsorbResult {
-        mutation: mutation_result(&finish, Vec::new(), Vec::new())?,
+        mutation: mutation_result(&finish, Vec::new(), Vec::new()),
         rewritten_change_ids,
         source_change_id,
         num_rebased,

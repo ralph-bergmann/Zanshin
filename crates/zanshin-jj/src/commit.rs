@@ -228,11 +228,11 @@ pub(crate) fn commit(
     // an immutable `@` CAN have immutable descendants here (unlike the guarded verbs).
     let description = format!("commit {}", wc_commit.id().hex());
     let finish = finish_verb(workspace, tx, &description, ctx)?;
-    mutation_result(
+    Ok(mutation_result(
         &finish,
         vec![ChangeId(new_wc_commit.change_id().reverse_hex())],
         Vec::new(),
-    )
+    ))
 }
 
 #[cfg(test)]

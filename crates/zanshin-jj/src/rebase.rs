@@ -430,7 +430,7 @@ pub(crate) fn rebase(
         .iter()
         .map(|c| ChangeId(c.change_id().reverse_hex()))
         .collect();
-    mutation_result(&finish, new_change_ids, abandoned_change_ids)
+    Ok(mutation_result(&finish, new_change_ids, abandoned_change_ids))
 }
 
 /// The repo's head operation loaded through `loader`'s stores with [`dry_run_settings`], once

@@ -100,7 +100,7 @@ void main() {
       );
 
       expect(await fileAt(at), fOneAndThree);
-      expect(await fileAt(result.workingCopyChangeId), fRight, reason: 'hunk 2 remains in the new @');
+      expect(await fileAt(result.workingCopyChangeId!), fRight, reason: 'hunk 2 remains in the new @');
     });
 
     test('a_stale_left_is_refused_with_jj_stale_selection', () async {

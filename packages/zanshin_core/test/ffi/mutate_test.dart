@@ -253,7 +253,7 @@ void main() {
       final AbsorbResult result = decodeAbsorbResultEnvelope(bytes);
 
       expect(result.mutation.newOpId, isEmpty);
-      expect(result.mutation.workingCopyChangeId, isEmpty);
+      expect(result.mutation.workingCopyChangeId, isNull, reason: 'absent is null (Story 9.12)');
       expect(result.numRebased, equals(1));
     });
   });

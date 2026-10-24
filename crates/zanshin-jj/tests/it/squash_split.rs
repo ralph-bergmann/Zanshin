@@ -186,7 +186,7 @@ fn squash_at_into_its_parent_combines_both_descriptions_and_replaces_at() {
     assert_eq!(at.description(), "");
     assert_eq!(result.new_change_ids, [change_id(&at)]);
     assert_eq!(result.abandoned_change_ids, std::slice::from_ref(&fx.c));
-    assert_eq!(result.working_copy_change_id, change_id(&at));
+    assert_eq!(result.working_copy_change_id, Some(change_id(&at)));
     let (op_id, description) = head_op(&fx.root);
     assert_eq!(description, format!("squash commits into {b_hex}"));
     assert_eq!(result.new_op_id.0, op_id);

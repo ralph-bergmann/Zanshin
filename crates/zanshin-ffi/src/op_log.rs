@@ -2,25 +2,28 @@
 
 //! `zanshin_op_log` — operation-log read FFI wrapper (Story 3.4b, `op_log` slice) — and the
 //! operation verbs `zanshin_op_show`, `zanshin_op_diff` and `zanshin_op_abandon` (Story 9.21;
-//! `zanshin_redo` sits beside `zanshin_undo` in `repo.rs`).
+//! `zanshin_redo` sits beside `zanshin_undo` in `repo.rs`), `zanshin_op_restore`,
+//! `zanshin_op_revert` and `zanshin_op_integrate` (Story 9.12).
 //!
 //! Calls `zanshin_jj::Repo::op_log(limit)` and serialises the result into a
 //! `FlatBuffers` `Envelope` carrying an `OpLog` payload. The handle is borrowed
-//! (not consumed). `limit` is a fixed scalar (negative ⇒ all). `op show` / `op diff` take a
-//! request BUFFER (their strings must be distinguishably ABSENT), `op abandon` its one lone string.
+//! (not consumed). `limit` is a fixed scalar (negative ⇒ all). `op show` / `op diff` / `op restore`
+//! / `op revert` take a request BUFFER (their strings must be distinguishably ABSENT, `--what` is a
+//! list), `op abandon` / `op integrate` their one lone string.
 
 use std::ffi::c_char;
 
 use flatbuffers::{FlatBufferBuilder, VerifierOptions, WIPOffset};
 use tracing::debug;
 use zanshin_jj::{
-    CommitId, OpAbandonResult, OpDiff, OpDiffOptions, OpDiffResult, OpLogError, OpRefTarget, OpRemoteRefChange, OpShow,
-    Operation, RefDistance,
+    CommitId, OpAbandonResult, OpDiff, OpDiffOptions, OpDiffResult, OpIntegrateResult, OpLogError, OpRefTarget,
+    OpRemoteRefChange, OpShow, Operation, RefDistance, RestoreWhat,
 };
 
 use crate::envelope::{
-    catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, precondition_envelope,
-    reject_null_request, session_from_handle, CallReport, FfiErrorObj, JJ_JJ_LIB_ERROR,
+    catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, ok_mutation_result,
+    precondition_envelope, reject_null_request, session_from_handle, CallReport, FfiErrorObj, FFI_INVALID_ARGUMENT,
+    JJ_JJ_LIB_ERROR,
 };
 use crate::fbs;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
@@ -517,6 +520,222 @@ pub unsafe extern "C" fn zanshin_op_abandon(handle: u64, operation: *const c_cha
     vec_into_token(buf)
 }
 
+// ── op restore / op revert / op integrate (Story 9.12) ───────────────────────
+
+/// Serialise an [`OpIntegrateResult`] into a finished `Envelope<OpIntegrateResult>` buffer.
+fn op_integrate_to_envelope(result: &OpIntegrateResult, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(256);
+    let head = b.create_string(&result.head_op_id.0);
+    let off = fbs::OpIntegrateResult::create(
+        &mut b,
+        &fbs::OpIntegrateResultArgs {
+            head_op_id: Some(head),
+            reconciled: result.reconciled,
+        },
+    );
+    finish_envelope(b, fbs::Payload::OpIntegrateResult, Some(off.as_union_value()), report)
+}
+
+/// An `ffi.invalid_argument` refusal of a request field, `detail` in `context`.
+fn invalid_argument(detail: String) -> FfiErrorObj {
+    FfiErrorObj {
+        report: None,
+        hints: Vec::new(),
+        code: FFI_INVALID_ARGUMENT.to_owned(),
+        context: Some(detail),
+    }
+}
+
+/// The `--what` list of a request: ABSENT is empty (the flag absent); an `Unspecified` or unknown
+/// member is refused.
+///
+/// # Errors
+/// - `ffi.invalid_argument` — a member is `Unspecified` or a value this build does not know.
+fn restore_what(what: Option<flatbuffers::Vector<'_, fbs::RestoreWhat>>) -> Result<Vec<RestoreWhat>, FfiErrorObj> {
+    what.into_iter()
+        .flatten()
+        .map(|member| match member {
+            fbs::RestoreWhat::Repo => Ok(RestoreWhat::Repo),
+            fbs::RestoreWhat::RemoteTracking => Ok(RestoreWhat::RemoteTracking),
+            other => Err(invalid_argument(format!("invalid restore what: {other:?}"))),
+        })
+        .collect()
+}
+
+/// Owned form of an `OpRestoreRequest` / `OpRevertRequest`: the operation and `--what`.
+struct OpEditArgs {
+    operation: String,
+    what: Vec<RestoreWhat>,
+}
+
+/// Parse an `OpRestoreRequest` buffer into owned [`OpEditArgs`].
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `OpRestoreRequest`, its `kind` is not
+///   `OpRestore`, `operation` is ABSENT, or a `what` member is `Unspecified` or unknown.
+fn read_op_restore_request(data: *const u8, len: usize) -> Result<OpEditArgs, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see `read_op_show_request`).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::OpRestoreRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::OpRestore)?;
+    let operation = req
+        .operation()
+        .ok_or_else(|| invalid_argument("operation is required".to_owned()))?;
+    Ok(OpEditArgs {
+        operation: operation.to_owned(),
+        what: restore_what(req.what())?,
+    })
+}
+
+/// Parse an `OpRevertRequest` buffer into owned [`OpEditArgs`]; an ABSENT `operation` is `@`.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `OpRevertRequest`, its `kind` is not
+///   `OpRevert`, or a `what` member is `Unspecified` or unknown.
+fn read_op_revert_request(data: *const u8, len: usize) -> Result<OpEditArgs, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only (see `read_op_show_request`).
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::OpRevertRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::OpRevert)?;
+    Ok(OpEditArgs {
+        operation: req.operation().unwrap_or("@").to_owned(),
+        what: restore_what(req.what())?,
+    })
+}
+
+/// Restore the repo identified by `handle` to the state at an operation — the CLI's
+/// `jj op restore` @ v0.46.0 (Story 9.12).
+///
+/// The arguments cross as an `OpRestoreRequest` `FlatBuffers` request buffer: `operation` (an
+/// operation expression — `@-`, an id prefix; REQUIRED) and `what` (the CLI's repeatable
+/// `--what`; ABSENT or EMPTY = both portions). Runs the pre-verb snapshot, then restores the
+/// chosen portions of the operation's view (`git_refs` / `git_heads` stay current).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload, the operation
+/// described `restore to operation <hex>`. A restored view equal to the current one writes no
+/// operation and `new_op_id` is the head the verb started from (Story 9.40). A view without this
+/// workspace's working-copy commit (the root operation's) leaves `working_copy_change_id` ABSENT
+/// and warns `jj.workspace_no_longer_exists`.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `OpRestoreRequest`, its `kind` is not
+///   `OpRestore`, `operation` is ABSENT, or a `what` member is `Unspecified` or unknown.
+/// - `jj.operation_not_found` — no operation matches the id prefix; jj-lib's text in `context`.
+/// - `jj.invalid_input` — the expression is no valid prefix, ambiguous, or resolves to no or
+///   several operations (with the CLI's hint naming them); jj-lib's text in `context`.
+/// - `jj.config_error` — the effective config no longer reads, the pre-verb snapshot found a
+///   value wrongly typed, or the finish's immutable set does not resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// As `zanshin_op_show`; `data` is built by `fbs.OpRestoreRequestObjectBuilder(...).toBytes()`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_op_restore(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_op_restore", handle);
+    let buf = catch(|| {
+        let args = read_op_restore_request(data, len)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.op_restore(&args.operation, &args.what);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
+    });
+    vec_into_token(buf)
+}
+
+/// Revert one operation of the repo identified by `handle` by applying its inverse — the CLI's
+/// `jj op revert` @ v0.46.0 (Story 9.12).
+///
+/// The arguments cross as an `OpRevertRequest` `FlatBuffers` request buffer: `operation` (ABSENT =
+/// `@`, the CLI's default) and `what` (`--what`; ABSENT or EMPTY = both portions). Runs the
+/// pre-verb snapshot; the operation's parent state is merged in three-way against its own, so
+/// later work stays and descendants of rewritten commits are rebased.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload, the operation
+/// described `revert operation <hex>`; when nothing changed, no operation and `new_op_id` is the
+/// head the verb started from (Story 9.40). A revert that drops this workspace's working-copy
+/// commit (of the `add workspace` operation) leaves `working_copy_change_id` ABSENT and warns
+/// `jj.workspace_no_longer_exists`.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as an `OpRevertRequest`, its `kind` is not
+///   `OpRevert`, or a `what` member is `Unspecified` or unknown.
+/// - `jj.invalid_input` — "Cannot revert root operation", "Cannot revert a merge operation"
+///   (nothing written by the verb), or an operation expression as in `zanshin_op_restore`.
+/// - `jj.operation_not_found` — no operation matches the id prefix; jj-lib's text in `context`.
+/// - `jj.config_error` / `jj.stale_working_copy` / `jj.jj_lib_error` — as `zanshin_op_restore`.
+///
+/// # Safety
+/// As `zanshin_op_show`; `data` is built by `fbs.OpRevertRequestObjectBuilder(...).toBytes()`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_op_revert(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_op_revert", handle);
+    let buf = catch(|| {
+        let args = read_op_revert_request(data, len)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.op_revert(&args.operation, &args.what);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
+    });
+    vec_into_token(buf)
+}
+
+/// Make an operation part of the operation log of the repo identified by `handle` — the CLI's
+/// `jj op integrate` @ v0.46.0 (Story 9.12).
+///
+/// `operation` is the CLI's argument as a lone string (an id prefix names an unpublished
+/// operation too). The op heads gain it in place of its parents: a descendant of the head becomes
+/// the head, a divergent one is merged with the other heads into a
+/// `reconcile divergent operations` operation in this workspace, one already in the log changes
+/// nothing. Like the CLI's `workspace_helper_no_snapshot` it runs the start-up (the secure-config
+/// fix-up, the effective config, the alias tables, the `immutable_heads()` / short-prefixes parse,
+/// the `trunk()` fallback, each with its warnings) but NO pre-verb snapshot and no Git import, so
+/// the envelope never carries a `precondition`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying an `OpIntegrateResult` payload: the head operation
+/// afterwards and `reconciled` (the integrate itself merged the heads; a reconcile the head load
+/// wrote first does not count).
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `operation` is a null pointer.
+/// - `ffi.utf8_error` — `operation` is not valid UTF-8.
+/// - `jj.operation_not_found` — no operation matches the id prefix; nothing is written.
+/// - `jj.invalid_input` — the expression is no valid prefix, ambiguous, or resolves to no or
+///   several operations; nothing is written.
+/// - `jj.config_error` — the start-up found the effective config unreadable, or an alias table,
+///   `immutable_heads()` or short-prefixes revset that does not parse; nothing is written.
+/// - `jj.jj_lib_error` — the head could not be loaded, or an op-store / op-heads failure; detail in
+///   `context`.
+///
+/// # Safety
+/// `handle` as `zanshin_op_show`. `operation` must be null or a NUL-terminated string Dart
+/// allocates and frees; Rust only borrows it for the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_op_integrate(handle: u64, operation: *const c_char) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_op_integrate", handle);
+    let buf = catch(|| {
+        // SAFETY: the caller's NUL-terminated string, borrowed for this call only.
+        let operation = unsafe { cstr_to_string(operation) }?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.op_integrate(&operation);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, op_integrate_to_envelope)
+    });
+    vec_into_token(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use flatbuffers::root as fb_root;
@@ -764,6 +983,20 @@ mod tests {
         assert_eq!(payload.from().unwrap().get(0).id(), Some("f"));
         assert_eq!(payload.to().and_then(|op| op.id()), Some("t"));
         assert!(payload.diff().unwrap().commits().is_none(), "unresolved = ABSENT");
+    }
+
+    #[test]
+    fn op_integrate_result_crosses_its_head_and_flag() {
+        for reconciled in [false, true] {
+            let result = zanshin_jj::OpIntegrateResult {
+                head_op_id: OperationId("h".to_owned()),
+                reconciled,
+            };
+            let buf = super::op_integrate_to_envelope(&result, &crate::envelope::CallReport::default());
+            let env = fb_root::<fbs::Envelope>(&buf).expect("verifies");
+            let payload = env.data_as_op_integrate_result().expect("OpIntegrateResult");
+            assert_eq!((payload.head_op_id(), payload.reconciled()), (Some("h"), reconciled));
+        }
     }
 
     #[test]

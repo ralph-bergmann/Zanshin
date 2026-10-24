@@ -69,7 +69,61 @@ Uint8List zanshinOpAbandon(int rawHandle, String operation) {
   }
 }
 
+/// Call `zanshin_op_restore` with the raw `u64` handle and an
+/// `OpRestoreRequest` request buffer (Story 9.12), and return the FlatBuffers
+/// `Envelope` bytes. An empty [what] crosses EMPTY — the CLI without `--what`.
+Uint8List zanshinOpRestore(int rawHandle, String operation, {List<RestoreWhat> what = const []}) {
+  rejectInteriorNul(operation, 'operation');
+  final Uint8List request = fbs.OpRestoreRequestObjectBuilder(
+    kind: fbs.RequestKind.OpRestore,
+    operation: operation,
+    what: [for (final RestoreWhat portion in what) portion.wire],
+  ).toBytes();
+  return callWithRequest(request, (ptr, len) => zanshin_op_restore(rawHandle, ptr, len));
+}
+
+/// Call `zanshin_op_revert` with the raw `u64` handle and an `OpRevertRequest`
+/// request buffer (Story 9.12), and return the FlatBuffers `Envelope` bytes.
+/// An empty [what] crosses EMPTY — the CLI without `--what`.
+Uint8List zanshinOpRevert(int rawHandle, String operation, {List<RestoreWhat> what = const []}) {
+  rejectInteriorNul(operation, 'operation');
+  final Uint8List request = fbs.OpRevertRequestObjectBuilder(
+    kind: fbs.RequestKind.OpRevert,
+    operation: operation,
+    what: [for (final RestoreWhat portion in what) portion.wire],
+  ).toBytes();
+  return callWithRequest(request, (ptr, len) => zanshin_op_revert(rawHandle, ptr, len));
+}
+
+/// Call `zanshin_op_integrate` with the raw `u64` handle and [operation] (a
+/// lone C string, Story 9.12), and return the FlatBuffers `Envelope` bytes.
+Uint8List zanshinOpIntegrate(int rawHandle, String operation) {
+  rejectInteriorNul(operation, 'operation');
+  final ffi.Pointer<Utf8> p = operation.toNativeUtf8();
+  try {
+    return readToken(zanshin_op_integrate(rawHandle, p.cast()));
+  } finally {
+    calloc.free(p); // outer: free the C string we allocated
+  }
+}
+
 // ── Dart models ───────────────────────────────────────────────────────────────
+
+/// One `--what` value of `jj op restore` / `jj op revert` (Story 9.12) — the
+/// CLI's `RevertWhatToRestore`. An empty list is the flag absent: both.
+enum RestoreWhat {
+  /// `repo`: the jj repo state and local bookmarks — heads, local bookmarks
+  /// and tags, the working-copy commits.
+  repo(fbs.RestoreWhat.Repo),
+
+  /// `remote-tracking`: the remote-tracking bookmarks.
+  remoteTracking(fbs.RestoreWhat.RemoteTracking);
+
+  const RestoreWhat(this.wire);
+
+  /// The wire value.
+  final fbs.RestoreWhat wire;
+}
 
 /// One entry in jj's operation log (FR-JJ-7).
 ///
@@ -348,6 +402,23 @@ final class OpAbandonResult {
   final List<ZanshinWarning> warnings;
 }
 
+/// What `RepoHandle.opIntegrate` returns (Story 9.12).
+final class OpIntegrateResult {
+  const OpIntegrateResult({required this.headOpId, required this.reconciled, this.warnings = const []});
+
+  /// The head operation afterwards: the integrated operation, the merge that
+  /// reconciled it, or the unchanged head for an operation already in the log.
+  final String headOpId;
+
+  /// The integrate itself merged the op heads (the CLI's status line "The
+  /// specified operation has been integrated with other existing
+  /// operations."); a reconcile the head load wrote first does not count.
+  final bool reconciled;
+
+  /// The call's warnings; empty when there were none.
+  final List<ZanshinWarning> warnings;
+}
+
 // ── Decoder ───────────────────────────────────────────────────────────────────
 
 /// Decode an `OpLog` `Envelope` buffer into a list of [Operation]s that also
@@ -467,6 +538,30 @@ OpAbandonResult decodeOpAbandonResultEnvelopeInternal(Uint8List bytes) {
     reparentedCount: payload.reparentedCount,
     nothingChanged: payload.nothingChanged,
     headOpIds: payload.headOpIds ?? const [],
+    warnings: decodeEnvelopeWarningsInternal(env),
+  );
+}
+
+/// Decode an `OpIntegrateResult` `Envelope` buffer into an
+/// [OpIntegrateResult] (Story 9.12).
+@visibleForTesting
+OpIntegrateResult decodeOpIntegrateResultEnvelope(Uint8List bytes) => decodeOpIntegrateResultEnvelopeInternal(bytes);
+
+/// Internal decoder used by production code in `isolate.dart`.
+OpIntegrateResult decodeOpIntegrateResultEnvelopeInternal(Uint8List bytes) {
+  final env = fbs.Envelope(bytes);
+  if (!env.ok) {
+    throw decodeEnvelopeErrorInternal(env);
+  }
+  final Object? payload = env.data;
+  if (payload is! fbs.OpIntegrateResult) {
+    throw ZanshinFfiException('ffi.unknown', 'expected OpIntegrateResult payload, got ${env.dataType}');
+  }
+  return OpIntegrateResult(
+    headOpId:
+        payload.headOpId ??
+        (throw const ZanshinFfiException('ffi.unknown', 'OpIntegrateResult payload is missing its head_op_id')),
+    reconciled: payload.reconciled,
     warnings: decodeEnvelopeWarningsInternal(env),
   );
 }

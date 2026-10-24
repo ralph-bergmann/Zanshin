@@ -401,7 +401,7 @@ pub(crate) fn arrange(
         (Some(new_wc_commit), true) => vec![ChangeId(new_wc_commit.change_id().reverse_hex())],
         _ => Vec::new(),
     };
-    mutation_result(&finish, new_change_ids, abandoned_change_ids)
+    Ok(mutation_result(&finish, new_change_ids, abandoned_change_ids))
 }
 
 #[cfg(test)]

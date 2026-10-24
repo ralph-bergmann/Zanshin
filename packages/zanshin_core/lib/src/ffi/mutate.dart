@@ -216,8 +216,10 @@ final class MutationResult {
   /// abandonments in `GitImportResult.abandonedChangeIds` instead.
   final List<String> abandonedChangeIds;
 
-  /// Change id of the working-copy commit (`@`) after this mutation.
-  final String workingCopyChangeId;
+  /// Change id of the working-copy commit (`@`) after this mutation; `null`
+  /// when the workspace has no working-copy commit afterwards (e.g.
+  /// `opRestore('000000000000')`, an undo to the root view — Story 9.12).
+  final String? workingCopyChangeId;
 
   /// The colocated Git export failures this mutation's commit hit — the jj
   /// CLI's `finish_transaction` export report as data (Story 9.26). `null` when
@@ -243,7 +245,7 @@ MutationResult decodeMutationResultInternal(
   newOpId: m?.newOpId ?? '',
   newChangeIds: m?.newChangeIds?.toList() ?? const [],
   abandonedChangeIds: m?.abandonedChangeIds?.toList() ?? const [],
-  workingCopyChangeId: m?.workingCopyChangeId ?? '',
+  workingCopyChangeId: m?.workingCopyChangeId,
   finish: decodeFinishFactsInternal(m?.finish),
   warnings: warnings,
 );
