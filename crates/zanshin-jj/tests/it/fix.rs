@@ -509,21 +509,38 @@ fn a_tool_overrunning_its_timeout_is_killed_and_the_next_tool_runs_on_the_old_co
     let result = fix(&mut fx, &FixOptions::default());
     assert!(started.elapsed() < KILLED_WITHIN, "{:?}", started.elapsed());
     assert_op(&fx, &result.mutation, "fixed 3 commits");
-    assert!(group_gone(&pid), "the timed-out tool and what it forked are gone");
+    // Under load the 200 ms may pass before the tool wrote its pid; then nothing forked.
+    assert!(
+        !pid.exists() || group_gone(&pid),
+        "the timed-out tool and what it forked are gone"
+    );
     let warnings = fx.repo.take_warnings();
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert_eq!(warnings[0].kind, WarningKind::FixToolTimedOut);
     assert_eq!(warnings[0].message, "Fix tool `sh` timed out after 200ms for `a.txt`");
-    assert_eq!(
-        result.tool_stderr,
-        [zanshin_jj::FixToolStderr {
-            path: "a.txt".to_owned(),
-            stderr: "slow\n".to_owned(),
-        }],
-        "what it wrote before the kill"
-    );
     let a = fx.a.clone();
     assert_eq!(file(&mut fx, &a, "a.txt"), "A\n");
+}
+
+/// What a timed-out tool wrote to stderr before the kill is recorded; the margin is wide, so the
+/// tool has written it before its deadline.
+#[test]
+fn a_timed_out_tools_stderr_until_the_kill_is_recorded() {
+    let scratch = TempDir::new().expect("tempdir");
+    let pid = scratch.path().join("pid");
+    let mut fx = configured(&format!("{}timeout = '2s'\n", sleeper("sleep", &pid)));
+    let result = fix(&mut fx, &FixOptions::default());
+    assert!(group_gone(&pid), "the timed-out tool and what it forked are gone");
+    // The shell may also report its killed `sleep` ("Terminated") when it sees that death first.
+    assert_eq!(result.tool_stderr.len(), 1, "{:?}", result.tool_stderr);
+    let stderr = &result.tool_stderr[0];
+    assert_eq!(stderr.path, "a.txt");
+    assert!(
+        stderr.stderr.starts_with("slow\n"),
+        "what it wrote before the kill: {stderr:?}"
+    );
+    let warnings = fx.repo.take_warnings();
+    assert_eq!(warnings[0].message, "Fix tool `sh` timed out after 2s for `a.txt`");
 }
 
 #[test]
