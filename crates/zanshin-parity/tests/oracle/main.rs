@@ -286,6 +286,30 @@ parity!(
     bookmark_rename_same_refused,
     bookmark_rename_same_overwrite,
     bookmark_rename_tracked_pushed,
+    bookmark_set_new,
+    bookmark_set_noop,
+    bookmark_set_backwards_refused,
+    bookmark_set_backwards_allowed,
+    bookmark_set_empty_target,
+    bookmark_set_empty_name_dirty_wc,
+    bookmark_forget_local,
+    bookmark_forget_nothing,
+    bookmark_track_mixed_dirty_wc,
+    bookmark_untrack_remote_with_symbol,
+    bookmark_track_bad_pattern,
+    bookmark_set_auto_track_created,
+    bookmark_set_resurrect_tracked,
+    bookmark_forget_tracked_pushed,
+    bookmark_forget_include_remotes,
+    bookmark_forget_untracked_remote_only,
+    bookmark_track_symbol,
+    bookmark_track_pattern_absent,
+    bookmark_track_already_tracked,
+    bookmark_track_remote_unmatched,
+    bookmark_untrack_symbol,
+    bookmark_untrack_pattern,
+    bookmark_untrack_not_tracked_and_git,
+    bookmark_untrack_remote_git,
     fetch_default,
     fetch_only_remote,
     fetch_no_remote,
@@ -408,7 +432,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 340);
+    assert_eq!(SCENARIO_IDS.len(), 364);
 }
 
 #[test]

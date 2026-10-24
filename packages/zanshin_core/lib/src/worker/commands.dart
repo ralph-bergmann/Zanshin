@@ -1489,6 +1489,90 @@ final class BookmarkRenameCommand extends WorkerCommand implements HandleScopedC
   final bool overwriteExisting;
 }
 
+/// Create or move local bookmarks to one revision by name, in the repo
+/// identified by [handleId] (Story 9.11) — the CLI's `jj bookmark set`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinBookmarkSet(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class BookmarkSetCommand extends WorkerCommand implements HandleScopedCommand {
+  const BookmarkSetCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.names,
+    required this.revision,
+    required this.allowBackwards,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// DECODED bookmark names.
+  final List<String> names;
+
+  /// jj reverse-hex change id of the target; `null` = `@`.
+  final String? revision;
+
+  /// `--allow-backwards`.
+  final bool allowBackwards;
+}
+
+/// Forget bookmarks, in the repo identified by [handleId] (Story 9.11) — the
+/// CLI's `jj bookmark forget`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinBookmarkForget(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class BookmarkForgetCommand extends WorkerCommand implements HandleScopedCommand {
+  const BookmarkForgetCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.names,
+    required this.includeRemotes,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// String PATTERNS (a bare one is a GLOB).
+  final List<String> names;
+
+  /// `--include-remotes`.
+  final bool includeRemotes;
+}
+
+/// Start ([untrack] false) or stop ([untrack] true) tracking remote bookmarks,
+/// in the repo identified by [handleId] (Story 9.11) — the CLI's `jj bookmark
+/// track` / `untrack`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinBookmarkTrack` or `zanshinBookmarkUntrack`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class BookmarkTrackCommand extends WorkerCommand implements HandleScopedCommand {
+  const BookmarkTrackCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.names,
+    required this.remotes,
+    required this.untrack,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `BOOKMARK[@REMOTE]` texts: `name@remote` symbols or string patterns.
+  final List<String> names;
+
+  /// Remote-name patterns (`--remote`); empty = not given.
+  final List<String> remotes;
+
+  /// `untrack` rather than `track`.
+  final bool untrack;
+}
+
 /// Start tracking the working-copy paths matching [paths], in the repo
 /// identified by [handleId] (Story 9.22) — the CLI's `jj file track`.
 ///

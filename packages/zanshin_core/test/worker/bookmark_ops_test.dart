@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 // Worker round-trip tests for the bookmark mutations (Story 9.8's bookmarkCreate /
-// bookmarkDelete, Story 9.19's bookmarkMove / bookmarkAdvance / bookmarkRename) on
+// bookmarkDelete, Story 9.19's bookmarkMove / bookmarkAdvance / bookmarkRename,
+// Story 9.11's bookmarkSet / bookmarkForget / bookmarkTrack / bookmarkUntrack) on
 // both [ZanshinWorker] and [RepoHandle].
 //
 // These tests boot the REAL Isolate.spawn flow against the REAL compiled cdylib
@@ -19,7 +20,7 @@
 import 'dart:io';
 
 import 'package:test/test.dart';
-import 'package:zanshin_core/src/ffi/bookmarks.dart' show Bookmark, LocalBookmark;
+import 'package:zanshin_core/src/ffi/bookmarks.dart' show Bookmark, LocalBookmark, RemoteBookmark;
 import 'package:zanshin_core/src/ffi/config.dart';
 import 'package:zanshin_core/src/ffi/mutate.dart' show MutationResult;
 import 'package:zanshin_core/src/worker/handle.dart';
@@ -377,6 +378,132 @@ void main() {
     });
   });
 
+  group('ZanshinWorker bookmark set / forget / track / untrack (real cdylib)', () {
+    late ZanshinWorker worker;
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = Directory.systemTemp.createTempSync('zanshin_bookmark_tracking_test_');
+      worker = await ZanshinWorker.start();
+    });
+
+    tearDown(() async {
+      await worker.close();
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    Future<String> head(RepoHandle handle) async => (await handle.opLog(limit: 1)).single.id;
+
+    test('set_round_trips_revision_and_allow_backwards', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final String a = (await handle.status()).workingCopyChangeId!;
+      await handle.describe(changeId: a, description: 'A');
+      await handle.newChange([a]);
+      final String b = (await handle.status()).workingCopyChangeId!;
+
+      // `revision` absent: the default `@`.
+      final MutationResult created = await handle.bookmarkSet(['feature']);
+      expect(created.newOpId, await head(handle));
+      Future<String?> target() async => (await handle.bookmarks()).singleWhere((bm) => bm.kind is LocalBookmark).target;
+      expect(await target(), b);
+
+      // Backwards to `a`: refused with the hint, nothing written; allowed with the flag.
+      final String before = await head(handle);
+      await expectLater(
+        handle.bookmarkSet(['feature'], revision: a),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having((e) => e.context, 'context', 'Refusing to move bookmark backwards or sideways: feature')
+              .having((e) => e.hints, 'hints', ['Use --allow-backwards to allow it.']),
+        ),
+      );
+      expect(await head(handle), before);
+      await handle.bookmarkSet(['feature'], revision: a, allowBackwards: true);
+      expect(await target(), a);
+
+      await expectLater(
+        handle.bookmarkSet(const []),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+      await handle.close();
+    });
+
+    test('forget_track_and_untrack_round_trip_on_a_colocated_repo', () async {
+      final String root = tempDir.resolveSymbolicLinksSync();
+      Future<void> git(List<String> args) async {
+        final ProcessResult result = await Process.run('git', ['-C', root, ...args]);
+        if (result.exitCode != 0) {
+          fail('git ${args.join(' ')} failed: ${result.stderr}');
+        }
+      }
+
+      await git(['init', '-b', 'main']);
+      await git(['config', 'user.email', 'test@test.invalid']);
+      await git(['config', 'user.name', 'Test']);
+      File('$root/README.md').writeAsStringSync('hello');
+      await git(['add', '.']);
+      await git(['commit', '-m', 'init', '--no-gpg-sign']);
+      // Untracked remote bookmarks, imported by the conversion.
+      await git(['update-ref', 'refs/remotes/origin/other', 'HEAD']);
+      await git(['update-ref', 'refs/remotes/origin/third', 'HEAD']);
+      final RepoHandle handle = await worker.convert(root);
+
+      Future<bool?> tracked(String name) async {
+        final Bookmark? row = (await handle.bookmarks(allRemotes: true))
+            .where((bm) => bm.name == name && bm.kind is RemoteBookmark)
+            .where((bm) => (bm.kind as RemoteBookmark).remoteName == 'origin')
+            .firstOrNull;
+        return row == null ? null : (row.kind as RemoteBookmark).tracked;
+      }
+
+      final MutationResult trackedOp = await handle.bookmarkTrack(['other@origin']);
+      expect(trackedOp.newOpId, await head(handle));
+      expect((await handle.opLog(limit: 1)).single.description, 'track remote bookmark other@origin');
+      expect(await tracked('other'), isTrue);
+
+      // Already tracked: a warning and no operation.
+      String before = await head(handle);
+      final MutationResult again = await handle.bookmarkTrack(['other@origin']);
+      expect(again.newOpId, before);
+      expect(again.warnings.map((w) => w.code), ['jj.bookmark_already_tracked']);
+
+      // `remotes` crosses: an unknown remote matches nothing.
+      final MutationResult none = await handle.bookmarkUntrack(['other'], remotes: ['nope']);
+      expect(none.newOpId, before);
+      expect(none.warnings.map((w) => w.code), ['jj.bookmark_remotes_unmatched']);
+      await handle.bookmarkUntrack(['other'], remotes: ['origin']);
+      expect((await handle.opLog(limit: 1)).single.description, 'untrack remote bookmark other@origin');
+      expect(await tracked('other'), isFalse);
+
+      await expectLater(
+        handle.bookmarkTrack(['a', 'b@origin']),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having(
+                (e) => e.context,
+                'context',
+                'Cannot specify both <bookmark> patterns and <bookmark>@<remote> symbols',
+              ),
+        ),
+      );
+
+      // `includeRemotes` crosses: forgetting the untracked remote-only `third` is a no-op without
+      // it (the pre-call head comes back) and writes `forget bookmark third` with it. Only the
+      // operation is asserted: this colocated repo re-imports `refs/remotes/origin/third` on the
+      // next call, so the row itself is checked in the Rust tests and the parity oracle.
+      before = await head(handle);
+      expect((await handle.bookmarkForget(['third'])).newOpId, before);
+      final MutationResult forgotten = await handle.bookmarkForget(['third'], includeRemotes: true);
+      expect(forgotten.newOpId, isNot(before));
+      expect((await handle.opLog(limit: 1)).single.description, 'forget bookmark third');
+      await handle.close();
+    });
+  });
+
   // ── RepoHandle closed-handle guards ───────────────────────────────────────
 
   group('RepoHandle bookmark mutation methods closed-handle guard', () {
@@ -416,6 +543,38 @@ void main() {
       expect(() => handle.bookmarkMove(['feature']), throwsA(isA<StateError>()));
       expect(handle.bookmarkAdvance, throwsA(isA<StateError>()));
       expect(() => handle.bookmarkRename('a', 'b'), throwsA(isA<StateError>()));
+    });
+
+    test('the_four_story_9_11_verbs_on_a_closed_handle_throw_state_error_or_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      await handle.close();
+
+      expect(() => handle.bookmarkSet(['feature']), throwsA(isA<StateError>()));
+      expect(() => handle.bookmarkForget(['feature']), throwsA(isA<StateError>()));
+      expect(() => handle.bookmarkTrack(['feature']), throwsA(isA<StateError>()));
+      expect(() => handle.bookmarkUntrack(['feature']), throwsA(isA<StateError>()));
+
+      final Matcher invalid = throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle'));
+      await expectLater(worker.bookmarkSet(handle.handleId, ['feature']), invalid);
+      await expectLater(worker.bookmarkForget(handle.handleId, ['feature']), invalid);
+      await expectLater(worker.bookmarkTrack(handle.handleId, ['feature']), invalid);
+      await expectLater(worker.bookmarkUntrack(handle.handleId, ['feature']), invalid);
+    });
+
+    test('interior_NUL_in_the_four_story_9_11_verbs_is_an_ArgumentError', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final nul = String.fromCharCode(0);
+      Matcher argument(String name) => throwsA(isA<ArgumentError>().having((e) => e.name, 'name', name));
+
+      expect(() => handle.bookmarkSet(['a${nul}b']), argument('names'));
+      expect(() => handle.bookmarkSet(['a'], revision: 'q$nul'), argument('revision'));
+      expect(() => handle.bookmarkForget(['a${nul}b']), argument('names'));
+      expect(() => handle.bookmarkTrack(['a${nul}b']), argument('names'));
+      expect(() => handle.bookmarkTrack(['a'], remotes: ['o$nul']), argument('remotes'));
+      expect(() => handle.bookmarkUntrack(['a${nul}b']), argument('names'));
+      expect(() => handle.bookmarkUntrack(['a'], remotes: ['o$nul']), argument('remotes'));
+
+      await handle.close();
     });
   });
 }

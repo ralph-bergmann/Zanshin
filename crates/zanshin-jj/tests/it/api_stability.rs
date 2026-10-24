@@ -933,6 +933,35 @@ fn bookmark_ops_surface_resolves() {
         as fn(&mut zanshin_jj::Repo, &[String]) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
 }
 
+/// Story 9.11: `bookmark set` / `forget` / `track` / `untrack` add no public type. The signatures
+/// pin the currencies: `set` takes DECODED names, an optional change id and `allow_backwards`;
+/// `forget` pass-through patterns and `include_remotes`; `track` / `untrack` `BOOKMARK[@REMOTE]`
+/// texts and remote-name patterns.
+#[test]
+fn bookmark_tracking_surface_resolves() {
+    _ = zanshin_jj::Repo::bookmark_set
+        as fn(
+            &mut zanshin_jj::Repo,
+            &[String],
+            Option<&zanshin_jj::ChangeId>,
+            bool,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::bookmark_forget
+        as fn(&mut zanshin_jj::Repo, &[String], bool) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::bookmark_track
+        as fn(
+            &mut zanshin_jj::Repo,
+            &[String],
+            &[String],
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::bookmark_untrack
+        as fn(
+            &mut zanshin_jj::Repo,
+            &[String],
+            &[String],
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+}
+
 /// Story 9.19: `bookmark move` / `advance` / `rename` reuse `MutationResult`/`MutateError`; the
 /// move takes its options struct (names EXACT, `from` revset texts, `to` a change id), advance
 /// exact names and an optional change id, rename two decoded names and the overwrite flag. The
@@ -1950,8 +1979,9 @@ fn story_9_28_surface_resolves() {
 
 /// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds;
 /// Story 9.53 the unresolved conflicts; Story 9.51 the template diagnostic; Story 9.54's closing
-/// run the bookmark auto-track warning; Story 9.19 the four rename warnings).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 68] = {
+/// run the bookmark auto-track warning; Story 9.19 the four rename warnings; Story 9.11 the five
+/// tracking warnings).
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 73] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -1977,6 +2007,11 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 68] = {
         K::BookmarkTrackingDropped,
         K::BookmarkRemotesNotRenamed,
         K::BookmarkTrackedRemotesExist,
+        K::RemoteBookmarksUnmatched,
+        K::BookmarkRemotesUnmatched,
+        K::BookmarkAlreadyTracked,
+        K::BookmarkNotTracked,
+        K::BookmarkGitTrackingUntrack,
         K::AbsorbPathSkipped,
         K::PathAccessDenied,
         K::PathNotAFile,
@@ -2104,6 +2139,11 @@ fn story_9_32_warning_surface_resolves() {
             | K::BookmarkTrackingDropped
             | K::BookmarkRemotesNotRenamed
             | K::BookmarkTrackedRemotesExist
+            | K::RemoteBookmarksUnmatched
+            | K::BookmarkRemotesUnmatched
+            | K::BookmarkAlreadyTracked
+            | K::BookmarkNotTracked
+            | K::BookmarkGitTrackingUntrack
             | K::AbsorbPathSkipped
             | K::PathAccessDenied
             | K::PathNotAFile
@@ -2151,7 +2191,7 @@ fn story_9_32_warning_surface_resolves() {
             | K::WorkspaceNoLongerExists => {}
         }
     }
-    assert_eq!(every.len(), 68);
+    assert_eq!(every.len(), 73);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

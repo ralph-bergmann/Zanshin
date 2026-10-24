@@ -420,6 +420,11 @@ void main() {
         'jj.bookmark_tracking_dropped',
         'jj.bookmark_remotes_not_renamed',
         'jj.bookmark_tracked_remotes_exist',
+        'jj.remote_bookmarks_unmatched',
+        'jj.bookmark_remotes_unmatched',
+        'jj.bookmark_already_tracked',
+        'jj.bookmark_not_tracked',
+        'jj.bookmark_git_tracking_untrack',
         'jj.absorb_path_skipped',
         'jj.path_access_denied',
         'jj.path_not_a_file',
@@ -467,7 +472,7 @@ void main() {
         'jj.workspace_no_longer_exists',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(69), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(74), reason: 'no code is registered twice');
     });
   });
 

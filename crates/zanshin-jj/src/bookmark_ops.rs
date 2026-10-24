@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! `bookmark_ops.rs` — the bookmark MUTATIONS: `bookmark create` and `bookmark delete` (Story
-//! 9.8), `bookmark move`, `advance` and `rename` (Story 9.19).
+//! 9.8), `bookmark move`, `advance` and `rename` (Story 9.19), `bookmark set`, `forget`, `track`
+//! and `untrack` (Story 9.11).
 //!
 //! Split from [`crate::bookmarks`], which stays the pure FR-JJ-8 *read* with its own minimal
 //! [`crate::BookmarkError`]; these two return [`MutationResult`]/[`MutateError`], and mixing
@@ -60,16 +61,43 @@
 //!   `jj.bookmark_tracking_dropped`, `jj.bookmark_remotes_not_renamed` and
 //!   `jj.bookmark_tracked_remotes_exist`, each with the CLI's message; the hint line the CLI prints
 //!   under each is dropped (warnings carry code and message only).
+//!
+//! # Set, forget, track and untrack (Story 9.11, ports of `bookmark/{set,forget,track,untrack}.rs`
+//! @ v0.46.0)
+//!
+//! - **Two name currencies, as the CLI has them.** `set` takes DECODED names, as `create` does
+//!   (its clap parser is `parse_bookmark_name`); `forget` takes pass-through string patterns, as
+//!   `delete` does; `track` / `untrack` take the CLI's `BOOKMARK[@REMOTE]` texts unchanged — a
+//!   `name@remote` symbol names one remote bookmark exactly, anything else is a pattern — and
+//!   `--remote` remote-name patterns.
+//! - **`set` and `create` share one auto-track loop** ([`auto_track_created`]).
+//! - **Only clap's checks refuse before the snapshot** (required names, `set`'s empty name); the
+//!   pattern parse and the mixed-syntax refusals follow it, where the CLI's command body runs them.
+//! - **No terminal UX.** "Created/Moved N bookmarks …", "No bookmarks to forget.", "Forgot N
+//!   local/remote bookmarks.", "Started/Stopped tracking N remote bookmarks." and `track`'s listing
+//!   of conflicted bookmarks after its finish are dropped (an unchanged `new_op_id` says nothing
+//!   happened; `list_bookmarks` re-reads the rows); so is the parse-error hint, as for `delete`.
+//!   The warnings ride the call's warnings: `jj.remote_bookmarks_unmatched`,
+//!   `jj.bookmark_remotes_unmatched`, `jj.bookmark_already_tracked`, `jj.bookmark_not_tracked`,
+//!   `jj.bookmark_git_tracking_untrack`, plus the shared `jj.bookmark_target_empty`,
+//!   `jj.bookmark_names_unmatched` and `jj.bookmark_auto_track_existing`.
 
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use jj_lib::commit::Commit;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::RefTarget;
-use jj_lib::ref_name::{RefName, RefNameBuf};
+use jj_lib::op_store::RemoteRef;
+use jj_lib::ref_name::{RefName, RefNameBuf, RemoteName, RemoteNameBuf, RemoteRefSymbolBuf};
 use jj_lib::repo::{ReadonlyRepo, Repo as _};
-use jj_lib::revset::{parse_string_expression, Revset, RevsetDiagnostics, RevsetParseError};
+use jj_lib::revset::{
+    expect_string_expression, parse_program, parse_string_expression, ExpressionKind, Revset, RevsetDiagnostics,
+    RevsetParseError,
+};
 use jj_lib::str_util::{StringExpression, StringMatcher};
+use jj_lib::transaction::Transaction;
+use jj_lib::view::View;
 use jj_lib::workspace::Workspace;
 
 use crate::mutate::{self, finish_or_no_op_at, flatten_chain, MutateError, MutationResult};
@@ -80,11 +108,12 @@ use crate::ChangeId;
 /// Turns caller-supplied names into jj-lib `RefNameBuf`s, refusing the two arities the CLI
 /// refuses: no names at all (clap's `required = true`) and an EMPTY name (`parse_symbol`'s
 /// `Expected non-empty string`, which no spelling of the CLI argument can get around).
-fn validate_names(names: &[String]) -> Result<Vec<RefNameBuf>, MutateError> {
+/// `verb` names the CLI command in the refusal (`create`, `set`).
+fn validate_names(verb: &str, names: &[String]) -> Result<Vec<RefNameBuf>, MutateError> {
     if names.is_empty() {
-        return Err(MutateError::invalid(
-            "bookmark create requires at least one name".to_owned(),
-        ));
+        return Err(MutateError::invalid(format!(
+            "bookmark {verb} requires at least one name"
+        )));
     }
     if names.iter().any(String::is_empty) {
         return Err(MutateError::invalid("bookmark name must not be empty".to_owned()));
@@ -116,13 +145,19 @@ fn has_tracked_remote_bookmarks(repo: &dyn jj_lib::repo::Repo, bookmark: &RefNam
 /// on a GIT-backed repo (`cli_util.rs:3465-3474` `default_ignored_remote_name` @ v0.46.0), every
 /// remote otherwise. Shared by [`has_tracked_remote_bookmarks`] and [`rename`].
 fn ignored_remote_matcher(store: &jj_lib::store::Store) -> StringMatcher {
-    if jj_lib::git::get_git_backend(store).is_ok() {
-        StringExpression::exact(jj_lib::git::REMOTE_NAME_FOR_LOCAL_GIT_REPO.as_str())
-            .negated()
-            .to_matcher()
-    } else {
-        StringMatcher::all()
+    match default_ignored_remote(store) {
+        Some(remote) => StringExpression::exact(remote.as_str()).negated().to_matcher(),
+        None => StringMatcher::all(),
     }
+}
+
+/// The CLI's `default_ignored_remote_name` (`cli_util.rs:3463-3474` @ v0.46.0): jj-lib's reserved
+/// `git` on a GIT-backed repo, no remote otherwise. `forget` skips it when untracking, `track` /
+/// `untrack` leave it out of their default remote filter (Story 9.11).
+fn default_ignored_remote(store: &jj_lib::store::Store) -> Option<&'static RemoteName> {
+    jj_lib::git::get_git_backend(store)
+        .is_ok()
+        .then_some(jj_lib::git::REMOTE_NAME_FOR_LOCAL_GIT_REPO)
 }
 
 /// Renders a pattern parse failure the way the CLI's two lines do — its message plus its
@@ -135,8 +170,11 @@ fn ignored_remote_matcher(store: &jj_lib::store::Store) -> StringMatcher {
 /// string pattern". jj-lib keeps the part a user can act on — "error parsing glob '[':
 /// unclosed character class; missing ']'", "Invalid string pattern kind bogus:" — behind
 /// `#[source]`. So: the kind as the head, then the flattened `source()` chain.
-fn describe_pattern_parse_error(e: &RevsetParseError) -> String {
-    let mut reason = format!("failed to parse name pattern: {}", e.kind());
+///
+/// `what` names the parsed thing in the head: "name pattern", or `track`/`untrack`'s "name pattern
+/// or remote symbol" (`revset_util.rs:399-402` @ v0.46.0).
+fn describe_pattern_parse_error(what: &str, e: &RevsetParseError) -> String {
+    let mut reason = format!("failed to parse {what}: {}", e.kind());
     if let Some(source) = std::error::Error::source(e) {
         reason.push_str(": ");
         reason.push_str(&flatten_chain(source));
@@ -164,8 +202,8 @@ pub(crate) fn union_patterns(patterns: &[String]) -> Result<StringExpression, St
     let mut diagnostics = RevsetDiagnostics::new();
     let mut expressions = Vec::with_capacity(patterns.len());
     for pattern in patterns {
-        let expression =
-            parse_string_expression(&mut diagnostics, pattern).map_err(|e| describe_pattern_parse_error(&e))?;
+        let expression = parse_string_expression(&mut diagnostics, pattern)
+            .map_err(|e| describe_pattern_parse_error("name pattern", &e))?;
         expressions.push(expression);
     }
     Ok(StringExpression::union_all(expressions))
@@ -183,6 +221,37 @@ fn join_symbols(names: &[RefNameBuf]) -> String {
         .map(|name| name.as_symbol().to_string())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// The CLI's auto-tracking of one CREATED bookmark (`create.rs:93-110`, `set.rs:101-117` @
+/// v0.46.0), shared by [`create`] and [`set`]: on every remote, in name order, whose matcher
+/// accepts `name` and that has a remote view in `base` (the pre-call view), `name@remote` becomes
+/// tracked (`MutableRepo::track_remote_bookmark` merges the remote target into the local one);
+/// when that view already holds the name, `jj.bookmark_auto_track_existing` is warned first.
+fn auto_track_created(
+    tx: &mut Transaction,
+    base: &ReadonlyRepo,
+    sink: &mut Warnings,
+    matchers: &BTreeMap<RemoteNameBuf, StringMatcher>,
+    name: &RefName,
+) -> Result<(), MutateError> {
+    for (remote, matcher) in matchers {
+        if !matcher.is_match(name.as_str()) {
+            continue;
+        }
+        let Some(remote_view) = base.view().get_remote_view(remote) else {
+            continue;
+        };
+        let symbol = name.to_remote_symbol(remote);
+        if remote_view.bookmarks.contains_key(name) {
+            sink.push(
+                WarningKind::BookmarkAutoTrackExisting,
+                format!("Auto-tracking bookmark that exists on the remote: {symbol}"),
+            );
+        }
+        pollster::block_on(tx.repo_mut().track_remote_bookmark(symbol)).map_err(mutate::be)?;
+    }
+    Ok(())
 }
 
 /// Creates local bookmarks pointing at one revision (Story 9.8) — the CLI's
@@ -231,7 +300,7 @@ pub(crate) fn create(
     names: &[String],
     revision: Option<&ChangeId>,
 ) -> Result<MutationResult, MutateError> {
-    let ref_names = validate_names(names)?;
+    let ref_names = validate_names("create", names)?;
 
     // ONE head load for the whole verb, as the CLI has. The revision has to resolve before
     // the transaction opens (CLI order, `create.rs:57-60`) because the op-log description
@@ -283,22 +352,7 @@ pub(crate) fn create(
         for name in &ref_names {
             tx.repo_mut()
                 .set_local_bookmark_target(name, RefTarget::normal(target_id.clone()));
-            for (remote, matcher) in &auto_track {
-                if !matcher.is_match(name.as_str()) {
-                    continue;
-                }
-                let Some(remote_view) = base.view().get_remote_view(remote) else {
-                    continue;
-                };
-                let symbol = name.to_remote_symbol(remote);
-                if remote_view.bookmarks.contains_key(name) {
-                    sink.push(
-                        WarningKind::BookmarkAutoTrackExisting,
-                        format!("Auto-tracking bookmark that exists on the remote: {symbol}"),
-                    );
-                }
-                pollster::block_on(tx.repo_mut().track_remote_bookmark(symbol)).map_err(mutate::be)?;
-            }
+            auto_track_created(tx, &base, sink, &auto_track, name)?;
         }
         // NO explicit rebase/normalize pass: `set_local_bookmark_target` calls
         // `View::add_head` (clearing the head-normalized bit) but records no REWRITE, and
@@ -322,8 +376,8 @@ pub(crate) fn create(
 ///
 /// A TRACKED `name@remote` SURVIVES the delete by design (`jj-lib view.rs:197-213` prunes
 /// only remote rows that are themselves absent), which is the "deleted bookmark, propagates
-/// on the next push" state [`crate::Repo::list_bookmarks`] keeps reporting. `jj bookmark
-/// forget` (Story 9.11) is the verb that does not.
+/// on the next push" state [`crate::Repo::list_bookmarks`] keeps reporting. [`forget`] (Story
+/// 9.11) is the verb that does not.
 ///
 /// Description: `delete bookmark {names}` with the MATCHED names joined `", "` in VIEW
 /// (lexicographic) order (`delete.rs:79-89`).
@@ -849,6 +903,374 @@ pub(crate) fn rename(
     Ok(finished.mutation)
 }
 
+/// Refuses clap's `required = true` and an EMPTY name of `bookmark set` (`set.rs:54-56` @ v0.46.0,
+/// its `value_parser` is `parse_bookmark_name`) — before the pre-verb snapshot
+/// ([`crate::Repo::bookmark_set`]), as the CLI parses its arguments first.
+///
+/// # Errors
+///
+/// [`MutateError::InvalidInput`] when `names` is empty or a name is the empty string.
+pub(crate) fn check_set_args(names: &[String]) -> Result<(), MutateError> {
+    validate_names("set", names).map(drop)
+}
+
+/// Refuses clap's `required = true` of `bookmark forget`, `track` and `untrack` (`verb`) — before
+/// the pre-verb snapshot. Every other refusal of their names follows the snapshot, where the CLI's
+/// command body parses them.
+///
+/// # Errors
+///
+/// [`MutateError::InvalidInput`] when `names` is empty.
+pub(crate) fn check_names_given(verb: &str, names: &[String]) -> Result<(), MutateError> {
+    if names.is_empty() {
+        return Err(MutateError::invalid(format!(
+            "bookmark {verb} requires at least one name"
+        )));
+    }
+    Ok(())
+}
+
+/// Creates or moves local bookmarks to one revision by name (Story 9.11) — the CLI's `jj bookmark
+/// set` (`bookmark/set.rs:61-153` @ v0.46.0). `names` are DECODED names, as [`create`]'s are.
+///
+/// `revision` resolves as [`create`]'s (`None` = `@`). Per name in ARGUMENT order, fail-fast: a
+/// name is NEW when its local target is absent and it has no tracked remote bookmark (an absent
+/// local with a tracked remote is resurrected, not created); without `allow_backwards` a move that
+/// is not a fast-forward refuses. Then an empty, undescribed target warns
+/// `jj.bookmark_target_empty`, the auto-track matchers are parsed, and every name is pointed at the
+/// target as a NORMAL target — the NEW ones auto-tracked as [`create`] tracks them. A run that
+/// changes nothing writes NO operation.
+///
+/// Description: `point bookmark {names} to commit {id}`, names in argument order, full hex.
+///
+/// # Errors
+///
+/// - [`MutateError::InvalidInput`] — `names` is empty or holds an empty name; or a backwards or
+///   sideways move without `allow_backwards` ("Refusing to move bookmark backwards or sideways:
+///   {name}", hint "Use --allow-backwards to allow it.").
+/// - [`MutateError::ChangeNotFound`] / [`MutateError::RevsetResolutionError`] — `revision` does not
+///   resolve, or there is no `@` for its default.
+/// - [`MutateError::Config`] — a `remotes.<r>` auto-track value does not parse.
+/// - [`MutateError::Backend`] — an underlying jj-lib failure.
+#[must_use = "the Result must be used; drop it explicitly if intentional"]
+pub(crate) fn set(
+    workspace: &mut Workspace,
+    ctx: &mut VerbContext,
+    names: &[String],
+    revision: Option<&ChangeId>,
+    allow_backwards: bool,
+) -> Result<MutationResult, MutateError> {
+    let ref_names = validate_names("set", names)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
+    let workspace_name = workspace.workspace_name().to_owned();
+    let target = crate::op_support::resolve_or_wc(readonly.as_ref(), &workspace_name, revision)
+        .map_err(|e| mutate::res(e, revision))?;
+    let target_id = target.id().clone();
+    let mut created = HashSet::new();
+    for name in &ref_names {
+        let old = readonly.view().get_local_bookmark(name);
+        if old.is_absent() && !has_tracked_remote_bookmarks(readonly.as_ref(), name) {
+            created.insert(name.clone());
+        }
+        if !allow_backwards && !is_fast_forward(readonly.as_ref(), old, &target_id)? {
+            return Err(MutateError::invalid_hinted(
+                format!("Refusing to move bookmark backwards or sideways: {}", name.as_symbol()),
+                "Use --allow-backwards to allow it.",
+            ));
+        }
+    }
+    if pollster::block_on(target.is_discardable(readonly.as_ref())).map_err(mutate::be)? {
+        ctx.warnings
+            .push(WarningKind::BookmarkTargetEmpty, "Target revision is empty.");
+    }
+    let auto_track = crate::config::remote_auto_track_bookmarks_for_new_bookmarks(&ctx.config);
+    let description = format!(
+        "point bookmark {names} to commit {id}",
+        names = join_symbols(&ref_names),
+        id = target_id.hex(),
+    );
+    let finished = finish_or_no_op_at(workspace, readonly, &description, ctx, |tx, sink| {
+        let auto_track = auto_track.map_err(mutate::cfg)?;
+        let base = tx.base_repo().clone();
+        for name in &ref_names {
+            tx.repo_mut()
+                .set_local_bookmark_target(name, RefTarget::normal(target_id.clone()));
+            if created.contains(name) {
+                auto_track_created(tx, &base, sink, &auto_track, name)?;
+            }
+        }
+        Ok(())
+    })?;
+    Ok(finished.mutation)
+}
+
+/// Forgets bookmarks (Story 9.11) — the CLI's `jj bookmark forget` (`bookmark/forget.rs:61-131` @
+/// v0.46.0): the local bookmark goes WITHOUT becoming a deletion to push.
+///
+/// `patterns` are pass-through string patterns, unioned, a bare one a GLOB (as [`delete`]'s). They
+/// match bookmark NAMES with a local or a remote row (`View::bookmarks`); an exact name with
+/// neither warns `jj.bookmark_names_unmatched`. Per matched name, in view order, the local target
+/// becomes absent and every remote row is untracked — except the default-ignored remote (`git` on a
+/// Git-backed repo), which is skipped; with `include_remotes` every remote row is forgotten instead
+/// (`RemoteRef::absent()`, `git` included). Matching nothing, or changing nothing, writes NO
+/// operation.
+///
+/// Description: `forget bookmark {names}`, the matched names in view order.
+///
+/// # Errors
+///
+/// - [`MutateError::InvalidInput`] — a pattern does not parse.
+/// - [`MutateError::Backend`] — an underlying jj-lib failure.
+#[must_use = "the Result must be used; drop it explicitly if intentional"]
+pub(crate) fn forget(
+    workspace: &mut Workspace,
+    ctx: &mut VerbContext,
+    patterns: &[String],
+    include_remotes: bool,
+) -> Result<MutationResult, MutateError> {
+    let expression = union_expression(patterns)?;
+    let name_matcher = expression.to_matcher();
+    let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
+    let ignored = default_ignored_remote(readonly.store());
+    let forgotten: Vec<(RefNameBuf, Vec<RemoteNameBuf>)> = readonly
+        .view()
+        .bookmarks()
+        .filter(|(name, _)| name_matcher.is_match(name.as_str()))
+        .map(|(name, target)| {
+            let remotes = target
+                .remote_refs
+                .iter()
+                .map(|(remote, _)| (*remote).to_owned())
+                .collect();
+            (name.to_owned(), remotes)
+        })
+        .collect();
+    crate::bookmarks::warn_unmatched(&mut ctx.warnings, readonly.view(), &expression);
+
+    let names: Vec<RefNameBuf> = forgotten.iter().map(|(name, _)| name.clone()).collect();
+    let description = format!("forget bookmark {}", join_symbols(&names));
+    let finished = finish_or_no_op_at(workspace, readonly, &description, ctx, |tx, _sink| {
+        for (name, remotes) in &forgotten {
+            tx.repo_mut().set_local_bookmark_target(name, RefTarget::absent());
+            for remote in remotes {
+                let symbol = name.to_remote_symbol(remote);
+                if include_remotes {
+                    tx.repo_mut().set_remote_bookmark(symbol, RemoteRef::absent());
+                } else if ignored != Some(&**remote) {
+                    tx.repo_mut().untrack_remote_bookmark(symbol);
+                }
+            }
+        }
+        Ok(())
+    })?;
+    Ok(finished.mutation)
+}
+
+/// Which of the two tracking verbs runs — `bookmark track` or `bookmark untrack`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Tracking {
+    /// `jj bookmark track` (`bookmark/track.rs` @ v0.46.0).
+    Track,
+    /// `jj bookmark untrack` (`bookmark/untrack.rs` @ v0.46.0).
+    Untrack,
+}
+
+/// A remote bookmark a tracking verb matched, and whether it is tracked now.
+type MatchedRemote = (RemoteRefSymbolBuf, bool);
+
+/// Splits `BOOKMARK[@REMOTE]` texts into name patterns and remote symbols — the CLI's
+/// `parse_name_patterns_or_remote_symbols` (`revset_util.rs:386-416` @ v0.46.0), minus its parse
+/// diagnostics (none for string patterns in jj-lib 0.46, as [`union_patterns`] notes) and its hint.
+fn parse_names_or_symbols(texts: &[String]) -> Result<(Vec<StringExpression>, Vec<RemoteRefSymbolBuf>), MutateError> {
+    let wrap =
+        |e: RevsetParseError| MutateError::invalid(describe_pattern_parse_error("name pattern or remote symbol", &e));
+    let mut diagnostics = RevsetDiagnostics::new();
+    let mut patterns = Vec::new();
+    let mut symbols = Vec::new();
+    for text in texts {
+        let node = parse_program(text).map_err(wrap)?;
+        if let ExpressionKind::RemoteSymbol(symbol) = node.kind {
+            symbols.push(symbol);
+        } else {
+            patterns.push(expect_string_expression(&mut diagnostics, &node).map_err(wrap)?);
+        }
+    }
+    Ok((patterns, symbols))
+}
+
+/// The CLI's mixed-syntax refusals of `track` / `untrack` (`track.rs:84-95`, `untrack.rs:80-91` @
+/// v0.46.0).
+fn refuse_mixed_syntax(
+    patterns: &[StringExpression],
+    symbols: &[RemoteRefSymbolBuf],
+    remotes: &[String],
+) -> Result<(), MutateError> {
+    if !patterns.is_empty() && !symbols.is_empty() {
+        return Err(MutateError::invalid(
+            "Cannot specify both <bookmark> patterns and <bookmark>@<remote> symbols",
+        ));
+    }
+    if !remotes.is_empty() && !symbols.is_empty() {
+        return Err(MutateError::invalid(
+            "--remote cannot be used with <bookmark>@<remote> symbols",
+        ));
+    }
+    Ok(())
+}
+
+/// The CLI's `resolve_trackable_remote_bookmarks` (`bookmark/mod.rs:117-145` @ v0.46.0): a symbol
+/// is trackable when its remote bookmark is present, or its local bookmark is present and its
+/// remote has a view; sorted and deduplicated. The others warn `jj.remote_bookmarks_unmatched`.
+fn resolve_trackable(sink: &mut Warnings, view: &View, symbols: &[RemoteRefSymbolBuf]) -> Vec<MatchedRemote> {
+    let mut trackable = Vec::new();
+    let mut unmatched = Vec::new();
+    for symbol in symbols {
+        let symbol = symbol.as_ref();
+        let remote_ref = view.get_remote_bookmark(symbol);
+        if remote_ref.is_present()
+            || (view.get_local_bookmark(symbol.name).is_present() && view.get_remote_view(symbol.remote).is_some())
+        {
+            trackable.push((symbol.to_owned(), remote_ref.is_tracked()));
+        } else {
+            unmatched.push(symbol.to_string());
+        }
+    }
+    trackable.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+    trackable.dedup_by(|(a, _), (b, _)| a == b);
+    if !unmatched.is_empty() {
+        sink.push(
+            WarningKind::RemoteBookmarksUnmatched,
+            format!("No matching remote bookmarks for names: {}", unmatched.join(", ")),
+        );
+    }
+    trackable
+}
+
+/// The CLI's `trackable_remote_bookmarks_matching` (`bookmark/mod.rs:147-163` @ v0.46.0): the
+/// present-or-tracked remote bookmarks matching both matchers, then — per matching remote view —
+/// every matching LOCAL name that view lacks, as an absent (so untracked) `ABSENT_REMOTE_REF`.
+fn trackable_matching(view: &View, bookmarks: &StringMatcher, remotes: &StringMatcher) -> Vec<MatchedRemote> {
+    let present = view
+        .remote_bookmarks_matching(bookmarks, remotes)
+        .map(|(symbol, remote_ref)| (symbol.to_owned(), remote_ref.is_tracked()));
+    let absent = view.remote_views_matching(remotes).flat_map(|(remote, remote_view)| {
+        view.local_bookmarks_matching(bookmarks)
+            .filter(|(name, _)| !remote_view.bookmarks.contains_key(*name))
+            .map(move |(name, _)| (name.to_remote_symbol(remote).to_owned(), false))
+    });
+    present.chain(absent).collect()
+}
+
+/// The CLI's `warn_unmatched_remotes` (`bookmark/mod.rs:229-243` @ v0.46.0): one warning naming
+/// every exact remote name with no remote view.
+fn warn_unmatched_remotes(sink: &mut Warnings, view: &View, expression: &StringExpression) {
+    let unmatched: Vec<String> = expression
+        .exact_strings()
+        .map(RemoteName::new)
+        .filter(|name| view.get_remote_view(name).is_none())
+        .map(|name| name.as_symbol().to_string())
+        .collect();
+    if !unmatched.is_empty() {
+        sink.push(
+            WarningKind::BookmarkRemotesUnmatched,
+            format!("No matching remotes for names: {}", unmatched.join(", ")),
+        );
+    }
+}
+
+/// Starts or stops tracking remote bookmarks (Story 9.11) — the CLI's `jj bookmark track` /
+/// `untrack` (`bookmark/track.rs:76-148`, `untrack.rs:69-142` @ v0.46.0), by `tracking`.
+///
+/// `names` are `BOOKMARK[@REMOTE]` texts passed through: a `name@remote` symbol names one remote
+/// bookmark exactly (revset-quoted where needed, e.g. `"a b"@origin`), anything else is a string
+/// pattern (a bare one a GLOB). `remotes` are remote-name patterns (the CLI's `--remote`; empty =
+/// not given). Patterns and symbols do not mix, and `remotes` do not go with symbols.
+///
+/// Symbols resolve to the trackable remote bookmarks (unmatched ones warn
+/// `jj.remote_bookmarks_unmatched`); patterns match every remote bookmark of the `remotes` (by
+/// default every remote but `git` on a Git-backed repo where `git` has a view) plus the matching
+/// local names a remote lacks, then warn unmatched exact names (`jj.bookmark_names_unmatched`) and
+/// remotes (`jj.bookmark_remotes_unmatched`). `Track` warns already-tracked refs
+/// (`jj.bookmark_already_tracked`) and tracks the rest; `Untrack` warns the ignored remote's refs
+/// (`jj.bookmark_git_tracking_untrack`) and untracked ones (`jj.bookmark_not_tracked`) and untracks
+/// the rest. Nothing left writes NO operation.
+///
+/// Description: `track remote bookmark {symbols}` / `untrack remote bookmark {symbols}`.
+///
+/// # Errors
+///
+/// - [`MutateError::InvalidInput`] — a name or remote does not parse, or patterns and symbols are
+///   mixed, or `remotes` come with symbols.
+/// - [`MutateError::Backend`] — an underlying jj-lib failure.
+#[must_use = "the Result must be used; drop it explicitly if intentional"]
+pub(crate) fn track_or_untrack(
+    workspace: &mut Workspace,
+    ctx: &mut VerbContext,
+    names: &[String],
+    remotes: &[String],
+    tracking: Tracking,
+) -> Result<MutationResult, MutateError> {
+    let (patterns, symbols) = parse_names_or_symbols(names)?;
+    refuse_mixed_syntax(&patterns, &symbols, remotes)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
+    let view = readonly.view();
+    // Suppresses the unmatched-remotes warning for the default-ignored remote.
+    let ignored = default_ignored_remote(readonly.store()).filter(|remote| view.get_remote_view(remote).is_some());
+    let matched = if symbols.is_empty() {
+        let bookmark_expr = StringExpression::union_all(patterns);
+        let remote_expr = if !remotes.is_empty() {
+            union_expression(remotes)?
+        } else if let Some(remote) = ignored {
+            StringExpression::exact(remote.as_str()).negated()
+        } else {
+            StringExpression::all()
+        };
+        let matched = trackable_matching(view, &bookmark_expr.to_matcher(), &remote_expr.to_matcher());
+        crate::bookmarks::warn_unmatched(&mut ctx.warnings, view, &bookmark_expr);
+        warn_unmatched_remotes(&mut ctx.warnings, view, &remote_expr);
+        matched
+    } else {
+        resolve_trackable(&mut ctx.warnings, view, &symbols)
+    };
+
+    let mut chosen = Vec::new();
+    for (symbol, tracked) in matched {
+        let skip = match tracking {
+            Tracking::Track if tracked => {
+                Some((WarningKind::BookmarkAlreadyTracked, "Remote bookmark already tracked"))
+            }
+            Tracking::Untrack if ignored == Some(symbol.as_ref().remote) => Some((
+                WarningKind::BookmarkGitTrackingUntrack,
+                "Git-tracking bookmark cannot be untracked",
+            )),
+            Tracking::Untrack if !tracked => Some((WarningKind::BookmarkNotTracked, "Remote bookmark not tracked yet")),
+            Tracking::Track | Tracking::Untrack => None,
+        };
+        match skip {
+            Some((kind, text)) => ctx.warnings.push(kind, format!("{text}: {symbol}")),
+            None => chosen.push(symbol),
+        }
+    }
+    let verb = match tracking {
+        Tracking::Track => "track",
+        Tracking::Untrack => "untrack",
+    };
+    let joined: Vec<String> = chosen.iter().map(ToString::to_string).collect();
+    let description = format!("{verb} remote bookmark {}", joined.join(", "));
+    let finished = finish_or_no_op_at(workspace, readonly, &description, ctx, |tx, _sink| {
+        for symbol in &chosen {
+            match tracking {
+                Tracking::Track => {
+                    pollster::block_on(tx.repo_mut().track_remote_bookmark(symbol.as_ref())).map_err(mutate::be)?;
+                }
+                Tracking::Untrack => tx.repo_mut().untrack_remote_bookmark(symbol.as_ref()),
+            }
+        }
+        Ok(())
+    })?;
+    Ok(finished.mutation)
+}
+
 /// What `jj bookmark move <name> --to <target>` would do to the one LOCAL bookmark named exactly
 /// `name` (Story 9.31) — the plan of `cmd_bookmark_move` (`cli/src/commands/bookmark/move.rs` @
 /// v0.46.0) for an exact name.
@@ -914,7 +1336,10 @@ fn is_fast_forward(
 mod tests {
     use jj_lib::str_util::StringMatcher;
 
-    use super::{join_symbols, union_expression, validate_names};
+    use super::{
+        check_names_given, check_set_args, join_symbols, parse_names_or_symbols, refuse_mixed_syntax, union_expression,
+        validate_names,
+    };
 
     /// The matcher `delete` filters with.
     fn union_matcher(patterns: &[String]) -> Result<StringMatcher, MutateError> {
@@ -926,17 +1351,18 @@ mod tests {
     /// refusals here (a GUI has no clap): no names at all, and an empty name.
     #[test]
     fn validate_names_refuses_the_two_clap_level_arities() {
-        let empty_list = validate_names(&[]).expect_err("clap's required = true");
+        let empty_list = validate_names("create", &[]).expect_err("clap's required = true");
         assert!(
             matches!(&empty_list, MutateError::InvalidInput { reason, .. } if reason.contains("at least one name")),
             "unexpected error: {empty_list:?}"
         );
-        let empty_name = validate_names(&["ok".to_owned(), String::new()]).expect_err("parse_symbol rejects it");
+        let empty_name =
+            validate_names("create", &["ok".to_owned(), String::new()]).expect_err("parse_symbol rejects it");
         assert!(
             matches!(&empty_name, MutateError::InvalidInput { reason, .. } if reason.contains("must not be empty")),
             "unexpected error: {empty_name:?}"
         );
-        let ok = validate_names(&["a".to_owned(), "b".to_owned()]).expect("two ordinary names");
+        let ok = validate_names("create", &["a".to_owned(), "b".to_owned()]).expect("two ordinary names");
         assert_eq!(ok.len(), 2);
     }
 
@@ -945,7 +1371,7 @@ mod tests {
     /// string is what NFR-R-2 pins byte-for-byte.
     #[test]
     fn join_symbols_renders_the_quoted_revset_form_in_argument_order() {
-        let names = validate_names(&["b".to_owned(), "a b".to_owned()]).expect("valid names");
+        let names = validate_names("create", &["b".to_owned(), "a b".to_owned()]).expect("valid names");
         assert_eq!(join_symbols(&names), r#"b, "a b""#);
         assert_eq!(join_symbols(&[]), "");
     }
@@ -1055,5 +1481,95 @@ mod tests {
         let root = jj_lib::repo::Repo::store(head.as_ref()).root_commit_id().clone();
         assert!(super::is_fast_forward(head.as_ref(), &RefTarget::absent(), &root).expect("absent"));
         assert!(super::is_fast_forward(head.as_ref(), &RefTarget::normal(root.clone()), &root).expect("itself"));
+    }
+
+    /// Story 9.11: `set`'s and the pattern verbs' clap refusals name their verb, and `set` keeps
+    /// the empty-name refusal `create` has.
+    #[test]
+    fn clap_checks_name_their_verb() {
+        let no_names = check_set_args(&[]).expect_err("required = true");
+        assert!(
+            no_names.to_string().contains("bookmark set requires at least one name"),
+            "{no_names}"
+        );
+        let empty = check_set_args(&[String::new()]).expect_err("parse_bookmark_name");
+        assert!(empty.to_string().contains("must not be empty"), "{empty}");
+        check_set_args(&["a".to_owned()]).expect("one name");
+        for verb in ["forget", "track", "untrack"] {
+            let refused = check_names_given(verb, &[]).expect_err("required = true");
+            assert!(
+                refused
+                    .to_string()
+                    .contains(&format!("bookmark {verb} requires at least one name")),
+                "{refused}"
+            );
+            check_names_given(verb, &[String::new()]).expect("an empty pattern is the parser's to refuse");
+        }
+    }
+
+    /// `parse_name_patterns_or_remote_symbols`: a `name@remote` text is a symbol (quoted parts
+    /// decoded), anything else a string pattern — a bare word a glob, prefixes and operators kept.
+    #[test]
+    fn parse_names_or_symbols_splits_symbols_from_patterns() {
+        let texts = ["x@origin", "\"a b\"@\"my remote\"", "glob:\"b-*\"", "y", "c ~ d"].map(str::to_owned);
+        let (patterns, symbols) = parse_names_or_symbols(&texts).expect("all parse");
+        let symbols: Vec<String> = symbols.iter().map(ToString::to_string).collect();
+        assert_eq!(symbols, ["x@origin", "\"a b\"@\"my remote\""]);
+        assert_eq!(patterns.len(), 3);
+        let matcher = jj_lib::str_util::StringExpression::union_all(patterns).to_matcher();
+        assert!(matcher.is_match("b-1") && matcher.is_match("y") && matcher.is_match("c"));
+        assert!(!matcher.is_match("d"), "`~` subtracts");
+    }
+
+    /// The parse refusal's head is the CLI's "name pattern or remote symbol" one, with jj-lib's
+    /// actionable source appended; a non-string expression (`x@`) is refused as such.
+    #[test]
+    fn parse_names_or_symbols_refuses_with_the_track_head() {
+        let bad_glob = parse_names_or_symbols(&["glob:\"[\"".to_owned()]).expect_err("unterminated class");
+        assert_eq!(
+            bad_glob
+                .to_string()
+                .split_once(": ")
+                .map(|(_, rest)| rest.to_owned())
+                .unwrap_or_default(),
+            "failed to parse name pattern or remote symbol: Invalid string pattern: error parsing glob '[': \
+             unclosed character class; missing ']'",
+            "{bad_glob}"
+        );
+        let syntax = parse_names_or_symbols(&["a b".to_owned()]).expect_err("trailing garbage");
+        assert!(
+            syntax
+                .to_string()
+                .ends_with("failed to parse name pattern or remote symbol: Syntax error"),
+            "{syntax}"
+        );
+        let workspace = parse_names_or_symbols(&["x@".to_owned()]).expect_err("an @workspace is no string");
+        assert!(
+            workspace
+                .to_string()
+                .ends_with("failed to parse name pattern or remote symbol: Invalid string expression"),
+            "{workspace}"
+        );
+    }
+
+    /// `track` / `untrack`'s mixed-syntax refusals, patterns-and-symbols first.
+    #[test]
+    fn refuse_mixed_syntax_refuses_in_the_cli_order() {
+        let (patterns, symbols) = parse_names_or_symbols(&["a".to_owned(), "b@origin".to_owned()]).expect("both parse");
+        let both = refuse_mixed_syntax(&patterns, &symbols, &["origin".to_owned()]).expect_err("mixed");
+        assert!(
+            both.to_string()
+                .ends_with("Cannot specify both <bookmark> patterns and <bookmark>@<remote> symbols"),
+            "{both}"
+        );
+        let remote = refuse_mixed_syntax(&[], &symbols, &["origin".to_owned()]).expect_err("--remote");
+        assert!(
+            remote
+                .to_string()
+                .ends_with("--remote cannot be used with <bookmark>@<remote> symbols"),
+            "{remote}"
+        );
+        refuse_mixed_syntax(&patterns, &[], &["origin".to_owned()]).expect("patterns take --remote");
+        refuse_mixed_syntax(&[], &symbols, &[]).expect("symbols alone");
     }
 }

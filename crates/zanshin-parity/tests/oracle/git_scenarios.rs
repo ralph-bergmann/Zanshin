@@ -978,6 +978,153 @@ pub fn bookmark_rename_tracked_scenarios() -> Vec<Scenario> {
     )]
 }
 
+// ── jj bookmark set / forget / track / untrack (Story 9.11) ─────────────────
+
+/// A bare `origin` with a remote view but no bookmark.
+const ORIGIN: &[Step] = &[
+    Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+    Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+];
+
+/// [`PUSHED`], then `b-mark@origin` untracked.
+const PUSHED_UNTRACKED: &[Step] = &[
+    Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+    Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+    Step::Jj(&["git", "push", "-b", "b-mark"]),
+    Step::Jj(&["bookmark", "untrack", "b-mark@origin"]),
+];
+
+/// `Repo::bookmark_track` / `bookmark_untrack` of `names` on `remotes`.
+fn track_outcome(repo: &mut zanshin_jj::Repo, untrack: bool, names: &[&str], remotes: &[&str]) -> Outcome {
+    let result = if untrack {
+        repo.bookmark_untrack(&strings(names), &strings(remotes))
+    } else {
+        repo.bookmark_track(&strings(names), &strings(remotes))
+    };
+    crate::compare::zanshin_outcome(repo, &result)
+}
+
+/// `Repo::bookmark_forget` of `names`.
+fn forget_outcome(repo: &mut zanshin_jj::Repo, names: &[&str], include_remotes: bool) -> Outcome {
+    let result = repo.bookmark_forget(&strings(names), include_remotes);
+    crate::compare::zanshin_outcome(repo, &result)
+}
+
+/// The remote-side scenarios of `bookmark set` / `forget` / `track` / `untrack`, read back with
+/// [`push_read_back`] (every bookmark with its remotes and tracked state).
+#[allow(clippy::too_many_lines)] // WHY: one flat table reads better than a dozen helper fns
+pub fn bookmark_tracking_scenarios() -> Vec<Scenario> {
+    vec![
+        // A NEW name is auto-tracked as `create` does it: `feature@origin` tracked, not created.
+        push(
+            "bookmark_set_auto_track_created",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&[
+                    "config",
+                    "set",
+                    "--repo",
+                    "remotes.origin.auto-track-created-bookmarks",
+                    "\"*\"",
+                ]),
+            ],
+            |repo, _, _| {
+                let result = repo.bookmark_set(&strings(&["feature"]), None, false);
+                crate::compare::zanshin_outcome(repo, &result)
+            },
+            |_| strings(&["bookmark", "set", "feature"]),
+        ),
+        // A deleted `b-mark` that still tracks `origin` is resurrected, not created.
+        push(
+            "bookmark_set_resurrect_tracked",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&["git", "push", "-b", "b-mark"]),
+                Step::Jj(&["bookmark", "delete", "b-mark"]),
+            ],
+            |repo, _, s| {
+                let result = repo.bookmark_set(&strings(&["b-mark"]), Some(&s.change("C")), false);
+                crate::compare::zanshin_outcome(repo, &result)
+            },
+            |s| strings(&["bookmark", "set", "b-mark", "-r", &s.change_arg("C")]),
+        ),
+        push(
+            "bookmark_forget_tracked_pushed",
+            PUSHED,
+            |repo, _, _| forget_outcome(repo, &["b-mark"], false),
+            |_| strings(&["bookmark", "forget", "b-mark"]),
+        ),
+        push(
+            "bookmark_forget_include_remotes",
+            PUSHED,
+            |repo, _, _| forget_outcome(repo, &["b-mark"], true),
+            |_| strings(&["bookmark", "forget", "--include-remotes", "b-mark"]),
+        ),
+        // Only an untracked `b-mark@origin` is left: it matches, its untrack changes nothing.
+        push(
+            "bookmark_forget_untracked_remote_only",
+            &[
+                Step::Git(&["init", "-q", "--bare", "../remote.git"]),
+                Step::Jj(&["git", "remote", "add", "origin", "../remote.git"]),
+                Step::Jj(&["git", "push", "-b", "b-mark"]),
+                Step::Jj(&["bookmark", "forget", "b-mark"]),
+            ],
+            |repo, _, _| forget_outcome(repo, &["b-mark"], false),
+            |_| strings(&["bookmark", "forget", "b-mark"]),
+        ),
+        push(
+            "bookmark_track_symbol",
+            PUSHED_UNTRACKED,
+            |repo, _, _| track_outcome(repo, false, &["b-mark@origin"], &[]),
+            |_| strings(&["bookmark", "track", "b-mark@origin"]),
+        ),
+        push(
+            "bookmark_track_pattern_absent",
+            ORIGIN,
+            |repo, _, _| track_outcome(repo, false, &["b-mark"], &[]),
+            |_| strings(&["bookmark", "track", "b-mark"]),
+        ),
+        push(
+            "bookmark_track_already_tracked",
+            PUSHED,
+            |repo, _, _| track_outcome(repo, false, &["b-mark@origin", "nope@origin"], &[]),
+            |_| strings(&["bookmark", "track", "b-mark@origin", "nope@origin"]),
+        ),
+        push(
+            "bookmark_track_remote_unmatched",
+            PUSHED_UNTRACKED,
+            |repo, _, _| track_outcome(repo, false, &["b-mark", "gone"], &["nope"]),
+            |_| strings(&["bookmark", "track", "b-mark", "gone", "--remote", "nope"]),
+        ),
+        push(
+            "bookmark_untrack_symbol",
+            PUSHED,
+            |repo, _, _| track_outcome(repo, true, &["b-mark@origin"], &[]),
+            |_| strings(&["bookmark", "untrack", "b-mark@origin"]),
+        ),
+        push(
+            "bookmark_untrack_pattern",
+            PUSHED,
+            |repo, _, _| track_outcome(repo, true, &["b-*"], &[]),
+            |_| strings(&["bookmark", "untrack", "b-*"]),
+        ),
+        push(
+            "bookmark_untrack_not_tracked_and_git",
+            PUSHED_UNTRACKED,
+            |repo, _, _| track_outcome(repo, true, &["b-mark@origin", "b-mark@git"], &[]),
+            |_| strings(&["bookmark", "untrack", "b-mark@origin", "b-mark@git"]),
+        ),
+        push(
+            "bookmark_untrack_remote_git",
+            PUSHED,
+            |repo, _, _| track_outcome(repo, true, &["b-mark"], &["git"]),
+            |_| strings(&["bookmark", "untrack", "b-mark", "--remote", "git"]),
+        ),
+    ]
+}
+
 // ── jj git fetch (Story 9.30) ────────────────────────────────────────────────
 
 // Every fetch below but `fetch_nothing_new` brings something new: `git --git-dir <remote> branch

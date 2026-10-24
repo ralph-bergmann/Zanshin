@@ -37,7 +37,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 94
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 98
 exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -290,9 +290,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Fifty-seven of the 94 exported symbols take their arguments as a **FlatBuffers
+Sixty-one of the 98 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Forty-five use the handle-scoped three-parameter shape:
+strings. Forty-nine use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -551,7 +551,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **94** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **98** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -631,6 +631,10 @@ or no `# Errors` block.
 | `zanshin_bookmark_move` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkMoveRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.19 |
 | `zanshin_bookmark_advance` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkAdvanceRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.19 |
 | `zanshin_bookmark_rename` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkRenameRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.bookmark_exists`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.19 |
+| `zanshin_bookmark_set` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkSetRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.11 |
+| `zanshin_bookmark_forget` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkForgetRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.11 |
+| `zanshin_bookmark_track` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkTrackRequest` (`kind` `BookmarkTrack`) | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.11 |
+| `zanshin_bookmark_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `BookmarkTrackRequest` (`kind` `BookmarkUntrack`) | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.11 |
 | `zanshin_file_track` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileTrackRequest` | `TrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_file_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileUntrackRequest` | `UntrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.path_not_ignored`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_snapshot` | `(uint64_t handle)` | — | — (no-payload success; the report is `Envelope.precondition`) | `ffi.invalid_handle`, `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error` | 9.26 |
@@ -1608,6 +1612,31 @@ as the listing; a failing distance revset is `jj.jj_lib_error`. Dart: `Bookmark.
 `String?`, `conflicted`/`synced` sit on `Bookmark`, `tracked`/`ahead`/`behind` on `RemoteBookmark`,
 and `RefDistance.upper` is null when `has_upper` is false
 (`packages/zanshin_core/lib/src/ffi/bookmarks.dart`).
+
+## Bookmark set, forget, track and untrack (Story 9.11)
+
+The four wrappers port `jj bookmark set` / `forget` / `track` / `untrack` at v0.46.0 and return the
+shipped `MutationResult` (no new payload); a call that changes nothing writes no operation and
+`new_op_id` is the pre-call head. Their arguments use the CLI's two name currencies:
+
+- `BookmarkSetRequest.names` are DECODED names, as `zanshin_bookmark_create`'s; `revision` absent is
+  `-r`'s default `@`; `allow_backwards` is `--allow-backwards`. A new name is auto-tracked as
+  `create` does it; an absent one that still tracks a remote is resurrected.
+- `BookmarkForgetRequest.names` are string PATTERNS (a bare one a glob), as `zanshin_bookmark_delete`'s,
+  matched against names with a local OR a remote row; `include_remotes` is `--include-remotes`.
+- `BookmarkTrackRequest.names` are the CLI's `BOOKMARK[@REMOTE]` texts: a `name@remote` symbol
+  (revset-quoted where needed, e.g. `"a b"@origin`) names one remote bookmark exactly, anything else
+  is a pattern; `remotes` are remote-name patterns (`--remote`, absent = every remote but `git` on a
+  Git-backed repo). One table serves both wrappers; `kind` tells them apart and a buffer of the other
+  kind is `ffi.invalid_argument`.
+
+Only clap's checks (empty `names`, `set`'s empty name) refuse before the pre-verb snapshot; a pattern
+that does not parse, patterns mixed with symbols, and `remotes` with symbols refuse after it, all
+`jj.invalid_input`. Their warnings: `jj.bookmark_target_empty` and `jj.bookmark_auto_track_existing`
+(set), `jj.bookmark_names_unmatched` (forget, track and untrack patterns),
+`jj.remote_bookmarks_unmatched` (symbols), `jj.bookmark_remotes_unmatched` (`remotes`),
+`jj.bookmark_already_tracked` (track), `jj.bookmark_git_tracking_untrack` and
+`jj.bookmark_not_tracked` (untrack).
 
 ---
 

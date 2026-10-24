@@ -27,14 +27,14 @@ use zanshin_jj::{
     DropVerb, MutateError, MutationResult, Repo, WarningKind,
 };
 
-struct Fx {
+pub(crate) struct Fx {
     _tmp: TempDir,
-    root: PathBuf,
-    repo: Repo,
-    a: ChangeId,
-    b: ChangeId,
-    c: ChangeId,
-    d: ChangeId,
+    pub(crate) root: PathBuf,
+    pub(crate) repo: Repo,
+    pub(crate) a: ChangeId,
+    pub(crate) b: ChangeId,
+    pub(crate) c: ChangeId,
+    pub(crate) d: ChangeId,
 }
 
 fn load(root: &Path) -> Arc<ReadonlyRepo> {
@@ -52,7 +52,7 @@ fn change_id(commit: &Commit) -> ChangeId {
     ChangeId(commit.change_id().reverse_hex())
 }
 
-fn wc(root: &Path) -> ChangeId {
+pub(crate) fn wc(root: &Path) -> ChangeId {
     let repo = load(root);
     let id = repo
         .view()
@@ -63,7 +63,7 @@ fn wc(root: &Path) -> ChangeId {
 }
 
 /// The full hex commit id of `id`'s one visible commit.
-fn hex(root: &Path, id: &ChangeId) -> String {
+pub(crate) fn hex(root: &Path, id: &ChangeId) -> String {
     let repo = load(root);
     let jj_id = jj_lib::backend::ChangeId::try_from_reverse_hex(&id.0).expect("reverse hex");
     let targets = pollster::block_on(repo.resolve_change_id(&jj_id))
@@ -72,23 +72,23 @@ fn hex(root: &Path, id: &ChangeId) -> String {
     targets.into_visible().expect("visible")[0].hex()
 }
 
-fn commit_id(fx: &Fx, id: &ChangeId) -> jj_lib::backend::CommitId {
-    jj_lib::backend::CommitId::try_from_hex(hex(&fx.root, id)).expect("commit hex")
+pub(crate) fn commit_id(root: &Path, id: &ChangeId) -> jj_lib::backend::CommitId {
+    jj_lib::backend::CommitId::try_from_hex(hex(root, id)).expect("commit hex")
 }
 
 /// The head operation's `(id, description)`.
-fn head_op(root: &Path) -> (String, String) {
+pub(crate) fn head_op(root: &Path) -> (String, String) {
     let repo = load(root);
     (repo.op_id().hex(), repo.operation().metadata().description.clone())
 }
 
 /// The local target of `name`.
-fn local(root: &Path, name: &str) -> RefTarget {
+pub(crate) fn local(root: &Path, name: &str) -> RefTarget {
     load(root).view().get_local_bookmark(RefName::new(name)).clone()
 }
 
 /// The remote ref of `name@remote`: `(present target hex, tracked)`.
-fn remote(root: &Path, name: &str, remote: &str) -> (Option<String>, bool) {
+pub(crate) fn remote(root: &Path, name: &str, remote: &str) -> (Option<String>, bool) {
     let repo = load(root);
     let remote_ref = repo
         .view()
@@ -101,7 +101,7 @@ fn remote(root: &Path, name: &str, remote: &str) -> (Option<String>, bool) {
 }
 
 /// `root → A → B → C` and `D` a second child of `B`, `@` = `C`, all described.
-fn base() -> Fx {
+pub(crate) fn base() -> Fx {
     test_helpers::pin_test_env();
     let tmp = TempDir::new().expect("tempdir");
     let main = tmp.path().join("main");
@@ -144,7 +144,7 @@ fn base() -> Fx {
 
 impl Fx {
     /// Points the local bookmark `name` at `targets` (several = conflicted) and reopens.
-    fn set(&mut self, name: &str, targets: &[&ChangeId]) {
+    pub(crate) fn set(&mut self, name: &str, targets: &[&ChangeId]) {
         let hexes: Vec<String> = targets.iter().map(|id| hex(&self.root, id)).collect();
         let refs: Vec<&str> = hexes.iter().map(String::as_str).collect();
         set_local_bookmark(&self.root, name, &refs);
@@ -152,21 +152,21 @@ impl Fx {
     }
 
     /// Points `name@remote` at `target` and reopens.
-    fn set_remote(&mut self, name: &str, remote: &str, target: &ChangeId, tracked: bool) {
+    pub(crate) fn set_remote(&mut self, name: &str, remote: &str, target: &ChangeId, tracked: bool) {
         set_remote_bookmark(&self.root, name, remote, &hex(&self.root, target), tracked);
         self.reopen();
     }
 
-    fn reopen(&mut self) {
+    pub(crate) fn reopen(&mut self) {
         self.repo = Repo::open(&self.root).expect("reopen");
         let _ = self.repo.take_warnings();
     }
 
-    fn normal(&self, name: &str) -> Option<String> {
+    pub(crate) fn normal(&self, name: &str) -> Option<String> {
         local(&self.root, name).as_normal().map(ObjectId::hex)
     }
 
-    fn kinds(&mut self) -> Vec<(WarningKind, String)> {
+    pub(crate) fn kinds(&mut self) -> Vec<(WarningKind, String)> {
         self.repo
             .take_warnings()
             .into_iter()
@@ -176,7 +176,7 @@ impl Fx {
     }
 }
 
-fn names(list: &[&str]) -> Vec<String> {
+pub(crate) fn names(list: &[&str]) -> Vec<String> {
     list.iter().map(|name| (*name).to_owned()).collect()
 }
 
@@ -189,17 +189,17 @@ fn move_to(list: &[&str], to: &ChangeId) -> BookmarkMoveOptions {
 }
 
 /// A call that wrote nothing: the head is unchanged and `new_op_id` is it.
-fn assert_no_op(fx: &Fx, before: &(String, String), result: &MutationResult) {
+pub(crate) fn assert_no_op(fx: &Fx, before: &(String, String), result: &MutationResult) {
     assert_eq!(&head_op(&fx.root), before, "no operation written");
     assert_eq!(result.new_op_id.0, before.0, "new_op_id is the pre-call head");
 }
 
 /// A refusal that wrote nothing.
-fn assert_refused(fx: &Fx, before: &(String, String)) {
+pub(crate) fn assert_refused(fx: &Fx, before: &(String, String)) {
     assert_eq!(&head_op(&fx.root), before, "a refusal writes no operation");
 }
 
-fn invalid_reason(e: &MutateError) -> (&str, Vec<String>) {
+pub(crate) fn invalid_reason(e: &MutateError) -> (&str, Vec<String>) {
     let MutateError::InvalidInput { reason, hints } = e else {
         panic!("expected InvalidInput, got {e:?}");
     };
@@ -404,7 +404,7 @@ fn a_conflicted_bookmark_moved_to_a_descendant_of_one_side_becomes_normal() {
     assert!(!local(&fx.root, "mark").is_resolved(), "mark is conflicted");
     fx.repo.bookmark_move(&move_to(&["mark"], &c)).expect("move");
     let target = local(&fx.root, "mark");
-    assert_eq!(target, RefTarget::normal(commit_id(&fx, &c)));
+    assert_eq!(target, RefTarget::normal(commit_id(&fx.root, &c)));
 }
 
 /// The agreement witness: for each `drop_actions` bookmark row, the verb run with
@@ -446,7 +446,7 @@ fn agree_on_every_target(fx: &mut Fx, mark_targets: &[&ChangeId]) {
         let result = fx.repo.bookmark_move(&options).expect("the row's move");
         if row.outcome.status == ActionStatus::Available {
             assert_ne!(result.new_op_id.0, before.0, "Available writes ({target:?})");
-            assert_eq!(local(&fx.root, "mark"), RefTarget::normal(commit_id(fx, target)));
+            assert_eq!(local(&fx.root, "mark"), RefTarget::normal(commit_id(&fx.root, target)));
         } else {
             assert_no_op(fx, &before, &result);
         }
@@ -521,7 +521,7 @@ fn advance_named_backwards_is_refused_without_a_hint() {
     );
 }
 
-fn set_repo_config(root: &Path, name: &str, value: &str) {
+pub(crate) fn set_repo_config(root: &Path, name: &str, value: &str) {
     zanshin_jj::config_set(Some(root), &ConfigTarget::Scope(ConfigScope::Repo), name, value)
         .result
         .expect("config set --repo");

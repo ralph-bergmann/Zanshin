@@ -23,6 +23,7 @@ mod api_stability;
 mod arg_refusals;
 mod bookmark_move;
 mod bookmark_ops;
+mod bookmark_tracking;
 mod bookmarks;
 mod change;
 mod clone_cancel;

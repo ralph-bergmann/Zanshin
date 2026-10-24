@@ -147,7 +147,11 @@ enum RequestKind : ubyte {
   OpDiff,
   OpRestore,
   OpRevert,
-  Movement
+  Movement,
+  BookmarkSet,
+  BookmarkForget,
+  BookmarkTrack,
+  BookmarkUntrack
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -924,6 +928,45 @@ table BookmarkRenameRequest {
   old_name: string;
   new_name: string;
   overwrite_existing: bool;
+}
+
+/// Arguments of `zanshin_bookmark_set` (Story 9.11) — the CLI's `jj bookmark set`.
+///
+/// `names` are DECODED names, as BookmarkCreateRequest's (ABSENT/EMPTY, or an empty-STRING name,
+/// is refused with `jj.invalid_input` before the snapshot). `revision` ABSENT is the CLI's `-r`
+/// default `@`; present it is a jj reverse-hex CHANGE ID. `allow_backwards` is
+/// `--allow-backwards`. Setting every name where it already points writes no operation
+/// (`MutationResult.new_op_id` is the pre-call head).
+table BookmarkSetRequest {
+  kind: RequestKind;
+  names: [string];
+  revision: string;
+  allow_backwards: bool;
+}
+
+/// Arguments of `zanshin_bookmark_forget` (Story 9.11) — the CLI's `jj bookmark forget`.
+///
+/// `names` are string PATTERNS passed through verbatim, as BookmarkDeleteRequest's (a BARE one is
+/// a GLOB); ABSENT/EMPTY is refused with `jj.invalid_input` before the snapshot.
+/// `include_remotes` is `--include-remotes`. Matching or changing nothing writes no operation.
+table BookmarkForgetRequest {
+  kind: RequestKind;
+  names: [string];
+  include_remotes: bool;
+}
+
+/// Arguments of `zanshin_bookmark_track` and `zanshin_bookmark_untrack` (Story 9.11) — the CLI's
+/// `jj bookmark track` / `untrack`; `kind` (`BookmarkTrack` / `BookmarkUntrack`) tells them apart.
+///
+/// `names` are the CLI's `BOOKMARK[@REMOTE]` texts passed through verbatim: a `name@remote` symbol
+/// names one remote bookmark exactly (revset-quoted where needed, e.g. `"a b"@origin`), any other
+/// text is a string pattern (a BARE one a GLOB); ABSENT/EMPTY is refused with `jj.invalid_input`
+/// before the snapshot. `remotes` are remote-name PATTERNS (`--remote`); ABSENT/EMPTY = not given.
+/// Nothing to (un)track writes no operation.
+table BookmarkTrackRequest {
+  kind: RequestKind;
+  names: [string];
+  remotes: [string];
 }
 
 /// Arguments of `zanshin_file_track` (Story 9.22) — the CLI's `jj file track`.

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 
 import 'bindings.dart';
@@ -8,7 +9,8 @@ import 'request_bytes.dart';
 
 // This file owns the Dart half of the bookmark MUTATIONS: the request builders
 // and the adapters (Story 9.8's bookmarkCreate / bookmarkDelete, Story 9.19's
-// bookmarkMove / bookmarkAdvance / bookmarkRename). `dart:ffi` stays inside
+// bookmarkMove / bookmarkAdvance / bookmarkRename, Story 9.11's bookmarkSet /
+// bookmarkForget / bookmarkTrack / bookmarkUntrack). `dart:ffi` stays inside
 // `ffi/` — only the worker isolate calls these adapters.
 //
 // There is deliberately NO model and NO decoder here: every verb returns the
@@ -125,4 +127,73 @@ Uint8List zanshinBookmarkRename(int rawHandle, String oldName, String newName, {
     overwriteExisting: overwriteExisting,
   ).toBytes();
   return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmark_rename(rawHandle, ptr, len)));
+}
+
+/// Call `zanshin_bookmark_set` with the raw `u64` handle and a
+/// `BookmarkSetRequest` request buffer (Story 9.11), and return the FlatBuffers
+/// `Envelope` bytes.
+///
+/// [names] are DECODED names, as [zanshinBookmarkCreate]'s; a `null`
+/// [revision] applies the CLI's `-r` default `@`.
+Uint8List zanshinBookmarkSet(int rawHandle, List<String> names, {String? revision, bool allowBackwards = false}) {
+  rejectInteriorNuls(names, 'names');
+  rejectInteriorNul(revision, 'revision');
+  final Uint8List request = fbs.BookmarkSetRequestObjectBuilder(
+    kind: fbs.RequestKind.BookmarkSet,
+    names: names,
+    revision: revision,
+    allowBackwards: allowBackwards,
+  ).toBytes();
+  return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmark_set(rawHandle, ptr, len)));
+}
+
+/// Call `zanshin_bookmark_forget` with the raw `u64` handle and a
+/// `BookmarkForgetRequest` request buffer (Story 9.11), and return the
+/// FlatBuffers `Envelope` bytes.
+///
+/// [names] are string PATTERNS, as [zanshinBookmarkDelete]'s (a bare one is a
+/// GLOB).
+Uint8List zanshinBookmarkForget(int rawHandle, List<String> names, {bool includeRemotes = false}) {
+  rejectInteriorNuls(names, 'names');
+  final Uint8List request = fbs.BookmarkForgetRequestObjectBuilder(
+    kind: fbs.RequestKind.BookmarkForget,
+    names: names,
+    includeRemotes: includeRemotes,
+  ).toBytes();
+  return withRequestBytes(request, (ptr, len) => readToken(zanshin_bookmark_forget(rawHandle, ptr, len)));
+}
+
+/// Call `zanshin_bookmark_track` with the raw `u64` handle and a
+/// `BookmarkTrackRequest` request buffer tagged `BookmarkTrack` (Story 9.11),
+/// and return the FlatBuffers `Envelope` bytes.
+///
+/// [names] are the CLI's `BOOKMARK[@REMOTE]` texts: a `name@remote` symbol names
+/// one remote bookmark exactly (revset-quoted where needed, e.g.
+/// `"a b"@origin`), anything else is a string pattern. [remotes] are remote-name
+/// patterns (`--remote`; empty = not given).
+Uint8List zanshinBookmarkTrack(int rawHandle, List<String> names, {List<String> remotes = const []}) =>
+    _trackRequest(rawHandle, names, remotes, fbs.RequestKind.BookmarkTrack, zanshin_bookmark_track);
+
+/// Call `zanshin_bookmark_untrack` with the raw `u64` handle and a
+/// `BookmarkTrackRequest` request buffer tagged `BookmarkUntrack` (Story 9.11),
+/// and return the FlatBuffers `Envelope` bytes. Arguments as
+/// [zanshinBookmarkTrack]'s.
+Uint8List zanshinBookmarkUntrack(int rawHandle, List<String> names, {List<String> remotes = const []}) =>
+    _trackRequest(rawHandle, names, remotes, fbs.RequestKind.BookmarkUntrack, zanshin_bookmark_untrack);
+
+Uint8List _trackRequest(
+  int rawHandle,
+  List<String> names,
+  List<String> remotes,
+  fbs.RequestKind kind,
+  ffi.Pointer<ZanshinBuf> Function(int, ffi.Pointer<ffi.Uint8>, int) wrapper,
+) {
+  rejectInteriorNuls(names, 'names');
+  rejectInteriorNuls(remotes, 'remotes');
+  final Uint8List request = fbs.BookmarkTrackRequestObjectBuilder(
+    kind: kind,
+    names: names,
+    remotes: remotes,
+  ).toBytes();
+  return withRequestBytes(request, (ptr, len) => readToken(wrapper(rawHandle, ptr, len)));
 }

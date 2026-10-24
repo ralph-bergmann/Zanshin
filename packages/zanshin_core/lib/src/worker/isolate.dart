@@ -2807,6 +2807,111 @@ class ZanshinWorker {
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
+  /// Create or move local bookmarks to one revision by name, in the repo
+  /// identified by [handleId] (Story 9.11) — the CLI's `jj bookmark set`. See
+  /// [RepoHandle.bookmarkSet].
+  ///
+  /// Sends a [BookmarkSetCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if a name or [revision] contains an interior NUL
+  /// (U+0000). Throws [ZanshinFfiException] on FFI errors (e.g.
+  /// `ffi.invalid_handle`, `jj.invalid_input`, `jj.change_not_found`).
+  /// Completes with a [StateError] after [close].
+  Future<repo_ffi_mutate.MutationResult> bookmarkSet(
+    int handleId,
+    List<String> names, {
+    String? revision,
+    bool allowBackwards = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(names, 'names');
+    rejectInteriorNul(revision, 'revision');
+    final Uint8List bytes = await send(
+      BookmarkSetCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        names: names,
+        revision: revision,
+        allowBackwards: allowBackwards,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Forget bookmarks, in the repo identified by [handleId] (Story 9.11) — the
+  /// CLI's `jj bookmark forget`. See [RepoHandle.bookmarkForget].
+  ///
+  /// Sends a [BookmarkForgetCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if a pattern contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.invalid_input`). Completes with a [StateError] after [close].
+  Future<repo_ffi_mutate.MutationResult> bookmarkForget(
+    int handleId,
+    List<String> names, {
+    bool includeRemotes = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(names, 'names');
+    final Uint8List bytes = await send(
+      BookmarkForgetCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        names: names,
+        includeRemotes: includeRemotes,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Start tracking remote bookmarks, in the repo identified by [handleId]
+  /// (Story 9.11) — the CLI's `jj bookmark track`. See [RepoHandle.bookmarkTrack].
+  ///
+  /// Sends a [BookmarkTrackCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if a name or remote contains an interior NUL
+  /// (U+0000). Throws [ZanshinFfiException] on FFI errors (e.g.
+  /// `ffi.invalid_handle`, `jj.invalid_input`). Completes with a [StateError]
+  /// after [close].
+  Future<repo_ffi_mutate.MutationResult> bookmarkTrack(
+    int handleId,
+    List<String> names, {
+    List<String> remotes = const [],
+  }) => _bookmarkTrack(handleId, names, remotes, untrack: false);
+
+  /// Stop tracking remote bookmarks, in the repo identified by [handleId]
+  /// (Story 9.11) — the CLI's `jj bookmark untrack`. See
+  /// [RepoHandle.bookmarkUntrack]. Throws as [bookmarkTrack].
+  Future<repo_ffi_mutate.MutationResult> bookmarkUntrack(
+    int handleId,
+    List<String> names, {
+    List<String> remotes = const [],
+  }) => _bookmarkTrack(handleId, names, remotes, untrack: true);
+
+  Future<repo_ffi_mutate.MutationResult> _bookmarkTrack(
+    int handleId,
+    List<String> names,
+    List<String> remotes, {
+    required bool untrack,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(names, 'names');
+    rejectInteriorNuls(remotes, 'remotes');
+    final Uint8List bytes = await send(
+      BookmarkTrackCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        names: names,
+        remotes: remotes,
+        untrack: untrack,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
   /// Start tracking the working-copy paths matching [paths], in the repo
   /// identified by [handleId] (Story 9.22) — the CLI's `jj file track`.
   ///
@@ -4358,6 +4463,60 @@ void _workerEntry(_WorkerInit init) {
               newName,
               overwriteExisting: overwriteExisting,
             );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case BookmarkSetCommand(
+          :final int handleId,
+          :final List<String> names,
+          :final String? revision,
+          :final bool allowBackwards,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: BookmarkSetCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_bookmark_ops.zanshinBookmarkSet(
+              raw,
+              names,
+              revision: revision,
+              allowBackwards: allowBackwards,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case BookmarkForgetCommand(:final int handleId, :final List<String> names, :final bool includeRemotes):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: BookmarkForgetCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_bookmark_ops.zanshinBookmarkForget(
+              raw,
+              names,
+              includeRemotes: includeRemotes,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case BookmarkTrackCommand(
+          :final int handleId,
+          :final List<String> names,
+          :final List<String> remotes,
+          :final bool untrack,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: BookmarkTrackCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = untrack
+                ? repo_ffi_bookmark_ops.zanshinBookmarkUntrack(raw, names, remotes: remotes)
+                : repo_ffi_bookmark_ops.zanshinBookmarkTrack(raw, names, remotes: remotes);
             responseSP.send((commandId, BufferResult(bytes)));
           }
 

@@ -2944,6 +2944,8 @@ pub fn scenarios() -> Vec<Scenario> {
     .chain(movement_refusal_scenarios())
     .chain(bookmark_move_scenarios())
     .chain(bookmark_rename_scenarios())
+    .chain(bookmark_set_scenarios())
+    .chain(crate::git_scenarios::bookmark_tracking_scenarios())
     .chain(crate::git_scenarios::push_scenarios())
     .chain(crate::git_scenarios::bookmark_auto_track_scenarios())
     .chain(crate::git_scenarios::bookmark_rename_tracked_scenarios())
@@ -3221,6 +3223,117 @@ fn bookmark_rename_scenarios() -> Vec<Scenario> {
             "bookmark_rename_same_overwrite",
             |repo, _, _| rename_outcome(repo, "b-mark", "b-mark", true),
             |_| args(&["bookmark", "rename", "b-mark", "b-mark", "--overwrite-existing"]),
+        ),
+    ]
+}
+
+// ── Story 9.11: bookmark set / forget / track / untrack (no remote) ─────────────
+
+/// `Repo::bookmark_set` of `names` to `revision`.
+fn set_outcome(
+    repo: &mut zanshin_jj::Repo,
+    names: &[&str],
+    revision: Option<&zanshin_jj::ChangeId>,
+    allow_backwards: bool,
+) -> Outcome {
+    let result = repo.bookmark_set(&args(names), revision, allow_backwards);
+    zanshin_outcome(repo, &result)
+}
+
+/// `jj bookmark set <names> -r <label> [flags]`.
+fn set_argv(s: &State, names: &[&str], label: &str, flags: &[&str]) -> Vec<String> {
+    let mut argv = args(&["bookmark", "set"]);
+    argv.extend(args(names));
+    argv.extend(["-r".to_owned(), s.change_arg(label)]);
+    argv.extend(args(flags));
+    argv
+}
+
+/// `bookmark set` on BASE (`b-mark` on B, `@` = C): a new name, forward, the no-op, backwards
+/// refused and allowed, an empty target, and clap's empty-name refusal on a dirty working copy;
+/// `bookmark forget` of a local bookmark and of an unknown name; `track` / `untrack` refusals
+/// after the snapshot.
+#[allow(clippy::too_many_lines)] // WHY: one flat table reads better than a dozen helper fns
+fn bookmark_set_scenarios() -> Vec<Scenario> {
+    vec![
+        simple(
+            "bookmark_set_new",
+            |repo, _, s| set_outcome(repo, &["new", "b-mark"], Some(&s.change("C")), false),
+            |s| set_argv(s, &["new", "b-mark"], "C", &[]),
+        ),
+        simple(
+            "bookmark_set_noop",
+            |repo, _, s| set_outcome(repo, &["b-mark"], Some(&s.change("B")), false),
+            |s| set_argv(s, &["b-mark"], "B", &[]),
+        ),
+        simple(
+            "bookmark_set_backwards_refused",
+            |repo, _, s| set_outcome(repo, &["new", "b-mark"], Some(&s.change("A")), false),
+            |s| set_argv(s, &["new", "b-mark"], "A", &[]),
+        ),
+        simple(
+            "bookmark_set_backwards_allowed",
+            |repo, _, s| set_outcome(repo, &["b-mark"], Some(&s.change("A")), true),
+            |s| set_argv(s, &["b-mark"], "A", &["--allow-backwards"]),
+        ),
+        Scenario {
+            setup: &[Step::Jj(&["new"])],
+            ..simple(
+                "bookmark_set_empty_target",
+                |repo, _, _| set_outcome(repo, &["e"], None, false),
+                |_| args(&["bookmark", "set", "e"]),
+            )
+        },
+        Scenario {
+            files: &[("c.txt", "c, edited before a clap refusal\n")],
+            ..simple(
+                "bookmark_set_empty_name_dirty_wc",
+                |repo, _, _| set_outcome(repo, &[""], None, false),
+                |_| args(&["bookmark", "set", ""]),
+            )
+        },
+        simple(
+            "bookmark_forget_local",
+            |repo, _, _| {
+                let result = repo.bookmark_forget(&args(&["glob:\"b-*\""]), false);
+                zanshin_outcome(repo, &result)
+            },
+            |_| args(&["bookmark", "forget", "glob:\"b-*\""]),
+        ),
+        simple(
+            "bookmark_forget_nothing",
+            |repo, _, _| {
+                let result = repo.bookmark_forget(&args(&["nope"]), false);
+                zanshin_outcome(repo, &result)
+            },
+            |_| args(&["bookmark", "forget", "nope"]),
+        ),
+        Scenario {
+            files: &[("c.txt", "c, edited before a refusal\n")],
+            ..simple(
+                "bookmark_track_mixed_dirty_wc",
+                |repo, _, _| {
+                    let result = repo.bookmark_track(&args(&["b-mark", "b-mark@origin"]), &[]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["bookmark", "track", "b-mark", "b-mark@origin"]),
+            )
+        },
+        simple(
+            "bookmark_untrack_remote_with_symbol",
+            |repo, _, _| {
+                let result = repo.bookmark_untrack(&args(&["b-mark@origin"]), &args(&["origin"]));
+                zanshin_outcome(repo, &result)
+            },
+            |_| args(&["bookmark", "untrack", "b-mark@origin", "--remote", "origin"]),
+        ),
+        simple(
+            "bookmark_track_bad_pattern",
+            |repo, _, _| {
+                let result = repo.bookmark_track(&args(&["glob:\"[\""]), &[]);
+                zanshin_outcome(repo, &result)
+            },
+            |_| args(&["bookmark", "track", "glob:\"[\""]),
         ),
     ]
 }

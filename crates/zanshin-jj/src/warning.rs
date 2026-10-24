@@ -102,6 +102,23 @@ pub enum WarningKind {
     /// remotes — "Tracked remote bookmarks for bookmark {new} exist."
     /// (`bookmark/rename.rs:183-201` @ v0.46.0; Story 9.19). Recorded after the finish.
     BookmarkTrackedRemotesExist,
+    /// `bookmark track` / `untrack` `name@remote` symbols that name no trackable remote bookmark —
+    /// "No matching remote bookmarks for names: {symbols}" (`resolve_trackable_remote_bookmarks`,
+    /// `bookmark/mod.rs:136-143` @ v0.46.0; Story 9.11).
+    RemoteBookmarksUnmatched,
+    /// Exact `--remote` names given to `bookmark track` / `untrack` that match no remote —
+    /// "No matching remotes for names: {remotes}" (`warn_unmatched_remotes`,
+    /// `bookmark/mod.rs:229-243` @ v0.46.0; Story 9.11).
+    BookmarkRemotesUnmatched,
+    /// `bookmark track` of a remote bookmark that is already tracked — "Remote bookmark already
+    /// tracked: {symbol}" (`bookmark/track.rs:119-124` @ v0.46.0; Story 9.11).
+    BookmarkAlreadyTracked,
+    /// `bookmark untrack` of a remote bookmark that is not tracked — "Remote bookmark not tracked
+    /// yet: {symbol}" (`bookmark/untrack.rs:122-126` @ v0.46.0; Story 9.11).
+    BookmarkNotTracked,
+    /// `bookmark untrack` of a bookmark on the Git-tracking remote `git` — "Git-tracking bookmark
+    /// cannot be untracked: {symbol}" (`bookmark/untrack.rs:115-121` @ v0.46.0; Story 9.11).
+    BookmarkGitTrackingUntrack,
     /// A path `absorb` could not split (`absorb.rs:155-158`).
     AbsorbPathSkipped,
     /// A path whose content could not be read (`file/show.rs:164-170`, `file/search.rs:109-115`).

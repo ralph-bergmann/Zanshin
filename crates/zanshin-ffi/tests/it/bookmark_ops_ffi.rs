@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 //! Integration tests for Story 9.8's two bookmark mutation wrappers
-//! (`zanshin_bookmark_create`, `zanshin_bookmark_delete`) and Story 9.19's three
-//! (`zanshin_bookmark_move`, `zanshin_bookmark_advance`, `zanshin_bookmark_rename`).
+//! (`zanshin_bookmark_create`, `zanshin_bookmark_delete`), Story 9.19's three
+//! (`zanshin_bookmark_move`, `zanshin_bookmark_advance`, `zanshin_bookmark_rename`) and Story
+//! 9.11's four (`zanshin_bookmark_set`, `_forget`, `_track`, `_untrack`).
 //!
 //! Every buffer is read through the `FlatBuffers` generated typed accessors and the Verifier —
 //! a wrong-shape payload is a compile error, not a runtime assert. Every token is freed via
@@ -22,8 +23,9 @@ use std::path::Path;
 use flatbuffers::root as fb_root;
 use test_helpers::{extract_fixture, set_local_bookmark, set_remote_bookmark};
 use zanshin_ffi::bookmark_ops::{
-    zanshin_bookmark_advance, zanshin_bookmark_create, zanshin_bookmark_delete, zanshin_bookmark_move,
-    zanshin_bookmark_rename,
+    zanshin_bookmark_advance, zanshin_bookmark_create, zanshin_bookmark_delete, zanshin_bookmark_forget,
+    zanshin_bookmark_move, zanshin_bookmark_rename, zanshin_bookmark_set, zanshin_bookmark_track,
+    zanshin_bookmark_untrack,
 };
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
@@ -1058,5 +1060,294 @@ fn every_move_advance_and_rename_argument_crosses_the_wire() {
         .map(|w| w.iter().filter_map(|w| w.code()).collect())
         .unwrap_or_default();
     assert!(codes.contains(&"jj.bookmark_remotes_not_renamed"), "{codes:?}");
+    close_handle(handle);
+}
+
+// ── Story 9.11: set / forget / track / untrack ────────────────────────────────
+
+/// A `BookmarkSetRequest`; `None` leaves the vector or `revision` ABSENT.
+fn set_request_bytes(names: Option<&[&str]>, revision: Option<&str>, allow_backwards: bool) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let names = names.map(|ns| {
+        let offsets: Vec<_> = ns.iter().map(|n| b.create_string(n)).collect();
+        b.create_vector(&offsets)
+    });
+    let revision = revision.map(|s| b.create_string(s));
+    let req = fbs::BookmarkSetRequest::create(
+        &mut b,
+        &fbs::BookmarkSetRequestArgs {
+            kind: fbs::RequestKind::BookmarkSet,
+            names,
+            revision,
+            allow_backwards,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// A `BookmarkForgetRequest`; `None` leaves the vector ABSENT.
+fn forget_request_bytes(names: Option<&[&str]>, include_remotes: bool) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let names = names.map(|ns| {
+        let offsets: Vec<_> = ns.iter().map(|n| b.create_string(n)).collect();
+        b.create_vector(&offsets)
+    });
+    let req = fbs::BookmarkForgetRequest::create(
+        &mut b,
+        &fbs::BookmarkForgetRequestArgs {
+            kind: fbs::RequestKind::BookmarkForget,
+            names,
+            include_remotes,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// A `BookmarkTrackRequest` tagged `kind`; `None` leaves a vector ABSENT.
+fn track_request_bytes(kind: fbs::RequestKind, names: Option<&[&str]>, remotes: Option<&[&str]>) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
+    let names = names.map(|ns| {
+        let offsets: Vec<_> = ns.iter().map(|n| b.create_string(n)).collect();
+        b.create_vector(&offsets)
+    });
+    let remotes = remotes.map(|ns| {
+        let offsets: Vec<_> = ns.iter().map(|n| b.create_string(n)).collect();
+        b.create_vector(&offsets)
+    });
+    let req = fbs::BookmarkTrackRequest::create(&mut b, &fbs::BookmarkTrackRequestArgs { kind, names, remotes });
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// `Some(tracked)` of the remote row `name@remote` `zanshin_bookmarks` lists, `None` without one.
+fn remote_tracked(handle: u64, name: &str, remote: &str) -> Option<bool> {
+    // SAFETY: handle is live and was produced by zanshin_repo_open.
+    let bytes = unsafe { read_and_free(crate::bookmarks_all_remotes(handle)) };
+    let env = parse_envelope(&bytes);
+    let rows = env.data_as_bookmarks().and_then(|p| p.bookmarks())?;
+    rows.iter()
+        .find(|b| b.name() == Some(name) && b.kind() == fbs::BookmarkKind::Remote && b.remote_name() == Some(remote))
+        .map(|b| b.tracked())
+}
+
+/// The warning codes an envelope carries, in order.
+fn warning_codes<'a>(env: &fbs::Envelope<'a>) -> Vec<&'a str> {
+    env.warnings()
+        .map(|w| w.iter().filter_map(|w| w.code()).collect())
+        .unwrap_or_default()
+}
+
+/// Asserts `bytes` is an ok envelope whose `MutationResult.new_op_id` is the new head.
+fn assert_ok_at_head(handle: u64, bytes: &[u8]) {
+    let env = parse_envelope(bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    let op = env
+        .data_as_mutation_result()
+        .expect("MutationResult payload")
+        .new_op_id()
+        .expect("op id");
+    assert_eq!(op, head_op_id(handle));
+}
+
+/// The four wrappers' guards: a zero handle answers last, after null and malformed buffers and a
+/// buffer of another kind — a track buffer included, which `untrack` refuses (and vice versa).
+#[test]
+fn a_zero_handle_and_bad_buffers_are_refused_by_the_four_tracking_wrappers() {
+    test_helpers::pin_test_env();
+    let track = track_request_bytes(fbs::RequestKind::BookmarkTrack, Some(&["a"]), None);
+    let untrack = track_request_bytes(fbs::RequestKind::BookmarkUntrack, Some(&["a"]), None);
+    for (wrapper, req, other) in [
+        (
+            zanshin_bookmark_set as BufWrapper,
+            set_request_bytes(Some(&["a"]), None, false),
+            delete_request_bytes(Some(&["a"])),
+        ),
+        (
+            zanshin_bookmark_forget as BufWrapper,
+            forget_request_bytes(Some(&["a"]), false),
+            delete_request_bytes(Some(&["a"])),
+        ),
+        (zanshin_bookmark_track as BufWrapper, track.clone(), untrack.clone()),
+        (zanshin_bookmark_untrack as BufWrapper, untrack, track),
+    ] {
+        let code = |bytes: &[u8]| {
+            parse_envelope(bytes)
+                .error()
+                .and_then(|e| e.code())
+                .map(ToOwned::to_owned)
+        };
+        assert_eq!(code(&call(wrapper, 0, &req)).as_deref(), Some(FFI_INVALID_HANDLE));
+        // SAFETY: a null `data` is the documented null-pointer case.
+        let bytes = unsafe { read_and_free(wrapper(0, std::ptr::null(), 0)) };
+        assert_eq!(code(&bytes).as_deref(), Some(FFI_NULL_POINTER));
+        assert_eq!(
+            code(&call(wrapper, 0, &[0xffu8; 8])).as_deref(),
+            Some(FFI_INVALID_ARGUMENT)
+        );
+        let bytes = call(wrapper, 0, &other);
+        let env = parse_envelope(&bytes);
+        assert_eq!(env.error().and_then(|e| e.code()), Some(FFI_INVALID_ARGUMENT));
+        assert!(env
+            .error()
+            .and_then(|e| e.context())
+            .is_some_and(|c| c.starts_with("request kind mismatch")));
+    }
+}
+
+/// `set` over the wire: `revision` absent (`@`) and present, `allow_backwards` off (refused with
+/// the hint, no operation) and on, and absent `names` (the jj layer's one refusal).
+#[test]
+fn set_round_trips_revision_and_allow_backwards_over_the_wire() {
+    test_helpers::pin_test_env();
+    let (handle, root) = open_fixture();
+    let wc_hex = wc_commit_hex(handle);
+    let g_hex = test_helpers::add_commit_off_root(&root, "g");
+    let g = change_of_hex(handle, &root, &g_hex);
+
+    assert_ok_at_head(
+        handle,
+        &call(
+            zanshin_bookmark_set,
+            handle,
+            &set_request_bytes(Some(&["feature"]), None, false),
+        ),
+    );
+    assert_eq!(
+        head_op_description(handle),
+        format!("point bookmark feature to commit {wc_hex}")
+    );
+
+    let before = head_op_id(handle);
+    let bytes = call(
+        zanshin_bookmark_set,
+        handle,
+        &set_request_bytes(Some(&["feature"]), Some(&g), false),
+    );
+    let error = parse_envelope(&bytes).error().expect("sideways");
+    assert_eq!(
+        (error.code(), error.context()),
+        (
+            Some(JJ_INVALID_INPUT),
+            Some("Refusing to move bookmark backwards or sideways: feature")
+        )
+    );
+    let hints: Vec<&str> = error.hints().expect("hints").iter().collect();
+    assert_eq!(hints, ["Use --allow-backwards to allow it."]);
+    assert_eq!(head_op_id(handle), before);
+
+    assert_ok_at_head(
+        handle,
+        &call(
+            zanshin_bookmark_set,
+            handle,
+            &set_request_bytes(Some(&["feature"]), Some(&g), true),
+        ),
+    );
+    assert_eq!(local_target(handle, "feature").as_deref(), Some(g.as_str()));
+
+    let bytes = call(zanshin_bookmark_set, handle, &set_request_bytes(None, None, false));
+    let error = parse_envelope(&bytes).error().expect("no names");
+    assert_eq!(
+        (error.code(), error.context()),
+        (Some(JJ_INVALID_INPUT), Some("bookmark set requires at least one name"))
+    );
+    close_handle(handle);
+}
+
+/// `forget` over the wire: without `include_remotes` the tracked remote row stays, untracked;
+/// with it the row goes. An unmatched name rides the envelope as `jj.bookmark_names_unmatched`.
+#[test]
+fn forget_round_trips_include_remotes_and_a_warning_over_the_wire() {
+    test_helpers::pin_test_env();
+    let (handle, root) = open_fixture();
+    let g_hex = test_helpers::add_commit_off_root(&root, "g");
+    for name in ["kept", "gone"] {
+        set_local_bookmark(&root, name, &[&g_hex]);
+        set_remote_bookmark(&root, name, "origin", &g_hex, true);
+    }
+
+    assert_ok_at_head(
+        handle,
+        &call(
+            zanshin_bookmark_forget,
+            handle,
+            &forget_request_bytes(Some(&["kept"]), false),
+        ),
+    );
+    assert_eq!(head_op_description(handle), "forget bookmark kept");
+    assert_eq!(local_target(handle, "kept"), None);
+    assert_eq!(remote_tracked(handle, "kept", "origin"), Some(false));
+
+    assert_ok_at_head(
+        handle,
+        &call(
+            zanshin_bookmark_forget,
+            handle,
+            &forget_request_bytes(Some(&["gone"]), true),
+        ),
+    );
+    assert_eq!(remote_tracked(handle, "gone", "origin"), None);
+
+    let before = head_op_id(handle);
+    let bytes = call(
+        zanshin_bookmark_forget,
+        handle,
+        &forget_request_bytes(Some(&["nope"]), false),
+    );
+    let env = parse_envelope(&bytes);
+    assert!(env.ok());
+    assert_eq!(warning_codes(&env), ["jj.bookmark_names_unmatched"]);
+    assert_eq!(
+        env.data_as_mutation_result().and_then(|r| r.new_op_id()),
+        Some(before.as_str()),
+        "no operation"
+    );
+    close_handle(handle);
+}
+
+/// `track` / `untrack` over the wire: `remotes` limits the patterns to one remote; tracking an
+/// already tracked symbol warns `jj.bookmark_already_tracked` and writes nothing; `untrack`
+/// untracks; mixed syntax is refused.
+#[test]
+fn track_and_untrack_round_trip_remotes_and_warnings_over_the_wire() {
+    test_helpers::pin_test_env();
+    let (handle, root) = open_fixture();
+    let g_hex = test_helpers::add_commit_off_root(&root, "g");
+    set_local_bookmark(&root, "y", &[&g_hex]);
+    for remote in ["origin", "upstream"] {
+        set_remote_bookmark(&root, "y", remote, &g_hex, false);
+    }
+
+    let req = track_request_bytes(fbs::RequestKind::BookmarkTrack, Some(&["y"]), Some(&["origin"]));
+    assert_ok_at_head(handle, &call(zanshin_bookmark_track, handle, &req));
+    assert_eq!(head_op_description(handle), "track remote bookmark y@origin");
+    assert_eq!(remote_tracked(handle, "y", "origin"), Some(true));
+    assert_eq!(remote_tracked(handle, "y", "upstream"), Some(false));
+
+    let before = head_op_id(handle);
+    let req = track_request_bytes(fbs::RequestKind::BookmarkTrack, Some(&["y@origin"]), None);
+    let bytes = call(zanshin_bookmark_track, handle, &req);
+    let env = parse_envelope(&bytes);
+    assert!(env.ok());
+    assert_eq!(warning_codes(&env), ["jj.bookmark_already_tracked"]);
+    assert_eq!(head_op_id(handle), before);
+
+    let req = track_request_bytes(fbs::RequestKind::BookmarkUntrack, Some(&["y@origin"]), None);
+    assert_ok_at_head(handle, &call(zanshin_bookmark_untrack, handle, &req));
+    assert_eq!(head_op_description(handle), "untrack remote bookmark y@origin");
+    assert_eq!(remote_tracked(handle, "y", "origin"), Some(false));
+
+    let req = track_request_bytes(fbs::RequestKind::BookmarkUntrack, Some(&["y", "y@origin"]), None);
+    let bytes = call(zanshin_bookmark_untrack, handle, &req);
+    let error = parse_envelope(&bytes).error().expect("mixed");
+    assert_eq!(
+        (error.code(), error.context()),
+        (
+            Some(JJ_INVALID_INPUT),
+            Some("Cannot specify both <bookmark> patterns and <bookmark>@<remote> symbols")
+        )
+    );
     close_handle(handle);
 }

@@ -2588,7 +2588,7 @@ impl Repo {
     ///
     /// A TRACKED `name@remote` SURVIVES, by design: [`Repo::list_bookmarks`] keeps reporting
     /// it, which is jj's "deleted bookmark, propagates on the next push" state rather than a
-    /// leak. `jj bookmark forget` — the verb that drops the remote rows too — is Story 9.11's.
+    /// leak. [`Repo::bookmark_forget`] (Story 9.11) is the verb that leaves no such state.
     ///
     /// # Errors
     ///
@@ -2709,6 +2709,138 @@ impl Repo {
     ) -> Result<crate::MutationResult, crate::MutateError> {
         self.with_checked_verb(crate::bookmark_ops::check_rename_args(old, new), |repo, ctx| {
             crate::bookmark_ops::rename(repo.workspace_mut(), ctx, old, new, overwrite_existing)
+        })
+    }
+
+    /// Creates or moves local bookmarks to one revision by name (Story 9.11) — the CLI's `jj
+    /// bookmark set`.
+    ///
+    /// `names` are DECODED names, as [`Repo::bookmark_create`]'s are; `revision` is the CLI's
+    /// `-r/--to`, whose default `@` applies when it is `None`; `allow_backwards` is its
+    /// `--allow-backwards`. Per name in argument order, fail-fast: without `allow_backwards` a
+    /// move that is not a fast-forward refuses, and nothing is set. A name with no local bookmark
+    /// and no tracked remote bookmark is CREATED and auto-tracked as [`Repo::bookmark_create`]
+    /// does it (`jj.bookmark_auto_track_existing`); one whose local bookmark is absent but which
+    /// still tracks a remote is resurrected, without auto-tracking. Every name gets a NORMAL
+    /// target, so a conflicted bookmark is resolved. An empty, undescribed target warns
+    /// `jj.bookmark_target_empty`. Setting every name to where it already points writes NO
+    /// operation. Op-log description: `point bookmark {names} to commit {hex}`, names in argument
+    /// order.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `names` is empty or holds an empty name (clap's
+    ///   refusal, before the pre-verb snapshot); or a backwards or sideways move without
+    ///   `allow_backwards` ("Refusing to move bookmark backwards or sideways: {name}", hint "Use
+    ///   --allow-backwards to allow it.").
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, unknown, hidden or
+    ///   divergent; [`crate::MutateError::RevsetResolutionError`] — no `@` for its default.
+    /// - [`crate::MutateError::Config`] — a `remotes.<r>` auto-track value does not parse.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn bookmark_set(
+        &mut self,
+        names: &[String],
+        revision: Option<&crate::ChangeId>,
+        allow_backwards: bool,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(crate::bookmark_ops::check_set_args(names), |repo, ctx| {
+            crate::bookmark_ops::set(repo.workspace_mut(), ctx, names, revision, allow_backwards)
+        })
+    }
+
+    /// Forgets bookmarks (Story 9.11) — the CLI's `jj bookmark forget`: the local bookmark goes
+    /// WITHOUT becoming a deletion the next push propagates.
+    ///
+    /// `patterns` are string patterns passed through VERBATIM, as [`Repo::bookmark_delete`]'s are
+    /// (a BARE pattern is a GLOB); they match bookmark names with a local OR a remote row, and an
+    /// exact name with neither warns `jj.bookmark_names_unmatched`. Each matched local bookmark
+    /// becomes absent and its remote bookmarks are untracked (the Git-tracking `git` remote is left
+    /// alone); with `include_remotes` (the CLI's `--include-remotes`) the remote bookmarks are
+    /// forgotten too, `git` included. Matching or changing nothing writes NO operation. Op-log
+    /// description: `forget bookmark {names}`, view order.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `patterns` is empty (clap's refusal, before the
+    ///   pre-verb snapshot), or a pattern does not parse.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn bookmark_forget(
+        &mut self,
+        patterns: &[String],
+        include_remotes: bool,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(
+            crate::bookmark_ops::check_names_given("forget", patterns),
+            |repo, ctx| crate::bookmark_ops::forget(repo.workspace_mut(), ctx, patterns, include_remotes),
+        )
+    }
+
+    /// Starts tracking remote bookmarks (Story 9.11) — the CLI's `jj bookmark track`.
+    ///
+    /// `names` are the CLI's `BOOKMARK[@REMOTE]` texts, passed through: a `name@remote` symbol
+    /// names one remote bookmark exactly (revset-quoted where needed, e.g. `"a b"@origin`), any
+    /// other text is a string pattern (a BARE one a GLOB) matched on every remote of `remotes`.
+    /// `remotes` are remote-name patterns (the CLI's `--remote`; empty = not given, i.e. every
+    /// remote but `git` on a Git-backed repo). A local bookmark a remote does not have yet is
+    /// trackable there too ("not created yet"). Already-tracked refs warn
+    /// `jj.bookmark_already_tracked`, unmatched symbols `jj.remote_bookmarks_unmatched`, unmatched
+    /// exact names `jj.bookmark_names_unmatched`, unmatched exact remotes
+    /// `jj.bookmark_remotes_unmatched`. Tracking merges the remote target into the local bookmark.
+    /// Nothing to track writes NO operation. Op-log description: `track remote bookmark
+    /// {symbols}`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `names` is empty (clap's refusal, before the
+    ///   pre-verb snapshot); after it, a name or remote that does not parse, patterns mixed with
+    ///   symbols, or `remotes` given with symbols.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn bookmark_track(
+        &mut self,
+        names: &[String],
+        remotes: &[String],
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(crate::bookmark_ops::check_names_given("track", names), |repo, ctx| {
+            crate::bookmark_ops::track_or_untrack(
+                repo.workspace_mut(),
+                ctx,
+                names,
+                remotes,
+                crate::bookmark_ops::Tracking::Track,
+            )
+        })
+    }
+
+    /// Stops tracking remote bookmarks (Story 9.11) — the CLI's `jj bookmark untrack`.
+    ///
+    /// `names` and `remotes` as [`Repo::bookmark_track`]'s. Refs of the Git-tracking `git` remote
+    /// warn `jj.bookmark_git_tracking_untrack`, untracked ones `jj.bookmark_not_tracked`; the
+    /// other matched refs are untracked — the local bookmark stays. Nothing to untrack writes NO
+    /// operation. Op-log description: `untrack remote bookmark {symbols}`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Repo::bookmark_track`]'s.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn bookmark_untrack(
+        &mut self,
+        names: &[String],
+        remotes: &[String],
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(crate::bookmark_ops::check_names_given("untrack", names), |repo, ctx| {
+            crate::bookmark_ops::track_or_untrack(
+                repo.workspace_mut(),
+                ctx,
+                names,
+                remotes,
+                crate::bookmark_ops::Tracking::Untrack,
+            )
         })
     }
 

@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 55;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 59;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 56] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 60] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -80,6 +80,10 @@ pub mod zanshin {
             RequestKind::OpRestore,
             RequestKind::OpRevert,
             RequestKind::Movement,
+            RequestKind::BookmarkSet,
+            RequestKind::BookmarkForget,
+            RequestKind::BookmarkTrack,
+            RequestKind::BookmarkUntrack,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -168,9 +172,13 @@ pub mod zanshin {
             pub const OpRestore: Self = Self(53);
             pub const OpRevert: Self = Self(54);
             pub const Movement: Self = Self(55);
+            pub const BookmarkSet: Self = Self(56);
+            pub const BookmarkForget: Self = Self(57);
+            pub const BookmarkTrack: Self = Self(58);
+            pub const BookmarkUntrack: Self = Self(59);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 55;
+            pub const ENUM_MAX: u8 = 59;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -228,6 +236,10 @@ pub mod zanshin {
                 Self::OpRestore,
                 Self::OpRevert,
                 Self::Movement,
+                Self::BookmarkSet,
+                Self::BookmarkForget,
+                Self::BookmarkTrack,
+                Self::BookmarkUntrack,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -288,6 +300,10 @@ pub mod zanshin {
                     Self::OpRestore => Some("OpRestore"),
                     Self::OpRevert => Some("OpRevert"),
                     Self::Movement => Some("Movement"),
+                    Self::BookmarkSet => Some("BookmarkSet"),
+                    Self::BookmarkForget => Some("BookmarkForget"),
+                    Self::BookmarkTrack => Some("BookmarkTrack"),
+                    Self::BookmarkUntrack => Some("BookmarkUntrack"),
                     _ => None,
                 }
             }
@@ -12822,6 +12838,518 @@ pub mod zanshin {
                 ds.field("old_name", &self.old_name());
                 ds.field("new_name", &self.new_name());
                 ds.field("overwrite_existing", &self.overwrite_existing());
+                ds.finish()
+            }
+        }
+        pub enum BookmarkSetRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_bookmark_set` (Story 9.11) — the CLI's `jj bookmark set`.
+        ///
+        /// `names` are DECODED names, as BookmarkCreateRequest's (ABSENT/EMPTY, or an empty-STRING name,
+        /// is refused with `jj.invalid_input` before the snapshot). `revision` ABSENT is the CLI's `-r`
+        /// default `@`; present it is a jj reverse-hex CHANGE ID. `allow_backwards` is
+        /// `--allow-backwards`. Setting every name where it already points writes no operation
+        /// (`MutationResult.new_op_id` is the pre-call head).
+        pub struct BookmarkSetRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for BookmarkSetRequest<'a> {
+            type Inner = BookmarkSetRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> BookmarkSetRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAMES: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 8;
+            pub const VT_ALLOW_BACKWARDS: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                BookmarkSetRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args BookmarkSetRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<BookmarkSetRequest<'bldr>> {
+                let mut builder = BookmarkSetRequestBuilder::new(_fbb);
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                if let Some(x) = args.names {
+                    builder.add_names(x);
+                }
+                builder.add_allow_backwards(args.allow_backwards);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(BookmarkSetRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn names(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(BookmarkSetRequest::VT_NAMES, None)
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(BookmarkSetRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn allow_backwards(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(BookmarkSetRequest::VT_ALLOW_BACKWARDS, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for BookmarkSetRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("names", Self::VT_NAMES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .visit_field::<bool>("allow_backwards", Self::VT_ALLOW_BACKWARDS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct BookmarkSetRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub names:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub allow_backwards: bool,
+        }
+        impl<'a> Default for BookmarkSetRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                BookmarkSetRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    names: None,
+                    revision: None,
+                    allow_backwards: false,
+                }
+            }
+        }
+
+        pub struct BookmarkSetRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BookmarkSetRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(BookmarkSetRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_names(
+                &mut self,
+                names: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(BookmarkSetRequest::VT_NAMES, names);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(BookmarkSetRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_allow_backwards(&mut self, allow_backwards: bool) {
+                self.fbb_
+                    .push_slot::<bool>(BookmarkSetRequest::VT_ALLOW_BACKWARDS, allow_backwards, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> BookmarkSetRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                BookmarkSetRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<BookmarkSetRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for BookmarkSetRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("BookmarkSetRequest");
+                ds.field("kind", &self.kind());
+                ds.field("names", &self.names());
+                ds.field("revision", &self.revision());
+                ds.field("allow_backwards", &self.allow_backwards());
+                ds.finish()
+            }
+        }
+        pub enum BookmarkForgetRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_bookmark_forget` (Story 9.11) — the CLI's `jj bookmark forget`.
+        ///
+        /// `names` are string PATTERNS passed through verbatim, as BookmarkDeleteRequest's (a BARE one is
+        /// a GLOB); ABSENT/EMPTY is refused with `jj.invalid_input` before the snapshot.
+        /// `include_remotes` is `--include-remotes`. Matching or changing nothing writes no operation.
+        pub struct BookmarkForgetRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for BookmarkForgetRequest<'a> {
+            type Inner = BookmarkForgetRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> BookmarkForgetRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAMES: ::flatbuffers::VOffsetT = 6;
+            pub const VT_INCLUDE_REMOTES: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                BookmarkForgetRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args BookmarkForgetRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<BookmarkForgetRequest<'bldr>> {
+                let mut builder = BookmarkForgetRequestBuilder::new(_fbb);
+                if let Some(x) = args.names {
+                    builder.add_names(x);
+                }
+                builder.add_include_remotes(args.include_remotes);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(BookmarkForgetRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn names(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(BookmarkForgetRequest::VT_NAMES, None)
+                }
+            }
+            #[inline]
+            pub fn include_remotes(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(BookmarkForgetRequest::VT_INCLUDE_REMOTES, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for BookmarkForgetRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("names", Self::VT_NAMES, false)?
+     .visit_field::<bool>("include_remotes", Self::VT_INCLUDE_REMOTES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct BookmarkForgetRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub names:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub include_remotes: bool,
+        }
+        impl<'a> Default for BookmarkForgetRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                BookmarkForgetRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    names: None,
+                    include_remotes: false,
+                }
+            }
+        }
+
+        pub struct BookmarkForgetRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BookmarkForgetRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(BookmarkForgetRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_names(
+                &mut self,
+                names: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(BookmarkForgetRequest::VT_NAMES, names);
+            }
+            #[inline]
+            pub fn add_include_remotes(&mut self, include_remotes: bool) {
+                self.fbb_
+                    .push_slot::<bool>(BookmarkForgetRequest::VT_INCLUDE_REMOTES, include_remotes, false);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> BookmarkForgetRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                BookmarkForgetRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<BookmarkForgetRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for BookmarkForgetRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("BookmarkForgetRequest");
+                ds.field("kind", &self.kind());
+                ds.field("names", &self.names());
+                ds.field("include_remotes", &self.include_remotes());
+                ds.finish()
+            }
+        }
+        pub enum BookmarkTrackRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_bookmark_track` and `zanshin_bookmark_untrack` (Story 9.11) — the CLI's
+        /// `jj bookmark track` / `untrack`; `kind` (`BookmarkTrack` / `BookmarkUntrack`) tells them apart.
+        ///
+        /// `names` are the CLI's `BOOKMARK[@REMOTE]` texts passed through verbatim: a `name@remote` symbol
+        /// names one remote bookmark exactly (revset-quoted where needed, e.g. `"a b"@origin`), any other
+        /// text is a string pattern (a BARE one a GLOB); ABSENT/EMPTY is refused with `jj.invalid_input`
+        /// before the snapshot. `remotes` are remote-name PATTERNS (`--remote`); ABSENT/EMPTY = not given.
+        /// Nothing to (un)track writes no operation.
+        pub struct BookmarkTrackRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for BookmarkTrackRequest<'a> {
+            type Inner = BookmarkTrackRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> BookmarkTrackRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NAMES: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REMOTES: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                BookmarkTrackRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args BookmarkTrackRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<BookmarkTrackRequest<'bldr>> {
+                let mut builder = BookmarkTrackRequestBuilder::new(_fbb);
+                if let Some(x) = args.remotes {
+                    builder.add_remotes(x);
+                }
+                if let Some(x) = args.names {
+                    builder.add_names(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(BookmarkTrackRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn names(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(BookmarkTrackRequest::VT_NAMES, None)
+                }
+            }
+            #[inline]
+            pub fn remotes(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(BookmarkTrackRequest::VT_REMOTES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for BookmarkTrackRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("names", Self::VT_NAMES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("remotes", Self::VT_REMOTES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct BookmarkTrackRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub names:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub remotes:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for BookmarkTrackRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                BookmarkTrackRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    names: None,
+                    remotes: None,
+                }
+            }
+        }
+
+        pub struct BookmarkTrackRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BookmarkTrackRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(BookmarkTrackRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_names(
+                &mut self,
+                names: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(BookmarkTrackRequest::VT_NAMES, names);
+            }
+            #[inline]
+            pub fn add_remotes(
+                &mut self,
+                remotes: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(BookmarkTrackRequest::VT_REMOTES, remotes);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> BookmarkTrackRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                BookmarkTrackRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<BookmarkTrackRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for BookmarkTrackRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("BookmarkTrackRequest");
+                ds.field("kind", &self.kind());
+                ds.field("names", &self.names());
+                ds.field("remotes", &self.remotes());
                 ds.finish()
             }
         }

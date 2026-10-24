@@ -310,6 +310,42 @@ external ffi.Pointer<ZanshinBuf> zanshin_bookmark_delete(
   int len,
 );
 
+/// Forget bookmarks, in the repo referenced by `handle` — the CLI's `jj bookmark forget` (Story
+/// 9.11): the local bookmark goes WITHOUT becoming a deletion the next push propagates.
+///
+/// The arguments cross as a `BookmarkForgetRequest` `FlatBuffers` request buffer: `names` are
+/// string PATTERNS passed through verbatim (a BARE one is a GLOB), matching bookmark names with a
+/// local or a remote row; `include_remotes` is `--include-remotes`. Each matched local bookmark
+/// becomes absent and its remote bookmarks are untracked (the Git-tracking `git` remote is left
+/// alone) — or, with `include_remotes`, forgotten too, `git` included. Matching or changing
+/// nothing writes no operation. Warning: `jj.bookmark_names_unmatched`. Op-log description
+/// `forget bookmark {names}`. Returns a `FlatBuffers` `Envelope` carrying a `MutationResult`
+/// payload on success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkForgetRequest` buffer, or its
+/// `kind` is not `BookmarkForget`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — `names` is empty (or absent), before the snapshot; or a pattern does not
+/// parse, after it (jj-lib's reason in `context`).
+/// - `jj.config_error` — the pre-verb refresh or snapshot faults as for `zanshin_bookmark_move`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_bookmark_create`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkForgetRequestObjectBuilder(...).toBytes()`); Rust only borrows it for
+/// the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_bookmark_forget(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// Move existing local bookmarks to one revision, in the repo referenced by `handle` — the CLI's
 /// `jj bookmark move` (Story 9.19).
 ///
@@ -388,6 +424,126 @@ external ffi.Pointer<ZanshinBuf> zanshin_bookmark_move(
 /// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
 @ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
 external ffi.Pointer<ZanshinBuf> zanshin_bookmark_rename(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Create or move local bookmarks to one revision by name, in the repo referenced by `handle` —
+/// the CLI's `jj bookmark set` (Story 9.11).
+///
+/// The arguments cross as a `BookmarkSetRequest` `FlatBuffers` request buffer: `names` are DECODED
+/// names (as `zanshin_bookmark_create`'s), `revision` ABSENT is the CLI's `-r` default `@`
+/// (snapshotted first, Story 9.26), present a change id; `allow_backwards` is
+/// `--allow-backwards`. Per name in argument order, fail-fast: a backwards or sideways move
+/// without `allow_backwards` refuses and nothing is set. A name with no local bookmark and no
+/// tracked remote is CREATED and auto-tracked as `zanshin_bookmark_create` does it; an absent one
+/// that still tracks a remote is resurrected without auto-tracking. Every name gets a NORMAL
+/// target. Setting every name where it already points writes no operation
+/// (`MutationResult.new_op_id` is the pre-call head). Warnings: `jj.bookmark_target_empty`, then
+/// `jj.bookmark_auto_track_existing`. Op-log description `point bookmark {names} to commit
+/// {hex}`. Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkSetRequest` buffer, or its
+/// `kind` is not `BookmarkSet`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — `names` is empty (or absent) or holds an empty name, before the
+/// snapshot; or, without `allow_backwards`, a backwards or sideways move ("Refusing to move
+/// bookmark backwards or sideways: {name}", the hint "Use --allow-backwards to allow it." in
+/// `hints`).
+/// - `jj.change_not_found` — `revision` is malformed, unknown, hidden or divergent; the id in
+/// `context`.
+/// - `jj.revset_resolution_error` — no `@` for `revision`'s default.
+/// - `jj.config_error` — the pre-verb refresh or snapshot faults as for `zanshin_bookmark_move`,
+/// or a `remotes.<r>` auto-track value does not parse; nothing is written.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_bookmark_create`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkSetRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_bookmark_set(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Start tracking remote bookmarks, in the repo referenced by `handle` — the CLI's `jj bookmark
+/// track` (Story 9.11).
+///
+/// The arguments cross as a `BookmarkTrackRequest` `FlatBuffers` request buffer tagged
+/// `BookmarkTrack`: `names` are the CLI's `BOOKMARK[@REMOTE]` texts passed through — a
+/// `name@remote` symbol names one remote bookmark exactly (revset-quoted where needed), any other
+/// text is a string pattern (a BARE one a GLOB) matched on the `remotes` (remote-name PATTERNS,
+/// `--remote`; absent/empty = every remote but `git` on a Git-backed repo). A local bookmark a
+/// remote does not have yet is trackable there too. Tracking merges the remote target into the
+/// local bookmark. Nothing to track writes no operation. Warnings: `jj.remote_bookmarks_unmatched`
+/// or `jj.bookmark_names_unmatched` + `jj.bookmark_remotes_unmatched`, then
+/// `jj.bookmark_already_tracked`. Op-log description `track remote bookmark {symbols}`. Returns a
+/// `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkTrackRequest` buffer, or its
+/// `kind` is not `BookmarkTrack`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — `names` is empty (or absent), before the snapshot; after it, a name or
+/// remote that does not parse, patterns mixed with symbols ("Cannot specify both <bookmark>
+/// patterns and <bookmark>@<remote> symbols"), or `remotes` with symbols ("--remote cannot be
+/// used with <bookmark>@<remote> symbols").
+/// - `jj.config_error` — the pre-verb refresh or snapshot faults as for `zanshin_bookmark_move`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_bookmark_create`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkTrackRequestObjectBuilder(...).toBytes()`); Rust only borrows it for
+/// the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_bookmark_track(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// Stop tracking remote bookmarks, in the repo referenced by `handle` — the CLI's `jj bookmark
+/// untrack` (Story 9.11).
+///
+/// The arguments cross as a `BookmarkTrackRequest` `FlatBuffers` request buffer tagged
+/// `BookmarkUntrack`; `names` and `remotes` as `zanshin_bookmark_track`'s. The matched tracked
+/// refs are untracked — the local bookmark stays. Nothing to untrack writes no operation.
+/// Warnings: `jj.remote_bookmarks_unmatched` or `jj.bookmark_names_unmatched` +
+/// `jj.bookmark_remotes_unmatched`, then `jj.bookmark_git_tracking_untrack` (a `git` ref) and
+/// `jj.bookmark_not_tracked`. Op-log description `untrack remote bookmark {symbols}`. Returns a
+/// `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `BookmarkTrackRequest` buffer, or its
+/// `kind` is not `BookmarkUntrack`.
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.invalid_input` — as for `zanshin_bookmark_track`: empty `names` before the snapshot; an
+/// unparsable name or remote, mixed patterns and symbols, or `remotes` with symbols after it.
+/// - `jj.config_error` — the pre-verb refresh or snapshot faults as for `zanshin_bookmark_move`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_bookmark_create`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.BookmarkTrackRequestObjectBuilder(...).toBytes()`); Rust only borrows it for
+/// the duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_bookmark_untrack(
   int handle,
   ffi.Pointer<ffi.Uint8> data,
   int len,

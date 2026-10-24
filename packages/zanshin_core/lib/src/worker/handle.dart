@@ -2115,6 +2115,98 @@ final class RepoHandle {
     return _worker.bookmarkRename(_handleId, oldName, newName, overwriteExisting: overwriteExisting);
   }
 
+  /// Create or move the local bookmarks [names] to one revision (Story 9.11) —
+  /// the CLI's `jj bookmark set`. [names] are DECODED names, as
+  /// [bookmarkCreate]'s.
+  ///
+  /// A `null` [revision] is the CLI's `-r` default `@`; otherwise a jj
+  /// reverse-hex change id. Per name in order, fail-fast: without
+  /// [allowBackwards] a move that is not a fast-forward is refused and nothing
+  /// is set. A name with no local bookmark and no tracked remote is created and
+  /// auto-tracked as [bookmarkCreate] does it; an absent one that still tracks a
+  /// remote is resurrected. Every name gets a normal target. Setting every name
+  /// where it already points writes nothing (`newOpId` is the pre-call head).
+  /// Warnings: `jj.bookmark_target_empty`, `jj.bookmark_auto_track_existing`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — no or an empty name, or a backwards move with the hint
+  /// "Use --allow-backwards to allow it." — `jj.change_not_found`,
+  /// `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
+  Future<MutationResult> bookmarkSet(List<String> names, {String? revision, bool allowBackwards = false}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.bookmarkSet(_handleId, names, revision: revision, allowBackwards: allowBackwards);
+  }
+
+  /// Forget the bookmarks matching [names] (Story 9.11) — the CLI's `jj
+  /// bookmark forget`: the local bookmark goes WITHOUT becoming a deletion the
+  /// next push propagates.
+  ///
+  /// [names] are string PATTERNS (a bare one is a GLOB) matched against names
+  /// with a local or a remote bookmark. Each matched local bookmark goes and its
+  /// remote bookmarks are untracked (the Git-tracking `git` remote is left
+  /// alone); with [includeRemotes] (`--include-remotes`) they are forgotten too.
+  /// Matching or changing nothing writes nothing. Warning:
+  /// `jj.bookmark_names_unmatched`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — no patterns, or one that does not parse —
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> bookmarkForget(List<String> names, {bool includeRemotes = false}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.bookmarkForget(_handleId, names, includeRemotes: includeRemotes);
+  }
+
+  /// Start tracking remote bookmarks (Story 9.11) — the CLI's `jj bookmark
+  /// track`.
+  ///
+  /// [names] are the CLI's `BOOKMARK[@REMOTE]` texts: a `name@remote` symbol
+  /// names one remote bookmark exactly (revset-quoted where needed, e.g.
+  /// `"a b"@origin` — a row's tracking toggle sends this), any other text is a
+  /// string pattern (a bare one a GLOB) matched on every remote of [remotes]
+  /// (remote-name patterns, `--remote`; empty = every remote but `git` on a
+  /// Git-backed repo). A local bookmark a remote does not have yet is trackable
+  /// there too. Tracking merges the remote target into the local bookmark.
+  /// Nothing to track writes nothing. Warnings: `jj.remote_bookmarks_unmatched`,
+  /// `jj.bookmark_names_unmatched`, `jj.bookmark_remotes_unmatched`,
+  /// `jj.bookmark_already_tracked`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — no names, an unparsable name or remote, patterns mixed
+  /// with symbols, or [remotes] with symbols — `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> bookmarkTrack(List<String> names, {List<String> remotes = const []}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.bookmarkTrack(_handleId, names, remotes: remotes);
+  }
+
+  /// Stop tracking remote bookmarks (Story 9.11) — the CLI's `jj bookmark
+  /// untrack`. [names] and [remotes] as [bookmarkTrack]'s; the local bookmark
+  /// stays. Nothing to untrack writes nothing. Warnings:
+  /// `jj.remote_bookmarks_unmatched`, `jj.bookmark_names_unmatched`,
+  /// `jj.bookmark_remotes_unmatched`, `jj.bookmark_git_tracking_untrack`,
+  /// `jj.bookmark_not_tracked`.
+  ///
+  /// Throws as [bookmarkTrack].
+  Future<MutationResult> bookmarkUntrack(List<String> names, {List<String> remotes = const []}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.bookmarkUntrack(_handleId, names, remotes: remotes);
+  }
+
   /// Start tracking the working-copy paths matching [paths] (Story 9.22) — the
   /// CLI's `jj file track [--include-ignored]`.
   ///

@@ -440,7 +440,7 @@ fn sort_inner(
 
 /// `warn_unmatched_local_or_remote_bookmarks` (`bookmark/mod.rs:205-226` @ v0.46.0): one warning
 /// naming every exact name with neither a local bookmark nor a bookmark on any remote.
-fn warn_unmatched(sink: &mut Warnings, view: &jj_lib::view::View, expression: &StringExpression) {
+pub(crate) fn warn_unmatched(sink: &mut Warnings, view: &jj_lib::view::View, expression: &StringExpression) {
     let unmatched: Vec<String> = expression
         .exact_strings()
         .map(RefName::new)

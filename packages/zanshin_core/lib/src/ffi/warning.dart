@@ -119,6 +119,24 @@ abstract final class ZanshinWarningCode {
   /// `bookmark rename` onto a name with tracked remote bookmarks (Story 9.19).
   static const bookmarkTrackedRemotesExist = 'jj.bookmark_tracked_remotes_exist';
 
+  /// `bookmark track` / `untrack` `name@remote` symbols that name no trackable
+  /// remote bookmark (Story 9.11).
+  static const remoteBookmarksUnmatched = 'jj.remote_bookmarks_unmatched';
+
+  /// Exact `remotes` names given to `bookmark track` / `untrack` that match no
+  /// remote (Story 9.11).
+  static const bookmarkRemotesUnmatched = 'jj.bookmark_remotes_unmatched';
+
+  /// `bookmark track` of an already tracked remote bookmark (Story 9.11).
+  static const bookmarkAlreadyTracked = 'jj.bookmark_already_tracked';
+
+  /// `bookmark untrack` of a remote bookmark that is not tracked (Story 9.11).
+  static const bookmarkNotTracked = 'jj.bookmark_not_tracked';
+
+  /// `bookmark untrack` of a bookmark on the Git-tracking remote `git` (Story
+  /// 9.11).
+  static const bookmarkGitTrackingUntrack = 'jj.bookmark_git_tracking_untrack';
+
   /// A path `absorb` could not split.
   static const absorbPathSkipped = 'jj.absorb_path_skipped';
 
@@ -321,6 +339,11 @@ abstract final class ZanshinWarningCode {
     bookmarkTrackingDropped,
     bookmarkRemotesNotRenamed,
     bookmarkTrackedRemotesExist,
+    remoteBookmarksUnmatched,
+    bookmarkRemotesUnmatched,
+    bookmarkAlreadyTracked,
+    bookmarkNotTracked,
+    bookmarkGitTrackingUntrack,
     absorbPathSkipped,
     pathAccessDenied,
     pathNotAFile,

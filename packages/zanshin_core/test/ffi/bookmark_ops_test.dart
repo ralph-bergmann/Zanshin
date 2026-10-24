@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 // Wire-shape and guard tests for the bookmark mutation adapters (Story 9.8's
-// create / delete, Story 9.19's move / advance / rename),
+// create / delete, Story 9.19's move / advance / rename, Story 9.11's set /
+// forget / track / untrack),
 // using synthetic FlatBuffers buffers built via the generated `*ObjectBuilder`s.
 // No real cdylib required - these exercise the Dart-side request encoding and
 // the adapters' NUL backstop in isolation, and mirror the Rust-side readers in
@@ -283,6 +284,98 @@ void main() {
         () => zanshinBookmarkRename(0, 'old', 'n${nul}ew'),
         throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'newName')),
       );
+    });
+  });
+
+  group('Story 9.11 wire shapes', () {
+    test('BookmarkSetRequest: absent revision is `@`, names keep argument order', () {
+      final req = fbs.BookmarkSetRequest(
+        fbs.BookmarkSetRequestObjectBuilder(kind: fbs.RequestKind.BookmarkSet, names: ['b', 'a']).toBytes(),
+      );
+      expect(req.kind, fbs.RequestKind.BookmarkSet);
+      expect(req.names, ['b', 'a']);
+      expect(req.revision, isNull, reason: 'null-for-absence: absent means `@`');
+      expect(req.allowBackwards, isFalse);
+
+      final full = fbs.BookmarkSetRequest(
+        fbs.BookmarkSetRequestObjectBuilder(
+          kind: fbs.RequestKind.BookmarkSet,
+          names: ['a'],
+          revision: 'qpvuntsm',
+          allowBackwards: true,
+        ).toBytes(),
+      );
+      expect((full.revision, full.allowBackwards), ('qpvuntsm', true));
+    });
+
+    test('BookmarkForgetRequest carries the patterns and include_remotes', () {
+      final req = fbs.BookmarkForgetRequest(
+        fbs.BookmarkForgetRequestObjectBuilder(
+          kind: fbs.RequestKind.BookmarkForget,
+          names: ['glob:"b-*"'],
+          includeRemotes: true,
+        ).toBytes(),
+      );
+      expect(req.kind, fbs.RequestKind.BookmarkForget);
+      expect(req.names, ['glob:"b-*"']);
+      expect(req.includeRemotes, isTrue);
+    });
+
+    test('BookmarkTrackRequest: one table, the kind tells track from untrack', () {
+      for (final fbs.RequestKind kind in [fbs.RequestKind.BookmarkTrack, fbs.RequestKind.BookmarkUntrack]) {
+        final req = fbs.BookmarkTrackRequest(
+          fbs.BookmarkTrackRequestObjectBuilder(kind: kind, names: ['"a b"@origin']).toBytes(),
+        );
+        expect(req.kind, kind);
+        expect(req.names, ['"a b"@origin'], reason: 'symbol texts cross verbatim');
+        expect(req.remotes, isNull, reason: 'absent = no --remote');
+      }
+      final withRemotes = fbs.BookmarkTrackRequest(
+        fbs.BookmarkTrackRequestObjectBuilder(
+          kind: fbs.RequestKind.BookmarkTrack,
+          names: ['x'],
+          remotes: ['origin', 'up*'],
+        ).toBytes(),
+      );
+      expect(withRemotes.remotes, ['origin', 'up*']);
+    });
+  });
+
+  group('Story 9.11 adapter guards', () {
+    final nul = String.fromCharCode(0);
+
+    test('zanshinBookmarkSet rejects an interior NUL in names and revision', () {
+      expect(
+        () => zanshinBookmarkSet(0, ['a${nul}b']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'names')),
+      );
+      expect(
+        () => zanshinBookmarkSet(0, ['a'], revision: 'qpv${nul}untsm'),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'revision')),
+      );
+    });
+
+    test('zanshinBookmarkForget rejects an interior NUL in a pattern', () {
+      expect(
+        () => zanshinBookmarkForget(0, ['a${nul}b']),
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'names')),
+      );
+    });
+
+    test('zanshinBookmarkTrack / Untrack reject an interior NUL in names and remotes', () {
+      for (final Uint8List Function(int, List<String>, {List<String> remotes}) adapter in [
+        zanshinBookmarkTrack,
+        zanshinBookmarkUntrack,
+      ]) {
+        expect(
+          () => adapter(0, ['a${nul}b']),
+          throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'names')),
+        );
+        expect(
+          () => adapter(0, ['a'], remotes: ['o${nul}rigin']),
+          throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'remotes')),
+        );
+      }
     });
   });
 

@@ -295,6 +295,18 @@ pub const JJ_BOOKMARK_TRACKING_DROPPED: &str = "jj.bookmark_tracking_dropped";
 pub const JJ_BOOKMARK_REMOTES_NOT_RENAMED: &str = "jj.bookmark_remotes_not_renamed";
 /// Warning: `bookmark rename` onto a name with tracked remote bookmarks (Story 9.19).
 pub const JJ_BOOKMARK_TRACKED_REMOTES_EXIST: &str = "jj.bookmark_tracked_remotes_exist";
+/// Warning: `bookmark track` / `untrack` symbols that name no trackable remote bookmark (Story
+/// 9.11).
+pub const JJ_REMOTE_BOOKMARKS_UNMATCHED: &str = "jj.remote_bookmarks_unmatched";
+/// Warning: exact `--remote` names given to `bookmark track` / `untrack` that match no remote
+/// (Story 9.11).
+pub const JJ_BOOKMARK_REMOTES_UNMATCHED: &str = "jj.bookmark_remotes_unmatched";
+/// Warning: `bookmark track` of an already tracked remote bookmark (Story 9.11).
+pub const JJ_BOOKMARK_ALREADY_TRACKED: &str = "jj.bookmark_already_tracked";
+/// Warning: `bookmark untrack` of a remote bookmark that is not tracked (Story 9.11).
+pub const JJ_BOOKMARK_NOT_TRACKED: &str = "jj.bookmark_not_tracked";
+/// Warning: `bookmark untrack` of a bookmark on the Git-tracking remote `git` (Story 9.11).
+pub const JJ_BOOKMARK_GIT_TRACKING_UNTRACK: &str = "jj.bookmark_git_tracking_untrack";
 /// Warning: a path `absorb` could not split.
 pub const JJ_ABSORB_PATH_SKIPPED: &str = "jj.absorb_path_skipped";
 /// Warning: a path whose content could not be read.
@@ -429,6 +441,11 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::BookmarkTrackingDropped => JJ_BOOKMARK_TRACKING_DROPPED,
         K::BookmarkRemotesNotRenamed => JJ_BOOKMARK_REMOTES_NOT_RENAMED,
         K::BookmarkTrackedRemotesExist => JJ_BOOKMARK_TRACKED_REMOTES_EXIST,
+        K::RemoteBookmarksUnmatched => JJ_REMOTE_BOOKMARKS_UNMATCHED,
+        K::BookmarkRemotesUnmatched => JJ_BOOKMARK_REMOTES_UNMATCHED,
+        K::BookmarkAlreadyTracked => JJ_BOOKMARK_ALREADY_TRACKED,
+        K::BookmarkNotTracked => JJ_BOOKMARK_NOT_TRACKED,
+        K::BookmarkGitTrackingUntrack => JJ_BOOKMARK_GIT_TRACKING_UNTRACK,
         K::AbsorbPathSkipped => JJ_ABSORB_PATH_SKIPPED,
         K::PathAccessDenied => JJ_PATH_ACCESS_DENIED,
         K::PathNotAFile => JJ_PATH_NOT_A_FILE,
@@ -1620,6 +1637,11 @@ mod tests {
             K::BookmarkTrackingDropped => "jj.bookmark_tracking_dropped",
             K::BookmarkRemotesNotRenamed => "jj.bookmark_remotes_not_renamed",
             K::BookmarkTrackedRemotesExist => "jj.bookmark_tracked_remotes_exist",
+            K::RemoteBookmarksUnmatched => "jj.remote_bookmarks_unmatched",
+            K::BookmarkRemotesUnmatched => "jj.bookmark_remotes_unmatched",
+            K::BookmarkAlreadyTracked => "jj.bookmark_already_tracked",
+            K::BookmarkNotTracked => "jj.bookmark_not_tracked",
+            K::BookmarkGitTrackingUntrack => "jj.bookmark_git_tracking_untrack",
             K::AbsorbPathSkipped => "jj.absorb_path_skipped",
             K::PathAccessDenied => "jj.path_access_denied",
             K::PathNotAFile => "jj.path_not_a_file",
@@ -1698,6 +1720,11 @@ mod tests {
             K::BookmarkTrackingDropped,
             K::BookmarkRemotesNotRenamed,
             K::BookmarkTrackedRemotesExist,
+            K::RemoteBookmarksUnmatched,
+            K::BookmarkRemotesUnmatched,
+            K::BookmarkAlreadyTracked,
+            K::BookmarkNotTracked,
+            K::BookmarkGitTrackingUntrack,
             K::AbsorbPathSkipped,
             K::PathAccessDenied,
             K::PathNotAFile,
