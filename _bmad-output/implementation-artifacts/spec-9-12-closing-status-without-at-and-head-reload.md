@@ -18,6 +18,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/mutate.rs:1041
     severity: low
+    resolved: >-
+      2026-10-24 — fixed (loop-9-9-9-12-followon-startup-config-and-head-reload, commit 2b7076d7f28743f95f5020c87a91145cf260dd96, review patches 80b3f0950181b9780e08949d8d5cbc87ed2de837): every production head load goes through `snapshot::reload_head` (reconciled in this workspace), the preview loader reconciles through the workspace's own loader; a source guard keeps `load_at_head` out of production code.
 ---
 
 <intent-contract>
