@@ -107,7 +107,8 @@ fn op_abandon_of_one_operation_reparents_its_descendants() {
 }
 
 /// The refusals, none of which touches the op heads: the current operation (alone, with the
-/// CLI's hint), a range ending at it, the root operation, an unknown id.
+/// CLI's hint), a range ending at it or open-ended (`X..` = the current heads), the root operation,
+/// an unknown id.
 #[test]
 fn op_abandon_refusals_leave_the_op_heads_alone() {
     test_helpers::pin_test_env();
@@ -119,7 +120,7 @@ fn op_abandon_refusals_leave_the_op_heads_alone() {
     let root = ops.last().unwrap().id.0.clone();
     let heads = op_heads(&fx.path);
 
-    for current in ["@", "..@", &head[..]] {
+    for current in ["@", "..@", "@-..", &head[..]] {
         let err = repo.op_abandon(current).expect_err("the current operation");
         assert!(
             matches!(&err, MutateError::InvalidInput { reason, hints }

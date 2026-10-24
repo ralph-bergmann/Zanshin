@@ -640,3 +640,33 @@ fn op_diff_of_a_rebasing_merge_operation_fails_like_the_cli() {
         "{err:?}"
     );
 }
+
+/// `op show` whose diff cannot be computed: the described commit's Git object is gone, so the
+/// `show_changes_in` filter (a description match reads each commit) fails to evaluate — a backend
+/// error, as the CLI's `jj op show` fails.
+#[test]
+fn op_show_whose_diff_fails_reports_the_backend_error() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let (change, _) = one(&mut repo, "description(exact:'Commit 1')");
+    repo.describe(change.clone(), "described").unwrap();
+    let described = repo.get_change(&change).unwrap().commit_id;
+    drop(repo);
+    let store = fx.path.join(".jj").join("repo").join("store");
+    let git_target = fs::read_to_string(store.join("git_target")).unwrap();
+    let hex = &described.0;
+    let object = store
+        .join(git_target.trim())
+        .join("objects")
+        .join(&hex[..2])
+        .join(&hex[2..]);
+    fs::remove_file(&object).unwrap_or_else(|e| panic!("{}: {e}", object.display()));
+    let mut repo = Repo::open(&fx.path).unwrap();
+
+    let err = repo
+        .op_show("@", Some("description(glob:'*')"))
+        .expect_err("the diff fails");
+
+    assert!(matches!(err, MutateError::Backend(_)), "{err:?}");
+}

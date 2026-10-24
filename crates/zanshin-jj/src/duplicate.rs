@@ -324,4 +324,48 @@ mod tests {
             "{refused:?}"
         );
     }
+
+    /// A location with no parents warns nothing, as the CLI's `&& !parent_commit_ids.is_empty()`
+    /// guard has it — `resolve_commit_location` refuses empty parents, so the verb never gets
+    /// here. Without the guard, Commit 1 (a new child) being an ancestor of Commit 2 would warn.
+    #[test]
+    fn warn_self_placement_without_parents_warns_nothing() {
+        use jj_lib::backend::CommitId;
+        use jj_lib::repo::Repo as _;
+        use jj_lib::working_copy::SnapshotStats;
+
+        use crate::snapshot::VerbContext;
+        use crate::warning::Warnings;
+
+        test_helpers::pin_test_env();
+        let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture");
+        let repo = crate::Repo::open(&fixture.path).expect("open");
+        let name = repo.workspace().workspace_name().to_owned();
+        let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).expect("head");
+        let store = readonly.store();
+        let by_description = |description: &str| -> CommitId {
+            let mut pending: Vec<CommitId> = readonly.view().heads().iter().cloned().collect();
+            std::iter::from_fn(|| {
+                let commit = store.get_commit(&pending.pop()?).expect("commit");
+                pending.extend(commit.parent_ids().iter().cloned());
+                Some(commit)
+            })
+            .find(|commit| commit.description().trim_end() == description)
+            .map(|commit| commit.id().clone())
+            .expect("no commit described")
+        };
+        let (c1, c2) = (by_description("Commit 1"), by_description("Commit 2"));
+        let tx = crate::op_support::start_repo_transaction(&readonly, &name);
+        let config = crate::config::load(&repo).expect("config");
+        let mut sink = Warnings::default();
+        let env = crate::snapshot::CommandEnv::load(repo.workspace(), &config, &mut sink).expect("start-up");
+        let mut ctx = VerbContext::new(config, env, false, SnapshotStats::default(), sink);
+
+        let plan = super::DuplicatePlan {
+            to_duplicate: vec![c2],
+            location: Some((vec![], vec![c1])),
+        };
+        super::warn_self_placement(&tx, &plan, &mut ctx).expect("no parents");
+        assert!(ctx.warnings.take().is_empty(), "no warning without parents");
+    }
 }

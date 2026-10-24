@@ -1052,49 +1052,53 @@ fn line_range_arg_rule() -> ConfigMigrationRule {
                     .is_some_and(|tool_config| tool_config.contains_key("line-range-arg"))
             })
         },
-        |layer| {
-            let bad_tool_names: Vec<String> = if let Ok(Some(tools_table)) = layer.look_up_table("fix.tools") {
-                tools_table
-                    .iter()
-                    .filter(|(_, item)| {
-                        item.as_table_like()
-                            .is_some_and(|tool_config| tool_config.contains_key("line-range-arg"))
-                    })
-                    .map(|(tool_name, _)| tool_name.to_owned())
-                    .collect()
-            } else {
-                Vec::new()
-            };
-            // WHY: unreachable after `matches`, kept as the CLI keeps it.
-            if bad_tool_names.is_empty() {
-                return Ok("`fix.tools.<name>.line-range-arg` is deprecated; use `line-range-args` instead.".into());
-            }
-            let mut messages = Vec::new();
-            for tool_name in bad_tool_names {
-                let old_name = &ConfigNamePathBuf::from_iter(["fix", "tools", &tool_name, "line-range-arg"]);
-                let new_name = &ConfigNamePathBuf::from_iter(["fix", "tools", &tool_name, "line-range-args"]);
-                let Ok(Some(old_value)) = layer.delete_value(old_name) else {
-                    continue;
-                };
-                if matches!(layer.look_up_item(new_name), Ok(Some(_))) {
-                    messages.push(format!("{old_name} is deleted (superseded by {new_name})"));
-                    continue;
-                }
-                let Some(old_value_str) = old_value.as_str() else {
-                    return Err(ConfigMigrateLayerError::Type {
-                        name: old_name.to_string(),
-                        error: format!("Failed to migrate {old_name}, which was expected to be a string").into(),
-                    });
-                };
-                layer.set_value(new_name, ConfigValue::from_iter([old_value_str]))?;
-                messages.push(format!(
-                    "{old_name} is updated to {new_name} = [{}]",
-                    old_value.decorated("", "")
-                ));
-            }
-            Ok(messages.join(", "))
-        },
+        line_range_arg_apply,
     )
+}
+
+/// The apply half of [`line_range_arg_rule`], a named fn so a test can run it on a layer `matches`
+/// would skip (jj-lib keeps `ConfigMigrationRule::apply` private).
+fn line_range_arg_apply(layer: &mut ConfigLayer) -> Result<String, ConfigMigrateLayerError> {
+    let bad_tool_names: Vec<String> = if let Ok(Some(tools_table)) = layer.look_up_table("fix.tools") {
+        tools_table
+            .iter()
+            .filter(|(_, item)| {
+                item.as_table_like()
+                    .is_some_and(|tool_config| tool_config.contains_key("line-range-arg"))
+            })
+            .map(|(tool_name, _)| tool_name.to_owned())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    // WHY: unreachable after `matches`, kept as the CLI keeps it.
+    if bad_tool_names.is_empty() {
+        return Ok("`fix.tools.<name>.line-range-arg` is deprecated; use `line-range-args` instead.".into());
+    }
+    let mut messages = Vec::new();
+    for tool_name in bad_tool_names {
+        let old_name = &ConfigNamePathBuf::from_iter(["fix", "tools", &tool_name, "line-range-arg"]);
+        let new_name = &ConfigNamePathBuf::from_iter(["fix", "tools", &tool_name, "line-range-args"]);
+        let Ok(Some(old_value)) = layer.delete_value(old_name) else {
+            continue;
+        };
+        if matches!(layer.look_up_item(new_name), Ok(Some(_))) {
+            messages.push(format!("{old_name} is deleted (superseded by {new_name})"));
+            continue;
+        }
+        let Some(old_value_str) = old_value.as_str() else {
+            return Err(ConfigMigrateLayerError::Type {
+                name: old_name.to_string(),
+                error: format!("Failed to migrate {old_name}, which was expected to be a string").into(),
+            });
+        };
+        layer.set_value(new_name, ConfigValue::from_iter([old_value_str]))?;
+        messages.push(format!(
+            "{old_name} is updated to {new_name} = [{}]",
+            old_value.decorated("", "")
+        ));
+    }
+    Ok(messages.join(", "))
 }
 
 /// The CLI's "Deprecated <source> config: <description>" warnings for `deprecations`
@@ -4348,6 +4352,27 @@ fetch-bookmarks = \"main\"
         assert!(
             matches!(&err, crate::ConfigError::Load { reason } if reason.ends_with("\nCheck the config file: /x/config.toml")),
             "{err:?}"
+        );
+
+        // A table-valued `line-range-arg`: `delete_value` refuses a table, so the CLI's rule skips
+        // that tool — an empty description, the table left in place.
+        let mut table_valued = StackedConfig::empty();
+        table_valued.add_layer(layer(ConfigSource::User, "[fix.tools.t.line-range-arg]\nx = 1\n"));
+        let deprecations = super::migrate(&mut table_valued).expect("a table is skipped");
+        assert_eq!(deprecations, [(ConfigSource::User, String::new())]);
+        assert!(
+            matches!(
+                table_valued.layers()[0].look_up_table("fix.tools.t.line-range-arg"),
+                Ok(Some(_))
+            ),
+            "the table stays"
+        );
+
+        // The apply half on a layer `matches` would skip: the CLI's generic text.
+        let mut no_tools = layer(ConfigSource::User, "");
+        assert_eq!(
+            super::line_range_arg_apply(&mut no_tools).expect("applies"),
+            "`fix.tools.<name>.line-range-arg` is deprecated; use `line-range-args` instead."
         );
     }
 
