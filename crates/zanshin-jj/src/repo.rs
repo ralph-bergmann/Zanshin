@@ -3773,8 +3773,10 @@ impl Repo {
     /// arms of [`Repo::commit`], [`Repo::split`] and [`Repo::squash`].
     ///
     /// The diff is `revision`'s (`None`: `@`) parent tree against its own tree — what those verbs
-    /// diff against. `left` is that parent tree as the selection saw it
-    /// ([`crate::ShowEntry::parent_tree_ids`]). Each file of `files` is selected
+    /// and [`Repo::diffedit`] diff against — or, with `from` (Story 9.17), `from`'s OWN tree
+    /// against it (`diffedit --from`). `left` is that parent tree as the selection saw it
+    /// ([`crate::ShowEntry::parent_tree_ids`]), or `from`'s tree ([`crate::ShowEntry::tree_ids`]).
+    /// Each file of `files` is selected
     /// [`crate::FileChoice::Whole`] (the revision's value, whatever the change), by
     /// [`crate::HunkKey`]s — the builtin editor's sections (`ContentDiff::by_line`), which a file
     /// has when both sides are a regular file or a file conflict (materialized with
@@ -3809,6 +3811,114 @@ impl Repo {
     ) -> Result<crate::SelectedTreeId, crate::MutateError> {
         self.with_checked_verb(crate::select_tree::check_select_tree_args(options), |repo, ctx| {
             crate::select_tree::select_tree(repo.workspace(), &ctx.config, options)
+        })
+    }
+
+    /// Lists a revision's conflicts with what a merge editor needs (Story 9.17) — the CLI's `jj
+    /// resolve --list`, plus each file conflict's merge hunks.
+    ///
+    /// `revision` (`None`: `@`) is read after the pre-verb snapshot (Story 9.26); its tree's
+    /// conflicts under `paths` (repo-relative PREFIXES, empty = all) are listed in tree order, each
+    /// with the CLI's `--list` description and side count of the simplified conflict, whether
+    /// [`Repo::resolve`] can take it, and — for a conflict of files — its simplified labels and
+    /// `jj_lib::files::merge_hunks` hunks (each conflicting hunk's terms: side 1, base 1, side 2, …).
+    /// An explicitly named path that is absent warns `jj.paths_unmatched`. Writes NO operation
+    /// beyond the snapshot's.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — a `paths` entry is not a valid repo path.
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, carried by no VISIBLE
+    ///   commit, or divergent.
+    /// - [`crate::MutateError::RevsetResolutionError`] — an omitted `revision`'s `@` in a
+    ///   workspace with no working-copy commit.
+    /// - [`crate::MutateError::NoConflicts`] — nothing matched: "No conflicts found at this
+    ///   revision" / "No conflicts found at the given path(s)".
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn resolve_list(
+        &mut self,
+        options: &crate::ResolveListOptions,
+    ) -> Result<crate::ResolveList, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::resolve::resolve_list(repo.workspace(), &mut ctx.warnings, options))
+    }
+
+    /// Resolves a revision's conflicts (Story 9.17) — the CLI's `jj resolve`.
+    ///
+    /// The conflicts of `revision` (`None`: `@`) under `paths` (repo-relative PREFIXES, empty =
+    /// all) — or, with [`crate::ResolveTool::Files`], exactly the files' paths — are resolved by
+    /// `tool`: [`crate::ResolveTool::Ours`] / [`crate::ResolveTool::Theirs`] take side 1 / side 2
+    /// (`--tool :ours` / `:theirs`), [`crate::ResolveTool::Files`] writes the GUI merge editor's
+    /// content as the builtin merge editor writes it (resolved, never re-parsed). Each must be a
+    /// conflict of two sides of normal files without an executable-bit conflict. The revision
+    /// must be rewritable; its descendants are rebased. The operation is the CLI's `Resolve
+    /// conflicts in commit <hex>`. When the revision is not `@` and still has conflicts, it warns
+    /// `jj.resolve_conflicts_remain`; for `@` the finish's `jj.unresolved_conflicts` lists them.
+    /// An explicitly named path that is absent warns `jj.paths_unmatched`.
+    ///
+    /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — [`crate::ResolveTool::Files`] together with
+    ///   `paths`, without files, or with an invalid, root or duplicate path (before the snapshot,
+    ///   so nothing is written), or a `paths` entry is not a valid repo path.
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, carried by no VISIBLE
+    ///   commit, or divergent.
+    /// - [`crate::MutateError::RevsetResolutionError`] — an omitted `revision`'s `@` in a
+    ///   workspace with no working-copy commit.
+    /// - [`crate::MutateError::NoConflicts`] — nothing matched (the CLI's two texts).
+    /// - [`crate::MutateError::Immutable`] — the revision is inside the immutable set.
+    /// - [`crate::MutateError::StaleSelection`] — a resolved file is not a conflict at the
+    ///   revision (the CLI's "Couldn't find any conflicts at …" / "Couldn't find the path …").
+    /// - [`crate::MutateError::ConflictNotResolvable`] — a conflict is not only normal files, has
+    ///   more than two sides, or conflicts in the executable bit (the CLI's texts).
+    /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn resolve(&mut self, options: &crate::ResolveOptions) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(crate::resolve::check_resolve_args(options), |repo, ctx| {
+            crate::resolve::resolve(repo.workspace_mut(), ctx, options)
+        })
+    }
+
+    /// Touches up a revision's content with a GUI-selected tree (Story 9.17) — the CLI's `jj
+    /// diffedit` with its builtin diff editor.
+    ///
+    /// The target is `to` (or `@`) diffed against `from` (or `@`) when either is given, else
+    /// `revision` (or `@`) diffed against its parents. `tree` is what [`Repo::select_tree`]
+    /// returned for that diff (with [`crate::SelectTreeOptions::from`] = `from` in the `from`/`to`
+    /// form) and the `left` it was selected against. The target must be rewritable; then a base
+    /// tree that is no longer `tree.left` refuses as stale. A tree equal to the target's writes NO
+    /// operation ("Nothing changed."; `new_op_id` is the pre-call head). Otherwise the target gets
+    /// the tree, its descendants are rebased — or, with `restore_descendants`, reparented with
+    /// their content kept — and the operation is the CLI's `edit commit <hex>`.
+    ///
+    /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `revision` together with `from`/`to`, or a `tree`
+    ///   of the wrong shape (malformed hex, an even or zero id count, a label count that is
+    ///   neither zero nor the id count) — before the snapshot, so nothing is written.
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
+    ///   commit, or divergent.
+    /// - [`crate::MutateError::RevsetResolutionError`] — an omitted id's `@` in a workspace with
+    ///   no working-copy commit.
+    /// - [`crate::MutateError::Immutable`] — the target is inside the immutable set.
+    /// - [`crate::MutateError::StaleSelection`] — the base tree is not `tree.left`.
+    /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure, an unknown tree id
+    ///   among them.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn diffedit(&mut self, options: &crate::DiffeditOptions) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(crate::diffedit::check_diffedit_args(options), |repo, ctx| {
+            crate::diffedit::diffedit(repo.workspace_mut(), ctx, options)
         })
     }
 

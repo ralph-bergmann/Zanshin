@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 use flatbuffers::{root as fb_root, FlatBufferBuilder, WIPOffset};
 use zanshin_ffi::commit::zanshin_commit;
+use zanshin_ffi::diffedit::zanshin_diffedit;
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
@@ -172,6 +173,7 @@ fn select_request_with_mode(
             revision: None,
             left: Some(left),
             files: Some(files),
+            from: None,
         },
     );
     b.finish(req, None);
@@ -243,6 +245,65 @@ fn file_at(root: &Path, change: &str, path: &str) -> String {
         .files
         .swap_remove(0);
     String::from_utf8(shown.content).expect("utf-8")
+}
+
+/// `DiffeditRequest` for `@` with `tree` and `left`; `revision_and_from` sets both (refused).
+fn diffedit_request(tree: &(Vec<String>, Vec<String>), left: &[String], revision_and_from: bool) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(256);
+    let tree = tree_selection(&mut b, tree, left);
+    let (revision, from) = if revision_and_from {
+        (Some(b.create_string("r")), Some(b.create_string("f")))
+    } else {
+        (None, None)
+    };
+    let req = fbs::DiffeditRequest::create(
+        &mut b,
+        &fbs::DiffeditRequestArgs {
+            kind: fbs::RequestKind::Diffedit,
+            revision,
+            from,
+            to: None,
+            tree: Some(tree),
+            restore_descendants: false,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// Story 9.17: sections 1 and 3 through `zanshin_diffedit` — `@` holds exactly them; `revision`
+/// with `from` refuses before the snapshot, a stale `left` after it.
+#[test]
+fn select_tree_then_diffedit_keeps_sections_one_and_three() {
+    let fx = base();
+    let tree = select_one_and_three(&fx);
+    let head = head_op(&fx.root);
+
+    let req = diffedit_request(&tree, &fx.left, true);
+    // SAFETY: `fx.handle` is open; `req` is a live buffer for the call.
+    let bytes = unsafe { read_and_free(zanshin_diffedit(fx.handle, req.as_ptr(), req.len())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
+    assert!(
+        parse_envelope(&bytes).precondition().is_none(),
+        "refused before the snapshot"
+    );
+
+    let stale = vec!["0".repeat(40)];
+    let req = diffedit_request(&tree, &stale, false);
+    // SAFETY: as above.
+    let bytes = unsafe { read_and_free(zanshin_diffedit(fx.handle, req.as_ptr(), req.len())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_STALE_SELECTION));
+    assert_eq!(head_op(&fx.root), head, "refusals write no operation");
+
+    let req = diffedit_request(&tree, &fx.left, false);
+    // SAFETY: as above.
+    let bytes = unsafe { read_and_free(zanshin_diffedit(fx.handle, req.as_ptr(), req.len())) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", error_code(&bytes));
+    let result = env.data_as_mutation_result().expect("MutationResult payload");
+    assert_eq!(result.working_copy_change_id(), Some(fx.at.as_str()));
+    assert_ne!(head_op(&fx.root), head);
+    assert_eq!(file_at(&fx.root, &fx.at, "f.txt"), "A\nb\nc\nd\nE\n");
 }
 
 /// Sections 1 and 3, committed through the tree arm: the committed `@` holds them, the new `@`
@@ -431,6 +492,7 @@ fn select_whole(handle: u64, revision: Option<&str>, left: &[String], path: &str
             revision,
             left: Some(left),
             files: Some(files),
+            from: None,
         },
     );
     b.finish(req, None);

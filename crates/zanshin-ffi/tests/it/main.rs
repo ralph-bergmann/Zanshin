@@ -67,6 +67,7 @@ mod remotes_ffi;
 mod repo_config_ffi;
 mod repo_ffi;
 mod repo_write_ffi;
+mod resolve_ffi;
 mod secure_config_ffi;
 mod select_tree_ffi;
 mod snapshot_ffi;

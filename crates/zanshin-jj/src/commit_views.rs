@@ -106,6 +106,10 @@ pub struct ShowEntry {
     /// against ([`crate::Repo::select_tree`], Story 9.50). jj-lib returns the commit's OWN tree
     /// for a commit its index knows to be empty — the same tree, so the same `left` the verbs see.
     pub parent_tree_ids: Vec<String>,
+    /// The revision's OWN tree as hex tree ids in `Merge` order (Story 9.17) — the `left` of a
+    /// selection made against this revision as the `from` of another one
+    /// ([`crate::SelectTreeOptions::from`], `diffedit --from`).
+    pub tree_ids: Vec<String>,
 }
 
 /// What `jj interdiff` reports: the per-path change list, plus whether the tree it diffed FROM
@@ -441,6 +445,7 @@ pub(crate) fn show(
             // against (Story 9.50), never as the parents' own tree.
             let before = commit.parent_tree(repo_dyn).await.map_err(be)?;
             let parent_tree_ids = before.tree_ids().iter().map(ObjectId::hex).collect();
+            let tree_ids = after.tree_ids().iter().map(ObjectId::hex).collect();
             let records = copy_records_over_all_parents(store, &commit).await?;
             // `EverythingMatcher`: `jj show` has NO path argument (`show.rs:109`).
             let file_changes = tree_file_changes(&before, &after, &EverythingMatcher, &records).await?;
@@ -448,6 +453,7 @@ pub(crate) fn show(
                 change,
                 file_changes,
                 parent_tree_ids,
+                tree_ids,
             });
         }
         Ok::<(), CommitViewError>(())

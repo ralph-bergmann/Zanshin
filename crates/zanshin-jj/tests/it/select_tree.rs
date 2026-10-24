@@ -234,6 +234,7 @@ fn select(fx: &mut Fx, files: Vec<FileSelection>) -> Result<SelectedTreeId, Muta
     let left = left_of(&mut fx.repo, &fx.at.clone());
     fx.repo.select_tree(&SelectTreeOptions {
         revision: None,
+        from: None,
         left,
         files,
     })
@@ -381,6 +382,7 @@ fn a_rebased_left_is_stale_for_select_tree_and_every_tree_arm() {
         .repo
         .select_tree(&SelectTreeOptions {
             revision: Some(fx.at.clone()),
+            from: None,
             left: old_left.clone(),
             files: vec![hunks("f.txt", &[S1])],
         })
@@ -436,6 +438,7 @@ fn malformed_input_refuses_before_the_snapshot() {
         let err = repo
             .select_tree(&SelectTreeOptions {
                 revision: None,
+                from: None,
                 left,
                 files,
             })
@@ -465,6 +468,7 @@ fn malformed_input_refuses_before_the_snapshot() {
         .repo
         .select_tree(&SelectTreeOptions {
             revision: Some(ChangeId("qpvuntsmwlqtpvuntsmwlqtpvuntsm".to_owned())),
+            from: None,
             left,
             files: Vec::new(),
         })
@@ -553,6 +557,7 @@ fn select_in(
     let entries = fx.repo.show(revision.map(|r| r.0.as_str()), None).expect("show");
     fx.repo.select_tree(&SelectTreeOptions {
         revision: revision.cloned(),
+        from: None,
         left: entries[0].parent_tree_ids.clone(),
         files,
     })
@@ -711,6 +716,7 @@ fn an_unknown_marker_style_refuses_as_a_config_error() {
         .repo
         .select_tree(&SelectTreeOptions {
             revision: None,
+            from: None,
             left,
             files: vec![hunks("f.txt", &[S1])],
         })
@@ -842,6 +848,7 @@ fn a_conflicted_trees_labels_round_trip_through_select_tree_and_commit() {
         .repo
         .select_tree(&SelectTreeOptions {
             revision: None,
+            from: None,
             left: left.clone(),
             files: vec![whole("other.txt")],
         })
@@ -1086,6 +1093,7 @@ fn selection(fx: &mut Fx, revision: &ChangeId, files: Vec<FileSelection>) -> Tre
         .repo
         .select_tree(&SelectTreeOptions {
             revision: Some(revision.clone()),
+            from: None,
             left: left.clone(),
             files,
         })

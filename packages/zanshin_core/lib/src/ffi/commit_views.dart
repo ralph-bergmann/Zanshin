@@ -211,7 +211,12 @@ Uint8List interdiffRequestBytes({
 
 /// One revision as `show` presents it (mirrors `zanshin_jj::ShowEntry`).
 final class ShowEntry {
-  const ShowEntry({required this.change, required this.fileChanges, this.parentTreeIds = const []});
+  const ShowEntry({
+    required this.change,
+    required this.fileChanges,
+    this.parentTreeIds = const [],
+    this.treeIds = const [],
+  });
 
   /// Full metadata for the revision — the same [Change] `getChange` returns for
   /// this commit.
@@ -229,6 +234,11 @@ final class ShowEntry {
   /// `left` a hunk selection is made against (`RepoHandle.selectTree`, Story
   /// 9.50).
   final List<String> parentTreeIds;
+
+  /// The revision's OWN tree as hex tree ids in order (Story 9.17) — the
+  /// `left` of a selection made against it as `selectTree(from:)`, for
+  /// `RepoHandle.diffedit`'s `from` / `to` form.
+  final List<String> treeIds;
 }
 
 /// What `interdiff` reports (mirrors `zanshin_jj::InterdiffView`).
@@ -316,6 +326,7 @@ ShowEntry _mapShowEntry(fbs.ShowEntry e) => ShowEntry(
   change: _requireChange(e.change, 'ShowEntry'),
   fileChanges: e.fileChanges?.map(mapFileChangeTable).toList() ?? const [],
   parentTreeIds: e.parentTreeIds ?? const [],
+  treeIds: e.treeIds ?? const [],
 );
 
 /// Decode an `EvologView` `Envelope` buffer into a `List<EvologEntry>` that also

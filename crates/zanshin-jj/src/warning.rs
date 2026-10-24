@@ -294,6 +294,11 @@ pub enum WarningKind {
     /// workspace '<name>' no longer exists after this operation. The working copy was left
     /// untouched." (`report_repo_changes`, `cli/src/cli_util.rs:2489-2503` @ v0.46.0; Story 9.12).
     WorkspaceNoLongerExists,
+    /// `resolve` of a revision that is not this workspace's `@` left conflicts in it — "After this
+    /// operation, some files at this revision still have conflicts:" and `print_conflicted_paths`'
+    /// lines (`cli/src/commands/resolve.rs:126-140` @ v0.46.0; Story 9.17). For `@` the finish's
+    /// [`WarningKind::UnresolvedConflicts`] says it instead.
+    ResolveConflictsRemain,
 }
 
 /// One warning a call produced (Story 9.32).
@@ -594,26 +599,56 @@ pub(crate) fn unresolved_conflicts(
     workspace_root: &Path,
     new_wc_commit: &Commit,
 ) -> Result<Option<Warning>, BackendError> {
-    if !new_wc_commit.has_conflict() {
+    conflicts_warning(
+        WarningKind::UnresolvedConflicts,
+        "There are unresolved conflicts at these paths:",
+        workspace_root,
+        new_wc_commit,
+    )
+}
+
+/// `resolve`'s warning for a rewritten revision that is not `@` and still has conflicts
+/// (`cli/src/commands/resolve.rs:126-140` @ v0.46.0, Story 9.17): `None` when `commit` has none.
+///
+/// # Errors
+///
+/// A conflicted path's value could not be read.
+pub(crate) fn resolve_conflicts_remain(
+    workspace_root: &Path,
+    commit: &Commit,
+) -> Result<Option<Warning>, BackendError> {
+    conflicts_warning(
+        WarningKind::ResolveConflictsRemain,
+        "After this operation, some files at this revision still have conflicts:",
+        workspace_root,
+        commit,
+    )
+}
+
+/// A `kind` warning listing `commit`'s conflicts under `heading`; `None` without conflicts.
+fn conflicts_warning(
+    kind: WarningKind,
+    heading: &str,
+    workspace_root: &Path,
+    commit: &Commit,
+) -> Result<Option<Warning>, BackendError> {
+    if !commit.has_conflict() {
         return Ok(None);
     }
     let mut conflicts = Vec::new();
-    for (path, value) in new_wc_commit.tree().conflicts() {
+    for (path, value) in commit.tree().conflicts() {
         conflicts.push((ui_path(workspace_root, &path), value?));
     }
-    Ok(Some(local(
-        WarningKind::UnresolvedConflicts,
-        conflicted_paths(&conflicts),
-    )))
+    Ok(Some(local(kind, conflicted_paths(heading, &conflicts))))
 }
 
-/// The heading plus `print_conflicted_paths`' lines (`cli_util.rs:3129-3219` @ v0.46.0): each
+/// `heading` plus `print_conflicted_paths`' lines (`cli_util.rs:3129-3219` @ v0.46.0): each
 /// rendered path padded to the longest one (capped at 32 bytes) plus three, then a space and the
 /// description of the simplified conflict.
-fn conflicted_paths(conflicts: &[(String, MergedTreeValue)]) -> String {
+fn conflicted_paths(heading: &str, conflicts: &[(String, MergedTreeValue)]) -> String {
     let max_path_len = conflicts.iter().map(|(p, _)| p.len()).max().unwrap_or(0);
     let width = max_path_len.min(32) + 3;
-    let mut lines = vec!["There are unresolved conflicts at these paths:".to_owned()];
+    let mut lines = vec![heading.to_owned()];
     for (path, conflict) in conflicts {
         lines.push(format!("{path:width$} {}", conflict_description(&conflict.simplify())));
     }
@@ -622,7 +657,7 @@ fn conflicted_paths(conflicts: &[(String, MergedTreeValue)]) -> String {
 
 /// `{sides}-sided conflict`, plus ` including ` and the sorted deletions and special kinds among
 /// the terms — a non-executable file adds nothing (`cli_util.rs:3150-3215` @ v0.46.0).
-fn conflict_description(conflict: &MergedTreeValue) -> String {
+pub(crate) fn conflict_description(conflict: &MergedTreeValue) -> String {
     let sides = conflict.num_sides();
     let deletions = sides - conflict.adds().flatten().count();
     let mut seen = BTreeSet::new();
@@ -918,15 +953,18 @@ mod tests {
         };
         let two_sided = || Merge::from_vec(vec![file(1), file(0), file(2)]);
         assert_eq!(
-            super::conflicted_paths(&[("c.txt".to_owned(), two_sided())]),
-            "There are unresolved conflicts at these paths:\nc.txt    2-sided conflict"
+            super::conflicted_paths("Heading:", &[("c.txt".to_owned(), two_sided())]),
+            "Heading:\nc.txt    2-sided conflict"
         );
         let long = "d".repeat(40);
-        let message = super::conflicted_paths(&[("a".to_owned(), two_sided()), (long.clone(), two_sided())]);
+        let message = super::conflicted_paths(
+            "Heading:",
+            &[("a".to_owned(), two_sided()), (long.clone(), two_sided())],
+        );
         assert_eq!(
             message,
             format!(
-                "There are unresolved conflicts at these paths:\na{} 2-sided conflict\n{long} 2-sided conflict",
+                "Heading:\na{} 2-sided conflict\n{long} 2-sided conflict",
                 " ".repeat(34)
             )
         );

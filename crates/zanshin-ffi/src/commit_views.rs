@@ -201,7 +201,7 @@ fn read_interdiff_request(data: *const u8, len: usize) -> Result<InterdiffReques
 /// Serialise `&[ShowEntry]` into a finished `Envelope<ShowView>` buffer.
 ///
 /// Children before parents (`FlatBuffers` requirement): each entry's nested `Change`, its
-/// `[FileChange]` vector and its `parent_tree_ids` (Story 9.50) are complete before the
+/// `[FileChange]` vector, its `parent_tree_ids` (Story 9.50) and `tree_ids` (Story 9.17) are complete before the
 /// `ShowEntry` table opens, and the outer vector
 /// and `ShowView` table come after the loop.
 fn show_view_to_envelope(entries: &[ShowEntry], report: &crate::envelope::CallReport) -> Vec<u8> {
@@ -213,12 +213,15 @@ fn show_view_to_envelope(entries: &[ShowEntry], report: &crate::envelope::CallRe
             let file_changes = file_changes_vector(&mut b, &e.file_changes);
             let parent_tree_ids: Vec<_> = e.parent_tree_ids.iter().map(|id| b.create_string(id)).collect();
             let parent_tree_ids = b.create_vector(&parent_tree_ids);
+            let tree_ids: Vec<_> = e.tree_ids.iter().map(|id| b.create_string(id)).collect();
+            let tree_ids = b.create_vector(&tree_ids);
             fbs::ShowEntry::create(
                 &mut b,
                 &fbs::ShowEntryArgs {
                     change: Some(change),
                     file_changes: Some(file_changes),
                     parent_tree_ids: Some(parent_tree_ids),
+                    tree_ids: Some(tree_ids),
                 },
             )
         })
@@ -581,6 +584,7 @@ mod tests {
                 },
             ],
             parent_tree_ids: vec!["t1".to_owned(), "t2".to_owned(), "t3".to_owned()],
+            tree_ids: vec!["own".to_owned()],
         }];
 
         let buf = show_view_to_envelope(&entries, &crate::envelope::CallReport::default());
@@ -615,6 +619,13 @@ mod tests {
             .iter()
             .collect();
         assert_eq!(parent_tree_ids, ["t1", "t2", "t3"]);
+        let tree_ids: Vec<&str> = fbs_entries
+            .get(0)
+            .tree_ids()
+            .expect("tree_ids present")
+            .iter()
+            .collect();
+        assert_eq!(tree_ids, ["own"]);
     }
 
     #[test]

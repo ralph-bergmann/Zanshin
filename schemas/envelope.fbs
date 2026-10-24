@@ -156,7 +156,10 @@ enum RequestKind : ubyte {
   WorkspaceForget,
   WorkspaceRename,
   WorkspaceRemove,
-  SimplifyParents
+  SimplifyParents,
+  ResolveList,
+  Resolve,
+  Diffedit
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -244,11 +247,15 @@ table FileSelection {
 ///                      when the revision's parent tree is no longer this
 ///   files              the selected files; a changed file not listed keeps its left side; each
 ///                      path at most once
+///   from               (Story 9.17) jj reverse-hex change id whose OWN tree is the diff's left
+///                      side (`diffedit --from`); `left` is then that tree — `ShowEntry.tree_ids`;
+///                      absent → the revision's parent tree
 table SelectTreeRequest {
   kind: RequestKind;
   revision: string;
   left: [string];
   files: [FileSelection];
+  from: string;
 }
 
 /// A tree arm's selection (Story 9.50): the tree `zanshin_select_tree` returned (`tree_ids`,
@@ -402,6 +409,66 @@ table SimplifyParentsRequest {
   kind: RequestKind;
   source: [string];
   revisions: [string];
+}
+
+/// Arguments of `zanshin_resolve_list` (Story 9.17) — the CLI's `jj resolve --list`.
+///
+///   revision           jj reverse-hex change id; absent → `@`
+///   paths              repo-relative PREFIXES; absent or empty = every conflict
+table ResolveListRequest {
+  kind: RequestKind;
+  revision: string;
+  paths: [string];
+}
+
+/// `zanshin_resolve`'s tool (Story 9.17): the GUI merge editor's `files`, or the CLI's builtin
+/// `:ours` (side 1) / `:theirs` (side 2).
+enum ResolveTool : ubyte {
+  Files,
+  Ours,
+  Theirs
+}
+
+/// One file the GUI merge editor resolved (Story 9.17): `path` repo-relative in jj's internal
+/// `/`-separated form (what `ConflictedFile.path` reports), `content` its resolved bytes, written
+/// as they are.
+table ResolvedFile {
+  path: string;
+  content: [ubyte];
+}
+
+/// Arguments of `zanshin_resolve` (Story 9.17) — the CLI's `jj resolve`.
+///
+///   revision           jj reverse-hex change id; absent → `@`
+///   paths              repo-relative PREFIXES; absent or empty = every conflict; not with
+///                      `tool = Files` (the files are the paths)
+///   tool               `Files` (with `files`), `Ours` or `Theirs`
+///   files              `tool = Files` only: at least one, each a conflict at the revision, each
+///                      path once; with `Ours`/`Theirs` refused (`jj.invalid_input`)
+table ResolveRequest {
+  kind: RequestKind;
+  revision: string;
+  paths: [string];
+  tool: ResolveTool;
+  files: [ResolvedFile];
+}
+
+/// Arguments of `zanshin_diffedit` (Story 9.17) — the CLI's `jj diffedit` with its builtin diff
+/// editor, the GUI's.
+///
+///   revision           `-r`, jj reverse-hex change id, diffed against its parents; absent (with
+///                      neither `from` nor `to`) → `@`; not with `from`/`to` (`jj.invalid_input`)
+///   from / to          `--from` / `--to`: `to` (absent → `@`) diffed against `from`'s own tree
+///                      (absent → `@`)
+///   tree               what `zanshin_select_tree` returned for that diff and its `left`
+///   restore_descendants  `--restore-descendants`: descendants keep their content
+table DiffeditRequest {
+  kind: RequestKind;
+  revision: string;
+  from: string;
+  to: string;
+  tree: TreeSelection;
+  restore_descendants: bool;
 }
 
 /// Arguments of `zanshin_metaedit` (Story 9.9) — the CLI's `jj metaedit` flags, one field each.
@@ -2327,10 +2394,14 @@ table GitExportResult {
 /// parent tree, what split/squash/commit diff against — as hex tree ids in order (one for a
 /// resolved tree, an odd number for a conflicted merge of parents): the `left` a hunk selection
 /// (`zanshin_select_tree`) is made against.
+///
+/// `tree_ids` (Story 9.17) is the commit's OWN tree, hex in order — the `left` of a selection made
+/// against it as `SelectTreeRequest.from` (`diffedit --from`).
 table ShowEntry {
   change: Change;
   file_changes: [FileChange];
   parent_tree_ids: [string];
+  tree_ids: [string];
 }
 
 /// The result of `zanshin_show`: one entry per commit the revset denotes, in RAW revset order
@@ -2709,6 +2780,44 @@ table SelectedTree {
   labels: [string];
 }
 
+/// One term of a conflict hunk (Story 9.17): its bytes.
+table ConflictTerm {
+  content: [ubyte];
+}
+
+/// One merge hunk of a file conflict (Story 9.17) — `jj_lib::files::merge_hunks` over the
+/// simplified sides: a conflicting hunk's terms in jj's `Merge` order (side 1, base 1, side 2, …),
+/// or one term, the text every side shares.
+table ConflictHunk {
+  terms: [ConflictTerm];
+}
+
+/// One conflicted path of `zanshin_resolve_list` (Story 9.17).
+///
+///   path               repo-relative, jj's internal `/`-separated form
+///   description        the CLI's `--list` text for the simplified conflict ("2-sided conflict",
+///                      "… including an executable", …)
+///   num_sides          the simplified conflict's sides
+///   unresolvable       ABSENT = `zanshin_resolve` can take it; else the CLI's refusal text
+///                      (`jj.conflict_not_resolvable`)
+///   labels             a file conflict's simplified conflict labels, one per term (empty =
+///                      unlabeled, and for a conflict that is not a file conflict)
+///   hunks              a file conflict's merge hunks; empty for any other conflict
+table ConflictedFile {
+  path: string;
+  description: string;
+  num_sides: uint;
+  unresolvable: string;
+  labels: [string];
+  hunks: [ConflictHunk];
+}
+
+/// `zanshin_resolve_list`'s answer (Story 9.17): the revision's matching conflicts, in tree
+/// order.
+table ResolveList {
+  files: [ConflictedFile];
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -2767,6 +2876,7 @@ union Payload {
   MovementTargets,
   WorkspaceRemoveResult,
   SimplifyParentsResult,
+  ResolveList,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

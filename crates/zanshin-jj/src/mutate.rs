@@ -438,6 +438,24 @@ pub enum MutateError {
         /// What no longer fits.
         reason: String,
     },
+    /// [`crate::Repo::resolve`] / [`crate::Repo::resolve_list`] found no conflict to work on
+    /// (Story 9.17) — the CLI's "No conflicts found at this revision" (no paths given) or "No
+    /// conflicts found at the given path(s)" (`cli/src/commands/resolve.rs` @ v0.46.0). Nothing is
+    /// written.
+    #[error("{message}")]
+    NoConflicts {
+        /// The CLI's text.
+        message: String,
+    },
+    /// [`crate::Repo::resolve`] met a conflict a 3-way merge tool cannot take (Story 9.17): not
+    /// only normal files, more than two sides, or a conflict in the executable bit — the CLI's
+    /// `ConflictResolveError` text (`cli/src/merge_tools/mod.rs:87-110` @ v0.46.0). Nothing is
+    /// written.
+    #[error("{message}")]
+    ConflictNotResolvable {
+        /// The CLI's text.
+        message: String,
+    },
     /// The pre-verb snapshot failed (Story 9.26) — the verb itself never ran. See
     /// [`crate::PreconditionError`]; the partial facts ride [`crate::Repo::take_precondition`].
     #[error(transparent)]

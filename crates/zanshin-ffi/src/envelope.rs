@@ -166,6 +166,14 @@ pub const JJ_PUSH_COMMIT_REJECTED: &str = "jj.push_commit_rejected";
 /// or a key is not a current section of its file (Story 9.50); what no longer fits in `context`.
 /// Nothing is written. The remedy: re-read the diff, re-map the selection, select again.
 pub const JJ_STALE_SELECTION: &str = "jj.stale_selection";
+/// AR-P-4: emitted by `resolve.rs::zanshin_resolve_list` and `zanshin_resolve` when no conflict
+/// matches — the CLI's "No conflicts found at this revision" / "No conflicts found at the given
+/// path(s)" in `context` (Story 9.17). Nothing is written.
+pub const JJ_NO_CONFLICTS: &str = "jj.no_conflicts";
+/// AR-P-4: emitted by `resolve.rs::zanshin_resolve` when a conflict is not one a 3-way merge tool
+/// can take — not only normal files, more than two sides, or a conflict in the executable bit; the
+/// CLI's text in `context` (Story 9.17). Nothing is written.
+pub const JJ_CONFLICT_NOT_RESOLVABLE: &str = "jj.conflict_not_resolvable";
 /// AR-P-4: emitted by `workspace.rs::zanshin_workspace_add` when the new workspace's Git worktree
 /// could not be created — a workspace without a Git backend, or a failing `git`; jj-lib's text in
 /// `context` (Story 9.23). The destination directory created before stays, as in the CLI.
@@ -417,6 +425,9 @@ pub const JJ_OP_ABANDON_WORKING_COPY_NOT_UPDATED: &str = "jj.op_abandon_working_
 /// Warning: the finished operation's view no longer has this workspace's working-copy commit
 /// (e.g. `zanshin_op_restore` of the root operation); the working copy was left (Story 9.12).
 pub const JJ_WORKSPACE_NO_LONGER_EXISTS: &str = "jj.workspace_no_longer_exists";
+/// Warning: `zanshin_resolve` left conflicts in a revision that is not this workspace's `@`; the
+/// message lists them (Story 9.17).
+pub const JJ_RESOLVE_CONFLICTS_REMAIN: &str = "jj.resolve_conflicts_remain";
 
 /// The registered code of a warning kind (Story 9.32) — the one mapping from
 /// `zanshin_jj::WarningKind` to the wire, exhaustive so a new kind cannot ship without a code.
@@ -500,6 +511,7 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::OpDiffChangesUnresolved => JJ_OP_DIFF_CHANGES_UNRESOLVED,
         K::OpAbandonWorkingCopyNotUpdated => JJ_OP_ABANDON_WORKING_COPY_NOT_UPDATED,
         K::WorkspaceNoLongerExists => JJ_WORKSPACE_NO_LONGER_EXISTS,
+        K::ResolveConflictsRemain => JJ_RESOLVE_CONFLICTS_REMAIN,
     }
 }
 
@@ -926,6 +938,56 @@ pub fn ok_selected_tree(r: &zanshin_jj::SelectedTreeId, report: &CallReport) -> 
         },
     );
     finish_envelope(b, fbs::Payload::SelectedTree, Some(tree.as_union_value()), report)
+}
+
+/// Build a success `Envelope` with a `ResolveList` payload and return the finished buffer (Story
+/// 9.17): each conflicted path with its description, side count, refusal text (absent =
+/// resolvable), labels and merge hunks.
+#[must_use]
+pub fn ok_resolve_list(r: &zanshin_jj::ResolveList, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(1024);
+    let files: Vec<_> = r
+        .files
+        .iter()
+        .map(|file| {
+            let hunks: Vec<_> = file
+                .hunks
+                .iter()
+                .map(|hunk| {
+                    let terms: Vec<_> = hunk
+                        .terms
+                        .iter()
+                        .map(|term| {
+                            let content = b.create_vector(term);
+                            fbs::ConflictTerm::create(&mut b, &fbs::ConflictTermArgs { content: Some(content) })
+                        })
+                        .collect();
+                    let terms = b.create_vector(&terms);
+                    fbs::ConflictHunk::create(&mut b, &fbs::ConflictHunkArgs { terms: Some(terms) })
+                })
+                .collect();
+            let hunks = b.create_vector(&hunks);
+            let labels: Vec<_> = file.labels.iter().map(|l| b.create_string(l)).collect();
+            let labels = b.create_vector(&labels);
+            let path = b.create_string(&file.path);
+            let description = b.create_string(&file.description);
+            let unresolvable = file.unresolvable.as_deref().map(|u| b.create_string(u));
+            fbs::ConflictedFile::create(
+                &mut b,
+                &fbs::ConflictedFileArgs {
+                    path: Some(path),
+                    description: Some(description),
+                    num_sides: file.num_sides,
+                    unresolvable,
+                    labels: Some(labels),
+                    hunks: Some(hunks),
+                },
+            )
+        })
+        .collect();
+    let files = b.create_vector(&files);
+    let list = fbs::ResolveList::create(&mut b, &fbs::ResolveListArgs { files: Some(files) });
+    finish_envelope(b, fbs::Payload::ResolveList, Some(list.as_union_value()), report)
 }
 
 /// Build a success `Envelope` with a `MovementTargets` payload and return the finished buffer
@@ -1724,6 +1786,7 @@ mod tests {
             K::OpDiffChangesUnresolved => "jj.op_diff_changes_unresolved",
             K::OpAbandonWorkingCopyNotUpdated => "jj.op_abandon_working_copy_not_updated",
             K::WorkspaceNoLongerExists => "jj.workspace_no_longer_exists",
+            K::ResolveConflictsRemain => "jj.resolve_conflicts_remain",
         }
     }
 
@@ -1810,6 +1873,7 @@ mod tests {
             K::OpDiffChangesUnresolved,
             K::OpAbandonWorkingCopyNotUpdated,
             K::WorkspaceNoLongerExists,
+            K::ResolveConflictsRemain,
         ];
         for kind in kinds {
             assert_eq!(warning_code(kind), registered(kind), "{kind:?}");
@@ -2082,6 +2146,67 @@ mod tests {
         };
         assert_eq!(read(tree.tree_ids()), r.tree_ids);
         assert_eq!(read(tree.labels()), r.labels);
+    }
+
+    /// Story 9.17: every field of every conflicted file survives — labels, a present and an
+    /// absent `unresolvable`, multi-term and one-term hunks, and a file without hunks.
+    #[test]
+    fn ok_resolve_list_carries_every_field_of_every_file() {
+        let hunk = |terms: &[&[u8]]| zanshin_jj::ConflictHunk {
+            terms: terms.iter().map(|t| t.to_vec()).collect(),
+        };
+        let r = zanshin_jj::ResolveList {
+            files: vec![
+                zanshin_jj::ConflictedFile {
+                    path: "c.txt".to_owned(),
+                    description: "2-sided conflict".to_owned(),
+                    num_sides: 2,
+                    unresolvable: None,
+                    labels: vec!["x".to_owned(), "a".to_owned(), "y".to_owned()],
+                    hunks: vec![hunk(&[b"top\n"]), hunk(&[b"x\n", b"", b"y\n"])],
+                },
+                zanshin_jj::ConflictedFile {
+                    path: "s".to_owned(),
+                    description: "2-sided conflict including a symlink".to_owned(),
+                    num_sides: 2,
+                    unresolvable: Some("Only conflicts that involve normal files".to_owned()),
+                    labels: Vec::new(),
+                    hunks: Vec::new(),
+                },
+            ],
+        };
+        let buf = ok_resolve_list(&r, &CallReport::default());
+        let env = verified_envelope(&buf);
+        assert_eq!(env.data_type(), fbs::Payload::ResolveList);
+        let files = env
+            .data_as_resolve_list()
+            .expect("ResolveList payload")
+            .files()
+            .expect("files");
+        let decoded: Vec<zanshin_jj::ConflictedFile> = files
+            .iter()
+            .map(|file| zanshin_jj::ConflictedFile {
+                path: file.path().expect("path").to_owned(),
+                description: file.description().expect("description").to_owned(),
+                num_sides: file.num_sides(),
+                unresolvable: file.unresolvable().map(ToOwned::to_owned),
+                labels: file.labels().expect("labels").iter().map(ToOwned::to_owned).collect(),
+                hunks: file
+                    .hunks()
+                    .expect("hunks")
+                    .iter()
+                    .map(|hunk| zanshin_jj::ConflictHunk {
+                        terms: hunk
+                            .terms()
+                            .expect("terms")
+                            .iter()
+                            .map(|term| term.content().expect("content").bytes().to_vec())
+                            .collect(),
+                    })
+                    .collect(),
+            })
+            .collect();
+        assert_eq!(decoded, r.files);
     }
 
     #[test]

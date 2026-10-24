@@ -1111,6 +1111,52 @@ external ffi.Pointer<ZanshinBuf> zanshin_describe(
 @ffi.Native<ffi.Pointer<ZanshinBuf> Function()>()
 external ffi.Pointer<ZanshinBuf> zanshin_diagnostics();
 
+/// Touch up a revision's content with a GUI-selected tree, in the repo identified by `handle` —
+/// the CLI's `jj diffedit` (Story 9.17).
+///
+/// The arguments cross as a `DiffeditRequest` `FlatBuffers` request buffer: `revision` (`-r`,
+/// diffed against its parents; absent with neither `from` nor `to`: `@`), `from` / `to`
+/// (`--from` / `--to`: `to`, absent `@`, diffed against `from`'s own tree, absent `@`), `tree`
+/// (what `zanshin_select_tree` returned for that diff and its `left`) and `restore_descendants`.
+/// The target must be rewritable; a base tree that is no longer `tree.left` is stale. A tree equal
+/// to the target's writes NO operation (`MutationResult.new_op_id` is the pre-call head);
+/// otherwise the target gets the tree, its descendants are rebased (reparented with
+/// `restore_descendants`) and the operation is `edit commit <hex>`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `DiffeditRequest` buffer, or its `kind`
+/// is not `Diffedit`.
+/// - `jj.invalid_input` — `revision` together with `from`/`to`, or a `tree` of the wrong shape —
+/// before the snapshot: nothing written, no `precondition`; detail in `context`.
+/// - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent.
+/// - `jj.revset_resolution_error` — an omitted id's `@` in a workspace with no working-copy commit.
+/// - `jj.immutable` — the target is inside the immutable set; its hex id in `context`.
+/// - `jj.stale_selection` — the base tree is not the selection's `left`; detail in `context`.
+/// - `jj.config_error` — the `immutable_heads()` alias does not resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.not_a_git_repo` — the colocated finish found no Git backend.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure (an unknown tree id among them).
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.DiffeditRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_diffedit(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// Preview which verbs a dragged change, path selection or bookmark can run at each drop location,
 /// in the repo identified by `handle` (Story 9.31) — before anything runs, with each verb's own
 /// refusal.
@@ -3412,6 +3458,91 @@ external ffi.Pointer<ZanshinBuf> zanshin_repo_open(
   ffi.Pointer<ffi.Char> path,
 );
 
+/// Resolve a revision's conflicts in the repo identified by `handle` — the CLI's `jj resolve`
+/// (Story 9.17).
+///
+/// The arguments cross as a `ResolveRequest` `FlatBuffers` request buffer: `revision` (absent:
+/// `@`), `paths` (repo-relative PREFIXES; absent or empty: every conflict) and `tool` — `Ours` /
+/// `Theirs` take side 1 / side 2 (`--tool :ours` / `:theirs`), `Files` writes each of `files` (the
+/// GUI merge editor's output; the files are the paths) as the builtin merge editor writes a file.
+/// The revision must be rewritable; its descendants are rebased; the operation is `Resolve
+/// conflicts in commit <hex>`. A revision that is not `@` and still has conflicts warns
+/// `jj.resolve_conflicts_remain`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ResolveRequest` buffer, or its `kind`
+/// is not `Resolve`.
+/// - `jj.invalid_input` — `files` with `Ours`/`Theirs`, `Files` with `paths` or without files, an
+/// invalid, root or duplicate file path (all before the snapshot: nothing written, no
+/// `precondition`), or a `paths` entry is not a valid repo path; detail in `context`.
+/// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit, or divergent.
+/// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
+/// commit.
+/// - `jj.no_conflicts` — nothing matched; the CLI's text in `context`.
+/// - `jj.immutable` — the revision is inside the immutable set; its hex id in `context`.
+/// - `jj.stale_selection` — a file is not a conflict at the revision; the CLI's text in `context`.
+/// - `jj.conflict_not_resolvable` — a conflict a 3-way merge tool cannot take; the CLI's text in
+/// `context`.
+/// - `jj.config_error` — the `immutable_heads()` alias does not resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.not_a_git_repo` — the colocated finish found no Git backend.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// As [`zanshin_resolve_list`], with a `ResolveRequest` buffer
+/// (`fbs.ResolveRequestObjectBuilder(...).toBytes()`).
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_resolve(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// List a revision's conflicts with what a merge editor needs, in the repo identified by `handle`
+/// — the CLI's `jj resolve --list` (Story 9.17), plus each file conflict's merge hunks.
+///
+/// The arguments cross as a `ResolveListRequest` `FlatBuffers` request buffer: `revision` (absent:
+/// `@`) and `paths` (repo-relative PREFIXES; absent or empty: every conflict). An explicitly named
+/// absent path warns `jj.paths_unmatched`. Writes NO operation beyond the pre-verb snapshot's.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `ResolveList` payload on success: per matched
+/// conflict, in tree order, its path, the CLI's `--list` description, its side count, why
+/// `zanshin_resolve` would refuse it (absent: it can take it) and — for a file conflict — its
+/// labels and merge hunks (each conflicting hunk's terms: side 1, base 1, side 2, …).
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `ResolveListRequest` buffer, or its
+/// `kind` is not `ResolveList`.
+/// - `jj.invalid_input` — a `paths` entry is not a valid repo path.
+/// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit, or divergent.
+/// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
+/// commit.
+/// - `jj.no_conflicts` — nothing matched; the CLI's text in `context`.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.ResolveListRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_resolve_list(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// Give the paths selected by the request the content they have in another commit, in the
 /// repo referenced by `handle` — the CLI's `jj restore`, whole-file only (no interactive
 /// or hunk selection).
@@ -3476,8 +3607,10 @@ external ffi.Pointer<ZanshinBuf> zanshin_restore(
 /// `zanshin_split` and `zanshin_squash`.
 ///
 /// The arguments cross as a `SelectTreeRequest` `FlatBuffers` request buffer: `revision` (absent:
-/// `@`), `left` (the revision's parent tree the selection was made against, as
-/// `ShowEntry.parent_tree_ids` reports it) and `files` (per path `whole`, or the selected `hunks`
+/// `@`), `from` (Story 9.17: the revision whose OWN tree is the diff's left side, `diffedit
+/// --from`; absent: the revision's parent tree), `left` (that left tree the selection was made
+/// against, as `ShowEntry.parent_tree_ids` — or, with `from`, `ShowEntry.tree_ids` — reports it)
+/// and `files` (per path `whole`, or the selected `hunks`
 /// by their `HunkKey` with or without `mode`, the builtin editor's mode toggle; a changed file not
 /// listed, and every unselected section, keeps its left side). A file has sections when both
 /// sides are a regular file or a file conflict (materialized with `ui.conflict-marker-style`) and
@@ -3497,10 +3630,11 @@ external ffi.Pointer<ZanshinBuf> zanshin_restore(
 /// - `jj.invalid_input` — a file selected `whole` and by `hunks` or its `mode`, `left` malformed
 /// or of an even or zero count, a path invalid, the root or listed twice — all before the
 /// snapshot: nothing written, no `precondition`; detail in `context`.
-/// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit, or divergent.
+/// - `jj.change_not_found` — `revision` or `from` is malformed, carried by no VISIBLE commit, or
+/// divergent.
 /// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
 /// commit.
-/// - `jj.stale_selection` — the revision's parent tree is not `left`, a key is not a current
+/// - `jj.stale_selection` — the revision's parent tree (`from`'s tree) is not `left`, a key is not a current
 /// section of its file, or `mode` names a file without a mode change; detail in `context`.
 /// - `jj.config_error` — the effective config does not read (a `ui.conflict-marker-style` that
 /// is not one of jj's styles included — the start-up refuses it).

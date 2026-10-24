@@ -361,6 +361,7 @@ fn sample_show_entry() -> zanshin_jj::ShowEntry {
             kind: zanshin_jj::ChangeKind::Added,
         }],
         parent_tree_ids: vec![String::new()],
+        tree_ids: vec![String::new()],
     }
 }
 
@@ -1666,6 +1667,7 @@ fn select_tree_surface_resolves() {
     };
     let options = zanshin_jj::SelectTreeOptions {
         revision: Some(zanshin_jj::ChangeId("r".to_owned())),
+        from: None,
         left: vec!["l".to_owned()],
         files: vec![
             zanshin_jj::FileSelection {
@@ -1692,6 +1694,81 @@ fn select_tree_surface_resolves() {
             &mut zanshin_jj::Repo,
             &zanshin_jj::SelectTreeOptions,
         ) -> Result<zanshin_jj::SelectedTreeId, zanshin_jj::MutateError>;
+}
+
+/// The Story 9.17 surface: `resolve_list`'s payload, `resolve`'s tools and `diffedit`'s options
+/// named field by field, the two refusals, and the three verbs as `fn` pointers.
+#[test]
+fn resolve_and_diffedit_surface_resolves() {
+    let list_options = zanshin_jj::ResolveListOptions {
+        revision: None,
+        paths: vec!["p".to_owned()],
+    };
+    assert_eq!(list_options.clone(), list_options);
+    assert_eq!(zanshin_jj::ResolveListOptions::default().paths, Vec::<String>::new());
+    let list = zanshin_jj::ResolveList {
+        files: vec![zanshin_jj::ConflictedFile {
+            path: "c".to_owned(),
+            description: "2-sided conflict".to_owned(),
+            num_sides: 2,
+            unresolvable: None,
+            labels: vec!["l".to_owned()],
+            hunks: vec![zanshin_jj::ConflictHunk {
+                terms: vec![b"t".to_vec()],
+            }],
+        }],
+    };
+    assert_eq!(list.clone(), list);
+    for tool in [
+        zanshin_jj::ResolveTool::Ours,
+        zanshin_jj::ResolveTool::Theirs,
+        zanshin_jj::ResolveTool::Files(vec![zanshin_jj::ResolvedFile {
+            path: "c".to_owned(),
+            content: b"x".to_vec(),
+        }]),
+    ] {
+        let options = zanshin_jj::ResolveOptions {
+            revision: Some(zanshin_jj::ChangeId("r".to_owned())),
+            paths: Vec::new(),
+            tool,
+        };
+        assert_eq!(options.clone(), options);
+    }
+    let diffedit = zanshin_jj::DiffeditOptions {
+        revision: None,
+        from: Some(zanshin_jj::ChangeId("f".to_owned())),
+        to: None,
+        tree: sample_tree_selection(),
+        restore_descendants: true,
+    };
+    assert_eq!(diffedit.clone(), diffedit);
+    assert!(!zanshin_jj::DiffeditOptions::default().restore_descendants);
+    for err in [
+        zanshin_jj::MutateError::NoConflicts {
+            message: "m".to_owned(),
+        },
+        zanshin_jj::MutateError::ConflictNotResolvable {
+            message: "m".to_owned(),
+        },
+    ] {
+        assert_eq!(err.to_string(), "m");
+        assert!(err.hints().is_empty());
+    }
+    _ = zanshin_jj::Repo::resolve_list
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::ResolveListOptions,
+        ) -> Result<zanshin_jj::ResolveList, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::resolve
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::ResolveOptions,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::diffedit
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::DiffeditOptions,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
 }
 
 // operation-log surface (Story 9.21)
@@ -2049,7 +2126,7 @@ fn story_9_28_surface_resolves() {
 /// Story 9.53 the unresolved conflicts; Story 9.51 the template diagnostic; Story 9.54's closing
 /// run the bookmark auto-track warning; Story 9.19 the four rename warnings; Story 9.11 the five
 /// tracking warnings; Story 9.13 the three workspace forget/remove warnings).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 76] = {
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 77] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -2128,6 +2205,7 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 76] = {
         K::OpDiffChangesUnresolved,
         K::OpAbandonWorkingCopyNotUpdated,
         K::WorkspaceNoLongerExists,
+        K::ResolveConflictsRemain,
     ]
 };
 
@@ -2262,10 +2340,11 @@ fn story_9_32_warning_surface_resolves() {
             | K::ConfigDeprecated
             | K::OpDiffChangesUnresolved
             | K::OpAbandonWorkingCopyNotUpdated
-            | K::WorkspaceNoLongerExists => {}
+            | K::WorkspaceNoLongerExists
+            | K::ResolveConflictsRemain => {}
         }
     }
-    assert_eq!(every.len(), 76);
+    assert_eq!(every.len(), 77);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

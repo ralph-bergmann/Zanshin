@@ -7,7 +7,9 @@
 //! The CLI's interactive verbs run a diff editor over `Diff(left, right)` — `left` the revision's
 //! PARENT tree, `right` its own tree (`split.rs:567`, `squash.rs:495`, `commit.rs:103` @ v0.46.0).
 //! Zanshin replaces the editor (ADR-0003): the GUI shows the diff, the user picks whole files or
-//! sections, [`select_tree`] writes the tree that choice yields and the verb takes it.
+//! sections, [`select_tree`] writes the tree that choice yields and the verb takes it. `diffedit`
+//! takes it too (Story 9.17): its builtin diff editor is the same `apply_diff_builtin`, and with
+//! `--from` its left side is that revision's OWN tree — [`SelectTreeOptions::from`].
 //!
 //! - **Sides** are read as the builtin editor reads them (`read_file_contents`,
 //!   `cli/src/merge_tools/builtin.rs:124-218`). A side is FILE-LIKE when it is a resolved regular
@@ -120,8 +122,13 @@ pub struct FileSelection {
 pub struct SelectTreeOptions {
     /// The revision the selection was made in. `None` is `@`.
     pub revision: Option<ChangeId>,
+    /// The revision whose OWN tree is the diff's left side (Story 9.17, `diffedit --from`);
+    /// `None` is the revision's parent tree, what `commit`, `split`, `squash` and `diffedit -r`
+    /// diff against.
+    pub from: Option<ChangeId>,
     /// The tree the selection was made against — the revision's parent tree as
-    /// [`crate::ShowEntry::parent_tree_ids`] reports it (hex, in order).
+    /// [`crate::ShowEntry::parent_tree_ids`] reports it, or `from`'s own tree as
+    /// [`crate::ShowEntry::tree_ids`] reports it (hex, in order).
     pub left: Vec<String>,
     /// The selected files; a file not listed keeps its left side. Each path at most once.
     pub files: Vec<FileSelection>,
@@ -164,7 +171,8 @@ pub(crate) const PATHS_WITH_TREE: &str =
     "paths cannot be combined with a selected tree: the tree already holds the selection";
 
 /// The stale-`left` refusal's reason.
-const STALE_LEFT: &str = "The selection was made against another parent tree: the revision's parents changed since";
+const STALE_LEFT: &str =
+    "The selection was made against another base tree: the revision's parents (or `from`) changed since";
 
 impl SelectedTreeId {
     /// The ids and labels of `tree`.
@@ -273,7 +281,12 @@ pub(crate) fn select_tree(
     let repo: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let revision = crate::op_support::resolve_or_wc(repo, workspace.workspace_name(), options.revision.as_ref())
         .map_err(|e| res(e, options.revision.as_ref()))?;
-    let parent_tree = pollster::block_on(revision.parent_tree(repo)).map_err(be)?;
+    let parent_tree = match &options.from {
+        Some(from) => crate::op_support::resolve_commit(repo, from)
+            .map_err(|e| res(e, Some(from)))?
+            .tree(),
+        None => pollster::block_on(revision.parent_tree(repo)).map_err(be)?,
+    };
     check_left(&parent_tree, &options.left)?;
     let materialize = ConflictMaterializeOptions {
         marker_style,
@@ -457,7 +470,7 @@ async fn write_file(
 }
 
 /// `resolve_file_copy_id` (`builtin.rs:395-403` @ v0.46.0).
-fn resolve_file_copy_id(value: &MergedTreeValue) -> Option<CopyId> {
+pub(crate) fn resolve_file_copy_id(value: &MergedTreeValue) -> Option<CopyId> {
     value
         .to_copy_id_merge()
         .and_then(|copy_id| copy_id.resolve_trivial(SameChange::Accept).cloned().flatten())

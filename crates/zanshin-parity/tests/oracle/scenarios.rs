@@ -670,6 +670,7 @@ fn select_f_txt(repo: &mut zanshin_jj::Repo, choice: FileChoice) -> (zanshin_jj:
     let tree = repo
         .select_tree(&SelectTreeOptions {
             revision: None,
+            from: None,
             left: entry.parent_tree_ids.clone(),
             files: vec![FileSelection {
                 path: "f.txt".to_owned(),
@@ -2948,6 +2949,8 @@ pub fn scenarios() -> Vec<Scenario> {
     .chain(file_chmod_scenarios())
     .chain(workspace_ops_scenarios())
     .chain(simplify_parents_scenarios())
+    .chain(resolve_scenarios())
+    .chain(diffedit_scenarios())
     .chain(crate::git_scenarios::bookmark_tracking_scenarios())
     .chain(crate::git_scenarios::push_scenarios())
     .chain(crate::git_scenarios::bookmark_auto_track_scenarios())
@@ -5241,6 +5244,283 @@ fn simplify_parents_more_scenarios() -> Vec<Scenario> {
                 "simplify_parents_immutable_refused",
                 |repo, _, s| simplify_parents_outcome(repo, s, &[], &["B"]),
                 |s| verb_argv(s, "simplify-parents", &[("-r", "B")], &[]),
+            )
+        },
+    ]
+}
+
+// ── Story 9.17: resolve and diffedit ─────────────────────────────────────────────────
+
+/// `@` = M, the merge of C and D (on A), which both add `c.txt` with different content: a 2-sided
+/// conflict without a base. The repo config names a merge tool `zs` that writes `merged` as the
+/// resolution.
+const CONFLICTED_AT: &[Step] = &[
+    Step::Jj(&["new", "@--", "-m", "D"]),
+    Step::Write("c.txt", "c from D\n"),
+    Step::Jj(&["new", "-m", "M", "description(substring:\"C\")", "@"]),
+    Step::Jj(&["config", "set", "--repo", "merge-tools.zs.program", "\"sh\""]),
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "merge-tools.zs.merge-args",
+        r#"["-c", 'printf "merged\n" > "$1"', "sh", "$output"]"#,
+    ]),
+];
+
+/// M as in [`CONFLICTED_AT`], conflicted on `b.txt` too (D adds its own), with a child N (n.txt)
+/// and an empty `@` on N.
+const CONFLICTED_WITH_CHILD: &[Step] = &[
+    Step::Jj(&["new", "@--", "-m", "D"]),
+    Step::Write("c.txt", "c from D\n"),
+    Step::Write("b.txt", "b from D\n"),
+    Step::Jj(&["new", "-m", "M", "description(substring:\"C\")", "@"]),
+    Step::Jj(&["new", "-m", "N"]),
+    Step::Write("n.txt", "n\n"),
+    Step::Jj(&["new"]),
+];
+
+/// `@` = M, the merge of C and D (on B), where C modifies B's `b.txt` and D deletes it: a
+/// modify/delete conflict.
+const MODIFY_DELETE_AT: &[Step] = &[
+    Step::Write("b.txt", "b from C\n"),
+    Step::Jj(&["new", "@-", "-m", "D"]),
+    Step::Jj(&["restore", "--from", "root()", "b.txt"]),
+    Step::Jj(&["new", "-m", "M", "description(substring:\"C\")", "@"]),
+];
+
+/// `Repo::resolve` with `tool` on `revision` (`None`: `@`) and `paths`.
+fn resolve_outcome(
+    repo: &mut zanshin_jj::Repo,
+    revision: Option<zanshin_jj::ChangeId>,
+    paths: &[&str],
+    tool: zanshin_jj::ResolveTool,
+) -> Outcome {
+    let options = zanshin_jj::ResolveOptions {
+        revision,
+        paths: paths.iter().map(|p| (*p).to_owned()).collect(),
+        tool,
+    };
+    let result = repo.resolve(&options);
+    zanshin_outcome(repo, &result)
+}
+
+/// `:ours`, `:theirs`, a merge tool's content, part of a revision that is not `@`, and a revision
+/// without conflicts.
+fn resolve_scenarios() -> Vec<Scenario> {
+    vec![
+        Scenario {
+            setup: CONFLICTED_AT,
+            ..simple(
+                "resolve_ours",
+                |repo, _, _| resolve_outcome(repo, None, &[], zanshin_jj::ResolveTool::Ours),
+                |_| args(&["resolve", "--tool", ":ours"]),
+            )
+        },
+        Scenario {
+            setup: CONFLICTED_AT,
+            ..simple(
+                "resolve_theirs",
+                |repo, _, _| resolve_outcome(repo, None, &[], zanshin_jj::ResolveTool::Theirs),
+                |_| args(&["resolve", "--tool", ":theirs"]),
+            )
+        },
+        Scenario {
+            setup: CONFLICTED_AT,
+            ..simple(
+                "resolve_tool_files",
+                |repo, _, _| {
+                    let files = vec![zanshin_jj::ResolvedFile {
+                        path: "c.txt".to_owned(),
+                        content: b"merged\n".to_vec(),
+                    }];
+                    resolve_outcome(repo, None, &[], zanshin_jj::ResolveTool::Files(files))
+                },
+                |_| args(&["resolve", "--tool", "zs"]),
+            )
+        },
+        Scenario {
+            setup: CONFLICTED_WITH_CHILD,
+            ..simple(
+                "resolve_non_wc_partial",
+                |repo, _, s| resolve_outcome(repo, Some(s.change("M")), &["c.txt"], zanshin_jj::ResolveTool::Ours),
+                |s| verb_argv(s, "resolve", &[("-r", "M")], &["--tool", ":ours", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: MODIFY_DELETE_AT,
+            ..simple(
+                "resolve_modify_delete_theirs",
+                |repo, _, _| resolve_outcome(repo, None, &[], zanshin_jj::ResolveTool::Theirs),
+                |_| args(&["resolve", "--tool", ":theirs"]),
+            )
+        },
+        Scenario {
+            setup: MODIFY_DELETE_AT,
+            ..simple(
+                "resolve_modify_delete_ours",
+                |repo, _, _| resolve_outcome(repo, None, &[], zanshin_jj::ResolveTool::Ours),
+                |_| args(&["resolve", "--tool", ":ours"]),
+            )
+        },
+        simple(
+            "resolve_no_conflicts",
+            |repo, _, _| resolve_outcome(repo, None, &[], zanshin_jj::ResolveTool::Ours),
+            |_| args(&["resolve", "--tool", ":ours"]),
+        ),
+    ]
+}
+
+/// `@` = E (e.txt) on D, D on C: C holds `f.txt` = `a b c d e`, D changes it to `A b C d E`
+/// (three sections). The repo config names a diff editor `zs` that writes `A b c d E` — sections
+/// 1 and 3 — into the right side's `f.txt`.
+const DIFFEDIT_CHILD_TOOL: &[Step] = &[
+    Step::Write("f.txt", "a\nb\nc\nd\ne\n"),
+    Step::Jj(&["new", "-m", "D"]),
+    Step::Write("f.txt", "A\nb\nC\nd\nE\n"),
+    Step::Jj(&["new", "-m", "E"]),
+    Step::Write("e.txt", "e\n"),
+    Step::Jj(&["util", "snapshot"]),
+    Step::Jj(&["config", "set", "--repo", "merge-tools.zs.program", "\"sh\""]),
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "merge-tools.zs.edit-args",
+        r#"["-c", 'printf "A\nb\nc\nd\nE\n" > "$1/f.txt"', "sh", "$right"]"#,
+    ]),
+];
+
+/// The same `@` as [`SECTIONS_TOOL`] (D on C, `f.txt` changed in three sections), with a diff
+/// editor `zs` that writes the right side's `f.txt` unchanged.
+const UNCHANGED_TOOL: &[Step] = &[
+    Step::Write("f.txt", "a\nb\nc\nd\ne\n"),
+    Step::Jj(&["new", "-m", "D"]),
+    Step::Write("f.txt", "A\nb\nC\nd\nE\n"),
+    Step::Jj(&["util", "snapshot"]),
+    Step::Jj(&["config", "set", "--repo", "merge-tools.zs.program", "\"sh\""]),
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "merge-tools.zs.edit-args",
+        r#"["-c", 'printf "A\nb\nC\nd\nE\n" > "$1/f.txt"', "sh", "$right"]"#,
+    ]),
+];
+
+/// `files` of `revision` through `select_tree`, against `from`'s own tree or the parent tree, and
+/// then `diffedit` with that tree.
+fn diffedit_outcome(
+    repo: &mut zanshin_jj::Repo,
+    revision: zanshin_jj::ChangeId,
+    from: Option<zanshin_jj::ChangeId>,
+    files: Vec<FileSelection>,
+    options: zanshin_jj::DiffeditOptions,
+) -> Outcome {
+    let left = match &from {
+        Some(from) => {
+            repo.show(Some(&from.0), None)
+                .expect("show from")
+                .swap_remove(0)
+                .tree_ids
+        }
+        None => {
+            repo.show(Some(&revision.0), None)
+                .expect("show")
+                .swap_remove(0)
+                .parent_tree_ids
+        }
+    };
+    let tree = repo
+        .select_tree(&SelectTreeOptions {
+            revision: Some(revision),
+            from,
+            left: left.clone(),
+            files,
+        })
+        .expect("select");
+    let _ = repo.take_warnings();
+    let result = repo.diffedit(&zanshin_jj::DiffeditOptions {
+        tree: TreeSelection { tree, left },
+        ..options
+    });
+    zanshin_outcome(repo, &result)
+}
+
+fn f_sections(keys: &[u32]) -> FileSelection {
+    FileSelection {
+        path: "f.txt".to_owned(),
+        choice: FileChoice::Hunks(keys.iter().map(|start| f_key(*start)).collect()),
+    }
+}
+
+/// `-r`, `--from`/`--to`, `--restore-descendants`, and an editor that changes nothing.
+fn diffedit_scenarios() -> Vec<Scenario> {
+    vec![
+        Scenario {
+            setup: SECTIONS_TOOL,
+            ..simple(
+                "diffedit_tool_sections_1_3",
+                |repo, _, s| {
+                    let options = zanshin_jj::DiffeditOptions::default();
+                    diffedit_outcome(repo, s.change("@"), None, vec![f_sections(&[0, 4])], options)
+                },
+                |_| args(&["diffedit", "--tool", "zs"]),
+            )
+        },
+        Scenario {
+            setup: DIFFEDIT_CHILD_TOOL,
+            ..simple(
+                "diffedit_from_to",
+                |repo, _, s| {
+                    let files = vec![
+                        f_sections(&[0, 4]),
+                        FileSelection {
+                            path: "e.txt".to_owned(),
+                            choice: FileChoice::Whole,
+                        },
+                    ];
+                    let options = zanshin_jj::DiffeditOptions {
+                        from: Some(s.change("C")),
+                        to: Some(s.change("E")),
+                        ..Default::default()
+                    };
+                    diffedit_outcome(repo, s.change("E"), Some(s.change("C")), files, options)
+                },
+                |s| verb_argv(s, "diffedit", &[("--from", "C"), ("--to", "E")], &["--tool", "zs"]),
+            )
+        },
+        Scenario {
+            setup: DIFFEDIT_CHILD_TOOL,
+            ..simple(
+                "diffedit_restore_descendants",
+                |repo, _, s| {
+                    let options = zanshin_jj::DiffeditOptions {
+                        revision: Some(s.change("D")),
+                        restore_descendants: true,
+                        ..Default::default()
+                    };
+                    diffedit_outcome(repo, s.change("D"), None, vec![f_sections(&[0, 4])], options)
+                },
+                |s| {
+                    verb_argv(
+                        s,
+                        "diffedit",
+                        &[("-r", "D")],
+                        &["--tool", "zs", "--restore-descendants"],
+                    )
+                },
+            )
+        },
+        Scenario {
+            setup: UNCHANGED_TOOL,
+            ..simple(
+                "diffedit_nothing_changed",
+                |repo, _, s| {
+                    let options = zanshin_jj::DiffeditOptions::default();
+                    diffedit_outcome(repo, s.change("@"), None, vec![f_sections(&[0, 2, 4])], options)
+                },
+                |_| args(&["diffedit", "--tool", "zs"]),
             )
         },
     ]

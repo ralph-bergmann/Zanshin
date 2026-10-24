@@ -106,6 +106,7 @@ fn read_select_tree_request(data: *const u8, len: usize) -> Result<SelectTreeOpt
         .unwrap_or_default();
     Ok(SelectTreeOptions {
         revision: req.revision().map(|s| ChangeId(s.to_owned())),
+        from: req.from().map(|s| ChangeId(s.to_owned())),
         left: strings(req.left()),
         files,
     })
@@ -116,8 +117,10 @@ fn read_select_tree_request(data: *const u8, len: usize) -> Result<SelectTreeOpt
 /// `zanshin_split` and `zanshin_squash`.
 ///
 /// The arguments cross as a `SelectTreeRequest` `FlatBuffers` request buffer: `revision` (absent:
-/// `@`), `left` (the revision's parent tree the selection was made against, as
-/// `ShowEntry.parent_tree_ids` reports it) and `files` (per path `whole`, or the selected `hunks`
+/// `@`), `from` (Story 9.17: the revision whose OWN tree is the diff's left side, `diffedit
+/// --from`; absent: the revision's parent tree), `left` (that left tree the selection was made
+/// against, as `ShowEntry.parent_tree_ids` — or, with `from`, `ShowEntry.tree_ids` — reports it)
+/// and `files` (per path `whole`, or the selected `hunks`
 /// by their `HunkKey` with or without `mode`, the builtin editor's mode toggle; a changed file not
 /// listed, and every unselected section, keeps its left side). A file has sections when both
 /// sides are a regular file or a file conflict (materialized with `ui.conflict-marker-style`) and
@@ -137,10 +140,11 @@ fn read_select_tree_request(data: *const u8, len: usize) -> Result<SelectTreeOpt
 /// - `jj.invalid_input` — a file selected `whole` and by `hunks` or its `mode`, `left` malformed
 ///   or of an even or zero count, a path invalid, the root or listed twice — all before the
 ///   snapshot: nothing written, no `precondition`; detail in `context`.
-/// - `jj.change_not_found` — `revision` is malformed, carried by no VISIBLE commit, or divergent.
+/// - `jj.change_not_found` — `revision` or `from` is malformed, carried by no VISIBLE commit, or
+///   divergent.
 /// - `jj.revset_resolution_error` — an omitted revision's `@` in a workspace with no working-copy
 ///   commit.
-/// - `jj.stale_selection` — the revision's parent tree is not `left`, a key is not a current
+/// - `jj.stale_selection` — the revision's parent tree (`from`'s tree) is not `left`, a key is not a current
 ///   section of its file, or `mode` names a file without a mode change; detail in `context`.
 /// - `jj.config_error` — the effective config does not read (a `ui.conflict-marker-style` that
 ///   is not one of jj's styles included — the start-up refuses it).
@@ -219,6 +223,7 @@ mod tests {
         let left: Vec<_> = left.iter().map(|id| b.create_string(id)).collect();
         let left = b.create_vector(&left);
         let revision = revision.map(|r| b.create_string(r));
+        let from = revision.map(|_| b.create_string("from"));
         let req = fbs::SelectTreeRequest::create(
             &mut b,
             &fbs::SelectTreeRequestArgs {
@@ -226,6 +231,7 @@ mod tests {
                 revision,
                 left: Some(left),
                 files: Some(files),
+                from,
             },
         );
         b.finish(req, None);
@@ -250,6 +256,7 @@ mod tests {
         );
         let options = read_select_tree_request(bytes.as_ptr(), bytes.len()).expect("valid");
         assert_eq!(options.revision.map(|r| r.0).as_deref(), Some("rev"));
+        assert_eq!(options.from.map(|r| r.0).as_deref(), Some("from"));
         assert_eq!(options.left, ["l1"]);
         assert_eq!(options.files[0].choice, FileChoice::Whole);
         assert_eq!(

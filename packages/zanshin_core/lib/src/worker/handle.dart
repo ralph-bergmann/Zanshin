@@ -28,6 +28,7 @@ import '../ffi/precondition.dart' show Precondition;
 import '../ffi/push.dart' show GitPushResult;
 import '../ffi/rebase.dart' show ArrangeAction, SimplifyParentsResult, SwapDownAction, SwapUpAction;
 import '../ffi/remotes.dart' show Remote, RemoteRefChange;
+import '../ffi/resolve.dart' show ResolveFiles, ResolveList, ResolveOurs, ResolveTheirs, ResolveTool;
 import '../ffi/select_tree.dart' show FileSelection, SelectedTree, SourceTree, TreeSelection;
 import '../ffi/squash_split.dart' show SplitResult, SquashPlan;
 import '../ffi/status.dart' show WorkingCopyStatus;
@@ -1454,6 +1455,10 @@ final class RepoHandle {
   /// changes, binary files and conflicts are whole only. A changed file not
   /// listed, and every unselected section, keeps its left side.
   ///
+  /// With [from] (Story 9.17, for [diffedit]'s `from` / `to` form) the diff's
+  /// left side is [from]'s OWN tree instead, and [left] is that tree
+  /// (`ShowEntry.treeIds`).
+  ///
   /// Pass the result as `TreeSelection.of(tree, left: left)`. Writes no
   /// operation of its own. A change to the revision's own content after the
   /// selection is not stale.
@@ -1462,13 +1467,101 @@ final class RepoHandle {
   /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
   /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
   /// `jj.invalid_input`, `jj.change_not_found`, `jj.stale_selection` — the
-  /// revision's parent tree is no longer [left], or a key is not a current
-  /// section — `jj.stale_working_copy`, `jj.jj_lib_error`).
-  Future<SelectedTree> selectTree({required List<String> left, required List<FileSelection> files, String? revision}) {
+  /// left tree is no longer [left], or a key is not a current section —
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<SelectedTree> selectTree({
+    required List<String> left,
+    required List<FileSelection> files,
+    String? revision,
+    String? from,
+  }) {
     if (_closed) {
       throw StateError('RepoHandle is already closed');
     }
-    return _worker.selectTree(_handleId, revision: revision, left: left, files: files);
+    return _worker.selectTree(_handleId, revision: revision, left: left, files: files, from: from);
+  }
+
+  /// List a revision's conflicts with what a merge editor needs (Story 9.17) —
+  /// the CLI's `jj resolve --list`, plus each file conflict's merge hunks.
+  ///
+  /// [revision] (`null` = `@`) is read after the snapshot; its conflicts under
+  /// [paths] (repo-relative prefixes, empty = all) come in tree order, each
+  /// with the CLI's description, its side count, whether [resolve] can take it
+  /// (`ConflictedFile.unresolvable`) and — for a file conflict — its labels
+  /// and merge hunks (a conflicting hunk's terms: side 1, base 1, side 2, …).
+  /// Writes no operation of its own.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
+  /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`,
+  /// `jj.no_conflicts`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<ResolveList> resolveList({String? revision, List<String> paths = const []}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.resolveList(_handleId, revision: revision, paths: paths);
+  }
+
+  /// Resolve a revision's conflicts (Story 9.17) — the CLI's `jj resolve`.
+  ///
+  /// The conflicts of [revision] (`null` = `@`) under [paths] — or, with
+  /// [ResolveFiles], exactly its files' paths — are resolved by [tool]:
+  /// [ResolveOurs] / [ResolveTheirs] take side 1 / side 2, [ResolveFiles]
+  /// writes the GUI merge editor's content as is. The revision must be
+  /// rewritable; descendants are rebased. A revision that is not `@` and still
+  /// has conflicts warns `jj.resolve_conflicts_remain`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
+  /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`,
+  /// `jj.no_conflicts`, `jj.immutable`, `jj.stale_selection`,
+  /// `jj.conflict_not_resolvable`, `jj.config_error`, `jj.not_a_git_repo`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> resolve({required ResolveTool tool, String? revision, List<String> paths = const []}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.resolve(_handleId, tool: tool, revision: revision, paths: paths);
+  }
+
+  /// Touch up a revision's content with a tree [selectTree] built (Story 9.17)
+  /// — the CLI's `jj diffedit` with its builtin diff editor.
+  ///
+  /// The target is [to] (or `@`) diffed against [from] (or `@`) when either
+  /// is given, else [revision] (or `@`) diffed against its parents. [tree] is
+  /// what [selectTree] returned for that diff and its `left`; in the [from] /
+  /// [to] form call [selectTree] with `from:` = [from] — or `@`'s change id
+  /// when only [to] is given, since the base is then `@`'s tree. A tree equal
+  /// to the target's writes no operation; otherwise descendants are rebased,
+  /// or reparented with [restoreDescendants].
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an argument contains an interior NUL (U+0000);
+  /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — [revision] with [from] / [to] — `jj.change_not_found`,
+  /// `jj.revset_resolution_error`, `jj.immutable`, `jj.stale_selection`,
+  /// `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
+  Future<MutationResult> diffedit({
+    required TreeSelection tree,
+    String? revision,
+    String? from,
+    String? to,
+    bool restoreDescendants = false,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.diffedit(
+      _handleId,
+      tree: tree,
+      revision: revision,
+      from: from,
+      to: to,
+      restoreDescendants: restoreDescendants,
+    );
   }
 
   /// List the entries of a revision's tree (Story 9.4) — the CLI's

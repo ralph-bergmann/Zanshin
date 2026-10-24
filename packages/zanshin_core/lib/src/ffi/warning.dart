@@ -317,6 +317,10 @@ abstract final class ZanshinWarningCode {
   /// copy was left untouched (Story 9.12).
   static const workspaceNoLongerExists = 'jj.workspace_no_longer_exists';
 
+  /// `resolve` left conflicts in a revision that is not this workspace's `@`;
+  /// the message lists them (Story 9.17).
+  static const resolveConflictsRemain = 'jj.resolve_conflicts_remain';
+
   /// The login shell's environment could not be read at start-up; the
   /// environment Zanshin was started with stays in effect (Story 9.36). The one
   /// Zanshin-only code — no jj CLI prints it — and the one built in Dart: it is
@@ -401,6 +405,7 @@ abstract final class ZanshinWarningCode {
     opDiffChangesUnresolved,
     opAbandonWorkingCopyNotUpdated,
     workspaceNoLongerExists,
+    resolveConflictsRemain,
     loginShellUnresolved,
   ];
 }

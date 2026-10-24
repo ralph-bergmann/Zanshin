@@ -27,11 +27,12 @@ use crate::envelope::{
     ok_absorb_result, ok_empty, ok_mutation_result, ok_repo_handle, precondition_envelope, reject_null_request,
     session_from_handle, CallReport, FfiErrorObj, FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, JJ_ALREADY_JJ_REPO,
     JJ_BOOKMARK_EXISTS, JJ_BOOKMARK_TRACKED_REMOTE_EXISTS, JJ_CANCELLED, JJ_CHANGE_NOT_FOUND,
-    JJ_CONCURRENT_WORKING_COPY, JJ_CONFIG_ERROR, JJ_CONVERT_FAILED, JJ_DESTINATION_NOT_EMPTY, JJ_DETECT_FAILED,
-    JJ_GIT_REPO_EXISTS, JJ_GIT_WORKTREE_FAILED, JJ_IMMUTABLE, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR,
-    JJ_NOTHING_TO_REDO, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO, JJ_NO_WORKING_COPY, JJ_OPERATION_NOT_FOUND,
-    JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED, JJ_PUSH_COMMIT_REJECTED, JJ_PUSH_REF_REFUSED, JJ_REDO_CROSS_WORKSPACE,
-    JJ_REMOTE_EXISTS, JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR,
+    JJ_CONCURRENT_WORKING_COPY, JJ_CONFIG_ERROR, JJ_CONFLICT_NOT_RESOLVABLE, JJ_CONVERT_FAILED,
+    JJ_DESTINATION_NOT_EMPTY, JJ_DETECT_FAILED, JJ_GIT_REPO_EXISTS, JJ_GIT_WORKTREE_FAILED, JJ_IMMUTABLE,
+    JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_NETWORK_ERROR, JJ_NOTHING_TO_REDO, JJ_NOTHING_TO_UNDO, JJ_NOT_A_GIT_REPO,
+    JJ_NO_CONFLICTS, JJ_NO_WORKING_COPY, JJ_OPERATION_NOT_FOUND, JJ_PATH_NOT_FOUND, JJ_PATH_NOT_IGNORED,
+    JJ_PUSH_COMMIT_REJECTED, JJ_PUSH_REF_REFUSED, JJ_REDO_CROSS_WORKSPACE, JJ_REMOTE_EXISTS,
+    JJ_REMOTE_NONSTANDARD_CONFIG, JJ_REMOTE_NOT_FOUND, JJ_REPO_NOT_FOUND, JJ_REVSET_PARSE_ERROR,
     JJ_REVSET_RESOLUTION_ERROR, JJ_STALE_SELECTION, JJ_UNDO_CROSS_WORKSPACE, JJ_WORKSPACE_EXISTS, WATCHER_IO_ERROR,
 };
 use crate::envelope_generated::zanshin::ffi as fbs;
@@ -163,7 +164,8 @@ fn map_repo_err_code(e: RepoError) -> FfiErrorObj {
 /// `jj.path_not_ignored` and to the registered `jj.no_working_copy`. Story 9.23's
 /// `zanshin_workspace_add` adds three: `jj.workspace_exists`, `jj.destination_not_empty` and
 /// `jj.git_worktree_failed`. Story 9.20's `zanshin_git_push` adds `jj.push_ref_refused` and
-/// `jj.push_commit_rejected`. Story 9.50's hunk selection adds `jj.stale_selection`. Story 9.21's
+/// `jj.push_commit_rejected`. Story 9.50's hunk selection adds `jj.stale_selection`, Story 9.17's
+/// `resolve` `jj.no_conflicts` and `jj.conflict_not_resolvable`. Story 9.21's
 /// operation verbs add `jj.nothing_to_redo` and `jj.redo_cross_workspace`, and map
 /// `OperationNotFound` to the registered `jj.operation_not_found`.
 pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
@@ -204,6 +206,8 @@ pub(crate) fn map_mutate_err(e: MutateError) -> FfiErrorObj {
         MutateError::PushRefRefused { message, .. } => (JJ_PUSH_REF_REFUSED, Some(message)),
         MutateError::PushCommitRejected { message, .. } => (JJ_PUSH_COMMIT_REJECTED, Some(message)),
         MutateError::StaleSelection { reason } => (JJ_STALE_SELECTION, Some(reason)),
+        MutateError::NoConflicts { message } => (JJ_NO_CONFLICTS, Some(message)),
+        MutateError::ConflictNotResolvable { message } => (JJ_CONFLICT_NOT_RESOLVABLE, Some(message)),
         MutateError::Backend(reason) => (JJ_JJ_LIB_ERROR, Some(reason)),
     };
     FfiErrorObj {
@@ -2216,6 +2220,22 @@ mod tests {
         });
         assert_eq!(e.code, JJ_STALE_SELECTION);
         assert_eq!(e.context.as_deref(), Some("moved"));
+        assert!(e.hints.is_empty());
+    }
+
+    /// Story 9.17: `resolve`'s two refusals carry the CLI's text.
+    #[test]
+    fn map_mutate_err_maps_the_resolve_refusals() {
+        let e = map_mutate_err(MutateError::NoConflicts {
+            message: "No conflicts found at this revision".to_owned(),
+        });
+        assert_eq!(e.code, JJ_NO_CONFLICTS);
+        assert_eq!(e.context.as_deref(), Some("No conflicts found at this revision"));
+        let e = map_mutate_err(MutateError::ConflictNotResolvable {
+            message: "too complicated".to_owned(),
+        });
+        assert_eq!(e.code, JJ_CONFLICT_NOT_RESOLVABLE);
+        assert_eq!(e.context.as_deref(), Some("too complicated"));
         assert!(e.hints.is_empty());
     }
 

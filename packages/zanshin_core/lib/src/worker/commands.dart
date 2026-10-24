@@ -9,6 +9,7 @@ import '../ffi/movement.dart' show MovementDirection;
 import '../ffi/op_log.dart' show RestoreWhat;
 import '../ffi/rebase.dart' show ArrangeAction;
 import '../ffi/repo.dart' show ObjectHash;
+import '../ffi/resolve.dart' show ResolveFiles, ResolveTool;
 import '../ffi/select_tree.dart' show FileSelection, SourceTree, TreeSelection;
 import '../ffi/workspace.dart' show SparseInheritance;
 import '../graph_layout/layout_request.dart' show LaneOrder, LayoutMode;
@@ -2112,6 +2113,7 @@ final class SelectTreeCommand extends WorkerCommand implements HandleScopedComma
     required this.revision,
     required this.left,
     required this.files,
+    this.from,
   });
 
   /// Opaque dense handle id assigned by the worker on open/init/clone.
@@ -2121,11 +2123,108 @@ final class SelectTreeCommand extends WorkerCommand implements HandleScopedComma
   /// The revision the selection was made in; `null` = `@`.
   final String? revision;
 
-  /// The revision's parent tree the selection was made against.
+  /// The tree the selection was made against: the revision's parent tree, or
+  /// [from]'s own tree.
   final List<String> left;
 
   /// The selected files.
   final List<FileSelection> files;
+
+  /// Story 9.17: the revision whose own tree is the diff's left side
+  /// (`diffedit --from`); `null` = the revision's parent tree.
+  final String? from;
+}
+
+/// List a revision's conflicts with what a merge editor needs, in the repo
+/// identified by [handleId] (Story 9.17) — the CLI's `jj resolve --list`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinResolveList(raw, …)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<ResolveList>` bytes.
+final class ResolveListCommand extends WorkerCommand implements HandleScopedCommand {
+  const ResolveListCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revision,
+    required this.paths,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `-r`; `null` = `@`.
+  final String? revision;
+
+  /// Repo-relative prefixes; empty = every conflict.
+  final List<String> paths;
+}
+
+/// Resolve a revision's conflicts, in the repo identified by [handleId]
+/// (Story 9.17) — the CLI's `jj resolve`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinResolve(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class ResolveCommand extends WorkerCommand implements HandleScopedCommand {
+  const ResolveCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revision,
+    required this.paths,
+    required this.tool,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `-r`; `null` = `@`.
+  final String? revision;
+
+  /// Repo-relative prefixes; empty = every conflict. Not with
+  /// [ResolveFiles].
+  final List<String> paths;
+
+  /// What resolves them.
+  final ResolveTool tool;
+}
+
+/// Touch up a revision's content with a GUI-selected tree, in the repo
+/// identified by [handleId] (Story 9.17) — the CLI's `jj diffedit`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinDiffedit(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class DiffeditCommand extends WorkerCommand implements HandleScopedCommand {
+  const DiffeditCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.tree,
+    this.revision,
+    this.from,
+    this.to,
+    this.restoreDescendants = false,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The edited tree and the `left` it was selected against.
+  final TreeSelection tree;
+
+  /// `-r`; not with [from] / [to].
+  final String? revision;
+
+  /// `--from`.
+  final String? from;
+
+  /// `--to`.
+  final String? to;
+
+  /// `--restore-descendants`.
+  final bool restoreDescendants;
 }
 
 /// Cancel the network call — fetch, push or clone — sent as command

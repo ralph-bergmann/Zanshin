@@ -118,9 +118,10 @@ final class TreeSelection {
   /// As [SelectedTree.labels].
   final List<String> labels;
 
-  /// The revision's parent tree the selection was made against
-  /// (`ShowEntry.parentTreeIds`); the verb refuses `jj.stale_selection` when it
-  /// moved.
+  /// The tree the selection was made against — the revision's parent tree
+  /// (`ShowEntry.parentTreeIds`), or for `diffedit` with `from` that revision's
+  /// own tree (`ShowEntry.treeIds`); the verb refuses `jj.stale_selection` when
+  /// it moved.
   final List<String> left;
 }
 
@@ -180,19 +181,25 @@ List<fbs.SourceTreeObjectBuilder> sourceTreeBuilders(List<SourceTree> trees) => 
 /// `SelectTreeRequest` request buffer, and return the FlatBuffers `Envelope`
 /// bytes (Story 9.50) — the CLI's builtin diff editor applying the same choice.
 ///
-/// [revision] is the revision the selection was made in (`null`: `@`), [left]
-/// its parent tree as `ShowEntry.parentTreeIds` reported it, [files] the
-/// selected files; a changed file not listed keeps its left side.
+/// [revision] is the revision the selection was made in (`null`: `@`), [from]
+/// (Story 9.17) the revision whose OWN tree is the diff's left side
+/// (`diffedit --from`; `null`: the revision's parent tree), [left] that left
+/// tree as `ShowEntry.parentTreeIds` — or, with [from], `ShowEntry.treeIds` —
+/// reported it, [files] the selected files; a changed file not listed keeps its
+/// left side.
 Uint8List zanshinSelectTree(
   int rawHandle, {
   required List<String> left,
   required List<FileSelection> files,
   String? revision,
+  String? from,
 }) {
   rejectSelectTreeNuls(revision, left, files);
+  rejectInteriorNul(from, 'from');
   final Uint8List request = fbs.SelectTreeRequestObjectBuilder(
     kind: fbs.RequestKind.SelectTree,
     revision: revision,
+    from: from,
     left: left,
     files: [
       for (final FileSelection file in files)

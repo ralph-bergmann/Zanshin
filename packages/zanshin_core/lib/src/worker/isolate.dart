@@ -16,6 +16,7 @@ import '../ffi/commit.dart' as repo_ffi_commit;
 import '../ffi/commit_contents.dart' as repo_ffi_commit_contents;
 import '../ffi/commit_views.dart' as repo_ffi_commit_views;
 import '../ffi/config.dart' as repo_ffi_config;
+import '../ffi/diffedit.dart' as repo_ffi_diffedit;
 import '../ffi/drop_actions.dart' as repo_ffi_drop_actions;
 // Alias avoids name collision with handle.dart's RepoHandle wrapper.
 import '../ffi/envelope_zanshin.ffi_generated.dart' as fbs;
@@ -48,6 +49,7 @@ import '../ffi/remotes.dart' as repo_ffi_remotes;
 import '../ffi/repo.dart' as repo_ffi;
 import '../ffi/repo_detect.dart' as repo_ffi_detect;
 import '../ffi/request_bytes.dart';
+import '../ffi/resolve.dart' as repo_ffi_resolve;
 import '../ffi/select_tree.dart' as repo_ffi_select_tree;
 import '../ffi/squash_split.dart' as repo_ffi_squash_split;
 import '../ffi/status.dart' as repo_ffi_status;
@@ -1745,8 +1747,10 @@ class ZanshinWorker {
   /// [handleId] (Story 9.50) — the CLI's builtin diff editor applying the same
   /// choice, for the tree arms of [commit], [split] and [squash].
   ///
-  /// [revision] (`null` = `@`), [left] (the revision's parent tree as
-  /// `ShowEntry.parentTreeIds` reported it) and [files] cross unchanged.
+  /// [revision] (`null` = `@`), [from] (Story 9.17: the revision whose own
+  /// tree is the left side; `null` = the revision's parent tree), [left] (that
+  /// left tree as `ShowEntry.parentTreeIds` / `ShowEntry.treeIds` reported it)
+  /// and [files] cross unchanged.
   ///
   /// Sends a [SelectTreeCommand] via [send] and decodes the returned
   /// FlatBuffers `Envelope<SelectedTree>` bytes. Writes no operation of its
@@ -1763,9 +1767,11 @@ class ZanshinWorker {
     required List<String> left,
     required List<repo_ffi_select_tree.FileSelection> files,
     String? revision,
+    String? from,
   }) async {
     // See [bookmarkCreate] for why this guard is on the calling side.
     repo_ffi_select_tree.rejectSelectTreeNuls(revision, left, files);
+    rejectInteriorNul(from, 'from');
     final Uint8List bytes = await send(
       SelectTreeCommand(
         commandId: _correlator.allocateId(),
@@ -1773,9 +1779,107 @@ class ZanshinWorker {
         revision: revision,
         left: left,
         files: files,
+        from: from,
       ),
     );
     return repo_ffi_select_tree.decodeSelectedTreeEnvelopeInternal(bytes);
+  }
+
+  /// List a revision's conflicts with what a merge editor needs, in the repo
+  /// identified by [handleId] (Story 9.17) — the CLI's `jj resolve --list`.
+  ///
+  /// Sends a [ResolveListCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<ResolveList>` bytes.
+  ///
+  /// Throws [ArgumentError] if an argument contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`,
+  /// `jj.no_conflicts`, `jj.stale_working_copy`, `jj.jj_lib_error`). Completes
+  /// with a [StateError] after [close]; the close-guard [StateError] is
+  /// delivered synchronously by [RepoHandle.resolveList].
+  Future<repo_ffi_resolve.ResolveList> resolveList(
+    int handleId, {
+    String? revision,
+    List<String> paths = const [],
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNul(revision, 'revision');
+    rejectInteriorNuls(paths, 'paths');
+    final Uint8List bytes = await send(
+      ResolveListCommand(commandId: _correlator.allocateId(), handleId: handleId, revision: revision, paths: paths),
+    );
+    return repo_ffi_resolve.decodeResolveListEnvelopeInternal(bytes);
+  }
+
+  /// Resolve a revision's conflicts, in the repo identified by [handleId]
+  /// (Story 9.17) — the CLI's `jj resolve`.
+  ///
+  /// Sends a [ResolveCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if an argument contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`,
+  /// `jj.no_conflicts`, `jj.immutable`, `jj.stale_selection`,
+  /// `jj.conflict_not_resolvable`, `jj.config_error`, `jj.not_a_git_repo`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.resolve].
+  Future<repo_ffi_mutate.MutationResult> resolve(
+    int handleId, {
+    required repo_ffi_resolve.ResolveTool tool,
+    String? revision,
+    List<String> paths = const [],
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    repo_ffi_resolve.rejectResolveNuls(revision, paths, tool);
+    final Uint8List bytes = await send(
+      ResolveCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        revision: revision,
+        paths: paths,
+        tool: tool,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Touch up a revision's content with a GUI-selected tree, in the repo
+  /// identified by [handleId] (Story 9.17) — the CLI's `jj diffedit`.
+  ///
+  /// Sends a [DiffeditCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if an argument contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`,
+  /// `jj.immutable`, `jj.stale_selection`, `jj.config_error`,
+  /// `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  /// Completes with a [StateError] after [close]; the close-guard [StateError]
+  /// is delivered synchronously by [RepoHandle.diffedit].
+  Future<repo_ffi_mutate.MutationResult> diffedit(
+    int handleId, {
+    required repo_ffi_select_tree.TreeSelection tree,
+    String? revision,
+    String? from,
+    String? to,
+    bool restoreDescendants = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    repo_ffi_diffedit.rejectDiffeditNuls(revision, from, to, tree);
+    final Uint8List bytes = await send(
+      DiffeditCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        tree: tree,
+        revision: revision,
+        from: from,
+        to: to,
+        restoreDescendants: restoreDescendants,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
   /// Move revisions to a new place in the graph, in the repo identified by
@@ -4240,6 +4344,7 @@ void _workerEntry(_WorkerInit init) {
           :final String? revision,
           :final List<String> left,
           :final List<repo_ffi_select_tree.FileSelection> files,
+          :final String? from,
         ):
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
@@ -4252,6 +4357,59 @@ void _workerEntry(_WorkerInit init) {
               revision: revision,
               left: left,
               files: files,
+              from: from,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case ResolveListCommand(:final int handleId, :final String? revision, :final List<String> paths):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: ResolveListCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_resolve.zanshinResolveList(raw, revision: revision, paths: paths);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case ResolveCommand(
+          :final int handleId,
+          :final String? revision,
+          :final List<String> paths,
+          :final repo_ffi_resolve.ResolveTool tool,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: ResolveCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_resolve.zanshinResolve(raw, revision: revision, paths: paths, tool: tool);
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case DiffeditCommand(
+          :final int handleId,
+          :final repo_ffi_select_tree.TreeSelection tree,
+          :final String? revision,
+          :final String? from,
+          :final String? to,
+          :final bool restoreDescendants,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: DiffeditCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_diffedit.zanshinDiffedit(
+              raw,
+              tree: tree,
+              revision: revision,
+              from: from,
+              to: to,
+              restoreDescendants: restoreDescendants,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }

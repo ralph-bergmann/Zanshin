@@ -41,6 +41,7 @@ pub(crate) mod config_cmd;
 pub(crate) mod convert;
 pub(crate) mod creation;
 pub(crate) mod detect;
+pub(crate) mod diffedit;
 pub(crate) mod drop_actions;
 pub(crate) mod duplicate;
 pub(crate) mod environment;
@@ -60,6 +61,7 @@ pub(crate) mod rebase;
 pub(crate) mod remote_changes;
 pub(crate) mod remotes;
 mod repo;
+pub(crate) mod resolve;
 pub(crate) mod revert;
 pub(crate) mod revset;
 pub(crate) mod select_tree;
@@ -96,6 +98,7 @@ pub use config_cmd::{
 pub use convert::{convert_colocated, convert_import};
 pub use creation::{CloneOptions, InitOptions, ObjectHash};
 pub use detect::{detect_repo, find_repo_root, DetectError, RepoKind, RepoRoot};
+pub use diffedit::DiffeditOptions;
 pub use drop_actions::{
     ActionOutcome, ActionStatus, ChangeActions, DropAction, DropActions, DropLocation, DropSource, DropVerb,
 };
@@ -125,6 +128,9 @@ pub use remotes::{
     FetchRefs, FetchRemotes, GitFetchArgs, GitFetchOutcome, ProgressEvent, ProgressFn, Remote, RemoteError,
 };
 pub use repo::{Backend, CreationOutcome, Repo, RepoError};
+pub use resolve::{
+    ConflictHunk, ConflictedFile, ResolveList, ResolveListOptions, ResolveOptions, ResolveTool, ResolvedFile,
+};
 pub use revset::{resolve_revset, RevsetError, DEFAULT_LOG_REVSET};
 pub use select_tree::{
     FileChoice, FileSelection, HunkKey, SelectTreeOptions, SelectedTreeId, SourceTree, TreeSelection,

@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 64;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 67;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 65] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 68] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -89,6 +89,9 @@ pub mod zanshin {
             RequestKind::WorkspaceRename,
             RequestKind::WorkspaceRemove,
             RequestKind::SimplifyParents,
+            RequestKind::ResolveList,
+            RequestKind::Resolve,
+            RequestKind::Diffedit,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -186,9 +189,12 @@ pub mod zanshin {
             pub const WorkspaceRename: Self = Self(62);
             pub const WorkspaceRemove: Self = Self(63);
             pub const SimplifyParents: Self = Self(64);
+            pub const ResolveList: Self = Self(65);
+            pub const Resolve: Self = Self(66);
+            pub const Diffedit: Self = Self(67);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 64;
+            pub const ENUM_MAX: u8 = 67;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -255,6 +261,9 @@ pub mod zanshin {
                 Self::WorkspaceRename,
                 Self::WorkspaceRemove,
                 Self::SimplifyParents,
+                Self::ResolveList,
+                Self::Resolve,
+                Self::Diffedit,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -324,6 +333,9 @@ pub mod zanshin {
                     Self::WorkspaceRename => Some("WorkspaceRename"),
                     Self::WorkspaceRemove => Some("WorkspaceRemove"),
                     Self::SimplifyParents => Some("SimplifyParents"),
+                    Self::ResolveList => Some("ResolveList"),
+                    Self::Resolve => Some("Resolve"),
+                    Self::Diffedit => Some("Diffedit"),
                     _ => None,
                 }
             }
@@ -489,6 +501,99 @@ pub mod zanshin {
         }
 
         impl ::flatbuffers::SimpleToVerifyInSlice for ArrangeActionKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_RESOLVE_TOOL: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_RESOLVE_TOOL: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_RESOLVE_TOOL: [ResolveTool; 3] =
+            [ResolveTool::Files, ResolveTool::Ours, ResolveTool::Theirs];
+
+        /// `zanshin_resolve`'s tool (Story 9.17): the GUI merge editor's `files`, or the CLI's builtin
+        /// `:ours` (side 1) / `:theirs` (side 2).
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct ResolveTool(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl ResolveTool {
+            pub const Files: Self = Self(0);
+            pub const Ours: Self = Self(1);
+            pub const Theirs: Self = Self(2);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Files, Self::Ours, Self::Theirs];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Files => Some("Files"),
+                    Self::Ours => Some("Ours"),
+                    Self::Theirs => Some("Theirs"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for ResolveTool {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for ResolveTool {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for ResolveTool {
+            type Output = ResolveTool;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for ResolveTool {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for ResolveTool {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for ResolveTool {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -3607,13 +3712,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 56;
+        pub const ENUM_MAX_PAYLOAD: u8 = 57;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 57] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 58] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -3671,6 +3776,7 @@ pub mod zanshin {
             Payload::MovementTargets,
             Payload::WorkspaceRemoveResult,
             Payload::SimplifyParentsResult,
+            Payload::ResolveList,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -3735,9 +3841,10 @@ pub mod zanshin {
             pub const MovementTargets: Self = Self(54);
             pub const WorkspaceRemoveResult: Self = Self(55);
             pub const SimplifyParentsResult: Self = Self(56);
+            pub const ResolveList: Self = Self(57);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 56;
+            pub const ENUM_MAX: u8 = 57;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -3796,6 +3903,7 @@ pub mod zanshin {
                 Self::MovementTargets,
                 Self::WorkspaceRemoveResult,
                 Self::SimplifyParentsResult,
+                Self::ResolveList,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -3857,6 +3965,7 @@ pub mod zanshin {
                     Self::MovementTargets => Some("MovementTargets"),
                     Self::WorkspaceRemoveResult => Some("WorkspaceRemoveResult"),
                     Self::SimplifyParentsResult => Some("SimplifyParentsResult"),
+                    Self::ResolveList => Some("ResolveList"),
                     _ => None,
                 }
             }
@@ -5177,6 +5286,9 @@ pub mod zanshin {
         ///                      when the revision's parent tree is no longer this
         ///   files              the selected files; a changed file not listed keeps its left side; each
         ///                      path at most once
+        ///   from               (Story 9.17) jj reverse-hex change id whose OWN tree is the diff's left
+        ///                      side (`diffedit --from`); `left` is then that tree — `ShowEntry.tree_ids`;
+        ///                      absent → the revision's parent tree
         pub struct SelectTreeRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -5196,6 +5308,7 @@ pub mod zanshin {
             pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
             pub const VT_LEFT: ::flatbuffers::VOffsetT = 8;
             pub const VT_FILES: ::flatbuffers::VOffsetT = 10;
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -5207,6 +5320,9 @@ pub mod zanshin {
                 args: &'args SelectTreeRequestArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<SelectTreeRequest<'bldr>> {
                 let mut builder = SelectTreeRequestBuilder::new(_fbb);
+                if let Some(x) = args.from {
+                    builder.add_from(x);
+                }
                 if let Some(x) = args.files {
                     builder.add_files(x);
                 }
@@ -5265,6 +5381,16 @@ pub mod zanshin {
                     >>(SelectTreeRequest::VT_FILES, None)
                 }
             }
+            #[inline]
+            pub fn from(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SelectTreeRequest::VT_FROM, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for SelectTreeRequest<'_> {
@@ -5278,6 +5404,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("left", Self::VT_LEFT, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileSelection>>>>("files", Self::VT_FILES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
      .finish();
                 Ok(())
             }
@@ -5290,6 +5417,7 @@ pub mod zanshin {
             pub files: Option<
                 ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FileSelection<'a>>>>,
             >,
+            pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for SelectTreeRequestArgs<'a> {
             #[inline]
@@ -5299,6 +5427,7 @@ pub mod zanshin {
                     revision: None,
                     left: None,
                     files: None,
+                    from: None,
                 }
             }
         }
@@ -5337,6 +5466,11 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(SelectTreeRequest::VT_FILES, files);
             }
             #[inline]
+            pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SelectTreeRequest::VT_FROM, from);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SelectTreeRequestBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 SelectTreeRequestBuilder {
@@ -5358,6 +5492,7 @@ pub mod zanshin {
                 ds.field("revision", &self.revision());
                 ds.field("left", &self.left());
                 ds.field("files", &self.files());
+                ds.field("from", &self.from());
                 ds.finish()
             }
         }
@@ -7225,6 +7360,742 @@ pub mod zanshin {
                 ds.field("kind", &self.kind());
                 ds.field("source", &self.source());
                 ds.field("revisions", &self.revisions());
+                ds.finish()
+            }
+        }
+        pub enum ResolveListRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_resolve_list` (Story 9.17) — the CLI's `jj resolve --list`.
+        ///
+        ///   revision           jj reverse-hex change id; absent → `@`
+        ///   paths              repo-relative PREFIXES; absent or empty = every conflict
+        pub struct ResolveListRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ResolveListRequest<'a> {
+            type Inner = ResolveListRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ResolveListRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ResolveListRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ResolveListRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ResolveListRequest<'bldr>> {
+                let mut builder = ResolveListRequestBuilder::new(_fbb);
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ResolveListRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ResolveListRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ResolveListRequest::VT_PATHS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ResolveListRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct ResolveListRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for ResolveListRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ResolveListRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revision: None,
+                    paths: None,
+                }
+            }
+        }
+
+        pub struct ResolveListRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ResolveListRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ResolveListRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ResolveListRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ResolveListRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ResolveListRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ResolveListRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ResolveListRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ResolveListRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ResolveListRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revision", &self.revision());
+                ds.field("paths", &self.paths());
+                ds.finish()
+            }
+        }
+        pub enum ResolvedFileOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One file the GUI merge editor resolved (Story 9.17): `path` repo-relative in jj's internal
+        /// `/`-separated form (what `ConflictedFile.path` reports), `content` its resolved bytes, written
+        /// as they are.
+        pub struct ResolvedFile<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ResolvedFile<'a> {
+            type Inner = ResolvedFile<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ResolvedFile<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ResolvedFile { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ResolvedFileArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ResolvedFile<'bldr>> {
+                let mut builder = ResolvedFileBuilder::new(_fbb);
+                if let Some(x) = args.content {
+                    builder.add_content(x);
+                }
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ResolvedFile::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn content(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(
+                            ResolvedFile::VT_CONTENT,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ResolvedFile<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
+                        "content",
+                        Self::VT_CONTENT,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ResolvedFileArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub content: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
+        }
+        impl<'a> Default for ResolvedFileArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ResolvedFileArgs {
+                    path: None,
+                    content: None,
+                }
+            }
+        }
+
+        pub struct ResolvedFileBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ResolvedFileBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ResolvedFile::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u8>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ResolvedFile::VT_CONTENT, content);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ResolvedFileBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ResolvedFileBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ResolvedFile<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ResolvedFile<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ResolvedFile");
+                ds.field("path", &self.path());
+                ds.field("content", &self.content());
+                ds.finish()
+            }
+        }
+        pub enum ResolveRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_resolve` (Story 9.17) — the CLI's `jj resolve`.
+        ///
+        ///   revision           jj reverse-hex change id; absent → `@`
+        ///   paths              repo-relative PREFIXES; absent or empty = every conflict; not with
+        ///                      `tool = Files` (the files are the paths)
+        ///   tool               `Files` (with `files`), `Ours` or `Theirs`
+        ///   files              `tool = Files` only: at least one, each a conflict at the revision, each
+        ///                      path once; with `Ours`/`Theirs` refused (`jj.invalid_input`)
+        pub struct ResolveRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ResolveRequest<'a> {
+            type Inner = ResolveRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ResolveRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TOOL: ::flatbuffers::VOffsetT = 10;
+            pub const VT_FILES: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ResolveRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ResolveRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ResolveRequest<'bldr>> {
+                let mut builder = ResolveRequestBuilder::new(_fbb);
+                if let Some(x) = args.files {
+                    builder.add_files(x);
+                }
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.add_tool(args.tool);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(ResolveRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ResolveRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ResolveRequest::VT_PATHS, None)
+                }
+            }
+            #[inline]
+            pub fn tool(&self) -> ResolveTool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<ResolveTool>(ResolveRequest::VT_TOOL, Some(ResolveTool::Files))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn files(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ResolvedFile<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ResolvedFile>>,
+                    >>(ResolveRequest::VT_FILES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ResolveRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .visit_field::<ResolveTool>("tool", Self::VT_TOOL, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<ResolvedFile>>>>("files", Self::VT_FILES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct ResolveRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub tool: ResolveTool,
+            pub files: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ResolvedFile<'a>>>>,
+            >,
+        }
+        impl<'a> Default for ResolveRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ResolveRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revision: None,
+                    paths: None,
+                    tool: ResolveTool::Files,
+                    files: None,
+                }
+            }
+        }
+
+        pub struct ResolveRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ResolveRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(ResolveRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ResolveRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ResolveRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn add_tool(&mut self, tool: ResolveTool) {
+                self.fbb_
+                    .push_slot::<ResolveTool>(ResolveRequest::VT_TOOL, tool, ResolveTool::Files);
+            }
+            #[inline]
+            pub fn add_files(
+                &mut self,
+                files: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<ResolvedFile<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ResolveRequest::VT_FILES, files);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ResolveRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ResolveRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ResolveRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ResolveRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ResolveRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revision", &self.revision());
+                ds.field("paths", &self.paths());
+                ds.field("tool", &self.tool());
+                ds.field("files", &self.files());
+                ds.finish()
+            }
+        }
+        pub enum DiffeditRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_diffedit` (Story 9.17) — the CLI's `jj diffedit` with its builtin diff
+        /// editor, the GUI's.
+        ///
+        ///   revision           `-r`, jj reverse-hex change id, diffed against its parents; absent (with
+        ///                      neither `from` nor `to`) → `@`; not with `from`/`to` (`jj.invalid_input`)
+        ///   from / to          `--from` / `--to`: `to` (absent → `@`) diffed against `from`'s own tree
+        ///                      (absent → `@`)
+        ///   tree               what `zanshin_select_tree` returned for that diff and its `left`
+        ///   restore_descendants  `--restore-descendants`: descendants keep their content
+        pub struct DiffeditRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for DiffeditRequest<'a> {
+            type Inner = DiffeditRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> DiffeditRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_FROM: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TO: ::flatbuffers::VOffsetT = 10;
+            pub const VT_TREE: ::flatbuffers::VOffsetT = 12;
+            pub const VT_RESTORE_DESCENDANTS: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DiffeditRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DiffeditRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DiffeditRequest<'bldr>> {
+                let mut builder = DiffeditRequestBuilder::new(_fbb);
+                if let Some(x) = args.tree {
+                    builder.add_tree(x);
+                }
+                if let Some(x) = args.to {
+                    builder.add_to(x);
+                }
+                if let Some(x) = args.from {
+                    builder.add_from(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.add_restore_descendants(args.restore_descendants);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(DiffeditRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DiffeditRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn from(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DiffeditRequest::VT_FROM, None)
+                }
+            }
+            #[inline]
+            pub fn to(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DiffeditRequest::VT_TO, None)
+                }
+            }
+            #[inline]
+            pub fn tree(&self) -> Option<TreeSelection<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<TreeSelection>>(DiffeditRequest::VT_TREE, None)
+                }
+            }
+            #[inline]
+            pub fn restore_descendants(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(DiffeditRequest::VT_RESTORE_DESCENDANTS, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for DiffeditRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("from", Self::VT_FROM, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("to", Self::VT_TO, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<TreeSelection>>("tree", Self::VT_TREE, false)?
+                    .visit_field::<bool>("restore_descendants", Self::VT_RESTORE_DESCENDANTS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct DiffeditRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub from: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub to: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub tree: Option<::flatbuffers::WIPOffset<TreeSelection<'a>>>,
+            pub restore_descendants: bool,
+        }
+        impl<'a> Default for DiffeditRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DiffeditRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revision: None,
+                    from: None,
+                    to: None,
+                    tree: None,
+                    restore_descendants: false,
+                }
+            }
+        }
+
+        pub struct DiffeditRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DiffeditRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(DiffeditRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DiffeditRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_from(&mut self, from: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DiffeditRequest::VT_FROM, from);
+            }
+            #[inline]
+            pub fn add_to(&mut self, to: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DiffeditRequest::VT_TO, to);
+            }
+            #[inline]
+            pub fn add_tree(&mut self, tree: ::flatbuffers::WIPOffset<TreeSelection<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<TreeSelection>>(DiffeditRequest::VT_TREE, tree);
+            }
+            #[inline]
+            pub fn add_restore_descendants(&mut self, restore_descendants: bool) {
+                self.fbb_
+                    .push_slot::<bool>(DiffeditRequest::VT_RESTORE_DESCENDANTS, restore_descendants, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiffeditRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DiffeditRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DiffeditRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for DiffeditRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DiffeditRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revision", &self.revision());
+                ds.field("from", &self.from());
+                ds.field("to", &self.to());
+                ds.field("tree", &self.tree());
+                ds.field("restore_descendants", &self.restore_descendants());
                 ds.finish()
             }
         }
@@ -31030,6 +31901,9 @@ pub mod zanshin {
         /// parent tree, what split/squash/commit diff against — as hex tree ids in order (one for a
         /// resolved tree, an odd number for a conflicted merge of parents): the `left` a hunk selection
         /// (`zanshin_select_tree`) is made against.
+        ///
+        /// `tree_ids` (Story 9.17) is the commit's OWN tree, hex in order — the `left` of a selection made
+        /// against it as `SelectTreeRequest.from` (`diffedit --from`).
         pub struct ShowEntry<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -31048,6 +31922,7 @@ pub mod zanshin {
             pub const VT_CHANGE: ::flatbuffers::VOffsetT = 4;
             pub const VT_FILE_CHANGES: ::flatbuffers::VOffsetT = 6;
             pub const VT_PARENT_TREE_IDS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_TREE_IDS: ::flatbuffers::VOffsetT = 10;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -31059,6 +31934,9 @@ pub mod zanshin {
                 args: &'args ShowEntryArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<ShowEntry<'bldr>> {
                 let mut builder = ShowEntryBuilder::new(_fbb);
+                if let Some(x) = args.tree_ids {
+                    builder.add_tree_ids(x);
+                }
                 if let Some(x) = args.parent_tree_ids {
                     builder.add_parent_tree_ids(x);
                 }
@@ -31107,6 +31985,17 @@ pub mod zanshin {
                     >>(ShowEntry::VT_PARENT_TREE_IDS, None)
                 }
             }
+            #[inline]
+            pub fn tree_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ShowEntry::VT_TREE_IDS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for ShowEntry<'_> {
@@ -31119,6 +32008,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<Change>>("change", Self::VT_CHANGE, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FileChange>>>>("file_changes", Self::VT_FILE_CHANGES, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("parent_tree_ids", Self::VT_PARENT_TREE_IDS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("tree_ids", Self::VT_TREE_IDS, false)?
      .finish();
                 Ok(())
             }
@@ -31130,6 +32020,8 @@ pub mod zanshin {
             >,
             pub parent_tree_ids:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub tree_ids:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
         }
         impl<'a> Default for ShowEntryArgs<'a> {
             #[inline]
@@ -31138,6 +32030,7 @@ pub mod zanshin {
                     change: None,
                     file_changes: None,
                     parent_tree_ids: None,
+                    tree_ids: None,
                 }
             }
         }
@@ -31173,6 +32066,14 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(ShowEntry::VT_PARENT_TREE_IDS, parent_tree_ids);
             }
             #[inline]
+            pub fn add_tree_ids(
+                &mut self,
+                tree_ids: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ShowEntry::VT_TREE_IDS, tree_ids);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ShowEntryBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 ShowEntryBuilder {
@@ -31193,6 +32094,7 @@ pub mod zanshin {
                 ds.field("change", &self.change());
                 ds.field("file_changes", &self.file_changes());
                 ds.field("parent_tree_ids", &self.parent_tree_ids());
+                ds.field("tree_ids", &self.tree_ids());
                 ds.finish()
             }
         }
@@ -36592,6 +37494,584 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum ConflictTermOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One term of a conflict hunk (Story 9.17): its bytes.
+        pub struct ConflictTerm<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConflictTerm<'a> {
+            type Inner = ConflictTerm<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConflictTerm<'a> {
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConflictTerm { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConflictTermArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConflictTerm<'bldr>> {
+                let mut builder = ConflictTermBuilder::new(_fbb);
+                if let Some(x) = args.content {
+                    builder.add_content(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn content(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(
+                            ConflictTerm::VT_CONTENT,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConflictTerm<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
+                        "content",
+                        Self::VT_CONTENT,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConflictTermArgs<'a> {
+            pub content: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
+        }
+        impl<'a> Default for ConflictTermArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConflictTermArgs { content: None }
+            }
+        }
+
+        pub struct ConflictTermBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConflictTermBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u8>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConflictTerm::VT_CONTENT, content);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConflictTermBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConflictTermBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConflictTerm<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConflictTerm<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConflictTerm");
+                ds.field("content", &self.content());
+                ds.finish()
+            }
+        }
+        pub enum ConflictHunkOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One merge hunk of a file conflict (Story 9.17) — `jj_lib::files::merge_hunks` over the
+        /// simplified sides: a conflicting hunk's terms in jj's `Merge` order (side 1, base 1, side 2, …),
+        /// or one term, the text every side shares.
+        pub struct ConflictHunk<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConflictHunk<'a> {
+            type Inner = ConflictHunk<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConflictHunk<'a> {
+            pub const VT_TERMS: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConflictHunk { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConflictHunkArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConflictHunk<'bldr>> {
+                let mut builder = ConflictHunkBuilder::new(_fbb);
+                if let Some(x) = args.terms {
+                    builder.add_terms(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn terms(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConflictTerm<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConflictTerm>>,
+                    >>(ConflictHunk::VT_TERMS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConflictHunk<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<ConflictTerm>>,
+                    >>("terms", Self::VT_TERMS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ConflictHunkArgs<'a> {
+            pub terms: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConflictTerm<'a>>>>,
+            >,
+        }
+        impl<'a> Default for ConflictHunkArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConflictHunkArgs { terms: None }
+            }
+        }
+
+        pub struct ConflictHunkBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConflictHunkBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_terms(
+                &mut self,
+                terms: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<ConflictTerm<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConflictHunk::VT_TERMS, terms);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConflictHunkBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConflictHunkBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConflictHunk<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConflictHunk<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConflictHunk");
+                ds.field("terms", &self.terms());
+                ds.finish()
+            }
+        }
+        pub enum ConflictedFileOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One conflicted path of `zanshin_resolve_list` (Story 9.17).
+        ///
+        ///   path               repo-relative, jj's internal `/`-separated form
+        ///   description        the CLI's `--list` text for the simplified conflict ("2-sided conflict",
+        ///                      "… including an executable", …)
+        ///   num_sides          the simplified conflict's sides
+        ///   unresolvable       ABSENT = `zanshin_resolve` can take it; else the CLI's refusal text
+        ///                      (`jj.conflict_not_resolvable`)
+        ///   labels             a file conflict's simplified conflict labels, one per term (empty =
+        ///                      unlabeled, and for a conflict that is not a file conflict)
+        ///   hunks              a file conflict's merge hunks; empty for any other conflict
+        pub struct ConflictedFile<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ConflictedFile<'a> {
+            type Inner = ConflictedFile<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ConflictedFile<'a> {
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 4;
+            pub const VT_DESCRIPTION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NUM_SIDES: ::flatbuffers::VOffsetT = 8;
+            pub const VT_UNRESOLVABLE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_LABELS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_HUNKS: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ConflictedFile { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ConflictedFileArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ConflictedFile<'bldr>> {
+                let mut builder = ConflictedFileBuilder::new(_fbb);
+                if let Some(x) = args.hunks {
+                    builder.add_hunks(x);
+                }
+                if let Some(x) = args.labels {
+                    builder.add_labels(x);
+                }
+                if let Some(x) = args.unresolvable {
+                    builder.add_unresolvable(x);
+                }
+                builder.add_num_sides(args.num_sides);
+                if let Some(x) = args.description {
+                    builder.add_description(x);
+                }
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConflictedFile::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn description(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConflictedFile::VT_DESCRIPTION, None)
+                }
+            }
+            #[inline]
+            pub fn num_sides(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(ConflictedFile::VT_NUM_SIDES, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn unresolvable(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ConflictedFile::VT_UNRESOLVABLE, None)
+                }
+            }
+            #[inline]
+            pub fn labels(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ConflictedFile::VT_LABELS, None)
+                }
+            }
+            #[inline]
+            pub fn hunks(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConflictHunk<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConflictHunk>>,
+                    >>(ConflictedFile::VT_HUNKS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ConflictedFile<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("description", Self::VT_DESCRIPTION, false)?
+     .visit_field::<u32>("num_sides", Self::VT_NUM_SIDES, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("unresolvable", Self::VT_UNRESOLVABLE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("labels", Self::VT_LABELS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<ConflictHunk>>>>("hunks", Self::VT_HUNKS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct ConflictedFileArgs<'a> {
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub description: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub num_sides: u32,
+            pub unresolvable: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub labels:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub hunks: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConflictHunk<'a>>>>,
+            >,
+        }
+        impl<'a> Default for ConflictedFileArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ConflictedFileArgs {
+                    path: None,
+                    description: None,
+                    num_sides: 0,
+                    unresolvable: None,
+                    labels: None,
+                    hunks: None,
+                }
+            }
+        }
+
+        pub struct ConflictedFileBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ConflictedFileBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConflictedFile::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_description(&mut self, description: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConflictedFile::VT_DESCRIPTION, description);
+            }
+            #[inline]
+            pub fn add_num_sides(&mut self, num_sides: u32) {
+                self.fbb_.push_slot::<u32>(ConflictedFile::VT_NUM_SIDES, num_sides, 0);
+            }
+            #[inline]
+            pub fn add_unresolvable(&mut self, unresolvable: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConflictedFile::VT_UNRESOLVABLE, unresolvable);
+            }
+            #[inline]
+            pub fn add_labels(
+                &mut self,
+                labels: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConflictedFile::VT_LABELS, labels);
+            }
+            #[inline]
+            pub fn add_hunks(
+                &mut self,
+                hunks: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<ConflictHunk<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ConflictedFile::VT_HUNKS, hunks);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ConflictedFileBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ConflictedFileBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ConflictedFile<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ConflictedFile<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ConflictedFile");
+                ds.field("path", &self.path());
+                ds.field("description", &self.description());
+                ds.field("num_sides", &self.num_sides());
+                ds.field("unresolvable", &self.unresolvable());
+                ds.field("labels", &self.labels());
+                ds.field("hunks", &self.hunks());
+                ds.finish()
+            }
+        }
+        pub enum ResolveListOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_resolve_list`'s answer (Story 9.17): the revision's matching conflicts, in tree
+        /// order.
+        pub struct ResolveList<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for ResolveList<'a> {
+            type Inner = ResolveList<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> ResolveList<'a> {
+            pub const VT_FILES: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ResolveList { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ResolveListArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ResolveList<'bldr>> {
+                let mut builder = ResolveListBuilder::new(_fbb);
+                if let Some(x) = args.files {
+                    builder.add_files(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn files(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConflictedFile<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConflictedFile>>,
+                    >>(ResolveList::VT_FILES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for ResolveList<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<ConflictedFile>>,
+                    >>("files", Self::VT_FILES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ResolveListArgs<'a> {
+            pub files: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<ConflictedFile<'a>>>>,
+            >,
+        }
+        impl<'a> Default for ResolveListArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ResolveListArgs { files: None }
+            }
+        }
+
+        pub struct ResolveListBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ResolveListBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_files(
+                &mut self,
+                files: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<ConflictedFile<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ResolveList::VT_FILES, files);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ResolveListBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ResolveListBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ResolveList<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for ResolveList<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ResolveList");
+                ds.field("files", &self.files());
+                ds.finish()
+            }
+        }
         pub enum WarningOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -37705,6 +39185,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_resolve_list(&self) -> Option<ResolveList<'a>> {
+                if self.data_type() == Payload::ResolveList {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { ResolveList::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -37774,6 +39269,7 @@ pub mod zanshin {
           Payload::MovementTargets => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<MovementTargets>>("Payload::MovementTargets", pos),
           Payload::WorkspaceRemoveResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<WorkspaceRemoveResult>>("Payload::WorkspaceRemoveResult", pos),
           Payload::SimplifyParentsResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<SimplifyParentsResult>>("Payload::SimplifyParentsResult", pos),
+          Payload::ResolveList => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ResolveList>>("Payload::ResolveList", pos),
           _ => Ok(()),
         }
      })?
@@ -38257,6 +39753,13 @@ pub mod zanshin {
                     }
                     Payload::SimplifyParentsResult => {
                         if let Some(x) = self.data_as_simplify_parents_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::ResolveList => {
+                        if let Some(x) = self.data_as_resolve_list() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

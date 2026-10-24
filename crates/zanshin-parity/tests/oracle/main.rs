@@ -384,6 +384,17 @@ parity!(
     simplify_parents_non_target_redundant_descendant,
     simplify_parents_bad_setting_refused,
     simplify_parents_deprecated_setting_warns,
+    resolve_ours,
+    resolve_theirs,
+    resolve_tool_files,
+    resolve_non_wc_partial,
+    resolve_no_conflicts,
+    resolve_modify_delete_theirs,
+    resolve_modify_delete_ours,
+    diffedit_tool_sections_1_3,
+    diffedit_from_to,
+    diffedit_restore_descendants,
+    diffedit_nothing_changed,
     rebase_i1_source_insert_before_merge,
     rebase_source_onto_itself_refused,
     rebase_several_revisions,
@@ -470,7 +481,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 402);
+    assert_eq!(SCENARIO_IDS.len(), 413);
 }
 
 #[test]
