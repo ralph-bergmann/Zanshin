@@ -90,11 +90,6 @@
 #
 #   Backend aus Epic 9. Jede dieser Stories kann sofort starten, wenn nichts anderes dabeisteht.
 #   Sortiert danach, welche UI-Story sie zuerst braucht:
-#     9.9    metaedit, duplicate und fix. Für 10.10.
-#     9.19   bookmark move, advance und rename. Für 10.10.
-#     9.50   Hunk-Auswahl als Baum. Braucht 5.1 und 5.6. Für 10.26.
-#     9.21   Operation-Log, unter anderem Redo. Für 11.9.
-#     9.12   op restore und op revert. Für 11.9.
 #     Noch ohne UI-Story, die sie braucht, also jederzeit: 9.10, 9.11, 9.13, 9.14, 9.17, 9.18, 9.38, 9.41,
 #     9.44, 9.45 und 9.46.
 #     9.42   Niedrige Priorität: nur ein Randfall.
