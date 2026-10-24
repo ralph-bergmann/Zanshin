@@ -2,7 +2,7 @@
 title: 'Story 9.13 — `file chmod`; `workspace forget`, `rename`, `remove`'
 type: 'feature'
 created: '2026-10-24'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '7bd14f542fee1a03655622ca7d082981de9c6ec6'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -108,6 +108,35 @@ CLI anchors @ v0.46.0: `file/chmod.rs:61-136`, `workspace/forget.rs:41-131`, `wo
 
 ## Review Triage Log
 
+### 2026-10-24 — Review pass
+- verdicts: 25 findings — high 0, medium 0, low 19, false 6, maybe-false 0
+- findings:
+  - `[low]` `[patch]` (verification-gap) `git_worktrees_removed` never asserted non-empty across the FFI, so a swap with `directories_removed` would pass — fixed: colocated FFI remove round trip asserting both lists equal the canonical ws2 path.
+  - `[low]` `[patch]` (verification-gap) chmod of a conflicted file (every side a file) never runs through the facade — fixed: integration tests for a file/file conflict (every file term takes the bit) and a file/symlink conflict refusal.
+  - `[low]` `[patch]` (verification-gap) remove with a target whose snapshot refuses (stale) untested — fixed: test asserts the refusal, ws2 still in view and store, directory kept, no `remove workspace` op.
+  - `[low]` `[patch]` (blind) remove docs say every refusal but "contains the repository" carries the forget hint, but the workspace-load errors carry none (CLI parity) — fixed: prose in `Repo::workspace_remove` and `zanshin_workspace_remove`.
+  - `[low]` `[reject]` (blind) rename without `@` drops the CLI's text "The current workspace '<name>' is not tracked in the repo." — the spec chose `MutateError::NoWorkingCopy` (no context), as 9.49's `commit` reports the CLI's "requires a working copy"; carrying the text needs a new variant field (public surface) for a state only reachable after forgetting the current workspace — rare; the misleading doc sentence is patched (row below).
+  - `[low]` `[patch]` (blind) removing the handle's OWN secondary workspace (allowed by the CLI) untested/undocumented — fixed: test from a ws2 handle (dir gone, `working_copy_change_id` None, `jj.workspace_no_longer_exists`) and the outcome stated in `Repo::workspace_remove`'s doc.
+  - `[low]` `[reject]` (blind) rename reloads the handle only on success; if `locked_ws.finish` fails after commit the handle keeps the old name — needs a working-copy finish failure after a successful commit (disk error), unlikely in everyday use; the fix adds a second reload path.
+  - `[low]` `[patch]` (blind) chmod on conflicts only unit-tested — same fix as the verification-gap conflict row.
+  - `[low]` `[patch]` (blind) parity coverage lacks a colocated remove — fixed: oracle scenario `workspace_remove_colocated_worktree`. Rest of the row rejected: "unreachable" cannot be built through the CLI (needs a workspace with no recorded path; covered in the Rust suite), "another repository", duplicates and failure warnings are covered by Rust tests, and duplicate handling is a straight port.
+  - `[low]` `[patch]` (blind) dead `canonicalize` after the directory was deleted in the FFI remove test — fixed: computed before the call.
+  - `[low]` `[patch]` (blind) an absent `FileChmodRequest.executable` silently means `n` — fixed: the schema documents absent = `false` (the CLI's `n`); `RepoHandle.fileChmod` makes it a required argument, so the GUI path always sets it.
+  - `[low]` `[patch]` (blind) several `remove.rs` line citations wrong at v0.46.0 — fixed: anchors re-read and corrected.
+  - `[low]` `[patch]` (blind) FFI test gaps: forget with ABSENT names never sent; rename/remove lack null-buffer / zero-handle refusal tests — fixed: tests added.
+  - `[low]` `[patch]` (blind) `RepoHandle.workspaceRemove` doc omits `gitWorktreesRemoved` / `jj.git_worktree_unlink_failed` — fixed.
+  - `[low]` `[patch]` (edge) the handle's own secondary workspace removed — same fix as the blind own-workspace row (test + doc; behaviour is the CLI's).
+  - `[false]` `[reject]` (edge) chmod docs claim a no-change rewrite writes no operation — the claim as a defect in behaviour is false (the code always writes, as the CLI: the rewrite is recorded in the parent mapping, `has_changes` true; tested by `an_unmatched_path_warns`); the doc sentence itself was misleading and is corrected in the patch round.
+  - `[low]` `[patch]` (edge) remove hint docs — same as the blind hint-doc row.
+  - `[low]` `[patch]` (edge) dead canonicalize — same as the blind row.
+  - `[false]` `[reject]` (edge) `abandoned_change_ids` empty although `remove_workspace` abandons a discardable `@` — the field's contract (`mutate.rs:87`) excludes jj-lib's implicit abandon of a discardable `@`, as for `edit`/`new`.
+  - `[low]` `[patch]` (edge) rename docs cite the CLI's named text that `jj.no_working_copy` does not carry — fixed: reworded (the CLI's refusal, reported without its text).
+  - `[false]` `[reject]` (edge) no oracle scenario for "Cannot remove unreachable workspace" — the stock CLI cannot construct a workspace without a recorded path (pre-0.38 repos only); the refusal is covered by the Rust suite.
+  - `[false]` `[reject]` (intent) I1's literal reading expects `jj.no_working_copy` on the wire — the run's rule makes CLI parity decisive: the CLI reports an omitted `@` as a revset-resolution user error, which 3ee3f29 already ports with its text; `jj.no_working_copy` stays the "requires a working copy" refusal. Recorded as I1 = rejected (no longer applies).
+  - `[low]` `[patch]` (intent) the I1 witness covers only `file_list` and `restore` — fixed: the witness also runs `file_chmod(None)` and a commit-view `@` default.
+  - `[false]` `[reject]` (intent) chmod parses paths as prefixes, not filesets — ADR-0003 / the 9.22 path rule (fileset DSL is terminal input language); the spec's Never.
+  - `[false]` `[reject]` (intent) remove unlinks worktrees before deleting directories, against the addendum's prose order — `remove.rs` @ v0.46.0 unlinks first, then `remove_dir_all`; the code follows the CLI.
+
 ## Design Notes
 
 - **I1 is already settled in code.** Commit 3ee3f29 (2026-10-23) made `ResolveError::NoWorkingCopy` carry jj-lib's `RevsetResolutionError::WorkspaceMissingWorkingCopy` text — the CLI's own user error for an omitted `-r @` — mapped to `jj.revset_resolution_error` (mutations, commit views) and `jj.invalid_input` (file reads). `jj.no_working_copy` stays the code for "this command requires a working copy" (lock-taking verbs), matching the CLI's split. This story adds the public-path witness and closes the ledger entry; no code change.
@@ -125,3 +154,36 @@ Gate rule for this run: no `cargo make test` / `test-full` / `coverage`; targete
 - `cargo test -p zanshin-parity --test oracle` -- pass.
 - `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity -p test-helpers --all-targets -- -D warnings`; `cargo fmt --all --check` -- clean.
 - `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings`, `dart format --set-exit-if-changed lib test`, `dart test` on the touched test files (real cdylib, test env as in 9.11) -- pass/clean.
+
+**Outcomes (2026-10-24, final tree after the review patches; full gate not run per the run's gate rule):**
+- `cargo make codegen` -- exit 0; a re-run left the tree unchanged.
+- `cargo fmt --all --check` -- clean. `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity -p test-helpers --all-targets -- -D warnings` -- clean.
+- `cargo test -p zanshin-jj --lib` -- 370 passed. `cargo test -p zanshin-jj --test it -- file_chmod:: workspace_ops:: workspace_add:: workspace_update_stale:: workspace:: file_track_untrack:: select_tree:: api_stability:: warnings:: commit_views::` -- 234 passed (199 before the review's added tests, without `commit_views::`).
+- `cargo test -p zanshin-ffi --lib` -- 215 passed. `cargo test -p zanshin-ffi --test it -- file_ops_ffi:: workspace_ffi:: ffi_abi_doc_sync::` -- 48 passed (102 exports).
+- `cargo test -p zanshin-parity --test oracle` -- 403 passed (23 new Story 9.13 scenarios, no ledger entry).
+- `packages/zanshin_core`: `dart analyze --fatal-infos --fatal-warnings` -- no issues; `dart format --set-exit-if-changed lib test` -- 0 changed; `dart test test/ffi/file_ops_test.dart test/ffi/workspace_test.dart test/ffi/warning_test.dart test/worker/file_ops_test.dart test/worker/workspace_test.dart` (JJ_*, GIT_CONFIG_GLOBAL, XDG_CONFIG_HOME pinned as `test-core`) -- 236 passed (real cdylib).
+- Not run (gate rule): `cargo make test`, `test-full`, `coverage` -- the story loop runs the gate once at its end.
+
+## Auto Run Result
+
+Status: done
+
+**Summary.** `jj file chmod`, `jj workspace forget`, `jj workspace rename` and the new jj 0.46 `jj workspace remove` are ported from the CLI at v0.46.0 end to end (`.fbs` → zanshin-jj → `zanshin_file_chmod` / `zanshin_workspace_forget` / `_rename` / `_remove` → `RepoHandle.fileChmod` / `workspaceForget` / `workspaceRename` / `workspaceRemove`; 102 exports). chmod resolves the revision (default `@`), guards rewritability, parses paths as `file track` does, warns unmatched paths, refuses non-file entries with the CLI's two texts, sets the bit on every file term (conflicts included) and finishes `make paths executable|non-executable in commit <hex>`. forget (default: the current workspace) warns unknown names, removes the rest in one transaction, keeps the store path and unlinks Git worktrees; rename renames the locked working copy, the view and the store in a raw commit `Renamed workspace 'a' to 'b'` and reloads the handle; remove refuses unreachable / inaccessible / repository-containing / foreign workspaces, snapshots each target, removes them in one transaction, forgets their store entries, unlinks worktrees and deletes the directories. New `WorkspaceRemoveResult { mutation, git_worktrees_removed, directories_removed }`; three new warning codes `jj.workspace_names_unmatched`, `jj.git_worktree_unlink_failed`, `jj.workspace_directory_remove_failed`; no new error code. Code commit: 2430c99f9c5eea2e502fcff81a72801b56521e05.
+
+**Open items.**
+- **I1** (a workspace with no `@` surfacing as `jj.jj_lib_error`) — rejected: no longer applies. Commit 3ee3f29 (2026-10-23) already made the omitted-`@` default return jj-lib's `RevsetResolutionError::WorkspaceMissingWorkingCopy` text, the CLI's own user error ("Workspace `default` doesn't have a working-copy commit"), as `jj.revset_resolution_error` (mutations, commit views) / `jj.invalid_input` (file reads); `jj.no_working_copy` stays the CLI's separate "requires a working copy" refusal. This story makes the state reachable through `workspace_forget` and adds the public-path witness `crates/zanshin-jj/tests/it/workspace_ops.rs::forget_the_current_workspace_then_at_defaults_refuse_with_the_clis_text` (file_list, restore, file_chmod, interdiff) in 2430c99; the deferred-work.md entry is struck as settled.
+
+**Files changed.**
+- `crates/zanshin-jj/src/workspace_ops.rs` (new) — forget / rename / remove, `WorkspaceRemoveResult`, load-error mapping, worktree unlink, inline tests.
+- `crates/zanshin-jj/src/wc_ops.rs` — `file_chmod` + `chmod_refusal` (inline test); `select_tree.rs` / `workspace.rs` — `with_executable`, `load_store` made `pub(crate)`; `warning.rs` — three kinds; `repo.rs` — four facades; `lib.rs` — re-export.
+- `schemas/envelope.fbs` + generated files — four request kinds, three request tables, `WorkspaceRemoveResult` payload.
+- `crates/zanshin-ffi/src/{file_ops,workspace,envelope}.rs` — readers, four externs, result builder, warning codes.
+- `packages/zanshin_core/lib/src/{ffi/file_ops,ffi/workspace,ffi/warning,worker/commands,worker/isolate,worker/handle}.dart`, barrel — adapters, model, commands, worker methods, `RepoHandle` methods, codes.
+- Tests: `crates/zanshin-jj/tests/it/{file_chmod,workspace_ops}.rs` (new), `api_stability.rs`, `main.rs`, `workspace_update_stale.rs` (shared fixture); `crates/zanshin-ffi/tests/it/{file_ops_ffi,workspace_ffi,ffi_abi_doc_sync}.rs`; Dart `test/{ffi,worker}/{file_ops,workspace}_test.dart`, `test/ffi/warning_test.dart`; oracle `scenarios.rs`, `driver.rs` (`Symlink`, `RemoveDir` steps), `main.rs` (23 scenarios).
+- Docs: `docs/ffi-abi.md`, `docs/rust-error-codes.md`. Ledger: this spec, `sprint-status.yaml` (9-13 done), `deferred-work.md` (I1 struck, Story 9.13 section, nothing deferred).
+
+**Review findings.** 25 findings (low 19, false 6). Patched 17 low (tests, docs, anchors): colocated FFI remove round trip asserting both result lists, chmod of file/file and file/symlink conflicts through the facade, remove stopping at a stale target, removing the handle's own secondary workspace (test + doc), the I1 witness widened to chmod and interdiff, a colocated-remove oracle scenario, the FFI tests' late canonicalize, absent-names forget and rename/remove null/zero-handle refusals, hint/rename/chmod doc corrections, the `executable` absent-default doc, `RepoHandle.workspaceRemove`'s doc, and every `remove.rs`/`forget.rs`/`rename.rs`/`chmod.rs` anchor. Nothing deferred. Rejected: rename-without-`@` not carrying the CLI's text (spec's `jj.no_working_copy` choice, as 9.49's commit; a text field is new public surface for a rare state), rename's reload skipped when `locked_ws.finish` fails after the commit (disk-failure-only path), and six false findings (no-op chmod — always writes like the CLI; `abandoned_change_ids` contract excludes implicit `@` abandon; unreachable oracle row not constructible by the CLI; I1 literal code reading vs CLI parity; prefix paths per ADR-0003; unlink-before-delete is the CLI's order).
+
+**Follow-up review recommendation: false.** Patched at entry verdict: high 0, medium 0, low 17.
+
+**Residual risks.** Coverage ratchet not run (gate rule): `workspace_ops.rs` is a new file that must reach the 80 % floor at the loop's final gate; its error-mapping arms are unit-tested. Rename without `@` reports `jj.no_working_copy` without the CLI's sentence. A rename whose working-copy finish fails after the commit leaves the handle on the old name until reopened. `remove` snapshots targets on the head operation rather than threading the CLI's `op_id` (differs only under a concurrent writer).
