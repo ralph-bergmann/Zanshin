@@ -1048,6 +1048,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 - **Conflicted files have no designed diff view.** Low.
   - `jj diff` materializes conflict markers into the diff text (`cli/src/diff_util.rs:1884`); the design shows only the "Conflict" flag (IN:233).
   - **Follow-up:** 10.24 shows jj's text; a designed conflict view comes with 9.17's `resolve`.
+  - BACKEND PART RESOLVED 2026-10-24 (spec-9-17-resolve-diffedit-gui-editor, Story 9.17; commit aeefd82): `Repo::resolve_list` / `zanshin_resolve_list` / `RepoHandle.resolveList` give each conflicted file its sides and base hunk by hunk (`ConflictedFile.hunks`, `jj_lib::files::merge_hunks` terms in `Merge` order) plus labels and whether `resolve` can take it. The designed conflict view itself stays Epic 10/11 UI work.
 - **Word-level and syntax marks have no consumer story.** Low.
   - With line-level first (decision (g)), 5.2–5.4 come later, and no Epic 10 story renders segments.
   - **Follow-up:** a follow-up story to 10.24 when 5.2–5.4 are scheduled.
@@ -1986,3 +1987,15 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 ## Surfaced in Story 9.13 (bmad-build-auto, 2026-10-24)
 
 - Nothing deferred: the spec's `deferred:` list is empty. All 23 parity-oracle scenarios (file chmod, workspace forget / rename / remove and their refusals) match the pinned CLI without a ledger entry. I1 (a missing `@` as `jj.jj_lib_error`) is settled above in its own entry (already fixed by commit 3ee3f29, witnessed through `workspace_forget`).
+
+## Surfaced in Story 9.17 (bmad-build-auto, 2026-10-24)
+
+- **`diffedit` loses edits the target received after `select_tree`.** Medium.
+  - Only `left` is checked; the verb then replaces the target's whole tree with the selection (`crates/zanshin-jj/src/diffedit.rs`). An autosaving editor's edit folded in by the pre-verb snapshot is gone. 9.50's "own content is not stale" rule assumes the rest stays in the revision, which is false for diffedit. The CLI cannot hit it.
+  - **Follow-up:** Ralph confirms a staleness rule for diffedit (Claude's proposal: `DiffeditOptions.right` = the target tree ids the selection saw, from `ShowEntry.tree_ids`; refuse `jj.stale_selection` when the target's tree differs), then a small story adds it through FFI and Dart.
+- **`resolve` with GUI files has no staleness token.** Medium.
+  - A path whose conflict changed between `resolve_list` and `resolve` but is still a conflict gets content composed from the old sides (`crates/zanshin-jj/src/resolve.rs`, `merge_tool_file` checks only "still a conflict"). The CLI cannot hit it.
+  - **Follow-up:** same decision as above (Claude's proposal: per-file term ids on `ConflictedFile`, sent back on `ResolvedFile`, refused `jj.stale_selection` on mismatch).
+- **`resolve_list` cannot tell an absent side from an empty file.** Low.
+  - Both are an empty term in `hunks` (`MaterializedFileConflictValue.contents`); `description` says "including 1 deletion" but not which side. jj-lib also exposes `ids: Merge<Option<FileId>>`.
+  - **Follow-up:** the term ids of the item above (absent = none) close it; build them together.
