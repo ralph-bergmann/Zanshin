@@ -132,7 +132,7 @@ fn working_copy_files(root: &Path) -> BTreeMap<String, Vec<u8>> {
 
 /// `op restore` of the root operation: its view — the root commit only, no working copy — is
 /// committed and the files on disk are left untouched; a later verb that changes nothing reports
-/// no `@`, and `undo` brings `@` back.
+/// no `@`, one that writes does not warn again, and `undo` brings `@` back.
 #[test]
 fn op_restore_to_the_root_operation_writes_its_view() {
     test_helpers::pin_test_env();
@@ -170,6 +170,21 @@ fn op_restore_to_the_root_operation_writes_its_view() {
     assert_eq!(no_change.new_op_id.0, restore_op, "nothing written");
     assert_eq!(no_change.working_copy_change_id, None);
 
+    // `@` is absent before AND after: the warning is the CLI's for a LOST `@` only.
+    let root_change = one(&mut repo, "root()");
+    let written = repo
+        .bookmark_create(&["x".to_owned()], Some(&root_change.id))
+        .expect("a verb that writes without `@`");
+    assert_ne!(written.new_op_id.0, restore_op, "an operation was written");
+    assert_eq!(written.working_copy_change_id, None);
+    let warnings = repo.take_warnings();
+    assert!(
+        warnings.iter().all(|w| w.kind != WarningKind::WorkspaceNoLongerExists),
+        "{warnings:?}"
+    );
+
+    let undone = repo.undo(false).expect("undo the bookmark");
+    assert!(undone.working_copy_change_id.is_none(), "still the root view");
     let undone = repo.undo(false).expect("undo the restore");
     assert!(undone.working_copy_change_id.is_some(), "`@` is back");
 }

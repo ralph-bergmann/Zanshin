@@ -9948,7 +9948,7 @@ class OpDiffRequestObjectBuilder extends fb.ObjectBuilder {
 ///  Arguments of `zanshin_op_restore` (Story 9.12) — the CLI's `jj op restore`.
 ///
 ///    operation   the operation expression (`@-`, an id prefix); REQUIRED — ABSENT is refused
-///                (`ffi.invalid_argument`), as the CLI's positional is required
+///                (`jj.invalid_input` "operation is required"), as the CLI's positional is required
 ///    what        `--what`, repeatable; ABSENT or EMPTY = the flag absent (both portions)
 class OpRestoreRequest {
   OpRestoreRequest._(this._bc, this._bcOffset);

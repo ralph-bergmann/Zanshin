@@ -176,6 +176,27 @@ void main() {
       );
     });
 
+    test('the chosen --what portion reaches restore and revert', () async {
+      final String head = (await handle.opLog(limit: 1)).single.id;
+
+      // Only the remote-tracking portion — equal here (no remotes): nothing is
+      // written and `B` stays. Both portions would bring `A` back.
+      final MutationResult restored = await handle.opRestore('@-', what: const [RestoreWhat.remoteTracking]);
+      expect(restored.newOpId, head, reason: 'the remote-tracking view is unchanged');
+      expect((await handle.getChange(wc)).description, 'B');
+
+      // A bookmark create is a repo-portion change with no rewrite: reverting
+      // only the remote-tracking portion is "Nothing changed." (as the CLI),
+      // the repo portion removes the bookmark.
+      final String created = (await handle.bookmarkCreate(const ['m'])).newOpId;
+      final MutationResult remoteOnly = await handle.opRevert(what: const [RestoreWhat.remoteTracking]);
+      expect(remoteOnly.newOpId, created, reason: 'no remote-tracking bookmark changed');
+      expect((await handle.bookmarks()).map((b) => b.name), contains('m'));
+      final MutationResult repoOnly = await handle.opRevert(what: const [RestoreWhat.repo]);
+      expect(repoOnly.newOpId, isNot(created));
+      expect((await handle.bookmarks()).map((b) => b.name), isNot(contains('m')));
+    });
+
     test('opIntegrate of an operation in the log changes nothing', () async {
       final String head = (await handle.opLog(limit: 1)).single.id;
 

@@ -95,10 +95,10 @@ pub struct Precondition {
     /// updated working copy."). Saturates at `u32::MAX`.
     pub snapshot_rebased: u32,
     /// The `import git refs` step's outcome, in [`crate::Repo::git_import`]'s shape. `Some`
-    /// exactly when the step RAN (colocated workspaces) while this workspace has an `@` — even
-    /// when it changed nothing, so refs that could not be imported still ride
-    /// [`GitImportResult::failed_ref_names`]. `None` outside colocation and when `@` is absent
-    /// from the view (the projection names `@`; the import itself still ran).
+    /// exactly when the step RAN (colocated workspaces) — even when it changed nothing, so refs
+    /// that could not be imported still ride [`GitImportResult::failed_ref_names`]. `None`
+    /// outside colocation. Without this workspace's `@` in the view its `mutation` has
+    /// `working_copy_change_id: None`.
     pub git_refs: Option<GitImportResult>,
     /// Descendants rebased off commits the refs import rewrote (CLI: "Rebased {n} descendant
     /// commits off of commits rewritten from Git."). Saturates at `u32::MAX`.
@@ -810,9 +810,9 @@ fn has_jjconflict_entries(tree: &MergedTree) -> Result<bool, PreconditionError> 
 /// fails after `import git head` and `snapshot working copy` were committed, and those
 /// operations stay in the op log, exactly as the CLI leaves them.
 ///
-/// The report's [`Precondition::git_refs`] projection names `@`, so it is skipped when this
-/// workspace has no `@` in the view (forgotten elsewhere); the import itself runs regardless,
-/// exactly as the CLI's does.
+/// The report's [`Precondition::git_refs`] is set whenever the step runs; without this
+/// workspace's `@` in the view (forgotten elsewhere, or a view restored to the root operation)
+/// its `mutation` has `working_copy_change_id: None`.
 fn import_git_refs(
     workspace: &mut Workspace,
     repo: Arc<ReadonlyRepo>,
@@ -829,10 +829,8 @@ fn import_git_refs(
     sink.extend(warning::git_import_failed(&stats));
     if !tx.repo().has_changes() {
         drop(tx);
-        if repo.view().get_wc_commit_id(&workspace_name).is_some() {
-            let mutation = mutate::no_op_result(&workspace_name, &repo)?;
-            report.git_refs = Some(crate::git::project_import(&stats, &repo, false, mutation));
-        }
+        let mutation = mutate::no_op_result(&workspace_name, &repo)?;
+        report.git_refs = Some(crate::git::project_import(&stats, &repo, false, mutation));
         return Ok(repo);
     }
 
@@ -845,10 +843,8 @@ fn import_git_refs(
     .map_err(|e| backend(&e))?;
     report.git_refs_rebased = saturate(num_rebased);
     let finish = mutate::finish_transaction(workspace, tx, "import git refs", &ctx.finish_ctx(), sink)?;
-    if finish.wc_commit.is_some() {
-        let mutation = mutate::mutation_result(&finish, Vec::new(), Vec::new());
-        report.git_refs = Some(crate::git::project_import(&stats, &finish.repo, true, mutation));
-    }
+    let mutation = mutate::mutation_result(&finish, Vec::new(), Vec::new());
+    report.git_refs = Some(crate::git::project_import(&stats, &finish.repo, true, mutation));
     facts.merge(finish.facts);
     Ok(finish.repo)
 }

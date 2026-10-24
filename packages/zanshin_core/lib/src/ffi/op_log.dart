@@ -116,7 +116,8 @@ enum RestoreWhat {
   /// and tags, the working-copy commits.
   repo(fbs.RestoreWhat.Repo),
 
-  /// `remote-tracking`: the remote-tracking bookmarks.
+  /// `remote-tracking`: the remote-tracking bookmarks. The CLI's advice: "Do
+  /// not restore these if you'd like to push after the undo".
   remoteTracking(fbs.RestoreWhat.RemoteTracking);
 
   const RestoreWhat(this.wire);

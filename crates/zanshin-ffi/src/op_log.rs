@@ -21,9 +21,9 @@ use zanshin_jj::{
 };
 
 use crate::envelope::{
-    catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, ok_mutation_result,
-    precondition_envelope, reject_null_request, session_from_handle, CallReport, FfiErrorObj, FFI_INVALID_ARGUMENT,
-    JJ_JJ_LIB_ERROR,
+    catch, expect_request_kind, finish_envelope, invalid_request, map_precondition_err, missing_field,
+    ok_mutation_result, precondition_envelope, reject_null_request, session_from_handle, CallReport, FfiErrorObj,
+    FFI_INVALID_ARGUMENT, JJ_JJ_LIB_ERROR,
 };
 use crate::fbs;
 use crate::ffi_strings::{cstr_to_string, vec_into_token, ZanshinBuf};
@@ -573,7 +573,9 @@ struct OpEditArgs {
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as an `OpRestoreRequest`, its `kind` is not
-///   `OpRestore`, `operation` is ABSENT, or a `what` member is `Unspecified` or unknown.
+///   `OpRestore`, or a `what` member is `Unspecified` or unknown.
+/// - `jj.invalid_input` — `operation` is ABSENT (`operation is required`, row 4 of the refusal
+///   ladder).
 fn read_op_restore_request(data: *const u8, len: usize) -> Result<OpEditArgs, FfiErrorObj> {
     reject_null_request(data)?;
     // SAFETY: caller-owned, borrowed for this call only (see `read_op_show_request`).
@@ -581,9 +583,7 @@ fn read_op_restore_request(data: *const u8, len: usize) -> Result<OpEditArgs, Ff
     let req = flatbuffers::root_with_opts::<fbs::OpRestoreRequest>(&VerifierOptions::default(), bytes)
         .map_err(|e| invalid_request(&e))?;
     expect_request_kind(req.kind(), fbs::RequestKind::OpRestore)?;
-    let operation = req
-        .operation()
-        .ok_or_else(|| invalid_argument("operation is required".to_owned()))?;
+    let operation = req.operation().ok_or_else(|| missing_field("operation"))?;
     Ok(OpEditArgs {
         operation: operation.to_owned(),
         what: restore_what(req.what())?,
@@ -627,7 +627,8 @@ fn read_op_revert_request(data: *const u8, len: usize) -> Result<OpEditArgs, Ffi
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as an `OpRestoreRequest`, its `kind` is not
-///   `OpRestore`, `operation` is ABSENT, or a `what` member is `Unspecified` or unknown.
+///   `OpRestore`, or a `what` member is `Unspecified` or unknown.
+/// - `jj.invalid_input` — `operation` is ABSENT (`operation is required`).
 /// - `jj.operation_not_found` — no operation matches the id prefix; jj-lib's text in `context`.
 /// - `jj.invalid_input` — the expression is no valid prefix, ambiguous, or resolves to no or
 ///   several operations (with the CLI's hint naming them); jj-lib's text in `context`.

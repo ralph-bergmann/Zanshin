@@ -863,7 +863,7 @@ fn an_unborn_git_head_is_imported_without_moving_at() {
 }
 
 /// A colocated workspace whose `@` was forgotten elsewhere: the refs import still runs and
-/// finishes (the CLI's does), only the `@`-naming projection is skipped — no verb fails.
+/// finishes (the CLI's does) and is reported — its `mutation` names no `@` — and no verb fails.
 ///
 /// The view keeps the workspace's git head: since jj 0.45 `remove_workspace` drops it too, and
 /// the head import would then check a NEW `@` out — so the git head is put back, the state a
@@ -886,10 +886,22 @@ fn a_workspace_without_at_still_imports_the_refs() {
 
     repo.op_log(None).expect("a refs import with changes and no @");
     assert_eq!(new_descriptions(&root, before), ["import git refs"]);
-    assert!(repo.take_precondition().expect("report").git_refs.is_none());
+    let refs = repo
+        .take_precondition()
+        .expect("report")
+        .git_refs
+        .expect("the refs import ran");
+    assert!(refs.mutation.working_copy_change_id.is_none());
+    assert!(refs.changed_bookmarks.iter().any(|b| b.name == "other"), "{refs:?}");
 
     repo.op_log(None).expect("a refs import without changes and no @");
-    assert!(repo.take_precondition().expect("report").git_refs.is_none());
+    let refs = repo
+        .take_precondition()
+        .expect("report")
+        .git_refs
+        .expect("the refs import ran");
+    assert!(refs.mutation.working_copy_change_id.is_none());
+    assert!(refs.changed_bookmarks.is_empty(), "{refs:?}");
     assert_eq!(new_descriptions(&root, before), ["import git refs"]);
 }
 

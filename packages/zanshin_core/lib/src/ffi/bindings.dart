@@ -2562,7 +2562,8 @@ external ffi.Pointer<ZanshinBuf> zanshin_op_log(
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as an `OpRestoreRequest`, its `kind` is not
-/// `OpRestore`, `operation` is ABSENT, or a `what` member is `Unspecified` or unknown.
+/// `OpRestore`, or a `what` member is `Unspecified` or unknown.
+/// - `jj.invalid_input` — `operation` is ABSENT (`operation is required`).
 /// - `jj.operation_not_found` — no operation matches the id prefix; jj-lib's text in `context`.
 /// - `jj.invalid_input` — the expression is no valid prefix, ambiguous, or resolves to no or
 /// several operations (with the CLI's hint naming them); jj-lib's text in `context`.

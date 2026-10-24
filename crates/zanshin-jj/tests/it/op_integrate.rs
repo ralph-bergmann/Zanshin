@@ -35,6 +35,17 @@ fn head(repo: &mut Repo) -> String {
 /// root commit, through jj-lib, and leaves it UNPUBLISHED (the CLI's `--no-integrate-operation`);
 /// returns its id.
 fn unpublished_op(root: &Path, parent: &str, name: &str) -> String {
+    write_op(root, parent, name, false)
+}
+
+/// As [`unpublished_op`], but `publish`ed: the op heads gain it in place of `parent`, so two of
+/// them on the same parent leave the op heads divergent.
+fn published_op(root: &Path, parent: &str, name: &str) -> String {
+    write_op(root, parent, name, true)
+}
+
+/// Writes the bookmark-setting operation on `parent`, published or not; returns its id.
+fn write_op(root: &Path, parent: &str, name: &str, publish: bool) -> String {
     let workspace = Workspace::load(
         &test_helpers::test_settings(),
         root,
@@ -52,7 +63,14 @@ fn unpublished_op(root: &Path, parent: &str, name: &str) -> String {
     tx.repo_mut()
         .set_local_bookmark_target(&bookmark, RefTarget::normal(root_commit));
     let unpublished = pollster::block_on(tx.write(format!("set bookmark {name}"))).expect("write the operation");
-    unpublished.leave_unpublished().op_id().hex()
+    if publish {
+        pollster::block_on(unpublished.publish())
+            .expect("publish")
+            .op_id()
+            .hex()
+    } else {
+        unpublished.leave_unpublished().op_id().hex()
+    }
 }
 
 /// `op integrate @-`: already in the log — the head and the op heads stay, nothing is
@@ -124,6 +142,31 @@ fn op_integrate_of_an_unpublished_sibling_reconciles_it_with_the_head() {
         .map(|b| b.name)
         .collect();
     assert!(names.contains("later") && names.contains("sibling"), "{names:?}");
+}
+
+/// Divergent op heads on disk are reconciled by the CLI's head load (in this workspace) BEFORE
+/// the operation resolves; integrating that load's own merge (`@`) writes nothing more, so
+/// `reconciled` stays `false` — it reports only the integrate's own merge.
+#[test]
+fn op_integrate_after_a_head_load_reconcile_reports_no_reconcile_of_its_own() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let before = head(&mut repo);
+    let one = published_op(&fx.path, &before, "one");
+    let two = published_op(&fx.path, &before, "two");
+    assert_eq!(op_heads(&fx.path), BTreeSet::from([one.clone(), two.clone()]));
+
+    let result = repo.op_integrate("@").unwrap();
+
+    assert!(!result.reconciled, "the head load's reconcile is not the integrate's");
+    assert_eq!(op_heads(&fx.path), BTreeSet::from([result.head_op_id.0.clone()]));
+    let merge = repo.op_log(Some(1)).unwrap().swap_remove(0);
+    assert_eq!(merge.id, result.head_op_id);
+    assert_eq!(merge.description, "reconcile divergent operations");
+    assert_eq!(merge.workspace_name.as_deref(), Some("default"));
+    let parents: BTreeSet<String> = merge.parent_ids.iter().map(|id| id.0.clone()).collect();
+    assert_eq!(parents, BTreeSet::from([one, two]));
 }
 
 /// Unknown or malformed operations refuse with the opset errors; the op heads stay.

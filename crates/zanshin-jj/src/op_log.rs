@@ -305,8 +305,8 @@ pub enum RestoreWhat {
     /// `repo`: the jj repo state and local bookmarks — `head_ids`, local bookmarks and tags, the
     /// working-copy commits.
     Repo,
-    /// `remote-tracking`: the remote-tracking bookmarks (`remote_views`). Do not restore these to
-    /// push after the restore.
+    /// `remote-tracking`: the remote-tracking bookmarks (`remote_views`). The CLI's advice: "Do not
+    /// restore these if you'd like to push after the undo".
     RemoteTracking,
 }
 

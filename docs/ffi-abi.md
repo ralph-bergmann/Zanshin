@@ -1957,7 +1957,8 @@ resolve at the head as in § Operation verbs (`jj.operation_not_found` / `jj.inv
   flag absent — both. `Unspecified` (or an unknown value) is `ffi.invalid_argument`. `git_refs` /
   `git_heads` always stay current. `zanshin_undo` / `zanshin_redo` restore with both.
 - **`zanshin_op_restore`** (`OpRestoreRequest { operation, what }`, `operation` REQUIRED — absent
-  is `ffi.invalid_argument`) → `MutationResult`, recorded as `restore to operation <hex>`.
+  is `jj.invalid_input` "operation is required", row 4 of the refusal ladder) → `MutationResult`,
+  recorded as `restore to operation <hex>`.
   **`zanshin_op_revert`** (`OpRevertRequest { operation, what }`, absent `operation` = `@`) →
   `MutationResult`, recorded as `revert operation <hex>`: the operation's parent state is merged
   in three-way against its own, so later work stays and descendants of rewritten commits are

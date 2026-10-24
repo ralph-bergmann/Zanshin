@@ -1477,6 +1477,20 @@ pub fn scenarios() -> Vec<Scenario> {
             )
         },
         Scenario {
+            // `@` is the push: `--what remote-tracking` reverts only its remote-tracking change
+            // (`b-mark@origin` goes), the describe before it stays (`revert.rs:74-79`).
+            setup: DESCRIBE_THEN_PUSH,
+            extra: Some(op_chain_read_back),
+            ..simple(
+                "op_revert_what_remote_tracking",
+                |repo, _, _| {
+                    let result = repo.op_revert("@", &[zanshin_jj::RestoreWhat::RemoteTracking]);
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["op", "revert", "--what", "remote-tracking"]),
+            )
+        },
+        Scenario {
             // An operation already in the log: no effect (`integrate.rs:29-30`).
             setup: SOME_DESCRIBES,
             extra: Some(op_chain_read_back),

@@ -582,10 +582,7 @@ fn op_restore_refusals_leave_the_op_heads() {
     let heads = op_heads(&fx);
     let call = |req: &[u8]| unsafe { read_and_free(zanshin_op_restore(fx.handle, req.as_ptr(), req.len())) };
     let cases: [(Vec<u8>, &str); 6] = [
-        (
-            edit_request(fbs::RequestKind::OpRestore, None, None),
-            FFI_INVALID_ARGUMENT,
-        ),
+        (edit_request(fbs::RequestKind::OpRestore, None, None), JJ_INVALID_INPUT),
         (
             edit_request(
                 fbs::RequestKind::OpRestore,
@@ -721,10 +718,12 @@ fn op_restore_of_the_remote_tracking_portion_only() {
     let fx = described();
     let mut repo = zanshin_jj::Repo::open(&fx.fixture.path).expect("open");
     let mut commit1 = None;
-    let _ = repo.eval_revset("description(exact:'described')", |change| {
-        commit1 = Some(change.id);
-        std::ops::ControlFlow::Break(())
-    });
+    let _flow = repo
+        .eval_revset("description(exact:'described')", |change| {
+            commit1 = Some(change.id);
+            std::ops::ControlFlow::Break(())
+        })
+        .expect("the revset evaluates");
     let commit1 = repo
         .get_change(&commit1.expect("the described commit"))
         .expect("change");
