@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/mutate.rs:1170 (plan_new)
     severity: low
+    resolved: >-
+      2026-10-25 — fixed (spec-9-18-followup-new-template-before-immutable, commit ac6d0b4): plan_new no longer resolves the immutable set up front; the new rows resolve it after the plan; oracle refusal_order.rs witnesses every new form.
 ---
 
 <intent-contract>

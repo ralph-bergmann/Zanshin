@@ -1993,12 +1993,15 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **`diffedit` loses edits the target received after `select_tree`.** Medium.
   - Only `left` is checked; the verb then replaces the target's whole tree with the selection (`crates/zanshin-jj/src/diffedit.rs`). An autosaving editor's edit folded in by the pre-verb snapshot is gone. 9.50's "own content is not stale" rule assumes the rest stays in the revision, which is false for diffedit. The CLI cannot hit it.
   - **Follow-up:** Ralph confirms a staleness rule for diffedit (Claude's proposal: `DiffeditOptions.right` = the target tree ids the selection saw, from `ShowEntry.tree_ids`; refuse `jj.stale_selection` when the target's tree differs), then a small story adds it through FFI and Dart.
+  - **2026-10-25, Ralph:** proposal approved (the GUI reloads on `jj.stale_selection`, as 10.26 item 4 does) → the staleness run right after the story loop builds it, together with the two items below.
 - **`resolve` with GUI files has no staleness token.** Medium.
   - A path whose conflict changed between `resolve_list` and `resolve` but is still a conflict gets content composed from the old sides (`crates/zanshin-jj/src/resolve.rs`, `merge_tool_file` checks only "still a conflict"). The CLI cannot hit it.
   - **Follow-up:** same decision as above (Claude's proposal: per-file term ids on `ConflictedFile`, sent back on `ResolvedFile`, refused `jj.stale_selection` on mismatch).
+  - **2026-10-25, Ralph:** proposal approved → built in the same staleness run.
 - **`resolve_list` cannot tell an absent side from an empty file.** Low.
   - Both are an empty term in `hunks` (`MaterializedFileConflictValue.contents`); `description` says "including 1 deletion" but not which side. jj-lib also exposes `ids: Merge<Option<FileId>>`.
   - **Follow-up:** the term ids of the item above (absent = none) close it; build them together.
+  - **2026-10-25, Ralph:** approved with the item above → built in the same staleness run.
 
 ## Surfaced in Story 9.18 (bmad-build-auto, 2026-10-24)
 

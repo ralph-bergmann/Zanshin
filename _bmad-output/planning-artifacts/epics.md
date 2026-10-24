@@ -6817,6 +6817,8 @@ Backend wraps pub tree helpers + conflict materialization (`conflicts::*`, `Merg
 
 > **Design update 2026-10-14 (the Epic 10 header; export `e74ced3`; retitled):** `commit` leaves this story. 9.49 carves it out, because the inspector's composer (10.25, 10.26) needs it long before `resolve` and `diffedit`, which need a merge or diff editor the design does not have yet. The heading drops `commit`; the sprint-status key stays.
 > - This story keeps `resolve` and `diffedit`. Their GUI-supplied tree comes through 9.50's contract (decision (g)).
+
+> **Staleness rule 2026-10-25 (Ralph; deferred-work.md, "Surfaced in Story 9.17"):** both verbs snapshot first, so an editor's autosave can change the target inside the call. `diffedit` therefore also takes the target's tree ids the GUI saw (`ShowEntry.tree_ids`), and `resolve` with GUI files takes each file's term ids from `resolve_list` (an absent term = a deleted side). A mismatch refuses `jj.stale_selection` and writes nothing. The UI that later edits or resolves through these verbs reacts as 10.26 item 4 does: reload, re-map the edit, confirm again.
 > - The design shows a conflict only as the inspector's "Conflict" flag (IN:233) and offers no resolve action. A conflict view is open (deferred-work).
 
 ### Story 9.18: `revert` — *no lib helper* [M]
@@ -11640,7 +11642,7 @@ Claude's proposals: the refusal and warning variants, Undo disappearing after a 
 
 **Non-goals.**
 - Lines inside a hunk: jj's builtin editor can select them, the design cannot (deferred-work).
-- Editing hunk content (`diffedit`, 9.17).
+- Editing hunk content (`diffedit`, 9.17). The UI that adds it reacts to `diffedit`'s `jj.stale_selection` as item 4 does (2026-10-25, Ralph; 9.17's staleness rule).
 - Drags (10.27).
 
 **Depends on.** 10.24, 10.25 and 9.50; 9.15 and 9.49 taking a tree id.
