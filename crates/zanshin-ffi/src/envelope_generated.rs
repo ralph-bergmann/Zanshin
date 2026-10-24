@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 54;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 55;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 55] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 56] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -79,6 +79,7 @@ pub mod zanshin {
             RequestKind::OpDiff,
             RequestKind::OpRestore,
             RequestKind::OpRevert,
+            RequestKind::Movement,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -166,9 +167,10 @@ pub mod zanshin {
             pub const OpDiff: Self = Self(52);
             pub const OpRestore: Self = Self(53);
             pub const OpRevert: Self = Self(54);
+            pub const Movement: Self = Self(55);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 54;
+            pub const ENUM_MAX: u8 = 55;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -225,6 +227,7 @@ pub mod zanshin {
                 Self::OpDiff,
                 Self::OpRestore,
                 Self::OpRevert,
+                Self::Movement,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -284,6 +287,7 @@ pub mod zanshin {
                     Self::OpDiff => Some("OpDiff"),
                     Self::OpRestore => Some("OpRestore"),
                     Self::OpRevert => Some("OpRevert"),
+                    Self::Movement => Some("Movement"),
                     _ => None,
                 }
             }
@@ -1656,6 +1660,96 @@ pub mod zanshin {
         }
 
         impl ::flatbuffers::SimpleToVerifyInSlice for RestoreWhat {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_MOVEMENT_DIRECTION: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_MOVEMENT_DIRECTION: u8 = 1;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_MOVEMENT_DIRECTION: [MovementDirection; 2] =
+            [MovementDirection::Next, MovementDirection::Prev];
+
+        /// `jj next` or `jj prev` (Story 9.10).
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct MovementDirection(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl MovementDirection {
+            pub const Next: Self = Self(0);
+            pub const Prev: Self = Self(1);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 1;
+            pub const ENUM_VALUES: &'static [Self] = &[Self::Next, Self::Prev];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Next => Some("Next"),
+                    Self::Prev => Some("Prev"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for MovementDirection {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for MovementDirection {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for MovementDirection {
+            type Output = MovementDirection;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for MovementDirection {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for MovementDirection {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for MovementDirection {}
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
@@ -3477,13 +3571,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 53;
+        pub const ENUM_MAX_PAYLOAD: u8 = 54;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 54] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 55] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -3538,6 +3632,7 @@ pub mod zanshin {
             Payload::OpDiffResult,
             Payload::OpAbandonResult,
             Payload::OpIntegrateResult,
+            Payload::MovementTargets,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -3599,9 +3694,10 @@ pub mod zanshin {
             pub const OpDiffResult: Self = Self(51);
             pub const OpAbandonResult: Self = Self(52);
             pub const OpIntegrateResult: Self = Self(53);
+            pub const MovementTargets: Self = Self(54);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 53;
+            pub const ENUM_MAX: u8 = 54;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -3657,6 +3753,7 @@ pub mod zanshin {
                 Self::OpDiffResult,
                 Self::OpAbandonResult,
                 Self::OpIntegrateResult,
+                Self::MovementTargets,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -3715,6 +3812,7 @@ pub mod zanshin {
                     Self::OpDiffResult => Some("OpDiffResult"),
                     Self::OpAbandonResult => Some("OpAbandonResult"),
                     Self::OpIntegrateResult => Some("OpIntegrateResult"),
+                    Self::MovementTargets => Some("MovementTargets"),
                     _ => None,
                 }
             }
@@ -3771,6 +3869,104 @@ pub mod zanshin {
 
         impl ::flatbuffers::SimpleToVerifyInSlice for Payload {}
         pub struct PayloadUnionTableOffset {}
+
+        /// `MovementRequest.offset`'s value. WHY a struct: an optional scalar (`ulong = null`) is not
+        /// supported by `flatc --dart`, and a struct field is ABSENT when not set — null for absence.
+        // struct MovementOffset, aligned to 8
+        #[repr(transparent)]
+        #[derive(Clone, Copy, PartialEq)]
+        pub struct MovementOffset(pub [u8; 8]);
+        impl Default for MovementOffset {
+            fn default() -> Self {
+                Self([0; 8])
+            }
+        }
+        impl ::core::fmt::Debug for MovementOffset {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                f.debug_struct("MovementOffset").field("value", &self.value()).finish()
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for MovementOffset {}
+        impl<'a> ::flatbuffers::Follow<'a> for MovementOffset {
+            type Inner = &'a MovementOffset;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                unsafe { <&'a MovementOffset>::follow(buf, loc) }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for &'a MovementOffset {
+            type Inner = &'a MovementOffset;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                unsafe { ::flatbuffers::follow_cast_ref::<MovementOffset>(buf, loc) }
+            }
+        }
+        impl<'b> ::flatbuffers::Push for MovementOffset {
+            type Output = MovementOffset;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                let src = unsafe {
+                    ::core::slice::from_raw_parts(
+                        self as *const MovementOffset as *const u8,
+                        <Self as ::flatbuffers::Push>::size(),
+                    )
+                };
+                dst.copy_from_slice(src);
+            }
+            #[inline]
+            fn alignment() -> ::flatbuffers::PushAlignment {
+                ::flatbuffers::PushAlignment::new(8)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for MovementOffset {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.in_buffer::<Self>(pos)
+            }
+        }
+
+        impl<'a> MovementOffset {
+            #[allow(clippy::too_many_arguments)]
+            pub fn new(value: u64) -> Self {
+                let mut s = Self([0; 8]);
+                s.set_value(value);
+                s
+            }
+
+            pub fn value(&self) -> u64 {
+                let mut mem = ::core::mem::MaybeUninit::<<u64 as ::flatbuffers::EndianScalar>::Scalar>::uninit();
+                // Safety:
+                // Created from a valid Table for this object
+                // Which contains a valid value in this slot
+                ::flatbuffers::EndianScalar::from_little_endian(unsafe {
+                    ::core::ptr::copy_nonoverlapping(
+                        self.0[0..].as_ptr(),
+                        mem.as_mut_ptr() as *mut u8,
+                        ::core::mem::size_of::<<u64 as ::flatbuffers::EndianScalar>::Scalar>(),
+                    );
+                    mem.assume_init()
+                })
+            }
+
+            pub fn set_value(&mut self, x: u64) {
+                let x_le = ::flatbuffers::EndianScalar::to_little_endian(x);
+                // Safety:
+                // Created from a valid Table for this object
+                // Which contains a valid value in this slot
+                unsafe {
+                    ::core::ptr::copy_nonoverlapping(
+                        &x_le as *const _ as *const u8,
+                        self.0[0..].as_mut_ptr(),
+                        ::core::mem::size_of::<<u64 as ::flatbuffers::EndianScalar>::Scalar>(),
+                    );
+                }
+            }
+        }
 
         pub enum FfiErrorOffset {}
         #[derive(Copy, Clone, PartialEq)]
@@ -17982,6 +18178,244 @@ pub mod zanshin {
                 ds.field("kind", &self.kind());
                 ds.field("operation", &self.operation());
                 ds.field("what", &self.what());
+                ds.finish()
+            }
+        }
+        pub enum MovementRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_move_working_copy` and `zanshin_movement_targets` (Story 9.10) — the
+        /// CLI's `jj next` / `jj prev` flags, one field each, plus the GUI's answer to the CLI's prompt.
+        ///
+        ///   direction   `jj next` (default) or `jj prev`
+        ///   offset      `[OFFSET]`; ABSENT = the CLI's default `1`; present (even `1`) excludes `conflict`
+        ///               (`jj.invalid_input`, before the snapshot)
+        ///   edit / no_edit / conflict   `-e/--edit` / `-n/--no-edit` / `--conflict`; `edit` with
+        ///               `no_edit` is refused (`jj.invalid_input`, before the snapshot)
+        ///   target      the chosen candidate's hex commit id (`MovementTargets.targets`); ABSENT = no
+        ///               choice — several candidates then refuse `jj.invalid_input`; a non-candidate
+        ///               refuses `jj.stale_selection`. `zanshin_movement_targets` ignores it.
+        pub struct MovementRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for MovementRequest<'a> {
+            type Inner = MovementRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> MovementRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_DIRECTION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_OFFSET: ::flatbuffers::VOffsetT = 8;
+            pub const VT_EDIT: ::flatbuffers::VOffsetT = 10;
+            pub const VT_NO_EDIT: ::flatbuffers::VOffsetT = 12;
+            pub const VT_CONFLICT: ::flatbuffers::VOffsetT = 14;
+            pub const VT_TARGET: ::flatbuffers::VOffsetT = 16;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                MovementRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args MovementRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<MovementRequest<'bldr>> {
+                let mut builder = MovementRequestBuilder::new(_fbb);
+                if let Some(x) = args.target {
+                    builder.add_target(x);
+                }
+                if let Some(x) = args.offset {
+                    builder.add_offset(x);
+                }
+                builder.add_conflict(args.conflict);
+                builder.add_no_edit(args.no_edit);
+                builder.add_edit(args.edit);
+                builder.add_direction(args.direction);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(MovementRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn direction(&self) -> MovementDirection {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<MovementDirection>(MovementRequest::VT_DIRECTION, Some(MovementDirection::Next))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn offset(&self) -> Option<&'a MovementOffset> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<MovementOffset>(MovementRequest::VT_OFFSET, None) }
+            }
+            #[inline]
+            pub fn edit(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(MovementRequest::VT_EDIT, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn no_edit(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(MovementRequest::VT_NO_EDIT, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn conflict(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(MovementRequest::VT_CONFLICT, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn target(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(MovementRequest::VT_TARGET, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for MovementRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<MovementDirection>("direction", Self::VT_DIRECTION, false)?
+                    .visit_field::<MovementOffset>("offset", Self::VT_OFFSET, false)?
+                    .visit_field::<bool>("edit", Self::VT_EDIT, false)?
+                    .visit_field::<bool>("no_edit", Self::VT_NO_EDIT, false)?
+                    .visit_field::<bool>("conflict", Self::VT_CONFLICT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("target", Self::VT_TARGET, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct MovementRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub direction: MovementDirection,
+            pub offset: Option<&'a MovementOffset>,
+            pub edit: bool,
+            pub no_edit: bool,
+            pub conflict: bool,
+            pub target: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for MovementRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                MovementRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    direction: MovementDirection::Next,
+                    offset: None,
+                    edit: false,
+                    no_edit: false,
+                    conflict: false,
+                    target: None,
+                }
+            }
+        }
+
+        pub struct MovementRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MovementRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(MovementRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_direction(&mut self, direction: MovementDirection) {
+                self.fbb_.push_slot::<MovementDirection>(
+                    MovementRequest::VT_DIRECTION,
+                    direction,
+                    MovementDirection::Next,
+                );
+            }
+            #[inline]
+            pub fn add_offset(&mut self, offset: &MovementOffset) {
+                self.fbb_
+                    .push_slot_always::<&MovementOffset>(MovementRequest::VT_OFFSET, offset);
+            }
+            #[inline]
+            pub fn add_edit(&mut self, edit: bool) {
+                self.fbb_.push_slot::<bool>(MovementRequest::VT_EDIT, edit, false);
+            }
+            #[inline]
+            pub fn add_no_edit(&mut self, no_edit: bool) {
+                self.fbb_.push_slot::<bool>(MovementRequest::VT_NO_EDIT, no_edit, false);
+            }
+            #[inline]
+            pub fn add_conflict(&mut self, conflict: bool) {
+                self.fbb_
+                    .push_slot::<bool>(MovementRequest::VT_CONFLICT, conflict, false);
+            }
+            #[inline]
+            pub fn add_target(&mut self, target: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(MovementRequest::VT_TARGET, target);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MovementRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                MovementRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<MovementRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for MovementRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("MovementRequest");
+                ds.field("kind", &self.kind());
+                ds.field("direction", &self.direction());
+                ds.field("offset", &self.offset());
+                ds.field("edit", &self.edit());
+                ds.field("no_edit", &self.no_edit());
+                ds.field("conflict", &self.conflict());
+                ds.field("target", &self.target());
                 ds.finish()
             }
         }
@@ -34180,6 +34614,270 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum MovementTargetOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One candidate of `MovementTargets` (Story 9.10): hex commit id (what
+        /// `MovementRequest.target` takes) and reverse-hex change id.
+        pub struct MovementTarget<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for MovementTarget<'a> {
+            type Inner = MovementTarget<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> MovementTarget<'a> {
+            pub const VT_COMMIT_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CHANGE_ID: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                MovementTarget { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args MovementTargetArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<MovementTarget<'bldr>> {
+                let mut builder = MovementTargetBuilder::new(_fbb);
+                if let Some(x) = args.change_id {
+                    builder.add_change_id(x);
+                }
+                if let Some(x) = args.commit_id {
+                    builder.add_commit_id(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn commit_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(MovementTarget::VT_COMMIT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(MovementTarget::VT_CHANGE_ID, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for MovementTarget<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("commit_id", Self::VT_COMMIT_ID, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("change_id", Self::VT_CHANGE_ID, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct MovementTargetArgs<'a> {
+            pub commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for MovementTargetArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                MovementTargetArgs {
+                    commit_id: None,
+                    change_id: None,
+                }
+            }
+        }
+
+        pub struct MovementTargetBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MovementTargetBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_commit_id(&mut self, commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(MovementTarget::VT_COMMIT_ID, commit_id);
+            }
+            #[inline]
+            pub fn add_change_id(&mut self, change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(MovementTarget::VT_CHANGE_ID, change_id);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MovementTargetBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                MovementTargetBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<MovementTarget<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for MovementTarget<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("MovementTarget");
+                ds.field("commit_id", &self.commit_id());
+                ds.field("change_id", &self.change_id());
+                ds.finish()
+            }
+        }
+        pub enum MovementTargetsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_movement_targets`' answer (Story 9.10): whether the move edits its target, and the
+        /// candidates in the CLI's prompt order — never empty; more than one is where the CLI prompts.
+        pub struct MovementTargets<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for MovementTargets<'a> {
+            type Inner = MovementTargets<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> MovementTargets<'a> {
+            pub const VT_EDIT: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TARGETS: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                MovementTargets { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args MovementTargetsArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<MovementTargets<'bldr>> {
+                let mut builder = MovementTargetsBuilder::new(_fbb);
+                if let Some(x) = args.targets {
+                    builder.add_targets(x);
+                }
+                builder.add_edit(args.edit);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn edit(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(MovementTargets::VT_EDIT, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn targets(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MovementTarget<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MovementTarget>>,
+                    >>(MovementTargets::VT_TARGETS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for MovementTargets<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<bool>("edit", Self::VT_EDIT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<MovementTarget>>,
+                    >>("targets", Self::VT_TARGETS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct MovementTargetsArgs<'a> {
+            pub edit: bool,
+            pub targets: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MovementTarget<'a>>>>,
+            >,
+        }
+        impl<'a> Default for MovementTargetsArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                MovementTargetsArgs {
+                    edit: false,
+                    targets: None,
+                }
+            }
+        }
+
+        pub struct MovementTargetsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MovementTargetsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_edit(&mut self, edit: bool) {
+                self.fbb_.push_slot::<bool>(MovementTargets::VT_EDIT, edit, false);
+            }
+            #[inline]
+            pub fn add_targets(
+                &mut self,
+                targets: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<MovementTarget<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(MovementTargets::VT_TARGETS, targets);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MovementTargetsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                MovementTargetsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<MovementTargets<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for MovementTargets<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("MovementTargets");
+                ds.field("edit", &self.edit());
+                ds.field("targets", &self.targets());
+                ds.finish()
+            }
+        }
         pub enum SelectedTreeOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -35388,6 +36086,21 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_movement_targets(&self) -> Option<MovementTargets<'a>> {
+                if self.data_type() == Payload::MovementTargets {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { MovementTargets::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -35454,6 +36167,7 @@ pub mod zanshin {
           Payload::OpDiffResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpDiffResult>>("Payload::OpDiffResult", pos),
           Payload::OpAbandonResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpAbandonResult>>("Payload::OpAbandonResult", pos),
           Payload::OpIntegrateResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<OpIntegrateResult>>("Payload::OpIntegrateResult", pos),
+          Payload::MovementTargets => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<MovementTargets>>("Payload::MovementTargets", pos),
           _ => Ok(()),
         }
      })?
@@ -35916,6 +36630,13 @@ pub mod zanshin {
                     }
                     Payload::OpIntegrateResult => {
                         if let Some(x) = self.data_as_op_integrate_result() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::MovementTargets => {
+                        if let Some(x) = self.data_as_movement_targets() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

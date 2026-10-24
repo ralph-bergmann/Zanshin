@@ -1973,6 +1973,19 @@ pub(crate) fn split_legacy_bookmark_behavior(config: &StackedConfig) -> Result<b
         .map_err(|e| value_error(&e))
 }
 
+/// Reads the effective `ui.movement.edit` (Story 9.10) — the CLI's
+/// `settings().get_bool("ui.movement.edit")` in `move_to_commit` (`cli/src/movement_util.rs` @
+/// v0.46.0), read by `jj next` / `jj prev` right after the working-copy lookup. Its default
+/// `false` is jj-cli's own ([`CLI_DEFAULTS`], the CLI's `config/misc.toml:51-52`).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a boolean (the key is named), or is missing from
+///   every layer (impossible while jj-cli's defaults are present).
+pub(crate) fn ui_movement_edit(config: &StackedConfig) -> Result<bool, ConfigError> {
+    config.get("ui.movement.edit").map_err(|e| value_error(&e))
+}
+
 /// Reads the effective `experimental-advance-branches.enabled-branches` and `.disabled-branches`
 /// (Story 9.49), in that order — the two `settings.get::<Vec<String>>` of the CLI's
 /// `load_advance_bookmarks_matcher` (`cli/src/cli_util.rs:921-940` @ v0.46.0). Their defaults,
@@ -2389,8 +2402,8 @@ mod tests {
         fix_up_layers, fix_up_secure_config, git_import_options, is_valid_config_id, load_repo_config_file, load_with,
         platform_config_dir, remove_remote_from_repo_config, rename_remote_in_repo_config, secure_config_path,
         set_trunk_alias, settings_from, snapshot_auto_track, snapshot_max_new_file_size,
-        split_legacy_bookmark_behavior, stamp, system_config_paths, user_config_paths, user_email, ConfigEnv,
-        SecureLayer, WorkspacePaths, BUILTIN_CONFIG_TOML, CLI_DEFAULTS,
+        split_legacy_bookmark_behavior, stamp, system_config_paths, ui_movement_edit, user_config_paths, user_email,
+        ConfigEnv, SecureLayer, WorkspacePaths, BUILTIN_CONFIG_TOML, CLI_DEFAULTS,
     };
     use jj_lib::config::{ConfigFile, ConfigLayer, ConfigSource, StackedConfig};
     use std::collections::HashMap;
@@ -2716,6 +2729,18 @@ mod tests {
         let wrong = stack_with("split.legacy-bookmark-behavior = \"yes\"");
         let super::ConfigError::Load { reason } = split_legacy_bookmark_behavior(&wrong).expect_err("not a bool");
         assert!(reason.contains("split.legacy-bookmark-behavior"), "{reason}");
+    }
+
+    /// Story 9.10: `ui.movement.edit` defaults to the CLI's `false`, a user's `true` wins, and a
+    /// wrong type refuses naming the key.
+    #[test]
+    fn ui_movement_edit_defaults_false_and_reads_the_user_layer() {
+        let config = load_with(&bare_env(), None).expect("the bare stack loads");
+        assert!(!ui_movement_edit(&config).expect("jj-cli's default bool"));
+        assert!(ui_movement_edit(&stack_with("ui.movement.edit = true")).expect("user bool"));
+        let wrong = stack_with("ui.movement.edit = \"yes\"");
+        let super::ConfigError::Load { reason } = ui_movement_edit(&wrong).expect_err("not a bool");
+        assert!(reason.contains("ui.movement.edit"), "{reason}");
     }
 
     /// Story 9.49: both advance lists default to the CLI's `[]`, a user's list wins, and a

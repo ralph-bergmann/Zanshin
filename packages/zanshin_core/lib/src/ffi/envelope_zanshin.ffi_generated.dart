@@ -87,7 +87,8 @@ enum RequestKind {
   OpShow(51),
   OpDiff(52),
   OpRestore(53),
-  OpRevert(54);
+  OpRevert(54),
+  Movement(55);
 
   final int value;
   const RequestKind(this.value);
@@ -204,6 +205,8 @@ enum RequestKind {
         return RequestKind.OpRestore;
       case 54:
         return RequestKind.OpRevert;
+      case 55:
+        return RequestKind.Movement;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -212,7 +215,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 54;
+  static const int maxValue = 55;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -814,6 +817,43 @@ class _RestoreWhatReader extends fb.Reader<RestoreWhat> {
 
   @override
   RestoreWhat read(fb.BufferContext bc, int offset) => RestoreWhat.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
+///  `jj next` or `jj prev` (Story 9.10).
+enum MovementDirection {
+  Next(0),
+  Prev(1);
+
+  final int value;
+  const MovementDirection(this.value);
+
+  factory MovementDirection.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return MovementDirection.Next;
+      case 1:
+        return MovementDirection.Prev;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static MovementDirection? _createOrNull(int? value) => value == null ? null : MovementDirection.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 1;
+  static const fb.Reader<MovementDirection> reader = _MovementDirectionReader();
+}
+
+class _MovementDirectionReader extends fb.Reader<MovementDirection> {
+  const _MovementDirectionReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  MovementDirection read(fb.BufferContext bc, int offset) =>
+      MovementDirection.fromValue(const fb.Uint8Reader().read(bc, offset));
 }
 
 ///  Whether a bookmark row is the local bookmark or a remote one (tracked or not).
@@ -1670,7 +1710,8 @@ enum PayloadTypeId {
   OpShow(50),
   OpDiffResult(51),
   OpAbandonResult(52),
-  OpIntegrateResult(53);
+  OpIntegrateResult(53),
+  MovementTargets(54);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -1785,6 +1826,8 @@ enum PayloadTypeId {
         return PayloadTypeId.OpAbandonResult;
       case 53:
         return PayloadTypeId.OpIntegrateResult;
+      case 54:
+        return PayloadTypeId.MovementTargets;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -1793,7 +1836,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 53;
+  static const int maxValue = 54;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -10156,6 +10199,213 @@ class OpRevertRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, operationOffset);
     fbBuilder.addOffset(2, whatOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `MovementRequest.offset`'s value. WHY a struct: an optional scalar (`ulong = null`) is not
+///  supported by `flatc --dart`, and a struct field is ABSENT when not set — null for absence.
+class MovementOffset {
+  MovementOffset._(this._bc, this._bcOffset);
+
+  static const fb.Reader<MovementOffset> reader = _MovementOffsetReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get value => const fb.Uint64Reader().read(_bc, _bcOffset + 0);
+
+  @override
+  String toString() {
+    return 'MovementOffset{value: ${value}}';
+  }
+}
+
+class _MovementOffsetReader extends fb.StructReader<MovementOffset> {
+  const _MovementOffsetReader();
+
+  @override
+  int get size => 8;
+
+  @override
+  MovementOffset createObject(fb.BufferContext bc, int offset) => MovementOffset._(bc, offset);
+}
+
+class MovementOffsetBuilder {
+  MovementOffsetBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  int finish(int value) {
+    fbBuilder.putUint64(value);
+    return fbBuilder.offset;
+  }
+}
+
+class MovementOffsetObjectBuilder extends fb.ObjectBuilder {
+  final int _value;
+
+  MovementOffsetObjectBuilder({
+    required int value,
+  }) : _value = value;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    fbBuilder.putUint64(_value);
+    return fbBuilder.offset;
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_move_working_copy` and `zanshin_movement_targets` (Story 9.10) — the
+///  CLI's `jj next` / `jj prev` flags, one field each, plus the GUI's answer to the CLI's prompt.
+///
+///    direction   `jj next` (default) or `jj prev`
+///    offset      `[OFFSET]`; ABSENT = the CLI's default `1`; present (even `1`) excludes `conflict`
+///                (`jj.invalid_input`, before the snapshot)
+///    edit / no_edit / conflict   `-e/--edit` / `-n/--no-edit` / `--conflict`; `edit` with
+///                `no_edit` is refused (`jj.invalid_input`, before the snapshot)
+///    target      the chosen candidate's hex commit id (`MovementTargets.targets`); ABSENT = no
+///                choice — several candidates then refuse `jj.invalid_input`; a non-candidate
+///                refuses `jj.stale_selection`. `zanshin_movement_targets` ignores it.
+class MovementRequest {
+  MovementRequest._(this._bc, this._bcOffset);
+  factory MovementRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<MovementRequest> reader = _MovementRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  MovementDirection get direction =>
+      MovementDirection.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 6, 0));
+  MovementOffset? get offset => MovementOffset.reader.vTableGetNullable(_bc, _bcOffset, 8);
+  bool get edit => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
+  bool get noEdit => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  bool get conflict => const fb.BoolReader().vTableGet(_bc, _bcOffset, 14, false);
+  String? get target => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 16);
+
+  @override
+  String toString() {
+    return 'MovementRequest{kind: ${kind}, direction: ${direction}, offset: ${offset}, edit: ${edit}, noEdit: ${noEdit}, conflict: ${conflict}, target: ${target}}';
+  }
+}
+
+class _MovementRequestReader extends fb.TableReader<MovementRequest> {
+  const _MovementRequestReader();
+
+  @override
+  MovementRequest createObject(fb.BufferContext bc, int offset) => MovementRequest._(bc, offset);
+}
+
+class MovementRequestBuilder {
+  MovementRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(7);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addDirection(MovementDirection? direction) {
+    fbBuilder.addUint8(1, direction?.value);
+    return fbBuilder.offset;
+  }
+
+  int addOffset(int offset) {
+    fbBuilder.addStruct(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addEdit(bool? edit) {
+    fbBuilder.addBool(3, edit);
+    return fbBuilder.offset;
+  }
+
+  int addNoEdit(bool? noEdit) {
+    fbBuilder.addBool(4, noEdit);
+    return fbBuilder.offset;
+  }
+
+  int addConflict(bool? conflict) {
+    fbBuilder.addBool(5, conflict);
+    return fbBuilder.offset;
+  }
+
+  int addTargetOffset(int? offset) {
+    fbBuilder.addOffset(6, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class MovementRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final MovementDirection? _direction;
+  final MovementOffsetObjectBuilder? _offset;
+  final bool? _edit;
+  final bool? _noEdit;
+  final bool? _conflict;
+  final String? _target;
+
+  MovementRequestObjectBuilder({
+    RequestKind? kind,
+    MovementDirection? direction,
+    MovementOffsetObjectBuilder? offset,
+    bool? edit,
+    bool? noEdit,
+    bool? conflict,
+    String? target,
+  }) : _kind = kind,
+       _direction = direction,
+       _offset = offset,
+       _edit = edit,
+       _noEdit = noEdit,
+       _conflict = conflict,
+       _target = target;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? targetOffset = _target == null ? null : fbBuilder.writeString(_target!);
+    fbBuilder.startTable(7);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addUint8(1, _direction?.value);
+    if (_offset != null) {
+      fbBuilder.addStruct(2, _offset!.finish(fbBuilder));
+    }
+    fbBuilder.addBool(3, _edit);
+    fbBuilder.addBool(4, _noEdit);
+    fbBuilder.addBool(5, _conflict);
+    fbBuilder.addOffset(6, targetOffset);
     return fbBuilder.endTable();
   }
 
@@ -19867,6 +20117,176 @@ class CommitContentsObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One candidate of `MovementTargets` (Story 9.10): hex commit id (what
+///  `MovementRequest.target` takes) and reverse-hex change id.
+class MovementTarget {
+  MovementTarget._(this._bc, this._bcOffset);
+  factory MovementTarget(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<MovementTarget> reader = _MovementTargetReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get commitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get changeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'MovementTarget{commitId: ${commitId}, changeId: ${changeId}}';
+  }
+}
+
+class _MovementTargetReader extends fb.TableReader<MovementTarget> {
+  const _MovementTargetReader();
+
+  @override
+  MovementTarget createObject(fb.BufferContext bc, int offset) => MovementTarget._(bc, offset);
+}
+
+class MovementTargetBuilder {
+  MovementTargetBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addCommitIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class MovementTargetObjectBuilder extends fb.ObjectBuilder {
+  final String? _commitId;
+  final String? _changeId;
+
+  MovementTargetObjectBuilder({
+    String? commitId,
+    String? changeId,
+  }) : _commitId = commitId,
+       _changeId = changeId;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? commitIdOffset = _commitId == null ? null : fbBuilder.writeString(_commitId!);
+    final int? changeIdOffset = _changeId == null ? null : fbBuilder.writeString(_changeId!);
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, commitIdOffset);
+    fbBuilder.addOffset(1, changeIdOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_movement_targets`' answer (Story 9.10): whether the move edits its target, and the
+///  candidates in the CLI's prompt order — never empty; more than one is where the CLI prompts.
+class MovementTargets {
+  MovementTargets._(this._bc, this._bcOffset);
+  factory MovementTargets(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<MovementTargets> reader = _MovementTargetsReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  bool get edit => const fb.BoolReader().vTableGet(_bc, _bcOffset, 4, false);
+  List<MovementTarget>? get targets =>
+      const fb.ListReader<MovementTarget>(MovementTarget.reader).vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'MovementTargets{edit: ${edit}, targets: ${targets}}';
+  }
+}
+
+class _MovementTargetsReader extends fb.TableReader<MovementTargets> {
+  const _MovementTargetsReader();
+
+  @override
+  MovementTargets createObject(fb.BufferContext bc, int offset) => MovementTargets._(bc, offset);
+}
+
+class MovementTargetsBuilder {
+  MovementTargetsBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addEdit(bool? edit) {
+    fbBuilder.addBool(0, edit);
+    return fbBuilder.offset;
+  }
+
+  int addTargetsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class MovementTargetsObjectBuilder extends fb.ObjectBuilder {
+  final bool? _edit;
+  final List<MovementTargetObjectBuilder>? _targets;
+
+  MovementTargetsObjectBuilder({
+    bool? edit,
+    List<MovementTargetObjectBuilder>? targets,
+  }) : _edit = edit,
+       _targets = targets;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? targetsOffset = _targets == null
+        ? null
+        : fbBuilder.writeList(_targets!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addBool(0, _edit);
+    fbBuilder.addOffset(1, targetsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  `zanshin_select_tree`'s answer (Story 9.50): the written tree's ids (hex, in order — one for a
 ///  resolved tree, an odd number for a conflicted one) and its conflict labels (empty = unlabeled,
 ///  else one per id). Pass both, with the request's `left`, as a verb's `TreeSelection`.
@@ -20198,6 +20618,8 @@ class Envelope {
         return OpAbandonResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 53:
         return OpIntegrateResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 54:
+        return MovementTargets.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

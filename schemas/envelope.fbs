@@ -146,7 +146,8 @@ enum RequestKind : ubyte {
   OpShow,
   OpDiff,
   OpRestore,
-  OpRevert
+  OpRevert,
+  Movement
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -1308,6 +1309,39 @@ table OpRevertRequest {
   kind: RequestKind;
   operation: string;
   what: [RestoreWhat];
+}
+
+/// `jj next` or `jj prev` (Story 9.10).
+enum MovementDirection : ubyte {
+  Next,
+  Prev
+}
+
+/// `MovementRequest.offset`'s value. WHY a struct: an optional scalar (`ulong = null`) is not
+/// supported by `flatc --dart`, and a struct field is ABSENT when not set — null for absence.
+struct MovementOffset {
+  value: ulong;
+}
+
+/// Arguments of `zanshin_move_working_copy` and `zanshin_movement_targets` (Story 9.10) — the
+/// CLI's `jj next` / `jj prev` flags, one field each, plus the GUI's answer to the CLI's prompt.
+///
+///   direction   `jj next` (default) or `jj prev`
+///   offset      `[OFFSET]`; ABSENT = the CLI's default `1`; present (even `1`) excludes `conflict`
+///               (`jj.invalid_input`, before the snapshot)
+///   edit / no_edit / conflict   `-e/--edit` / `-n/--no-edit` / `--conflict`; `edit` with
+///               `no_edit` is refused (`jj.invalid_input`, before the snapshot)
+///   target      the chosen candidate's hex commit id (`MovementTargets.targets`); ABSENT = no
+///               choice — several candidates then refuse `jj.invalid_input`; a non-candidate
+///               refuses `jj.stale_selection`. `zanshin_movement_targets` ignores it.
+table MovementRequest {
+  kind: RequestKind;
+  direction: MovementDirection;
+  offset: MovementOffset;
+  edit: bool;
+  no_edit: bool;
+  conflict: bool;
+  target: string;
 }
 
 /// A ref target as `jj op diff` summarises it (Story 9.21): ABSENT = `adds` empty and not
@@ -2530,6 +2564,20 @@ table CommitContents {
   contents: [CommitContent];
 }
 
+/// One candidate of `MovementTargets` (Story 9.10): hex commit id (what
+/// `MovementRequest.target` takes) and reverse-hex change id.
+table MovementTarget {
+  commit_id: string;
+  change_id: string;
+}
+
+/// `zanshin_movement_targets`' answer (Story 9.10): whether the move edits its target, and the
+/// candidates in the CLI's prompt order — never empty; more than one is where the CLI prompts.
+table MovementTargets {
+  edit: bool;
+  targets: [MovementTarget];
+}
+
 /// `zanshin_select_tree`'s answer (Story 9.50): the written tree's ids (hex, in order — one for a
 /// resolved tree, an odd number for a conflicted one) and its conflict labels (empty = unlabeled,
 /// else one per id). Pass both, with the request's `left`, as a verb's `TreeSelection`.
@@ -2593,6 +2641,7 @@ union Payload {
   OpDiffResult,
   OpAbandonResult,
   OpIntegrateResult,
+  MovementTargets,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

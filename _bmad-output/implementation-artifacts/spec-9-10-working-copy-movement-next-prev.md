@@ -2,7 +2,8 @@
 title: 'Story 9.10 — Working-copy movement: next, prev'
 type: 'feature'
 created: '2026-10-24'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: '9eb3bfb1ee72f0a0f9741e121e34fead3b986ba8'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -141,6 +142,33 @@ CLI anchors at `v0.46.0` (`git -C ../jj show v0.46.0:cli/src/…`). jj-lib is at
 
 ## Review Triage Log
 
+### 2026-10-24 — Review pass
+- verdicts: 23 findings — high 0, medium 0, low 15, false 8, maybe-false 0
+- findings:
+  - `[false]` `[reject]` (intent-alignment) "GUI picks" read at the user surface: no app/ picker — CLAUDE.md: UI code only inside a story that asks for it; Epic 9 is the operation API, the backend exposes candidates + choice (ADR-0003).
+  - `[false]` `[reject]` (intent-alignment) orchestration shared only between next/prev, not a general helper — the intent's "shared movement_util" is the CLI's module shared by both verbs, which `plan_movement` is.
+  - `[false]` `[reject]` (intent-alignment) next offset 0 non-edit refuses with jj-lib's generation text instead of not-found — matches the release CLI (checked on the pinned CLI with `jj prev 5000000000`), documented in the verification notes; oracle `prev_offset_too_large_refused` witnesses the path.
+  - `[false]` `[reject]` (intent-alignment) sprint-status says done while the spec is in-review; no deferred-work section — finalize sets the spec done in the same commit; nothing was deferred, so the mirror rule adds nothing.
+  - `[low]` `[patch]` (verification-gap) the Dart move path's `offset`/`noEdit` could be dropped undetected (offset 1 = default; edit+noEdit refusal asserted by code only) — patched: `test/worker/movement_test.dart` moves `prev --edit 2` then `next --edit 2`, and asserts the clap context.
+  - `[low]` `[reject]` (edge-case) a malformed/short/uppercase `target` refuses `jj.stale_selection`, not `jj.invalid_input` — still a refusal with no write; the GUI only passes ids from `movement_targets`; fix adds a parse guard.
+  - `[low]` `[reject]` (edge-case) files edited between `movement_targets` and an ambiguous `next --edit` rewrite `@` and rebase its children, so the chosen id refuses stale — safe outcome (refusal, re-pick), needs ambiguous next --edit plus a dirty wc in between; a mapping through the snapshot's rewrites is new design.
+  - `[false]` `[reject]` (edge-case) "prev 0 --edit writes no operation" claim — the docs say "a move that changes nothing"; with a discardable `@` the move does change `@` (abandon + new `@`), as the stock CLI does; the oracle scenario matches the CLI either way.
+  - `[false]` `[reject]` (edge-case) AC "any refusal leaves the op head unchanged" vs a dirty wc — the op is the pre-verb snapshot's, which the CLI writes too and the test asserts; the fix would edit the spec.
+  - `[false]` `[reject]` (blind) ambiguous refusal shares `jj.invalid_input`, GUI would string-match — the GUI learns ambiguity from `movement_targets`' typed list (len > 1) before moving; the refusal is only the guard.
+  - `[low]` `[reject]` (blind) malformed `target` reported as stale — same as the edge-case row: harmless refusal, ids come from the targets call, fix adds a guard.
+  - `[low]` `[reject]` (blind) `MovementTargets` carries no `@` it was computed from — a pick that is still a candidate from the new `@` is a legitimate CLI move; needs an external writer between two calls; fix adds public surface.
+  - `[low]` `[patch]` (blind) docs claim every candidate is a valid target although an immutable one refuses when editing — patched: `crates/zanshin-jj/src/repo.rs` and `crates/zanshin-ffi/src/movement.rs` now say the targets call runs no rewritability guard (header regenerated).
+  - `[false]` `[reject]` (blind) bookkeeping: sprint-status done vs spec in-review, no deferred-work mirror — finalize sets done; nothing deferred.
+  - `[low]` `[reject]` (blind) prompt-parity test covers only ambiguous non-edit next — both sides evaluate the same revset expression through the same jj-lib stream, so the order cannot differ by direction; more scenarios add no signal.
+  - `[low]` `[reject]` (blind) refusal reasons not compared with the CLI's `Error:` line — texts copied verbatim from the v0.46.0 source and pinned by unit tests; the oracle compares outcome + warnings by design.
+  - `[low]` `[reject]` (blind) non-bool `ui.movement.edit` has no oracle scenario — the CLI source reads `get_bool(..)?` unconditionally before the flags (`movement_util.rs` `move_to_commit`); zanshin-jj tests witness it.
+  - `[low]` `[reject]` (blind) "targets refuses exactly like the move" mostly untested — both run the one `plan_movement`, so the refusal paths are shared code.
+  - `[low]` `[reject]` (blind) Dart decoder maps an empty targets vector to an empty list — Rust never sends an empty list; fix adds a guard for an impossible case.
+  - `[low]` `[patch]` (blind) the caller-side negative-offset guard (`isolate.dart` `_rejectNegativeOffset`) is untested — patched: worker test asserts `ArgumentError` for `moveWorkingCopy(offset: -1)` and `movementTargets(offset: -1)`.
+  - `[low]` `[reject]` (blind) out-of-range direction builds `FfiErrorObj` inline instead of a shared helper — cosmetic; the existing helper is module-private in `op_log.rs`.
+  - `[low]` `[reject]` (blind) oracle `state.rs` 12-hex normalisation renames any 12-hex token and `HashMap::find` is unordered on prefix collisions — op ids never match the commit map; a 12-hex collision among a scenario's few commits is negligible.
+  - `[low]` `[patch]` (blind) a `hints.rs` module-doc line exceeds the 120 width — patched: reflowed.
+
 ## Design Notes
 
 **Ambiguity → GUI choice.** The CLI prompts only when the target revset yields more than one commit. The epic rule is "where the CLI prompts, return candidates": `movement_targets` returns them and `move_working_copy` takes the choice. The choice is checked against the candidates computed in the same call, so a stale pick never moves the working copy somewhere the CLI could not.
@@ -167,4 +195,49 @@ Gate rule for this run (Ralph, 2026-10-20): no `cargo make test` / `test-full` /
 - `cargo make codegen` -- expected: committed output unchanged after a second run
 - In `packages/zanshin_core`: `dart test test/ffi/movement_test.dart test/worker/movement_test.dart` (the package runs under `dart test`, see `Makefile.toml:174-195`), `dart analyze`, `dart format --set-exit-if-changed .` -- expected: pass/clean
 
-**Verification notes:** (filled by the implementation run)
+**Verification notes:** (filled by the implementation run, 2026-10-24)
+
+- `cargo test -p zanshin-jj --lib movement` — 5 passed (clap refusals, the eight not-found texts, tx descriptions, the `wrapping_sub` generation; plus the config test the filter also matches). `--lib config` — 121 passed (incl. `ui_movement_edit_defaults_false_and_reads_the_user_layer`).
+- `cargo test -p zanshin-jj --test it movement::` — 19 passed; `api_stability::` — 30 passed; `arg_refusals::` — 4 passed.
+- `cargo test -p zanshin-ffi --test it movement_ffi::` — 7 passed; `ffi_abi_doc_sync::` — 17 passed (94 exports).
+- `cargo test -p zanshin-parity --test oracle` — 356 passed (20 new scenarios, no ledger entries; `hints::next_not_found_hint_renders_the_working_copy_parent_summary`; `prompt::a_chosen_candidate_moves_where_the_clis_prompt_answer_moves` — the CLI forced interactive with `JJ_INTERACTIVE=1`, the index on stdin, against `movement_targets` + `target`, both indices).
+- `cargo clippy -p zanshin-jj -p zanshin-ffi -p zanshin-parity --all-targets -- -D warnings` — clean; `cargo fmt --all --check` — clean.
+- `cargo make codegen` — run, then run again: the four generated files' checksums unchanged.
+- `packages/zanshin_core`: `dart test test/ffi/movement_test.dart test/worker/movement_test.dart` (with `[tasks.test-core]`'s env) — 8 passed; `dart analyze --fatal-infos --fatal-warnings` — no issues; `dart format --set-exit-if-changed .` — 0 changed.
+- Not run (gate rule): `cargo make test` / `test-full` / `coverage`.
+
+Deviations from the spec text, each to match the CLI or the toolchain:
+- Next non-edit offset 0 is NOT a not-found refusal: `descendants_at(u64::MAX)` makes jj-lib's evaluation refuse ("Lower bound of generation (18446744073709551615) is too large", `default_index/revset_engine.rs`), which the release CLI reports as a user error (`From<RevsetEvaluationError> for CommandError` = `user_error`). Zanshin maps `RevsetEvaluationError::Other` to `jj.invalid_input` with jj-lib's text; any offset beyond `u32::MAX` refuses alike (checked against the pinned CLI: `jj prev 5000000000` → the same text, exit 1; oracle scenario `prev_offset_too_large_refused`).
+- `ui.movement.edit` is read before the flags (the CLI's `get_bool(..)?` runs unconditionally), so a non-bool value refuses `--edit` too.
+- `MovementRequest.offset` is a struct `MovementOffset { value: ulong }`, not `ulong = null`: `flatc --dart` refuses optional scalars ("Optional scalars are not yet supported in at least one of the specified programming languages"); an absent struct field is the same null-for-absence.
+- clap's conflict texts depend on the argv order; the field order is used: `the argument '--edit' cannot be used with '--no-edit'`, `the argument '--conflict' cannot be used with '[OFFSET]'` (checked against the pinned CLI).
+- The oracle's op-text normalisation (`state.rs` `normalize`) now names a 12-hex commit prefix like its full id, so the `@` a non-edit move abandons keeps its before-name in `next: <@> -> <target>` (it is in neither repo's after-state, and its id differs between the repos).
+
+- Review patches re-verified (2026-10-24): `--test it movement::` 19, `--lib movement` 5, `movement_ffi::` 7, `ffi_abi_doc_sync::` 17, oracle 356 passed; clippy (3 crates, `-D warnings`) and `cargo fmt --all --check` clean; `dart test` movement ffi+worker 8 passed, `dart analyze --fatal-infos --fatal-warnings` and `dart format` clean; `cargo make codegen` stable on a second run.
+
+## Auto Run Result
+
+Status: done
+
+**Summary.** `jj next` / `jj prev` ported from `cli/src/movement_util.rs` @ v0.46.0 through the whole chain. `Repo::move_working_copy(&MovementOptions)` and `Repo::movement_targets(&MovementOptions)` share one `plan_movement`. The CLI's prompt for several targets becomes typed candidates plus an optional `target` commit id. Without a choice the move refuses with the prompt header (`jj.invalid_input`); a non-candidate choice refuses `jj.stale_selection` (widened). FFI exports `zanshin_move_working_copy` / `zanshin_movement_targets` (94 exports). Dart adds `RepoHandle.moveWorkingCopy` / `movementTargets`. The oracle gains 20 scenarios, a not-found hint check and an interactive-prompt parity test.
+
+**Files changed**
+- `crates/zanshin-jj/src/movement.rs` (new) — the port: types, clap checks, target revset, not-found refusal with hints, choice, edit/check_out + finish.
+- `crates/zanshin-jj/src/{repo,lib,config}.rs` — facades, re-exports, `ui_movement_edit`.
+- `crates/zanshin-jj/tests/it/{movement,api_stability,main}.rs` — 19 integration tests, surface pin.
+- `schemas/envelope.fbs` + regenerated `zanshin_ffi.h`, `envelope_generated.rs`, `bindings.dart`, `envelope_zanshin.ffi_generated.dart` — `MovementRequest` / `MovementTargets` / `MovementOffset`.
+- `crates/zanshin-ffi/src/{movement,envelope,lib}.rs`, `tests/it/{movement_ffi,ffi_abi_doc_sync,main}.rs` — reader, two externs, `ok_movement_targets`, tests.
+- `packages/zanshin_core/lib/src/ffi/movement.dart`, `lib/src/worker/{commands,isolate,handle}.dart`, `lib/zanshin_core.dart`, `test/{ffi,worker}/movement_test.dart` — the Dart chain and its tests.
+- `crates/zanshin-parity/tests/oracle/{scenarios,hints,main,prompt,state}.rs` — scenarios, hint check, prompt parity, short-id op-text naming.
+- `docs/ffi-abi.md`, `docs/rust-error-codes.md` — symbols, tables, 9.10 clauses, `jj.stale_selection` widened.
+- `_bmad-output/implementation-artifacts/{sprint-status.yaml,epic-9-context.md}` — 9-10 done; Epic 9 context refreshed (epics.md was newer).
+
+**Review.** 23 findings: 4 low patched (Dart worker seam test, candidate-validity docs, negative-offset guard test, doc line width), 0 deferred, 11 low rejected and 8 false, each with its reason in the Review Triage Log. Follow-up review: not recommended (no high or medium patched).
+
+**Verification.** Targeted checks only, per the run's gate rule — see Verification notes. `cargo make test` / `test-full` / `coverage` were not run; the loop runs the gate at its end.
+
+**Residual risks.**
+- Coverage was not measured. The `RevsetEvaluationError::Backend` arm in `movement.rs` is untested.
+- An ambiguous `next --edit` with files edited between the targets call and the move refuses stale (safe; the GUI re-reads).
+- Next non-edit offset 0 has no CLI witness, because the debug oracle CLI panics on the u64 underflow there.
+- The oracle's `state.rs` normalisation change touches every scenario's op-text naming. All 356 stay green.

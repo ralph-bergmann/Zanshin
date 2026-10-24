@@ -17,6 +17,7 @@ mod git_scenarios;
 mod harness;
 mod hints;
 mod ledger;
+mod prompt;
 mod scenarios;
 mod state;
 
@@ -366,7 +367,27 @@ parity!(
     fix_failing_tool,
     fix_no_tools_refused,
     fix_deprecated_line_range_arg,
-    snapshot_deprecated_line_range_arg;
+    snapshot_deprecated_line_range_arg,
+    next_default,
+    next_edit,
+    next_two,
+    next_edit_two,
+    next_conflict,
+    prev_default,
+    prev_edit,
+    prev_two,
+    prev_conflict,
+    prev_zero_edit_noop,
+    next_ui_movement_edit,
+    next_no_edit_overrides_ui_movement_edit,
+    next_children_refused,
+    next_nothing_found_refused,
+    prev_nothing_found_refused,
+    prev_edit_root_refused,
+    next_ambiguous_refused,
+    prev_offset_too_large_refused,
+    next_edit_no_edit_clap_dirty_wc,
+    next_conflict_offset_clap_dirty_wc;
     own_process:
     convert_import_unresolvable_immutable,
     convert_colocated_unresolvable_immutable,
@@ -387,7 +408,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 320);
+    assert_eq!(SCENARIO_IDS.len(), 340);
 }
 
 #[test]

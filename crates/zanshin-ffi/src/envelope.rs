@@ -902,6 +902,42 @@ pub fn ok_selected_tree(r: &zanshin_jj::SelectedTreeId, report: &CallReport) -> 
     finish_envelope(b, fbs::Payload::SelectedTree, Some(tree.as_union_value()), report)
 }
 
+/// Build a success `Envelope` with a `MovementTargets` payload and return the finished buffer
+/// (Story 9.10): `edit` and the candidates in `zanshin_jj`'s order (the CLI's prompt order).
+#[must_use]
+pub fn ok_movement_targets(r: &zanshin_jj::MovementTargets, report: &CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(256);
+    let target_offs: Vec<_> = r
+        .targets
+        .iter()
+        .map(|target| {
+            let commit_id = b.create_string(&target.commit_id.0);
+            let change_id = b.create_string(&target.change_id.0);
+            fbs::MovementTarget::create(
+                &mut b,
+                &fbs::MovementTargetArgs {
+                    commit_id: Some(commit_id),
+                    change_id: Some(change_id),
+                },
+            )
+        })
+        .collect();
+    let targets = b.create_vector(&target_offs);
+    let movement = fbs::MovementTargets::create(
+        &mut b,
+        &fbs::MovementTargetsArgs {
+            edit: r.edit,
+            targets: Some(targets),
+        },
+    );
+    finish_envelope(
+        b,
+        fbs::Payload::MovementTargets,
+        Some(movement.as_union_value()),
+        report,
+    )
+}
+
 /// Build a success `Envelope` with a `SplitResult` payload and return the finished buffer
 /// (Story 9.15). The nested `MutationResult` is built first through [`build_mutation_result`],
 /// then the two change-id strings — every child completed before the `SplitResult` table opens.
@@ -1979,6 +2015,30 @@ mod tests {
         };
         assert_eq!(read(tree.tree_ids()), r.tree_ids);
         assert_eq!(read(tree.labels()), r.labels);
+    }
+
+    #[test]
+    fn ok_movement_targets_carries_edit_and_the_candidates_in_order() {
+        let target = |commit: &str, change: &str| zanshin_jj::MovementTarget {
+            commit_id: zanshin_jj::CommitId(commit.to_owned()),
+            change_id: zanshin_jj::ChangeId(change.to_owned()),
+        };
+        let r = zanshin_jj::MovementTargets {
+            edit: true,
+            targets: vec![target("c1", "k1"), target("c2", "k2")],
+        };
+        let buf = ok_movement_targets(&r, &CallReport::default());
+        let env = verified_envelope(&buf);
+        assert_eq!(env.data_type(), fbs::Payload::MovementTargets);
+        let movement = env.data_as_movement_targets().expect("MovementTargets payload");
+        assert!(movement.edit());
+        let read: Vec<(&str, &str)> = movement
+            .targets()
+            .expect("present")
+            .iter()
+            .map(|t| (t.commit_id().expect("commit id"), t.change_id().expect("change id")))
+            .collect();
+        assert_eq!(read, [("c1", "k1"), ("c2", "k2")]);
     }
 
     #[test]

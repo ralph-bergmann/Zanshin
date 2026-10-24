@@ -37,7 +37,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 92
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 94
 exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -209,7 +209,8 @@ init, clone, detect, close, `zanshin_log_defaults`,
 the call was refused before the verb ran (`ffi.null_pointer`, `ffi.invalid_handle`,
 a request buffer that fails validation, and a `jj.invalid_input` that the CLI's clap refuses —
 conflicting flags of `zanshin_rebase`, `zanshin_squash`, `zanshin_squash_plan`, `zanshin_split`,
-`zanshin_new_change`, `zanshin_restore`, `zanshin_git_push`, `zanshin_op_diff` — which, as in the CLI, comes before
+`zanshin_new_change`, `zanshin_restore`, `zanshin_git_push`, `zanshin_op_diff`,
+`zanshin_move_working_copy`, `zanshin_movement_targets` — which, as in the CLI, comes before
 the snapshot). `zanshin_repo_convert` (Story 9.33) carries
 the conversion's snapshot report — `jj git init`'s `maybe_snapshot` — iff that snapshot
 started, on the ok and the error envelope (the state it describes stays on disk: a
@@ -289,9 +290,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Fifty-five of the 92 exported symbols take their arguments as a **FlatBuffers
+Fifty-seven of the 94 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Forty-three use the handle-scoped three-parameter shape:
+strings. Forty-five use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -457,20 +458,22 @@ committed codegen sides. `kind` is **always field 0**; any other change to a
 request table's field order is an in-place WIP edit that MUST regenerate BOTH
 committed codegen sides in the same commit.
 
-Two tables are shared: `ChangeIdList` by three symbols (`zanshin_new_change`'s
+Three tables are shared: `ChangeIdList` by three symbols (`zanshin_new_change`'s
 `parents`, `zanshin_abandon`'s `change_ids` and `zanshin_parallelize`'s revisions, Story
 9.16; its `insert_after` / `insert_before` lists — `jj new -A` / `-B`, Story 9.48 — are
 read only by `zanshin_new_change`, the other two ignore them) and `SquashRequest` by two
 (`zanshin_squash` and `zanshin_squash_plan`, Story 9.15 — the plan previews the
-squash its caller is about to run, with the same arguments). Every other table has
-exactly one caller, and no table is orphaned. 52 tables + 3 shared reuses = the 55
+squash its caller is about to run, with the same arguments) and `MovementRequest` by two
+(`zanshin_move_working_copy` and `zanshin_movement_targets`, Story 9.10 — the targets call lists
+the candidates of the move its caller is about to run). Every other table has
+exactly one caller, and no table is orphaned. 53 tables + 4 shared reuses = the 57
 request-buffer symbols (Story 9.20 adds `GitPushRequest`, `RepoCloneRequest` and
 `RepoInitRequest` — `zanshin_repo_init` / `zanshin_repo_clone` took two C strings / a string and
 an `int32_t` backend before; Story 9.30 adds `GitFetchRequest` — `zanshin_git_fetch` took a
 remote name and a cancel token before; Story 9.31 adds `DropActionsRequest`; Story 9.16 adds `RebaseRequest` and
 `ArrangeRequest`; Story 9.9 adds `MetaeditRequest`, `DuplicateRequest` and `FixRequest`; Story
 9.50 adds `SelectTreeRequest`; Story 9.21 adds `OpShowRequest` and `OpDiffRequest`; Story 9.12
-adds `OpRestoreRequest` and `OpRevertRequest`).
+adds `OpRestoreRequest` and `OpRevertRequest`; Story 9.10 adds `MovementRequest`).
 
 `ChangeIdRef` and `CommitIdRef` are **not** in that count. They are the two
 members of the `RevisionRef` union carried by `InterdiffRequest`'s `from`/`to`,
@@ -548,7 +551,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **92** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **94** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -611,6 +614,8 @@ or no `# Errors` block.
 | `zanshin_metaedit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `MetaeditRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 |
 | `zanshin_duplicate` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DuplicateRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 |
 | `zanshin_fix` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FixRequest` (+ `cancel_token`, see § Cancel) | `FixResult` (see § `zanshin_metaedit`, `zanshin_duplicate`, `zanshin_fix`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.cancelled`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 (`cancel_token`, `timeout`: loop 9.9–9.12 second follow-on) |
+| `zanshin_move_working_copy` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `MovementRequest` | `MutationResult` (see § `zanshin_move_working_copy`, `zanshin_movement_targets`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.stale_selection`, `jj.no_working_copy`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.10 |
+| `zanshin_movement_targets` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `MovementRequest` | `MovementTargets` (see § `zanshin_move_working_copy`, `zanshin_movement_targets`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.no_working_copy`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.10 |
 | `zanshin_drop_actions` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DropActionsRequest` | `DropActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_change_actions` | `(uint64_t handle, const char *change_id)` | — | `ChangeActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_commit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.no_working_copy`, `jj.invalid_input`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.49 (+9.50) |
@@ -1878,6 +1883,33 @@ three operations and repo presets, its clean-up scope. Both colocation flags set
 `jj.invalid_input`.
 
 ---
+
+## `zanshin_move_working_copy`, `zanshin_movement_targets` (Story 9.10)
+
+The CLI's `jj next` / `jj prev` at v0.46.0 (`cli/src/movement_util.rs`). The move answers the shared
+`MutationResult`; a move that changes nothing (`prev 0 --edit`) writes NO operation and carries the
+PRE-CALL head in `new_op_id`. Where the CLI prompts for one of several targets, the GUI calls
+`zanshin_movement_targets` with the same request and passes the chosen candidate's `commit_id` as
+`target` — commit ids, not change ids, because divergent commits share a change id.
+
+| Table | Fields |
+|-------|--------|
+| `MovementRequest` | `kind = Movement`; `direction` (`Next` — the default — or `Prev`), `offset: MovementOffset` (a struct holding `value: ulong`; ABSENT = the CLI's default `1` — a struct because `flatc --dart` has no optional scalars), `edit`, `no_edit`, `conflict`, `target` (a hex commit id; ABSENT = no choice; `zanshin_movement_targets` ignores it). clap's refusals — `edit` with `no_edit`, a present `offset` with `conflict` — are `jj.invalid_input` before the snapshot (no `precondition`). |
+| `MovementTargets` | `edit` (the move edits its target: `edit`, or `ui.movement.edit` without `no_edit`), `targets: [MovementTarget]` — `{commit_id, change_id}` per candidate in the CLI's prompt order (the target revset's), never empty; more than one is where the CLI prompts. |
+
+The operation descriptions are the CLI's: `next: <@> -> <target>` / `next: <@> -> editing <target>`
+(`prev: …` likewise; 12-hex commit ids). Refusals reuse registered codes only: `jj.invalid_input`
+(clap's; "The working copy must not have any children" with its `--edit` hint; jj-lib's "Lower bound
+of generation (<n>) is too large" for an offset beyond `u32::MAX` — and for `next` offset `0`
+without editing, which wraps as in the release CLI; the eight not-found texts, each with one
+`Working copy: <summary>` / `Working copy parent: <summary>` hint per start commit; "ambiguous next
+commit, choose one to target" — the prompt's header — when there are several candidates and no
+`target`), `jj.stale_selection` (`target` is not a current candidate: re-read the targets),
+`jj.no_working_copy`, `jj.immutable` (editing an immutable target, the root included),
+`jj.config_error` (`ui.movement.edit` not a boolean — read before the flags, so `edit` does not
+avoid it — a `templates.commit_summary` that does not parse, an unresolvable `immutable_heads()`).
+Dart: `RepoHandle.moveWorkingCopy(direction:, offset:, edit:, noEdit:, conflict:, target:)` and
+`RepoHandle.movementTargets(...)` → `MovementTargets` with `MovementTarget` entries.
 
 ## `zanshin_select_tree` — the GUI diff-editor contract (Story 9.50)
 

@@ -56,6 +56,7 @@ mod graph;
 mod graph_topology;
 mod login_shell_environment;
 mod metaedit;
+mod movement;
 mod mutate;
 mod network_cancel;
 mod new_insert;

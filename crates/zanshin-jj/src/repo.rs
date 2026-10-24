@@ -3247,6 +3247,83 @@ impl Repo {
         })
     }
 
+    /// Moves the working copy to a child or parent (Story 9.10) — the CLI's `jj next` / `jj prev`.
+    ///
+    /// `options.direction` picks the verb. Without `edit` — and unless `ui.movement.edit` is `true`
+    /// without `no_edit` — a new empty `@` is created on the target (`jj new`); `@` must be a
+    /// head, and `next` counts from `@`'s parents, skipping `@` itself. With it the target itself
+    /// becomes `@` (`jj edit`) and must be rewritable. The target is the commit `offset`
+    /// generations away (`None` = the CLI's `1`), or with `conflict` the nearest conflicted
+    /// descendant (`next`, the revset's `roots`) or ancestor (`prev`, its `heads`).
+    ///
+    /// When the target revset yields several commits, the CLI prompts: here `options.target`
+    /// chooses one of [`Repo::movement_targets`]' candidates. The choice is checked against the
+    /// candidates this call computes.
+    ///
+    /// The operation is the CLI's `next: <@> -> <target>` or `next: <@> -> editing <target>`
+    /// (`prev: …` likewise), 12-hex commit ids. A move that changes nothing (`prev 0 --edit`)
+    /// writes NO operation (`new_op_id` is the pre-call head).
+    ///
+    /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — clap's refusals, before the snapshot (nothing is
+    ///   written): `edit` with `no_edit` ("the argument '--edit' cannot be used with
+    ///   '--no-edit'"), an explicit `offset` with `conflict` ("the argument '--conflict' cannot be
+    ///   used with '\[OFFSET\]'"). Then `@` has children and the move does not edit ("The working
+    ///   copy must not have any children", with its hint); a generation beyond `u32::MAX` — an
+    ///   offset that large, or `next` offset `0` without editing, which wraps as in the release
+    ///   CLI (jj-lib's "Lower bound of generation (n) is too large"); no target (the CLI's eight
+    ///   "No descendant found …" / "… have no ancestors with conflicts" texts, one "Working copy:
+    ///   …" or "Working copy parent: …" hint per start commit, the commit's summary); several
+    ///   targets and no `target` ("ambiguous next commit, choose one to target").
+    /// - [`crate::MutateError::StaleSelection`] — `target` is not one of the current candidates.
+    /// - [`crate::MutateError::NoWorkingCopy`] — the workspace has no working-copy commit.
+    /// - [`crate::MutateError::Immutable`] — (editing) the target is inside the repo's effective
+    ///   immutable set (the root commit included).
+    /// - [`crate::MutateError::Config`] — `ui.movement.edit` is not a boolean (the key is named),
+    ///   `templates.commit_summary` (the not-found hints) does not parse, or the
+    ///   `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn move_working_copy(
+        &mut self,
+        options: &crate::MovementOptions,
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(crate::movement::check_movement_args(options), |repo, ctx| {
+            crate::movement::move_working_copy(repo.workspace_mut(), ctx, options)
+        })
+    }
+
+    /// The targets [`Repo::move_working_copy`] chooses from (Story 9.10): the move with the same
+    /// `options`, run up to the point where the CLI picks its target or prompts for one.
+    /// `options.target` is ignored.
+    ///
+    /// `MovementTargets::targets` lists the candidates in the CLI's prompt order — more than one
+    /// is the case the CLI prompts for, and each `commit_id` is what `options.target` takes;
+    /// `MovementTargets::edit` says whether the move edits its target. Refuses exactly as the move
+    /// refuses up to that point: no rewritability guard runs here, so (editing) an immutable
+    /// candidate is listed and still refuses [`crate::MutateError::Immutable`] at the move.
+    ///
+    /// Writes NO operation of its own — only the pre-verb snapshot's, like every read.
+    ///
+    /// # Errors
+    ///
+    /// As [`Repo::move_working_copy`], minus the choice ([`crate::MutateError::StaleSelection`],
+    /// the ambiguous refusal), the rewritability guard and the finish.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn movement_targets(
+        &mut self,
+        options: &crate::MovementOptions,
+    ) -> Result<crate::MovementTargets, crate::MutateError> {
+        self.with_checked_verb(crate::movement::check_movement_args(options), |repo, ctx| {
+            crate::movement::movement_targets(repo.workspace(), ctx, options)
+        })
+    }
+
     /// Creates new changes with the same content as existing ones (Story 9.9) — the CLI's `jj
     /// duplicate`.
     ///

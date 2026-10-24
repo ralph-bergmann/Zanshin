@@ -57,6 +57,7 @@ mod git_ffi;
 mod graph_ffi;
 mod log_defaults_ffi;
 mod metaedit_duplicate_fix_ffi;
+mod movement_ffi;
 mod op_log_ffi;
 mod push_ffi;
 mod push_remotes_ffi;

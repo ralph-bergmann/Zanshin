@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 
 //! The commit-summary hints against the pinned CLI (Story 9.56 closing run): the immutable
-//! refusal's "Could not modify commit: …" and push's "Rejected commit: …" render
-//! `templates.commit_summary`. Each witness refuses through Zanshin and through the pinned `jj`
-//! on the SAME repo (a refusal writes no operation, so both see one state) and compares
-//! Zanshin's hint with the CLI's `Hint: ` stderr line verbatim.
+//! refusal's "Could not modify commit: …", push's "Rejected commit: …" and (Story 9.10) `jj next`'s
+//! not-found "Working copy parent: …" render `templates.commit_summary`. Each witness refuses
+//! through Zanshin and through the pinned `jj` on the SAME repo (a refusal writes no operation, so
+//! both see one state) and compares Zanshin's hint with the CLI's `Hint: ` stderr line verbatim.
 
 use std::ops::ControlFlow;
 use std::path::Path;
 
-use zanshin_jj::{ChangeId, GitPushArgs, Repo};
+use zanshin_jj::{ChangeId, GitPushArgs, MovementOptions, Repo};
 
 use crate::driver::{fresh_repo, jj, Step};
 use crate::scenarios::BASE;
@@ -126,4 +126,19 @@ fn rejected_commit_hint_renders_a_custom_summary() {
 fn rejected_commit_hint_renders_the_refs_of_a_bookmarked_commit() {
     let hint = assert_rejected_commit_hint(&[BASE, UNDESCRIBED_AT_WITH_REMOTE, BOOKMARKED_AT]);
     assert!(hint.contains(" here | "), "{hint}");
+}
+
+/// Story 9.10: `jj next` with nothing after `@` refuses with one hint per start commit — here
+/// `@`'s one parent, B — and so does Zanshin's move, verbatim.
+#[test]
+fn next_not_found_hint_renders_the_working_copy_parent_summary() {
+    test_helpers::pin_test_env();
+    let (_dir, root) = fresh_repo(&["git", "init"], &[BASE]);
+    let cli = cli_hint(&["next"], &root, "Working copy parent: ");
+    let mut repo = Repo::open(&root).expect("open");
+    let err = repo
+        .move_working_copy(&MovementOptions::default())
+        .expect_err("nothing after @");
+    assert_eq!(err.hints(), std::slice::from_ref(&cli), "{err:?}");
+    assert!(cli.ends_with(" b-mark | B"), "{cli}");
 }

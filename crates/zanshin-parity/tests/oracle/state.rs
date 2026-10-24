@@ -485,13 +485,23 @@ fn id_names(labels: &Labels, before: Option<&State>, new_ops: &[Operation]) -> H
 
 /// Rewrites every id token in `text`: a 40-hex commit id, a 128-hex operation id or a 32-char
 /// reverse-hex change id becomes its name. A commit that is in neither state (created and
-/// rewritten inside the range, e.g. by the snapshot step) is named by its content.
+/// rewritten inside the range, e.g. by the snapshot step) is named by its content. A 12-hex
+/// commit id prefix (`jj next`'s `short_commit_hash`, Story 9.10) is named like its full id, so a
+/// commit the operation abandoned keeps the name it had before.
 async fn normalize(text: &str, names: &HashMap<String, String>, store: &Arc<Store>) -> String {
     let mut out = String::new();
     for token in tokens(text) {
         let is_hex = !token.is_empty() && token.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c));
         let is_reverse_hex = token.len() == 32 && token.chars().all(|c| ('k'..='z').contains(&c));
+        let short_commit = || {
+            names
+                .iter()
+                .find(|(id, _)| id.len() == 40 && id.starts_with(&token))
+                .map(|(_, name)| name)
+        };
         if let Some(name) = names.get(&token) {
+            out.push_str(name);
+        } else if let Some(name) = (is_hex && token.len() == 12).then(short_commit).flatten() {
             out.push_str(name);
         } else if is_hex && token.len() == 40 {
             let name = unlabelled_commit_name(&token, store).await;

@@ -58,6 +58,7 @@ export 'src/ffi/file_ops.dart' show FileNotAutoTracked, FileTooLarge, SnapshotSt
 export 'src/ffi/graph.dart' show GraphTopologyView, TopologyRef, TopologyRefKind;
 export 'src/ffi/log_forwarder.dart' show forwardLogRecord, initLogForwarding;
 export 'src/ffi/metaedit_duplicate_fix.dart' show FixResult, FixToolStderr;
+export 'src/ffi/movement.dart' show MovementDirection, MovementTarget, MovementTargets;
 export 'src/ffi/op_log.dart'
     show
         OpAbandonResult,

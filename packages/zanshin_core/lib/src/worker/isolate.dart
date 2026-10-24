@@ -38,6 +38,7 @@ import '../ffi/graph.dart' as repo_ffi_graph;
 import '../ffi/log_defaults.dart' as repo_ffi_log_defaults;
 import '../ffi/log_forwarder.dart';
 import '../ffi/metaedit_duplicate_fix.dart' as repo_ffi_metaedit_duplicate_fix;
+import '../ffi/movement.dart' as repo_ffi_movement;
 import '../ffi/mutate.dart' as repo_ffi_mutate;
 import '../ffi/op_log.dart' as repo_ffi_op_log;
 import '../ffi/precondition.dart' as repo_ffi_precondition;
@@ -1930,6 +1931,93 @@ class ZanshinWorker {
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
+  /// Move the working copy to a child or parent, in the repo identified by
+  /// [handleId] (Story 9.10) — the CLI's `jj next` / `jj prev`.
+  ///
+  /// [direction], [offset] (`null` = the CLI's `1`), [edit], [noEdit],
+  /// [conflict] and [target] (the chosen candidate's hex commit id; `null` =
+  /// no choice) cross unchanged.
+  ///
+  /// Sends a [MoveWorkingCopyCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] for a negative [offset] or an interior NUL
+  /// (U+0000) in [target]. Throws [ZanshinFfiException] on FFI errors
+  /// (`ffi.invalid_handle`, `jj.invalid_input`, `jj.stale_selection`,
+  /// `jj.no_working_copy`, `jj.immutable`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.moveWorkingCopy].
+  Future<repo_ffi_mutate.MutationResult> moveWorkingCopy(
+    int handleId, {
+    repo_ffi_movement.MovementDirection direction = repo_ffi_movement.MovementDirection.next,
+    int? offset,
+    bool edit = false,
+    bool noEdit = false,
+    bool conflict = false,
+    String? target,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls([?target], 'target');
+    _rejectNegativeOffset(offset);
+    final Uint8List bytes = await send(
+      MoveWorkingCopyCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        direction: direction,
+        offset: offset,
+        edit: edit,
+        noEdit: noEdit,
+        conflict: conflict,
+        target: target,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// List the targets [moveWorkingCopy] chooses from, in the repo identified
+  /// by [handleId] (Story 9.10).
+  ///
+  /// Sends a [MovementTargetsCommand] via [send] and decodes the returned
+  /// FlatBuffers `Envelope<MovementTargets>` bytes.
+  ///
+  /// Throws [ArgumentError] for a negative [offset]. Throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.no_working_copy`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`). Completes with a
+  /// [StateError] after [close]; the close-guard [StateError] is delivered
+  /// synchronously by [RepoHandle.movementTargets].
+  Future<repo_ffi_movement.MovementTargets> movementTargets(
+    int handleId, {
+    repo_ffi_movement.MovementDirection direction = repo_ffi_movement.MovementDirection.next,
+    int? offset,
+    bool edit = false,
+    bool noEdit = false,
+    bool conflict = false,
+  }) async {
+    _rejectNegativeOffset(offset);
+    final Uint8List bytes = await send(
+      MovementTargetsCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        direction: direction,
+        offset: offset,
+        edit: edit,
+        noEdit: noEdit,
+        conflict: conflict,
+      ),
+    );
+    return repo_ffi_movement.decodeMovementTargetsEnvelopeInternal(bytes);
+  }
+
+  /// The calling-side guard of [moveWorkingCopy] and [movementTargets]: the
+  /// CLI's `[OFFSET]` is a `u64`, so a negative one never reaches the wire.
+  static void _rejectNegativeOffset(int? offset) {
+    if (offset != null && offset < 0) {
+      throw ArgumentError.value(offset, 'offset', 'must not be negative');
+    }
+  }
+
   /// Duplicate revisions, in the repo identified by [handleId] (Story 9.9) —
   /// the CLI's `jj duplicate`: [revisions] (empty = `@`) onto their parents, or
   /// to [onto] / [insertAfter] / [insertBefore] (`-o` / `-A` / `-B`).
@@ -3671,6 +3759,58 @@ void _workerEntry(_WorkerInit init) {
               author: author,
               authorTimestamp: authorTimestamp,
               forceRewrite: forceRewrite,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case MoveWorkingCopyCommand(
+          :final int handleId,
+          :final repo_ffi_movement.MovementDirection direction,
+          :final int? offset,
+          :final bool edit,
+          :final bool noEdit,
+          :final bool conflict,
+          :final String? target,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: MoveWorkingCopyCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_movement.zanshinMoveWorkingCopy(
+              raw,
+              direction: direction,
+              offset: offset,
+              edit: edit,
+              noEdit: noEdit,
+              conflict: conflict,
+              target: target,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case MovementTargetsCommand(
+          :final int handleId,
+          :final repo_ffi_movement.MovementDirection direction,
+          :final int? offset,
+          :final bool edit,
+          :final bool noEdit,
+          :final bool conflict,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: MovementTargetsCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_movement.zanshinMovementTargets(
+              raw,
+              direction: direction,
+              offset: offset,
+              edit: edit,
+              noEdit: noEdit,
+              conflict: conflict,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }

@@ -5,6 +5,7 @@ import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 import '../ffi/config.dart' show ConfigScope, ConfigTarget;
 import '../ffi/drop_actions.dart' show DropLocation, DropSource;
 import '../ffi/fetch.dart' show FetchRefs, FetchRemotes;
+import '../ffi/movement.dart' show MovementDirection;
 import '../ffi/op_log.dart' show RestoreWhat;
 import '../ffi/rebase.dart' show ArrangeAction;
 import '../ffi/repo.dart' show ObjectHash;
@@ -2122,6 +2123,84 @@ final class MetaeditCommand extends WorkerCommand implements HandleScopedCommand
 
   /// `--force-rewrite`.
   final bool forceRewrite;
+}
+
+/// Move the working copy to a child or parent, in the repo identified by
+/// [handleId] (Story 9.10) — the CLI's `jj next` / `jj prev`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinMoveWorkingCopy(raw, …)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class MoveWorkingCopyCommand extends WorkerCommand implements HandleScopedCommand {
+  const MoveWorkingCopyCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.direction,
+    required this.offset,
+    required this.edit,
+    required this.noEdit,
+    required this.conflict,
+    required this.target,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `jj next` or `jj prev`.
+  final MovementDirection direction;
+
+  /// `[OFFSET]`; `null` = the CLI's default `1`.
+  final int? offset;
+
+  /// `-e/--edit`.
+  final bool edit;
+
+  /// `-n/--no-edit`.
+  final bool noEdit;
+
+  /// `--conflict`.
+  final bool conflict;
+
+  /// The chosen candidate's hex commit id; `null` = no choice.
+  final String? target;
+}
+
+/// List the targets a working-copy move chooses from, in the repo identified
+/// by [handleId] (Story 9.10).
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinMovementTargets(raw, …)`, and replies with a
+/// `BufferResult` carrying the FlatBuffers `Envelope<MovementTargets>` bytes.
+final class MovementTargetsCommand extends WorkerCommand implements HandleScopedCommand {
+  const MovementTargetsCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.direction,
+    required this.offset,
+    required this.edit,
+    required this.noEdit,
+    required this.conflict,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// `jj next` or `jj prev`.
+  final MovementDirection direction;
+
+  /// `[OFFSET]`; `null` = the CLI's default `1`.
+  final int? offset;
+
+  /// `-e/--edit`.
+  final bool edit;
+
+  /// `-n/--no-edit`.
+  final bool noEdit;
+
+  /// `--conflict`.
+  final bool conflict;
 }
 
 /// Duplicate revisions, in the repo identified by [handleId] (Story 9.9) — the

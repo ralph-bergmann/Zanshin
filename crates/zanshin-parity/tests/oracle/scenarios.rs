@@ -21,6 +21,7 @@ use zanshin_jj::FileSelection;
 use zanshin_jj::FixOptions;
 use zanshin_jj::HunkKey;
 use zanshin_jj::MetaeditOptions;
+use zanshin_jj::MovementOptions;
 use zanshin_jj::RebaseOptions;
 use zanshin_jj::SelectTreeOptions;
 use zanshin_jj::SourceTree;
@@ -2939,6 +2940,8 @@ pub fn scenarios() -> Vec<Scenario> {
     .chain(metaedit_author_and_refusal_scenarios())
     .chain(duplicate_scenarios())
     .chain(fix_scenarios())
+    .chain(movement_scenarios())
+    .chain(movement_refusal_scenarios())
     .chain(bookmark_move_scenarios())
     .chain(bookmark_rename_scenarios())
     .chain(crate::git_scenarios::push_scenarios())
@@ -4321,6 +4324,305 @@ fn fix_scenarios() -> Vec<Scenario> {
                     zanshin_outcome(repo, &result)
                 },
                 |_| args(&["util", "snapshot"]),
+            )
+        },
+    ]
+}
+
+// ── Story 9.10: next, prev ────────────────────────────────────────────────────────
+//
+// `next` without editing at offset 0 has no scenario: `offset - 1` underflows there, which the
+// release CLI wraps (to a generation jj-lib refuses to evaluate) but the debug-built oracle CLI
+// panics on. `prev_offset_too_large_refused` covers the same jj-lib refusal.
+
+/// `Repo::move_working_copy` with `options`.
+fn movement_outcome(repo: &mut zanshin_jj::Repo, options: &MovementOptions) -> Outcome {
+    let result = repo.move_working_copy(options);
+    zanshin_outcome(repo, &result)
+}
+
+fn prev() -> MovementOptions {
+    MovementOptions {
+        direction: zanshin_jj::Direction::Prev,
+        ..MovementOptions::default()
+    }
+}
+
+/// An empty `@` on B, beside C.
+const NEW_ON_B: &[Step] = &[Step::Jj(&["new", "b-mark"])];
+/// `@` = B, whose child is C.
+const EDIT_B: &[Step] = &[Step::Jj(&["edit", "b-mark"])];
+/// An empty `@` on A, beside B.
+const NEW_ON_A: &[Step] = &[Step::Jj(&["new", "b-mark-"])];
+/// `@` = A.
+const EDIT_A: &[Step] = &[Step::Jj(&["edit", "b-mark-"])];
+/// `Y` (b.txt = y) beside B on A, the conflicted merge `M` of B and Y, then an empty `@` on A.
+const CONFLICT_THEN_NEW_ON_A: &[Step] = &[
+    Step::Jj(&["new", "b-mark-", "-m", "Y"]),
+    Step::Write("b.txt", "y\n"),
+    Step::Jj(&["new", "b-mark", "@", "-m", "M"]),
+    Step::Jj(&["new", "b-mark-"]),
+];
+/// The same `M`, a child `N` (n.txt) of it, then an empty `@` on N.
+const CONFLICT_THEN_CHILD: &[Step] = &[
+    Step::Jj(&["new", "b-mark-", "-m", "Y"]),
+    Step::Write("b.txt", "y\n"),
+    Step::Jj(&["new", "b-mark", "@", "-m", "M"]),
+    Step::Jj(&["new", "-m", "N"]),
+    Step::Write("n.txt", "n\n"),
+    Step::Jj(&["new"]),
+];
+/// `ui.movement.edit = true`, then `@` = B.
+const MOVEMENT_EDIT_ON_B: &[Step] = &[
+    Step::Jj(&["config", "set", "--repo", "ui.movement.edit", "true"]),
+    Step::Jj(&["edit", "b-mark"]),
+];
+/// `ui.movement.edit = true`, then an empty `@` on B.
+const MOVEMENT_EDIT_NEW_ON_B: &[Step] = &[
+    Step::Jj(&["config", "set", "--repo", "ui.movement.edit", "true"]),
+    Step::Jj(&["new", "b-mark"]),
+];
+/// `X` (x.txt) beside B on A, then an empty `@` on A: two `next` candidates.
+const TWO_CHILDREN_OF_A: &[Step] = &[
+    Step::Jj(&["new", "b-mark-", "-m", "X"]),
+    Step::Write("x.txt", "x\n"),
+    Step::Jj(&["new", "b-mark-"]),
+];
+
+/// next and prev: the default, `--edit`, an offset, `--conflict`, the no-op and the config key.
+#[allow(clippy::too_many_lines)] // WHY: one flat table reads better than eleven helper fns
+fn movement_scenarios() -> Vec<Scenario> {
+    vec![
+        Scenario {
+            setup: NEW_ON_B,
+            ..simple(
+                "next_default",
+                |repo, _, _| movement_outcome(repo, &MovementOptions::default()),
+                |_| args(&["next"]),
+            )
+        },
+        Scenario {
+            setup: EDIT_B,
+            ..simple(
+                "next_edit",
+                |repo, _, _| {
+                    let options = MovementOptions {
+                        edit: true,
+                        ..MovementOptions::default()
+                    };
+                    movement_outcome(repo, &options)
+                },
+                |_| args(&["next", "--edit"]),
+            )
+        },
+        Scenario {
+            setup: NEW_ON_A,
+            ..simple(
+                "next_two",
+                |repo, _, _| {
+                    let options = MovementOptions {
+                        offset: Some(2),
+                        ..MovementOptions::default()
+                    };
+                    movement_outcome(repo, &options)
+                },
+                |_| args(&["next", "2"]),
+            )
+        },
+        Scenario {
+            setup: EDIT_A,
+            ..simple(
+                "next_edit_two",
+                |repo, _, _| {
+                    let options = MovementOptions {
+                        offset: Some(2),
+                        edit: true,
+                        ..MovementOptions::default()
+                    };
+                    movement_outcome(repo, &options)
+                },
+                |_| args(&["next", "--edit", "2"]),
+            )
+        },
+        Scenario {
+            setup: CONFLICT_THEN_NEW_ON_A,
+            ..simple(
+                "next_conflict",
+                |repo, _, _| {
+                    let options = MovementOptions {
+                        conflict: true,
+                        ..MovementOptions::default()
+                    };
+                    movement_outcome(repo, &options)
+                },
+                |_| args(&["next", "--conflict"]),
+            )
+        },
+        simple(
+            "prev_default",
+            |repo, _, _| movement_outcome(repo, &prev()),
+            |_| args(&["prev"]),
+        ),
+        simple(
+            "prev_edit",
+            |repo, _, _| {
+                let options = MovementOptions { edit: true, ..prev() };
+                movement_outcome(repo, &options)
+            },
+            |_| args(&["prev", "--edit"]),
+        ),
+        simple(
+            "prev_two",
+            |repo, _, _| {
+                let options = MovementOptions {
+                    offset: Some(2),
+                    ..prev()
+                };
+                movement_outcome(repo, &options)
+            },
+            |_| args(&["prev", "2"]),
+        ),
+        Scenario {
+            setup: CONFLICT_THEN_CHILD,
+            ..simple(
+                "prev_conflict",
+                |repo, _, _| {
+                    let options = MovementOptions {
+                        conflict: true,
+                        ..prev()
+                    };
+                    movement_outcome(repo, &options)
+                },
+                |_| args(&["prev", "--conflict"]),
+            )
+        },
+        // `@` itself, edited: nothing changes, no operation.
+        simple(
+            "prev_zero_edit_noop",
+            |repo, _, _| {
+                let options = MovementOptions {
+                    offset: Some(0),
+                    edit: true,
+                    ..prev()
+                };
+                movement_outcome(repo, &options)
+            },
+            |_| args(&["prev", "0", "--edit"]),
+        ),
+        Scenario {
+            setup: MOVEMENT_EDIT_ON_B,
+            ..simple(
+                "next_ui_movement_edit",
+                |repo, _, _| movement_outcome(repo, &MovementOptions::default()),
+                |_| args(&["next"]),
+            )
+        },
+        Scenario {
+            setup: MOVEMENT_EDIT_NEW_ON_B,
+            ..simple(
+                "next_no_edit_overrides_ui_movement_edit",
+                |repo, _, _| {
+                    let options = MovementOptions {
+                        no_edit: true,
+                        ..MovementOptions::default()
+                    };
+                    movement_outcome(repo, &options)
+                },
+                |_| args(&["next", "--no-edit"]),
+            )
+        },
+    ]
+}
+
+/// next and prev refusals: children, nothing there, an immutable edit target, an ambiguous target
+/// (the CLI is not on a terminal and refuses its prompt), an offset jj-lib cannot evaluate, and
+/// clap's two conflicts on a dirty working copy.
+#[allow(clippy::too_many_lines)] // WHY: one flat table reads better than eight helper fns
+fn movement_refusal_scenarios() -> Vec<Scenario> {
+    vec![
+        Scenario {
+            setup: EDIT_B,
+            ..simple(
+                "next_children_refused",
+                |repo, _, _| movement_outcome(repo, &MovementOptions::default()),
+                |_| args(&["next"]),
+            )
+        },
+        simple(
+            "next_nothing_found_refused",
+            |repo, _, _| movement_outcome(repo, &MovementOptions::default()),
+            |_| args(&["next"]),
+        ),
+        simple(
+            "prev_nothing_found_refused",
+            |repo, _, _| {
+                let options = MovementOptions {
+                    offset: Some(4),
+                    ..prev()
+                };
+                movement_outcome(repo, &options)
+            },
+            |_| args(&["prev", "4"]),
+        ),
+        simple(
+            "prev_edit_root_refused",
+            |repo, _, _| {
+                let options = MovementOptions {
+                    offset: Some(3),
+                    edit: true,
+                    ..prev()
+                };
+                movement_outcome(repo, &options)
+            },
+            |_| args(&["prev", "--edit", "3"]),
+        ),
+        Scenario {
+            setup: TWO_CHILDREN_OF_A,
+            ..simple(
+                "next_ambiguous_refused",
+                |repo, _, _| movement_outcome(repo, &MovementOptions::default()),
+                |_| args(&["next"]),
+            )
+        },
+        simple(
+            "prev_offset_too_large_refused",
+            |repo, _, _| {
+                let options = MovementOptions {
+                    offset: Some(5_000_000_000),
+                    ..prev()
+                };
+                movement_outcome(repo, &options)
+            },
+            |_| args(&["prev", "5000000000"]),
+        ),
+        Scenario {
+            files: DIRTY_C,
+            ..simple(
+                "next_edit_no_edit_clap_dirty_wc",
+                |repo, _, _| {
+                    let options = MovementOptions {
+                        edit: true,
+                        no_edit: true,
+                        ..MovementOptions::default()
+                    };
+                    movement_outcome(repo, &options)
+                },
+                |_| args(&["next", "--edit", "--no-edit"]),
+            )
+        },
+        Scenario {
+            files: DIRTY_C,
+            ..simple(
+                "next_conflict_offset_clap_dirty_wc",
+                |repo, _, _| {
+                    let options = MovementOptions {
+                        offset: Some(1),
+                        conflict: true,
+                        ..MovementOptions::default()
+                    };
+                    movement_outcome(repo, &options)
+                },
+                |_| args(&["next", "--conflict", "1"]),
             )
         },
     ]

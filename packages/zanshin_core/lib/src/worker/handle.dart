@@ -21,6 +21,7 @@ import '../ffi/graph.dart'
     show GraphTopologyView, defaultGraphAnchors, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes;
 import '../ffi/log_defaults.dart' show LogDefaults;
 import '../ffi/metaedit_duplicate_fix.dart' show FixResult;
+import '../ffi/movement.dart' show MovementDirection, MovementTargets;
 import '../ffi/mutate.dart' show AbsorbResult, MutationResult;
 import '../ffi/op_log.dart' show OpAbandonResult, OpDiffResult, OpIntegrateResult, OpShow, Operation, RestoreWhat;
 import '../ffi/precondition.dart' show Precondition;
@@ -1213,6 +1214,82 @@ final class RepoHandle {
       author: author,
       authorTimestamp: authorTimestamp,
       forceRewrite: forceRewrite,
+    );
+  }
+
+  /// Move the working copy to a child or parent (Story 9.10) — the CLI's `jj
+  /// next` ([MovementDirection.next]) / `jj prev` ([MovementDirection.prev]).
+  ///
+  /// Without [edit] — and unless `ui.movement.edit` is `true` without
+  /// [noEdit] — a new empty `@` is created on the target (`@` must be a
+  /// head); with it the target becomes `@` and must be rewritable. The target
+  /// is [offset] generations away (`null` = the CLI's `1`), or with
+  /// [conflict] the nearest conflicted descendant / ancestor. Where the CLI
+  /// prompts for one of several targets, call [movementTargets] with the same
+  /// arguments and pass the chosen candidate's `commitId` as [target]. The
+  /// operation is the CLI's `next: <@> -> <target>` (`… -> editing <target>`);
+  /// a move that changes nothing writes no operation (the result's `newOpId`
+  /// is the pre-call head).
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] for a negative [offset] or an interior NUL
+  /// (U+0000) in [target]; throws [ZanshinFfiException] on FFI errors
+  /// (`ffi.invalid_handle`, `jj.invalid_input` — [edit] with [noEdit], an
+  /// [offset] with [conflict], children of a non-edit `@`, nothing found, an
+  /// ambiguous target without [target] —, `jj.stale_selection` — [target] is
+  /// not a candidate —, `jj.no_working_copy`, `jj.immutable`,
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> moveWorkingCopy({
+    MovementDirection direction = MovementDirection.next,
+    int? offset,
+    bool edit = false,
+    bool noEdit = false,
+    bool conflict = false,
+    String? target,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.moveWorkingCopy(
+      _handleId,
+      direction: direction,
+      offset: offset,
+      edit: edit,
+      noEdit: noEdit,
+      conflict: conflict,
+      target: target,
+    );
+  }
+
+  /// The targets [moveWorkingCopy] chooses from (Story 9.10): the move with
+  /// the same arguments, run up to where the CLI picks its target or prompts
+  /// for one. `MovementTargets.targets` lists the candidates in the CLI's
+  /// prompt order — more than one is where the CLI prompts; `edit` says
+  /// whether the move edits its target. Refuses as [moveWorkingCopy] refuses
+  /// up to that point; writes no operation of its own.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] for a negative [offset]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.no_working_copy`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MovementTargets> movementTargets({
+    MovementDirection direction = MovementDirection.next,
+    int? offset,
+    bool edit = false,
+    bool noEdit = false,
+    bool conflict = false,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.movementTargets(
+      _handleId,
+      direction: direction,
+      offset: offset,
+      edit: edit,
+      noEdit: noEdit,
+      conflict: conflict,
     );
   }
 

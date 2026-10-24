@@ -1374,6 +1374,56 @@ fn metaedit_duplicate_fix_surface_resolves() {
         ) -> Result<zanshin_jj::FixResult, zanshin_jj::MutateError>;
 }
 
+// next / prev (Story 9.10)
+type _Direction = zanshin_jj::Direction;
+type _MovementOptions = zanshin_jj::MovementOptions;
+type _MovementTargets = zanshin_jj::MovementTargets;
+type _MovementTarget = zanshin_jj::MovementTarget;
+
+/// The Story 9.10 surface: the four new types named variant by variant and field by field (the
+/// CLI's `jj next` / `jj prev` flags plus the prompt's answer, and the candidates), and the two
+/// `Repo` methods as `fn` pointers.
+#[test]
+fn movement_surface_resolves() {
+    let directions = [zanshin_jj::Direction::Next, zanshin_jj::Direction::Prev];
+    assert_eq!(directions, directions.clone());
+    assert_eq!(zanshin_jj::Direction::default(), zanshin_jj::Direction::Next);
+    let options = zanshin_jj::MovementOptions {
+        direction: zanshin_jj::Direction::Prev,
+        offset: Some(2),
+        edit: true,
+        no_edit: false,
+        conflict: false,
+        target: Some(zanshin_jj::CommitId("c".to_owned())),
+    };
+    assert_eq!(options.clone(), options);
+    let default = zanshin_jj::MovementOptions::default();
+    assert_eq!(
+        (default.direction, default.offset, default.target),
+        (zanshin_jj::Direction::Next, None, None)
+    );
+    let target = zanshin_jj::MovementTarget {
+        commit_id: zanshin_jj::CommitId("c".to_owned()),
+        change_id: zanshin_jj::ChangeId("k".to_owned()),
+    };
+    let targets = zanshin_jj::MovementTargets {
+        edit: false,
+        targets: vec![target],
+    };
+    assert_eq!(targets.clone(), targets);
+
+    _ = zanshin_jj::Repo::move_working_copy
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::MovementOptions,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::movement_targets
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::MovementOptions,
+        ) -> Result<zanshin_jj::MovementTargets, zanshin_jj::MutateError>;
+}
+
 // drop actions (Story 9.31)
 type _DropSource = zanshin_jj::DropSource;
 type _DropLocation = zanshin_jj::DropLocation;

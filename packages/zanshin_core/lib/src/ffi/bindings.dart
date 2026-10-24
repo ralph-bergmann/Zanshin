@@ -2319,6 +2319,91 @@ external ffi.Pointer<ZanshinBuf> zanshin_metaedit(
   int len,
 );
 
+/// Move the working copy to a child or parent in the repo identified by `handle` — the CLI's `jj
+/// next` / `jj prev` (Story 9.10).
+///
+/// The arguments cross as a `MovementRequest` `FlatBuffers` request buffer: `direction` (`Next` /
+/// `Prev`), `offset` (ABSENT = the CLI's `1`), `edit` / `no_edit` (against `ui.movement.edit`),
+/// `conflict` (the nearest conflicted descendant / ancestor) and `target` — the hex commit id
+/// chosen among `zanshin_movement_targets`' candidates where the CLI would prompt. Without
+/// editing, a new empty `@` is created on the target (`@` must be a head); editing makes the
+/// target `@` (it must be rewritable). The operation is the CLI's `next: <@> -> <target>` /
+/// `next: <@> -> editing <target>` (`prev: …` likewise, 12-hex ids); a move that changes nothing
+/// writes NO operation and `MutationResult.new_op_id` carries the PRE-CALL head. The working copy
+/// is snapshotted first (Story 9.26).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `MovementRequest` buffer, its `kind` is
+/// not `Movement`, or its `direction` is outside the enum.
+/// - `jj.invalid_input` — clap's refusals, before the snapshot (nothing written, no
+/// `precondition`): `edit` with `no_edit`, a present `offset` with `conflict`. Then `@` has
+/// children and the move does not edit ("The working copy must not have any children", one
+/// hint); an offset jj-lib cannot evaluate ("Lower bound of generation (<n>) is too large");
+/// no target (the CLI's not-found text, one `Working copy: …` / `Working copy parent: …` hint
+/// per start commit); several candidates and no `target` ("ambiguous next commit, choose one to
+/// target"). Detail in `context`, hints in `hints`.
+/// - `jj.stale_selection` — `target` is not a current candidate; nothing written.
+/// - `jj.no_working_copy` — the workspace has no working-copy commit.
+/// - `jj.immutable` — (editing) the target is immutable (the root commit included); its hex
+/// commit id in `context`.
+/// - `jj.config_error` — `ui.movement.edit` is not a boolean, the commit-summary template (the
+/// hints) does not parse, or the `immutable_heads()` alias does not resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+/// `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+/// returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+/// worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+/// Dart (`fbs.MovementRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_move_working_copy(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
+/// List the targets `zanshin_move_working_copy` chooses from, in the repo identified by `handle`
+/// (Story 9.10): the move with the same `MovementRequest`, run up to where the CLI picks its
+/// target or prompts for one. `target` is ignored.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MovementTargets` payload on success: `edit` (the
+/// move edits its target) and the candidates in the CLI's prompt order — never empty; more than
+/// one is where the CLI prompts, and each `commit_id` is what `MovementRequest.target` takes; no
+/// rewritability guard runs here, so (editing) an immutable candidate is listed and still refuses
+/// `jj.immutable` at the move. Writes NO operation of its own, only the pre-verb snapshot's.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `MovementRequest` buffer, its `kind` is
+/// not `Movement`, or its `direction` is outside the enum.
+/// - `jj.invalid_input` — as `zanshin_move_working_copy` up to choosing a target: clap's two
+/// refusals before the snapshot, children of a non-edit `@`, an offset jj-lib cannot evaluate,
+/// no target (with its hints).
+/// - `jj.no_working_copy` — the workspace has no working-copy commit.
+/// - `jj.config_error` — `ui.movement.edit` is not a boolean, or the commit-summary template (the
+/// hints) does not parse.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// As `zanshin_move_working_copy`.
+@ffi.Native<ffi.Pointer<ZanshinBuf> Function(ffi.Uint64, ffi.Pointer<ffi.Uint8>, ffi.UintPtr)>()
+external ffi.Pointer<ZanshinBuf> zanshin_movement_targets(
+  int handle,
+  ffi.Pointer<ffi.Uint8> data,
+  int len,
+);
+
 /// Cancel the network call running — or about to run — under `token` (Story 9.52).
 ///
 /// The token's flag is set; the call refuses at its next checkpoint (`jj.cancelled` for a fetch,

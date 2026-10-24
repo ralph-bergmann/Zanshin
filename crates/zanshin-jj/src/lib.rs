@@ -49,6 +49,7 @@ pub(crate) mod fix;
 pub(crate) mod git;
 pub(crate) mod graph;
 pub(crate) mod metaedit;
+pub(crate) mod movement;
 pub(crate) mod mutate;
 pub(crate) mod op_diff;
 pub(crate) mod op_log;
@@ -103,6 +104,7 @@ pub use fix::{FixOptions, FixResult, FixToolStderr};
 pub use git::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate, GitRefUpdateKind};
 pub use graph::{GraphEdge, GraphEdgeKind, GraphNode, DEFAULT_GRAPH_PRIORITIZE};
 pub use metaedit::MetaeditOptions;
+pub use movement::{Direction, MovementOptions, MovementTarget, MovementTargets};
 pub use mutate::{AbsorbResult, MutateError, MutationResult, SkippedPath};
 pub use op_diff::{
     OpChangedCommit, OpCommitsDiff, OpDiff, OpRefChange, OpRefTarget, OpRemoteRefChange, OpWorkingCopyChange,
