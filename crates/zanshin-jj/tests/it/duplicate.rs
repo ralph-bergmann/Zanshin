@@ -11,6 +11,7 @@ use zanshin_jj::{
 };
 
 use crate::rebase::{assert_op, base, commit, head_op, parents, reconfigure, refused, Fx};
+use crate::revert::{assert_config_class, UNRESOLVABLE_ALIAS};
 
 /// Duplicates with `options`, asserts the CLI's operation, and returns the duplicates' change ids.
 fn duplicate(fx: &mut Fx, options: impl FnOnce(&Fx) -> DuplicateOptions, count: usize) -> Vec<ChangeId> {
@@ -183,6 +184,40 @@ fn templates_duplicate_description_describes_the_duplicates() {
         matches!(&err, MutateError::Config { reason } if reason.starts_with("Failed to parse template: ")),
         "{err:?}"
     );
+}
+
+/// The CLI's order with both an unresolvable alias and a broken template (Story 9.18 closing
+/// run): the template parse refuses first unless the location has children, whose
+/// rewritability check resolves the immutable set; with only the alias broken, the finish refuses.
+#[test]
+fn a_broken_template_refuses_before_the_alias_unless_the_location_has_children() {
+    let mut fx = base();
+    let (a, b, c) = (fx.a.clone(), fx.b.clone(), fx.c.clone());
+    reconfigure(
+        &mut fx,
+        &format!("{UNRESOLVABLE_ALIAS}[templates]\nduplicate_description = '\"undo \" ++'\n"),
+    );
+    let at = |onto: &[ChangeId], after: &[ChangeId], before: &[ChangeId]| DuplicateOptions {
+        revisions: vec![b.clone()],
+        onto: onto.to_vec(),
+        insert_after: after.to_vec(),
+        insert_before: before.to_vec(),
+    };
+    for (options, template) in [
+        (at(&[], &[], &[]), true),
+        (at(std::slice::from_ref(&c), &[], &[]), true),
+        (at(&[], std::slice::from_ref(&c), &[]), true),
+        (at(&[], std::slice::from_ref(&a), &[]), false),
+        (at(&[], &[], std::slice::from_ref(&c)), false),
+    ] {
+        let err = refused(&mut fx, |repo| repo.duplicate(&options));
+        assert_config_class(&err, template, &format!("{options:?}"));
+    }
+
+    reconfigure(&mut fx, UNRESOLVABLE_ALIAS);
+    let options = at(std::slice::from_ref(&c), &[], &[]);
+    let err = refused(&mut fx, |repo| repo.duplicate(&options));
+    assert_config_class(&err, false, "only the alias broken");
 }
 
 #[test]

@@ -102,13 +102,13 @@ pub(crate) fn plan_rebase_revisions(
     location: &LocationArgs<'_>,
 ) -> Result<MoveCommitsLocation, MutateError> {
     let ids = resolve_ordered(tx, Some(revisions))?.unwrap_or_default();
-    let resolved = guard_rewritable(tx, templates, &ids)?;
+    guard_rewritable(tx, templates, &ids)?;
     // "in reverse topological order" (`rebase.rs:446`): the revset's own order.
     let set = RevsetExpression::commits(ids)
         .evaluate(tx.base_repo().as_ref())
         .map_err(be)?;
     let target_commit_ids: Vec<CommitId> = pollster::block_on(set.stream().try_collect()).map_err(be)?;
-    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, &resolved, templates, location, REBASED_COMMITS)?;
+    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, templates, location, REBASED_COMMITS)?;
     if !location.onto.is_empty() {
         if let Some(id) = target_commit_ids.iter().find(|id| new_parent_ids.contains(id)) {
             return Err(onto_itself(id));
@@ -136,8 +136,8 @@ pub(crate) fn plan_rebase_source(
     location: &LocationArgs<'_>,
 ) -> Result<MoveCommitsLocation, MutateError> {
     let source_ids = resolve_ordered(tx, Some(sources))?.unwrap_or_default();
-    let resolved = guard_rewritable(tx, templates, &source_ids)?;
-    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, &resolved, templates, location, REBASED_COMMITS)?;
+    guard_rewritable(tx, templates, &source_ids)?;
+    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, templates, location, REBASED_COMMITS)?;
     if !location.onto.is_empty() {
         for id in &source_ids {
             let commit = tx.base_repo().store().get_commit(id).map_err(be)?;
@@ -186,12 +186,12 @@ fn plan_rebase_branch_ids(
     branch_ids: Vec<CommitId>,
     location: &LocationArgs<'_>,
 ) -> Result<MoveCommitsLocation, MutateError> {
-    let resolved = if location.inserts() {
-        resolve_immutable(tx.base_repo().as_ref(), templates.immutable())?
-    } else {
-        RevsetExpression::none()
-    };
-    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, &resolved, templates, location, REBASED_COMMITS)?;
+    // WHY: keeps `rebase -b`'s refusal order (Config before an unresolvable location id); rebase
+    // parses no template, so the CLI's order is not observable otherwise.
+    if location.inserts() {
+        resolve_immutable(tx.base_repo().as_ref(), templates.immutable())?;
+    }
+    let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, templates, location, REBASED_COMMITS)?;
     let roots = RevsetExpression::commits(new_parent_ids.clone())
         .range(&RevsetExpression::commits(branch_ids))
         .roots()

@@ -18,6 +18,7 @@ mod harness;
 mod hints;
 mod ledger;
 mod prompt;
+mod refusal_order;
 mod scenarios;
 mod state;
 

@@ -170,6 +170,55 @@ fn templates_revert_description_describes_the_reverses() {
     );
 }
 
+/// An `immutable_heads()` alias no commit resolves.
+pub(crate) const UNRESOLVABLE_ALIAS: &str = "[revset-aliases]\n\"immutable_heads()\" = \"nonexistent_symbol_xyz\"\n";
+
+/// Asserts `err` is the template parse refusal (`template`) or the immutable-set one.
+pub(crate) fn assert_config_class(err: &MutateError, template: bool, context: &str) {
+    let prefix = if template {
+        "Failed to parse template: "
+    } else {
+        "Invalid `revset-aliases.immutable_heads()`: "
+    };
+    assert!(
+        matches!(err, MutateError::Config { reason } if reason.starts_with(prefix)),
+        "{context}: {err:?}"
+    );
+}
+
+/// The CLI's order with both an unresolvable alias and a broken template (Story 9.18 closing
+/// run): the template parse refuses first unless the location has children, whose
+/// rewritability check resolves the immutable set; with only the alias broken, the finish refuses.
+#[test]
+fn a_broken_template_refuses_before_the_alias_unless_the_location_has_children() {
+    let mut fx = base();
+    let (a, b, c) = (fx.a.clone(), fx.b.clone(), fx.c.clone());
+    reconfigure(
+        &mut fx,
+        &format!("{UNRESOLVABLE_ALIAS}[templates]\nrevert_description = '\"undo \" ++'\n"),
+    );
+    let at = |onto: &[ChangeId], after: &[ChangeId], before: &[ChangeId]| RevertOptions {
+        revisions: vec![b.clone()],
+        onto: onto.to_vec(),
+        insert_after: after.to_vec(),
+        insert_before: before.to_vec(),
+    };
+    for (options, template) in [
+        (at(std::slice::from_ref(&c), &[], &[]), true),
+        (at(&[], std::slice::from_ref(&c), &[]), true),
+        (at(&[], std::slice::from_ref(&a), &[]), false),
+        (at(&[], &[], std::slice::from_ref(&c)), false),
+    ] {
+        let err = refused(&mut fx, |repo| repo.revert(&options));
+        assert_config_class(&err, template, &format!("{options:?}"));
+    }
+
+    reconfigure(&mut fx, UNRESOLVABLE_ALIAS);
+    let options = at(std::slice::from_ref(&c), &[], &[]);
+    let err = refused(&mut fx, |repo| repo.revert(&options));
+    assert_config_class(&err, false, "only the alias broken");
+}
+
 #[test]
 fn clap_refusals_come_before_the_snapshot() {
     let mut fx = base();

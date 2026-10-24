@@ -695,7 +695,7 @@ pub(crate) fn prepare_split(
     let use_move_flags = options.onto.is_some() || options.insert_after.is_some() || options.insert_before.is_some();
     let target = resolve_or_wc(tx.repo(), workspace.workspace_name(), options.revision.as_ref())?;
     let templates = ctx.templates(workspace);
-    let immutable = guard_rewritable(tx, &templates, std::slice::from_ref(target.id()))?;
+    guard_rewritable(tx, &templates, std::slice::from_ref(target.id()))?;
     let matcher = build_matcher(&options.paths)?;
     let location = if use_move_flags {
         let onto = resolve_ordered(tx, options.onto.as_deref())?;
@@ -703,7 +703,6 @@ pub(crate) fn prepare_split(
         let before = resolve_ordered(tx, options.insert_before.as_deref())?;
         Some(compute_commit_location(
             tx.base_repo().as_ref(),
-            &immutable,
             &templates,
             onto.as_deref(),
             after.as_deref(),

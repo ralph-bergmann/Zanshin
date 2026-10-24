@@ -1186,16 +1186,9 @@ pub(crate) fn plan_new(
         });
     }
     let base: &ReadonlyRepo = tx.base_repo();
-    let resolved = resolve_immutable(base, templates.immutable())?;
-    let (parents, children) = compute_commit_location(
-        base,
-        &resolved,
-        templates,
-        None,
-        after.as_deref(),
-        before.as_deref(),
-        "new commit",
-    )?;
+    resolve_immutable(base, templates.immutable())?;
+    let (parents, children) =
+        compute_commit_location(base, templates, None, after.as_deref(), before.as_deref(), "new commit")?;
     refuse_git_root_merge(tx.repo().store(), &parents)?;
     Ok(NewLocation { parents, children })
 }

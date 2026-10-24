@@ -319,6 +319,12 @@ impl Rows<'_> {
                 std::slice::from_ref(change),
                 location,
             )?;
+            // A revert that writes resolves the immutable set in the CLI's `tx.finish` (Story
+            // 9.56); "No revisions to revert." never reaches it. Rows never parse the description
+            // template, so with a broken template the verb's refusal (template parse) differs.
+            if plan.is_some() {
+                resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
+            }
             Ok(Planned {
                 no_op: plan.is_none(),
                 ..Planned::AVAILABLE
@@ -417,6 +423,10 @@ impl Rows<'_> {
                 rows.push((DropVerb::NewMerge, self.new_change(ctx, &parents, &[], &[])?));
                 let duplicate = self.row(ctx, |tx, ctx| {
                     plan_duplicate(tx, &ctx.templates(self.workspace), std::slice::from_ref(change), &args)?;
+                    // Every duplicate writes, so the CLI's `tx.finish` resolves the immutable set
+                    // (Story 9.56). Rows never parse the description template, so with a broken
+                    // template the verb's refusal (template parse) differs.
+                    resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)?;
                     Ok(Planned::AVAILABLE)
                 })?;
                 rows.push((DropVerb::Duplicate, duplicate));

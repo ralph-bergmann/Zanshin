@@ -212,7 +212,6 @@ impl LocationArgs<'_> {
 /// - Anything [`compute_commit_location`] returns.
 pub(crate) fn resolve_commit_location(
     tx: &Transaction,
-    immutable: &Arc<ResolvedRevsetExpression>,
     templates: &Templates<'_>,
     location: &LocationArgs<'_>,
     commit_type: &str,
@@ -223,7 +222,6 @@ pub(crate) fn resolve_commit_location(
     let before = resolve_ordered(tx, given(location.insert_before))?;
     compute_commit_location(
         tx.base_repo().as_ref(),
-        immutable,
         templates,
         onto.as_deref(),
         after.as_deref(),
@@ -242,9 +240,10 @@ pub(crate) fn resolve_commit_location(
 /// `commit_type` is the noun the loop refusal names ("commit", "commits", "revision", …) —
 /// passed through from the caller exactly as the CLI passes it (FR-JJ-17).
 ///
-/// `immutable` is threaded in rather than resolved here so this function stays free of
-/// config plumbing; the CLI reaches its equivalent through `WorkspaceCommandHelper`. `templates`
-/// renders the immutable refusal's summary hint ([`check_rewritable`]).
+/// The immutable set is resolved from `templates.immutable()` only when the location has
+/// children, right before [`check_rewritable`] — the CLI resolves it inside its
+/// `check_rewritable` there, so a location without children never reads it (Story 9.18 closing
+/// run). `templates` also renders the immutable refusal's summary hint.
 ///
 /// # Input contract
 ///
@@ -269,10 +268,11 @@ pub(crate) fn resolve_commit_location(
 ///   `insert_before`, none of the three given (both are `panic!`s in the CLI), a resulting
 ///   parent/child cycle, or an empty resolved parent set.
 /// - [`MutateError::Immutable`] — a resulting child commit is immutable.
+/// - [`MutateError::Config`] — (only with children) the `immutable_heads()` alias does not
+///   resolve ([`resolve_immutable`]), or the immutable refusal's summary does not render.
 /// - [`MutateError::Backend`] — an underlying jj-lib evaluation or backend failure.
 pub(crate) fn compute_commit_location(
     repo: &dyn jj_lib::repo::Repo,
-    immutable: &Arc<ResolvedRevsetExpression>,
     templates: &Templates<'_>,
     destination: Option<&[CommitId]>,
     insert_after: Option<&[CommitId]>,
@@ -314,7 +314,8 @@ pub(crate) fn compute_commit_location(
     };
 
     if !new_child_ids.is_empty() {
-        check_rewritable(repo, immutable, templates, &new_child_ids)?;
+        let immutable = resolve_immutable(repo, templates.immutable())?;
+        check_rewritable(repo, &immutable, templates, &new_child_ids)?;
         ensure_no_commit_loop(
             repo,
             &RevsetExpression::commits(new_child_ids.clone()),
@@ -912,7 +913,7 @@ mod tests {
     use jj_lib::merged_tree::MergedTree;
     use jj_lib::object_id::ObjectId as _;
     use jj_lib::repo::{ReadonlyRepo, Repo as _};
-    use jj_lib::revset::ResolvedRevsetExpression;
+    use jj_lib::revset::{ResolvedRevsetExpression, RevsetExpression};
     use jj_lib::trailer::Trailer;
     use test_helpers::{extract_fixture, set_tag};
 
@@ -1063,13 +1064,12 @@ mod tests {
         pin_env();
         let fx = extract_fixture("tiny-3-commits").unwrap();
         let at = immutable_at_head(&fx.path);
-        let (readonly, immutable, templates) = at.parts();
+        let (readonly, _, templates) = at.parts();
         let one = commit_by_description(readonly, "Commit 1");
         let two = commit_by_description(readonly, "Commit 2");
 
         let (parents, children) = compute_commit_location(
             readonly.as_ref(),
-            immutable,
             &templates,
             None,
             Some(std::slice::from_ref(&one)),
@@ -1087,7 +1087,7 @@ mod tests {
         pin_env();
         let fx = extract_fixture("tiny-3-commits").unwrap();
         let at = immutable_at_head(&fx.path);
-        let (readonly, immutable, templates) = at.parts();
+        let (readonly, _, templates) = at.parts();
         let two = commit_by_description(readonly, "Commit 2");
         let three = commit_by_description(readonly, "Commit 3");
         let wc = working_copy_commit(readonly);
@@ -1099,7 +1099,6 @@ mod tests {
         // repeated `Commit 3` proves the dedup.
         let (parents, children) = compute_commit_location(
             readonly.as_ref(),
-            immutable,
             &templates,
             None,
             None,
@@ -1117,13 +1116,12 @@ mod tests {
         pin_env();
         let fx = extract_fixture("tiny-3-commits").unwrap();
         let at = immutable_at_head(&fx.path);
-        let (readonly, immutable, templates) = at.parts();
+        let (readonly, _, templates) = at.parts();
         let one = commit_by_description(readonly, "Commit 1");
         let three = commit_by_description(readonly, "Commit 3");
 
         let (parents, children) = compute_commit_location(
             readonly.as_ref(),
-            immutable,
             &templates,
             None,
             Some(std::slice::from_ref(&one)),
@@ -1141,12 +1139,11 @@ mod tests {
         pin_env();
         let fx = extract_fixture("tiny-3-commits").unwrap();
         let at = immutable_at_head(&fx.path);
-        let (readonly, immutable, templates) = at.parts();
+        let (readonly, _, templates) = at.parts();
         let three = commit_by_description(readonly, "Commit 3");
 
         let (parents, children) = compute_commit_location(
             readonly.as_ref(),
-            immutable,
             &templates,
             Some(std::slice::from_ref(&three)),
             None,
@@ -1164,12 +1161,11 @@ mod tests {
         pin_env();
         let fx = extract_fixture("tiny-3-commits").unwrap();
         let at = immutable_at_head(&fx.path);
-        let (readonly, immutable, templates) = at.parts();
+        let (readonly, _, templates) = at.parts();
         let one = commit_by_description(readonly, "Commit 1");
 
         let err = compute_commit_location(
             readonly.as_ref(),
-            immutable,
             &templates,
             Some(std::slice::from_ref(&one)),
             Some(std::slice::from_ref(&one)),
@@ -1188,12 +1184,11 @@ mod tests {
         pin_env();
         let fx = extract_fixture("tiny-3-commits").unwrap();
         let at = immutable_at_head(&fx.path);
-        let (readonly, immutable, templates) = at.parts();
+        let (readonly, _, templates) = at.parts();
         let one = commit_by_description(readonly, "Commit 1");
 
         let err = compute_commit_location(
             readonly.as_ref(),
-            immutable,
             &templates,
             Some(std::slice::from_ref(&one)),
             None,
@@ -1212,9 +1207,9 @@ mod tests {
         pin_env();
         let fx = extract_fixture("tiny-3-commits").unwrap();
         let at = immutable_at_head(&fx.path);
-        let (readonly, immutable, templates) = at.parts();
+        let (readonly, _, templates) = at.parts();
 
-        let err = compute_commit_location(readonly.as_ref(), immutable, &templates, None, None, None, "commit")
+        let err = compute_commit_location(readonly.as_ref(), &templates, None, None, None, "commit")
             .expect_err("the CLI panics here; a library must refuse");
         assert!(
             matches!(&err, MutateError::InvalidInput { reason, .. } if reason.contains("at least one of")),
@@ -1227,7 +1222,7 @@ mod tests {
         pin_env();
         let fx = extract_fixture("tiny-3-commits").unwrap();
         let at = immutable_at_head(&fx.path);
-        let (readonly, immutable, templates) = at.parts();
+        let (readonly, _, templates) = at.parts();
         let one = commit_by_description(readonly, "Commit 1");
         let three = commit_by_description(readonly, "Commit 3");
 
@@ -1235,7 +1230,6 @@ mod tests {
         // make `Commit 1` both an ancestor and a descendant.
         let err = compute_commit_location(
             readonly.as_ref(),
-            immutable,
             &templates,
             None,
             Some(std::slice::from_ref(&three)),
@@ -1260,11 +1254,10 @@ mod tests {
         set_tag(&fx.path, "v1", &[&two.hex()]);
 
         let at = immutable_at_head(&fx.path);
-        let (readonly, immutable, templates) = at.parts();
+        let (readonly, _, templates) = at.parts();
         let one = commit_by_description(readonly, "Commit 1");
         let err = compute_commit_location(
             readonly.as_ref(),
-            immutable,
             &templates,
             None,
             Some(std::slice::from_ref(&one)),
@@ -1278,24 +1271,55 @@ mod tests {
         );
     }
 
+    /// The CLI resolves the immutable set only for a location with children (its
+    /// `check_rewritable`): a leaf's `-A` never reads an unresolvable alias.
+    #[test]
+    fn compute_commit_location_resolves_the_immutable_set_only_for_children() {
+        pin_env();
+        let fx = extract_fixture("tiny-3-commits").unwrap();
+        let at = immutable_at_head(&fx.path);
+        let unresolvable = RevsetExpression::symbol("nonexistent_symbol_xyz".to_owned());
+        let templates = Templates::new(&at.config, &unresolvable, &at.env.template_startup, at.repo.workspace());
+        let one = commit_by_description(&at.readonly, "Commit 1");
+        let three = commit_by_description(&at.readonly, "Commit 3");
+
+        let (parents, children) = compute_commit_location(
+            at.readonly.as_ref(),
+            &templates,
+            None,
+            Some(std::slice::from_ref(&three)),
+            None,
+            "commit",
+        )
+        .expect("a leaf has no children, so the set is never resolved");
+        assert_eq!(parents, vec![three]);
+        assert!(children.is_empty());
+
+        let err = compute_commit_location(
+            at.readonly.as_ref(),
+            &templates,
+            None,
+            Some(std::slice::from_ref(&one)),
+            None,
+            "commit",
+        )
+        .expect_err("Commit 1 has a child, so the set is resolved");
+        assert!(
+            matches!(&err, MutateError::Config { reason } if reason.starts_with("Invalid `revset-aliases.immutable_heads()`: ")),
+            "unexpected error: {err:?}"
+        );
+    }
+
     #[test]
     fn compute_commit_location_refuses_an_empty_parent_set() {
         pin_env();
         let fx = extract_fixture("tiny-3-commits").unwrap();
         let at = immutable_at_head(&fx.path);
-        let (readonly, immutable, templates) = at.parts();
+        let (readonly, _, templates) = at.parts();
 
         // `-A` with no targets resolves no parents and no children.
-        let err = compute_commit_location(
-            readonly.as_ref(),
-            immutable,
-            &templates,
-            None,
-            Some(&[]),
-            None,
-            "commit",
-        )
-        .expect_err("no parents is refused");
+        let err = compute_commit_location(readonly.as_ref(), &templates, None, Some(&[]), None, "commit")
+            .expect_err("no parents is refused");
         assert!(
             matches!(&err, MutateError::InvalidInput { reason, .. } if reason == "No revisions found to use as parent"),
             "unexpected error: {err:?}"

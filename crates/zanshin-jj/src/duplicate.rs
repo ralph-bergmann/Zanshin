@@ -13,13 +13,12 @@
 //! result's `new_change_ids`.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use futures::TryStreamExt as _;
 use jj_lib::backend::CommitId;
 use jj_lib::commit::Commit;
 use jj_lib::repo::Repo as _;
-use jj_lib::revset::{ResolvedRevsetExpression, RevsetExpression};
+use jj_lib::revset::RevsetExpression;
 use jj_lib::rewrite::{duplicate_commits, duplicate_commits_onto_parents, DuplicateCommitsStats};
 use jj_lib::transaction::Transaction;
 use jj_lib::workspace::Workspace;
@@ -28,7 +27,7 @@ use crate::mutate::{
     be, finish_verb, mutation_result, refuse_git_root_merge, resolve_or_wc, MutateError, MutationResult,
 };
 use crate::op_support::{
-    resolve_commit_location, resolve_immutable, resolve_ordered, start_repo_transaction, LocationArgs, ONTO_WITH_INSERT,
+    resolve_commit_location, resolve_ordered, start_repo_transaction, LocationArgs, ONTO_WITH_INSERT,
 };
 use crate::snapshot::VerbContext;
 use crate::template::Templates;
@@ -67,8 +66,9 @@ pub(crate) struct DuplicatePlan {
 /// - [`MutateError::ChangeNotFound`] — a revision or a location id does not resolve.
 /// - [`MutateError::InvalidInput`] — the root commit is among the revisions, a location refusal
 ///   of `compute_commit_location`, or (Git backend) a root merge as the location's parents.
-/// - [`MutateError::Immutable`] — (`-A`/`-B`) a child the location would rewrite is immutable.
-/// - [`MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+/// - [`MutateError::Immutable`] — a child the location would rewrite is immutable.
+/// - [`MutateError::Config`] — (a location with children) the `immutable_heads()` alias does not
+///   resolve.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 pub(crate) fn plan_duplicate(
     tx: &Transaction,
@@ -84,9 +84,10 @@ pub(crate) fn plan_duplicate(
 /// itself (the CLI evaluates `@` to its commit id), never its change id, which a divergent `@`
 /// would not resolve. The commits are put in reverse topological order, then the root refusal
 /// (`Cannot duplicate the root commit`, when the last — the oldest — is the root), then the
-/// location (`"duplicated commits"`). The immutable set is resolved for `-A`/`-B` with the
-/// location, whose children it rewrites; otherwise last, where the CLI's `tx.finish` resolves it
-/// — every duplicate writes (Story 9.56). Two or more location parents with the root among them
+/// location (`"duplicated commits"`). The plan resolves the immutable set only where the CLI's
+/// `compute_commit_location` does: for a location with children, which it rewrites. Otherwise the
+/// verb parses `templates.duplicate_description` first and its finish resolves the set, the CLI's
+/// order (Story 9.18 closing run). Two or more location parents with the root among them
 /// refuse up front on a Git-backed store, with the backend's own text — the CLI reaches it at the
 /// duplicates' write.
 ///
@@ -106,15 +107,9 @@ pub(crate) fn plan_duplicate_ids(
     if to_duplicate.last() == Some(tx.base_repo().store().root_commit_id()) {
         return Err(MutateError::invalid("Cannot duplicate the root commit".to_owned()));
     }
-    let inserts = location.inserts();
-    let has_location = !location.onto.is_empty() || inserts;
+    let has_location = !location.onto.is_empty() || location.inserts();
     let location = if has_location {
-        let resolved: Arc<ResolvedRevsetExpression> = if inserts {
-            resolve_immutable(tx.base_repo().as_ref(), templates.immutable())?
-        } else {
-            RevsetExpression::none()
-        };
-        let (parents, children) = resolve_commit_location(tx, &resolved, templates, location, "duplicated commits")?;
+        let (parents, children) = resolve_commit_location(tx, templates, location, "duplicated commits")?;
         // The Git backend refuses the duplicates' write for a root merge; refused up front so the
         // preview and the verb agree (Story 9.31).
         refuse_git_root_merge(tx.repo().store(), &parents)?;
@@ -122,9 +117,6 @@ pub(crate) fn plan_duplicate_ids(
     } else {
         None
     };
-    if !inserts {
-        resolve_immutable(tx.base_repo().as_ref(), templates.immutable())?;
-    }
     Ok(DuplicatePlan { to_duplicate, location })
 }
 
