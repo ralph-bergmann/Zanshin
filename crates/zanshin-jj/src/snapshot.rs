@@ -1152,7 +1152,31 @@ mod tests {
     /// outside comments, is free of the call — [`super::reload_head`] is the head load.
     #[test]
     fn no_production_code_calls_load_at_head() {
-        let mut dirs = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
+        // The scan finds a production call, wherever it hides, and nothing else.
+        let scratch = tempfile::TempDir::new().expect("tempdir");
+        let sub = scratch.path().join("sub");
+        std::fs::create_dir(&sub).expect("subdir");
+        std::fs::write(scratch.path().join("notes.txt"), "repo.load_at_head()\n").expect("notes");
+        let offending = sub.join("offending.rs");
+        std::fs::write(
+            &offending,
+            "fn production() {\n    repo.load_at_head();\n}\n// repo.load_at_head() in a comment\n\
+             #[cfg(test)]\nfn test() { repo.load_at_head(); }\n",
+        )
+        .expect("offending source");
+        assert_eq!(
+            load_at_head_offenders(scratch.path()),
+            [format!("{}:2", offending.display())]
+        );
+
+        let offenders = load_at_head_offenders(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"));
+        assert!(offenders.is_empty(), "{offenders:#?}");
+    }
+
+    /// `file:line` of every `.load_at_head()` call in the production part of a `.rs` file
+    /// under `root` — see [`no_production_code_calls_load_at_head`].
+    fn load_at_head_offenders(root: &std::path::Path) -> Vec<String> {
+        let mut dirs = vec![root.to_path_buf()];
         let mut offenders = Vec::new();
         while let Some(dir) = dirs.pop() {
             for entry in std::fs::read_dir(&dir).expect("src dir") {
@@ -1173,6 +1197,6 @@ mod tests {
                 }
             }
         }
-        assert!(offenders.is_empty(), "{offenders:#?}");
+        offenders
     }
 }

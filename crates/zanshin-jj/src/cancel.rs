@@ -719,10 +719,7 @@ mod tests {
             .process_group(0)
             .spawn()
             .expect("sh spawns");
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while std::fs::read_to_string(&forked).map_or(true, |pid| pid.trim().is_empty()) && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(10));
-        }
+        poll_until(|| std::fs::read_to_string(&forked).is_ok_and(|pid| !pid.trim().is_empty()));
         let member: libc::pid_t = std::fs::read_to_string(&forked)
             .expect("the member's pid")
             .trim()
@@ -731,10 +728,21 @@ mod tests {
         super::kill_group(leader.id(), super::GroupSignal::Terminate);
         let status = wait_for_exit(&mut leader, Duration::from_secs(10)).expect("the leader dies");
         assert_eq!(status.signal(), Some(libc::SIGTERM));
+        assert!(
+            poll_until(|| super::process::procargs(member).is_none()),
+            "the forked member dies too"
+        );
+    }
+
+    /// Asks `done` every 10 ms until it answers `true` or 10 s pass; returns its last answer.
+    #[cfg(target_os = "macos")]
+    fn poll_until(mut done: impl FnMut() -> bool) -> bool {
         let deadline = Instant::now() + Duration::from_secs(10);
-        while super::process::procargs(member).is_some() && Instant::now() < deadline {
+        let mut answer = done();
+        while !answer && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(10));
+            answer = done();
         }
-        assert!(super::process::procargs(member).is_none(), "the forked member dies too");
+        answer
     }
 }
