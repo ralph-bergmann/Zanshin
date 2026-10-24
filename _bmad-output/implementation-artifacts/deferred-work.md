@@ -1945,3 +1945,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **`Operation` carries only the operation's end time, so a typed op-log entry cannot show the start time and duration that `jj op log` shows.** Low.
   - The CLI's op-log entry renders `format_time_range(op.time())` (end time plus ", lasted <duration>", `cli/src/config/templates.toml:345-347` @ v0.46.0); `crates/zanshin-jj/src/op_log.rs` `Operation.timestamp` is `metadata.time.end` only. Pre-existing since Epic 2's op-log read; 9.21 widened `Operation` with `workspace_name` and `tags` only.
   - **Follow-up:** append a `started` timestamp (`metadata.time.start`) to `Operation` (zanshin-jj, `.fbs` field appended, Dart model) when the Undo Timeline (11.9 / 11.13) wants the duration; otherwise none.
+
+## Surfaced in Story 9.12 (bmad-build-auto, 2026-10-24)
+
+- **`op_show_diff::op_diff_of_a_rebasing_merge_operation_fails_like_the_cli` is flaky: the reconciling merge does not always produce the predecessor cycle it pins.** Low.
+  - Measured 2026-10-24: 3 of 40 isolated runs fail on the 9.12 baseline (`git archive 12c5b60`), 2 of 40 with Story 9.12 applied, and it failed in two full `cargo test -p zanshin-jj` runs; the outcome depends on the unpinned commit/operation timestamps the two `diverge` describes get (`crates/zanshin-jj/tests/it/op_show_diff.rs`). Not caused by 9.12.
+  - **Follow-up:** make the scenario deterministic (pin `JJ_TIMESTAMP` / `JJ_OP_TIMESTAMP` for it in its own process, or build the divergence so the cycle does not depend on id order), or assert on either outcome the CLI can produce.
