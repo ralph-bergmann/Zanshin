@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/fix.rs (Runner::run_tool); packages/zanshin_core/test/worker/metaedit_duplicate_fix_test.dart
     severity: medium
+    resolved: >-
+      2026-10-24 — fixed (loop-9-9-9-12-followon-2-dart-spawn-fix-cancel-select-tree-modes, commit af46df3d2eb1d5566dbd845d505dcd4c7d13f978): house rule (Dart starts child processes only detached, or from Rust) plus a guard test over every Dart `lib/` tree; no Rust change.
   - summary: >-
       `jj.fileset_diagnostic` is registered and wired but jj-lib 0.46 emits no fileset diagnostics, so no test reaches it.
     evidence: |-
@@ -42,6 +44,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/fix.rs (Runner::run_tool)
     severity: medium
+    resolved: >-
+      2026-10-24 — fixed (loop-9-9-9-12-followon-2-dart-spawn-fix-cancel-select-tree-modes, commit bb053950f2fa711f2a8f7163949b585d642d9e35): `fix` is cancellable (9.52 pattern; the tool's process group is killed, `jj.cancelled`, no operation) and takes an optional `fix.tools.<name>.timeout` (`jj.fix_tool_timed_out`).
   - summary: >-
       A fix tool that exits without reading stdin could raise SIGPIPE in the host process if the Flutter/Dart host does not ignore SIGPIPE.
     evidence: |-

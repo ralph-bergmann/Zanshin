@@ -26,6 +26,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/select_tree.rs (module doc, select_sections)
     severity: medium
+    resolved: >-
+      2026-10-24 — fixed (loop-9-9-9-12-followon-2-dart-spawn-fix-cancel-select-tree-modes, commit b08ea22788b10becc2d1794f394cd571c3cc1200): `FileChoice::ModeAndHunks` (wire `FileSelection.mode`) and sections over a conflicted file's materialized markers, written back as the builtin editor's `write_file`.
 ---
 
 <intent-contract>
