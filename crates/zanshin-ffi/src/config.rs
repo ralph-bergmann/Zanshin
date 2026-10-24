@@ -15,8 +15,9 @@
 //! but the `gc` pair starts, when the request names a workspace root, with the jj CLI's start-up
 //! secure-config fix-up (Story 9.37) and carries its notices (`jj.config_migrated`,
 //! `jj.config_copied`, `jj.config_regenerated`) as its first `Envelope.warnings`, on the ok AND
-//! the error envelope. Every wrapper but the two editor halves then carries its start-up's
-//! `jj.config_deprecated` (Story 9.9), on either envelope. After them (Story 9.32):
+//! the error envelope. Every wrapper then carries its start-up's `jj.config_deprecated` (Story
+//! 9.9), on either envelope — the two editor halves only when their start-up stack resolves (a
+//! stack that does not is theirs to repair, never a refusal). After them (Story 9.32):
 //! `zanshin_config_set` carries its snapshot's warnings, then `jj.config_working_copy_author`;
 //! `zanshin_config_list` `jj.config_nothing_listed`; and `zanshin_config_gc_delete`
 //! `jj.config_gc_delete_failed`.
@@ -650,10 +651,11 @@ pub unsafe extern "C" fn zanshin_config_unset(data: *const u8, len: usize) -> *m
 
 /// `jj config edit`, editor half 1: the file `zanshin_config_set` would write (the scope's first
 /// file, or `path` — the CLI's `--file`) and its exact text, CREATING an absent
-/// file first with jj-lib's empty document (as the CLI does before starting `$EDITOR`). Loads no
-/// start-up stack, so a broken config can be read and repaired — but with `workspace_root` it
-/// starts with the CLI's start-up secure-config fix-up alone (Story 9.37), whose notices ride
-/// the ok AND the error envelope. The arguments cross as a `ConfigFileReadRequest` buffer;
+/// file first with jj-lib's empty document (as the CLI does before starting `$EDITOR`). Never
+/// refuses on the start-up stack, so a broken config can be read and repaired — but with
+/// `workspace_root` it starts with the CLI's start-up secure-config fix-up (Story 9.37), and when
+/// the start-up stack resolves it warns `jj.config_deprecated` after the fix-up's notices; both
+/// ride the ok AND the error envelope. The arguments cross as a `ConfigFileReadRequest` buffer;
 /// returns a `ConfigFileText`.
 ///
 /// # Errors
@@ -687,8 +689,8 @@ pub unsafe extern "C" fn zanshin_config_file_read(data: *const u8, len: usize) -
 /// relative `path` taken against `workspace_root`), and only after `text`
 /// parses as TOML (the CLI's re-edit loop, with the UI holding the buffer). Returns an ok
 /// `Envelope` with no payload. Like half 1, with `workspace_root` it starts with the CLI's
-/// start-up secure-config fix-up alone (Story 9.37), whose notices ride the ok AND the error
-/// envelope.
+/// start-up secure-config fix-up (Story 9.37) and, when the start-up stack (before the write)
+/// resolves, warns `jj.config_deprecated`; both ride the ok AND the error envelope.
 ///
 /// # Errors
 /// - `ffi.null_pointer` — `data` is a null pointer.

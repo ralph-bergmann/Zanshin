@@ -1038,7 +1038,7 @@ pub(crate) fn describe(
     change_id: &ChangeId,
     description: &str,
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
@@ -1242,7 +1242,7 @@ pub(crate) fn new_change(
     insert_after: &[ChangeId],
     insert_before: &[ChangeId],
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
@@ -1355,7 +1355,7 @@ pub(crate) fn edit(
     ctx: &mut VerbContext,
     change_id: &ChangeId,
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
@@ -1433,7 +1433,7 @@ pub(crate) fn abandon(
         ));
     }
 
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let old_wc_id = readonly.view().get_wc_commit_id(&workspace_name).cloned();
 
@@ -1586,7 +1586,7 @@ pub(crate) fn finish_or_no_op<T, F>(
 where
     F: FnOnce(&mut Transaction, &mut Warnings) -> Result<T, MutateError>,
 {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     finish_or_no_op_at(workspace, readonly, description, ctx, work)
 }
 
@@ -1878,7 +1878,7 @@ pub(crate) fn restore(
     paths: &[String],
     restore_descendants: bool,
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
@@ -2033,7 +2033,7 @@ pub(crate) fn absorb(
     destinations: &Arc<UserRevsetExpression>,
     paths: &[String],
 ) -> Result<AbsorbResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);

@@ -95,7 +95,7 @@ fn repo_path_to_pathbuf(p: &jj_lib::repo_path::RepoPath) -> PathBuf {
 /// status then has no files and no change ids.
 pub(crate) fn working_copy_status(workspace: &Workspace) -> Result<Status, StatusError> {
     // Re-resolve to head — ADR-0002.
-    let repo = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let repo = crate::snapshot::reload_head(workspace).map_err(be)?;
 
     // Resolve @: get the working-copy commit id and load the commit (SYNC).
     let Some(wc_id) = repo.view().get_wc_commit_id(workspace.workspace_name()) else {

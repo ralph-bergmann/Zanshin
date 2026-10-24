@@ -384,13 +384,12 @@ fn assert_own_root_resolves(repo: &mut Repo, expected: &std::path::Path) {
     let named = repo
         .resolve_workspace_root(Some("default"))
         .expect("the workspace's own recorded path must resolve");
-    assert!(named.warnings.is_empty(), "the recorded directory exists");
-    assert_same_dir(&named.value, expected);
+    assert!(repo.take_warnings().is_empty(), "the recorded directory exists");
+    assert_same_dir(&named, expected);
     assert_eq!(
-        named.value,
+        named,
         repo.resolve_workspace_root(None)
-            .expect("the no-name default cannot fail")
-            .value,
+            .expect("the no-name default cannot fail"),
         "naming the current workspace must agree with the no-name default"
     );
 }

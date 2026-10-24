@@ -164,7 +164,7 @@ fn to_signature(sig: &jj_lib::backend::Signature) -> Signature {
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn get_change(workspace: &Workspace, id: &ChangeId) -> Result<Change, ChangeError> {
     // 1. Reload to head (ADR-0002; sync via pollster — mirrors status.rs:85).
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let store = readonly.store();
 

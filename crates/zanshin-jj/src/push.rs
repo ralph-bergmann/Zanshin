@@ -1850,7 +1850,7 @@ pub(crate) fn git_push(
     progress: &crate::ProgressFn,
     cancel: Option<&crate::cancel::CancelGuard>,
 ) -> Result<GitPushOutcome, MutateError> {
-    let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(repo.workspace()).map_err(be)?;
     let base_op = readonly.op_id().hex();
     let mut tx = crate::op_support::start_repo_transaction(&readonly, repo.workspace().workspace_name());
     let mut plan = plan_push(repo, ctx, &mut tx, args)?;

@@ -423,7 +423,7 @@ pub(crate) fn file_track(
     if include_ignored {
         options.force_tracking_matcher = matcher.as_ref();
     }
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let ((track_stats, num_rebased), mutation) =
         mutate::commit_with_locked_wc(workspace, &readonly, "track paths", |tx, locked_wc, _wc_commit| {
             // The snapshot TREE is discarded, as in the CLI: see the module doc (GH #8298).
@@ -543,7 +543,7 @@ pub(crate) fn file_untrack(
     let colocated_root = is_colocated_git_workspace(workspace)
         .map_err(|e| MutateError::Backend(flatten_chain(&e)))?
         .then(|| workspace.workspace_root().to_owned());
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let sink = &mut ctx.warnings;
     let (outcome, mutation) =
         mutate::commit_with_locked_wc(workspace, &readonly, "untrack paths", |tx, locked_wc, wc_commit| {

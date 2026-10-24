@@ -99,8 +99,7 @@ pub enum RevsetError {
 #[must_use = "the resolved change ids are the result of this call"]
 pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetError> {
     // 1. Reload to head (ADR-0002; sync via pollster — mirrors status.rs:85).
-    let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head())
-        .map_err(|e| RevsetError::JjLibError(e.to_string()))?;
+    let readonly = crate::snapshot::reload_head(repo.workspace()).map_err(RevsetError::JjLibError)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
 
     // 2. Parse → resolve → evaluate (shared with the graph walk in `graph.rs`). This oracle
@@ -112,7 +111,7 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
     let set = evaluate_revset(repo_dyn, &parsed)?;
 
     // 3. Collect the change-id stream (0.42: `commit_change_ids` returns a Stream — drive it
-    //    synchronously via pollster, mirroring the `load_at_head` call above), then
+    //    synchronously via pollster, mirroring the head load above), then
     //    reverse-hex → dedup (preserve first-seen topological order) → materialize.
     let pairs: Vec<_> = pollster::block_on(set.commit_change_ids().try_collect())
         .map_err(|e| RevsetError::JjLibError(e.to_string()))?;
@@ -142,7 +141,7 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
 /// [`Change::id`] with `divergent` set. A caller keying rows by change id must handle that.
 ///
 /// The five phases mirror [`crate::graph::walk_graph`]: load the effective config once, build
-/// the alias map, parse (no loaded operation needed, so a syntax error costs no `load_at_head`
+/// the alias map, parse (no loaded operation needed, so a syntax error costs no head load
 /// I/O), reload to head (ADR-0002), evaluate, then drive `Revset::stream()` through
 /// jj-lib's own `RevsetStreamExt::commits` — the same hydration the CLI's `jj log` uses
 /// (`cli/src/commands/log.rs` @ v0.44.0).
@@ -155,7 +154,7 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
 ///   no working-copy commit for `@`, unmatched/ambiguous id).
 /// - [`RevsetError::Config`] — the repo's effective jj config is malformed or unreadable. A
 ///   single bad `[revset-aliases]` entry is NOT an error: like the CLI, it warns and is skipped.
-/// - [`RevsetError::JjLibError`] — `load_at_head`, evaluation, or a per-item stream/store
+/// - [`RevsetError::JjLibError`] — the head load, evaluation, or a per-item stream/store
 ///   failure. Changes already handed to `visit` before an `Err` are not retracted — discard
 ///   partial output on `Err`.
 pub(crate) fn eval_revset(
@@ -171,8 +170,7 @@ pub(crate) fn eval_revset(
     let parsed = parse_revset_with(repo, &parse_config, revset, sink)?;
 
     // 2. Reload to head (ADR-0002; sync via pollster — mirrors `resolve_revset` above).
-    let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head())
-        .map_err(|e| RevsetError::JjLibError(e.to_string()))?;
+    let readonly = crate::snapshot::reload_head(repo.workspace()).map_err(RevsetError::JjLibError)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let store = readonly.store();
 

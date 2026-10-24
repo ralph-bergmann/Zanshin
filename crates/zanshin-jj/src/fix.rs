@@ -542,7 +542,7 @@ pub(crate) fn fix(
     options: &FixOptions,
 ) -> Result<FixResult, MutateError> {
     let tools = get_tools_config(&ctx.config, &mut ctx.warnings)?;
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let repo = readonly.as_ref();

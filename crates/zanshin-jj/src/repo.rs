@@ -393,12 +393,10 @@ impl Repo {
     }
 
     /// The start of every call that snapshots — the pre-verb precondition and
-    /// [`Repo::workspace_update_stale`]: [`Repo::refresh_settings`] (its fix-up warnings the
-    /// call's first, also when it fails), a fresh report and warning collector, the effective
-    /// config (its migrations' "Deprecated … config" warnings right after the fix-up's, Story
-    /// 9.9), the colocation check, the start-up environment
-    /// ([`crate::snapshot::CommandEnv`], built before any lock is taken), then the `trunk()`
-    /// fallback ([`Repo::fall_back_on_trunk`]).
+    /// [`Repo::workspace_update_stale`] — and of [`Repo::op_integrate`] and the named
+    /// [`Repo::resolve_workspace_root`]: [`Repo::start_command`], the colocation check, the
+    /// start-up environment ([`crate::snapshot::CommandEnv`], built before any lock is taken),
+    /// then the `trunk()` fallback ([`Repo::fall_back_on_trunk`]).
     ///
     /// # Errors
     ///
@@ -406,6 +404,24 @@ impl Repo {
     fn start_call(
         &mut self,
     ) -> Result<(jj_lib::config::StackedConfig, bool, crate::snapshot::CommandEnv), crate::PreconditionError> {
+        let config = self.start_command()?;
+        let colocated = crate::wc_ops::is_colocated_git_workspace(&self.workspace)
+            .map_err(|e| crate::PreconditionError::Backend(crate::mutate::flatten_chain(&e)))?;
+        let env = crate::snapshot::CommandEnv::load(&self.workspace, &config, &mut self.pending_warnings)?;
+        let (config, env) = self.fall_back_on_trunk(config, env)?;
+        Ok((config, colocated, env))
+    }
+
+    /// The part of the CLI's `run_internal` every command runs (`cli/src/cli_util.rs:4630-4750`
+    /// @ v0.46.0): [`Repo::refresh_settings`] (the secure-config fix-up — its warnings the call's
+    /// first, also when it fails — and the settings re-derived), a fresh report and warning
+    /// collector, then the effective config with its migrations' "Deprecated … config" warnings
+    /// right after the fix-up's (Story 9.9).
+    ///
+    /// # Errors
+    ///
+    /// Any [`crate::PreconditionError`] of those steps; the empty report stays behind.
+    fn start_command(&mut self) -> Result<jj_lib::config::StackedConfig, crate::PreconditionError> {
         self.trunk_fallback = false;
         let mut fix_ups = Vec::new();
         let refreshed = self.refresh_settings(&mut fix_ups);
@@ -416,11 +432,7 @@ impl Repo {
         let (config, deprecations) = crate::config::load_migrated(self)?;
         self.pending_warnings
             .extend(crate::config::deprecation_warnings(deprecations));
-        let colocated = crate::wc_ops::is_colocated_git_workspace(&self.workspace)
-            .map_err(|e| crate::PreconditionError::Backend(crate::mutate::flatten_chain(&e)))?;
-        let env = crate::snapshot::CommandEnv::load(&self.workspace, &config, &mut self.pending_warnings)?;
-        let (config, env) = self.fall_back_on_trunk(config, env)?;
-        Ok((config, colocated, env))
+        Ok(config)
     }
 
     /// The CLI's `trunk()` fallback in `load_from_workspace` (`cli/src/cli_util.rs:540-562` @
@@ -571,13 +583,13 @@ impl Repo {
     /// The jj CLI's `ui.warning_*` output for that call, as coded facts in its print order: the
     /// start-up secure-config fix-up's (Story 9.37), the config-load warnings, the pre-verb
     /// snapshot's and imports', the verb body's, and the transaction finish's. The list is reset
-    /// ONLY where a verb runs the precondition: such a verb starts a fresh list and leaves it
-    /// behind — on success AND on failure (then everything up to the failure). Verbs that do not
-    /// snapshot ([`Repo::workspace_root`], [`Repo::resolve_workspace_root`],
-    /// [`Repo::log_defaults`], [`Repo::commit_contents`]) neither reset nor add to it, so
-    /// a take after one of them returns whatever an earlier verb left untaken. A caller takes
-    /// the list after each precondition-running verb, as the FFI layer does for every envelope
-    /// it builds for one.
+    /// ONLY where a verb runs the precondition or the command start-up without it
+    /// ([`Repo::op_integrate`], [`Repo::resolve_workspace_root`]): such a verb starts a fresh
+    /// list and leaves it behind — on success AND on failure (then everything up to the
+    /// failure). Verbs that run neither ([`Repo::workspace_root`], [`Repo::log_defaults`],
+    /// [`Repo::commit_contents`]) neither reset nor add to it, so a take after one of them
+    /// returns whatever an earlier verb left untaken. A caller takes the list after each
+    /// start-up-running verb, as the FFI layer does for every envelope it builds for one.
     #[must_use]
     pub fn take_warnings(&mut self) -> Vec<crate::Warning> {
         self.pending_warnings.take()
@@ -621,7 +633,7 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::OpLogError::Backend`] — `load_at_head` or the op-store walk failed; the
+    /// - [`crate::OpLogError::Backend`] — the head load or the op-store walk failed; the
     ///   jj-lib reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn op_log(&mut self, limit: Option<usize>) -> Result<Vec<crate::Operation>, crate::OpLogError> {
@@ -659,7 +671,7 @@ impl Repo {
     /// - [`crate::BookmarkError::Config`] — `ui.bookmark-list-sort-keys` is not an array of the
     ///   CLI's key names, or the revset aliases do not load.
     /// - [`crate::BookmarkError::Precondition`] — the pre-verb snapshot failed.
-    /// - [`crate::BookmarkError::Backend`] — `load_at_head`, a store read or a distance revset
+    /// - [`crate::BookmarkError::Backend`] — the head load, a store read or a distance revset
     ///   failed; the jj-lib reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_bookmarks(
@@ -686,7 +698,7 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::ViewError::Backend`] — `load_at_head` or a store read failed; the jj-lib
+    /// - [`crate::ViewError::Backend`] — the head load or a store read failed; the jj-lib
     ///   reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_tags(&mut self) -> Result<Vec<crate::Tag>, crate::ViewError> {
@@ -702,7 +714,7 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::ViewError::Backend`] — `load_at_head` failed; the jj-lib reason is forwarded
+    /// - [`crate::ViewError::Backend`] — the head load failed; the jj-lib reason is forwarded
     ///   as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_heads(&mut self) -> Result<Vec<crate::CommitId>, crate::ViewError> {
@@ -717,7 +729,7 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::ViewError::Backend`] — `load_at_head` failed; the jj-lib reason is forwarded
+    /// - [`crate::ViewError::Backend`] — the head load failed; the jj-lib reason is forwarded
     ///   as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_working_copies(&mut self) -> Result<Vec<crate::WorkingCopy>, crate::ViewError> {
@@ -735,7 +747,7 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::RemoteError::Backend`] — `load_at_head` failed; the jj-lib
+    /// - [`crate::RemoteError::Backend`] — the head load failed; the jj-lib
     ///   reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_remotes(&mut self) -> Result<Vec<crate::Remote>, crate::RemoteError> {
@@ -1053,7 +1065,7 @@ impl Repo {
     /// - [`crate::RevsetError::Config`] — the repo's effective jj config is malformed or
     ///   unreadable. A single bad `[revset-aliases]` entry is NOT an error: like the CLI, it
     ///   warns and is skipped.
-    /// - [`crate::RevsetError::JjLibError`] — `load_at_head`, evaluation, metadata
+    /// - [`crate::RevsetError::JjLibError`] — the head load, evaluation, metadata
     ///   extraction, or a per-item stream failure; the jj-lib reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn walk_graph(
@@ -1103,7 +1115,7 @@ impl Repo {
     ///   unreadable.
     /// - [`crate::RevsetError::DanglingEdge`] — an edge names a target outside the node set
     ///   (jj-lib's stream contract rules it out).
-    /// - [`crate::RevsetError::JjLibError`] — `load_at_head`, evaluation, a per-node index
+    /// - [`crate::RevsetError::JjLibError`] — the head load, evaluation, a per-node index
     ///   lookup, a stream item, or (with `with_timestamps`) a commit load failed.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn graph_topology(
@@ -1201,7 +1213,7 @@ impl Repo {
     /// - [`crate::RevsetError::Config`] — the repo's effective jj config is malformed or
     ///   unreadable. A single bad `[revset-aliases]` entry is NOT an error: like the CLI, it
     ///   warns and is skipped.
-    /// - [`crate::RevsetError::JjLibError`] — `load_at_head`, evaluation, or a per-item
+    /// - [`crate::RevsetError::JjLibError`] — the head load, evaluation, or a per-item
     ///   stream/store failure; the jj-lib reason is forwarded as a string.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn eval_revset(
@@ -2305,7 +2317,7 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// - [`crate::WorkspaceError::Backend`] — `load_at_head` failed, i.e. the VIEW half could not
+    /// - [`crate::WorkspaceError::Backend`] — the head load failed, i.e. the VIEW half could not
     ///   be read; the jj-lib reason is forwarded as a string. No path failure reaches this.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
     pub fn list_workspaces(&mut self) -> Result<Vec<crate::WorkspaceEntry>, crate::WorkspaceError> {
@@ -2314,34 +2326,59 @@ impl Repo {
 
     /// Returns a workspace's root directory (Story 9.7) — the CLI's `jj workspace root [--name]`.
     ///
-    /// Read-only; never shells to `jj workspace root` (AR-AP-1), and never writes an operation —
-    /// not even on a refusal. `name` is the CLI's long-only `--name`, passed through rather than
-    /// defaulted here (FR-JJ-17); `None` is its documented default, the CURRENT workspace.
+    /// Read-only; never shells to `jj workspace root` (AR-AP-1), runs no pre-verb snapshot and
+    /// writes no operation of its own. `name` is the CLI's long-only `--name`, passed through
+    /// rather than defaulted here (FR-JJ-17); `None` is its documented default, the CURRENT
+    /// workspace.
     ///
-    /// `resolve_workspace_root(None)` returns exactly what the infallible
-    /// [`Repo::workspace_root`] accessor returns, and reads the loader alone — no repo load, no
-    /// store read (`cli/src/commands/workspace/root.rs:75` @ v0.46.0). That is the ONLY overlap
-    /// between the two: with a name — even the CURRENT workspace's own — the call goes through
-    /// the `WorkspaceStore` and can REFUSE or WARN, because the CLI's named path never shortcuts
-    /// to the loader. A named lookup runs the CLI's stages in ITS order (store load, view
-    /// membership, recorded path) and returns the ABSOLUTE recorded path — not canonicalized, as
-    /// in the CLI since jj 0.46; the CLI's CWD-relative rendering is the GUI's job. A recorded
-    /// directory that does not exist is no refusal: the path comes back with a
-    /// `jj.workspace_path_inaccessible` warning in [`crate::Warned::warnings`].
+    /// Both forms first run the CLI's command start-up (`run_internal`, `cli/src/cli_util.rs:
+    /// 4630-4750` @ v0.46.0): the secure-config fix-up, the effective config and its migrations'
+    /// "Deprecated … config" warnings. The bare form stops there and returns exactly what the
+    /// infallible [`Repo::workspace_root`] accessor returns — the loader's root, no repo load, no
+    /// store read (`cli/src/commands/workspace/root.rs:75`). The named form — even with the
+    /// CURRENT workspace's own name — runs the start-up of `workspace_helper_no_snapshot`
+    /// (`root.rs:42`) on top, as [`Repo::op_integrate`]: the alias tables, the
+    /// `immutable_heads()` / short-prefixes parse and the `trunk()` fallback, and its head load
+    /// reconciles divergent heads in this workspace as the CLI's does. Then the CLI's stages run
+    /// in ITS order (store load, view membership, recorded path), and the ABSOLUTE recorded path
+    /// comes back — not canonicalized, as in the CLI since jj 0.46; the CLI's CWD-relative
+    /// rendering is the GUI's job. A recorded directory that does not exist is no refusal: the
+    /// path comes back with a `jj.workspace_path_inaccessible` warning, the call's last.
+    ///
+    /// The call resets the warning list: [`Repo::take_warnings`] afterwards holds the start-up's
+    /// warnings and the call's own, on success AND on failure (then everything up to the
+    /// refusal). [`Repo::take_precondition`] is `None` afterwards.
     ///
     /// An explicitly present EMPTY name is a VALUE, not an absence: no workspace is named `""`,
     /// so it refuses as [`crate::WorkspaceError::NotFound`].
     ///
     /// # Errors
     ///
+    /// - [`crate::WorkspaceError::Precondition`] — the start-up failed: a config stack that does
+    ///   not resolve (either form); with a name also an alias table, `immutable_heads()` or
+    ///   short-prefixes revset that does not parse.
     /// - [`crate::WorkspaceError::NotFound`] — no workspace of that name is in the head view.
     /// - [`crate::WorkspaceError::NoRecordedPath`] — the workspace exists but the store holds no
     ///   path for it (it predates jj 0.38.0, or its entry was wiped).
     /// - [`crate::WorkspaceError::Backend`] — the workspace store could not be loaded or read, or
-    ///   `load_at_head` failed.
+    ///   the head load failed.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
-    pub fn resolve_workspace_root(&self, name: Option<&str>) -> Result<crate::Warned<PathBuf>, crate::WorkspaceError> {
-        crate::workspace::resolve_root(self.workspace(), name)
+    pub fn resolve_workspace_root(&mut self, name: Option<&str>) -> Result<PathBuf, crate::WorkspaceError> {
+        let result = match name {
+            None => self
+                .start_command()
+                .map(|_| self.workspace.workspace_root().to_owned())
+                .map_err(crate::WorkspaceError::from),
+            Some(name) => self
+                .start_call()
+                .map_err(crate::WorkspaceError::from)
+                .and_then(|_| crate::workspace::resolve_root(&self.workspace, name, &mut self.pending_warnings)),
+        };
+        // No snapshot ran: no report. The `trunk()` fallback is the call's alone, as in
+        // `op_integrate`.
+        self.pending_precondition = None;
+        self.trunk_fallback = false;
+        result
     }
 
     /// Brings a stale working copy up to date (Story 9.23) — the CLI's `jj workspace

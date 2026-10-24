@@ -35,9 +35,11 @@
 //! `jj config edit` becomes two halves because the GUI replaces `$EDITOR`:
 //! [`config_file_read`] (creates the file as the CLI does before opening the editor) and
 //! [`config_file_write`] (validates the text as TOML BEFORE writing — the CLI's re-edit loop,
-//! with the UI holding the buffer). Neither loads the start-up stack: they are the stand-in for
-//! the user's own editor, the CLI's repair path for a broken config. With a workspace root both
-//! still start with the secure-config fix-up alone, loading no file.
+//! with the UI holding the buffer). Neither refuses on the start-up stack: they are the stand-in
+//! for the user's own editor, the CLI's repair path for a broken config. With a workspace root
+//! both start with the secure-config fix-up; then both TRY the CLI's start-up resolve and, only
+//! when it succeeds, warn its "Deprecated … config" migrations as the CLI's `jj config edit` does
+//! — a stack that does not load is ignored, never refused.
 //!
 //! `jj config gc`'s yes/no prompt likewise becomes [`config_gc_list`] + [`config_gc_delete`].
 
@@ -438,9 +440,10 @@ pub fn config_unset(workspace_root: Option<&Path>, target: &ConfigTarget, name: 
 
 /// `jj config edit`, editor half 1: the file the CLI would open, and its exact text. An absent
 /// file is created first with jj-lib's empty document (its `#:schema` header), as the CLI saves
-/// it before starting the editor. Loads no start-up stack, so a broken config can be repaired —
-/// but with a workspace root it starts with the CLI's secure-config fix-up alone (Story 9.37),
-/// whose notices are [`ConfigOutcome::warnings`].
+/// it before starting the editor. Never refuses on the start-up stack, so a broken config can be
+/// repaired — but with a workspace root it starts with the CLI's secure-config fix-up (Story
+/// 9.37), and when the start-up stack resolves its migrations warn "Deprecated … config" (Story
+/// 9.9); both are [`ConfigOutcome::warnings`], in that order.
 ///
 /// # Errors
 ///
@@ -455,8 +458,9 @@ pub fn config_file_read(workspace_root: Option<&Path>, target: &ConfigTarget) ->
 /// `jj config edit`, editor half 2: replaces the file at `path` with `text` — only a location
 /// [`config_file_read`] accepts for this root (checked without creating anything; a relative
 /// `path` joined onto the workspace root), and only after `text` parses as TOML (nothing is
-/// written otherwise). Like half 1, it starts with the secure-config fix-up alone when there is
-/// a workspace root (Story 9.37).
+/// written otherwise). Like half 1, it starts with the secure-config fix-up when there is a
+/// workspace root (Story 9.37) and warns the start-up stack's deprecations when it resolves —
+/// the stack BEFORE the write, as the CLI prints them before opening the editor.
 ///
 /// # Errors
 ///
@@ -529,8 +533,9 @@ fn resolve_workspace(root: Option<&Path>) -> Result<Option<WorkspaceDirs>, Confi
     }))
 }
 
-/// The editor halves' start-up (Story 9.37): the CLI's secure-config fix-up ALONE, loading no
+/// The editor halves' start-up fix-up (Story 9.37): the CLI's secure-config fix-up, loading no
 /// file, so it cannot refuse a stack the halves exist to repair; nothing without a workspace.
+/// [`startup_deprecations`] follows it.
 fn fix_up(
     env: &ConfigEnv,
     ws: Option<&WorkspaceDirs>,
@@ -540,6 +545,20 @@ fn fix_up(
         config::fix_up_layers(env, ws.paths(), warnings)?;
     }
     Ok(())
+}
+
+/// The rest of the editor halves' start-up: the CLI's `jj config edit` resolves and migrates its
+/// start-up stack and prints the migrations' "Deprecated … config" warnings before it builds the
+/// settings (Story 9.9). Here that resolve is only TRIED — after [`fix_up`], so the raw load runs
+/// no second fix-up — and its deprecations recorded only when it succeeds: a stack that does not
+/// load or resolve is what the halves exist to repair, so a failure is ignored, never a refusal.
+fn startup_deprecations(env: &ConfigEnv, ws: Option<&WorkspaceDirs>, warnings: &mut Vec<crate::Warning>) {
+    let paths = ws.map(WorkspaceDirs::paths);
+    let resolved =
+        config::load_raw(env, paths, None).and_then(|raw| config::resolve_raw(env, paths, &raw, Some("config edit")));
+    if let Ok((_, deprecations)) = resolved {
+        warnings.extend(config::deprecation_warnings(deprecations));
+    }
 }
 
 /// The CLI's start-up: raw stack → resolved with `command` (and migrated) → `UserSettings`. With
@@ -999,7 +1018,7 @@ fn check_wc_author(
 /// `@`'s `(author name, author email)` at the head operation.
 fn working_copy_author(repo: &crate::Repo) -> Option<(String, String)> {
     let workspace = repo.workspace();
-    let head = pollster::block_on(workspace.repo_loader().load_at_head()).ok()?;
+    let head = crate::snapshot::reload_head(workspace).ok()?;
     let id = head.view().get_wc_commit_id(workspace.workspace_name())?;
     let author = head.store().get_commit(id).ok()?.author().clone();
     Some((author.name, author.email))
@@ -1037,6 +1056,7 @@ fn file_read_with(
 ) -> Result<ConfigFileText, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
     fix_up(env, ws.as_ref(), warnings)?;
+    startup_deprecations(env, ws.as_ref(), warnings);
     let (file_path, source) = select_file(env, ws.as_ref(), target)?;
     if !file_path.exists() {
         config::save_config_file(&config::load_config_file(source, &file_path)?)?;
@@ -1076,6 +1096,7 @@ fn file_write_with(
 ) -> Result<(), ConfigCmdError> {
     let ws = resolve_workspace(root)?;
     fix_up(env, ws.as_ref(), warnings)?;
+    startup_deprecations(env, ws.as_ref(), warnings);
     let (path, source) = resolve_file_to_edit(env, ws.as_ref(), path, false)?;
     ConfigLayer::parse(source, text).map_err(toml_error)?;
     if source == ConfigSource::User {

@@ -160,7 +160,7 @@ pub(crate) fn commit(
     ctx: &mut VerbContext,
     options: &CommitOptions,
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     // `commit.rs:90-98`: the working copy, the matcher, then the advanceable bookmarks — all

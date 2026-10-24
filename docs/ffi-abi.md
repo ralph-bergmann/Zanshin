@@ -149,12 +149,14 @@ exposing them as `warnings`; a refused creation throws `ZanshinFfiException` exp
 as its `warnings` (e.g. `jj.clone_cleanup_failed`, which only an error envelope carries).
 On every error envelope — handle-scoped, handle-less or creation — Dart reads the warnings
 the same way: the thrown `ZanshinFfiException.warnings` (Story 9.35).
-Every verb that runs the pre-verb snapshot may warn `jj.trunk_alias_unresolved` right after the
-start-up environment's warnings (Story 9.56): a `trunk()` alias that parses but does not resolve
+Every verb that runs the pre-verb snapshot — and `zanshin_workspace_root` with a `name` — may warn
+`jj.trunk_alias_unresolved` right after the start-up environment's warnings (Story 9.56): a `trunk()` alias that parses but does not resolve
 at the head makes the call run with `trunk()` = `root()`, as the CLI's `load_from_workspace` —
 its immutable set, templates and every revset it parses, a graph walk's `builtin_log()` included.
-Right after the start-up fix-up's notices, such a verb — and every `zanshin_config_*` symbol but the
-two `config_file_*` editor halves, which load no stack — warns `jj.config_deprecated` once per
+Right after the start-up fix-up's notices, such a verb — and `zanshin_workspace_root` (both forms)
+and every `zanshin_config_*` symbol, the two `config_file_*` editor halves only when their start-up
+stack resolves (a stack that does not is theirs to repair, never a refusal) — warns
+`jj.config_deprecated` once per
 deprecated key the CLI's start-up migrates (Story 9.9; today only `fix.tools.<name>.line-range-arg`
 → `line-range-args`): "Deprecated <source> config: <description>"; the call runs with the migrated
 key, the file is not rewritten. The creation paths (`zanshin_repo_init`, `zanshin_repo_clone`,
@@ -170,7 +172,7 @@ layer: a legacy `.jj/repo/config.toml` / `.jj/workspace-config.toml` is migrated
 repo's `metadata.binpb` is re-pointed, a copied repo's config is forked under a new id, a
 missing secure directory is regenerated. Zanshin runs the very same function wherever it
 plays a command's start-up — `zanshin_repo_open`, every symbol that runs the pre-verb
-snapshot (see *`precondition`* below), and the `zanshin_config_*` wrappers given a
+snapshot (see *`precondition`* below), `zanshin_workspace_root`, and the `zanshin_config_*` wrappers given a
 `workspace_root` (not the `gc` pair) — and its notices (`jj.config_migrated`,
 `jj.config_copied`, `jj.config_regenerated`) are the call's FIRST warnings, on the ok AND
 the error envelope. `zanshin_repo_open` answers like a creation: the `RepoHandle` ok
@@ -181,7 +183,8 @@ notices are one-shot — the next call finds nothing left to fix.
 ### `precondition` — the pre-verb snapshot, whenever it ran (Story 9.26)
 
 Like every jj CLI command, every handle-scoped symbol except `zanshin_repo_close`,
-`zanshin_log_defaults`, `zanshin_workspace_root`, `zanshin_commit_contents` (the
+`zanshin_log_defaults`, `zanshin_workspace_root` (the CLI's command start-up only; with a `name`
+also `workspace_helper_no_snapshot`'s), `zanshin_commit_contents` (the
 continuation of the topology call's `jj log`, Story 4.10), `zanshin_op_abandon` (the CLI's
 `load_workspace`, Story 9.21), `zanshin_op_integrate` (the CLI's `workspace_helper_no_snapshot`,
 Story 9.12) and
@@ -307,8 +310,9 @@ wrong-typed `git.*` key) makes `zanshin_repo_open` fail, and the config verbs ar
 how the user repairs it — exactly as the CLI's config commands never load the
 workspace. With a `workspace_root`, every one of them but the `gc` pair still starts
 like a CLI command (Story 9.37): the secure-config fix-up runs for the repo, then the
-workspace layer — inside the start-up stack load, or ALONE for the two `edit` halves,
-which load no stack — so a legacy repo config is migrated (a copied repo's config
+workspace layer — inside the start-up stack load, or first for the two `edit` halves,
+which only TRY the stack's resolve afterwards (for its `jj.config_deprecated`) and never
+refuse on it — so a legacy repo config is migrated (a copied repo's config
 forked, a missing secure directory regenerated) even by a call that then refuses, and
 its `jj.config_migrated` / `jj.config_copied` / `jj.config_regenerated` notices are the
 envelope's first warnings, ok or error.
@@ -589,7 +593,7 @@ or no `# Errors` block.
 | `zanshin_git_push_remotes` | `(uint64_t handle)` | — | `GitPushRemotes` (the default push remotes; empty when none matches or on a non-Git backend) | `ffi.invalid_handle`, `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.54 |
 | `zanshin_git_fetch_remotes` | `(uint64_t handle)` | — | `GitFetchRemotes` (the default fetch remotes — the Fetch button's enable rule; empty when none matches or on a non-Git backend) | `ffi.invalid_handle`, `jj.config_error`, `jj.invalid_input`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.30 |
 | `zanshin_workspace_list` | `(uint64_t handle)` | — | `WorkspaceList` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.7 |
-| `zanshin_workspace_root` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceRootRequest` | `WorkspaceRoot` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.workspace_not_found`, `jj.workspace_no_recorded_path`, `jj.jj_lib_error` | 9.7 |
+| `zanshin_workspace_root` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceRootRequest` | `WorkspaceRoot` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.config_error`, `jj.workspace_not_found`, `jj.workspace_no_recorded_path`, `jj.jj_lib_error` | 9.7 |
 | `zanshin_workspace_add` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `WorkspaceAddRequest` | `WorkspaceAddResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.workspace_exists`, `jj.destination_not_empty`, `jj.git_worktree_failed`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.jj_lib_error` | 9.23 |
 | `zanshin_workspace_update_stale` | `(uint64_t handle)` | — | `StaleRecovery` (+ `precondition` = the trailing snapshot) | `ffi.invalid_handle`, `jj.concurrent_working_copy`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.23 |
 | `zanshin_describe` | `(uint64_t handle, const char *change_id, const char *description)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.invalid_input`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 |

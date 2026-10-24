@@ -192,7 +192,7 @@ impl LogParse {
     /// everything against the ONE alias map it feeds: `short_prefixes` first, where the CLI
     /// parses `revsets.short-prefixes` (its command environment, before the command's own
     /// revsets), then `revset` and `prioritize`. Parsing needs no loaded operation, so a syntax
-    /// error costs no `load_at_head` I/O.
+    /// error costs no head-load I/O.
     ///
     /// # Errors
     ///
@@ -329,7 +329,7 @@ impl<'r> LogSetup<'r> {
 ///   resolved. NOT raised for `short_prefixes`: an unresolvable disambiguation set only
 ///   warns and degrades (see [`short_prefix_index`]).
 /// - [`RevsetError::Config`] — the repo's effective jj config is malformed or unreadable.
-/// - [`RevsetError::JjLibError`] — `load_at_head`, evaluation, metadata extraction, or a
+/// - [`RevsetError::JjLibError`] — the head load, evaluation, metadata extraction, or a
 ///   per-item stream failure.
 pub(crate) fn walk_graph(
     repo: &Repo,
@@ -343,7 +343,7 @@ pub(crate) fn walk_graph(
     let parsed = LogParse::new(repo, sink, revset, prioritize, short_prefixes)?;
 
     // 2. Reload to head (ADR-0002; sync via pollster — mirrors revset.rs).
-    let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(jj)?;
+    let readonly = crate::snapshot::reload_head(repo.workspace()).map_err(jj)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let store = readonly.store();
 

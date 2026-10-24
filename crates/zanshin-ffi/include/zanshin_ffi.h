@@ -728,10 +728,11 @@ ZanshinBuf *zanshin_config_unset(const uint8_t *data, uintptr_t len);
 /**
  * `jj config edit`, editor half 1: the file `zanshin_config_set` would write (the scope's first
  * file, or `path` — the CLI's `--file`) and its exact text, CREATING an absent
- * file first with jj-lib's empty document (as the CLI does before starting `$EDITOR`). Loads no
- * start-up stack, so a broken config can be read and repaired — but with `workspace_root` it
- * starts with the CLI's start-up secure-config fix-up alone (Story 9.37), whose notices ride
- * the ok AND the error envelope. The arguments cross as a `ConfigFileReadRequest` buffer;
+ * file first with jj-lib's empty document (as the CLI does before starting `$EDITOR`). Never
+ * refuses on the start-up stack, so a broken config can be read and repaired — but with
+ * `workspace_root` it starts with the CLI's start-up secure-config fix-up (Story 9.37), and when
+ * the start-up stack resolves it warns `jj.config_deprecated` after the fix-up's notices; both
+ * ride the ok AND the error envelope. The arguments cross as a `ConfigFileReadRequest` buffer;
  * returns a `ConfigFileText`.
  *
  * # Errors
@@ -757,8 +758,8 @@ ZanshinBuf *zanshin_config_file_read(const uint8_t *data, uintptr_t len);
  * relative `path` taken against `workspace_root`), and only after `text`
  * parses as TOML (the CLI's re-edit loop, with the UI holding the buffer). Returns an ok
  * `Envelope` with no payload. Like half 1, with `workspace_root` it starts with the CLI's
- * start-up secure-config fix-up alone (Story 9.37), whose notices ride the ok AND the error
- * envelope.
+ * start-up secure-config fix-up (Story 9.37) and, when the start-up stack (before the write)
+ * resolves, warns `jj.config_deprecated`; both ride the ok AND the error envelope.
  *
  * # Errors
  * - `ffi.null_pointer` — `data` is a null pointer.
@@ -3475,7 +3476,7 @@ ZanshinBuf *zanshin_status(uint64_t handle);
  *   `precondition` says which.
  * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26);
  *   the cause and both operation ids in `context`, nothing is written.
- * - `jj.jj_lib_error` — `load_at_head` failed, i.e. the VIEW half could not be read; detail in
+ * - `jj.jj_lib_error` — the head load failed, i.e. the VIEW half could not be read; detail in
  *   `context`. No path failure reaches this.
  *
  * # Safety
@@ -3492,31 +3493,40 @@ ZanshinBuf *zanshin_workspace_list(uint64_t handle);
  * `jj workspace root [--name]`.
  *
  * The argument crosses as a `WorkspaceRootRequest` `FlatBuffers` request buffer (ADR-0001
- * composite-input pattern), because the CLI's `--name` must be distinguishably ABSENT. An absent
- * `name` selects the CURRENT workspace and reads the workspace loader alone — no repo load, no
- * store read — which is the one path that cannot fail; it returns exactly what
+ * composite-input pattern), because the CLI's `--name` must be distinguishably ABSENT. Both forms
+ * first run the CLI's command start-up — the secure-config fix-up and the effective config — and
+ * carry its warnings first: `jj.config_migrated` / `jj.config_copied` / `jj.config_regenerated`,
+ * then `jj.config_deprecated`. An absent `name` selects the CURRENT workspace and then reads the
+ * workspace loader alone — no repo load, no store read; it returns exactly what
  * `zanshin_jj::Repo::workspace_root` reports. A PRESENT name, even the current workspace's own,
- * goes through the `WorkspaceStore` and can refuse: the CLI's named path never shortcuts to the
- * loader, and that asymmetry is reproduced rather than smoothed over. An explicitly present
- * EMPTY name is a VALUE, not an absence, and refuses as `jj.workspace_not_found`.
- * The returned path is ABSOLUTE — for a name, the recorded path, not canonicalized (jj 0.46);
- * CWD-relative shortening is the GUI's job. This read writes NO operation — not even on a
- * refusal.
+ * also runs the start-up of the CLI's `workspace_helper_no_snapshot` — the alias tables (their
+ * warnings next), the `immutable_heads()` / short-prefixes parse and the `trunk()` fallback
+ * (`jj.trunk_alias_unresolved`) — then goes through the `WorkspaceStore` and can refuse: the
+ * CLI's named path never shortcuts to the loader, and that asymmetry is reproduced rather than
+ * smoothed over. An explicitly present EMPTY name is a VALUE, not an absence, and refuses as
+ * `jj.workspace_not_found`. The returned path is ABSOLUTE — for a name, the recorded path, not
+ * canonicalized (jj 0.46); CWD-relative shortening is the GUI's job. This read runs no pre-verb
+ * snapshot and carries no `precondition`; its own head load may reconcile divergent operation
+ * heads in this workspace, as the CLI's does.
  *
  * Returns a `FlatBuffers` `Envelope` carrying a `WorkspaceRoot` payload on success; a recorded
- * directory that does not exist warns `jj.workspace_path_inaccessible` — the path is still
- * returned, as the CLI prints it.
+ * directory that does not exist warns `jj.workspace_path_inaccessible`, the call's last warning
+ * — the path is still returned, as the CLI prints it. The warnings ride the ok AND the error
+ * envelope.
  *
  * # Errors
  * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
  * - `ffi.null_pointer` — `data` is a null pointer.
  * - `ffi.invalid_argument` — `data` does not verify as a `WorkspaceRootRequest` buffer, or its `kind`
  *   is not `WorkspaceRoot`, i.e. the buffer was built for a different wrapper.
+ * - `jj.config_error` — the start-up failed: the config stack does not resolve (either form), or
+ *   with a name an alias table, `immutable_heads()` or short-prefixes revset does not parse; the
+ *   reason in `context`.
  * - `jj.workspace_not_found` — no workspace of that name is in the head view; the name in
  *   `context`.
  * - `jj.workspace_no_recorded_path` — the workspace exists but the store holds no path for it;
  *   the name in `context`.
- * - `jj.jj_lib_error` — the workspace store could not be loaded or read, or `load_at_head`
+ * - `jj.jj_lib_error` — the workspace store could not be loaded or read, or the head load
  *   failed; detail in `context`.
  *
  * # Safety

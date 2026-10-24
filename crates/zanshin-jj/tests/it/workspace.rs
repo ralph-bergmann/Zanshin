@@ -22,7 +22,7 @@ use jj_lib::object_id::ObjectId as _;
 use jj_lib::workspace::Workspace;
 use tempfile::TempDir;
 use test_helpers::{add_workspace, extract_fixture};
-use zanshin_jj::{Repo, Warned, WarningKind, WorkspaceError};
+use zanshin_jj::{Repo, Warning, WarningKind, WorkspaceError};
 
 /// Opens the fixture as a raw jj-lib `Workspace` for oracle reads.
 fn oracle_workspace(root: &Path) -> Workspace {
@@ -251,7 +251,8 @@ fn root_without_a_name_is_the_open_workspace() {
     let mut repo = Repo::open(&fx.path).unwrap();
     let before = head_op_id(&mut repo);
 
-    let Warned { value: root, warnings } = repo.resolve_workspace_root(None).unwrap();
+    let root = repo.resolve_workspace_root(None).unwrap();
+    let warnings = repo.take_warnings();
 
     assert!(warnings.is_empty(), "the no-name default never warns");
     assert_same_dir(&root, repo.workspace_root());
@@ -307,7 +308,7 @@ fn secondary_workspace_sees_the_shared_store_through_the_repo_file() {
     );
 
     // (b) the no-name default is THIS workspace's root, not the primary's.
-    let own = repo.resolve_workspace_root(None).unwrap().value;
+    let own = repo.resolve_workspace_root(None).unwrap();
     assert_same_dir(&own, &second.path);
     assert_ne!(
         fs::canonicalize(&own).unwrap(),
@@ -319,11 +320,11 @@ fn secondary_workspace_sees_the_shared_store_through_the_repo_file() {
     // same warning the primary side reports for itself.
     let named = repo.resolve_workspace_root(Some("default")).unwrap();
     assert_eq!(
-        named.value,
+        named,
         entries[0].root.clone().expect("default records a path"),
         "root and list report the same recorded path"
     );
-    assert_inaccessible_warning(&named);
+    assert_inaccessible_warning(&named, &repo.take_warnings());
 }
 
 /// A SIBLING workspace's path is visible from this one — the whole point of the verb.
@@ -337,8 +338,8 @@ fn root_with_a_name_finds_a_sibling_workspace() {
 
     let root = repo.resolve_workspace_root(Some("second")).unwrap();
 
-    assert!(root.warnings.is_empty(), "second's directory exists");
-    assert_same_dir(&root.value, &second.path);
+    assert!(repo.take_warnings().is_empty(), "second's directory exists");
+    assert_same_dir(&root, &second.path);
     assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
@@ -354,22 +355,22 @@ fn root_named_current_workspace_warns_where_the_default_path_does_not() {
     let before = head_op_id(&mut repo);
 
     let default = repo.resolve_workspace_root(None).unwrap();
-    assert!(default.warnings.is_empty());
+    assert!(repo.take_warnings().is_empty());
 
     let named = repo.resolve_workspace_root(Some("default")).unwrap();
-    assert_ne!(named.value, default.value, "the store holds the generator's path");
-    assert!(!named.value.exists());
-    assert_inaccessible_warning(&named);
+    assert_ne!(named, default, "the store holds the generator's path");
+    assert!(!named.exists());
+    assert_inaccessible_warning(&named, &repo.take_warnings());
     assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
 }
 
 /// A named root whose directory is gone carries exactly the CLI's warning, path included.
-fn assert_inaccessible_warning(named: &Warned<PathBuf>) {
-    assert_eq!(named.warnings.len(), 1, "got {:?}", named.warnings);
-    assert_eq!(named.warnings[0].kind, WarningKind::WorkspacePathInaccessible);
+fn assert_inaccessible_warning(named: &Path, warnings: &[Warning]) {
+    assert_eq!(warnings.len(), 1, "got {warnings:?}");
+    assert_eq!(warnings[0].kind, WarningKind::WorkspacePathInaccessible);
     assert_eq!(
-        named.warnings[0].message,
-        format!("Cannot access workspace path: {}", named.value.display())
+        warnings[0].message,
+        format!("Cannot access workspace path: {}", named.display())
     );
 }
 
@@ -403,7 +404,7 @@ fn root_with_no_recorded_path_refuses_distinctly() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     remove_workspace_store(&fx.path);
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let result = repo.resolve_workspace_root(Some("default"));
     match result {
@@ -419,7 +420,7 @@ fn root_with_an_unreadable_store_is_a_backend_error() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
     corrupt_workspace_store(&fx.path);
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let result = repo.resolve_workspace_root(Some("default"));
     assert!(
@@ -472,7 +473,7 @@ fn list_with_an_unloadable_store_still_returns_the_rows() {
 fn root_with_an_unloadable_store_is_a_backend_error() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     dangle_workspace_store(&fx.path);
 
     let result = repo.resolve_workspace_root(Some("default"));
@@ -491,7 +492,7 @@ fn root_with_an_unloadable_store_is_a_backend_error() {
 fn a_store_wiped_under_an_open_handle_is_recreated_like_the_next_cli_command() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     remove_workspace_store(&fx.path);
 
     match repo.resolve_workspace_root(Some("default")) {
@@ -513,7 +514,7 @@ fn root_with_a_name_on_a_corrupt_repo_is_a_backend_error() {
     })
     .result
     .unwrap();
-    let repo = Repo::open(tmp.path()).unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
 
     corrupt_op_heads(tmp.path());
 
@@ -549,11 +550,11 @@ fn assert_own_root_resolves(repo: &mut Repo, expected: &Path) {
     let named = repo
         .resolve_workspace_root(Some("default"))
         .expect("the workspace's own recorded path must resolve");
-    assert!(named.warnings.is_empty(), "the recorded directory exists");
-    assert_same_dir(&named.value, expected);
+    assert!(repo.take_warnings().is_empty(), "the recorded directory exists");
+    assert_same_dir(&named, expected);
     assert_eq!(
-        named.value,
-        repo.resolve_workspace_root(None).unwrap().value,
+        named,
+        repo.resolve_workspace_root(None).unwrap(),
         "naming the current workspace must agree with the no-name default"
     );
 }
@@ -592,4 +593,134 @@ fn a_repo_created_through_a_symlinked_path_resolves_its_own_root() {
 
     let mut reopened = Repo::open(tmp.path()).unwrap();
     assert_own_root_resolves(&mut reopened, tmp.path());
+}
+
+// ── root: the CLI's command start-up ─────────────────────────────────────────
+
+/// The "Deprecated … config" warning of a user config holding the one key the CLI migrates.
+const DEPRECATED: &str = "Deprecated user-level config: fix.tools.t.line-range-arg is updated to \
+                          fix.tools.t.line-range-args = [\"--l\"]";
+
+/// `(kind, message)` of each warning the last call left, in order.
+fn taken(repo: &mut Repo) -> Vec<(WarningKind, String)> {
+    repo.take_warnings().into_iter().map(|w| (w.kind, w.message)).collect()
+}
+
+/// Both forms of `jj workspace root` run the CLI's command start-up (`run_internal`), so a
+/// deprecated user key warns on each — first, and kept on a refusal — and the named form's own
+/// warning comes after it. No snapshot ran, so no precondition report is left behind.
+#[test]
+fn both_forms_of_root_warn_the_start_up_deprecations() {
+    test_helpers::own_process!("both_forms_of_root_warn_the_start_up_deprecations");
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let (second, _wc) = add_workspace(&fx.path, "second");
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let user = TempDir::new().unwrap();
+    let user_file = user.path().join("user.toml");
+    fs::write(&user_file, "fix.tools.t.line-range-arg = \"--l\"\n").unwrap();
+    // SAFETY: this test runs alone in its own process (`own_process!`).
+    unsafe { std::env::set_var("JJ_CONFIG", &user_file) };
+    let deprecated = (WarningKind::ConfigDeprecated, DEPRECATED.to_owned());
+    let before = head_op_id(&mut repo);
+
+    let bare = repo.resolve_workspace_root(None).unwrap();
+    assert_eq!(bare, repo.workspace_root());
+    assert_eq!(taken(&mut repo), std::slice::from_ref(&deprecated));
+    assert!(repo.take_precondition().is_none(), "no snapshot ran");
+
+    let named = repo.resolve_workspace_root(Some("second")).unwrap();
+    assert_same_dir(&named, &second.path);
+    assert_eq!(taken(&mut repo), std::slice::from_ref(&deprecated));
+    assert!(repo.take_precondition().is_none(), "no snapshot ran");
+
+    // The fixture's own recorded directory is gone: its warning comes last.
+    let stale = repo.resolve_workspace_root(Some("default")).unwrap();
+    assert_eq!(
+        taken(&mut repo),
+        [
+            deprecated.clone(),
+            (
+                WarningKind::WorkspacePathInaccessible,
+                format!("Cannot access workspace path: {}", stale.display())
+            )
+        ]
+    );
+
+    let refused = repo.resolve_workspace_root(Some("nosuch"));
+    assert!(matches!(refused, Err(WorkspaceError::NotFound { .. })), "{refused:?}");
+    assert_eq!(
+        taken(&mut repo),
+        [deprecated],
+        "a refusal keeps the start-up's warnings"
+    );
+    assert!(repo.take_precondition().is_none());
+    assert_eq!(head_op_id(&mut repo), before, "a read must not write an operation");
+}
+
+/// A config stack that no longer resolves refuses BOTH forms, as every CLI command refuses it at
+/// start-up — the bare form included, although it reads nothing but the loader afterwards.
+#[test]
+fn a_broken_config_stack_refuses_both_forms_of_root() {
+    test_helpers::pin_test_env();
+    let tmp = TempDir::new().unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
+    fs::write(
+        tmp.path().join(".jj").join("repo").join("config.toml"),
+        "[user\nname = ",
+    )
+    .unwrap();
+
+    for name in [None, Some("default")] {
+        let result = repo.resolve_workspace_root(name);
+        assert!(
+            matches!(
+                result,
+                Err(WorkspaceError::Precondition(
+                    zanshin_jj::PreconditionError::Config { .. }
+                ))
+            ),
+            "{name:?}: {result:?}"
+        );
+        assert!(repo.take_precondition().is_none(), "{name:?}: no snapshot ran");
+    }
+}
+
+/// The named form also runs `workspace_helper_no_snapshot`'s start-up environment, so an
+/// `immutable_heads()` that does not parse refuses it — the bare form never builds that
+/// environment (`root.rs:75` @ v0.46.0) and still answers.
+#[test]
+fn only_the_named_root_parses_the_start_up_environment() {
+    test_helpers::pin_test_env();
+    let tmp = TempDir::new().unwrap();
+    Repo::init(&zanshin_jj::InitOptions {
+        path: PathBuf::from(tmp.path()),
+        ..Default::default()
+    })
+    .result
+    .unwrap();
+    let mut repo = Repo::open(tmp.path()).unwrap();
+    fs::write(
+        tmp.path().join(".jj").join("repo").join("config.toml"),
+        "[revset-aliases]\n'immutable_heads()' = '('\n",
+    )
+    .unwrap();
+
+    assert!(repo.resolve_workspace_root(None).is_ok());
+    let named = repo.resolve_workspace_root(Some("default"));
+    assert!(
+        matches!(
+            named,
+            Err(WorkspaceError::Precondition(
+                zanshin_jj::PreconditionError::Config { .. }
+            ))
+        ),
+        "{named:?}"
+    );
 }

@@ -181,7 +181,7 @@ fn add_default_creates_a_sibling_workspace_on_ats_parents() {
     assert!(names.contains(&"ws2".to_owned()), "{names:?}");
     // The workspace store records ws2's path relative to the repo: it resolves back to the
     // destination (the canonicalisation trap `test_helpers::add_workspace` documents).
-    let recorded = repo.resolve_workspace_root(Some("ws2")).expect("ws2 root").value;
+    let recorded = repo.resolve_workspace_root(Some("ws2")).expect("ws2 root");
     assert_eq!(fs::canonicalize(recorded).expect("recorded root exists"), ws2);
 }
 

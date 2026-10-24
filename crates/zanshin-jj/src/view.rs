@@ -86,11 +86,11 @@ fn be<E: std::fmt::Display>(e: E) -> ViewError {
 ///
 /// # Errors
 ///
-/// - [`ViewError::Backend`] — `load_at_head` or a store read failed; the jj-lib reason is
+/// - [`ViewError::Backend`] — the head load or a store read failed; the jj-lib reason is
 ///   forwarded as a string.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn list_tags(workspace: &Workspace) -> Result<Vec<Tag>, ViewError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let view = readonly.view();
     let store = readonly.store();
 
@@ -144,10 +144,10 @@ pub(crate) fn list_tags(workspace: &Workspace) -> Result<Vec<Tag>, ViewError> {
 ///
 /// # Errors
 ///
-/// - [`ViewError::Backend`] — `load_at_head` failed; the jj-lib reason is forwarded as a string.
+/// - [`ViewError::Backend`] — the head load failed; the jj-lib reason is forwarded as a string.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn list_heads(workspace: &Workspace) -> Result<Vec<CommitId>, ViewError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let mut out: Vec<CommitId> = readonly.view().heads().iter().map(|id| CommitId(id.hex())).collect();
     out.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(out)
@@ -162,10 +162,10 @@ pub(crate) fn list_heads(workspace: &Workspace) -> Result<Vec<CommitId>, ViewErr
 ///
 /// # Errors
 ///
-/// - [`ViewError::Backend`] — `load_at_head` failed; the jj-lib reason is forwarded as a string.
+/// - [`ViewError::Backend`] — the head load failed; the jj-lib reason is forwarded as a string.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn list_working_copies(workspace: &Workspace) -> Result<Vec<WorkingCopy>, ViewError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     Ok(readonly
         .view()
         .wc_commit_ids()

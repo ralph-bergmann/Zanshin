@@ -559,3 +559,56 @@ fn a_deprecated_line_range_arg_warns_on_the_config_verbs() {
         got.warnings
     );
 }
+
+/// Loop 9.9–9.12 follow-on: the `jj config edit` halves try the CLI's start-up resolve after
+/// their fix-up, so a deprecated user key warns on both — once, with and without a workspace.
+#[test]
+fn a_deprecated_user_key_warns_on_both_config_edit_halves() {
+    test_helpers::own_process!("a_deprecated_user_key_warns_on_both_config_edit_halves");
+    let (_tmp, root) = workspace(None);
+    let tmp = TempDir::new().unwrap();
+    let user = tmp.path().join("user.toml");
+    fs::write(&user, "fix.tools.t.line-range-arg = \"--l\"\n").expect("user config");
+    // SAFETY: this test runs alone in its own process (`own_process!`).
+    unsafe { env::set_var("JJ_CONFIG", &user) };
+    let deprecated = [(
+        WarningKind::ConfigDeprecated,
+        "Deprecated user-level config: fix.tools.t.line-range-arg is updated to \
+         fix.tools.t.line-range-args = [\"--l\"]"
+            .to_owned(),
+    )];
+    let messages = |warnings: &[zanshin_jj::Warning]| -> Vec<(WarningKind, String)> {
+        warnings.iter().map(|w| (w.kind, w.message.clone())).collect()
+    };
+
+    for (ws, target) in [
+        (Some(root.as_path()), ConfigTarget::Scope(ConfigScope::Repo)),
+        (None, ConfigTarget::File(user.clone())),
+    ] {
+        let read = config_file_read(ws, &target);
+        let text = read.result.expect("read");
+        assert_eq!(messages(&read.warnings), deprecated, "{ws:?}");
+        let written = config_file_write(ws, &text.path, &text.text);
+        assert!(written.result.is_ok(), "{ws:?}: {:?}", written.result);
+        assert_eq!(messages(&written.warnings), deprecated, "{ws:?}");
+    }
+}
+
+/// The halves are the repair path: a stack that does not load is no refusal and warns nothing —
+/// the broken file is read back verbatim and replaced by valid TOML.
+#[test]
+fn a_broken_stack_refuses_neither_config_edit_half() {
+    test_helpers::own_process!("a_broken_stack_refuses_neither_config_edit_half");
+    let (_tmp, root) = workspace(None);
+    let target = ConfigTarget::Scope(ConfigScope::Repo);
+    let path = config_path(Some(&root), ConfigScope::Repo).result.expect("path");
+    fs::write(&path[0], "[user\nname = ").expect("broken repo config");
+
+    let read = config_file_read(Some(&root), &target);
+    assert_eq!(read.result.expect("read").text, "[user\nname = ");
+    assert!(read.warnings.is_empty(), "{:?}", read.warnings);
+    let written = config_file_write(Some(&root), &path[0], "a = 1\n");
+    assert!(written.result.is_ok(), "{:?}", written.result);
+    assert!(written.warnings.is_empty(), "{:?}", written.warnings);
+    assert_eq!(fs::read_to_string(&path[0]).unwrap(), "a = 1\n");
+}

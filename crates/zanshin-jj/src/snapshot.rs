@@ -49,7 +49,7 @@ use jj_lib::op_heads_store;
 use jj_lib::op_store::OpStoreError;
 use jj_lib::operation::Operation;
 use jj_lib::ref_name::WorkspaceName;
-use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoaderError};
+use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoader, RepoLoaderError};
 use jj_lib::revset::{RevsetExpression, UserRevsetExpression};
 use jj_lib::rewrite::RebaseOptions;
 use jj_lib::working_copy::{self, LockedWorkingCopy, WorkingCopyFreshness};
@@ -311,8 +311,28 @@ pub(crate) fn lock_git_import_export(
 ///
 /// - [`PreconditionError::Backend`] — the heads could not be read, merged or loaded.
 pub(crate) fn load_head(workspace: &Workspace) -> Result<Arc<ReadonlyRepo>, PreconditionError> {
-    let loader = workspace.repo_loader();
-    let workspace_name = workspace.workspace_name();
+    reload_head(workspace).map_err(PreconditionError::Backend)
+}
+
+/// [`load_head`] for a caller with its own error type: every head load of a verb or read body
+/// after the precondition, or of a no-snapshot read, is the CLI's (its every command loads the
+/// head through `load_from_workspace`), so a divergent head is reconciled in this workspace,
+/// not by jj-lib's nameless `load_at_head`.
+///
+/// # Errors
+///
+/// The failure's flattened source chain — the heads could not be read, merged or loaded.
+pub(crate) fn reload_head(workspace: &Workspace) -> Result<Arc<ReadonlyRepo>, String> {
+    load_head_with(workspace.repo_loader(), workspace.workspace_name())
+}
+
+/// [`reload_head`] through a given loader — `rebase`'s preview loader (the same stores, other
+/// settings) still reconciles as this workspace would.
+///
+/// # Errors
+///
+/// The failure's flattened source chain — the heads could not be read, merged or loaded.
+pub(crate) fn load_head_with(loader: &RepoLoader, workspace_name: &WorkspaceName) -> Result<Arc<ReadonlyRepo>, String> {
     let op = pollster::block_on(op_heads_store::resolve_op_heads(
         loader.op_heads_store().as_ref(),
         loader.op_store(),
@@ -328,8 +348,8 @@ pub(crate) fn load_head(workspace: &Workspace) -> Result<Arc<ReadonlyRepo>, Prec
             Ok(merged.operation().clone())
         },
     ))
-    .map_err(|e| backend(&e))?;
-    pollster::block_on(loader.load_at(&op)).map_err(|e| backend(&e))
+    .map_err(|e| flatten_chain(&e))?;
+    pollster::block_on(loader.load_at(&op)).map_err(|e| flatten_chain(&e))
 }
 
 // ── The start-up environment ─────────────────────────────────────────────────────
@@ -1061,5 +1081,101 @@ mod tests {
         let meta = next.operation().metadata();
         assert_eq!(meta.description, "reconcile divergent operations");
         assert_eq!(meta.workspace_name.as_deref(), Some(workspace_name.as_ref()));
+    }
+
+    /// Publishes two sibling operations off the head, so the operation heads diverge.
+    fn diverge(repo: &crate::Repo) {
+        use jj_lib::repo::Repo as _;
+
+        let base = super::load_head(repo.workspace()).expect("head");
+        let workspace_name = repo.workspace().workspace_name().to_owned();
+        for side in ["left", "right"] {
+            let mut tx = super::start_repo_transaction(&base, &workspace_name);
+            let tree = base.store().root_commit().tree();
+            pollster::block_on(
+                tx.repo_mut()
+                    .new_commit(vec![base.store().root_commit_id().clone()], tree)
+                    .set_description(side)
+                    .write(),
+            )
+            .expect("sibling commit");
+            pollster::block_on(tx.commit(format!("test: {side}"))).expect("commit");
+        }
+    }
+
+    /// Every head load of a verb or read body is the CLI's `load_from_workspace`: two sibling
+    /// operations are merged into ONE `reconcile divergent operations` operation that names this
+    /// workspace — jj-lib's own `load_at_head` would merge them without a name.
+    #[test]
+    fn every_head_load_reconciles_divergent_heads_in_this_workspace() {
+        type Load = fn(&mut crate::Repo);
+        test_helpers::pin_test_env();
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let mut repo = crate::Repo::init(&crate::InitOptions {
+            path: std::path::PathBuf::from(tmp.path()),
+            ..Default::default()
+        })
+        .result
+        .expect("init");
+        let workspace_name = repo.workspace().workspace_name().to_owned();
+        let loads: [(&str, Load); 4] = [
+            ("reload_head", |repo| {
+                super::reload_head(repo.workspace()).expect("reload");
+            }),
+            ("load_head_with", |repo| {
+                let workspace = repo.workspace();
+                super::load_head_with(workspace.repo_loader(), workspace.workspace_name()).expect("load");
+            }),
+            ("status", |repo| {
+                crate::status::working_copy_status(repo.workspace()).expect("status");
+            }),
+            ("edit", |repo| {
+                let config = crate::config::load(repo).expect("config");
+                let mut sink = super::Warnings::default();
+                let env = super::CommandEnv::load(repo.workspace(), &config, &mut sink).expect("env");
+                let stats = jj_lib::working_copy::SnapshotStats::default();
+                let mut ctx = super::VerbContext::new(config, env, false, stats, sink);
+                let unknown = crate::ChangeId("k".repeat(32));
+                let result = crate::mutate::edit(repo.workspace_mut(), &mut ctx, &unknown);
+                assert!(result.is_err(), "no such change: {result:?}");
+            }),
+        ];
+        for (name, load) in loads {
+            diverge(&repo);
+            load(&mut repo);
+            let loader = repo.workspace().repo_loader();
+            let heads = pollster::block_on(loader.op_heads_store().get_op_heads()).expect("op heads");
+            let [head] = <[_; 1]>::try_from(heads).expect("one op head");
+            let op = pollster::block_on(loader.load_operation(&head)).expect("the head operation");
+            assert_eq!(op.metadata().description, "reconcile divergent operations", "{name}");
+            assert_eq!(
+                op.metadata().workspace_name.as_deref(),
+                Some(workspace_name.as_ref()),
+                "{name}"
+            );
+        }
+    }
+
+    /// No production code loads the head through jj-lib's nameless `RepoLoader::load_at_head`:
+    /// every `src/*.rs` file, up to its first `#[cfg(test)]` and outside comments, is free of the
+    /// call — [`super::reload_head`] is the head load.
+    #[test]
+    fn no_production_code_calls_load_at_head() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut offenders = Vec::new();
+        for entry in std::fs::read_dir(&src).expect("src") {
+            let path = entry.expect("entry").path();
+            if path.extension().is_none_or(|e| e != "rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).expect("source");
+            let production = text.split("#[cfg(test)]").next().unwrap_or_default();
+            for (i, line) in production.lines().enumerate() {
+                if !line.trim_start().starts_with("//") && line.contains(".load_at_head()") {
+                    offenders.push(format!("{}:{}", path.display(), i + 1));
+                }
+            }
+        }
+        assert!(offenders.is_empty(), "{offenders:#?}");
     }
 }

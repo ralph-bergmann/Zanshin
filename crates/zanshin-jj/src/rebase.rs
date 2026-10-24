@@ -25,6 +25,7 @@ use jj_lib::backend::{BackendError, CommitId};
 use jj_lib::commit::Commit;
 use jj_lib::config::{ConfigLayer, ConfigSource};
 use jj_lib::object_id::ObjectId as _;
+use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::{ReadonlyRepo, Repo as _, RepoLoader};
 use jj_lib::revset::RevsetExpression;
 use jj_lib::rewrite::{
@@ -384,7 +385,7 @@ pub(crate) fn rebase(
     ctx: &mut VerbContext,
     options: &RebaseOptions,
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let old_wc_id = readonly.view().get_wc_commit_id(&workspace_name).cloned();
 
@@ -434,12 +435,16 @@ pub(crate) fn rebase(
 }
 
 /// The repo's head operation loaded through `loader`'s stores with [`dry_run_settings`], once
-/// per query: every transaction started from it writes its commits unsigned.
+/// per query: every transaction started from it writes its commits unsigned. Divergent heads are
+/// reconciled as the CLI reconciles them, in `workspace_name`.
 ///
 /// # Errors
 ///
 /// - [`MutateError::Backend`] — the settings could not be built or the head could not be loaded.
-pub(crate) fn load_dry_run_head(loader: &RepoLoader) -> Result<Arc<ReadonlyRepo>, MutateError> {
+pub(crate) fn load_dry_run_head(
+    loader: &RepoLoader,
+    workspace_name: &WorkspaceName,
+) -> Result<Arc<ReadonlyRepo>, MutateError> {
     let preview = RepoLoader::new(
         dry_run_settings(loader.settings())?,
         loader.store().clone(),
@@ -449,7 +454,7 @@ pub(crate) fn load_dry_run_head(loader: &RepoLoader) -> Result<Arc<ReadonlyRepo>
         loader.index_store().clone(),
         loader.submodule_store().clone(),
     );
-    pollster::block_on(preview.load_at_head()).map_err(be)
+    crate::snapshot::load_head_with(&preview, workspace_name).map_err(be)
 }
 
 /// `settings` with `signing.behavior = "drop"` layered on top, so `sign_settings().should_sign`

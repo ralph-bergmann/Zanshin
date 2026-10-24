@@ -25,9 +25,10 @@ use zanshin_ffi::workspace::{
     zanshin_workspace_add, zanshin_workspace_list, zanshin_workspace_root, zanshin_workspace_update_stale,
 };
 use zanshin_ffi::{
-    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_DESTINATION_NOT_EMPTY, JJ_INVALID_INPUT,
-    JJ_JJ_LIB_ERROR, JJ_WORKSPACE_EXISTS, JJ_WORKSPACE_IN_CURRENT_DIRECTORY, JJ_WORKSPACE_NOT_FOUND,
-    JJ_WORKSPACE_NO_RECORDED_PATH, JJ_WORKSPACE_PATH_INACCESSIBLE,
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CONFIG_DEPRECATED, JJ_CONFIG_ERROR,
+    JJ_DESTINATION_NOT_EMPTY, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_WORKSPACE_EXISTS,
+    JJ_WORKSPACE_IN_CURRENT_DIRECTORY, JJ_WORKSPACE_NOT_FOUND, JJ_WORKSPACE_NO_RECORDED_PATH,
+    JJ_WORKSPACE_PATH_INACCESSIBLE,
 };
 
 // ── Env pin ───────────────────────────────────────────────────────────────────
@@ -894,5 +895,71 @@ fn workspace_add_refuses_an_empty_name_and_defaults_an_absent_one() {
         env.data_as_workspace_add_result().and_then(|r| r.workspace_name()),
         Some("by-default")
     );
+    close_handle(handle);
+}
+
+// ── zanshin_workspace_root: the CLI's command start-up ──────────────────────
+
+/// One `zanshin_workspace_root` call: `(error code, warnings as (code, message))`.
+fn call_root(handle: u64, name: Option<&str>) -> (Option<String>, Vec<(String, String)>) {
+    let req = root_request_bytes(name);
+    // SAFETY: handle is live; req is a valid buffer alive for the call.
+    let token = unsafe { zanshin_workspace_root(handle, req.as_ptr(), req.len()) };
+    // SAFETY: token is fresh and non-null.
+    let bytes = unsafe { read_and_free(token) };
+    let env = parse_envelope(&bytes);
+    assert!(env.precondition().is_none(), "no snapshot ran");
+    let warnings = env
+        .warnings()
+        .iter()
+        .flatten()
+        .map(|w| (w.code().unwrap().to_owned(), w.message().unwrap().to_owned()))
+        .collect();
+    (env.error().and_then(|e| e.code()).map(str::to_owned), warnings)
+}
+
+/// Both forms run the CLI's command start-up, so a deprecated user key warns
+/// `jj.config_deprecated` FIRST on the ok envelope and on the refusal alike.
+#[test]
+fn workspace_root_carries_the_start_up_deprecation_on_either_envelope() {
+    test_helpers::own_process!("workspace_root_carries_the_start_up_deprecation_on_either_envelope");
+    test_helpers::pin_test_env();
+    let (handle, _root) = open_stale_scenario();
+    let user = tempfile::TempDir::new().expect("tempdir");
+    let user_file = user.path().join("user.toml");
+    fs::write(&user_file, "fix.tools.t.line-range-arg = \"--l\"\n").expect("user config");
+    // SAFETY: this test runs alone in its own process (`own_process!`).
+    unsafe { std::env::set_var("JJ_CONFIG", &user_file) };
+    let deprecated = (
+        JJ_CONFIG_DEPRECATED.to_owned(),
+        "Deprecated user-level config: fix.tools.t.line-range-arg is updated to \
+         fix.tools.t.line-range-args = [\"--l\"]"
+            .to_owned(),
+    );
+
+    assert_eq!(call_root(handle, None), (None, vec![deprecated.clone()]));
+    let (error, warnings) = call_root(handle, Some("default"));
+    assert_eq!(error, None);
+    let codes: Vec<&str> = warnings.iter().map(|(code, _)| code.as_str()).collect();
+    assert_eq!(codes, [JJ_CONFIG_DEPRECATED, JJ_WORKSPACE_PATH_INACCESSIBLE]);
+    assert_eq!(warnings[0], deprecated);
+    assert_eq!(
+        call_root(handle, Some("nosuch")),
+        (Some(JJ_WORKSPACE_NOT_FOUND.to_owned()), vec![deprecated])
+    );
+    close_handle(handle);
+}
+
+/// A config stack that no longer resolves refuses both forms as `jj.config_error`.
+#[test]
+fn workspace_root_refuses_a_broken_config_stack_on_both_forms() {
+    test_helpers::pin_test_env();
+    let (handle, root) = open_stale_scenario();
+    fs::write(root.join(".jj").join("repo").join("config.toml"), "[user\nname = ").expect("repo config");
+
+    for name in [None, Some("default")] {
+        let (error, _warnings) = call_root(handle, name);
+        assert_eq!(error.as_deref(), Some(JJ_CONFIG_ERROR), "{name:?}");
+    }
     close_handle(handle);
 }

@@ -408,7 +408,7 @@ async fn copy_records_over_all_parents(store: &Arc<Store>, commit: &Commit) -> R
 ///   any repo read.
 /// - [`CommitViewError::RevsetResolutionError`] — a symbol in `revset` cannot be resolved.
 /// - [`CommitViewError::Config`] — the repo's effective jj config is unreadable or malformed.
-/// - [`CommitViewError::Backend`] — `load_at_head`, evaluation, or a tree/store read failed.
+/// - [`CommitViewError::Backend`] — the head load, evaluation, or a tree/store read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn show(
     repo: &crate::Repo,
@@ -416,11 +416,11 @@ pub(crate) fn show(
     revset: Option<&str>,
     limit: Option<usize>,
 ) -> Result<Vec<ShowEntry>, CommitViewError> {
-    // Parse first: a syntax error costs no `load_at_head` I/O (the `eval_revset` ordering).
+    // Parse first: a syntax error costs no head-load I/O (the `eval_revset` ordering).
     let parsed = crate::revset::parse_revset(repo, revset.unwrap_or("@"), sink).map_err(rev)?;
 
     // Re-resolve to head ONCE (ADR-0002); every read below is taken from this snapshot.
-    let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(repo.workspace()).map_err(be)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let store = readonly.store();
     let set = crate::revset::evaluate_revset(repo_dyn, &parsed).map_err(rev)?;
@@ -467,7 +467,7 @@ pub(crate) fn show(
 /// - [`CommitViewError::RevsetParseError`] — `revset` is syntactically invalid.
 /// - [`CommitViewError::RevsetResolutionError`] — a symbol in `revset` cannot be resolved.
 /// - [`CommitViewError::Config`] — the repo's effective jj config is unreadable or malformed.
-/// - [`CommitViewError::Backend`] — `load_at_head`, evaluation, or an operation/store read
+/// - [`CommitViewError::Backend`] — the head load, evaluation, or an operation/store read
 ///   failed (including jj-lib's own predecessor-cycle detection).
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn evolog(
@@ -477,7 +477,7 @@ pub(crate) fn evolog(
     limit: Option<usize>,
 ) -> Result<Vec<EvologEntry>, CommitViewError> {
     let parsed = crate::revset::parse_revset(repo, revset.unwrap_or("@"), sink).map_err(rev)?;
-    let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(repo.workspace()).map_err(be)?;
 
     // Start set: commit ids, not change ids — `walk_predecessors` walks the operation log by
     // commit id, and a change's predecessors all share its change id anyway.
@@ -554,7 +554,7 @@ pub(crate) fn evolog(
 ///   bullet above.
 /// - [`CommitViewError::RevsetResolutionError`] — a [`RevisionRef::CommitId`] prefix is carried
 ///   by two or more commits; refused, never resolved to one of them.
-/// - [`CommitViewError::Backend`] — `load_at_head`, the in-memory rebase, or a tree read failed.
+/// - [`CommitViewError::Backend`] — the head load, the in-memory rebase, or a tree read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn interdiff(
     workspace: &Workspace,
@@ -571,7 +571,7 @@ pub(crate) fn interdiff(
     }
     let matcher = build_matcher(paths).map_err(|reason| CommitViewError::InvalidInput { reason })?;
 
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let (from_commit, to_commit) = plan_interdiff(repo_dyn, workspace.workspace_name(), from, to)?;
     let explicit =

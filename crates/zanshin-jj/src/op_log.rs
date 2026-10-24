@@ -104,11 +104,11 @@ fn be<E: std::fmt::Display>(e: E) -> OpLogError {
 ///
 /// # Errors
 ///
-/// - [`OpLogError::Backend`] — `load_at_head` or the op-store walk failed; the
+/// - [`OpLogError::Backend`] — the head load or the op-store walk failed; the
 ///   jj-lib reason is forwarded as a string.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn op_log(workspace: &Workspace, limit: Option<usize>) -> Result<Vec<Operation>, OpLogError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let root_id = readonly.op_store().root_operation_id().clone();
     let head_op = readonly.operation().clone();
 
@@ -506,7 +506,7 @@ pub(crate) fn op_show(
     show_changes_in: Option<&str>,
 ) -> Result<OpShow, MutateError> {
     let loader = workspace.repo_loader();
-    let head = pollster::block_on(loader.load_at_head()).map_err(mutate::be)?;
+    let head = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let op = pollster::block_on(op_walk::resolve_op_with_repo(&head, operation_str)).map_err(opset)?;
     let parent_ops = pollster::block_on(op.parents()).map_err(mutate::be)?;
     let merged_parents = parent_ops.len() > 1;
@@ -570,7 +570,7 @@ pub(crate) fn op_diff(
     options: &OpDiffOptions,
 ) -> Result<OpDiffResult, MutateError> {
     let loader = workspace.repo_loader();
-    let head = pollster::block_on(loader.load_at_head()).map_err(mutate::be)?;
+    let head = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let resolve = |text: Option<&String>| {
         pollster::block_on(op_walk::resolve_op_with_repo(&head, text.map_or("@", String::as_str))).map_err(opset)
     };

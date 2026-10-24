@@ -337,7 +337,7 @@ pub(crate) fn arrange(
     ctx: &mut VerbContext,
     options: &ArrangeOptions,
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let old_wc_id = readonly.view().get_wc_commit_id(&workspace_name).cloned();
     let mut tx = start_repo_transaction(&readonly, &workspace_name);

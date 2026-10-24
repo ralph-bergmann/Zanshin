@@ -238,7 +238,7 @@ pub(crate) fn create(
     // embeds the target's full commit hex — so this repo is resolved here and then handed
     // to `finish_or_no_op_at`, which starts its transaction from THIS view rather than
     // loading the head again. See that function's doc for why a second load would be wrong.
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let target = crate::op_support::resolve_or_wc(readonly.as_ref(), &workspace_name, revision)
         .map_err(|e| mutate::res(e, revision))?;
@@ -355,7 +355,7 @@ pub(crate) fn delete(
     // from THAT view — otherwise the description could name rows a second load no longer
     // has. `local_bookmarks_matching` iterates a `BTreeMap`, so the names come out
     // lexicographically, which is the CLI's own ordering here.
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let doomed: Vec<RefNameBuf> = readonly
         .view()
         .local_bookmarks_matching(&matcher)
@@ -577,7 +577,7 @@ pub(crate) fn r#move(
     ctx: &mut VerbContext,
     options: &BookmarkMoveOptions,
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let to = options.to.as_ref();
     let target =
@@ -670,7 +670,7 @@ pub(crate) fn advance(
     names: &[String],
     to: Option<&ChangeId>,
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let target = advance_target(workspace, ctx, &readonly, to)?;
     let names = if names.is_empty() {
         let text = crate::config::revsets_bookmark_advance_from(&ctx.config).map_err(mutate::cfg)?;
@@ -751,7 +751,7 @@ pub(crate) fn rename(
     overwrite_existing: bool,
 ) -> Result<MutationResult, MutateError> {
     let (old, new) = (RefName::new(old), RefName::new(new));
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let base = Arc::clone(&readonly);
     let base_view = base.view();
     let ref_target = base_view.get_local_bookmark(old).clone();

@@ -42,8 +42,8 @@ use jj_lib::ref_name::WorkspaceName;
 use jj_lib::workspace::Workspace;
 use jj_lib::workspace_store::WorkspaceStore;
 
-use crate::warning::{self, WarningKind};
-use crate::{CommitId, Warned};
+use crate::warning::{WarningKind, Warnings};
+use crate::CommitId;
 
 /// One row of `jj workspace list`: a workspace, its working-copy commit and where it lives.
 ///
@@ -74,7 +74,9 @@ pub struct WorkspaceEntry {
 /// [`list_workspaces`] collapses every path-side failure to `root: None`.
 #[derive(Debug, thiserror::Error)]
 pub enum WorkspaceError {
-    /// The pre-verb snapshot failed (Story 9.26), so the read never ran — see
+    /// The pre-verb snapshot of `list` (Story 9.26) or the command start-up of `root` (the
+    /// secure-config fix-up, the effective config; with a name also the alias tables and the
+    /// `immutable_heads()` parse) failed, so the read never ran — see
     /// [`crate::PreconditionError`].
     #[error(transparent)]
     Precondition(#[from] crate::PreconditionError),
@@ -155,7 +157,7 @@ fn load_store(workspace: &Workspace) -> Result<Box<dyn WorkspaceStore>, Workspac
 ///
 /// # Errors
 ///
-/// - [`WorkspaceError::Backend`] — `load_at_head` failed, i.e. the VIEW half could not be read;
+/// - [`WorkspaceError::Backend`] — the head load failed, i.e. the VIEW half could not be read;
 ///   the jj-lib reason is forwarded as a string. No path failure reaches this.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn list_workspaces(workspace: &Workspace) -> Result<Vec<WorkspaceEntry>, WorkspaceError> {
@@ -175,16 +177,15 @@ pub(crate) fn list_workspaces(workspace: &Workspace) -> Result<Vec<WorkspaceEntr
         .collect())
 }
 
-/// Returns the root directory of `name`'s workspace, or of the OPEN one when `name` is `None`.
+/// Returns the root directory of `name`'s workspace — the named form of `jj workspace root`; the
+/// bare form is [`crate::Repo::resolve_workspace_root`]'s own (the loader's root, no store read).
 ///
-/// With `name` absent this reads the loader only — no repo load, no store read — exactly as
-/// `cli/src/commands/workspace/root.rs:75` @ v0.46.0 does, and it is the one path that cannot
-/// fail. With a name present the CLI's stages run in ITS order: load the store, check view
-/// membership, read the recorded path. The path is returned as recorded — not canonicalized —
-/// and a directory that does not exist is no refusal but a `jj.workspace_path_inaccessible`
-/// warning, the CLI's "Cannot access workspace path: …" (`root.rs:60-66`). The named path never
-/// shortcuts to the loader, so `resolve_root(Some(<the current workspace's own name>))` CAN
-/// refuse or warn where `resolve_root(None)` does not — the CLI behaves the same way.
+/// The CLI's stages run in ITS order: load the store, check view membership, read the recorded
+/// path. The path is returned as recorded — not canonicalized — and a directory that does not
+/// exist is no refusal but a `jj.workspace_path_inaccessible` warning pushed into `sink`, the
+/// CLI's "Cannot access workspace path: …" (`root.rs:60-66`). The named path never shortcuts to
+/// the loader, so the current workspace's own name CAN refuse or warn where the bare form does
+/// not — the CLI behaves the same way.
 ///
 /// An explicitly present EMPTY name is a VALUE, not an absence: no workspace is named `""`, so it
 /// is a [`WorkspaceError::NotFound`].
@@ -193,31 +194,23 @@ pub(crate) fn list_workspaces(workspace: &Workspace) -> Result<Vec<WorkspaceEntr
 ///
 /// - [`WorkspaceError::NotFound`] — no workspace of that name is in the head view.
 /// - [`WorkspaceError::NoRecordedPath`] — the workspace exists but the store holds no path.
-/// - [`WorkspaceError::Backend`] — the store could not be loaded or read, or `load_at_head`
+/// - [`WorkspaceError::Backend`] — the store could not be loaded or read, or the head load
 ///   failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
-pub(crate) fn resolve_root(workspace: &Workspace, name: Option<&str>) -> Result<Warned<PathBuf>, WorkspaceError> {
-    let Some(name) = name else {
-        return Ok(Warned {
-            value: workspace.workspace_root().to_owned(),
-            warnings: Vec::new(),
-        });
-    };
+pub(crate) fn resolve_root(workspace: &Workspace, name: &str, sink: &mut Warnings) -> Result<PathBuf, WorkspaceError> {
     let store = load_store(workspace)?;
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     if !readonly.view().wc_commit_ids().contains_key(WorkspaceName::new(name)) {
         return Err(WorkspaceError::NotFound { name: name.to_owned() });
     }
     let path = recorded_root(store.as_ref(), name)?;
-    let warnings = if path.exists() {
-        Vec::new()
-    } else {
-        vec![warning::local(
+    if !path.exists() {
+        sink.push(
             WarningKind::WorkspacePathInaccessible,
             format!("Cannot access workspace path: {}", path.display()),
-        )]
-    };
-    Ok(Warned { value: path, warnings })
+        );
+    }
+    Ok(path)
 }
 
 #[cfg(test)]

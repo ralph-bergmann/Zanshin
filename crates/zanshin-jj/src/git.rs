@@ -344,7 +344,7 @@ pub(crate) fn git_import(workspace: &mut Workspace, ctx: &mut VerbContext) -> Re
 /// The no-op result the colocated `git import` / `git export` return: nothing written, the head
 /// as it stands after the pre-verb snapshot.
 fn colocated_no_op(workspace: &Workspace) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     mutate::no_op_result(workspace.workspace_name(), &readonly)
 }
 
@@ -662,7 +662,7 @@ pub(crate) fn git_remote_set_url(
     url: Option<&str>,
     push_url: Option<&str>,
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let remote: RemoteNameBuf = name.into();
     git::set_remote_urls(readonly.store(), &remote, url, push_url).map_err(map_remote_mgmt_err)?;
     mutate::no_op_result(workspace.workspace_name(), &readonly)

@@ -429,7 +429,7 @@ pub(crate) fn squash(
     ctx: &mut VerbContext,
     options: &SquashOptions,
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let old_wc_id = readonly.view().get_wc_commit_id(&workspace_name).cloned();
 
@@ -503,7 +503,7 @@ pub(crate) fn squash_plan(
     ctx: &mut VerbContext,
     options: &SquashOptions,
 ) -> Result<SquashPlan, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
     let PlannedSquash {
         destination,
@@ -765,7 +765,7 @@ pub(crate) fn split(
     ctx: &mut VerbContext,
     options: &SplitOptions,
 ) -> Result<SplitResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
     let PreparedSplit { target, location } = prepare_split(&tx, workspace, ctx, options)?;

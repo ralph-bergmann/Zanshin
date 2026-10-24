@@ -249,7 +249,7 @@ pub(crate) fn check_select_tree_args(options: &SelectTreeOptions) -> Result<(), 
 /// See [`crate::Repo::select_tree`].
 pub(crate) fn select_tree(workspace: &Workspace, options: &SelectTreeOptions) -> Result<SelectedTreeId, MutateError> {
     let files = parse_files(&options.files)?;
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let repo: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let revision = crate::op_support::resolve_or_wc(repo, workspace.workspace_name(), options.revision.as_ref())
         .map_err(|e| res(e, options.revision.as_ref()))?;

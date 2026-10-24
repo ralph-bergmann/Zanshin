@@ -38,7 +38,7 @@
 //! start-up: [`crate::Repo::open_with_report`] (and so [`crate::Repo::open`]), the settings
 //! refresh every precondition-running verb starts with, and the `config_*` verbs that take a
 //! workspace root ([`fix_up_secure_config`] inside their start-up load; [`fix_up_layers`] for the
-//! two `edit` halves, which load no stack). Not the creation checks ([`check_startup_stack`],
+//! two `edit` halves, which refuse on no stack). Not the creation checks ([`check_startup_stack`],
 //! [`user_settings_for_new_workspace`]: the new workspace has no `.jj/` yet, so the CLI's call is
 //! a no-op there), not `config gc`, not the `&self` reads outside the precondition.
 //!

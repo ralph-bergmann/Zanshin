@@ -480,7 +480,7 @@ fn warn_unmatched(sink: &mut Warnings, view: &jj_lib::view::View, expression: &S
 ///   `revisions` text.
 /// - [`BookmarkError::Config`] — the revset aliases do not load, or `ui.bookmark-list-sort-keys`
 ///   is malformed.
-/// - [`BookmarkError::Backend`] — `load_at_head`, a store read or a distance revset failed;
+/// - [`BookmarkError::Backend`] — the head load, a store read or a distance revset failed;
 ///   the jj-lib reason is forwarded as a string.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn list_bookmarks(
@@ -489,7 +489,7 @@ pub(crate) fn list_bookmarks(
     sink: &mut Warnings,
     options: &BookmarkListOptions,
 ) -> Result<Vec<Bookmark>, BookmarkError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let view = readonly.view();
     let invalid = |reason| BookmarkError::InvalidInput { reason };
 

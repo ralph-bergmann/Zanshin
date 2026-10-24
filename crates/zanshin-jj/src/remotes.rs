@@ -113,11 +113,11 @@ fn remote_urls(git_repo: &gix::Repository, name: &str) -> Option<(String, Option
 ///
 /// # Errors
 ///
-/// - [`RemoteError::Backend`] — `load_at_head` failed; the jj-lib reason is
+/// - [`RemoteError::Backend`] — the head load failed; the jj-lib reason is
 ///   forwarded as a string.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn list_remotes(workspace: &Workspace) -> Result<Vec<Remote>, RemoteError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(re)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(re)?;
     let store = readonly.store();
 
     // `unwrap_or_default` collapses the native-backend `UnexpectedGitBackendError`
@@ -510,7 +510,7 @@ pub(crate) fn git_fetch(
     progress: &ProgressFn,
     cancel: Option<&crate::cancel::CancelGuard>,
 ) -> Result<GitFetchOutcome, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(mutate::be)?;
     let mut hints = Vec::new();
     let remotes = resolve_fetch_remotes(readonly.store(), &args.remotes, ctx, &mut hints)?;
 

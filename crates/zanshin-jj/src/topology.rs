@@ -29,7 +29,7 @@ use crate::{CommitId, CommitRef, GraphEdgeKind, OperationId, Repo, RevsetError};
 /// The whole revset's index-only topology at one operation (Story 4.10).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraphTopology {
-    /// The operation this call's own `load_at_head` loaded — after the call's precondition
+    /// The operation this call's own head load loaded — after the call's precondition
     /// snapshot, if that wrote one. [`crate::Repo::commit_contents`] reads the object half at it.
     pub operation_id: OperationId,
     /// The revset's nodes in `jj log` order (children before parents, `prioritize` first).
@@ -117,7 +117,7 @@ fn jj<E: std::fmt::Display>(e: E) -> RevsetError {
 ///
 /// Passes: (1) parse `revset`/`prioritize`/`short_prefixes` like `walk_graph`, then every anchor
 /// against the same alias map, intersected with `revset` as a user expression — all before the
-/// load; (2) `load_at_head`, evaluate, resolve every anchor once; (3) one `commit_change_ids`
+/// load; (2) the head load, evaluate, resolve every anchor once; (3) one `commit_change_ids`
 /// pass into a commit → change map; (4) the `ParentCount` passes; (5) the `TopoGroupedGraph`
 /// stream, the view half per node and — only when asked — each non-root commit's committer
 /// timestamp; (6) edge targets resolved to node indices; (7) anchors mapped to node indices;
@@ -132,7 +132,7 @@ fn jj<E: std::fmt::Display>(e: E) -> RevsetError {
 /// - [`RevsetError::Config`] — the repo's effective jj config is malformed or unreadable.
 /// - [`RevsetError::DanglingEdge`] — a Direct/Indirect edge names a target outside the node
 ///   set (jj-lib's stream contract rules it out).
-/// - [`RevsetError::JjLibError`] — `load_at_head`, evaluation, a view-half lookup, a stream
+/// - [`RevsetError::JjLibError`] — the head load, evaluation, a view-half lookup, a stream
 ///   item, or a timestamp's commit load failed.
 pub(crate) fn graph_topology(
     repo: &Repo,
@@ -151,7 +151,7 @@ pub(crate) fn graph_topology(
         .collect::<Result<Vec<_>, RevsetError>>()?;
 
     // (2) Reload to head (ADR-0002), evaluate, resolve the anchors once.
-    let readonly = pollster::block_on(repo.workspace().repo_loader().load_at_head()).map_err(jj)?;
+    let readonly = crate::snapshot::reload_head(repo.workspace()).map_err(jj)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let store = readonly.store();
     let setup = parsed.evaluate(repo_dyn)?;

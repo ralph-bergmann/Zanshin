@@ -266,7 +266,7 @@ fn parse_path(path: &str) -> Result<RepoPathBuf, FileError> {
 /// snapshot every subsequent read in the call is taken from, so a concurrent operation can
 /// never make two halves of one result disagree.
 fn head_commit(workspace: &Workspace, revision: Option<&ChangeId>) -> Result<(Arc<ReadonlyRepo>, Commit), FileError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let commit =
         resolve_or_wc(readonly.as_ref(), workspace.workspace_name(), revision).map_err(|e| res(e, revision))?;
     Ok((readonly, commit))
@@ -322,7 +322,7 @@ fn to_file_entry(path: &RepoPath, value: &MergedTreeValue) -> Option<FileEntry> 
 ///   (unknown or only-hidden), or divergent. Not to be confused with an ABSENT `revision`,
 ///   which is not an error at all: it applies the CLI's `-r` default `@`.
 /// - [`FileError::InvalidInput`] — a `paths` entry is not a valid repo path.
-/// - [`FileError::Backend`] — `load_at_head` or a tree read failed.
+/// - [`FileError::Backend`] — the head load or a tree read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn file_list(
     workspace: &Workspace,
@@ -444,7 +444,7 @@ fn render_entry(
 ///   tree; it names the resolved path.
 /// - [`FileError::Config`] — the effective jj config is unreadable or malformed (including
 ///   an `ui.conflict-marker-style` that is not one of jj's four style names).
-/// - [`FileError::Backend`] — `load_at_head` or a blob read failed.
+/// - [`FileError::Backend`] — the head load or a blob read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn file_show(
     repo: &crate::Repo,
@@ -541,7 +541,7 @@ pub(crate) fn file_show(
 /// - [`FileError::PathNotFound`] — `path` is absent from the revision's tree.
 /// - [`FileError::NotAFile`] — `path` exists but is not a regular file (a directory, a
 ///   symlink, a submodule, or a conflict with a non-file side). Both name the resolved path.
-/// - [`FileError::Backend`] — `load_at_head`, the annotation walk, or a store read failed.
+/// - [`FileError::Backend`] — the head load, the annotation walk, or a store read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn file_annotate(
     workspace: &Workspace,
@@ -667,7 +667,7 @@ fn collect_matches(
 /// - [`FileError::ChangeNotFound`] — `revision` does not resolve.
 /// - [`FileError::InvalidInput`] — `pattern` names an unknown kind or does not parse, or a
 ///   `paths` entry is not a valid repo path.
-/// - [`FileError::Backend`] — `load_at_head` or a blob read failed.
+/// - [`FileError::Backend`] — the head load or a blob read failed.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn file_search(
     workspace: &Workspace,

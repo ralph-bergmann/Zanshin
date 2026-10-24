@@ -886,13 +886,12 @@ fn workspace_surface_resolves() {
 
     _ = zanshin_jj::Repo::list_workspaces
         as fn(&mut zanshin_jj::Repo) -> Result<Vec<zanshin_jj::WorkspaceEntry>, zanshin_jj::WorkspaceError>;
-    // `workspace root` is in the CLI's no-snapshot set, so both stay `&self` (Story 9.26); its
-    // `jj.workspace_path_inaccessible` warning (jj 0.46) rides the `Warned` return.
+    // `workspace root` is in the CLI's no-snapshot set, but it runs the command start-up as
+    // `op_integrate` does (the fix-up, the effective config; with a name the start-up
+    // environment), so it takes `&mut self` and its warnings — `jj.workspace_path_inaccessible`
+    // last — ride `take_warnings`.
     _ = zanshin_jj::Repo::resolve_workspace_root
-        as fn(
-            &zanshin_jj::Repo,
-            Option<&str>,
-        ) -> Result<zanshin_jj::Warned<std::path::PathBuf>, zanshin_jj::WorkspaceError>;
+        as fn(&mut zanshin_jj::Repo, Option<&str>) -> Result<std::path::PathBuf, zanshin_jj::WorkspaceError>;
     // The shipped infallible accessor keeps its name and its `&Path` return (Story 9.7 adds a
     // distinct verb rather than renaming it — `zanshin-ffi/src/repo.rs` arms the watcher with it).
     _ = zanshin_jj::Repo::workspace_root as fn(&zanshin_jj::Repo) -> &std::path::Path;
