@@ -127,11 +127,14 @@ the `zanshin-graph` lane crate was removed)*
   9.24's remote-change poll) and `fix` (its tools may run long; cancellable) on a
   short-lived `Isolate.run` helper, once per call, so its event loop keeps forwarding
   progress and cancels; other calls on that handle queue behind it.
-- Dart code starts a child process only with `ProcessStartMode.detached` /
-  `.detachedWithStdio`, or the process is started from Rust. While a non-detached Dart
-  child lives, the VM's exit-code handler `waitpid`s ANY pid and can reap a child the
-  cdylib started (`fix`'s tool, jj-lib's `git`), whose wait then fails with ECHILD.
-  Guard: `app/test/process_spawn_guard_test.dart` (scans every Dart `lib/` tree).
+- Dart production code (every `lib/` tree) starts a child process only with
+  `ProcessStartMode.detached` / `.detachedWithStdio`, or the process is started from Rust.
+  While a non-detached Dart child lives, the VM's exit-code handler `waitpid`s ANY pid and
+  can reap a child the cdylib started (`fix`'s tool, jj-lib's `git`), whose wait then fails
+  with ECHILD. Guard: `app/test/process_spawn_guard_test.dart` (scans every Dart `lib/`
+  tree). Test code is outside the rule, and `dart test` itself runs a non-detached
+  subprocess, so a Dart test must not rely on the exit status of a child the cdylib starts
+  (use an unstartable tool there; witness real tool runs in Rust).
 - Use `sealed class` for `WorkerCommand` hierarchy so the dispatcher's `switch`
   is exhaustive (compile-time guarantee).
 - `NativeFinalizer` MUST be attached to every Dart wrapper holding a Rust handle.

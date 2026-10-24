@@ -26,6 +26,8 @@ deferred:
     location: >-
       _bmad-output/project-context.md (Dart bullets), app/test/process_spawn_guard_test.dart
     severity: low
+    resolved: >-
+      2026-10-24 — fixed (console session): project-context.md § Dart scopes the rule to every `lib/` tree and says a Dart test must not rely on the exit status of a child the cdylib starts.
 ---
 
 <intent-contract>
