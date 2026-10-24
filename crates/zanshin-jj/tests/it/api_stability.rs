@@ -1771,6 +1771,25 @@ fn resolve_and_diffedit_surface_resolves() {
         ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
 }
 
+/// The Story 9.18 surface: `revert`'s options named field by field, and the verb as a `fn`
+/// pointer.
+#[test]
+fn revert_surface_resolves() {
+    let options = zanshin_jj::RevertOptions {
+        revisions: vec![zanshin_jj::ChangeId("r".to_owned())],
+        onto: vec![zanshin_jj::ChangeId("o".to_owned())],
+        insert_after: Vec::new(),
+        insert_before: Vec::new(),
+    };
+    assert_eq!(options.clone(), options);
+    assert_eq!(zanshin_jj::RevertOptions::default().revisions, Vec::new());
+    _ = zanshin_jj::Repo::revert
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::RevertOptions,
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+}
+
 // operation-log surface (Story 9.21)
 type _OpShow = zanshin_jj::OpShow;
 type _OpDiffResult = zanshin_jj::OpDiffResult;

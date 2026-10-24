@@ -100,7 +100,8 @@ enum RequestKind {
   SimplifyParents(64),
   ResolveList(65),
   Resolve(66),
-  Diffedit(67);
+  Diffedit(67),
+  Revert(68);
 
   final int value;
   const RequestKind(this.value);
@@ -243,6 +244,8 @@ enum RequestKind {
         return RequestKind.Resolve;
       case 67:
         return RequestKind.Diffedit;
+      case 68:
+        return RequestKind.Revert;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -251,7 +254,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 67;
+  static const int maxValue = 68;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -4540,6 +4543,135 @@ class DuplicateRequestObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _insertBefore;
 
   DuplicateRequestObjectBuilder({
+    RequestKind? kind,
+    List<String>? revisions,
+    List<String>? onto,
+    List<String>? insertAfter,
+    List<String>? insertBefore,
+  }) : _kind = kind,
+       _revisions = revisions,
+       _onto = onto,
+       _insertAfter = insertAfter,
+       _insertBefore = insertBefore;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionsOffset = _revisions == null
+        ? null
+        : fbBuilder.writeList(_revisions!.map(fbBuilder.writeString).toList());
+    final int? ontoOffset = _onto == null ? null : fbBuilder.writeList(_onto!.map(fbBuilder.writeString).toList());
+    final int? insertAfterOffset = _insertAfter == null
+        ? null
+        : fbBuilder.writeList(_insertAfter!.map(fbBuilder.writeString).toList());
+    final int? insertBeforeOffset = _insertBefore == null
+        ? null
+        : fbBuilder.writeList(_insertBefore!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(5);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionsOffset);
+    fbBuilder.addOffset(2, ontoOffset);
+    fbBuilder.addOffset(3, insertAfterOffset);
+    fbBuilder.addOffset(4, insertBeforeOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_revert` (Story 9.18) — the CLI's `jj revert` flags; change ids are jj
+///  reverse-hex. ABSENT or EMPTY is the flag not given.
+///
+///    revisions          `-r`, required: ABSENT or EMPTY refuses `jj.invalid_input` (clap's
+///                       `required = true`), before the snapshot
+///    onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`; one of them is required
+///                       and `onto` excludes the other two (else `jj.invalid_input`, before the
+///                       snapshot)
+class RevertRequest {
+  RevertRequest._(this._bc, this._bcOffset);
+  factory RevertRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RevertRequest> reader = _RevertRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  List<String>? get revisions => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get onto => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get insertAfter => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  List<String>? get insertBefore =>
+      const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 12);
+
+  @override
+  String toString() {
+    return 'RevertRequest{kind: ${kind}, revisions: ${revisions}, onto: ${onto}, insertAfter: ${insertAfter}, insertBefore: ${insertBefore}}';
+  }
+}
+
+class _RevertRequestReader extends fb.TableReader<RevertRequest> {
+  const _RevertRequestReader();
+
+  @override
+  RevertRequest createObject(fb.BufferContext bc, int offset) => RevertRequest._(bc, offset);
+}
+
+class RevertRequestBuilder {
+  RevertRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionsOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addOntoOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addInsertAfterOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addInsertBeforeOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RevertRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final List<String>? _revisions;
+  final List<String>? _onto;
+  final List<String>? _insertAfter;
+  final List<String>? _insertBefore;
+
+  RevertRequestObjectBuilder({
     RequestKind? kind,
     List<String>? revisions,
     List<String>? onto,

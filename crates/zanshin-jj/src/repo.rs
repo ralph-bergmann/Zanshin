@@ -3654,6 +3654,48 @@ impl Repo {
         })
     }
 
+    /// Applies the reverse of existing changes (Story 9.18) — the CLI's `jj revert`.
+    ///
+    /// The reverted changes are `options.revisions`, taken in reverse topological order (newest
+    /// first). Each reverse is a new change whose tree is the 3-way merge of the destination, the
+    /// reverted change's tree and its parents' tree — a conflict when a later change overwrote
+    /// what is reverted, labelled `(revert destination)` / `(reverted revision)` / `(parents of
+    /// reverted revision)` as the CLI labels it. The first reverse goes onto the location's
+    /// parents (`onto` / `-o`, `insert_after` / `-A`, `insert_before` / `-B` — the location as
+    /// `jj new` resolves it, and as `drop_actions`' `revert` row previews it), each later one
+    /// onto the previous; `insert_after` / `insert_before` rebase the location's children onto
+    /// the last one. Each description is `templates.revert_description` rendered on the reverted
+    /// change (jj's default: `Revert "<first line>"`, a blank line, `This reverts commit <hex>.`).
+    ///
+    /// The operation is the CLI's `revert commit <hex>` (`… and <n> more` for several);
+    /// `new_change_ids` names the reverse changes' ids in creation order. The CLI's status lines
+    /// ("Reverted N commits as follows:", "Rebased N descendant commits.") are not reported.
+    ///
+    /// The working copy is snapshotted first (Story 9.26) — see [`Repo::restore`].
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — no revision, `onto` with
+    ///   `insert_after`/`insert_before`, or none of the three location flags (clap's refusals:
+    ///   before the snapshot, so nothing is written); a location that would create a loop or
+    ///   resolves no parent; or (Git backend) a merge with the root commit as a parent.
+    /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
+    ///   commit, or divergent.
+    /// - [`crate::MutateError::Immutable`] — a child `insert_after`/`insert_before` would rewrite
+    ///   is inside the repo's effective immutable set.
+    /// - [`crate::MutateError::Config`] — `templates.revert_description` is not a string or does
+    ///   not parse ("Failed to parse template: …"), or the `immutable_heads()` alias does not
+    ///   resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed (Story 9.26).
+    /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn revert(&mut self, options: &crate::RevertOptions) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_checked_verb(crate::revert::check_revert_args(options), |repo, ctx| {
+            crate::revert::revert(repo.workspace_mut(), ctx, options)
+        })
+    }
+
     /// Updates files with formatting fixes or other changes (Story 9.9) — the CLI's `jj fix`.
     ///
     /// The `fix.tools` config is read first: each entry's `command` (a string, an array, or `{

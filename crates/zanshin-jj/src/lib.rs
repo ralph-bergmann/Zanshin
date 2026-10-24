@@ -131,6 +131,7 @@ pub use repo::{Backend, CreationOutcome, Repo, RepoError};
 pub use resolve::{
     ConflictHunk, ConflictedFile, ResolveList, ResolveListOptions, ResolveOptions, ResolveTool, ResolvedFile,
 };
+pub use revert::RevertOptions;
 pub use revset::{resolve_revset, RevsetError, DEFAULT_LOG_REVSET};
 pub use select_tree::{
     FileChoice, FileSelection, HunkKey, SelectTreeOptions, SelectedTreeId, SourceTree, TreeSelection,

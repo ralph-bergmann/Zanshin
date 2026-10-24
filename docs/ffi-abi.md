@@ -37,7 +37,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 106
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 107
 exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -290,9 +290,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Sixty-nine of the 106 exported symbols take their arguments as a **FlatBuffers
+Seventy of the 107 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Fifty-seven use the handle-scoped three-parameter shape:
+strings. Fifty-eight use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -551,7 +551,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **106** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **107** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -627,6 +627,7 @@ or no `# Errors` block.
 | `zanshin_resolve_list` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ResolveListRequest` | `ResolveList` (see § `zanshin_resolve_list`, `zanshin_resolve`, `zanshin_diffedit`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.no_conflicts`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.17 |
 | `zanshin_resolve` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ResolveRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.no_conflicts`, `jj.immutable`, `jj.stale_selection`, `jj.conflict_not_resolvable`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.17 |
 | `zanshin_diffedit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DiffeditRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.stale_selection`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.17 |
+| `zanshin_revert` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `RevertRequest` | `MutationResult` (see § `zanshin_revert`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.18 |
 | `zanshin_undo` | `(uint64_t handle, bool allow_cross_workspace)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.undo_cross_workspace`, `jj.nothing_to_undo`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (+9.39) |
 | `zanshin_redo` | `(uint64_t handle, bool allow_cross_workspace)` | — | `MutationResult` | `ffi.invalid_handle`, `jj.nothing_to_redo`, `jj.redo_cross_workspace`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.21 |
 | `zanshin_op_abandon` | `(uint64_t handle, const char *operation)` | — | `OpAbandonResult` (see § Operation verbs) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.invalid_input`, `jj.operation_not_found`, `jj.config_error`, `jj.jj_lib_error` | 9.21 |
@@ -2083,6 +2084,29 @@ empty" check, the editors' instruction texts, and diffedit's `paths` (the tree a
 selection). Dart: `RepoHandle.resolveList(...)` → `ResolveList`, `RepoHandle.resolve(...)` and
 `RepoHandle.diffedit(...)` → `MutationResult`, `RepoHandle.selectTree(from:)`,
 `ShowEntry.treeIds`.
+
+## `zanshin_revert` (Story 9.18)
+
+The CLI's `jj revert` at v0.46.0 (`cmd_revert`), answering the shared `MutationResult`.
+
+| Table | Fields |
+|-------|--------|
+| `RevertRequest` | `kind = Revert`; `revisions` (`-r`, required), `onto` / `insert_after` / `insert_before` (`-o` / `-A` / `-B`, one required; `onto` excludes the other two). ABSENT or EMPTY is the flag not given. |
+
+- **Order**: clap's refusals first, before the snapshot (`jj.invalid_input`, no `precondition`):
+  no revision ("revert requires at least one revision"), `onto` with an insert, no location. Then
+  the revisions in reverse topological order, the location (`"reverted commits"`; `jj.immutable`
+  for a child `-A`/`-B` would rewrite; a root merge in a Git repo is `jj.invalid_input`), the
+  `templates.revert_description` parse (`jj.config_error`), the write.
+- **Write**: per reverted revision, newest first, a new change whose tree is the 3-way merge of
+  the destination, the reverted tree and its parents' tree, labelled `<…> (revert destination)` /
+  `<…> (reverted revision)` / `<…> (parents of reverted revision)` as the CLI labels it; the first
+  onto the location's parents, each later one onto the previous. `-A`/`-B` rebase the location's
+  children onto the last one. `new_change_ids` are the reverse changes, in creation order. The
+  operation is `revert commit <hex>` / `revert commit <hex> and <n> more`.
+
+Not ported: the status lines ("Reverted N commits as follows:", "Rebased N descendant
+commits."). Dart: `RepoHandle.revert(...)` → `MutationResult`.
 
 ---
 

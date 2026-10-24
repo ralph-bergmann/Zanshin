@@ -2523,6 +2523,39 @@ final class DuplicateCommand extends WorkerCommand implements HandleScopedComman
   final List<String> insertBefore;
 }
 
+/// Apply the reverse of revisions, in the repo identified by [handleId] (Story
+/// 9.18) — the CLI's `jj revert`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never
+/// remove), calls `zanshinRevert(raw, …)`, and replies with a `BufferResult`
+/// carrying the FlatBuffers `Envelope<MutationResult>` bytes.
+final class RevertCommand extends WorkerCommand implements HandleScopedCommand {
+  const RevertCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.revisions,
+    required this.onto,
+    required this.insertAfter,
+    required this.insertBefore,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The revisions to revert (`-r`, required).
+  final List<String> revisions;
+
+  /// `-o` change ids; empty = the flag not given.
+  final List<String> onto;
+
+  /// `-A` change ids; empty = the flag not given.
+  final List<String> insertAfter;
+
+  /// `-B` change ids; empty = the flag not given.
+  final List<String> insertBefore;
+}
+
 /// Run the configured fix tools, in the repo identified by [handleId] (Story
 /// 9.9) — the CLI's `jj fix`.
 ///

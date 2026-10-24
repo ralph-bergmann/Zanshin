@@ -23,6 +23,7 @@ use zanshin_jj::HunkKey;
 use zanshin_jj::MetaeditOptions;
 use zanshin_jj::MovementOptions;
 use zanshin_jj::RebaseOptions;
+use zanshin_jj::RevertOptions;
 use zanshin_jj::SelectTreeOptions;
 use zanshin_jj::SourceTree;
 use zanshin_jj::SparseInheritance;
@@ -2951,6 +2952,7 @@ pub fn scenarios() -> Vec<Scenario> {
     .chain(simplify_parents_scenarios())
     .chain(resolve_scenarios())
     .chain(diffedit_scenarios())
+    .chain(revert_scenarios())
     .chain(crate::git_scenarios::bookmark_tracking_scenarios())
     .chain(crate::git_scenarios::push_scenarios())
     .chain(crate::git_scenarios::bookmark_auto_track_scenarios())
@@ -5523,5 +5525,119 @@ fn diffedit_scenarios() -> Vec<Scenario> {
                 |_| args(&["diffedit", "--tool", "zs"]),
             )
         },
+    ]
+}
+
+// ── Story 9.18: revert ───────────────────────────────────────────────────────────
+
+/// `Repo::revert` of the commits labelled `revisions` at the location `flag` (`-o`, `-A`, `-B`)
+/// of the commits labelled `labels` — [`dup`]'s options, field for field.
+fn revert_outcome(repo: &mut zanshin_jj::Repo, s: &State, revisions: &[&str], flag: &str, labels: &[&str]) -> Outcome {
+    let DuplicateOptions {
+        revisions,
+        onto,
+        insert_after,
+        insert_before,
+    } = dup(s, revisions, flag, labels);
+    let result = repo.revert(&RevertOptions {
+        revisions,
+        onto,
+        insert_after,
+        insert_before,
+    });
+    zanshin_outcome(repo, &result)
+}
+
+/// D on C rewrites `b.txt`: reverting B onto D conflicts (B added the file D modified).
+const D_REWRITES_B: &[Step] = &[
+    Step::Jj(&["new", "-m", "D"]),
+    Step::Write("b.txt", "x\n"),
+    Step::Jj(&["util", "snapshot"]),
+];
+
+/// `templates.revert_description` set to a one-line template (no trailing newline).
+const REVERT_DESCRIPTION: &[Step] = &[Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "templates.revert_description",
+    "'\"undo \" ++ description.first_line()'",
+])];
+
+/// revert: onto `@`, two revisions, each insert flag, a merge location, a conflicting reverse,
+/// the description template, two revisions inserted (the child moves onto the LAST reverse), a
+/// merge child keeping its other parent, a reverted merge commit, and the Git root-merge refusal.
+fn revert_scenarios() -> Vec<Scenario> {
+    vec![
+        simple(
+            "revert_onto_wc",
+            |repo, _, s| revert_outcome(repo, s, &["B"], "-o", &["C"]),
+            |s| verb_argv(s, "revert", &[("-r", "B"), ("-o", "C")], &[]),
+        ),
+        simple(
+            "revert_two_revisions",
+            |repo, _, s| revert_outcome(repo, s, &["B", "C"], "-o", &["C"]),
+            |s| verb_argv(s, "revert", &[("-r", "B"), ("-r", "C"), ("-o", "C")], &[]),
+        ),
+        simple(
+            "revert_insert_after",
+            |repo, _, s| revert_outcome(repo, s, &["B"], "-A", &["A"]),
+            |s| verb_argv(s, "revert", &[("-r", "B"), ("-A", "A")], &[]),
+        ),
+        simple(
+            "revert_insert_before",
+            |repo, _, s| revert_outcome(repo, s, &["A"], "-B", &["C"]),
+            |s| verb_argv(s, "revert", &[("-r", "A"), ("-B", "C")], &[]),
+        ),
+        Scenario {
+            setup: X_ON_ROOT,
+            ..simple(
+                "revert_onto_two_parents",
+                |repo, _, s| revert_outcome(repo, s, &["B"], "-o", &["C", "X"]),
+                |s| verb_argv(s, "revert", &[("-r", "B"), ("-o", "C"), ("-o", "X")], &[]),
+            )
+        },
+        Scenario {
+            setup: D_REWRITES_B,
+            ..simple(
+                "revert_conflict",
+                |repo, _, s| revert_outcome(repo, s, &["B"], "-o", &["D"]),
+                |s| verb_argv(s, "revert", &[("-r", "B"), ("-o", "D")], &[]),
+            )
+        },
+        Scenario {
+            setup: REVERT_DESCRIPTION,
+            ..simple(
+                "revert_description_template",
+                |repo, _, s| revert_outcome(repo, s, &["B"], "-o", &["C"]),
+                |s| verb_argv(s, "revert", &[("-r", "B"), ("-o", "C")], &[]),
+            )
+        },
+        simple(
+            "revert_two_revisions_insert_before",
+            |repo, _, s| revert_outcome(repo, s, &["A", "B"], "-B", &["C"]),
+            |s| verb_argv(s, "revert", &[("-r", "A"), ("-r", "B"), ("-B", "C")], &[]),
+        ),
+        Scenario {
+            setup: MERGE_AND_X,
+            ..simple(
+                "revert_insert_after_merge_child",
+                |repo, _, s| revert_outcome(repo, s, &["A"], "-A", &["C"]),
+                |s| verb_argv(s, "revert", &[("-r", "A"), ("-A", "C")], &[]),
+            )
+        },
+        Scenario {
+            setup: MERGE_AND_X,
+            ..simple(
+                "revert_merge_commit",
+                |repo, _, s| revert_outcome(repo, s, &["M"], "-o", &["X"]),
+                |s| verb_argv(s, "revert", &[("-r", "M"), ("-o", "X")], &[]),
+            )
+        },
+        simple(
+            "revert_root_merge_refused",
+            |repo, _, s| revert_outcome(repo, s, &["B"], "-o", &["root", "A"]),
+            |s| verb_argv(s, "revert", &[("-r", "B"), ("-o", "root"), ("-o", "A")], &[]),
+        ),
     ]
 }

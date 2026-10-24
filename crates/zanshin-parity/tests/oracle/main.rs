@@ -395,6 +395,17 @@ parity!(
     diffedit_from_to,
     diffedit_restore_descendants,
     diffedit_nothing_changed,
+    revert_onto_wc,
+    revert_two_revisions,
+    revert_insert_after,
+    revert_insert_before,
+    revert_onto_two_parents,
+    revert_conflict,
+    revert_description_template,
+    revert_two_revisions_insert_before,
+    revert_insert_after_merge_child,
+    revert_merge_commit,
+    revert_root_merge_refused,
     rebase_i1_source_insert_before_merge,
     rebase_source_onto_itself_refused,
     rebase_several_revisions,
@@ -481,7 +492,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 413);
+    assert_eq!(SCENARIO_IDS.len(), 424);
 }
 
 #[test]

@@ -3621,6 +3621,55 @@ ZanshinBuf *zanshin_resolve_list(uint64_t handle, const uint8_t *data, uintptr_t
 ZanshinBuf *zanshin_resolve(uint64_t handle, const uint8_t *data, uintptr_t len);
 
 /**
+ * Apply the reverse of existing changes, in the repo identified by `handle` — the CLI's `jj
+ * revert` (Story 9.18).
+ *
+ * The arguments cross as a `RevertRequest` `FlatBuffers` request buffer: `revisions` (`-r`,
+ * required) and the location — `onto` (`-o`) or `insert_after` / `insert_before` (`-A` / `-B`),
+ * one of them required. The revisions are reverted newest first: each reverse is a new change
+ * whose tree is the 3-way merge of the destination, the reverted tree and its parents' tree (a
+ * conflict labelled as the CLI labels it when a later change overwrote what is reverted), the
+ * first onto the location's parents, each later one onto the previous; `-A`/`-B` rebase the
+ * location's children onto the last one. Each is described with `templates.revert_description`
+ * rendered on the reverted change. The operation is the CLI's `revert commit <hex>` (`… and <n>
+ * more` for several). The working copy is snapshotted first (Story 9.26).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success: the reverse
+ * changes' ids in `new_change_ids`, in creation order.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `RevertRequest` buffer, or its `kind` is
+ *   not `Revert`.
+ * - `jj.invalid_input` — no revision, `onto` with `insert_after`/`insert_before`, or no location
+ *   (clap's refusals: before the snapshot, nothing written, no `precondition`); a location that
+ *   would create a loop or resolves no parent; a merge with the root commit as a parent in a Git
+ *   repo; detail in `context`.
+ * - `jj.change_not_found` — an id is malformed, carried by no VISIBLE commit, or divergent; the id
+ *   in `context`.
+ * - `jj.immutable` — a child `insert_after`/`insert_before` would rewrite is immutable.
+ * - `jj.config_error` — the revert-description template setting is not a string or does not
+ *   parse, or the config or its `immutable_heads()` alias does not read or resolve.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale (Story 9.26).
+ * - `jj.not_a_git_repo` — the colocated finish found no Git backend.
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.RevertRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the duration
+ * of the call.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_revert(uint64_t handle,
+                           const uint8_t *data,
+                           uintptr_t len);
+
+/**
  * Write the tree a hunk selection yields, in the repo identified by `handle` — the CLI's builtin
  * diff editor applying the same choice (Story 9.50), for the tree arms of `zanshin_commit`,
  * `zanshin_split` and `zanshin_squash`.

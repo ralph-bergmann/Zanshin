@@ -293,7 +293,15 @@ async fn commit_aspects(
         format!("{}<-[{}]", labels.commit(id), parents.join(","))
     });
     aspects.insert("graph (label<-parents)", graph.collect::<Vec<_>>().join("  "));
-    aspects.insert("descriptions", each(&|commit| format!("{:?}", commit.description())));
+    // Ids in a description (`jj revert`'s "This reverts commit <hex>.", Story 9.18) differ between
+    // the two repos; named as operation text names them.
+    let names = id_names(labels, before, &[]);
+    let mut descriptions = Vec::new();
+    for commit in &non_root {
+        let text = normalize(commit.description(), &names, repo.store()).await;
+        descriptions.push(format!("{}={text:?}", labels.commit(commit.id())));
+    }
+    aspects.insert("descriptions", descriptions.join("  "));
     aspects.insert("trees", each(&tree_text));
     aspects.insert(
         "author/committer",

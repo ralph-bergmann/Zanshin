@@ -50,6 +50,7 @@ import '../ffi/repo.dart' as repo_ffi;
 import '../ffi/repo_detect.dart' as repo_ffi_detect;
 import '../ffi/request_bytes.dart';
 import '../ffi/resolve.dart' as repo_ffi_resolve;
+import '../ffi/revert.dart' as repo_ffi_revert;
 import '../ffi/select_tree.dart' as repo_ffi_select_tree;
 import '../ffi/squash_split.dart' as repo_ffi_squash_split;
 import '../ffi/status.dart' as repo_ffi_status;
@@ -2194,6 +2195,43 @@ class ZanshinWorker {
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
+  /// Apply the reverse of revisions, in the repo identified by [handleId]
+  /// (Story 9.18) — the CLI's `jj revert`: [revisions] (`-r`, required) at
+  /// [onto] / [insertAfter] / [insertBefore] (`-o` / `-A` / `-B`, one
+  /// required).
+  ///
+  /// Sends a [RevertCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if an id contains an interior NUL (U+0000).
+  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`). Completes with a [StateError] after [close]; the
+  /// close-guard [StateError] is delivered synchronously by
+  /// [RepoHandle.revert].
+  Future<repo_ffi_mutate.MutationResult> revert(
+    int handleId, {
+    required List<String> revisions,
+    List<String> onto = const [],
+    List<String> insertAfter = const [],
+    List<String> insertBefore = const [],
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    repo_ffi_revert.rejectRevertNuls(revisions, onto, insertAfter, insertBefore);
+    final Uint8List bytes = await send(
+      RevertCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        revisions: revisions,
+        onto: onto,
+        insertAfter: insertAfter,
+        insertBefore: insertBefore,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
   /// Run the configured fix tools, in the repo identified by [handleId] (Story
   /// 9.9) — the CLI's `jj fix`: [source] (empty = the `revsets.fix` setting),
   /// [paths] (prefixes; empty = every path), [includeUnchangedFiles],
@@ -4166,6 +4204,29 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
             final Uint8List bytes = repo_ffi_metaedit_duplicate_fix.zanshinDuplicate(
+              raw,
+              revisions: revisions,
+              onto: onto,
+              insertAfter: insertAfter,
+              insertBefore: insertBefore,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case RevertCommand(
+          :final int handleId,
+          :final List<String> revisions,
+          :final List<String> onto,
+          :final List<String> insertAfter,
+          :final List<String> insertBefore,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: RevertCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_revert.zanshinRevert(
               raw,
               revisions: revisions,
               onto: onto,

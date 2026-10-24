@@ -80,6 +80,7 @@ mod remotes;
 mod remotes_write;
 mod repo;
 mod resolve;
+mod revert;
 mod revset;
 mod secure_config_fixups;
 mod secure_config_fixups_user;

@@ -159,7 +159,8 @@ enum RequestKind : ubyte {
   SimplifyParents,
   ResolveList,
   Resolve,
-  Diffedit
+  Diffedit,
+  Revert
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -506,6 +507,22 @@ table MetaeditRequest {
 ///                      onto its original's parents; `onto` excludes the other two (else
 ///                      `jj.invalid_input`, before the snapshot)
 table DuplicateRequest {
+  kind: RequestKind;
+  revisions: [string];
+  onto: [string];
+  insert_after: [string];
+  insert_before: [string];
+}
+
+/// Arguments of `zanshin_revert` (Story 9.18) — the CLI's `jj revert` flags; change ids are jj
+/// reverse-hex. ABSENT or EMPTY is the flag not given.
+///
+///   revisions          `-r`, required: ABSENT or EMPTY refuses `jj.invalid_input` (clap's
+///                      `required = true`), before the snapshot
+///   onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`; one of them is required
+///                      and `onto` excludes the other two (else `jj.invalid_input`, before the
+///                      snapshot)
+table RevertRequest {
   kind: RequestKind;
   revisions: [string];
   onto: [string];

@@ -1360,6 +1360,43 @@ final class RepoHandle {
     );
   }
 
+  /// Apply the reverse of existing changes (Story 9.18) — the CLI's
+  /// `jj revert`.
+  ///
+  /// [revisions] are change ids (`-r`, required), reverted newest first: each
+  /// reverse is a new change, the first at [onto] (`-o`) or [insertAfter] /
+  /// [insertBefore] (`-A` / `-B`, which rebase the location's children onto
+  /// the last one) — one location is required — each later one onto the
+  /// previous. A reverse a later change overwrote holds a conflict. Each is
+  /// described with `templates.revert_description` rendered on the reverted
+  /// change. The reverse changes' ids are the result's `newChangeIds`, in
+  /// creation order.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] if an id contains an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — no revision, no location, [onto] with an insert, a
+  /// location refusal —, `jj.change_not_found`, `jj.immutable`,
+  /// `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
+  Future<MutationResult> revert({
+    required List<String> revisions,
+    List<String> onto = const [],
+    List<String> insertAfter = const [],
+    List<String> insertBefore = const [],
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.revert(
+      _handleId,
+      revisions: revisions,
+      onto: onto,
+      insertAfter: insertAfter,
+      insertBefore: insertBefore,
+    );
+  }
+
   /// Update files with the configured `fix.tools` (Story 9.9) — the CLI's
   /// `jj fix`.
   ///

@@ -17,13 +17,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 67;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 68;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 68] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 69] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -92,6 +92,7 @@ pub mod zanshin {
             RequestKind::ResolveList,
             RequestKind::Resolve,
             RequestKind::Diffedit,
+            RequestKind::Revert,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -192,9 +193,10 @@ pub mod zanshin {
             pub const ResolveList: Self = Self(65);
             pub const Resolve: Self = Self(66);
             pub const Diffedit: Self = Self(67);
+            pub const Revert: Self = Self(68);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 67;
+            pub const ENUM_MAX: u8 = 68;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -264,6 +266,7 @@ pub mod zanshin {
                 Self::ResolveList,
                 Self::Resolve,
                 Self::Diffedit,
+                Self::Revert,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -336,6 +339,7 @@ pub mod zanshin {
                     Self::ResolveList => Some("ResolveList"),
                     Self::Resolve => Some("Resolve"),
                     Self::Diffedit => Some("Diffedit"),
+                    Self::Revert => Some("Revert"),
                     _ => None,
                 }
             }
@@ -8630,6 +8634,233 @@ pub mod zanshin {
         impl ::core::fmt::Debug for DuplicateRequest<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("DuplicateRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revisions", &self.revisions());
+                ds.field("onto", &self.onto());
+                ds.field("insert_after", &self.insert_after());
+                ds.field("insert_before", &self.insert_before());
+                ds.finish()
+            }
+        }
+        pub enum RevertRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_revert` (Story 9.18) — the CLI's `jj revert` flags; change ids are jj
+        /// reverse-hex. ABSENT or EMPTY is the flag not given.
+        ///
+        ///   revisions          `-r`, required: ABSENT or EMPTY refuses `jj.invalid_input` (clap's
+        ///                      `required = true`), before the snapshot
+        ///   onto / insert_after / insert_before   the CLI's `-o` / `-A` / `-B`; one of them is required
+        ///                      and `onto` excludes the other two (else `jj.invalid_input`, before the
+        ///                      snapshot)
+        pub struct RevertRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RevertRequest<'a> {
+            type Inner = RevertRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RevertRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISIONS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ONTO: ::flatbuffers::VOffsetT = 8;
+            pub const VT_INSERT_AFTER: ::flatbuffers::VOffsetT = 10;
+            pub const VT_INSERT_BEFORE: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RevertRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RevertRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RevertRequest<'bldr>> {
+                let mut builder = RevertRequestBuilder::new(_fbb);
+                if let Some(x) = args.insert_before {
+                    builder.add_insert_before(x);
+                }
+                if let Some(x) = args.insert_after {
+                    builder.add_insert_after(x);
+                }
+                if let Some(x) = args.onto {
+                    builder.add_onto(x);
+                }
+                if let Some(x) = args.revisions {
+                    builder.add_revisions(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(RevertRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revisions(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RevertRequest::VT_REVISIONS, None)
+                }
+            }
+            #[inline]
+            pub fn onto(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RevertRequest::VT_ONTO, None)
+                }
+            }
+            #[inline]
+            pub fn insert_after(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RevertRequest::VT_INSERT_AFTER, None)
+                }
+            }
+            #[inline]
+            pub fn insert_before(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RevertRequest::VT_INSERT_BEFORE, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RevertRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("revisions", Self::VT_REVISIONS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("onto", Self::VT_ONTO, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_after", Self::VT_INSERT_AFTER, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("insert_before", Self::VT_INSERT_BEFORE, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct RevertRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revisions:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub onto:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub insert_after:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub insert_before:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for RevertRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RevertRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revisions: None,
+                    onto: None,
+                    insert_after: None,
+                    insert_before: None,
+                }
+            }
+        }
+
+        pub struct RevertRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RevertRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(RevertRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revisions(
+                &mut self,
+                revisions: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RevertRequest::VT_REVISIONS, revisions);
+            }
+            #[inline]
+            pub fn add_onto(
+                &mut self,
+                onto: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RevertRequest::VT_ONTO, onto);
+            }
+            #[inline]
+            pub fn add_insert_after(
+                &mut self,
+                insert_after: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RevertRequest::VT_INSERT_AFTER, insert_after);
+            }
+            #[inline]
+            pub fn add_insert_before(
+                &mut self,
+                insert_before: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RevertRequest::VT_INSERT_BEFORE, insert_before);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RevertRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RevertRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RevertRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RevertRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RevertRequest");
                 ds.field("kind", &self.kind());
                 ds.field("revisions", &self.revisions());
                 ds.field("onto", &self.onto());

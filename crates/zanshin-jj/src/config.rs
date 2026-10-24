@@ -1845,6 +1845,17 @@ pub(crate) fn templates_duplicate_description(config: &StackedConfig) -> Result<
         .map_err(|e| value_error(&e))
 }
 
+/// Reads the effective `templates.revert_description` TEXT (Story 9.18) — the CLI's `get_string`
+/// in `jj revert` (`revert.rs:132-134` @ v0.46.0). Its default (`Revert "<first line>"`, a blank
+/// line, `This reverts commit <hex>.`) is jj-cli's own ([`CLI_DEFAULTS`]).
+///
+/// # Errors
+///
+/// - [`ConfigError::Load`] — the value is not a string (the key is named).
+pub(crate) fn templates_revert_description(config: &StackedConfig) -> Result<String, ConfigError> {
+    config.get("templates.revert_description").map_err(|e| value_error(&e))
+}
+
 /// Reads the effective `revsets.short-prefixes` revset TEXT the way the CLI's
 /// `load_short_prefixes_expression` does (`cli_util.rs:1115-1121` @ v0.46.0, Story 9.51): the key,
 /// else — when it is ABSENT — `revsets.log`. An empty text is returned as is (disambiguation off).
