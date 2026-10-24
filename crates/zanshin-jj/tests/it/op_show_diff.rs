@@ -663,6 +663,10 @@ fn op_show_whose_diff_fails_reports_the_backend_error() {
         .join(&hex[2..]);
     fs::remove_file(&object).unwrap_or_else(|e| panic!("{}: {e}", object.display()));
     let mut repo = Repo::open(&fx.path).unwrap();
+    assert!(
+        repo.op_show("@", None).unwrap().diff.is_some(),
+        "the loads and the unfiltered diff read no commit object"
+    );
 
     let err = repo
         .op_show("@", Some("description(glob:'*')"))

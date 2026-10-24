@@ -335,7 +335,7 @@ mod tests {
         use jj_lib::working_copy::SnapshotStats;
 
         use crate::snapshot::VerbContext;
-        use crate::warning::Warnings;
+        use crate::warning::{WarningKind, Warnings};
 
         test_helpers::pin_test_env();
         let fixture = test_helpers::extract_fixture("tiny-3-commits").expect("fixture");
@@ -360,6 +360,15 @@ mod tests {
         let mut sink = Warnings::default();
         let env = crate::snapshot::CommandEnv::load(repo.workspace(), &config, &mut sink).expect("start-up");
         let mut ctx = VerbContext::new(config, env, false, SnapshotStats::default(), sink);
+
+        // Control: with a parent the same children warn — Commit 1 is an ancestor of Commit 2.
+        let with_parent = super::DuplicatePlan {
+            to_duplicate: vec![c2.clone()],
+            location: Some((vec![store.root_commit_id().clone()], vec![c1.clone()])),
+        };
+        super::warn_self_placement(&tx, &with_parent, &mut ctx).expect("a parent");
+        let kinds: Vec<WarningKind> = ctx.warnings.take().into_iter().map(|warning| warning.kind).collect();
+        assert_eq!(kinds, [WarningKind::DuplicateAsOwnAncestor]);
 
         let plan = super::DuplicatePlan {
             to_duplicate: vec![c2],

@@ -4292,7 +4292,9 @@ fetch-bookmarks = \"main\"
 
     /// The CLI's `line-range-arg` migration (Story 9.9): updated to a one-element
     /// `line-range-args`, deleted when that key is already there, refused for a non-string — each
-    /// layer on its own, its description naming the source the way the CLI's warning does.
+    /// layer on its own, its description naming the source the way the CLI's warning does. A
+    /// (non-inline) table-valued `line-range-arg` is skipped with an empty description, and the
+    /// apply half on a layer without `fix.tools` returns the CLI's generic deprecation text.
     #[test]
     fn migrate_rewrites_a_deprecated_line_range_arg_as_the_cli_does() {
         use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
@@ -4354,8 +4356,8 @@ fetch-bookmarks = \"main\"
             "{err:?}"
         );
 
-        // A table-valued `line-range-arg`: `delete_value` refuses a table, so the CLI's rule skips
-        // that tool — an empty description, the table left in place.
+        // A table-valued `line-range-arg`: `delete_value` refuses a (non-inline) table, so the
+        // CLI's rule skips that tool — an empty description, the table left in place.
         let mut table_valued = StackedConfig::empty();
         table_valued.add_layer(layer(ConfigSource::User, "[fix.tools.t.line-range-arg]\nx = 1\n"));
         let deprecations = super::migrate(&mut table_valued).expect("a table is skipped");
