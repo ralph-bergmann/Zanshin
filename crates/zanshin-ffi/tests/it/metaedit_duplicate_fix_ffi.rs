@@ -16,10 +16,10 @@ use flatbuffers::root as fb_root;
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::metaedit_duplicate_fix::{zanshin_duplicate, zanshin_fix, zanshin_metaedit};
-use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
+use zanshin_ffi::repo::{zanshin_network_cancel, zanshin_network_token, zanshin_repo_close, zanshin_repo_open};
 use zanshin_ffi::{
-    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_DUPLICATE_AS_OWN_DESCENDANT, JJ_IMMUTABLE,
-    JJ_INVALID_INPUT,
+    FFI_INVALID_ARGUMENT, FFI_INVALID_HANDLE, FFI_NULL_POINTER, JJ_CANCELLED, JJ_DUPLICATE_AS_OWN_DESCENDANT,
+    JJ_IMMUTABLE, JJ_INVALID_INPUT,
 };
 use zanshin_jj::{Backend, ChangeId, Repo};
 
@@ -188,6 +188,11 @@ fn duplicate_request(revisions: &[&str], onto: &[&str]) -> Vec<u8> {
 
 /// A `FixRequest`: `-s source` (empty = absent, the `revsets.fix` default).
 fn fix_request(source: &[&str]) -> Vec<u8> {
+    fix_request_with_token(source, 0)
+}
+
+/// [`fix_request`] carrying `cancel_token`.
+fn fix_request_with_token(source: &[&str], cancel_token: u64) -> Vec<u8> {
     let mut b = flatbuffers::FlatBufferBuilder::with_capacity(256);
     let source = strings(&mut b, source);
     let req = fbs::FixRequest::create(
@@ -195,6 +200,7 @@ fn fix_request(source: &[&str]) -> Vec<u8> {
         &fbs::FixRequestArgs {
             kind: fbs::RequestKind::Fix,
             source,
+            cancel_token,
             ..fbs::FixRequestArgs::default()
         },
     );
@@ -285,6 +291,26 @@ fn fix_runs_the_tools_and_a_second_run_writes_nothing() {
         "the pre-call head"
     );
     assert_eq!(head_op(&fx.root).0, before);
+}
+
+#[test]
+fn a_fix_whose_token_was_cancelled_refuses_jj_cancelled_and_writes_nothing() {
+    let fx = base();
+    let before = head_op(&fx.root);
+    let token = zanshin_network_token();
+    zanshin_network_cancel(token);
+    let req = fix_request_with_token(&[], token);
+    // SAFETY: `fx.handle` is open; `req` is a live buffer for the call.
+    let bytes = unsafe { read_and_free(zanshin_fix(fx.handle, req.as_ptr(), req.len())) };
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_CANCELLED));
+    assert_eq!(head_op(&fx.root), before, "no operation");
+
+    // An uncancelled token fixes as without one.
+    let req = fix_request_with_token(&[], zanshin_network_token());
+    // SAFETY: as above.
+    let bytes = unsafe { read_and_free(zanshin_fix(fx.handle, req.as_ptr(), req.len())) };
+    let fix = parse_envelope(&bytes).data_as_fix_result().expect("FixResult");
+    assert_eq!(fix.num_fixed_commits(), 3);
 }
 
 #[test]

@@ -28,8 +28,10 @@ import 'package:zanshin_core/src/ffi/change.dart' show Change;
 import 'package:zanshin_core/src/ffi/metaedit_duplicate_fix.dart';
 import 'package:zanshin_core/src/ffi/mutate.dart' show MutationResult;
 import 'package:zanshin_core/src/ffi/warning.dart';
+import 'package:zanshin_core/src/worker/events.dart' show ProgressEvent;
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
+import 'package:zanshin_core/src/worker/network_operation.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
 
 void main() {
@@ -138,7 +140,7 @@ void main() {
         "[fix.tools.gone]\ncommand = ['/nonexistent']\npatterns = [\"glob:'*.txt'\"]\n",
       );
       final String before = await headOp();
-      final FixResult c = await repo.fix(source: [ids[2]], includeUnchangedFiles: true, allLines: true);
+      final FixResult c = await repo.fix(source: [ids[2]], includeUnchangedFiles: true, allLines: true).result;
       expect((c.numFixedCommits, c.numCheckedCommits), (0, 1));
       expect(c.mutation.newOpId, before, reason: 'nothing fixed: no operation');
       expect(c.toolStderr, isEmpty);
@@ -148,7 +150,7 @@ void main() {
         reason: 'with unchanged files, C hands all three of its files to the tool',
       );
 
-      final FixResult paths = await repo.fix(paths: ['b.txt', 'nope.txt']);
+      final FixResult paths = await repo.fix(paths: ['b.txt', 'nope.txt']).result;
       expect(paths.numCheckedCommits, 3);
       expect(paths.warnings.map((w) => w.code), [
         ZanshinWarningCode.pathsUnmatched,
@@ -160,9 +162,37 @@ void main() {
     test('a_fix_refusal_surfaces_as_a_ffi_exception', () async {
       File('${tempDir.path}/.jj/repo/config.toml').writeAsStringSync('');
       await expectLater(
-        repo.fix(),
+        repo.fix().result,
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.config_error')),
       );
+    });
+
+    // The tool sleeps; `cancel()` kills its process group. Whatever the VM's
+    // reaping does to the tool's exit status (see above), the cancel flag
+    // decides the outcome: `jj.cancelled`, nothing written.
+    test('a_cancelled_fix_kills_its_tool_and_refuses_jj_cancelled', () async {
+      final Directory scratch = Directory.systemTemp.createTempSync('zanshin_fix_cancel_');
+      addTearDown(() => scratch.deleteSync(recursive: true));
+      final marker = File('${scratch.path}/started');
+      File('${tempDir.path}/.jj/repo/config.toml').writeAsStringSync(
+        "[fix.tools.sleep]\ncommand = ['sh', '-c', 'touch \"\$1\"; sleep 30', 'sh', '${marker.path}']\n"
+        "patterns = ['a.txt']\n",
+      );
+      final String before = await headOp();
+      final NetworkOperation<FixResult> fix = repo.fix();
+      final Future<List<ProgressEvent>> progress = fix.progress.toList();
+      final stopwatch = Stopwatch()..start();
+      while (!marker.existsSync() && stopwatch.elapsed < const Duration(seconds: 10)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await fix.cancel();
+      await expectLater(
+        fix.result,
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.cancelled')),
+      );
+      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 20)), reason: 'the 30 s tool was killed');
+      expect(await progress, isEmpty);
+      expect(await headOp(), before, reason: 'no operation');
     });
 
     test('the_three_calls_refuse_a_closed_handle_synchronously', () async {

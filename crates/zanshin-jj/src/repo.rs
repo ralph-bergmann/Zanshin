@@ -3308,8 +3308,16 @@ impl Repo {
     /// workspace root the working directory, `$path` / `$root` interpolated. Unless `all_lines`,
     /// a tool with `line-range-args` gets the changed line ranges. A tool that cannot start
     /// ([`crate::WarningKind::FixToolStartFailed`]) or exits non-zero
-    /// ([`crate::WarningKind::FixToolFailed`]) is skipped for that file. Descendants keep the
+    /// ([`crate::WarningKind::FixToolFailed`]) is skipped for that file. A tool run (one file)
+    /// that overruns the Zanshin-only `fix.tools.<name>.timeout` — a non-negative integer of
+    /// seconds or a string `<n>ms` / `<n>s` / `<n>m`; absent or `0` = none — has its process group
+    /// killed and is skipped too ([`crate::WarningKind::FixToolTimedOut`]). Descendants keep the
     /// fixes; no new conflicts arise.
+    ///
+    /// `cancel` is the CLI's Ctrl-C: once its token is cancelled the call refuses at its next
+    /// checkpoint — right after the snapshot, before each tool run, after the tools — and a
+    /// running tool's process group is killed (SIGTERM, SIGKILL [`crate::cancel`]'s grace later);
+    /// nothing is written. Without a token the call is not cancellable.
     ///
     /// A call that fixes nothing writes NO operation (`new_op_id` is the pre-call head);
     /// otherwise the operation is the CLI's `fixed <n> commits`. The result counts the fixed and
@@ -3319,10 +3327,12 @@ impl Repo {
     ///
     /// # Errors
     ///
+    /// - [`crate::MutateError::Cancelled`] — `cancel`'s token was cancelled before or while the
+    ///   tools ran; no operation. Never without a token.
     /// - [`crate::MutateError::Config`] — no `fix.tools` entry ("No `fix.tools` are configured"),
     ///   none enabled ("At least one entry of `fix.tools` must be enabled."), one sets
-    ///   `run-tool-if-zero-line-ranges` without `line-range-args`, an entry or `revsets.fix` has
-    ///   the wrong type, the alias tables do not read, or the `immutable_heads()` alias does not
+    ///   `run-tool-if-zero-line-ranges` without `line-range-args`, an entry (a malformed `timeout`
+    ///   included) or `revsets.fix` has the wrong type, the alias tables do not read, or the `immutable_heads()` alias does not
     ///   resolve.
     /// - [`crate::MutateError::InvalidInput`] — a pattern does not parse ("Failed to parse
     ///   fileset: <kind>" with the CLI's `Caused by:` lines and hint), or a path is not a valid
@@ -3336,8 +3346,12 @@ impl Repo {
     /// - [`crate::MutateError::NotAGitRepo`] — the colocated finish found no Git backend.
     /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
     #[must_use = "the Result must be used; drop it explicitly if intentional"]
-    pub fn fix(&mut self, options: &crate::FixOptions) -> Result<crate::FixResult, crate::MutateError> {
-        self.with_verb(|repo, ctx| crate::fix::fix(repo.workspace_mut(), ctx, options))
+    pub fn fix(
+        &mut self,
+        options: &crate::FixOptions,
+        cancel: Option<&crate::cancel::CancelGuard>,
+    ) -> Result<crate::FixResult, crate::MutateError> {
+        self.with_verb(|repo, ctx| crate::fix::fix(repo.workspace_mut(), ctx, options, cancel))
     }
 
     /// Commits the working-copy commit (Story 9.49) — the CLI's `jj commit -m <message>

@@ -124,8 +124,9 @@ the `zanshin-graph` lane crate was removed)*
 - Async: use `Future`/`Stream` plus the single long-running worker isolate (AD-4).
   Never `Isolate.run` for repeated work — send a `WorkerCommand` instead. One exception
   (Story 9.52): the worker itself runs each network call (fetch, clone, push, and Story
-  9.24's remote-change poll) on a short-lived `Isolate.run` helper, once per call, so its
-  event loop keeps forwarding progress; other calls on that handle queue behind it.
+  9.24's remote-change poll) and `fix` (its tools may run long; cancellable) on a
+  short-lived `Isolate.run` helper, once per call, so its event loop keeps forwarding
+  progress and cancels; other calls on that handle queue behind it.
 - Dart code starts a child process only with `ProcessStartMode.detached` /
   `.detachedWithStdio`, or the process is started from Rust. While a non-detached Dart
   child lives, the VM's exit-code handler `waitpid`s ANY pid and can reap a child the
@@ -710,8 +711,8 @@ the `zanshin-graph` lane crate was removed)*
 - **NEVER use `Isolate.run` for repeated work** in Dart. Send the work as a
   `WorkerCommand` on the existing worker bus. The only `Isolate.run` is the worker's
   once-per-call helper for the network calls (Story 9.52, `isolate.dart`
-  `_fetchOnHelper` / `_pushOnHelper` / `_cloneOnHelper`, and Story 9.24's
-  `_remoteChangesOnHelper`).
+  `_fetchOnHelper` / `_pushOnHelper` / `_cloneOnHelper`, Story 9.24's
+  `_remoteChangesOnHelper`, and `_fixOnHelper`).
 - **NEVER put JSON on the FFI wire, and NEVER invent alternative envelope shapes.**
   Faillible FFI functions return the FlatBuffers `Envelope` table (ADR-0001);
   composite data is FlatBuffers; lone strings are CString; scalars are plain types.

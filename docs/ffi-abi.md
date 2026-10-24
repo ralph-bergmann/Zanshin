@@ -610,7 +610,7 @@ or no `# Errors` block.
 | `zanshin_arrange` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ArrangeRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.immutable`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.16 |
 | `zanshin_metaedit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `MetaeditRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 |
 | `zanshin_duplicate` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DuplicateRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 |
-| `zanshin_fix` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FixRequest` | `FixResult` (see § `zanshin_metaedit`, `zanshin_duplicate`, `zanshin_fix`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 |
+| `zanshin_fix` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FixRequest` (+ `cancel_token`, see § Cancel) | `FixResult` (see § `zanshin_metaedit`, `zanshin_duplicate`, `zanshin_fix`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.cancelled`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.9 (`cancel_token`, `timeout`: loop 9.9–9.12 second follow-on) |
 | `zanshin_drop_actions` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `DropActionsRequest` | `DropActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_change_actions` | `(uint64_t handle, const char *change_id)` | — | `ChangeActions` (see § `DropActions` / `ChangeActions` payloads) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.31 |
 | `zanshin_commit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.no_working_copy`, `jj.invalid_input`, `jj.stale_selection`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.49 (+9.50) |
@@ -1043,6 +1043,18 @@ remote-change poll `zanshin_git_remote_changes` (Story 9.24) — take a **cancel
 `GitPushRequest` / `RepoCloneRequest`. `0` (the absent-field default) is no token: the call is not
 cancellable and never answers `jj.cancelled`.
 
+`zanshin_fix` takes one too (`FixRequest.cancel_token`, loop 9.9–9.12 second follow-on): its tools
+may run long, and the cancel is the CLI's Ctrl-C. It shares the token lifetime below, but not the
+kill scope: fix never puts the token into an environment. Each tool runs as the leader of a process
+group of its own, and a cancel kills the RUNNING tool's group — SIGTERM, then SIGKILL if the tool
+has not exited 2 s later (its pipes are then waited for at most another 2 s, so a descendant that
+left the group cannot hang the call). Its checkpoints: right after the pre-verb snapshot, before
+each tool run, and after the tools before the finish. A cancelled fix answers `jj.cancelled` and
+writes NO operation (the snapshot's stays, blobs already written are unreferenced) — the CLI's
+Ctrl-C exits before `tx.finish`; the tools' warnings so far ride the refusal. The same group kill
+ends a run that overruns its `fix.tools.<name>.timeout` (see § `zanshin_metaedit`, `zanshin_duplicate`,
+`zanshin_fix`).
+
 **Token lifetime.** `zanshin_network_token()` returns a fresh id from the session-id counter
 (never `0`, never reused, never a live session's id) and registers it; the call it is passed to
 attaches it and ends it when it returns. `zanshin_network_cancel(token)` sets the token's flag; it
@@ -1103,7 +1115,9 @@ other handles, handle-free commands and events do not wait. `ZanshinWorker.gitFe
 `cloneRepo` and `RepoHandle.gitFetch` / `gitPush` return a `NetworkOperation<T>`: `result` (the
 verb's payload and refusals as before), `progress` (this call's `ProgressEvent`s, closing with
 `result`) and `cancel()` (a `NetworkCancelCommand`; a no-op after `result` completed or after the
-worker closed). A helper isolate that throws answers `internal.dispatch_error`.
+worker closed). A helper isolate that throws answers `internal.dispatch_error`. `RepoHandle.fix` /
+`ZanshinWorker.fix` run the same way and return a `NetworkOperation<FixResult>` whose `progress`
+stays empty.
 
 ---
 
@@ -1794,14 +1808,14 @@ jj-lib's duplication order.
 |-------|--------|
 | `MetaeditRequest` | `kind = Metaedit`; `revisions` (ABSENT or EMPTY = `@`), `update_change_id`, `message` (the `-m` paragraphs; ABSENT = no `-m`; present but EMPTY joins to `""` = `-m ""`, clearing every target's description), `update_author_timestamp`, `update_author`, `author` (`Name <email>`; ABSENT = not given), `author_timestamp` (RFC 2822 / RFC 3339; ABSENT = not given), `force_rewrite`. clap's refusals — a malformed `author` / `author_timestamp`, `author` with `update_author`, `author_timestamp` with `update_author_timestamp` — are `jj.invalid_input` before the snapshot (no `precondition`). |
 | `DuplicateRequest` | `kind = Duplicate`; `revisions` (ABSENT or EMPTY = `@`), `onto` / `insert_after` / `insert_before` (`-o` / `-A` / `-B`; none = onto each original's parents; `onto` excludes the others — clap's refusal, before the snapshot). |
-| `FixRequest` | `kind = Fix`; `source` (`-s`; ABSENT or EMPTY = `revsets.fix`, jj's default `reachable(@, mutable())`), `paths` (repo-relative PREFIXES; ABSENT or EMPTY = every path), `include_unchanged_files`, `all_lines`. |
+| `FixRequest` | `kind = Fix`; `source` (`-s`; ABSENT or EMPTY = `revsets.fix`, jj's default `reachable(@, mutable())`), `paths` (repo-relative PREFIXES; ABSENT or EMPTY = every path), `include_unchanged_files`, `all_lines`, `cancel_token` (`0` = not cancellable; see § Cancel). |
 | `FixResult` | `mutation: MutationResult`, `num_fixed_commits`, `num_checked_commits` (jj-lib's counts — fixed, and every source and descendant visited — saturating at 4294967295), `tool_stderr: [FixToolStderr]` — one `{path, stderr}` per tool run that wrote to stderr (lossy UTF-8), sorted by path then text. |
 
 The operation descriptions are the CLI's: `edit commit metadata for commit <hex>` / `… <hex> and
 <n> more`, `duplicate <n> commit(s)`, `fixed <n> commits`. Warnings: `jj.duplicate_as_own_descendant`
 / `jj.duplicate_as_own_ancestor` (a duplicate among its original's descendants / ancestors),
-`jj.fix_tool_start_failed` / `jj.fix_tool_failed` (a tool skipped for a file — sorted by message,
-the CLI's interleaving is rayon's), `jj.fileset_diagnostic` (a `fix.tools` pattern's diagnostic),
+`jj.fix_tool_start_failed` / `jj.fix_tool_failed` / `jj.fix_tool_timed_out` (a tool skipped for a
+file — sorted by message, the CLI's interleaving is rayon's), `jj.fileset_diagnostic` (a `fix.tools` pattern's diagnostic),
 `jj.paths_unmatched` (a fix path in no source's or descendant's tree), `jj.config_deprecated` (see
 *`warnings`*). Refusals reuse registered codes only: `jj.invalid_input` (clap's, "Cannot duplicate
 the root commit", the location texts, a `fix.tools` pattern that does not parse — "Failed to parse
@@ -1811,7 +1825,18 @@ with `jj.revset_parse_error`), `jj.immutable`, `jj.config_error` (no `fix.tools`
 `run-tool-if-zero-line-ranges` without `line-range-args`, a `templates.duplicate_description` that
 does not parse). The duplicate verb runs `drop_actions`' `duplicate` plan before it writes, so the
 drop menu's row and the verb agree. Dart: `RepoHandle.metaedit(...)`, `RepoHandle.duplicate(...)`,
-`RepoHandle.fix(...)` → `FixResult` with `FixToolStderr` entries.
+`RepoHandle.fix(...)` → a `NetworkOperation<FixResult>` (§ Cancel) with `FixToolStderr` entries.
+
+`fix.tools.<name>.timeout` (Zanshin-only; the stock CLI ignores the key, so a shared config still
+parses there) bounds ONE run of the tool — one file: a non-negative integer of seconds, or a string
+`<n>ms` / `<n>s` / `<n>m` (non-negative integer `n`), the integer-or-unit-string shape of jj's
+`snapshot.max-new-file-size`; absent = no timeout (the CLI's behavior), `0` in any unit = none too,
+so a higher config layer can switch a lower layer's off. A run that overruns it has its process
+group killed (SIGTERM, SIGKILL 2 s later), is a failed run — its output discarded, the file keeps the
+previous tool's content, the next tool runs — and warns `jj.fix_tool_timed_out` "Fix tool `{name}`
+timed out after {timeout} for `{path}`" ({timeout} normalized: `30s`, `500ms`, `2m`), never also
+`jj.fix_tool_failed`; what it wrote to stderr until then is a `FixToolStderr` entry. A malformed
+value refuses the call as `jj.config_error` naming `fix.tools.<name>`.
 
 ## `GitPushResult` payload and `zanshin_git_push` (Story 9.20)
 

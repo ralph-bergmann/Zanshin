@@ -47,11 +47,13 @@ use jj_lib::store::Store;
 /// The environment variable that marks a cancellable verb's `git` processes.
 pub const CANCEL_TOKEN_VAR: &str = "ZANSHIN_CANCEL_TOKEN";
 
-/// How often an attached, cancelled token looks for its verb's processes.
-const POLL_INTERVAL: Duration = Duration::from_millis(50);
+/// How often an attached, cancelled token looks for its verb's processes — and how often a
+/// running `fix` tool checks its token.
+pub(crate) const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
-/// How long after the cancel a process may outlive its SIGTERM before it gets SIGKILL.
-const KILL_GRACE: Duration = Duration::from_secs(2);
+/// How long after the cancel a process may outlive its SIGTERM before it gets SIGKILL — and how
+/// long a killed `fix` tool's group gets for each step.
+pub(crate) const KILL_GRACE: Duration = Duration::from_secs(2);
 
 /// The verb refuses because its token was cancelled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -197,6 +199,22 @@ pub(crate) fn watch_store(cancel: Option<&CancelGuard>, store: &Store) {
     if let (Some(guard), Ok(backend)) = (cancel, jj_lib::git::get_git_backend(store)) {
         guard.watch_git_dir(backend.git_repo_path().to_owned());
     }
+}
+
+/// A signal [`kill_group`] sends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GroupSignal {
+    /// SIGTERM: the process may clean up.
+    Terminate,
+    /// SIGKILL.
+    Kill,
+}
+
+/// Signals every process of the process group `group` — a `fix` tool spawned as the leader of
+/// its own group, so the tool and whatever it forked go together (Story 9.9 follow-on). A group
+/// that is gone makes it a no-op. Only macOS signals; elsewhere nothing is sent.
+pub(crate) fn kill_group(group: u32, signal: GroupSignal) {
+    process::kill_group(group, signal);
 }
 
 fn spawn_poller(id: u64) {
@@ -425,6 +443,23 @@ mod process {
             libc::kill(pid, signal);
         }
     }
+
+    pub(super) fn kill_group(group: u32, signal: super::GroupSignal) {
+        let signal = match signal {
+            super::GroupSignal::Terminate => libc::SIGTERM,
+            super::GroupSignal::Kill => libc::SIGKILL,
+        };
+        // A group id of 0 or 1 would be ours or init's; a child's pid is neither.
+        let Some(group) = pid_t::try_from(group).ok().filter(|group| *group > 1) else {
+            return;
+        };
+        tracing::debug!(group, signal, "cancel: signalling a fix tool's process group");
+        // SAFETY: `killpg` takes plain integers and touches no memory of ours. A group whose
+        // processes all exited only makes it fail with ESRCH, which is ignored.
+        unsafe {
+            libc::killpg(group, signal);
+        }
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -440,6 +475,8 @@ mod process {
     pub(super) fn terminate(_pid: i32) {}
 
     pub(super) fn kill(_pid: i32) {}
+
+    pub(super) fn kill_group(_group: u32, _signal: super::GroupSignal) {}
 }
 
 #[cfg(test)]
@@ -666,5 +703,43 @@ mod tests {
             "SIGKILL waits for the grace period"
         );
         drop(guard);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn kill_group_signals_a_whole_group_and_never_ours() {
+        use std::os::unix::process::{CommandExt as _, ExitStatusExt as _};
+
+        // Ours (0), init's (1) and an id no pid has are no-ops — this test still runs.
+        super::kill_group(0, super::GroupSignal::Terminate);
+        super::kill_group(1, super::GroupSignal::Terminate);
+        super::kill_group(u32::MAX, super::GroupSignal::Kill);
+
+        let scratch = tempfile::TempDir::new().expect("tempdir");
+        let forked = scratch.path().join("forked");
+        // The leader forks a second member, then both sleep.
+        let script = format!("sleep 30 & echo $! > '{}'; wait", forked.display());
+        let mut leader = Command::new("/bin/sh")
+            .args(["-c", &script])
+            .process_group(0)
+            .spawn()
+            .expect("sh spawns");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while std::fs::read_to_string(&forked).map_or(true, |pid| pid.trim().is_empty()) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let member: libc::pid_t = std::fs::read_to_string(&forked)
+            .expect("the member's pid")
+            .trim()
+            .parse()
+            .expect("a pid");
+        super::kill_group(leader.id(), super::GroupSignal::Terminate);
+        let status = wait_for_exit(&mut leader, Duration::from_secs(10)).expect("the leader dies");
+        assert_eq!(status.signal(), Some(libc::SIGTERM));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while super::process::procargs(member).is_some() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(super::process::procargs(member).is_none(), "the forked member dies too");
     }
 }

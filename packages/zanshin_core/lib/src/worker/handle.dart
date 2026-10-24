@@ -1264,14 +1264,25 @@ final class RepoHandle {
   /// the pre-call head). A tool that cannot start or fails warns and is
   /// skipped; what tools wrote to stderr is the result's `toolStderr`.
   ///
+  /// A tool runs at most its `fix.tools.<name>.timeout` per file (Zanshin-only:
+  /// an integer of seconds or `"<n>ms"` / `"<n>s"` / `"<n>m"`; absent or `0`
+  /// = none): an overrun kills its process group, skips it for that file and
+  /// warns `jj.fix_tool_timed_out`.
+  ///
+  /// Returns a [NetworkOperation]: the call runs on a helper isolate, later
+  /// calls on this handle wait for it, and `cancel()` — the CLI's Ctrl-C —
+  /// kills the running tool's process group, so `result` refuses
+  /// `jj.cancelled` and nothing is written. `progress` stays empty.
+  ///
   /// Throws [StateError] synchronously if the handle is already [_closed];
-  /// throws [ArgumentError] if a value contains an interior NUL (U+0000);
-  /// throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.config_error` — no usable `fix.tools` —, `jj.invalid_input`,
+  /// throws [ArgumentError] synchronously if a value contains an interior NUL
+  /// (U+0000); `result` fails with [ZanshinFfiException] on FFI errors
+  /// (`ffi.invalid_handle`, `jj.cancelled`, `jj.config_error` — no usable
+  /// `fix.tools`, or a malformed `timeout` —, `jj.invalid_input`,
   /// `jj.change_not_found`, `jj.revset_parse_error`,
   /// `jj.revset_resolution_error`, `jj.immutable`, `jj.stale_working_copy`,
   /// `jj.jj_lib_error`).
-  Future<FixResult> fix({
+  NetworkOperation<FixResult> fix({
     List<String> source = const [],
     List<String> paths = const [],
     bool includeUnchangedFiles = false,

@@ -382,6 +382,9 @@ pub const JJ_DUPLICATE_AS_OWN_ANCESTOR: &str = "jj.duplicate_as_own_ancestor";
 pub const JJ_FIX_TOOL_START_FAILED: &str = "jj.fix_tool_start_failed";
 /// Warning: a `zanshin_fix` tool exited non-zero for a file; its output is discarded (Story 9.9).
 pub const JJ_FIX_TOOL_FAILED: &str = "jj.fix_tool_failed";
+/// Warning: a `zanshin_fix` tool overran its `fix.tools.<name>.timeout`; it was killed and its
+/// output discarded (loop 9.9–9.12 second follow-on).
+pub const JJ_FIX_TOOL_TIMED_OUT: &str = "jj.fix_tool_timed_out";
 /// Warning: a `fix.tools.<name>.patterns` fileset parsed with a diagnostic (Story 9.9).
 pub const JJ_FILESET_DIAGNOSTIC: &str = "jj.fileset_diagnostic";
 /// Warning: a config layer uses a deprecated key the CLI migrates at start-up (Story 9.9) — every
@@ -465,6 +468,7 @@ pub fn warning_code(kind: zanshin_jj::WarningKind) -> &'static str {
         K::DuplicateAsOwnAncestor => JJ_DUPLICATE_AS_OWN_ANCESTOR,
         K::FixToolStartFailed => JJ_FIX_TOOL_START_FAILED,
         K::FixToolFailed => JJ_FIX_TOOL_FAILED,
+        K::FixToolTimedOut => JJ_FIX_TOOL_TIMED_OUT,
         K::FilesetDiagnostic => JJ_FILESET_DIAGNOSTIC,
         K::ConfigDeprecated => JJ_CONFIG_DEPRECATED,
         K::OpDiffChangesUnresolved => JJ_OP_DIFF_CHANGES_UNRESOLVED,
@@ -1619,6 +1623,7 @@ mod tests {
             K::DuplicateAsOwnAncestor => "jj.duplicate_as_own_ancestor",
             K::FixToolStartFailed => "jj.fix_tool_start_failed",
             K::FixToolFailed => "jj.fix_tool_failed",
+            K::FixToolTimedOut => "jj.fix_tool_timed_out",
             K::FilesetDiagnostic => "jj.fileset_diagnostic",
             K::ConfigDeprecated => "jj.config_deprecated",
             K::OpDiffChangesUnresolved => "jj.op_diff_changes_unresolved",
@@ -1696,6 +1701,7 @@ mod tests {
             K::DuplicateAsOwnAncestor,
             K::FixToolStartFailed,
             K::FixToolFailed,
+            K::FixToolTimedOut,
             K::FilesetDiagnostic,
             K::ConfigDeprecated,
             K::OpDiffChangesUnresolved,

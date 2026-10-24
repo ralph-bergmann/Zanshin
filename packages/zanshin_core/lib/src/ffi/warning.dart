@@ -263,6 +263,11 @@ abstract final class ZanshinWarningCode {
   /// stderr rides `FixResult.toolStderr` (Story 9.9).
   static const fixToolFailed = 'jj.fix_tool_failed';
 
+  /// A `fix` tool overran its `fix.tools.<name>.timeout` (Zanshin-only); its
+  /// process group was killed, its output discarded and the next tool ran on
+  /// the previous content.
+  static const fixToolTimedOut = 'jj.fix_tool_timed_out';
+
   /// A `fix.tools.<name>.patterns` fileset parsed with a diagnostic; the
   /// pattern still applies (Story 9.9).
   static const filesetDiagnostic = 'jj.fileset_diagnostic';
@@ -355,6 +360,7 @@ abstract final class ZanshinWarningCode {
     duplicateAsOwnAncestor,
     fixToolStartFailed,
     fixToolFailed,
+    fixToolTimedOut,
     filesetDiagnostic,
     configDeprecated,
     opDiffChangesUnresolved,

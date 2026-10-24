@@ -225,7 +225,7 @@ fn a_fix_tool_is_found_on_the_adopted_path() {
     environment.insert(OsString::from("PATH"), shell_path);
     adopt_environment(environment);
 
-    let result = repo.fix(&FixOptions::default()).expect("fix");
+    let result = repo.fix(&FixOptions::default(), None).expect("fix");
     let warnings = repo.take_warnings();
     assert!(
         !warnings.iter().any(|w| w.kind == WarningKind::FixToolStartFailed),

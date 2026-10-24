@@ -1975,36 +1975,45 @@ class ZanshinWorker {
   /// [allLines].
   ///
   /// Sends a [FixCommand] via [send] and decodes the returned FlatBuffers
-  /// `Envelope<FixResult>` bytes.
+  /// `Envelope<FixResult>` bytes. A [NetworkOperation] like [gitFetch]: it
+  /// runs on a helper isolate, later commands for [handleId] wait for it, and
+  /// `cancel()` kills the running tool's process group (`jj.cancelled`, no
+  /// operation — the CLI's Ctrl-C). It sends no progress, so `progress` stays
+  /// empty.
   ///
-  /// Throws [ArgumentError] if a value contains an interior NUL (U+0000).
-  /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.config_error`, `jj.invalid_input`, `jj.change_not_found`,
-  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.immutable`,
-  /// `jj.stale_working_copy`, `jj.jj_lib_error`). Completes with a
-  /// [StateError] after [close]; the close-guard [StateError] is delivered
-  /// synchronously by [RepoHandle.fix].
-  Future<repo_ffi_metaedit_duplicate_fix.FixResult> fix(
+  /// Throws [ArgumentError] synchronously if a value contains an interior NUL
+  /// (U+0000). `result` fails with [ZanshinFfiException] on FFI errors
+  /// (`ffi.invalid_handle`, `jj.cancelled`, `jj.config_error`,
+  /// `jj.invalid_input`, `jj.change_not_found`, `jj.revset_parse_error`,
+  /// `jj.revset_resolution_error`, `jj.immutable`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`), and with a [StateError] after [close]; the
+  /// close-guard [StateError] is thrown synchronously by [RepoHandle.fix].
+  NetworkOperation<repo_ffi_metaedit_duplicate_fix.FixResult> fix(
     int handleId, {
     List<String> source = const [],
     List<String> paths = const [],
     bool includeUnchangedFiles = false,
     bool allLines = false,
-  }) async {
+  }) {
     // See [bookmarkCreate] for why this guard is on the calling side.
     rejectInteriorNuls(source, 'source');
     rejectInteriorNuls(paths, 'paths');
-    final Uint8List bytes = await send(
-      FixCommand(
-        commandId: _correlator.allocateId(),
-        handleId: handleId,
-        source: source,
-        paths: paths,
-        includeUnchangedFiles: includeUnchangedFiles,
-        allLines: allLines,
-      ),
+    final int commandId = _correlator.allocateId();
+    return _networkOperation(
+      commandId: commandId,
+      operation: 'fix',
+      handleId: () => _announcedHandles[commandId],
+      start: () => send(
+        FixCommand(
+          commandId: commandId,
+          handleId: handleId,
+          source: source,
+          paths: paths,
+          includeUnchangedFiles: includeUnchangedFiles,
+          allLines: allLines,
+        ),
+      ).then(repo_ffi_metaedit_duplicate_fix.decodeFixResultEnvelopeInternal),
     );
-    return repo_ffi_metaedit_duplicate_fix.decodeFixResultEnvelopeInternal(bytes);
   }
 
   /// The calling-side interior-NUL guard of [squash] and [squashPlan].
@@ -3689,27 +3698,27 @@ void _workerEntry(_WorkerInit init) {
             responseSP.send((commandId, BufferResult(bytes)));
           }
 
-        case FixCommand(
-          :final int handleId,
-          :final List<String> source,
-          :final List<String> paths,
-          :final bool includeUnchangedFiles,
-          :final bool allLines,
-        ):
+        case final FixCommand fix:
+          final int handleId = fix.handleId;
           final int? raw = handles[handleId]; // lookup — never remove
           if (raw == null) {
             log.warning('Worker: FixCommand for unknown handleId $handleId');
             final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
             responseSP.send((commandId, BufferResult(errorBytes)));
           } else {
-            final Uint8List bytes = repo_ffi_metaedit_duplicate_fix.zanshinFix(
-              raw,
-              source: source,
-              paths: paths,
-              includeUnchangedFiles: includeUnchangedFiles,
-              allLines: allLines,
+            scheduler.run(
+              commandId: commandId,
+              handleId: handleId,
+              call: (token) {
+                eventSP.send(_NetworkHandleAnnouncement(commandId, handleId));
+                return _fixOnHelper(raw, fix, token);
+              },
+              reply: (bytes, _) => responseSP.send((commandId, BufferResult(bytes))),
+              fail: (e, _) {
+                log.warning('Worker: fix helper failed for command $commandId: $e');
+                responseSP.send((commandId, BufferResult(_dispatchErrorEnvelope(e))));
+              },
             );
-            responseSP.send((commandId, BufferResult(bytes)));
           }
 
         case SquashCommand(
@@ -4482,7 +4491,10 @@ final class _NetworkScheduler {
       (queue) => queue.any(
         (command) =>
             command.commandId == targetCommandId &&
-            (command is GitFetchCommand || command is GitRemoteChangesCommand || command is GitPushCommand),
+            (command is GitFetchCommand ||
+                command is GitRemoteChangesCommand ||
+                command is GitPushCommand ||
+                command is FixCommand),
       ),
     )) {
       _cancelledWhileQueued.add(targetCommandId);
@@ -4515,6 +4527,20 @@ Future<Uint8List> _fetchOnHelper(int raw, GitFetchCommand c, int token) => Isola
 Future<Uint8List> _remoteChangesOnHelper(int raw, String remoteName, int token) => Isolate.run(
   () => repo_ffi_remotes.zanshinGitRemoteChanges(raw, remoteName, cancelToken: token),
   debugName: 'ZanshinNetwork',
+);
+
+/// The helper-isolate half of a `fix` (loop 9.9–9.12 second follow-on): its
+/// tools may run long, so it runs like a network call; see [_fetchOnHelper].
+Future<Uint8List> _fixOnHelper(int raw, FixCommand c, int token) => Isolate.run(
+  () => repo_ffi_metaedit_duplicate_fix.zanshinFix(
+    raw,
+    source: c.source,
+    paths: c.paths,
+    includeUnchangedFiles: c.includeUnchangedFiles,
+    allLines: c.allLines,
+    cancelToken: token,
+  ),
+  debugName: 'ZanshinFix',
 );
 
 /// The helper-isolate half of a push (Story 9.52); see [_fetchOnHelper].

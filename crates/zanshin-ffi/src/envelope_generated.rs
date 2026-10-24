@@ -7347,6 +7347,10 @@ pub mod zanshin {
         ///                      setting (jj's default `reachable(@, mutable())`)
         ///   paths              repo-relative PREFIXES to fix; ABSENT or EMPTY = every path
         ///   include_unchanged_files / all_lines   the CLI's `--include-unchanged-files` / `--all-lines`
+        ///   cancel_token       a token from `zanshin_network_token` that `zanshin_network_cancel`
+        ///                      cancels — the CLI's Ctrl-C: the running tool's process group is killed
+        ///                      and the call refuses `jj.cancelled` with no operation; 0 = not
+        ///                      cancellable
         pub struct FixRequest<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -7367,6 +7371,7 @@ pub mod zanshin {
             pub const VT_PATHS: ::flatbuffers::VOffsetT = 8;
             pub const VT_INCLUDE_UNCHANGED_FILES: ::flatbuffers::VOffsetT = 10;
             pub const VT_ALL_LINES: ::flatbuffers::VOffsetT = 12;
+            pub const VT_CANCEL_TOKEN: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -7378,6 +7383,7 @@ pub mod zanshin {
                 args: &'args FixRequestArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<FixRequest<'bldr>> {
                 let mut builder = FixRequestBuilder::new(_fbb);
+                builder.add_cancel_token(args.cancel_token);
                 if let Some(x) = args.paths {
                     builder.add_paths(x);
                 }
@@ -7441,6 +7447,13 @@ pub mod zanshin {
                 // which contains a valid value in this slot
                 unsafe { self._tab.get::<bool>(FixRequest::VT_ALL_LINES, Some(false)).unwrap() }
             }
+            #[inline]
+            pub fn cancel_token(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(FixRequest::VT_CANCEL_TOKEN, Some(0)).unwrap() }
+            }
         }
 
         impl ::flatbuffers::Verifiable for FixRequest<'_> {
@@ -7455,6 +7468,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
      .visit_field::<bool>("include_unchanged_files", Self::VT_INCLUDE_UNCHANGED_FILES, false)?
      .visit_field::<bool>("all_lines", Self::VT_ALL_LINES, false)?
+     .visit_field::<u64>("cancel_token", Self::VT_CANCEL_TOKEN, false)?
      .finish();
                 Ok(())
             }
@@ -7467,6 +7481,7 @@ pub mod zanshin {
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub include_unchanged_files: bool,
             pub all_lines: bool,
+            pub cancel_token: u64,
         }
         impl<'a> Default for FixRequestArgs<'a> {
             #[inline]
@@ -7477,6 +7492,7 @@ pub mod zanshin {
                     paths: None,
                     include_unchanged_files: false,
                     all_lines: false,
+                    cancel_token: 0,
                 }
             }
         }
@@ -7517,6 +7533,10 @@ pub mod zanshin {
                 self.fbb_.push_slot::<bool>(FixRequest::VT_ALL_LINES, all_lines, false);
             }
             #[inline]
+            pub fn add_cancel_token(&mut self, cancel_token: u64) {
+                self.fbb_.push_slot::<u64>(FixRequest::VT_CANCEL_TOKEN, cancel_token, 0);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FixRequestBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 FixRequestBuilder {
@@ -7539,6 +7559,7 @@ pub mod zanshin {
                 ds.field("paths", &self.paths());
                 ds.field("include_unchanged_files", &self.include_unchanged_files());
                 ds.field("all_lines", &self.all_lines());
+                ds.field("cancel_token", &self.cancel_token());
                 ds.finish()
             }
         }

@@ -2161,8 +2161,10 @@ final class DuplicateCommand extends WorkerCommand implements HandleScopedComman
 /// 9.9) — the CLI's `jj fix`.
 ///
 /// The worker looks up the raw handle in its Model-A table (read — never
-/// remove), calls `zanshinFix(raw, …)`, and replies with a `BufferResult`
-/// carrying the FlatBuffers `Envelope<FixResult>` bytes.
+/// remove), runs `zanshinFix(raw, …, cancelToken: …)` on a helper isolate
+/// like the network calls (a tool may run long; `NetworkCancelCommand` cancels
+/// it), and replies with a `BufferResult` carrying the FlatBuffers
+/// `Envelope<FixResult>` bytes. Later commands for [handleId] wait for it.
 final class FixCommand extends WorkerCommand implements HandleScopedCommand {
   const FixCommand({
     required super.commandId,

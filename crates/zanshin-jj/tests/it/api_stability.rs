@@ -1367,7 +1367,11 @@ fn metaedit_duplicate_fix_surface_resolves() {
             &zanshin_jj::DuplicateOptions,
         ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
     _ = zanshin_jj::Repo::fix
-        as fn(&mut zanshin_jj::Repo, &zanshin_jj::FixOptions) -> Result<zanshin_jj::FixResult, zanshin_jj::MutateError>;
+        as fn(
+            &mut zanshin_jj::Repo,
+            &zanshin_jj::FixOptions,
+            Option<&zanshin_jj::cancel::CancelGuard>,
+        ) -> Result<zanshin_jj::FixResult, zanshin_jj::MutateError>;
 }
 
 // drop actions (Story 9.31)
@@ -1893,7 +1897,7 @@ fn story_9_28_surface_resolves() {
 /// Every `WarningKind`, in registry order (Story 9.32; Story 9.20 adds the push and clone kinds;
 /// Story 9.53 the unresolved conflicts; Story 9.51 the template diagnostic; Story 9.54's closing
 /// run the bookmark auto-track warning; Story 9.19 the four rename warnings).
-const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 67] = {
+const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 68] = {
     use zanshin_jj::WarningKind as K;
     [
         K::IdentityMissing,
@@ -1958,6 +1962,7 @@ const EVERY_WARNING_KIND: [zanshin_jj::WarningKind; 67] = {
         K::DuplicateAsOwnAncestor,
         K::FixToolStartFailed,
         K::FixToolFailed,
+        K::FixToolTimedOut,
         K::FilesetDiagnostic,
         K::ConfigDeprecated,
         K::OpDiffChangesUnresolved,
@@ -2084,6 +2089,7 @@ fn story_9_32_warning_surface_resolves() {
             | K::DuplicateAsOwnAncestor
             | K::FixToolStartFailed
             | K::FixToolFailed
+            | K::FixToolTimedOut
             | K::FilesetDiagnostic
             | K::ConfigDeprecated
             | K::OpDiffChangesUnresolved
@@ -2091,7 +2097,7 @@ fn story_9_32_warning_surface_resolves() {
             | K::WorkspaceNoLongerExists => {}
         }
     }
-    assert_eq!(every.len(), 67);
+    assert_eq!(every.len(), 68);
     _ = zanshin_jj::Repo::take_warnings as fn(&mut zanshin_jj::Repo) -> Vec<zanshin_jj::Warning>;
 }
 

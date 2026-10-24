@@ -358,6 +358,7 @@ parity!(
     fix_source,
     fix_path,
     fix_include_unchanged_files,
+    fix_tool_timeout_key,
     fix_nothing_to_fix,
     fix_failing_tool,
     fix_no_tools_refused,
@@ -383,7 +384,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 316);
+    assert_eq!(SCENARIO_IDS.len(), 317);
 }
 
 #[test]

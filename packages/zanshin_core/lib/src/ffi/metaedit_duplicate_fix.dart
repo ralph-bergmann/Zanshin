@@ -90,13 +90,17 @@ Uint8List zanshinDuplicate(
 /// `jj fix`.
 ///
 /// [source] are change ids (empty = the `revsets.fix` setting); [paths] are
-/// repo-relative prefixes (empty = every path).
+/// repo-relative prefixes (empty = every path). [cancelToken] is `0` (not
+/// cancellable) or a token from `zanshinNetworkToken`: `zanshinNetworkCancel`
+/// kills the running tool's process group and the call refuses `jj.cancelled`
+/// with no operation.
 Uint8List zanshinFix(
   int rawHandle, {
   List<String> source = const [],
   List<String> paths = const [],
   bool includeUnchangedFiles = false,
   bool allLines = false,
+  int cancelToken = 0,
 }) {
   rejectInteriorNuls(source, 'source');
   rejectInteriorNuls(paths, 'paths');
@@ -106,6 +110,7 @@ Uint8List zanshinFix(
     paths: paths,
     includeUnchangedFiles: includeUnchangedFiles,
     allLines: allLines,
+    cancelToken: cancelToken,
   ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_fix(rawHandle, ptr, len));
 }

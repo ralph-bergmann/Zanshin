@@ -99,15 +99,16 @@ fn read_duplicate_request(data: *const u8, len: usize) -> Result<DuplicateOption
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `FixRequest` buffer, or its `kind` is
 ///   not `Fix`.
-fn read_fix_request(data: *const u8, len: usize) -> Result<FixOptions, FfiErrorObj> {
+fn read_fix_request(data: *const u8, len: usize) -> Result<(FixOptions, u64), FfiErrorObj> {
     let req = root::<fbs::FixRequest>(data, len)?;
     expect_request_kind(req.kind(), fbs::RequestKind::Fix)?;
-    Ok(FixOptions {
+    let options = FixOptions {
         source: change_ids(req.source()),
         paths: strings(req.paths()),
         include_unchanged_files: req.include_unchanged_files(),
         all_lines: req.all_lines(),
-    })
+    };
+    Ok((options, req.cancel_token()))
 }
 
 // ── extern "C" wrappers ──────────────────────────────────────────────────────
@@ -230,8 +231,13 @@ pub unsafe extern "C" fn zanshin_duplicate(handle: u64, data: *const u8, len: us
 /// EMPTY = the `revsets.fix` setting, jj's default `reachable(@, mutable())`), `paths` (PREFIXES;
 /// ABSENT or EMPTY = every path), `include_unchanged_files`, `all_lines`. The files of the sources
 /// and their descendants run through the `fix.tools` that match them; a tool that cannot start or
-/// exits non-zero is skipped and warns (`jj.fix_tool_start_failed`, `jj.fix_tool_failed`). A
-/// deprecated `fix.tools.<name>.line-range-arg` is migrated and warns `jj.config_deprecated`. A
+/// exits non-zero is skipped and warns (`jj.fix_tool_start_failed`, `jj.fix_tool_failed`); a tool
+/// that overruns its `fix.tools.<name>.timeout` (Zanshin-only: seconds, or `<n>ms`/`<n>s`/`<n>m`;
+/// absent or `0` = none) has its process group killed, is skipped and warns
+/// `jj.fix_tool_timed_out`. `cancel_token` (`0` = not cancellable) is a token from
+/// `zanshin_network_token`: `zanshin_network_cancel` kills the running tool's process group (SIGTERM,
+/// SIGKILL 2 s later) and the call refuses `jj.cancelled` with no operation, as the CLI's Ctrl-C.
+/// A deprecated `fix.tools.<name>.line-range-arg` is migrated and warns `jj.config_deprecated`. A
 /// call that fixes nothing writes NO operation and `FixResult.mutation.new_op_id` carries the
 /// PRE-CALL head; otherwise the operation is the CLI's `fixed <n> commits`. The working copy is
 /// snapshotted first (Story 9.26).
@@ -244,9 +250,11 @@ pub unsafe extern "C" fn zanshin_duplicate(handle: u64, data: *const u8, len: us
 /// - `ffi.null_pointer` — `data` is a null pointer.
 /// - `ffi.invalid_argument` — `data` does not verify as a `FixRequest` buffer, or its `kind` is not
 ///   `Fix`.
+/// - `jj.cancelled` — `cancel_token` was cancelled before or while the tools ran; nothing is
+///   written.
 /// - `jj.config_error` — no fix tool is configured, none is enabled, one sets
-///   `run-tool-if-zero-line-ranges` without `line-range-args`, a tool entry or the fix revset
-///   setting has the wrong type, or the config or its `immutable_heads()` alias does not read or
+///   `run-tool-if-zero-line-ranges` without `line-range-args`, a tool entry (its `timeout`
+///   included) or the fix revset setting has the wrong type, or the config or its `immutable_heads()` alias does not read or
 ///   resolve.
 /// - `jj.invalid_input` — a pattern does not parse ("Failed to parse fileset: <kind>" with the CLI's
 ///   `Caused by:` lines in `context`, its hint in `hints`), or a path is not a valid repo path.
@@ -271,10 +279,12 @@ pub unsafe extern "C" fn zanshin_duplicate(handle: u64, data: *const u8, len: us
 pub unsafe extern "C" fn zanshin_fix(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
     debug!(fn_name = "zanshin_fix", handle);
     let buf = catch(|| {
-        let options = read_fix_request(data, len)?;
+        let (options, cancel_token) = read_fix_request(data, len)?;
+        // Attached before the handle check, so a refusal below still ends the token.
+        let cancel = zanshin_jj::cancel::attach(cancel_token);
         // SAFETY: see `session_from_handle`.
         let session = unsafe { session_from_handle(handle) }?;
-        let result = session.repo.fix(&options);
+        let result = session.repo.fix(&options, cancel.as_ref());
         precondition_envelope(&mut session.repo, result, map_mutate_err, ok_fix_result)
     });
     vec_into_token(buf)
@@ -404,11 +414,13 @@ mod tests {
                     paths: Some(paths),
                     include_unchanged_files: flags[0],
                     all_lines: flags[1],
+                    cancel_token: 42,
                 },
             );
             b.finish(req, None);
             let bytes = b.finished_data().to_vec();
-            let options = read_fix_request(bytes.as_ptr(), bytes.len()).expect("valid");
+            let (options, cancel_token) = read_fix_request(bytes.as_ptr(), bytes.len()).expect("valid");
+            assert_eq!(cancel_token, 42);
             assert_eq!(options.source, [id("s")]);
             assert_eq!(options.paths, ["p/"]);
             assert_eq!([options.include_unchanged_files, options.all_lines], flags);

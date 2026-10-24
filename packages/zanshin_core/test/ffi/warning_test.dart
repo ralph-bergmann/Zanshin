@@ -459,6 +459,7 @@ void main() {
         'jj.duplicate_as_own_ancestor',
         'jj.fix_tool_start_failed',
         'jj.fix_tool_failed',
+        'jj.fix_tool_timed_out',
         'jj.fileset_diagnostic',
         'jj.config_deprecated',
         'jj.op_diff_changes_unresolved',
@@ -466,7 +467,7 @@ void main() {
         'jj.workspace_no_longer_exists',
         'env.login_shell_unresolved',
       ]);
-      expect(ZanshinWarningCode.values.toSet(), hasLength(68), reason: 'no code is registered twice');
+      expect(ZanshinWarningCode.values.toSet(), hasLength(69), reason: 'no code is registered twice');
     });
   });
 

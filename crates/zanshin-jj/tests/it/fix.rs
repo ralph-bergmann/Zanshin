@@ -9,11 +9,17 @@
 //! parity oracle (`crates/zanshin-parity`).
 
 use std::ops::ControlFlow;
+use std::path::Path;
+use std::process::Command;
+use std::time::{Duration, Instant};
 
+use tempfile::TempDir;
+use zanshin_jj::cancel;
 use zanshin_jj::{
     ChangeId, FixOptions, FixResult, MutateError, WarningKind, DEFAULT_GRAPH_PRIORITIZE, DEFAULT_LOG_REVSET,
 };
 
+use crate::network_cancel::{cancel_when, token};
 use crate::rebase::{add, assert_op, base, head_op, reconfigure, Fx};
 
 /// `tr a-z A-Z` on every `*.txt`.
@@ -36,7 +42,7 @@ fn configured(config: &str) -> Fx {
 }
 
 fn fix(fx: &mut Fx, options: &FixOptions) -> FixResult {
-    fx.repo.fix(options).expect("fix")
+    fx.repo.fix(options, None).expect("fix")
 }
 
 /// [`fix`] with options built from the fixture's ids.
@@ -271,7 +277,7 @@ fn a_broken_tools_config_is_refused_before_anything() {
     let config_refusal = |config: &str| {
         let mut fx = configured(config);
         let before = head_op(&fx.root);
-        let err = fx.repo.fix(&FixOptions::default()).expect_err("refused");
+        let err = fx.repo.fix(&FixOptions::default(), None).expect_err("refused");
         assert_eq!(head_op(&fx.root), before);
         err
     };
@@ -310,10 +316,13 @@ fn an_immutable_source_is_refused() {
     let before = head_op(&fx.root);
     let err = fx
         .repo
-        .fix(&FixOptions {
-            source: vec![a],
-            ..FixOptions::default()
-        })
+        .fix(
+            &FixOptions {
+                source: vec![a],
+                ..FixOptions::default()
+            },
+            None,
+        )
         .expect_err("refused");
     assert!(matches!(err, MutateError::Immutable { .. }), "{err:?}");
     assert_eq!(head_op(&fx.root), before);
@@ -399,4 +408,140 @@ fn tools_chain_in_name_order_and_a_disabled_one_is_dropped() {
     assert_eq!(result.num_fixed_commits, 3);
     let a = fx.a.clone();
     assert_eq!(file(&mut fx, &a, "a.txt"), "a\nfirst\nsecond\n");
+}
+
+/// A kill must beat the sleeping tools' 30 s by far.
+const KILLED_WITHIN: Duration = Duration::from_secs(10);
+
+/// A `fix.tools.<name>` entry on `a.txt` that writes its pid — its process group's id — to
+/// `pid`, forks a `sleep 30` and waits for it (a second member of its group).
+fn sleeper(name: &str, pid: &Path) -> String {
+    format!(
+        "[fix.tools.{name}]\ncommand = ['sh', '-c', 'echo $$ > \"$1\"; echo slow >&2; sleep 30 & wait', 'sh', \
+         '{}']\npatterns = ['a.txt']\n",
+        pid.display()
+    )
+}
+
+/// Whether no process of the group whose id `pid` holds is left, waiting a moment for the
+/// killed ones to be reaped.
+fn group_gone(pid: &Path) -> bool {
+    let group = std::fs::read_to_string(pid).expect("the tool wrote its pid");
+    let deadline = Instant::now() + KILLED_WITHIN;
+    while Instant::now() < deadline {
+        let alive = Command::new("/bin/kill")
+            .args(["-s", "0", "--", &format!("-{}", group.trim())])
+            .output()
+            .expect("kill runs")
+            .status
+            .success();
+        if !alive {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    false
+}
+
+#[test]
+fn a_fix_cancelled_while_its_tool_runs_kills_the_tools_group_and_writes_nothing() {
+    let scratch = TempDir::new().expect("tempdir");
+    let pid = scratch.path().join("pid");
+    let mut fx = configured(&sleeper("sleep", &pid));
+    let before = head_op(&fx.root);
+    let id = token();
+    let guard = cancel::attach(id).expect("attaches");
+    let canceller = cancel_when(pid.clone(), id);
+    let started = Instant::now();
+    let err = fx
+        .repo
+        .fix(&FixOptions::default(), Some(&guard))
+        .expect_err("cancelled");
+    canceller.join().expect("the canceller");
+    assert!(started.elapsed() < KILLED_WITHIN, "{:?}", started.elapsed());
+    assert!(matches!(err, MutateError::Cancelled), "{err:?}");
+    assert_eq!(head_op(&fx.root), before, "no operation");
+    assert!(group_gone(&pid), "the tool and what it forked are gone");
+    drop(guard);
+    let a = fx.a.clone();
+    assert_eq!(file(&mut fx, &a, "a.txt"), "a\n", "the file is unchanged");
+}
+
+#[test]
+fn a_fix_cancelled_before_it_starts_runs_no_tool() {
+    let scratch = TempDir::new().expect("tempdir");
+    let pid = scratch.path().join("pid");
+    let mut fx = configured(&sleeper("sleep", &pid));
+    let before = head_op(&fx.root);
+    let id = token();
+    cancel::cancel(id);
+    let guard = cancel::attach(id).expect("attaches");
+    let err = fx
+        .repo
+        .fix(&FixOptions::default(), Some(&guard))
+        .expect_err("cancelled");
+    assert!(matches!(err, MutateError::Cancelled), "{err:?}");
+    assert_eq!(head_op(&fx.root), before, "no operation");
+    assert!(!pid.exists(), "no tool started");
+}
+
+#[test]
+fn a_cancel_after_the_fix_returned_changes_nothing() {
+    let mut fx = configured(UPPER);
+    let id = token();
+    let guard = cancel::attach(id).expect("attaches");
+    let result = fx.repo.fix(&FixOptions::default(), Some(&guard)).expect("fixed");
+    cancel::cancel(id);
+    drop(guard);
+    assert_op(&fx, &result.mutation, "fixed 3 commits");
+}
+
+#[test]
+fn a_tool_overrunning_its_timeout_is_killed_and_the_next_tool_runs_on_the_old_content() {
+    let scratch = TempDir::new().expect("tempdir");
+    let pid = scratch.path().join("pid");
+    let config = format!(
+        "{}timeout = '200ms'\n[fix.tools.b-upper]\ncommand = ['tr', 'a-z', 'A-Z']\npatterns = ['a.txt']\n",
+        sleeper("a-sleep", &pid)
+    );
+    let mut fx = configured(&config);
+    let started = Instant::now();
+    let result = fix(&mut fx, &FixOptions::default());
+    assert!(started.elapsed() < KILLED_WITHIN, "{:?}", started.elapsed());
+    assert_op(&fx, &result.mutation, "fixed 3 commits");
+    assert!(group_gone(&pid), "the timed-out tool and what it forked are gone");
+    let warnings = fx.repo.take_warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(warnings[0].kind, WarningKind::FixToolTimedOut);
+    assert_eq!(warnings[0].message, "Fix tool `sh` timed out after 200ms for `a.txt`");
+    assert_eq!(
+        result.tool_stderr,
+        [zanshin_jj::FixToolStderr {
+            path: "a.txt".to_owned(),
+            stderr: "slow\n".to_owned(),
+        }],
+        "what it wrote before the kill"
+    );
+    let a = fx.a.clone();
+    assert_eq!(file(&mut fx, &a, "a.txt"), "A\n");
+}
+
+#[test]
+fn a_timeout_the_tool_stays_within_changes_nothing() {
+    let mut fx = configured(&format!("{UPPER}timeout = 30\n"));
+    let result = fix(&mut fx, &FixOptions::default());
+    assert_op(&fx, &result.mutation, "fixed 3 commits");
+    assert!(fx.repo.take_warnings().is_empty());
+}
+
+#[test]
+fn a_malformed_timeout_is_refused_naming_the_tool() {
+    let mut fx = configured(&format!("{UPPER}timeout = 'soon'\n"));
+    let before = head_op(&fx.root);
+    let err = fx.repo.fix(&FixOptions::default(), None).expect_err("refused");
+    assert!(
+        matches!(&err, MutateError::Config { reason } if reason.contains("fix.tools.upper")),
+        "{err:?}"
+    );
+    assert_eq!(head_op(&fx.root), before);
 }

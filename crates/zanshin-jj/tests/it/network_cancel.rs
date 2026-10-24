@@ -48,7 +48,7 @@ fn real_git() -> String {
 }
 
 /// A token of this binary's own, far from anything else in the process.
-fn token() -> u64 {
+pub(crate) fn token() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1 << 40);
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     cancel::register(id);
@@ -56,7 +56,7 @@ fn token() -> u64 {
 }
 
 /// Cancels `id` once `marker` exists.
-fn cancel_when(marker: PathBuf, id: u64) -> JoinHandle<()> {
+pub(crate) fn cancel_when(marker: PathBuf, id: u64) -> JoinHandle<()> {
     thread::spawn(move || {
         let deadline = Instant::now() + Duration::from_mins(1);
         while !marker.exists() && Instant::now() < deadline {

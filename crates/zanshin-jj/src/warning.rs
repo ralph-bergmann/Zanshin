@@ -232,6 +232,13 @@ pub enum WarningKind {
     /// exit code for `<path>`" (`run_tool` @ v0.46.0; Story 9.9). Its output is discarded; what it
     /// wrote to stderr rides [`crate::FixResult::tool_stderr`].
     FixToolFailed,
+    /// A `jj fix` tool ran longer than its `fix.tools.<name>.timeout` — "Fix tool `<name>` timed
+    /// out after <timeout> for `<path>`" (Zanshin-only: the CLI has no timeout, its user presses
+    /// Ctrl-C; loop 9.9–9.12 second follow-on). The tool's process group was killed and its
+    /// output discarded, so the file keeps the previous tool's content and the next tool runs;
+    /// what it wrote to stderr until then rides [`crate::FixResult::tool_stderr`]. Never also
+    /// [`WarningKind::FixToolFailed`].
+    FixToolTimedOut,
     /// A `fix.tools.<name>.patterns` fileset parsed with a diagnostic — the CLI's
     /// `print_parse_diagnostics(ui, "In `fix.tools.<name>`", …)` (`get_tools_config` @ v0.46.0;
     /// Story 9.9). The pattern still applies.

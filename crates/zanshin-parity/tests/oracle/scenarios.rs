@@ -3711,7 +3711,7 @@ fn duplicate_outcome(repo: &mut zanshin_jj::Repo, options: &DuplicateOptions) ->
 
 /// `Repo::fix` with `options`.
 fn fix_outcome(repo: &mut zanshin_jj::Repo, options: &FixOptions) -> Outcome {
-    let result = repo.fix(options);
+    let result = repo.fix(options, None);
     zanshin_outcome(repo, &result)
 }
 
@@ -4065,6 +4065,19 @@ const FIX_TOOL_APPLIED: &[Step] = &[
     Step::Jj(&["fix"]),
 ];
 
+/// [`FIX_TOOL`] with Zanshin's `timeout` key, which the stock CLI ignores: both fix alike.
+const FIX_TOOL_TIMEOUT: &[Step] = &[
+    Step::Jj(&[
+        "config",
+        "set",
+        "--repo",
+        "fix.tools.up.command",
+        r#"["tr", "a-z", "A-Z"]"#,
+    ]),
+    FIX_PATTERNS_STEP,
+    Step::Jj(&["config", "set", "--repo", "fix.tools.up.timeout", "\"30s\""]),
+];
+
 /// A tool that always fails (`false`): each file it is run on warns.
 const FIX_TOOL_FAILING: &[Step] = &[
     Step::Jj(&["config", "set", "--repo", "fix.tools.up.command", r#"["false"]"#]),
@@ -4103,8 +4116,9 @@ fn fix_tool(
     }
 }
 
-/// fix: the default source, `-s`, a path, `--include-unchanged-files`, nothing to fix, a failing
-/// tool, no tools, and the deprecated `line-range-arg` on `fix` and on another verb.
+/// fix: the default source, `-s`, a path, `--include-unchanged-files`, Zanshin's `timeout` key,
+/// nothing to fix, a failing tool, no tools, and the deprecated `line-range-arg` on `fix` and on
+/// another verb.
 fn fix_scenarios() -> Vec<Scenario> {
     vec![
         fix_tool(
@@ -4148,6 +4162,14 @@ fn fix_scenarios() -> Vec<Scenario> {
             },
             |s| verb_argv(s, "fix", &[("-s", "C")], &["--include-unchanged-files"]),
         ),
+        Scenario {
+            setup: FIX_TOOL_TIMEOUT,
+            ..simple(
+                "fix_tool_timeout_key",
+                |repo, _, _| fix_outcome(repo, &FixOptions::default()),
+                |_| args(&["fix"]),
+            )
+        },
         Scenario {
             setup: FIX_TOOL_APPLIED,
             ..simple(

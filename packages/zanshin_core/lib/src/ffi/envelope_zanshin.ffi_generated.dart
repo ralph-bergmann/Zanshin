@@ -3891,6 +3891,10 @@ class DuplicateRequestObjectBuilder extends fb.ObjectBuilder {
 ///                       setting (jj's default `reachable(@, mutable())`)
 ///    paths              repo-relative PREFIXES to fix; ABSENT or EMPTY = every path
 ///    include_unchanged_files / all_lines   the CLI's `--include-unchanged-files` / `--all-lines`
+///    cancel_token       a token from `zanshin_network_token` that `zanshin_network_cancel`
+///                       cancels — the CLI's Ctrl-C: the running tool's process group is killed
+///                       and the call refuses `jj.cancelled` with no operation; 0 = not
+///                       cancellable
 class FixRequest {
   FixRequest._(this._bc, this._bcOffset);
   factory FixRequest(List<int> bytes) {
@@ -3908,10 +3912,11 @@ class FixRequest {
   List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
   bool get includeUnchangedFiles => const fb.BoolReader().vTableGet(_bc, _bcOffset, 10, false);
   bool get allLines => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  int get cancelToken => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 14, 0);
 
   @override
   String toString() {
-    return 'FixRequest{kind: ${kind}, source: ${source}, paths: ${paths}, includeUnchangedFiles: ${includeUnchangedFiles}, allLines: ${allLines}}';
+    return 'FixRequest{kind: ${kind}, source: ${source}, paths: ${paths}, includeUnchangedFiles: ${includeUnchangedFiles}, allLines: ${allLines}, cancelToken: ${cancelToken}}';
   }
 }
 
@@ -3928,7 +3933,7 @@ class FixRequestBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(6);
   }
 
   int addKind(RequestKind? kind) {
@@ -3956,6 +3961,11 @@ class FixRequestBuilder {
     return fbBuilder.offset;
   }
 
+  int addCancelToken(int? cancelToken) {
+    fbBuilder.addUint64(5, cancelToken);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -3967,6 +3977,7 @@ class FixRequestObjectBuilder extends fb.ObjectBuilder {
   final List<String>? _paths;
   final bool? _includeUnchangedFiles;
   final bool? _allLines;
+  final int? _cancelToken;
 
   FixRequestObjectBuilder({
     RequestKind? kind,
@@ -3974,11 +3985,13 @@ class FixRequestObjectBuilder extends fb.ObjectBuilder {
     List<String>? paths,
     bool? includeUnchangedFiles,
     bool? allLines,
+    int? cancelToken,
   }) : _kind = kind,
        _source = source,
        _paths = paths,
        _includeUnchangedFiles = includeUnchangedFiles,
-       _allLines = allLines;
+       _allLines = allLines,
+       _cancelToken = cancelToken;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -3987,12 +4000,13 @@ class FixRequestObjectBuilder extends fb.ObjectBuilder {
         ? null
         : fbBuilder.writeList(_source!.map(fbBuilder.writeString).toList());
     final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(5);
+    fbBuilder.startTable(6);
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addOffset(1, sourceOffset);
     fbBuilder.addOffset(2, pathsOffset);
     fbBuilder.addBool(3, _includeUnchangedFiles);
     fbBuilder.addBool(4, _allLines);
+    fbBuilder.addUint64(5, _cancelToken);
     return fbBuilder.endTable();
   }
 

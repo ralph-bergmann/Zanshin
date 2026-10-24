@@ -15,6 +15,14 @@
 //! ([`crate::environment::apply_to_tool`]); a tool that cannot start or exits non-zero is
 //! skipped for that file, as in the CLI, and warns.
 //!
+//! Each tool runs as the leader of a process group of its own. A cancel (the call's
+//! [`CancelGuard`], the GUI's stand-in for the CLI's Ctrl-C) and the Zanshin-only
+//! `fix.tools.<name>.timeout` kill that group — SIGTERM, then SIGKILL if it has not exited
+//! [`crate::cancel::KILL_GRACE`] later — so the tool and whatever it forked stop together. A
+//! cancelled call refuses [`MutateError::Cancelled`] and writes no operation, as the CLI's Ctrl-C
+//! exits before `tx.finish`; a timed-out run is a failed run and warns
+//! [`WarningKind::FixToolTimedOut`].
+//!
 //! Divergences, deliberate:
 //!
 //! - `paths` are the house's prefix paths ([`crate::mutate::build_matcher`]), not filesets;
@@ -27,10 +35,15 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::io::Write as _;
+use std::fmt;
+use std::io::{self, Read, Write};
+use std::os::unix::process::CommandExt as _;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{LazyLock, Mutex, PoisonError};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use futures::AsyncReadExt as _;
 use jj_lib::backend::FileId;
@@ -51,6 +64,7 @@ use jj_lib::workspace::Workspace;
 use regex::Regex;
 
 use crate::arrange::{commits_of, target_expression};
+use crate::cancel::{self, CancelGuard, GroupSignal, KILL_GRACE, POLL_INTERVAL};
 use crate::mutate::{
     be, build_matcher, cfg, finish_verb, guard_rewritable, mutation_result, no_op_result, warn_unmatched, MutateError,
     MutationResult,
@@ -60,7 +74,9 @@ use crate::snapshot::VerbContext;
 use crate::warning::{self, Load, Warning, WarningKind, Warnings};
 use crate::ChangeId;
 
-/// [`crate::Repo::fix`]'s arguments — the CLI's `jj fix` flags, one field each (Story 9.9).
+/// [`crate::Repo::fix`]'s arguments — the CLI's `jj fix` flags, one field each (Story 9.9). The
+/// tools come from `fix.tools`, whose entries may also set the Zanshin-only `timeout`; the cancel
+/// token is [`crate::Repo::fix`]'s own argument.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FixOptions {
     /// `-s/--source`, repeatable: fix these revisions and their descendants. Empty is the CLI's
@@ -205,10 +221,104 @@ struct RawToolConfig {
     line_range_args: Vec<String>,
     #[serde(default)]
     run_tool_if_zero_line_ranges: bool,
+    /// Zanshin-only; the CLI ignores the key.
+    #[serde(default)]
+    timeout: Option<ToolTimeout>,
 }
 
 fn default_tool_enabled() -> bool {
     true
+}
+
+/// `fix.tools.<name>.timeout` (Zanshin-only): how long one run of the tool (one file) may take
+/// — a non-negative integer of seconds, or a string `<n>ms` / `<n>s` / `<n>m` with a
+/// non-negative integer `n`, the integer-or-unit-string shape of jj's
+/// `snapshot.max-new-file-size`. `0` in any unit is no timeout, so a higher config layer can
+/// switch a lower layer's off. Displayed normalized: `30s`, `500ms`, `2m`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ToolTimeout {
+    amount: u64,
+    unit: TimeUnit,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TimeUnit {
+    Millis,
+    Seconds,
+    Minutes,
+}
+
+impl ToolTimeout {
+    /// A `<n>ms` / `<n>s` / `<n>m` string; `None` for anything else, or minutes beyond
+    /// [`Duration`]'s seconds.
+    fn parse(text: &str) -> Option<Self> {
+        let (digits, unit) = if let Some(digits) = text.strip_suffix("ms") {
+            (digits, TimeUnit::Millis)
+        } else if let Some(digits) = text.strip_suffix('s') {
+            (digits, TimeUnit::Seconds)
+        } else {
+            (text.strip_suffix('m')?, TimeUnit::Minutes)
+        };
+        if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        let timeout = Self {
+            amount: digits.parse().ok()?,
+            unit,
+        };
+        timeout.duration().map(|_| timeout)
+    }
+
+    /// The timeout as a [`Duration`]; `None` only for minutes beyond its seconds.
+    fn duration(self) -> Option<Duration> {
+        match self.unit {
+            TimeUnit::Millis => Some(Duration::from_millis(self.amount)),
+            TimeUnit::Seconds => Some(Duration::from_secs(self.amount)),
+            TimeUnit::Minutes => self.amount.checked_mul(60).map(Duration::from_secs),
+        }
+    }
+}
+
+impl fmt::Display for ToolTimeout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let unit = match self.unit {
+            TimeUnit::Millis => "ms",
+            TimeUnit::Seconds => "s",
+            TimeUnit::Minutes => "m",
+        };
+        write!(f, "{}{unit}", self.amount)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ToolTimeout {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl serde::de::Visitor<'_> for Visitor {
+            type Value = ToolTimeout;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a non-negative integer of seconds, or a string `<n>ms`, `<n>s` or `<n>m`")
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, seconds: u64) -> Result<ToolTimeout, E> {
+                Ok(ToolTimeout {
+                    amount: seconds,
+                    unit: TimeUnit::Seconds,
+                })
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, seconds: i64) -> Result<ToolTimeout, E> {
+                u64::try_from(seconds)
+                    .map_err(|_| E::invalid_value(serde::de::Unexpected::Signed(seconds), &self))
+                    .and_then(|seconds| self.visit_u64(seconds))
+            }
+
+            fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<ToolTimeout, E> {
+                ToolTimeout::parse(text).ok_or_else(|| E::invalid_value(serde::de::Unexpected::Str(text), &self))
+            }
+        }
+        deserializer.deserialize_any(Visitor)
+    }
 }
 
 /// One usable `fix.tools` entry — the CLI's `ToolConfig`.
@@ -219,6 +329,8 @@ struct ToolConfig {
     enabled: bool,
     line_range_args: Vec<String>,
     run_tool_if_zero_line_ranges: bool,
+    /// `timeout`; `None` when absent or `0`.
+    timeout: Option<ToolTimeout>,
 }
 
 /// The `fix.tools` table — the CLI's `get_tools_config`: the entries in key order (so errors are
@@ -228,7 +340,7 @@ struct ToolConfig {
 ///
 /// # Errors
 ///
-/// - [`MutateError::Config`] — an entry does not deserialize, sets `run-tool-if-zero-line-ranges`
+/// - [`MutateError::Config`] — an entry does not deserialize (a malformed `timeout` included), sets `run-tool-if-zero-line-ranges`
 ///   without `line-range-args`, no entry is configured ("No `fix.tools` are configured"), or none
 ///   is enabled ("At least one entry of `fix.tools` must be enabled."); the `[fileset-aliases]`
 ///   table does not read.
@@ -276,6 +388,7 @@ fn get_tools_config(config: &StackedConfig, sink: &mut Warnings) -> Result<Vec<T
             enabled: tool.enabled,
             line_range_args: tool.line_range_args,
             run_tool_if_zero_line_ranges: tool.run_tool_if_zero_line_ranges,
+            timeout: tool.timeout.filter(|timeout| timeout.amount != 0),
         });
     }
     if tools.is_empty() {
@@ -362,8 +475,25 @@ struct Runner<'a> {
     workspace_root: &'a Path,
     tools: &'a [ToolConfig],
     all_lines: bool,
+    cancel: Option<&'a CancelGuard>,
     warnings: Mutex<Vec<Warning>>,
     tool_stderr: Mutex<Vec<FixToolStderr>>,
+}
+
+/// How one tool run ended for its file.
+enum Run {
+    /// It exited zero: its stdout is the new content.
+    Output(Vec<u8>),
+    /// It could not start, failed or timed out (warned), or its exit status was lost: the file
+    /// keeps the previous content.
+    Skipped,
+    /// The call's token was cancelled before it started, or while it ran (it was killed).
+    Cancelled,
+}
+
+/// `fix_files`' error for a cancelled call: it stops handing out files.
+fn cancelled() -> FixError {
+    FixError::FixContent(Box::new(cancel::Cancelled))
 }
 
 impl Runner<'_> {
@@ -381,7 +511,8 @@ impl Runner<'_> {
 
     /// `fix_one_file`: the matching tools run in order, each on the previous one's output; the
     /// new content written when it changed. A failing tool is skipped. Empty files and files no
-    /// tool matches are left alone.
+    /// tool matches are left alone. A cancel stops the file — and `fix_files` — with
+    /// [`cancel::Cancelled`].
     async fn fix_one_file(&self, store: &Store, file: &FileToFix) -> Result<Option<FileId>, FixError> {
         let matching: Vec<&ToolConfig> = self
             .tools
@@ -401,12 +532,14 @@ impl Runner<'_> {
             }
             _ => None,
         };
-        let new_content = matching.iter().fold(old_content.clone(), |previous, tool| {
+        let mut new_content = old_content.clone();
+        for tool in matching {
             let mut extra_args = Vec::new();
             if !tool.line_range_args.is_empty() {
-                let RegionsToFormat::LineRanges(ranges) = compute_regions_to_format(base_content.as_deref(), &previous);
+                let RegionsToFormat::LineRanges(ranges) =
+                    compute_regions_to_format(base_content.as_deref(), &new_content);
                 if ranges.is_empty() && !tool.run_tool_if_zero_line_ranges {
-                    return previous;
+                    continue;
                 }
                 for range in ranges {
                     for arg in &tool.line_range_args {
@@ -417,9 +550,12 @@ impl Runner<'_> {
                     }
                 }
             }
-            self.run_tool(&tool.command, file, &previous, &extra_args)
-                .unwrap_or(previous)
-        });
+            match self.run_tool(tool, file, &new_content, &extra_args) {
+                Run::Output(output) => new_content = output,
+                Run::Skipped => {}
+                Run::Cancelled => return Err(cancelled()),
+            }
+        }
         if new_content == old_content {
             return Ok(None);
         }
@@ -427,22 +563,21 @@ impl Runner<'_> {
         Ok(Some(id))
     }
 
-    /// `run_tool`: the tool on `content`, its stdout the new content — `None` when it could not
-    /// start or exited non-zero (both warned). What it wrote to stderr is recorded either way.
-    fn run_tool(
-        &self,
-        tool: &CommandNameAndArgs,
-        file: &FileToFix,
-        content: &[u8],
-        extra_args: &[String],
-    ) -> Option<Vec<u8>> {
+    /// `run_tool`: the tool on `content`, its stdout the new content — [`Run::Skipped`] when it
+    /// could not start, exited non-zero or timed out (each warned), [`Run::Cancelled`] when the
+    /// call's token was cancelled before it started or while it ran. What it wrote to stderr is
+    /// recorded whenever its run ended (a lost exit status aside).
+    fn run_tool(&self, tool: &ToolConfig, file: &FileToFix, content: &[u8], extra_args: &[String]) -> Run {
+        if cancel::is_cancelled(self.cancel) {
+            return Run::Cancelled;
+        }
         let mut variables: HashMap<&str, &str> = HashMap::new();
         variables.insert("path", file.repo_path.as_internal_file_string());
         // A non-UTF-8 workspace root leaves `$root` unset, as in the CLI.
         if let Some(root) = self.workspace_root.to_str() {
             variables.insert("root", root);
         }
-        let mut command = tool.to_command_with_variables(&variables);
+        let mut command = tool.command.to_command_with_variables(&variables);
         command.args(extra_args);
         tracing::debug!(?command, path = ?file.repo_path, "spawning fix tool");
         let spawned = command
@@ -450,52 +585,222 @@ impl Runner<'_> {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            // Its own process group, so a cancel or a timeout stops what it forks too.
+            .process_group(0)
             .spawn();
-        let Ok(mut child) = spawned else {
+        let Ok(child) = spawned else {
             self.warn(
                 WarningKind::FixToolStartFailed,
-                format!("Failed to start `{}`.", tool.split_name()),
+                format!("Failed to start `{}`.", tool.command.split_name()),
             );
-            return None;
+            return Run::Skipped;
         };
-        let stdin = child.stdin.take();
-        let waited = std::thread::scope(|s| {
-            s.spawn(move || stdin.map(|mut stdin| stdin.write_all(content)));
-            child.wait_with_output()
-        });
-        let output = match waited {
-            Ok(output) => output,
+        let deadline = tool
+            .timeout
+            .and_then(ToolTimeout::duration)
+            .and_then(|timeout| Instant::now().checked_add(timeout));
+        let mut process = ToolProcess::start(child, content);
+        match process.wait(self.cancel, deadline) {
+            Ended::Exited => {}
+            Ended::Cancelled => {
+                self.record_stderr(file, &process.stderr);
+                return Run::Cancelled;
+            }
+            Ended::TimedOut => {
+                self.record_stderr(file, &process.stderr);
+                let timeout = tool.timeout.map(|timeout| timeout.to_string()).unwrap_or_default();
+                self.warn(
+                    WarningKind::FixToolTimedOut,
+                    format!(
+                        "Fix tool `{}` timed out after {timeout} for `{}`",
+                        tool.command.split_name(),
+                        self.ui_path(file)
+                    ),
+                );
+                return Run::Skipped;
+            }
+        }
+        let status = match process.status.take() {
+            Some(Ok(status)) => status,
             // The CLI keeps the old content without a warning. Logged so a silent no-op can be told
             // from "nothing to fix": under a Dart host the VM may reap the child first (`ECHILD`).
             // The path is user data, so it is logged at debug only.
-            Err(e) => {
-                tracing::warn!(tool = %tool.split_name(), error = %e, "fix tool's exit status lost; old content kept");
-                tracing::debug!(tool = %tool.split_name(), path = ?file.repo_path, "fix tool's exit status lost");
-                return None;
+            lost => {
+                let error = lost.and_then(Result::err);
+                tracing::warn!(tool = %tool.command.split_name(), ?error, "fix tool's exit status lost; old content kept");
+                tracing::debug!(tool = %tool.command.split_name(), path = ?file.repo_path, "fix tool's exit status lost");
+                return Run::Skipped;
             }
         };
-        tracing::debug!(?command, status = ?output.status, "fix tool exited");
-        if !output.stderr.is_empty() {
-            self.tool_stderr
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push(FixToolStderr {
-                    path: self.ui_path(file),
-                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-                });
-        }
-        if output.status.success() {
-            return Some(output.stdout);
+        tracing::debug!(?command, ?status, "fix tool exited");
+        self.record_stderr(file, &process.stderr);
+        if status.success() {
+            return Run::Output(process.stdout);
         }
         self.warn(
             WarningKind::FixToolFailed,
             format!(
                 "Fix tool `{}` exited with non-zero exit code for `{}`",
-                tool.split_name(),
+                tool.command.split_name(),
                 self.ui_path(file)
             ),
         );
-        None
+        Run::Skipped
+    }
+
+    /// Records what a tool run wrote to stderr, if anything.
+    fn record_stderr(&self, file: &FileToFix, stderr: &[u8]) {
+        if !stderr.is_empty() {
+            self.tool_stderr
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(FixToolStderr {
+                    path: self.ui_path(file),
+                    stderr: String::from_utf8_lossy(stderr).into_owned(),
+                });
+        }
+    }
+}
+
+/// How a [`ToolProcess`] wait ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ended {
+    /// The tool exited and closed its pipes.
+    Exited,
+    /// Its deadline passed; its group was killed.
+    TimedOut,
+    /// The call's token was cancelled; its group was killed.
+    Cancelled,
+}
+
+/// What a [`ToolProcess`]'s helper threads report.
+enum Event {
+    Exited(io::Result<ExitStatus>),
+    Stdout(Vec<u8>),
+    Stderr(Vec<u8>),
+    /// A pipe reached its end (or failed).
+    Closed,
+}
+
+/// A spawned tool whose stdin is fed, whose pipes are read and whose exit is waited for on
+/// threads of their own, so its exit is noticed at once and a cancel or a deadline while it runs.
+/// A killed tool's pipes are waited for at most [`KILL_GRACE`]: a descendant that left the group
+/// must not hang the call (its threads end with it).
+struct ToolProcess {
+    /// The tool's pid, which is its process group's id.
+    group: u32,
+    events: Receiver<Event>,
+    /// Held so `recv_timeout` never reports a disconnect.
+    _sender: Sender<Event>,
+    status: Option<io::Result<ExitStatus>>,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    open_pipes: usize,
+}
+
+impl ToolProcess {
+    fn start(mut child: Child, content: &[u8]) -> Self {
+        let (sender, events) = mpsc::channel();
+        let group = child.id();
+        let stdin = child.stdin.take();
+        let content = content.to_vec();
+        thread::spawn(move || stdin.map(|mut stdin| stdin.write_all(&content)));
+        forward(child.stdout.take(), sender.clone(), Event::Stdout);
+        forward(child.stderr.take(), sender.clone(), Event::Stderr);
+        let exit = sender.clone();
+        thread::spawn(move || exit.send(Event::Exited(child.wait())));
+        Self {
+            group,
+            events,
+            _sender: sender,
+            status: None,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            open_pipes: 2,
+        }
+    }
+
+    fn done(&self) -> bool {
+        self.status.is_some() && self.open_pipes == 0
+    }
+
+    /// Takes events until the tool is done or `until` passes; whether it is done.
+    fn settle(&mut self, until: Instant) -> bool {
+        while !self.done() {
+            let Ok(event) = self
+                .events
+                .recv_timeout(until.saturating_duration_since(Instant::now()))
+            else {
+                return false;
+            };
+            match event {
+                Event::Exited(status) => self.status = Some(status),
+                Event::Stdout(data) => self.stdout.extend(data),
+                Event::Stderr(data) => self.stderr.extend(data),
+                Event::Closed => self.open_pipes -= 1,
+            }
+        }
+        true
+    }
+
+    /// Waits for the tool to finish, checking `cancel` every [`POLL_INTERVAL`] and killing the
+    /// group once it is cancelled or `deadline` passed.
+    fn wait(&mut self, cancel: Option<&CancelGuard>, deadline: Option<Instant>) -> Ended {
+        loop {
+            let tick = Instant::now() + POLL_INTERVAL;
+            if self.settle(deadline.map_or(tick, |deadline| deadline.min(tick))) {
+                return Ended::Exited;
+            }
+            if cancel::is_cancelled(cancel) {
+                self.kill();
+                return Ended::Cancelled;
+            }
+            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                self.kill();
+                return Ended::TimedOut;
+            }
+        }
+    }
+
+    /// SIGTERM to the group, SIGKILL if it is not done [`KILL_GRACE`] later, then at most another
+    /// grace for its pipes.
+    fn kill(&mut self) {
+        cancel::kill_group(self.group, GroupSignal::Terminate);
+        if !self.settle(Instant::now() + KILL_GRACE) {
+            cancel::kill_group(self.group, GroupSignal::Kill);
+            self.settle(Instant::now() + KILL_GRACE);
+        }
+    }
+}
+
+/// Copies `pipe` to `sender` chunk by chunk on a thread of its own, then reports
+/// [`Event::Closed`].
+fn forward<R: Read + Send + 'static>(pipe: Option<R>, sender: Sender<Event>, wrap: fn(Vec<u8>) -> Event) {
+    thread::spawn(move || {
+        let mut chunks = Chunks { sender, wrap };
+        // A read error ends the pipe as its end does; a gone receiver ends the copy.
+        let copied = pipe.map(|mut pipe| io::copy(&mut pipe, &mut chunks));
+        tracing::trace!(?copied, "fix tool pipe closed");
+        chunks.sender.send(Event::Closed)
+    });
+}
+
+/// A writer that sends what it is given as [`Event`]s.
+struct Chunks {
+    sender: Sender<Event>,
+    wrap: fn(Vec<u8>) -> Event,
+}
+
+impl Write for Chunks {
+    fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+        self.sender
+            .send((self.wrap)(data.to_vec()))
+            .map_err(|_| io::Error::from(io::ErrorKind::BrokenPipe))?;
+        Ok(data.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
@@ -540,7 +845,9 @@ pub(crate) fn fix(
     workspace: &mut Workspace,
     ctx: &mut VerbContext,
     options: &FixOptions,
+    cancel: Option<&CancelGuard>,
 ) -> Result<FixResult, MutateError> {
+    cancel::checkpoint(cancel)?;
     let tools = get_tools_config(&ctx.config, &mut ctx.warnings)?;
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let workspace_name = workspace.workspace_name().to_owned();
@@ -566,6 +873,7 @@ pub(crate) fn fix(
         workspace_root: workspace.workspace_root(),
         tools: &tools,
         all_lines: options.all_lines,
+        cancel,
         warnings: Mutex::default(),
         tool_stderr: Mutex::default(),
     };
@@ -582,6 +890,9 @@ pub(crate) fn fix(
     let mut warnings = runner.warnings.into_inner().unwrap_or_else(PoisonError::into_inner);
     warnings.sort_by(|a, b| a.message.cmp(&b.message));
     ctx.warnings.extend(warnings);
+    // A cancel wins over what `fix_files` returned — its killed tool failed it — and stops a fix
+    // that finished meanwhile before the finish: like the CLI's Ctrl-C, no operation.
+    cancel::checkpoint(cancel)?;
     let summary = outcome.map_err(be)?;
     let mut tool_stderr = runner.tool_stderr.into_inner().unwrap_or_else(PoisonError::into_inner);
     tool_stderr.sort_by(|a, b| (&a.path, &a.stderr).cmp(&(&b.path, &b.stderr)));
@@ -612,7 +923,9 @@ mod tests {
     use jj_lib::config::{ConfigLayer, ConfigSource, StackedConfig};
     use jj_lib::fix::{LineRange, RegionsToFormat};
 
-    use super::{compute_regions_to_format, count, get_tools_config, interpolate, CommandNameAndArgs};
+    use super::{
+        compute_regions_to_format, count, get_tools_config, interpolate, Chunks, CommandNameAndArgs, Event, ToolTimeout,
+    };
     use crate::mutate::MutateError;
     use crate::warning::Warnings;
 
@@ -775,5 +1088,81 @@ mod tests {
         assert!(unknown.hints().is_empty(), "{unknown:?}");
         let arguments = refusal("fix.tools.a = { command = ['x'], patterns = ['all(x)'] }");
         assert!(arguments.hints().is_empty(), "{arguments:?}");
+    }
+
+    /// `timeout`'s string form: `<n>ms` / `<n>s` / `<n>m`, shown normalized.
+    #[test]
+    fn a_timeout_string_is_a_count_and_a_unit() {
+        let shown = |text: &str| ToolTimeout::parse(text).map(|timeout| timeout.to_string());
+        assert_eq!(shown("500ms").as_deref(), Some("500ms"));
+        assert_eq!(shown("30s").as_deref(), Some("30s"));
+        assert_eq!(shown("2m").as_deref(), Some("2m"));
+        assert_eq!(shown("05s").as_deref(), Some("5s"), "normalized");
+        assert_eq!(shown("0ms").as_deref(), Some("0ms"));
+        let minutes = ToolTimeout::parse("2m").and_then(ToolTimeout::duration);
+        assert_eq!(minutes, Some(std::time::Duration::from_mins(2)));
+        for bad in [
+            "",
+            "ms",
+            "s",
+            "m",
+            "soon",
+            "5h",
+            "5",
+            "-5s",
+            "+5s",
+            "1.5s",
+            " 5s",
+            "18446744073709551615m",
+        ] {
+            assert_eq!(ToolTimeout::parse(bad), None, "{bad:?}");
+        }
+    }
+
+    /// The tool's timeout as `get_tools_config` reads it.
+    fn timeout(value: &str) -> Option<String> {
+        let mut config = StackedConfig::empty();
+        let toml = format!("fix.tools.a = {{ command = ['x'], patterns = ['all()'] {value} }}");
+        config.add_layer(ConfigLayer::parse(ConfigSource::User, &toml).expect("toml"));
+        let tools = get_tools_config(&config, &mut Warnings::default()).expect("a tool");
+        tools[0].timeout.map(|timeout| timeout.to_string())
+    }
+
+    /// `timeout` is an integer of seconds or a unit string; `0` (any unit) and absence are no
+    /// timeout; anything else refuses naming the entry.
+    #[test]
+    fn a_tools_timeout_reads_as_seconds_or_a_unit_string() {
+        assert_eq!(timeout(", timeout = 30").as_deref(), Some("30s"));
+        assert_eq!(timeout(", timeout = '200ms'").as_deref(), Some("200ms"));
+        assert_eq!(timeout(", timeout = '2m'").as_deref(), Some("2m"));
+        assert_eq!(timeout(""), None, "absent");
+        assert_eq!(timeout(", timeout = 0"), None, "0 is no timeout");
+        assert_eq!(timeout(", timeout = '0ms'"), None, "0 in any unit is no timeout");
+        for bad in ["'soon'", "-1", "1.5", "true", "'5h'"] {
+            let toml = format!("fix.tools.a = {{ command = ['x'], patterns = ['all()'], timeout = {bad} }}");
+            assert!(
+                matches!(refusal(&toml), MutateError::Config { reason } if reason.contains("fix.tools.a")),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn chunks_send_what_they_are_written_until_the_receiver_is_gone() {
+        use std::io::Write as _;
+
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let mut chunks = Chunks {
+            sender,
+            wrap: Event::Stderr,
+        };
+        assert_eq!(chunks.write(b"ab").expect("sent"), 2);
+        chunks.flush().expect("flush");
+        assert!(matches!(receiver.recv().expect("an event"), Event::Stderr(data) if data == b"ab"));
+        drop(receiver);
+        assert_eq!(
+            chunks.write(b"c").expect_err("no receiver").kind(),
+            std::io::ErrorKind::BrokenPipe
+        );
     }
 }

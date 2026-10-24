@@ -424,12 +424,17 @@ table DuplicateRequest {
 ///                      setting (jj's default `reachable(@, mutable())`)
 ///   paths              repo-relative PREFIXES to fix; ABSENT or EMPTY = every path
 ///   include_unchanged_files / all_lines   the CLI's `--include-unchanged-files` / `--all-lines`
+///   cancel_token       a token from `zanshin_network_token` that `zanshin_network_cancel`
+///                      cancels — the CLI's Ctrl-C: the running tool's process group is killed
+///                      and the call refuses `jj.cancelled` with no operation; 0 = not
+///                      cancellable
 table FixRequest {
   kind: RequestKind;
   source: [string];
   paths: [string];
   include_unchanged_files: bool;
   all_lines: bool;
+  cancel_token: uint64;
 }
 
 /// Arguments of `zanshin_commit` (Story 9.49) — the CLI's `jj commit -m <message> [paths]`.
