@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/snapshot.rs (tests::load_at_head_offenders)
     severity: low
+    resolved: >-
+      2026-10-24 — fixed (console session after fix-up 2, commit 7619a28): the scan stops only at an unindented `#[cfg(test)]`; the fixture adds an indented `#[cfg(test)]` item before a later production call, which is reported.
   - summary: >-
       The fix.rs baseline raise (96.89 -> 97.80) comes from 73134a3's never-gated cancel/timeout tests; if any newly covered line depends on a race, the higher baseline can make the gate flake.
     evidence: |-
@@ -24,6 +26,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/fix.rs, coverage-baseline.txt:67
     severity: medium (unverified)
+    resolved: >-
+      2026-10-24 — rejected (console session): the rarely-hit cancel/timeout lines are pinned by deterministic sequencing — `cancel_when` cancels only once the tool wrote its pid (fix.rs Ended::Cancelled arm), the SIGKILL escalation (fix.rs kill) is asserted by the test's elapsed >= 2.9 s check, the before-start arm is a unit test; no line's coverage depends on a race.
   - summary: >-
       The trap/SIGKILL cancel test keeps a hand-rolled wait loop whose sleep body runs only when the trap file is not yet written at the first check — the same coverage-timing shape this fix-up removed from the group-kill test.
     evidence: |-
@@ -31,6 +35,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/cancel.rs (tests, ~line 686)
     severity: low
+    resolved: >-
+      2026-10-24 — fixed (console session after fix-up 2, commit 7619a28): the trap test waits with `poll_until` and asserts the trap is installed.
 ---
 
 <intent-contract>
