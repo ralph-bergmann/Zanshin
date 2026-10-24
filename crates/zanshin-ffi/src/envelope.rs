@@ -34,9 +34,10 @@ pub const JJ_REPO_NOT_FOUND: &str = "jj.repo_not_found";
 /// AR-P-4: emitted by `repo.rs` and the read wrappers (`status.rs`, `change.rs`, `op_log.rs`,
 /// `bookmarks.rs`, `remotes.rs`, `graph.rs`) for unclassified jj-lib errors; detail in `context`.
 pub const JJ_JJ_LIB_ERROR: &str = "jj.jj_lib_error";
-/// AR-P-4: emitted by `status.rs` when the workspace has no working-copy commit (@), and —
-/// since Story 9.22 — by `file_ops.rs`'s two wrappers when the working copy they must lock has
-/// no `@` in the head view (the CLI's "Nothing checked out in this workspace"); no `context`.
+/// AR-P-4: emitted — since Story 9.22 — by `file_ops.rs`'s two wrappers when the working copy
+/// they must lock has no `@` in the head view (the CLI's "Nothing checked out in this
+/// workspace"), and through `repo.rs::map_mutate_err` by `zanshin_commit` (Story 9.49) and
+/// `zanshin_workspace_add` (Story 9.23); no `context`.
 pub const JJ_NO_WORKING_COPY: &str = "jj.no_working_copy";
 /// AR-P-4: emitted by `file_ops.rs::zanshin_file_track`/`_untrack` when the working copy's
 /// recorded tree differs from `@`'s tree — `@` rewritten without a checkout by a concurrent

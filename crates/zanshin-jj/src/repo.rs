@@ -587,13 +587,14 @@ impl Repo {
     ///
     /// Runs the pre-verb snapshot first (Story 9.26), exactly like `jj status`, so on-disk
     /// edits made outside Zanshin are part of `@`. Re-resolves to head on every call
-    /// (ADR-0002).
+    /// (ADR-0002). A workspace without a working-copy commit (a root restore, an undo to the
+    /// root view) is no error, as the CLI's `jj status` prints "No working copy." and succeeds:
+    /// the status then has no files and both change ids are `None`.
     ///
     /// # Errors
     ///
-    /// Returns [`crate::StatusError::NoWorkingCopy`] if the workspace has no
-    /// working-copy commit, [`crate::StatusError::Precondition`] if the pre-verb snapshot
-    /// failed, or [`crate::StatusError::Backend`] on jj-lib failure.
+    /// Returns [`crate::StatusError::Precondition`] if the pre-verb snapshot failed, or
+    /// [`crate::StatusError::Backend`] on jj-lib failure.
     pub fn status(&mut self) -> Result<crate::Status, crate::StatusError> {
         self.with_verb(|repo, _ctx| crate::status::working_copy_status(&repo.workspace))
     }

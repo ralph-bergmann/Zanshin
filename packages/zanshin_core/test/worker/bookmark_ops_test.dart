@@ -58,7 +58,7 @@ void main() {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       // The oracle for `workingCopyChangeId`: neither verb ever moves `@`, so both results
       // must report exactly what `status()` does.
-      final String expectedWc = (await handle.status()).workingCopyChangeId;
+      final String expectedWc = (await handle.status()).workingCopyChangeId!;
 
       final MutationResult created = await handle.bookmarkCreate(['feature']);
       expect(created.newOpId, isNotEmpty);
@@ -80,7 +80,7 @@ void main() {
       final MutationResult created = await handle.bookmarkCreate(['feature']);
       // Read PRE-CALL: an oracle read after the mutation would move with a regression that moved
       // `@`, so both sides of the comparison would shift together and the assertion would hold.
-      final String expectedWc = (await handle.status()).workingCopyChangeId;
+      final String expectedWc = (await handle.status()).workingCopyChangeId!;
 
       final MutationResult noop = await handle.bookmarkDelete(['nosuch']);
 
@@ -219,11 +219,11 @@ void main() {
 
     test('advance_move_and_rename_round_trip_through_the_real_cdylib', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
-      final String a = (await handle.status()).workingCopyChangeId;
+      final String a = (await handle.status()).workingCopyChangeId!;
       await handle.describe(changeId: a, description: 'A');
       await handle.bookmarkCreate(['feature']);
       await handle.newChange([a]);
-      final String b = (await handle.status()).workingCopyChangeId;
+      final String b = (await handle.status()).workingCopyChangeId!;
 
       // Advance by name, `to` absent: the default target `@`.
       final MutationResult advanced = await handle.bookmarkAdvance(names: ['feature']);
@@ -273,15 +273,15 @@ void main() {
 
     test('from_advance_to_and_overwrite_cross_through_the_real_cdylib', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
-      final String a = (await handle.status()).workingCopyChangeId;
+      final String a = (await handle.status()).workingCopyChangeId!;
       await handle.describe(changeId: a, description: 'A');
       await handle.bookmarkCreate(['one']);
       await handle.newChange([a]);
-      final String b = (await handle.status()).workingCopyChangeId;
+      final String b = (await handle.status()).workingCopyChangeId!;
       await handle.describe(changeId: b, description: 'B');
       await handle.bookmarkCreate(['two']);
       await handle.newChange([b]);
-      final String c = (await handle.status()).workingCopyChangeId;
+      final String c = (await handle.status()).workingCopyChangeId!;
 
       // `from` alone: only the bookmark on A moves; `two` (on B) stays.
       await handle.bookmarkMove(const [], from: [a], to: c);

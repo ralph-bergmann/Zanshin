@@ -110,6 +110,37 @@ fn status_clean_round_trip_returns_ok_empty_files() {
     assert!(close_env.ok(), "repo close must succeed");
 }
 
+/// A workspace without `@` (after `op restore` of the root operation) succeeds as the CLI's
+/// `jj status` does ("No working copy."): an ok Status envelope, no files, both change ids ABSENT.
+#[test]
+fn status_without_a_working_copy_returns_ok_with_absent_ids() {
+    test_helpers::pin_test_env();
+
+    let fixture = extract_fixture("tiny-3-commits").expect("fixture must extract");
+    zanshin_jj::Repo::open(&fixture.path)
+        .expect("open")
+        .op_restore("000000000000", &[])
+        .expect("restore the root operation");
+    let path_cstr = cstr(fixture.path.to_str().expect("fixture path must be valid UTF-8"));
+    let open_bytes = unsafe { read_and_free(zanshin_repo_open(path_cstr.as_ptr())) };
+    let handle = parse_envelope(&open_bytes)
+        .data_as_repo_handle()
+        .expect("data_as_repo_handle must succeed")
+        .handle();
+
+    let status_bytes = unsafe { read_and_free(zanshin_status(handle)) };
+    let status_env = parse_envelope(&status_bytes);
+
+    assert!(status_env.ok(), "{:?}", status_env.error().and_then(|e| e.code()));
+    let payload = status_env.data_as_status().expect("a Status payload");
+    assert_eq!(payload.files().map(|f| f.len()), Some(0));
+    assert_eq!(payload.working_copy_change_id(), None);
+    assert_eq!(payload.parent_change_id(), None);
+
+    let close_bytes = unsafe { read_and_free(zanshin_repo_close(handle)) };
+    assert!(parse_envelope(&close_bytes).ok(), "repo close must succeed");
+}
+
 /// Calling `zanshin_status(0)` must return `ok:false` with
 /// `error.code == "ffi.invalid_handle"` — never a crash, never NULL.
 #[test]

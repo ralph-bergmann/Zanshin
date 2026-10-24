@@ -9000,7 +9000,8 @@ class FileChangeObjectBuilder extends fb.ObjectBuilder {
 }
 
 ///  Working-copy status: files changed between @ and @-, plus both change ids
-///  in jj's reverse-hex display form.
+///  in jj's reverse-hex display form. Both ids are ABSENT exactly when this
+///  workspace has no @ (the CLI's "No working copy."); `files` is then empty.
 class Status {
   Status._(this._bc, this._bcOffset);
   factory Status(List<int> bytes) {

@@ -175,7 +175,7 @@ fn a_stale_working_copy_is_jj_stale_working_copy_with_the_three_line_context() {
     let (_tmp, root) = fresh_repo();
     let at = {
         let mut repo = Repo::open(&root).expect("open");
-        let wc: ChangeId = repo.status().expect("status").working_copy_change_id;
+        let wc: ChangeId = repo.status().expect("status").working_copy_change_id.expect("@");
         repo.get_change(&wc).expect("change").commit_id.0
     };
     let handle = open_handle(&root);
@@ -608,7 +608,7 @@ fn every_wrapper_carries_the_report_of_its_pre_verb_snapshot_on_the_ok_arm() {
     let (_tmp, root) = fresh_repo();
     let wc = {
         let mut repo = Repo::open(&root).expect("open");
-        CString::new(repo.status().expect("status").working_copy_change_id.0).expect("no NUL")
+        CString::new(repo.status().expect("status").working_copy_change_id.expect("@").0).expect("no NUL")
     };
     let handle = open_handle(&root);
 
@@ -664,7 +664,7 @@ fn a_mutation_that_makes_at_immutable_warns_on_the_envelope() {
     let handle = open_handle(&root);
     let wc = {
         let mut repo = Repo::open(&root).expect("open");
-        repo.status().expect("status").working_copy_change_id.0
+        repo.status().expect("status").working_copy_change_id.expect("@").0
     };
     let change_id = CString::new(wc.clone()).expect("no NUL");
     let description = CString::new("frozen").expect("no NUL");
@@ -823,7 +823,7 @@ fn a_mutation_envelope_carries_the_report_and_an_absent_finish_outside_colocatio
     let handle = open_handle(&root);
     let wc = {
         let mut repo = Repo::open(&root).expect("open");
-        repo.status().expect("status").working_copy_change_id.0
+        repo.status().expect("status").working_copy_change_id.expect("@").0
     };
     let change_id = CString::new(wc).expect("no NUL");
     let description = CString::new("described").expect("no NUL");

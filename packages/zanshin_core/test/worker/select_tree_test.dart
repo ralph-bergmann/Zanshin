@@ -55,11 +55,11 @@ void main() {
       worker = await ZanshinWorker.start();
       repo = await worker.initRepo(tempDir.path, backend: 0);
       File('${tempDir.path}/f.txt').writeAsStringSync(fLeft);
-      a = (await repo.status()).workingCopyChangeId;
+      a = (await repo.status()).workingCopyChangeId!;
       await repo.describe(changeId: a, description: 'A\n');
       await repo.newChange([a]);
       File('${tempDir.path}/f.txt').writeAsStringSync(fRight);
-      at = (await repo.status()).workingCopyChangeId;
+      at = (await repo.status()).workingCopyChangeId!;
     });
 
     tearDown(() async {
@@ -180,7 +180,7 @@ void main() {
       Future<String> side(String content, String message) async {
         await repo.newChange([a]);
         File('${tempDir.path}/c.txt').writeAsStringSync(content);
-        final String id = (await repo.status()).workingCopyChangeId;
+        final String id = (await repo.status()).workingCopyChangeId!;
         await repo.describe(changeId: id, description: message);
         return id;
       }
@@ -189,7 +189,7 @@ void main() {
       final String y = await side('y\n', 'Y\n');
       await repo.newChange([x, y]);
       File('${tempDir.path}/other.txt').writeAsStringSync('o\n');
-      final String merge = (await repo.status()).workingCopyChangeId;
+      final String merge = (await repo.status()).workingCopyChangeId!;
       final List<String> left = await leftOf(merge);
       expect(left, hasLength(3), reason: 'the merge parents form a conflicted tree');
 

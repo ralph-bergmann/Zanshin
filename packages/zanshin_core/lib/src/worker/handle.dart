@@ -117,11 +117,13 @@ final class RepoHandle {
     }
   }
 
-  /// Read the working-copy status for this repository.
+  /// Read the working-copy status for this repository. A workspace without @
+  /// is no error (the CLI's "No working copy."): no files and both change ids
+  /// `null`.
   ///
   /// Throws [StateError] if the handle is already [_closed].
   /// Throws [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
-  /// `jj.no_working_copy`, `jj.jj_lib_error`).
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`).
   Future<WorkingCopyStatus> status() {
     if (_closed) {
       throw StateError('RepoHandle is already closed');

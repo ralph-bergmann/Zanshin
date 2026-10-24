@@ -23,7 +23,8 @@ Uint8List zanshinStatus(int rawHandle) => readToken(zanshin_status(rawHandle));
 
 // ── Dart models ───────────────────────────────────────────────────────────────
 
-/// Working-copy status: changed files between @ and @-.
+/// Working-copy status: changed files between @ and @-; without @ in this
+/// workspace (the CLI's "No working copy.") no files and both ids `null`.
 final class WorkingCopyStatus {
   const WorkingCopyStatus({
     required this.files,
@@ -32,14 +33,18 @@ final class WorkingCopyStatus {
     this.warnings = const [],
   });
 
-  /// Files changed between the working copy (@) and its parent (@-).
+  /// Files changed between the working copy (@) and its parent (@-); empty
+  /// when this workspace has no @.
   final List<FileChange> files;
 
-  /// Change id of the working-copy commit in jj reverse-hex display form.
-  final String workingCopyChangeId;
+  /// Change id of the working-copy commit in jj reverse-hex display form;
+  /// `null` exactly when this workspace has no @ (the CLI's "No working
+  /// copy."), and [files] is then empty.
+  final String? workingCopyChangeId;
 
-  /// Change id of the parent commit in jj reverse-hex display form.
-  final String parentChangeId;
+  /// Change id of the parent commit in jj reverse-hex display form; `null`
+  /// together with [workingCopyChangeId].
+  final String? parentChangeId;
 
   /// The call's warnings (Story 9.32), in the CLI's print order; empty when
   /// there were none.
@@ -106,8 +111,8 @@ WorkingCopyStatus _decodeStatusEnvelope(Uint8List bytes) {
   }
   return WorkingCopyStatus(
     files: _mapFiles(payload),
-    workingCopyChangeId: payload.workingCopyChangeId ?? '',
-    parentChangeId: payload.parentChangeId ?? '',
+    workingCopyChangeId: payload.workingCopyChangeId,
+    parentChangeId: payload.parentChangeId,
     warnings: decodeEnvelopeWarningsInternal(env),
   );
 }

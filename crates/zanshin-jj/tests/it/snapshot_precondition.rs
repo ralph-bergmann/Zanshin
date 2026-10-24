@@ -637,7 +637,7 @@ fn with_parent_file() -> (Fx, Repo, ChangeId) {
     let fx = git_fx("");
     let mut repo = Repo::open(&fx.root).expect("open");
     write(&fx.root, "f.txt", "one\ntwo\nthree\n");
-    let at = repo.status().expect("status").working_copy_change_id;
+    let at = repo.status().expect("status").working_copy_change_id.expect("@");
     let parent = at.clone();
     repo.new_change(&[at], &[], &[]).expect("new @ on top");
     (fx, repo, parent)

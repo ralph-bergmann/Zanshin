@@ -756,7 +756,8 @@ class ZanshinWorker {
   /// returned FlatBuffers `Envelope<Status>` bytes into a `WorkingCopyStatus`.
   ///
   /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
-  /// `jj.no_working_copy`). Completes with a [StateError] after [close] (this
+  /// `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error`); a workspace without @ is no error — both change ids
+  /// are then `null`. Completes with a [StateError] after [close] (this
   /// method is `async`, so the close-guard error is delivered via the Future).
   Future<repo_ffi_status.WorkingCopyStatus> status(int handleId) async {
     final Uint8List bytes = await send(

@@ -79,7 +79,7 @@ void main() {
 
     test('a_created_bookmark_carries_its_tracking_facts_through_the_real_cdylib', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
-      final String wc = (await handle.status()).workingCopyChangeId;
+      final String wc = (await handle.status()).workingCopyChangeId!;
       await handle.bookmarkCreate(['feature']);
 
       final Bookmark bm = (await handle.bookmarks()).single;

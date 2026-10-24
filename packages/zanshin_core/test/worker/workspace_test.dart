@@ -231,7 +231,7 @@ void main() {
     test('workspace_add_then_a_stale_working_copy_is_updated', () async {
       final RepoHandle a = await worker.initRepo(mainPath, backend: 0);
       File('$mainPath/f.txt').writeAsStringSync('f');
-      final String aChange = (await a.status()).workingCopyChangeId;
+      final String aChange = (await a.status()).workingCopyChangeId!;
 
       final WorkspaceAddResult added = await a.workspaceAdd(
         destination: '../ws2',
@@ -339,7 +339,7 @@ void main() {
       final RepoHandle a = await worker.initRepo(mainPath, backend: 0);
       File('$mainPath/f.txt').writeAsStringSync('f');
       final WorkingCopyStatus status = await a.status();
-      await a.newChange(<String>[status.workingCopyChangeId]); // f.txt now lives in @-
+      await a.newChange(<String>[status.workingCopyChangeId!]); // f.txt now lives in @-
 
       final WorkspaceAddResult empty = await a.workspaceAdd(destination: '../empty', sparse: SparseInheritance.empty);
       final WorkspaceAddResult full = await a.workspaceAdd(destination: '../full', sparse: SparseInheritance.full);
@@ -354,7 +354,7 @@ void main() {
       Platform.environment['XDG_CONFIG_HOME'] ?? fail('XDG_CONFIG_HOME is not pinned — run via cargo make');
       final RepoHandle a = await worker.initRepo(mainPath, backend: 0);
       File('$mainPath/f.txt').writeAsStringSync('f');
-      final String aChange = (await a.status()).workingCopyChangeId;
+      final String aChange = (await a.status()).workingCopyChangeId!;
       await worker.configSet(
         const ConfigScopeTarget(ConfigScope.repo),
         'snapshot.auto-update-stale',

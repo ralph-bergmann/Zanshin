@@ -210,7 +210,7 @@ fn restore_with_only_into_uses_the_working_copy_as_source() {
     let mut repo = Repo::open(&chain.fx.path).expect("fixture opens");
     // `@` is the fixture's own empty commit off root, so restoring INTO `B` FROM `@` empties
     // `B` — the observable effect of the omitted `--from` defaulting to `@`.
-    let wc_change = repo.status().expect("status").working_copy_change_id;
+    let wc_change = repo.status().expect("status").working_copy_change_id.expect("@");
     let wc_tree = tree_hex_of_change(&chain.fx.path, &wc_change);
 
     repo.restore(None, Some(chain.b.clone()), None, &[], false)

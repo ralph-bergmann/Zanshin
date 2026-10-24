@@ -41,7 +41,7 @@ Future<String> headOp(RepoHandle handle) async {
 /// (Story 4.12 removes it).
 Future<(String, String)> wcAndRoot(RepoHandle handle) async {
   final String root = (await handle.show(revset: 'root()')).single.change.commitId;
-  final String wc = await handle.status().then((s) => handle.getChange(s.workingCopyChangeId)).then((c) => c.commitId);
+  final String wc = await handle.status().then((s) => handle.getChange(s.workingCopyChangeId!)).then((c) => c.commitId);
   return (wc, root);
 }
 
@@ -64,7 +64,7 @@ void main() {
 
     test('commit_contents_answers_in_request_order_with_the_full_description', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
-      final String wcChange = (await handle.status()).workingCopyChangeId;
+      final String wcChange = (await handle.status()).workingCopyChangeId!;
       await handle.describe(changeId: wcChange, description: 'Subject\n\nBody\n');
       final (String wc, String root) = await wcAndRoot(handle);
       final String op = await headOp(handle);

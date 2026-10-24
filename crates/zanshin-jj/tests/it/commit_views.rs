@@ -284,7 +284,7 @@ fn show_defaults_to_the_working_copy_and_reuses_the_change_construction_site() {
     // commit — proving `show` goes through the crate's single `Change` construction site
     // rather than a second projection. `Change` has no `PartialEq`, so the Debug rendering
     // (which names every field) is the equality witness.
-    let wc = repo.status().expect("status").working_copy_change_id;
+    let wc = repo.status().expect("status").working_copy_change_id.expect("@");
     let oracle = repo.get_change(&wc).expect("get_change");
     assert_eq!(
         format!("{:?}", entries[0].change),
@@ -806,7 +806,7 @@ fn evolog_of_a_never_rewritten_commit_is_a_single_entry_and_defaults_to_the_work
 
     // `None` applies the CLI's own `@` default, which the fixture never rewrote either.
     let default = repo.evolog(None, None).expect("evolog succeeds");
-    let wc = repo.status().expect("status").working_copy_change_id;
+    let wc = repo.status().expect("status").working_copy_change_id.expect("@");
     assert_eq!(default.len(), 1);
     assert_eq!(default[0].change.id, wc, "an omitted revset is `@`");
 
@@ -959,7 +959,7 @@ fn interdiff_defaults_the_omitted_side_to_the_working_copy() {
     let other = add_commit_off_root(&fx.path, "other");
     let other_change = change_id_of(&fx.path, &other);
     let mut repo = open(&fx);
-    let wc = repo.status().expect("status").working_copy_change_id;
+    let wc = repo.status().expect("status").working_copy_change_id.expect("@");
 
     // Supplying ONE side is enough; the other becomes `@`. Both spellings must agree.
     let defaulted = repo
@@ -1131,8 +1131,8 @@ fn interdiff_never_reports_a_rename_even_where_show_does() {
     // so the rename decomposes into an Added+Removed pair. That asymmetry is the CLI's.
     let view = repo
         .interdiff(
-            Some(chg(&status.parent_change_id)),
-            Some(chg(&status.working_copy_change_id)),
+            Some(chg(status.parent_change_id.as_ref().expect("@-"))),
+            Some(chg(status.working_copy_change_id.as_ref().expect("@"))),
             &[],
         )
         .expect("interdiff succeeds");

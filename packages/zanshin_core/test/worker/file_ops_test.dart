@@ -60,7 +60,7 @@ void main() {
     test('track_round_trips_through_the_real_cdylib', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       File('${tempDir.path}/zanshin_track_me.dat').writeAsStringSync('tracked');
-      final String wcBefore = (await handle.status()).workingCopyChangeId;
+      final String wcBefore = (await handle.status()).workingCopyChangeId!;
       final (String before, _) = await headOp(handle);
 
       final TrackResult result = await handle.fileTrack(['zanshin_track_me.dat']);
@@ -134,7 +134,7 @@ void main() {
       expect(handle.lastPrecondition?.wasSnapshotTaken, isTrue, reason: 'the pre-verb snapshot moved it into `@`');
       final List<FileEntry> entries = await handle.fileList();
       expect(entries.map((e) => e.path), contains('zanshin_track_me.dat'));
-      final String wc = (await handle.status()).workingCopyChangeId;
+      final String wc = (await handle.status()).workingCopyChangeId!;
       await handle.describe(changeId: wc, description: 'tracked');
       await handle.newChange([wc]);
 

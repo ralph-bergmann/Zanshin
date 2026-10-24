@@ -52,7 +52,7 @@ void main() {
           await repo.newChange([ids.last]);
         }
         files.forEach((path, text) => File('${tempDir.path}/$path').writeAsStringSync(text));
-        final String at = (await repo.status()).workingCopyChangeId;
+        final String at = (await repo.status()).workingCopyChangeId!;
         await repo.describe(changeId: at, description: description);
         ids.add(at);
       }

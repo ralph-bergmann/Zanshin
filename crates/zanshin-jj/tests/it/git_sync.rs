@@ -243,7 +243,7 @@ fn git_import_abandoning_the_working_copy_reports_it_and_moves_at() {
     // The on-disk working copy really moved, not just the view: a fresh handle agrees.
     let mut reopened = Repo::open(tmp.path()).expect("reopen");
     assert_eq!(
-        Some(reopened.status().expect("status").working_copy_change_id),
+        reopened.status().expect("status").working_copy_change_id,
         result.mutation.working_copy_change_id
     );
 }

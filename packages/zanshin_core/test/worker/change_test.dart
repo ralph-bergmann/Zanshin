@@ -44,7 +44,7 @@ void main() {
 
       // Obtain the WC change id via status (not hard-coding a fixture id).
       final WorkingCopyStatus status = await handle.status();
-      final String wcChangeId = status.workingCopyChangeId;
+      final String wcChangeId = status.workingCopyChangeId!;
       expect(wcChangeId, isNotEmpty, reason: 'workingCopyChangeId must be non-empty');
 
       // Read the change metadata for the WC change.
@@ -100,7 +100,7 @@ void main() {
       // closed-handle test in status_test.dart.
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       final WorkingCopyStatus status = await handle.status();
-      final String wcChangeId = status.workingCopyChangeId;
+      final String wcChangeId = status.workingCopyChangeId!;
       await handle.close();
 
       // Direct worker call with the now-unknown handleId.

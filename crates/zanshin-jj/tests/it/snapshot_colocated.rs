@@ -944,7 +944,7 @@ fn a_held_head_lock_makes_the_head_reset_a_reported_warning() {
     let tmp = TempDir::new().expect("tempdir");
     let (root, mut repo) = colocated(&tmp);
     // A new change on top of `@` moves `@-`, so the finish must move Git HEAD.
-    let at_change = repo.status().expect("status").working_copy_change_id;
+    let at_change = repo.status().expect("status").working_copy_change_id.expect("@");
     let head_before = git(&["rev-parse", "HEAD"], &root);
     let head_lock = root.join(".git").join("HEAD.lock");
     fs::write(&head_lock, "").expect("hold HEAD.lock");

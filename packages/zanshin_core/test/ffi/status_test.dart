@@ -123,5 +123,21 @@ void main() {
       expect(copied.kind, equals(FileChangeKind.copied));
       expect(copied.fromPath, equals('source.rs'));
     });
+
+    test('decodes absent change ids as null: a workspace without @', () {
+      // The CLI's `jj status` prints "No working copy." and succeeds: no files
+      // and both ids ABSENT on the wire — `null`, never `''`.
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.Status,
+        data: fbs.StatusObjectBuilder(files: []),
+      ).toBytes();
+
+      final WorkingCopyStatus status = decodeStatusEnvelope(bytes);
+
+      expect(status.workingCopyChangeId, isNull);
+      expect(status.parentChangeId, isNull);
+      expect(status.files, isEmpty);
+    });
   });
 }

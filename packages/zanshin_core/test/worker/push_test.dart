@@ -104,7 +104,7 @@ void main() {
 
     test('revisions select the bookmarks they carry', () async {
       await addRemote();
-      final String at = (await repo.status()).workingCopyChangeId;
+      final String at = (await repo.status()).workingCopyChangeId!;
       await repo.describe(changeId: at, description: 'A\n');
       await repo.bookmarkCreate(const ['main']);
 
@@ -124,7 +124,7 @@ void main() {
     test('a dry run plans the push without touching the network', () async {
       await addRemote();
       File('${tempDir.path}/a.txt').writeAsStringSync('a\n');
-      final String at = (await repo.status()).workingCopyChangeId;
+      final String at = (await repo.status()).workingCopyChangeId!;
       await repo.describe(changeId: at, description: 'A\n');
       await repo.bookmarkCreate(const ['main']);
 

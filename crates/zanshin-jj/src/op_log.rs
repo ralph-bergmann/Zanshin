@@ -186,6 +186,9 @@ fn operation(op: &JjOperation, root_id: &op_store::OperationId) -> Operation {
 /// No `rebase_descendants()` call — a raw `set_view` records no rewrites, matching the
 /// CLI (which doesn't call it either).
 ///
+/// The head is loaded the CLI's way ([`crate::snapshot::load_head`]), so divergent op heads are
+/// first reconciled in this workspace.
+///
 /// # Errors
 ///
 /// - [`MutateError::UndoCrossWorkspace`] — the target was performed in another workspace and
@@ -194,6 +197,7 @@ fn operation(op: &JjOperation, root_id: &op_store::OperationId) -> Operation {
 ///   root operation"), e.g. after an undo stack walked back to the very first operation.
 /// - [`MutateError::InvalidInput`] — the target has more than one parent (a "reconcile divergent
 ///   operations" merge op) — the CLI's "Cannot undo a merge operation".
+/// - [`MutateError::Precondition`] — the head could not be loaded.
 /// - [`MutateError::Backend`] — an undo operation's description names no valid operation id, or
 ///   an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
@@ -202,7 +206,7 @@ pub(crate) fn undo(
     ctx: &mut VerbContext,
     allow_cross_workspace: bool,
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let readonly = crate::snapshot::load_head(workspace)?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     let target_op = through_prefix(
@@ -372,11 +376,15 @@ const REDO_OP_DESC_PREFIX: &str = "redo: restore to operation ";
 ///    `DEFAULT_REVERT_WHAT`), committed as `redo: restore to operation <hex>` — or, equal to the
 ///    current view, no operation at all and the pre-call head op id (Story 9.40).
 ///
+/// The head is loaded the CLI's way ([`crate::snapshot::load_head`]), so divergent op heads are
+/// first reconciled in this workspace.
+///
 /// # Errors
 ///
 /// - [`MutateError::NothingToRedo`] — the target is not an undo operation.
 /// - [`MutateError::RedoCrossWorkspace`] — the undo operation was performed in another
 ///   workspace and `allow_cross_workspace` is `false`.
+/// - [`MutateError::Precondition`] — the head could not be loaded.
 /// - [`MutateError::Backend`] — a redo or undo description names no valid operation id, the undo
 ///   operation has more than one parent (the CLI's internal "Undo operation should have a single
 ///   parent"), or an underlying jj-lib failure.
@@ -386,7 +394,7 @@ pub(crate) fn redo(
     ctx: &mut VerbContext,
     allow_cross_workspace: bool,
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let readonly = crate::snapshot::load_head(workspace)?;
     let workspace_name = workspace.workspace_name().to_owned();
 
     let target_op = through_prefix(
@@ -749,11 +757,15 @@ pub(crate) fn op_abandon(
 ///
 /// A raw `set_view` records no rewrites, so the finish rebases nothing, as in the CLI.
 ///
+/// The head is loaded the CLI's way ([`crate::snapshot::load_head`]), so divergent op heads are
+/// first reconciled in this workspace.
+///
 /// # Errors
 ///
 /// - [`MutateError::OperationNotFound`] / [`MutateError::InvalidInput`] — `operation_str` does
 ///   not resolve to one operation (see [`opset`]).
 /// - [`MutateError::Config`] — the finish's immutable set does not resolve.
+/// - [`MutateError::Precondition`] — the head could not be loaded.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn op_restore(
@@ -762,7 +774,7 @@ pub(crate) fn op_restore(
     operation_str: &str,
     what: &[RestoreWhat],
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let readonly = crate::snapshot::load_head(workspace)?;
     let target_op = pollster::block_on(op_walk::resolve_op_with_repo(&readonly, operation_str)).map_err(opset)?;
     let target_view = pollster::block_on(target_op.view()).map_err(mutate::be)?;
     let mut tx = start_repo_transaction(&readonly, workspace.workspace_name());
@@ -793,12 +805,16 @@ pub(crate) fn op_restore(
 /// 5. Committed as `revert operation <hex>` (`tx_description`, `:49-51`) — or, when nothing
 ///    changed, no operation and the pre-call head op id (Story 9.40).
 ///
+/// The head is loaded the CLI's way ([`crate::snapshot::load_head`]), so divergent op heads are
+/// first reconciled in this workspace.
+///
 /// # Errors
 ///
 /// - [`MutateError::OperationNotFound`] / [`MutateError::InvalidInput`] — `operation_str` does
 ///   not resolve to one operation (see [`opset`]).
 /// - [`MutateError::InvalidInput`] — the target is the root operation or a merge operation.
 /// - [`MutateError::Config`] — the finish's immutable set does not resolve.
+/// - [`MutateError::Precondition`] — the head could not be loaded.
 /// - [`MutateError::Backend`] — an underlying jj-lib failure.
 #[must_use = "the Result must be used; drop it explicitly if intentional"]
 pub(crate) fn op_revert(
@@ -807,7 +823,7 @@ pub(crate) fn op_revert(
     operation_str: &str,
     what: &[RestoreWhat],
 ) -> Result<MutationResult, MutateError> {
-    let readonly = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(mutate::be)?;
+    let readonly = crate::snapshot::load_head(workspace)?;
     let target_op = pollster::block_on(op_walk::resolve_op_with_repo(&readonly, operation_str)).map_err(opset)?;
     let parents = pollster::block_on(target_op.parents()).map_err(mutate::be)?;
     let target_parent = match <[JjOperation; 1]>::try_from(parents) {
@@ -931,7 +947,13 @@ mod tests {
     use jj_lib::backend::CommitId;
     use jj_lib::op_store::{RefTarget, RemoteRef, RemoteRefState, RemoteView, View};
 
-    use super::{op_log, opset, view_with_desired_portions_restored, OpLogError, RestoreWhat};
+    use jj_lib::repo::Repo as _;
+    use jj_lib::working_copy::SnapshotStats;
+
+    use super::{
+        op_log, opset, start_repo_transaction, view_with_desired_portions_restored, OpLogError, RestoreWhat,
+        VerbContext, Warnings, Workspace,
+    };
     use crate::MutateError;
 
     /// A view whose every field names commit `n`, so each field's source is visible.
@@ -1028,5 +1050,69 @@ mod tests {
         let (_tmp, repo) = crate::test_support::repo_with_a_broken_head();
         let result = op_log(repo.workspace(), None);
         assert!(matches!(result, Err(OpLogError::Backend(_))), "{result:?}");
+    }
+
+    /// Two sibling operations published from one head: each of `undo`, `redo`, `op restore` and
+    /// `op revert`, called directly (no pre-verb snapshot), loads the head the CLI's way — the
+    /// single op head afterwards is a `reconcile divergent operations` operation naming THIS
+    /// workspace, as the CLI's `load_from_workspace` writes it — and then refuses as before.
+    #[test]
+    fn the_restoring_verbs_reconcile_divergent_heads_in_this_workspace() {
+        type Verb = fn(&mut Workspace, &mut VerbContext) -> Result<crate::MutationResult, MutateError>;
+        test_helpers::pin_test_env();
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let mut repo = crate::Repo::init(&crate::InitOptions {
+            path: std::path::PathBuf::from(tmp.path()),
+            ..Default::default()
+        })
+        .result
+        .expect("init");
+        let workspace_name = repo.workspace().workspace_name().to_owned();
+        let verbs: [(&str, Verb); 4] = [
+            ("undo", |ws, ctx| super::undo(ws, ctx, false)),
+            ("redo", |ws, ctx| super::redo(ws, ctx, false)),
+            ("op restore", |ws, ctx| super::op_restore(ws, ctx, "ffffffffffff", &[])),
+            ("op revert", |ws, ctx| super::op_revert(ws, ctx, "ffffffffffff", &[])),
+        ];
+        for (name, verb) in verbs {
+            let base = crate::snapshot::load_head(repo.workspace()).expect("head");
+            for side in ["left", "right"] {
+                let mut tx = start_repo_transaction(&base, &workspace_name);
+                let tree = base.store().root_commit().tree();
+                pollster::block_on(
+                    tx.repo_mut()
+                        .new_commit(vec![base.store().root_commit_id().clone()], tree)
+                        .set_description(side)
+                        .write(),
+                )
+                .expect("sibling commit");
+                pollster::block_on(tx.commit(format!("test: {side}"))).expect("commit");
+            }
+            let config = crate::config::load(&repo).expect("config");
+            let mut sink = Warnings::default();
+            let env = crate::snapshot::CommandEnv::load(repo.workspace(), &config, &mut sink).expect("env");
+            let mut ctx = VerbContext::new(config, env, false, SnapshotStats::default(), sink);
+
+            let result = verb(repo.workspace_mut(), &mut ctx);
+
+            let refused = match name {
+                "undo" => {
+                    matches!(&result, Err(MutateError::InvalidInput { reason, .. }) if reason == "Cannot undo a merge operation")
+                }
+                "redo" => matches!(&result, Err(MutateError::NothingToRedo)),
+                _ => matches!(&result, Err(MutateError::OperationNotFound { .. })),
+            };
+            assert!(refused, "{name}: {result:?}");
+            let loader = repo.workspace().repo_loader();
+            let heads = pollster::block_on(loader.op_heads_store().get_op_heads()).expect("op heads");
+            let [head] = <[_; 1]>::try_from(heads).expect("one op head");
+            let op = pollster::block_on(loader.load_operation(&head)).expect("the head operation");
+            assert_eq!(op.metadata().description, "reconcile divergent operations", "{name}");
+            assert_eq!(
+                op.metadata().workspace_name.as_deref(),
+                Some(workspace_name.as_ref()),
+                "{name}"
+            );
+        }
     }
 }

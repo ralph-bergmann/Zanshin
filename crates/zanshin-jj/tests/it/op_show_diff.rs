@@ -611,10 +611,23 @@ fn op_show_of_a_workspace_add_has_a_working_copy_row_without_from() {
 /// When the merge op rebased descendants (both branches rewrote `Commit 1`'s line), the CLI's
 /// `jj op diff --op @` fails in `accumulate_predecessors` — "Internal error: Predecessors cycle
 /// detected around commit …" (checked against the pinned CLI); Zanshin reports the same failure.
+///
+/// The cycle needs `op diff`'s own merge of the two parents (`merge_operations`) to rebase the
+/// second branch's commit to the very commit the head load's merge rebased it to: the Git backend
+/// stores the committer timestamp in whole seconds, so with the wall clock the two merges agree
+/// only within one second and the test flaked whenever a second boundary fell between them (the
+/// pinned CLI alike: with the wall clock and a second between the two it prints the diff). The
+/// commit timestamp is pinned (`debug.commit-timestamp`, the CLI's `JJ_TIMESTAMP`), so the two
+/// rebases always agree.
 #[test]
 fn op_diff_of_a_rebasing_merge_operation_fails_like_the_cli() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
+    fs::write(
+        fx.path.join(".jj").join("repo").join("config.toml"),
+        "debug.commit-timestamp = \"2001-02-03T04:05:06+07:00\"\n",
+    )
+    .unwrap();
     diverge(&fx.path);
     let mut repo = Repo::open(&fx.path).unwrap();
 

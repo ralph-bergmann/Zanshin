@@ -14,6 +14,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/mutate.dart' show MutationResult;
 import 'package:zanshin_core/src/ffi/op_log.dart';
+import 'package:zanshin_core/src/ffi/status.dart' show WorkingCopyStatus;
 import 'package:zanshin_core/src/ffi/warning.dart' show ZanshinWarningCode;
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
@@ -30,7 +31,7 @@ void main() {
       tempDir = Directory.systemTemp.createTempSync('zanshin_op_verbs_test_');
       worker = await ZanshinWorker.start();
       handle = await worker.initRepo(tempDir.path, backend: 0);
-      wc = (await handle.status()).workingCopyChangeId;
+      wc = (await handle.status()).workingCopyChangeId!;
       await handle.describe(changeId: wc, description: 'A');
       await handle.describe(changeId: wc, description: 'B');
     });
@@ -157,6 +158,12 @@ void main() {
       expect(result.workingCopyChangeId, isNull);
       expect(result.warnings.map((w) => w.code), [ZanshinWarningCode.workspaceNoLongerExists]);
       expect((await handle.opLog(limit: 1)).single.id, result.newOpId);
+
+      // The CLI's `jj status` prints "No working copy." here and succeeds.
+      final WorkingCopyStatus status = await handle.status();
+      expect(status.workingCopyChangeId, isNull);
+      expect(status.parentChangeId, isNull);
+      expect(status.files, isEmpty);
     });
 
     test('opRevert of the head undoes the describe; the root is refused', () async {

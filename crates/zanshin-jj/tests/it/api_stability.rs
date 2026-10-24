@@ -1676,6 +1676,14 @@ fn story_9_12_operation_edit_surface_resolves() {
     assert_eq!(integrated.clone(), integrated);
     let no_working_copy: Option<zanshin_jj::ChangeId> = sample_mutation_result().working_copy_change_id;
     _ = (no_working_copy, zanshin_jj::WarningKind::WorkspaceNoLongerExists);
+    // A status without `@` (the CLI's "No working copy.") has both change ids absent.
+    let no_at = zanshin_jj::Status {
+        files: Vec::new(),
+        working_copy_change_id: None,
+        parent_change_id: None,
+    };
+    let _: (Option<zanshin_jj::ChangeId>, Option<zanshin_jj::ChangeId>) =
+        (no_at.working_copy_change_id, no_at.parent_change_id);
     _ = zanshin_jj::Repo::op_restore
         as fn(
             &mut zanshin_jj::Repo,

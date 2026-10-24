@@ -81,12 +81,12 @@ fn base() -> Fx {
     .to_owned();
     let mut repo = Repo::open(&root).expect("open");
     fs::write(root.join("f.txt"), "a\nb\nc\nd\ne\n").expect("write");
-    let a = repo.status().expect("status").working_copy_change_id;
+    let a = repo.status().expect("status").working_copy_change_id.expect("@");
     repo.describe(a.clone(), "A\n").expect("describe");
     repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new");
     fs::write(root.join("f.txt"), "A\nb\nC\nd\nE\n").expect("write");
     fs::write(root.join("new.txt"), "n\n").expect("write");
-    let at = repo.status().expect("status").working_copy_change_id;
+    let at = repo.status().expect("status").working_copy_change_id.expect("@");
     let left = repo.show(None, None).expect("show").swap_remove(0).parent_tree_ids;
     let path = CString::new(root.to_str().expect("UTF-8 path")).expect("no NUL");
     // SAFETY: `path` is a valid NUL-terminated C string alive for the call.
@@ -422,12 +422,12 @@ fn a_conflicted_trees_ids_and_labels_round_trip_through_the_wire() {
     .workspace_root()
     .to_owned();
     let mut repo = Repo::open(&root).expect("open");
-    let a = repo.status().expect("status").working_copy_change_id;
+    let a = repo.status().expect("status").working_copy_change_id.expect("@");
     repo.describe(a.clone(), "A\n").expect("describe A");
     let mut side = |content: &str, message: &str| {
         repo.new_change(std::slice::from_ref(&a), &[], &[]).expect("new");
         fs::write(root.join("c.txt"), content).expect("write");
-        let id = repo.status().expect("status").working_copy_change_id;
+        let id = repo.status().expect("status").working_copy_change_id.expect("@");
         repo.describe(id.clone(), message).expect("describe");
         id
     };
@@ -435,7 +435,7 @@ fn a_conflicted_trees_ids_and_labels_round_trip_through_the_wire() {
     let y = side("y\n", "Y\n");
     repo.new_change(&[x, y], &[], &[]).expect("merge");
     fs::write(root.join("other.txt"), "o\n").expect("write");
-    let merge = repo.status().expect("status").working_copy_change_id;
+    let merge = repo.status().expect("status").working_copy_change_id.expect("@");
     let left = repo.show(None, None).expect("show").swap_remove(0).parent_tree_ids;
     drop(repo);
     let path = CString::new(root.to_str().expect("UTF-8 path")).expect("no NUL");

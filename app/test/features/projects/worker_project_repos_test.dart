@@ -341,10 +341,10 @@ void main() {
       // Two siblings off root write `c.txt` differently; the merge of both is @, conflicted there.
       File('$path/c.txt').writeAsStringSync('left\n');
       final WorkingCopyStatus left = await handle.status();
-      await handle.newChange(<String>[left.parentChangeId]);
+      await handle.newChange(<String>[left.parentChangeId!]);
       File('$path/c.txt').writeAsStringSync('right\n');
       final WorkingCopyStatus right = await handle.status();
-      await handle.newChange(<String>[left.workingCopyChangeId, right.workingCopyChangeId]);
+      await handle.newChange(<String>[left.workingCopyChangeId!, right.workingCopyChangeId!]);
       final ProjectRepo repo = await repos.open(path);
       addTearDown(repo.close);
 
@@ -356,7 +356,7 @@ void main() {
       File('$path/a.txt').writeAsStringSync('a\n');
       final WorkingCopyStatus first = await handle.status();
       await handle.bookmarkCreate(<String>['zeta', 'alpha'], revision: first.workingCopyChangeId);
-      await handle.newChange(<String>[first.workingCopyChangeId]);
+      await handle.newChange(<String>[first.workingCopyChangeId!]);
       final ProjectRepo repo = await repos.open(path);
       addTearDown(repo.close);
 
@@ -370,7 +370,7 @@ void main() {
       final Future<void> changed = repo.changes.first.timeout(const Duration(seconds: 10));
 
       final WorkingCopyStatus status = await other.status();
-      await other.newChange(<String>[status.workingCopyChangeId]);
+      await other.newChange(<String>[status.workingCopyChangeId!]);
 
       await changed;
       await repo.close();
@@ -390,7 +390,7 @@ void main() {
       final Future<void> changedB = repoB.changes.first.timeout(const Duration(seconds: 10));
 
       final WorkingCopyStatus status = await otherB.status();
-      await otherB.newChange(<String>[status.workingCopyChangeId]);
+      await otherB.newChange(<String>[status.workingCopyChangeId!]);
 
       // Both repositories' events arrive in order on the worker's one event stream.
       await changedB;
@@ -592,7 +592,7 @@ void main() {
       File('$path/a.txt').writeAsStringSync('a\n');
       final WorkingCopyStatus first = await handle.status();
       await handle.bookmarkCreate(<String>['feature'], revision: first.workingCopyChangeId);
-      await handle.newChange(<String>[first.workingCopyChangeId]);
+      await handle.newChange(<String>[first.workingCopyChangeId!]);
 
       final remoteRows = <(String, String, bool, String?)>[
         for (final b in await handle.bookmarks(allRemotes: true))

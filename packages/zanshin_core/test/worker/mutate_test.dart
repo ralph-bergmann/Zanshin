@@ -47,7 +47,7 @@ void main() {
       final WorkingCopyStatus status = await handle.status();
 
       final MutationResult result = await handle.describe(
-        changeId: status.workingCopyChangeId,
+        changeId: status.workingCopyChangeId!,
         description: 'a new description',
       );
 
@@ -62,7 +62,7 @@ void main() {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       final WorkingCopyStatus status = await handle.status();
 
-      final MutationResult result = await handle.newChange([status.workingCopyChangeId]);
+      final MutationResult result = await handle.newChange([status.workingCopyChangeId!]);
 
       expect(result.newChangeIds, hasLength(1));
       expect(result.workingCopyChangeId, equals(result.newChangeIds.single));
@@ -81,7 +81,7 @@ void main() {
 
     /// `A → B = @`, both described (so neither is discardable): `(A, B)`.
     Future<(String, String)> describedPair(RepoHandle handle) async {
-      final String a = (await handle.status()).workingCopyChangeId;
+      final String a = (await handle.status()).workingCopyChangeId!;
       await handle.describe(changeId: a, description: 'A');
       final String b = (await handle.newChange([a])).newChangeIds.single;
       await handle.describe(changeId: b, description: 'B');
@@ -153,7 +153,7 @@ void main() {
     test('edit_switches_working_copy_to_the_requested_change', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       final WorkingCopyStatus status = await handle.status();
-      final String original = status.workingCopyChangeId;
+      final String original = status.workingCopyChangeId!;
 
       // Mint a genuine ancestor relationship: newChange(original) creates a new
       // child and moves @ to it; editing back to `original` is then a real
@@ -173,7 +173,7 @@ void main() {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       final WorkingCopyStatus status = await handle.status();
 
-      final MutationResult result = await handle.abandon([status.workingCopyChangeId]);
+      final MutationResult result = await handle.abandon([status.workingCopyChangeId!]);
 
       expect(result.abandonedChangeIds, equals([status.workingCopyChangeId]));
       expect(result.newChangeIds, hasLength(1), reason: 'abandoning @ mints its replacement');
@@ -184,7 +184,7 @@ void main() {
     test('undo_restores_the_previous_operation', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
       final WorkingCopyStatus status = await handle.status();
-      await handle.describe(changeId: status.workingCopyChangeId, description: 'about to be undone');
+      await handle.describe(changeId: status.workingCopyChangeId!, description: 'about to be undone');
 
       final MutationResult result = await handle.undo();
 
@@ -198,7 +198,7 @@ void main() {
       // redoing the 1st — and the CLI's `--allow-cross-workspace` reaches Rust
       // (the refusal itself is pinned by crates/zanshin-ffi/tests/it/repo_write_ffi.rs).
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
-      final String wc = (await handle.status()).workingCopyChangeId;
+      final String wc = (await handle.status()).workingCopyChangeId!;
       await handle.describe(changeId: wc, description: 'A');
       await handle.describe(changeId: wc, description: 'B');
 

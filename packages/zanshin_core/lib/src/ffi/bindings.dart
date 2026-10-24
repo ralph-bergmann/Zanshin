@@ -3493,11 +3493,12 @@ external ffi.Pointer<ZanshinBuf> zanshin_squash_plan(
 
 /// Read the working-copy status of the repo identified by `handle`.
 ///
-/// Returns a `FlatBuffers` `Envelope` carrying a `Status` payload on success.
+/// Returns a `FlatBuffers` `Envelope` carrying a `Status` payload on success. A workspace
+/// without a working-copy commit (@) succeeds like the CLI's `jj status` ("No working copy."):
+/// `files` is empty and both change ids are ABSENT.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
-/// - `jj.no_working_copy` — the workspace has no working-copy commit (@).
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
 /// unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
 /// committed before the fault stay, as in the CLI (colocated: `import git head`); the partial

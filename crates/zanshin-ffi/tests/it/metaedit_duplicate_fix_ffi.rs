@@ -94,7 +94,7 @@ fn base() -> Fx {
             repo.new_change(std::slice::from_ref(parent), &[], &[]).expect("new");
         }
         fs::write(root.join(path), "x\n").expect("write");
-        let at = repo.status().expect("status").working_copy_change_id;
+        let at = repo.status().expect("status").working_copy_change_id.expect("@");
         repo.describe(at.clone(), description).expect("describe");
         ids.push(at);
     }

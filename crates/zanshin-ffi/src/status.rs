@@ -12,7 +12,7 @@ use zanshin_jj::{ChangeKind, FileChange, Status, StatusError};
 
 use crate::envelope::{
     catch, finish_envelope, map_precondition_err, precondition_envelope, session_from_handle, FfiErrorObj,
-    JJ_JJ_LIB_ERROR, JJ_NO_WORKING_COPY,
+    JJ_JJ_LIB_ERROR,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -22,12 +22,6 @@ use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 fn map_status_err(e: StatusError) -> FfiErrorObj {
     match e {
         StatusError::Precondition(e) => map_precondition_err(e),
-        StatusError::NoWorkingCopy => FfiErrorObj {
-            report: None,
-            hints: Vec::new(),
-            code: JJ_NO_WORKING_COPY.to_owned(),
-            context: None,
-        },
         StatusError::Backend(reason) => FfiErrorObj {
             report: None,
             hints: Vec::new(),
@@ -79,18 +73,19 @@ pub(crate) fn file_changes_vector<'a>(
 fn status_to_envelope(status: &Status, report: &crate::envelope::CallReport) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(1024);
 
-    // 1)+2) Build the FileChange vector, then the two change-id strings.
+    // 1)+2) Build the FileChange vector, then the two change-id strings — each only when
+    // present (absent exactly when the workspace has no `@`; null-for-absence).
     let files_vec = file_changes_vector(&mut b, &status.files);
-    let wc_off = b.create_string(&status.working_copy_change_id.0);
-    let parent_off = b.create_string(&status.parent_change_id.0);
+    let wc_off = status.working_copy_change_id.as_ref().map(|id| b.create_string(&id.0));
+    let parent_off = status.parent_change_id.as_ref().map(|id| b.create_string(&id.0));
 
     // 3) Status table.
     let status_off = fbs::Status::create(
         &mut b,
         &fbs::StatusArgs {
             files: Some(files_vec),
-            working_copy_change_id: Some(wc_off),
-            parent_change_id: Some(parent_off),
+            working_copy_change_id: wc_off,
+            parent_change_id: parent_off,
         },
     );
 
@@ -102,11 +97,12 @@ fn status_to_envelope(status: &Status, report: &crate::envelope::CallReport) -> 
 
 /// Read the working-copy status of the repo identified by `handle`.
 ///
-/// Returns a `FlatBuffers` `Envelope` carrying a `Status` payload on success.
+/// Returns a `FlatBuffers` `Envelope` carrying a `Status` payload on success. A workspace
+/// without a working-copy commit (@) succeeds like the CLI's `jj status` ("No working copy."):
+/// `files` is empty and both change ids are ABSENT.
 ///
 /// # Errors
 /// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
-/// - `jj.no_working_copy` — the workspace has no working-copy commit (@).
 /// - `jj.config_error` — the pre-verb snapshot (Story 9.26) found the effective jj config
 ///   unreadable or a knob it reads wrongly typed (the key in `context`). Operations the snapshot
 ///   committed before the fault stay, as in the CLI (colocated: `import git head`); the partial
@@ -180,8 +176,8 @@ mod tests {
                     },
                 },
             ],
-            working_copy_change_id: ChangeId("qpvuntsm".to_owned()),
-            parent_change_id: ChangeId("zzzzzzzz".to_owned()),
+            working_copy_change_id: Some(ChangeId("qpvuntsm".to_owned())),
+            parent_change_id: Some(ChangeId("zzzzzzzz".to_owned())),
         };
 
         let buf = status_to_envelope(&status, &crate::envelope::CallReport::default());
@@ -232,16 +228,31 @@ mod tests {
         assert_eq!(payload.parent_change_id(), Some("zzzzzzzz"));
     }
 
-    /// Verify `map_status_err` maps both `StatusError` variants to their documented
-    /// codes — the only test exercising the new `jj.no_working_copy` code and the
-    /// `Backend` → `jj.jj_lib_error` context forwarding.
+    /// A workspace without `@` serialises as an ok `Status` with no files and both change ids
+    /// ABSENT — the CLI's "No working copy.".
     #[test]
-    fn map_status_err_maps_both_variants() {
-        use zanshin_jj::StatusError;
+    fn status_to_envelope_without_a_working_copy_leaves_both_ids_absent() {
+        let status = Status {
+            files: vec![],
+            working_copy_change_id: None,
+            parent_change_id: None,
+        };
 
-        let no_wc = super::map_status_err(StatusError::NoWorkingCopy);
-        assert_eq!(no_wc.code, crate::envelope::JJ_NO_WORKING_COPY);
-        assert!(no_wc.context.is_none(), "NoWorkingCopy carries no context");
+        let buf = status_to_envelope(&status, &crate::envelope::CallReport::default());
+        let env = fb_root::<fbs::Envelope>(&buf).expect("Verifier must pass");
+
+        assert!(env.ok());
+        let payload = env.data_as_status().expect("a Status payload");
+        assert_eq!(payload.files().map(|files| files.len()), Some(0));
+        assert_eq!(payload.working_copy_change_id(), None);
+        assert_eq!(payload.parent_change_id(), None);
+    }
+
+    /// Verify `map_status_err` maps `Backend` to `jj.jj_lib_error`, forwarding the reason as
+    /// context.
+    #[test]
+    fn map_status_err_maps_backend_to_jj_lib_error() {
+        use zanshin_jj::StatusError;
 
         let backend = super::map_status_err(StatusError::Backend("boom".to_owned()));
         assert_eq!(backend.code, crate::envelope::JJ_JJ_LIB_ERROR);

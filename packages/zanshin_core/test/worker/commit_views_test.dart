@@ -163,7 +163,7 @@ void main() {
 
       // One side is enough; the other defaults to `@`. Comparing `@` with itself is
       // trivially empty — which is exactly the empty-payload decode path.
-      final InterdiffView view = await handle.interdiff(from: ChangeIdRef(status.workingCopyChangeId));
+      final InterdiffView view = await handle.interdiff(from: ChangeIdRef(status.workingCopyChangeId!));
       expect(view.fileChanges, isEmpty);
       // The fast path returns `from`'s own tree — here `@`, which is clean — so
       // nothing is conflicted. This

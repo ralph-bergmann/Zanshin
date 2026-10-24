@@ -11,12 +11,15 @@ use jj_lib::workspace::Workspace;
 /// The working-copy status of a jj repository.
 #[derive(Debug)]
 pub struct Status {
-    /// Files that differ between `@` and its parent.
+    /// Files that differ between `@` and its parent (empty when the workspace has no `@`).
     pub files: Vec<FileChange>,
-    /// Change identifier of the working-copy commit (`@`), in jj reverse-hex form.
-    pub working_copy_change_id: ChangeId,
-    /// Change identifier of the parent commit (`@-`), in jj reverse-hex form.
-    pub parent_change_id: ChangeId,
+    /// Change identifier of the working-copy commit (`@`), in jj reverse-hex form; `None`
+    /// exactly when this workspace has no `@` (the CLI's "No working copy.").
+    pub working_copy_change_id: Option<ChangeId>,
+    /// Change identifier of the parent commit (`@-`), in jj reverse-hex form (the root commit's
+    /// when `@` has no parent); `None` together with
+    /// [`working_copy_change_id`](Self::working_copy_change_id).
+    pub parent_change_id: Option<ChangeId>,
 }
 
 /// A single changed file in the working copy.
@@ -62,9 +65,6 @@ pub enum StatusError {
     /// [`crate::PreconditionError`].
     #[error(transparent)]
     Precondition(#[from] crate::PreconditionError),
-    /// The workspace has no working-copy commit.
-    #[error("workspace has no working-copy commit")]
-    NoWorkingCopy,
     /// Underlying jj-lib failure, opaque-string-wrapped so no `jj_lib` type escapes.
     #[error("jj-lib error: {0}")]
     Backend(String),
@@ -90,17 +90,21 @@ fn repo_path_to_pathbuf(p: &jj_lib::repo_path::RepoPath) -> PathBuf {
 ///
 /// # Errors
 ///
-/// Returns [`StatusError::NoWorkingCopy`] if the workspace has no working-copy
-/// commit, or [`StatusError::Backend`] on any jj-lib failure.
+/// Returns [`StatusError::Backend`] on any jj-lib failure. A workspace without a working-copy
+/// commit is no error: as the CLI's `jj status` prints "No working copy." and succeeds, the
+/// status then has no files and no change ids.
 pub(crate) fn working_copy_status(workspace: &Workspace) -> Result<Status, StatusError> {
     // Re-resolve to head — ADR-0002.
     let repo = pollster::block_on(workspace.repo_loader().load_at_head()).map_err(be)?;
 
     // Resolve @: get the working-copy commit id and load the commit (SYNC).
-    let wc_id = repo
-        .view()
-        .get_wc_commit_id(workspace.workspace_name())
-        .ok_or(StatusError::NoWorkingCopy)?;
+    let Some(wc_id) = repo.view().get_wc_commit_id(workspace.workspace_name()) else {
+        return Ok(Status {
+            files: vec![],
+            working_copy_change_id: None,
+            parent_change_id: None,
+        });
+    };
     let wc_commit = repo.store().get_commit(wc_id).map_err(be)?;
 
     // Trees: `after` is sync; `before` merges all parents (root-safe, async).
@@ -172,8 +176,8 @@ pub(crate) fn working_copy_status(workspace: &Workspace) -> Result<Status, Statu
 
     Ok(Status {
         files,
-        working_copy_change_id: ChangeId(wc_commit.change_id().reverse_hex()),
-        parent_change_id,
+        working_copy_change_id: Some(ChangeId(wc_commit.change_id().reverse_hex())),
+        parent_change_id: Some(parent_change_id),
     })
 }
 

@@ -256,7 +256,7 @@ void main() {
 
     test('a push queued behind a fetch and cancelled starts cancelled and reports it as data', () async {
       final RepoHandle repo = await repoWithOrigin('a');
-      final String at = (await repo.status()).workingCopyChangeId;
+      final String at = (await repo.status()).workingCopyChangeId!;
       await repo.describe(changeId: at, description: 'A\n');
       await repo.bookmarkCreate(const ['main']);
       await slowGit('a', slowAfterGit);

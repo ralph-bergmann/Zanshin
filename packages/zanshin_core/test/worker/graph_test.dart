@@ -55,7 +55,7 @@ void main() {
 
     test('graph_topology_on_fresh_init_returns_wc_then_root_and_continues_into_commit_contents', () async {
       final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
-      final Change wc = await handle.getChange((await handle.status()).workingCopyChangeId);
+      final Change wc = await handle.getChange((await handle.status()).workingCopyChangeId!);
 
       final GraphTopologyView view = await handle.graphTopology(
         revset: 'all()',

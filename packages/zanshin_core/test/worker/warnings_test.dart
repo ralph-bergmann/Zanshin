@@ -188,10 +188,10 @@ void main() {
       // Two siblings off root write `c.txt` differently; their merge conflicts there.
       File('$root/c.txt').writeAsStringSync('left\n');
       final WorkingCopyStatus left = await handle.status();
-      await handle.newChange([left.parentChangeId]);
+      await handle.newChange([left.parentChangeId!]);
       File('$root/c.txt').writeAsStringSync('right\n');
       final WorkingCopyStatus right = await handle.status();
-      await handle.newChange([left.workingCopyChangeId, right.workingCopyChangeId]);
+      await handle.newChange([left.workingCopyChangeId!, right.workingCopyChangeId!]);
       // The merge `@` resolves the file, so its diff against the conflicted parent side is one
       // jj-lib refuses to split.
       File('$root/c.txt').writeAsStringSync('resolved\n');
@@ -211,9 +211,9 @@ void main() {
       await handle.fileTrack(['a.txt']);
       // The next snapshot records the tracked file into `@` — the edit target.
       final WorkingCopyStatus tracked = await handle.status();
-      final String target = tracked.workingCopyChangeId;
+      final String target = tracked.workingCopyChangeId!;
       // Moving off the target removes `a.txt`; the same name then reappears UNTRACKED on disk.
-      await handle.newChange([tracked.parentChangeId]);
+      await handle.newChange([tracked.parentChangeId!]);
       File('$root/a.txt').writeAsStringSync('untracked on disk\n');
 
       final MutationResult edited = await handle.edit(target);
@@ -392,7 +392,7 @@ void main() {
       await _gitWithCommit(tempDir);
       final RepoHandle handle = await worker.convert(root);
       // A new change on top of `@` moves `@-`, so the finish must move Git HEAD — held locked.
-      final String at = (await handle.status()).workingCopyChangeId;
+      final String at = (await handle.status()).workingCopyChangeId!;
       final headLock = File('$root/.git/HEAD.lock')..writeAsStringSync('');
 
       final MutationResult result;

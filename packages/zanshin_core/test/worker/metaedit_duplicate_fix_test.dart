@@ -58,7 +58,7 @@ void main() {
           await repo.newChange([ids.last]);
         }
         File('${tempDir.path}/$path').writeAsStringSync('x\n');
-        final String at = (await repo.status()).workingCopyChangeId;
+        final String at = (await repo.status()).workingCopyChangeId!;
         await repo.describe(changeId: at, description: description);
         ids.add(at);
       }

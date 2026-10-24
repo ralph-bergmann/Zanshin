@@ -99,7 +99,7 @@ fn base() -> Fx {
         for (path, text) in files {
             fs::write(root.join(path), text).expect("write");
         }
-        let at = repo.status().expect("status").working_copy_change_id;
+        let at = repo.status().expect("status").working_copy_change_id.expect("@");
         repo.describe(at.clone(), description).expect("describe");
         ids.push(at);
     }

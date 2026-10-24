@@ -166,6 +166,12 @@ fn op_restore_to_the_root_operation_writes_its_view() {
     assert_eq!(restored.head_ids, view_at(&fx.path, &root).head_ids);
     assert!(restored.wc_commit_ids.is_empty());
 
+    // The CLI's `jj status` prints "No working copy." here and succeeds
+    // (`cli/src/commands/status.rs:195-197` @ v0.46.0).
+    let status = repo.status().expect("status without `@`");
+    assert!(status.files.is_empty(), "{status:?}");
+    assert_eq!((status.working_copy_change_id, status.parent_change_id), (None, None));
+
     let no_change = repo.bookmark_delete(&["nope".to_owned()]).expect("nothing to delete");
     assert_eq!(no_change.new_op_id.0, restore_op, "nothing written");
     assert_eq!(no_change.working_copy_change_id, None);

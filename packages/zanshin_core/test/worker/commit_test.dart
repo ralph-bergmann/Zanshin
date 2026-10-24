@@ -41,7 +41,7 @@ void main() {
       repo = await worker.initRepo(tempDir.path, backend: 0);
       File('${tempDir.path}/a.txt').writeAsStringSync('a\n');
       File('${tempDir.path}/b.txt').writeAsStringSync('b\n');
-      at = (await repo.status()).workingCopyChangeId;
+      at = (await repo.status()).workingCopyChangeId!;
     });
 
     tearDown(() async {

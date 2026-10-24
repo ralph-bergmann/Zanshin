@@ -275,12 +275,15 @@ fn change_on_working_copy_includes_parent() {
 
     let mut repo = Repo::open(&fx.path).unwrap();
     let status = repo.status().unwrap();
-    let change = repo.get_change(&status.working_copy_change_id).unwrap();
+    let change = repo
+        .get_change(status.working_copy_change_id.as_ref().expect("@"))
+        .unwrap();
 
     assert!(!change.parents.is_empty(), "WC change must have at least one parent");
     // The first parent must be the same as status's parent_change_id.
     assert_eq!(
-        change.parents[0], status.parent_change_id,
+        &change.parents[0],
+        status.parent_change_id.as_ref().expect("@-"),
         "first parent must match status.parent_change_id"
     );
     assert_eq!(
@@ -386,7 +389,9 @@ fn change_on_anonymous_commit_is_anonymous() {
     // Fresh repo: initial WC commit has empty description and no local bookmark → anonymous.
     let mut repo = Repo::open(tmp.path()).unwrap();
     let status = repo.status().unwrap();
-    let change = repo.get_change(&status.working_copy_change_id).unwrap();
+    let change = repo
+        .get_change(status.working_copy_change_id.as_ref().expect("@"))
+        .unwrap();
 
     assert!(
         change.is_anonymous,
@@ -410,7 +415,9 @@ fn change_on_described_commit_is_not_anonymous() {
 
     let mut repo = Repo::open(tmp.path()).unwrap();
     let status = repo.status().unwrap();
-    let change = repo.get_change(&status.working_copy_change_id).unwrap();
+    let change = repo
+        .get_change(status.working_copy_change_id.as_ref().expect("@"))
+        .unwrap();
 
     assert!(
         !change.is_anonymous,
@@ -532,7 +539,9 @@ fn change_on_clean_commit_returns_clean_conflict() {
     let mut repo = Repo::open(&fx.path).unwrap();
 
     let status = repo.status().unwrap();
-    let change = repo.get_change(&status.working_copy_change_id).unwrap();
+    let change = repo
+        .get_change(status.working_copy_change_id.as_ref().expect("@"))
+        .unwrap();
 
     assert!(
         matches!(change.conflict, ConflictState::Clean),
@@ -593,7 +602,7 @@ fn change_on_corrupt_repo_returns_backend_error() {
 
     let mut repo = Repo::open(tmp.path()).unwrap();
     let status = repo.status().unwrap();
-    let change_id = status.working_copy_change_id.clone();
+    let change_id = status.working_copy_change_id.clone().expect("@");
 
     // Corrupt AFTER open: get_change() re-resolves to head on every call (ADR-0002),
     // so removing op_heads makes load_at_head() fail → ChangeError::Backend.

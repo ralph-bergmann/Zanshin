@@ -89,7 +89,7 @@ fn jj_new(workspace_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
 /// Removes the working-copy commit from `@`'s workspace (like `jj workspace forget`),
 /// leaving the workspace with no `@`.
 ///
-/// TEST SETUP ONLY — drives the `StatusError::NoWorkingCopy` path.
+/// TEST SETUP ONLY — drives the status of a workspace without `@`.
 fn remove_working_copy(workspace_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let settings = test_helpers::test_settings();
     let workspace = Workspace::load(
@@ -148,8 +148,8 @@ fn status_on_clean_fixture_returns_no_files() {
     let mut repo = Repo::open(&fixture.path).unwrap();
     let status = repo.status().unwrap();
     assert!(status.files.is_empty());
-    assert!(!status.working_copy_change_id.0.is_empty());
-    assert!(!status.parent_change_id.0.is_empty());
+    assert!(!status.working_copy_change_id.as_ref().expect("@").0.is_empty());
+    assert!(!status.parent_change_id.as_ref().expect("@-").0.is_empty());
 }
 
 // ── AC-4: Added ──────────────────────────────────────────────────────────────
@@ -294,15 +294,17 @@ fn status_working_copy_change_id_reflects_current_wc_commit() {
     // Assert the reported ids EQUAL the actual @ / @- change ids (computed
     // independently via jj-lib), not merely that they are non-empty (AC-4 item 8).
     let (expected_wc, expected_parent) = wc_and_parent_change_ids(tmp.path());
-    assert_eq!(status.working_copy_change_id.0, expected_wc);
-    assert_eq!(status.parent_change_id.0, expected_parent);
+    assert_eq!(status.working_copy_change_id.as_ref().expect("@").0, expected_wc);
+    assert_eq!(status.parent_change_id.as_ref().expect("@-").0, expected_parent);
     assert!(!expected_wc.is_empty());
 }
 
-// ── AC-5: error paths (NoWorkingCopy / Backend) ──────────────────────────────
+// ── AC-5: no `@` (the CLI's "No working copy.") / error path (Backend) ─────────
 
+/// A workspace without `@` succeeds as the CLI's `jj status` does ("No working copy.",
+/// `cli/src/commands/status.rs:195-197` @ v0.46.0): no files, both change ids absent.
 #[test]
-fn status_on_workspace_without_wc_commit_returns_no_working_copy() {
+fn status_on_workspace_without_wc_commit_succeeds_without_ids() {
     test_helpers::pin_test_env();
     let tmp = TempDir::new().unwrap();
     Repo::init(&zanshin_jj::InitOptions {
@@ -314,12 +316,11 @@ fn status_on_workspace_without_wc_commit_returns_no_working_copy() {
     remove_working_copy(tmp.path()).unwrap();
 
     let mut repo = Repo::open(tmp.path()).unwrap();
-    let result = repo.status();
+    let status = repo.status().expect("no `@` is no error");
 
-    assert!(
-        matches!(result, Err(StatusError::NoWorkingCopy)),
-        "expected NoWorkingCopy, got: {result:?}"
-    );
+    assert!(status.files.is_empty(), "{status:?}");
+    assert_eq!(status.working_copy_change_id, None);
+    assert_eq!(status.parent_change_id, None);
 }
 
 #[test]

@@ -569,7 +569,7 @@ or no `# Errors` block.
 | `zanshin_repo_convert` | `(const char *path)` | — | `RepoHandle` | `jj.already_jj_repo`, `jj.not_a_git_repo`, `jj.convert_failed`, `jj.config_error`, `ffi.null_pointer`, `ffi.utf8_error`, `watcher.io_error` | 3.4c (+9.33) |
 | `zanshin_repo_detect` | `(const char *path)` | — | `RepoDetect` | `jj.detect_failed`, `ffi.null_pointer`, `ffi.utf8_error` | 3.4c |
 | `zanshin_repo_close` | `(uint64_t handle)` | — | — (no-payload success) | `ffi.invalid_handle` | 3.4a |
-| `zanshin_status` | `(uint64_t handle)` | — | `Status` | `ffi.invalid_handle`, `jj.no_working_copy`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
+| `zanshin_status` | `(uint64_t handle)` | — | `Status` (both change ids ABSENT and `files` empty when this workspace has no `@` — the CLI's "No working copy.", no error) | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b (+9.12 closing run) |
 | `zanshin_change` | `(uint64_t handle, const char *change_id)` | — | `Change` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.change_not_found`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
 | `zanshin_op_log` | `(uint64_t handle, int64_t limit)` | — | `OpLog` | `ffi.invalid_handle`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 3.4b |
 | `zanshin_op_show` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `OpShowRequest` | `OpShow` (see § Operation verbs) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.operation_not_found`, `jj.invalid_input`, `jj.revset_parse_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.21 |
