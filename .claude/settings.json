@@ -1,4 +1,19 @@
 {
+  "permissions": {
+    "deny": [
+      "Bash(sed -i*)",
+      "Bash(sed * -i*)",
+      "Bash(perl -i*)",
+      "Bash(perl -pi*)",
+      "Bash(perl * -i*)",
+      "Bash(python3 - *)",
+      "Bash(python3 -c *)",
+      "Bash(python - *)",
+      "Bash(python -c *)",
+      "Bash(cat > *)",
+      "Bash(cat >> *)"
+    ]
+  },
   "hooks": {
     "Stop": [
       {
