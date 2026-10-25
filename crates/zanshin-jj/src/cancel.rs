@@ -709,22 +709,25 @@ mod tests {
 
         let scratch = tempfile::TempDir::new().expect("tempdir");
         let forked = scratch.path().join("forked");
-        // The leader forks a second member, then both sleep.
-        let script = format!("sleep 30 & echo $! > '{}'; wait", forked.display());
+        // The leader forks a second member, records its pid, then becomes a plain `sleep`.
+        let script = format!("sleep 30 & echo $! > '{}'; exec sleep 30", forked.display());
         let mut leader = Command::new("/bin/sh")
             .args(["-c", &script])
             .process_group(0)
             .spawn()
             .expect("sh spawns");
-        assert!(
-            poll_until(|| std::fs::read_to_string(&forked).is_ok_and(|pid| !pid.trim().is_empty())),
-            "the leader records its member's pid"
-        );
+        let leader_pid = libc::pid_t::try_from(leader.id()).expect("a pid");
+        // WHY: `/bin/sh` (bash 3.2 on macOS) catches SIGTERM, so signal only once both group members
+        // have exec'd `sleep`; the exec follows the `echo`, so the pid file is complete.
+        let execs_sleep =
+            |pid| super::process::procargs(pid).is_some_and(|args| split_procargs(&args).0 == [&b"sleep"[..], b"30"]);
+        assert!(poll_until(|| execs_sleep(leader_pid)), "the leader execs `sleep`");
         let member: libc::pid_t = std::fs::read_to_string(&forked)
             .expect("the member's pid")
             .trim()
             .parse()
             .expect("a pid");
+        assert!(poll_until(|| execs_sleep(member)), "the member execs `sleep`");
         super::kill_group(leader.id(), super::GroupSignal::Terminate);
         let status = wait_for_exit(&mut leader, Duration::from_secs(10)).expect("the leader dies");
         assert_eq!(status.signal(), Some(libc::SIGTERM));
