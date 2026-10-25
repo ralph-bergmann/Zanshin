@@ -19,6 +19,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/diffedit.rs (diffedit)
     severity: medium
+    resolved: >-
+      2026-10-25 — fixed (spec-9-17-staleness-run-diffedit-resolve, commit 66dc1cf): `DiffeditOptions.right` (required) = the target's `ShowEntry.tree_ids`; a target tree that differs after the `left` check refuses `jj.stale_selection` with no operation beyond the snapshot, the edit kept.
   - summary: >-
       `resolve` with GUI files has no staleness token: when a path's conflict changes between `resolve_list` and `resolve` (rebase, rewritten parent, marker edit on disk) but is still a conflict, content composed from the old sides is written as the resolution.
     evidence: |-
@@ -26,6 +28,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/resolve.rs (merge_tool_file, resolved_tree)
     severity: medium
+    resolved: >-
+      2026-10-25 — fixed (spec-9-17-staleness-run-diffedit-resolve, commit 66dc1cf): `ConflictedFile.term_ids` come back on every `ResolvedFile.term_ids` (required); a mismatch, or a conflict that is no longer a file conflict, refuses `jj.stale_selection` before the resolvability refusal, nothing written.
   - summary: >-
       `resolve_list`'s hunks cannot tell an absent side (modify/delete conflict) from an empty file: both are an empty term; `description` says "including 1 deletion" but not which side.
     evidence: |-
@@ -33,6 +37,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/resolve.rs (resolve_list), schemas/envelope.fbs (ConflictedFile)
     severity: low
+    resolved: >-
+      2026-10-25 — fixed (spec-9-17-staleness-run-diffedit-resolve, commit 66dc1cf): a term without a file has no term id (Rust `None`, absent `ConflictTermId.id`, Dart `null`), an empty file has one; witnessed on a modify/delete conflict in Rust and Dart, an absent base through the FFI.
 ---
 
 <intent-contract>

@@ -17,6 +17,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/mutate.rs:1186 (plan_new)
     severity: low
+    resolved: >-
+      2026-10-25 — fixed (spec-9-17-staleness-run-diffedit-resolve, commit 66dc1cf): `new` refuses the root merge after parsing the template, before the template's hidden write or (empty template) its commit write; `plan_new` no longer refuses it, the `new` drop/card rows do after the plan; oracle refusal_order.rs witnesses `new @ root()` → template class.
 ---
 
 <intent-contract>

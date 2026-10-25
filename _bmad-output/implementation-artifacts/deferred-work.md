@@ -1990,15 +1990,15 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in Story 9.17 (bmad-build-auto, 2026-10-24)
 
-- **`diffedit` loses edits the target received after `select_tree`.** Medium.
+- ~~**`diffedit` loses edits the target received after `select_tree`.**~~ — RESOLVED 2026-10-25 (spec-9-17-staleness-run-diffedit-resolve, commit 66dc1cf): `DiffeditOptions.right` (required) = the target's `ShowEntry.tree_ids`; a target tree that differs after the `left` check refuses `jj.stale_selection`, no operation beyond the snapshot, the edit stays in the target (`tests/it/diffedit.rs`, FFI, Dart). Medium.
   - Only `left` is checked; the verb then replaces the target's whole tree with the selection (`crates/zanshin-jj/src/diffedit.rs`). An autosaving editor's edit folded in by the pre-verb snapshot is gone. 9.50's "own content is not stale" rule assumes the rest stays in the revision, which is false for diffedit. The CLI cannot hit it.
   - **Follow-up:** Ralph confirms a staleness rule for diffedit (Claude's proposal: `DiffeditOptions.right` = the target tree ids the selection saw, from `ShowEntry.tree_ids`; refuse `jj.stale_selection` when the target's tree differs), then a small story adds it through FFI and Dart.
   - **2026-10-25, Ralph:** proposal approved (the GUI reloads on `jj.stale_selection`, as 10.26 item 4 does) → the staleness run right after the story loop builds it, together with the two items below.
-- **`resolve` with GUI files has no staleness token.** Medium.
+- ~~**`resolve` with GUI files has no staleness token.**~~ — RESOLVED 2026-10-25 (spec-9-17-staleness-run-diffedit-resolve, commit 66dc1cf): `ConflictedFile.term_ids` (simplified file ids per term, hex) come back on every `ResolvedFile.term_ids` (required); a mismatch, or a conflict that is no longer a file conflict, refuses `jj.stale_selection` before `jj.conflict_not_resolvable`, nothing written. Medium.
   - A path whose conflict changed between `resolve_list` and `resolve` but is still a conflict gets content composed from the old sides (`crates/zanshin-jj/src/resolve.rs`, `merge_tool_file` checks only "still a conflict"). The CLI cannot hit it.
   - **Follow-up:** same decision as above (Claude's proposal: per-file term ids on `ConflictedFile`, sent back on `ResolvedFile`, refused `jj.stale_selection` on mismatch).
   - **2026-10-25, Ralph:** proposal approved → built in the same staleness run.
-- **`resolve_list` cannot tell an absent side from an empty file.** Low.
+- ~~**`resolve_list` cannot tell an absent side from an empty file.**~~ — RESOLVED 2026-10-25 (spec-9-17-staleness-run-diffedit-resolve, commit 66dc1cf): a term without a file has no term id (`None` / absent `ConflictTermId.id` / Dart `null`), an empty file has one; witnessed on a modify/delete conflict in Rust and Dart, an absent base through the FFI. Low.
   - Both are an empty term in `hunks` (`MaterializedFileConflictValue.contents`); `description` says "including 1 deletion" but not which side. jj-lib also exposes `ids: Merge<Option<FileId>>`.
   - **Follow-up:** the term ids of the item above (absent = none) close it; build them together.
   - **2026-10-25, Ralph:** approved with the item above → built in the same staleness run.
@@ -2017,6 +2017,15 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 
 ## Surfaced in the `new` refusal-order fix (bmad-build-auto, 2026-10-25)
 
-- **A `new` merge with the root commit and a broken `templates.new_description` refuses with the Git backend's root-merge text where the CLI names the template.** Low.
+- ~~**A `new` merge with the root commit and a broken `templates.new_description` refuses with the Git backend's root-merge text where the CLI names the template.**~~ — RESOLVED 2026-10-25 (spec-9-17-staleness-run-diffedit-resolve, commit 66dc1cf): `new` refuses the root merge after parsing the template, before the template's hidden write or (empty template) its commit write; `plan_new` no longer refuses it, the `new` rows do after the plan; oracle `refusal_order.rs` (`new @ root()` → template class). Low.
   - `plan_new` refuses the root merge up front (`refuse_git_root_merge`, `crates/zanshin-jj/src/mutate.rs:1186`, `:1195`; Story 9.31); `cmd_new` @ v0.46.0 parses the template (`cli/src/commands/new.rs:217-221`) before the write where the backend refuses. Pinned CLI by hand: `new @ 'root()'` with template `"x" ++` → `Failed to parse template`; empty template → the backend text. Both refuse with no operation.
   - **Follow-up:** move the verb's root-merge check after the template parse (the rows keep calling it after `plan_new`), or leave it.
+
+## Surfaced in the staleness run (bmad-build-auto, 2026-10-25)
+
+- **`duplicate` and `revert` onto a root merge with a broken description template refuse with the Git backend's root-merge text where the CLI names the template.** Low.
+  - `plan_duplicate_ids` (`crates/zanshin-jj/src/duplicate.rs:115`) and `plan_revert` (`crates/zanshin-jj/src/revert.rs:103`) call `refuse_git_root_merge` in the plan; `cmd_duplicate` @ v0.46.0 parses `templates.duplicate_description` (`cli/src/commands/duplicate.rs:178-181`) before `duplicate_commits` writes (`:199`), `cmd_revert` parses `templates.revert_description` (`cli/src/commands/revert.rs:132-136`) before the first write (`:183-187`), where the backend refuses. Both refuse with no operation; only the `context` text differs. The same gap the staleness run closed for `new`.
+  - **Follow-up:** move each verb's root-merge check after its template parse (the drop/card rows keep calling it after the plan), with `duplicate`/`revert` witnesses in `crates/zanshin-parity/tests/oracle/refusal_order.rs`.
+- **`diffedit`'s `right` comes from a separate `show` read, so a GUI that reads `show` after `select_tree` can pick up an autosave the selection never saw.** Low.
+  - `select_tree` does not return the target's tree it selected in (`crates/zanshin-jj/src/select_tree.rs`, `SelectedTreeId`); the decided source is `ShowEntry.tree_ids` (`crates/zanshin-jj/src/diffedit.rs`, `DiffeditOptions.right`). The natural flow (diff from one `show`, `left` and `right` from that same `show`) is safe; only a `show` re-read between `select_tree` and `diffedit` reopens the loss.
+  - **Follow-up:** the UI story that calls `diffedit` takes `left` and `right` from the one `show` it diffed; optionally `select_tree` could also return the target's tree ids (new surface, Ralph's call), or leave it.
