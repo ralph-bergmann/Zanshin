@@ -35,6 +35,7 @@ use jj_lib::transaction::Transaction;
 use jj_lib::workspace::{Workspace, WorkspaceInitError};
 
 use crate::cancel::CancelGuard;
+use crate::cli_command::{CliCommand, GIT_CLONE, GIT_INIT};
 use crate::op_support::start_repo_transaction;
 use crate::remotes::ProgressCallback;
 use crate::repo::{creation_error, CreationOutcome};
@@ -131,10 +132,11 @@ fn env_error(e: crate::PreconditionError, other: impl FnOnce(String) -> RepoErro
 /// time, as the CLI's second `for_workable_repo` prints them again.
 fn workable_env(
     workspace: &Workspace,
+    command: CliCommand,
     sink: &mut Warnings,
     other: impl Fn(String) -> RepoError,
 ) -> Result<(StackedConfig, snapshot::CommandEnv), RepoError> {
-    let config = config::load_for_workspace(workspace)?;
+    let config = config::load_for_workspace(workspace, command)?;
     let mut own = Warnings::default();
     let env = snapshot::CommandEnv::load(workspace, &config, &mut own);
     sink.extend(own.take());
@@ -246,7 +248,7 @@ fn init_steps(
 ) -> Result<Repo, RepoError> {
     // The CLI's start-up config check runs before the command touches any path, and its
     // `command.settings()` is what `git.colocate` / `git.object-hash` are read from.
-    let startup = config::check_startup_stack(sink)?;
+    let startup = config::check_startup_stack(GIT_INIT, sink)?;
     let Some(Backend::Git) = options.backend else {
         return init_native(options, created);
     };
@@ -258,7 +260,7 @@ fn init_steps(
     if !colocate && git_dir.exists() {
         return Err(RepoError::GitRepoExists { path: root });
     }
-    let settings = config::user_settings_for_new_workspace(&root)?;
+    let settings = config::user_settings_for_new_workspace(&root, GIT_INIT)?;
     if colocate && git_dir.exists() {
         // `GitInitMode::External(.git)`: the convert-colocated steps (`init.rs:249-282`), which
         // report into the outcome — and, like `jj git init`, clean up nothing beyond jj-lib's own
@@ -278,7 +280,7 @@ fn init_steps(
         let (workspace, _repo) = pollster::block_on(Workspace::init_colocated_git(&settings, &root, hash))
             .map_err(|e| init_creation_error(&e, &root))?;
         created.jj_dir = Some(root.join(".jj"));
-        workable_env(&workspace, sink, |reason| RepoError::InitFailed { reason })?;
+        workable_env(&workspace, GIT_INIT, sink, |reason| RepoError::InitFailed { reason })?;
         add_gitignore(&workspace, |reason| RepoError::InitFailed { reason })?;
     } else {
         pollster::block_on(Workspace::init_internal_git(&settings, &root, hash))
@@ -299,7 +301,7 @@ fn init_native(options: &InitOptions, created: &mut Created) -> Result<Repo, Rep
     let root = std::fs::canonicalize(&options.path).map_err(|e| RepoError::InitFailed {
         reason: format!("{}: {e}", options.path.display()),
     })?;
-    let settings = config::user_settings_for_new_workspace(&root)?;
+    let settings = config::user_settings_for_new_workspace(&root, GIT_INIT)?;
     pollster::block_on(Workspace::init_simple(&settings, &root)).map_err(|e| init_creation_error(&e, &root))?;
     created.jj_dir = Some(root.join(".jj"));
     Repo::open(&root)
@@ -378,7 +380,7 @@ fn clone_steps(
     (progress, cancel): (&ProgressFn, Option<&CancelGuard>),
     sink: &mut Warnings,
 ) -> Result<Repo, RepoError> {
-    let startup = config::check_startup_stack(sink)?;
+    let startup = config::check_startup_stack(GIT_CLONE, sink)?;
     let remote: RemoteNameBuf = options.remote_name.as_deref().unwrap_or("origin").into();
     let destination = &options.destination;
     let dest_text = destination.display().to_string();
@@ -487,14 +489,14 @@ fn clone_into_workspace(
     sink: &mut Warnings,
 ) -> Result<(Cloned, Option<(RefNameBuf, bool)>), RepoError> {
     // `init_workspace` (`clone.rs:325-341`).
-    let settings = config::user_settings_for_new_workspace(root)?;
+    let settings = config::user_settings_for_new_workspace(root, GIT_CLONE)?;
     let (workspace, repo) = if plan.colocate {
         pollster::block_on(Workspace::init_colocated_git(&settings, root, plan.hash))
     } else {
         pollster::block_on(Workspace::init_internal_git(&settings, root, plan.hash))
     }
     .map_err(|e| creation_error(&e, clone_failed))?;
-    let (config, env) = workable_env(&workspace, sink, clone_failed)?;
+    let (config, env) = workable_env(&workspace, GIT_CLONE, sink, clone_failed)?;
     add_gitignore(&workspace, clone_failed)?;
 
     // The fetch expressions (`clone.rs:231-246`): the flags, else the remote's presets, else all.
@@ -607,7 +609,7 @@ fn configure_remote(
     let op = pollster::block_on(workspace.repo_loader().load_operation(cloned.repo.op_id()))
         .map_err(|e| clone_failed(e.to_string()))?;
     let repo = pollster::block_on(workspace.repo_loader().load_at(&op)).map_err(|e| clone_failed(e.to_string()))?;
-    let (_config, env) = workable_env(&workspace, sink, clone_failed)?;
+    let (_config, env) = workable_env(&workspace, GIT_CLONE, sink, clone_failed)?;
     cloned.workspace = workspace;
     cloned.repo = repo;
     cloned.env = env;
@@ -625,7 +627,7 @@ fn fetch_new_remote(
     plan: &ClonePlan<'_>,
     sink: &mut Warnings,
 ) -> Result<Option<(RefNameBuf, bool)>, RepoError> {
-    let config = config::load_for_workspace(&cloned.workspace)?;
+    let config = config::load_for_workspace(&cloned.workspace, GIT_CLONE)?;
     let subprocess_options = crate::environment::git_subprocess_options(&cloned.settings, plan.cancel)
         .map_err(|e| RepoError::from(config::value_error(&e)))?;
     let import_options = GitImportOptions {

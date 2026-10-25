@@ -483,6 +483,8 @@ parity!(
     convert_import_refs_step_config_fault,
     convert_colocated_refs_step_config_fault,
     clone_unresolvable_immutable,
+    init_when_commands_no_colocate,
+    init_when_commands_other_command,
 );
 
 /// Every scenario id the table and the creation list define.
@@ -497,7 +499,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 428);
+    assert_eq!(SCENARIO_IDS.len(), 430);
 }
 
 #[test]

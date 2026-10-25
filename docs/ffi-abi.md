@@ -1441,9 +1441,12 @@ and at every snapshotting call (Story 9.37, see *`warnings`* above) — but NOT 
 open or snapshotting call (a repo copied or a secure directory deleted since is fixed
 up only by the next such call). Not layered: the
 `--config`/`--config-file` command-line layer (Zanshin has no command line).
-`config_resolver::resolve` runs with `command: None`, so `--when.commands` scopes
-never match; `hostname` is `whoami::hostname()`, so `--when.hostnames` scopes match
-as in the CLI (Story 9.27).
+`config_resolver::resolve` runs with the CLI command each call plays (Story 9.41,
+`crates/zanshin-jj/src/cli_command.rs`), so `--when.commands` scopes match as in the
+CLI — `zanshin_log_defaults` resolves for `log`; a call no CLI command corresponds to
+(open, `select_tree`, the drop/change actions) resolves with none, so such a scope
+never matches it. `hostname` is `whoami::hostname()`, so `--when.hostnames` scopes
+match as in the CLI (Story 9.27).
 
 **The same stack opens the workspace (Story 9.27).** `zanshin_repo_open` / `_init` /
 `_clone` / `_convert` build the `UserSettings` jj-lib signs commits and operations

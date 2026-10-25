@@ -294,7 +294,34 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
         zanshin: |dir| clone(&clone_options(dir, "src")),
         user_config: Some(UNRESOLVABLE_IMMUTABLE),
     },
+    // Story 9.41: a `["git init"]` scope's `git.colocate = false` reaches `jj git init`'s
+    // start-up stack — the CLI names its command before that resolution — so no `.git/`.
+    CreationScenario {
+        id: "init_when_commands_no_colocate",
+        prep: &[],
+        target: "",
+        cli: &["git", "init"],
+        zanshin: |dir| init(dir.to_owned(), None),
+        user_config: Some(WHEN_GIT_INIT_NO_COLOCATE),
+    },
+    // The same scope for another command leaves `jj git init` colocated.
+    CreationScenario {
+        id: "init_when_commands_other_command",
+        prep: &[],
+        target: "",
+        cli: &["git", "init"],
+        zanshin: |dir| init(dir.to_owned(), None),
+        user_config: Some(WHEN_GIT_CLONE_NO_COLOCATE),
+    },
 ];
+
+/// `git.colocate = false`, scoped to `jj git init`.
+const WHEN_GIT_INIT_NO_COLOCATE: &str =
+    "[[--scope]]\n--when.commands = [\"git init\"]\n[--scope.git]\ncolocate = false\n";
+
+/// `git.colocate = false`, scoped to `jj git clone`.
+const WHEN_GIT_CLONE_NO_COLOCATE: &str =
+    "[[--scope]]\n--when.commands = [\"git clone\"]\n[--scope.git]\ncolocate = false\n";
 
 /// A user config whose `remotes.origin.auto-track-bookmarks` does not parse.
 const BROKEN_AUTO_TRACK: &str = "[remotes.origin]\nauto-track-bookmarks = \"glob:(\"\n";

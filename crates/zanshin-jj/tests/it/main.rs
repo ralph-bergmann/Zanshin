@@ -96,6 +96,7 @@ mod status;
 mod templates;
 mod view;
 mod warnings;
+mod when_commands;
 mod workspace;
 mod workspace_add;
 mod workspace_ops;

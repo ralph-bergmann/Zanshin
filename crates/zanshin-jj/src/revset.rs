@@ -261,7 +261,8 @@ fn parse_with_prefixes(
     expr: &str,
     sink: &mut Warnings,
 ) -> Result<(Arc<UserRevsetExpression>, IdPrefixContext), RevsetError> {
-    let config = crate::config::load(repo)?;
+    // A `&Repo` read outside any call: resolved for `jj log`, whose `-r` it answers (Story 9.41).
+    let config = crate::config::load_for(repo, crate::cli_command::LOG)?;
     let parse_config = revset_config(&config, sink)?;
     let workspace = repo.workspace();
     let short = crate::template::load_short_prefixes(

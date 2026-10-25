@@ -127,6 +127,7 @@ use jj_lib::rewrite::RebaseOptions;
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::Workspace;
 
+use crate::cli_command::GIT_INIT;
 use crate::creation::{create_destination, failed_to_create_workspace, Created};
 use crate::op_support::{resolve_immutable, start_repo_transaction};
 use crate::repo::{creation_error, CreationOutcome};
@@ -223,7 +224,7 @@ pub fn convert_colocated(path: &Path) -> CreationOutcome {
 /// [`convert_colocated`]'s steps, reporting into `report`.
 fn convert_colocated_steps(path: &Path, report: &mut ConversionReport) -> Result<Repo, RepoError> {
     // The CLI's start-up config check runs before the command touches any path.
-    config::check_startup_stack(&mut report.warnings)?;
+    config::check_startup_stack(GIT_INIT, &mut report.warnings)?;
     match detect_repo(path) {
         Ok(RepoKind::Jj) => return Err(RepoError::AlreadyJjRepo { path: path.to_owned() }),
         Ok(RepoKind::Git) => {}
@@ -238,7 +239,7 @@ fn convert_colocated_steps(path: &Path, report: &mut ConversionReport) -> Result
     // spelling in the payload.
     let root = std::fs::canonicalize(path).map_err(|_| RepoError::NotAGitRepo { path: path.to_owned() })?;
     // Resolved for the new workspace's own paths — the CLI's `settings_for_new_workspace`.
-    let settings = config::user_settings_for_new_workspace(&root)?;
+    let settings = config::user_settings_for_new_workspace(&root, GIT_INIT)?;
     let result = convert_into(&settings, &root, report).and_then(|()| Repo::open(&root));
     if result.is_err() {
         report.left_behind = report.created.left_behind();
@@ -328,7 +329,7 @@ fn convert_import_steps(
     report: &mut ConversionReport,
 ) -> Result<Repo, RepoError> {
     // The CLI's start-up config check runs before the command touches any path.
-    config::check_startup_stack(&mut report.warnings)?;
+    config::check_startup_stack(GIT_INIT, &mut report.warnings)?;
     // Precondition 1: source must be a Git repo (normal OR bare) and not already jj.
     // Note: detect_repo returns Neither for a bare repo (no `.jj/` and no `.git/`
     // child). We check is_bare_git_dir() locally — do NOT extend detect_repo (D3).
@@ -622,7 +623,7 @@ fn import_into(git_repo_path: &Path, workspace_path: &Path, report: &mut Convers
     // order (start-up check → create the destination → canonicalize →
     // `settings_for_new_workspace`); only a fault that needs the destination's paths is left
     // for here, and the directory stays, as in the CLI.
-    let settings = config::user_settings_for_new_workspace(&workspace_path)?;
+    let settings = config::user_settings_for_new_workspace(&workspace_path, GIT_INIT)?;
 
     let resolved = resolve_git_repo_path(git_repo_path);
 
@@ -659,7 +660,7 @@ fn external_arm(
     report: &mut ConversionReport,
 ) -> Result<(), RepoError> {
     let colocated = is_colocated_git_workspace(workspace).map_err(convert_failed)?;
-    let config = config::load_for_workspace(workspace)?;
+    let config = config::load_for_workspace(workspace, GIT_INIT)?;
     let repo = init_git_refs(
         repo,
         workspace.workspace_name(),

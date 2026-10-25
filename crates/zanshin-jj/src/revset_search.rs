@@ -194,7 +194,7 @@ pub(crate) fn revset_counts(
     let readonly = load_pinned(repo.workspace(), operation_id).map_err(unwarned)?;
     let mut sink = Warnings::default();
     let result = (|| -> Result<Vec<_>, RevsetSearchError> {
-        let config = crate::config::load(repo)?;
+        let config = crate::config::load_for(repo, crate::cli_command::LOG)?;
         let parse_config = revset_config(&config, &mut sink)?;
         let workspace = repo.workspace();
         let short = crate::template::load_short_prefixes(
@@ -237,7 +237,7 @@ pub(crate) fn find_changes(
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let mut sink = Warnings::default();
     let result = (|| -> Result<_, RevsetSearchError> {
-        let config = crate::config::load(repo)?;
+        let config = crate::config::load_for(repo, crate::cli_command::LOG)?;
         let parse_config = revset_config(&config, &mut sink)?;
         let workspace = repo.workspace();
         // The CLI parses `revsets.short-prefixes` in its start-up environment, before the command's

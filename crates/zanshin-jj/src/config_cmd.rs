@@ -53,6 +53,7 @@ use jj_lib::secure_config;
 use jj_lib::settings::UserSettings;
 use jj_lib::workspace::{DefaultWorkspaceLoaderFactory, WorkspaceLoaderFactory as _};
 
+use crate::cli_command::{self, CliCommand};
 use crate::config::{self, ConfigEnv, SecureLayer, WorkspacePaths};
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -554,8 +555,8 @@ fn fix_up(
 /// load or resolve is what the halves exist to repair, so a failure is ignored, never a refusal.
 fn startup_deprecations(env: &ConfigEnv, ws: Option<&WorkspaceDirs>, warnings: &mut Vec<crate::Warning>) {
     let paths = ws.map(WorkspaceDirs::paths);
-    let resolved =
-        config::load_raw(env, paths, None).and_then(|raw| config::resolve_raw(env, paths, &raw, Some("config edit")));
+    let resolved = config::load_raw(env, paths, None)
+        .and_then(|raw| config::resolve_raw(env, paths, &raw, cli_command::CONFIG_EDIT));
     if let Ok((_, deprecations)) = resolved {
         warnings.extend(config::deprecation_warnings(deprecations));
     }
@@ -568,12 +569,12 @@ fn startup_deprecations(env: &ConfigEnv, ws: Option<&WorkspaceDirs>, warnings: &
 fn startup(
     env: &ConfigEnv,
     ws: Option<&WorkspaceDirs>,
-    command: &str,
+    command: CliCommand,
     warnings: &mut Vec<crate::Warning>,
 ) -> Result<UserSettings, ConfigCmdError> {
     let paths = ws.map(WorkspaceDirs::paths);
     let raw = config::load_raw(env, paths, Some(warnings))?;
-    let (resolved, deprecations) = config::resolve_raw(env, paths, &raw, Some(command))?;
+    let (resolved, deprecations) = config::resolve_raw(env, paths, &raw, command)?;
     warnings.extend(config::deprecation_warnings(deprecations));
     Ok(config::settings_from(env, resolved)?)
 }
@@ -844,7 +845,7 @@ fn list_with(
     warnings: &mut Vec<crate::Warning>,
 ) -> Result<Vec<ConfigEntry>, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
-    let settings = startup(env, ws.as_ref(), "config list", warnings)?;
+    let settings = startup(env, ws.as_ref(), cli_command::CONFIG_LIST, warnings)?;
     let name = query.name.as_deref().map(parse_name).transpose()?;
     let prefix = name.clone().unwrap_or_else(ConfigNamePathBuf::root);
     let mut values = resolved_config_values(settings.config(), &prefix);
@@ -885,7 +886,7 @@ fn get_with(
     warnings: &mut Vec<crate::Warning>,
 ) -> Result<String, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
-    let settings = startup(env, ws.as_ref(), "config get", warnings)?;
+    let settings = startup(env, ws.as_ref(), cli_command::CONFIG_GET, warnings)?;
     let name = parse_name(name)?;
     // WHY every error is NotFound: `get_value`'s conversion is the identity, so `NotFound` is
     // the only `ConfigGetError` it can return.
@@ -908,7 +909,7 @@ fn path_with(
     warnings: &mut Vec<crate::Warning>,
 ) -> Result<Vec<PathBuf>, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
-    startup(env, ws.as_ref(), "config path", warnings)?;
+    startup(env, ws.as_ref(), cli_command::CONFIG_PATH, warnings)?;
     let paths: Vec<PathBuf> = if scope == ConfigScope::User {
         config::user_config_candidates(env)
     } else {
@@ -933,7 +934,7 @@ fn set_with(
     let mut warnings = Vec::new();
     let result = (|| -> Result<ConfigSetResult, ConfigCmdError> {
         let ws = resolve_workspace(root)?;
-        startup(env, ws.as_ref(), "config set", &mut warnings)?;
+        startup(env, ws.as_ref(), cli_command::CONFIG_SET, &mut warnings)?;
         let name = parse_name(name)?;
         let value = parse_value_or_bare_string(value_text)?;
         let (file_path, source) = select_file(env, ws.as_ref(), target)?;
@@ -999,7 +1000,7 @@ fn check_wc_author(
     (precondition, warnings): (&mut Option<crate::Precondition>, &mut Vec<crate::Warning>),
 ) -> Option<WorkingCopyAuthor> {
     let mut repo = crate::Repo::open(workspace_root).ok()?;
-    let snapshot = repo.snapshot();
+    let snapshot = repo.snapshot_as(cli_command::CONFIG_SET);
     warnings.extend(repo.take_warnings());
     let Ok(report) = snapshot else {
         *precondition = repo.take_precondition();
@@ -1032,7 +1033,7 @@ fn unset_with(
     warnings: &mut Vec<crate::Warning>,
 ) -> Result<PathBuf, ConfigCmdError> {
     let ws = resolve_workspace(root)?;
-    startup(env, ws.as_ref(), "config unset", warnings)?;
+    startup(env, ws.as_ref(), cli_command::CONFIG_UNSET, warnings)?;
     let name = parse_name(name)?;
     let (file_path, source) = select_file(env, ws.as_ref(), target)?;
     let mut file = config::load_config_file(source, &file_path)?;
@@ -1112,7 +1113,7 @@ fn file_write_with(
 /// `<config_dir>/jj/repos`, after the start-up stack (no workspace), whose migrations warn into
 /// `warnings`.
 fn gc_root(env: &ConfigEnv, warnings: &mut Vec<crate::Warning>) -> Result<PathBuf, ConfigCmdError> {
-    startup(env, None, "config gc", warnings)?;
+    startup(env, None, cli_command::CONFIG_GC, warnings)?;
     env.root_config_dir()
         .map(|r| r.join("repos"))
         .ok_or_else(|| ConfigCmdError::NoConfigPath {

@@ -49,6 +49,14 @@ impl Direction {
             Self::Prev => "prev",
         }
     }
+
+    /// The move's CLI command, for `--when.commands` scopes (Story 9.41).
+    pub(crate) fn cli_command(self) -> crate::cli_command::CliCommand {
+        match self {
+            Self::Next => crate::cli_command::NEXT,
+            Self::Prev => crate::cli_command::PREV,
+        }
+    }
 }
 
 /// [`crate::Repo::move_working_copy`]'s and [`crate::Repo::movement_targets`]' arguments — the
@@ -352,6 +360,13 @@ mod tests {
             assert!(matches!(&e, MutateError::InvalidInput { hints, .. } if hints.is_empty()));
             e.to_string().replacen("invalid input: ", "", 1)
         })
+    }
+
+    /// Story 9.41: each direction plays its own CLI command.
+    #[test]
+    fn each_direction_plays_its_cli_command() {
+        assert_eq!(Direction::Next.cli_command(), crate::cli_command::NEXT);
+        assert_eq!(Direction::Prev.cli_command(), crate::cli_command::PREV);
     }
 
     #[test]

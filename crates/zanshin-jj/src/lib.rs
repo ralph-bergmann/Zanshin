@@ -32,6 +32,7 @@ pub(crate) mod bookmark_ops;
 pub(crate) mod bookmarks;
 pub mod cancel;
 pub(crate) mod change;
+pub(crate) mod cli_command;
 pub(crate) mod commit;
 pub(crate) mod commit_content;
 pub(crate) mod commit_meta;

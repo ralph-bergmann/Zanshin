@@ -122,11 +122,12 @@
 //! `line-range-args` (to be removed in jj 0.51), its descriptions the start of a call's
 //! `jj.config_deprecated` warnings. Re-check it at every pin bump, together with
 //! `maybe_migrate_legacy_config`'s TODO (jj 0.49 is to stop
-//! migrating the legacy files automatically and only warn). `resolve` runs with `command: None`
-//! (a state the CLI itself produces before a subcommand is known) for every verb except the
-//! config verbs, which pass their CLI command name (`"config set"`, …) through
-//! [`resolve_raw`], so `--when.commands` scopes match there as in the CLI; `--when.hostnames`
-//! scopes match against `whoami::hostname()`, exactly as in the CLI.
+//! migrating the legacy files automatically and only warn). `resolve` runs with the CLI command
+//! the call plays (Story 9.41, [`crate::cli_command`]): every verb, creation path, config verb
+//! and named read passes its table name (`"describe"`, `"git init"`, `"config set"`, …) through
+//! [`resolve_raw`], so `--when.commands` scopes match as in the CLI; a call no CLI command
+//! corresponds to resolves with none, the state the CLI itself is in before a subcommand is
+//! known. `--when.hostnames` scopes match against `whoami::hostname()`, exactly as in the CLI.
 
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::{OsStr, OsString};
@@ -149,6 +150,7 @@ use jj_lib::workspace::{Workspace, WorkspaceInitError, WorkspaceLoadError, Works
 use rand_chacha::rand_core::SeedableRng as _;
 use rand_chacha::ChaCha20Rng;
 
+use crate::cli_command::CliCommand;
 use crate::Repo;
 
 /// Zanshin's builtin default config layer — the lowest layer of the stack, and the one a
@@ -881,17 +883,23 @@ pub(crate) fn secure_layers(env: &ConfigEnv, paths: WorkspacePaths<'_>) -> [Secu
 /// `workspace` is `None` outside any workspace ([`check_startup_stack`]): the stack stops at
 /// the user level and resolves with no repo/workspace path — the state the CLI starts up in
 /// without a workspace. A CREATION path then passes the new workspace's paths
-/// ([`user_settings_for_new_workspace`]).
-fn load_with(env: &ConfigEnv, workspace: Option<WorkspacePaths<'_>>) -> Result<StackedConfig, ConfigError> {
-    load_with_migrated(env, workspace).map(|(config, _)| config)
+/// ([`user_settings_for_new_workspace`]). `command` is the CLI command the call plays
+/// ([`crate::cli_command`]), for `--when.commands` scopes.
+fn load_with(
+    env: &ConfigEnv,
+    workspace: Option<WorkspacePaths<'_>>,
+    command: CliCommand,
+) -> Result<StackedConfig, ConfigError> {
+    load_with_migrated(env, workspace, command).map(|(config, _)| config)
 }
 
 /// [`load_with`] with the descriptions of the config migrations the stack went through.
 fn load_with_migrated(
     env: &ConfigEnv,
     workspace: Option<WorkspacePaths<'_>>,
+    command: CliCommand,
 ) -> Result<(StackedConfig, Deprecations), ConfigError> {
-    resolve_raw(env, workspace, &load_raw(env, workspace, None)?, None)
+    resolve_raw(env, workspace, &load_raw(env, workspace, None)?, command)
 }
 
 /// The UNRESOLVED ("raw") stack [`load_with`] resolves — one layer per file, `--when` /
@@ -950,9 +958,10 @@ pub(crate) fn load_raw(
 }
 
 /// The CLI's start-up secure-config fix-up for the workspace at `paths` (Story 9.37): the
-/// start-up load of [`load_raw`] with a fix-up sink, the stack dropped — so it runs in the CLI's
-/// order and refuses where the CLI's start-up does. [`crate::Repo`] runs it before it
-/// fingerprints or derives its settings.
+/// start-up load of [`load_raw`] with a fix-up sink — so it runs in the CLI's order and refuses
+/// where the CLI's start-up does. [`crate::Repo`] runs it before it fingerprints or derives its
+/// settings, and resolves the returned raw (post-fix-up) stack for the call's command to decide
+/// whether its settings still hold (Story 9.41).
 ///
 /// # Errors
 ///
@@ -961,8 +970,8 @@ pub(crate) fn fix_up_secure_config(
     env: &ConfigEnv,
     paths: WorkspacePaths<'_>,
     sink: &mut Vec<crate::Warning>,
-) -> Result<(), ConfigError> {
-    load_raw(env, Some(paths), Some(sink)).map(drop)
+) -> Result<StackedConfig, ConfigError> {
+    load_raw(env, Some(paths), Some(sink))
 }
 
 /// The fix-up ALONE — both secure layers, repo first, one RNG — loading no config file: the two
@@ -989,10 +998,11 @@ pub(crate) fn fix_up_layers(
 /// migrations ([`migrate`], Story 9.9). Skipping the resolution would leave scoped tables
 /// unflattened (their values silently missing) and keep layers the CLI drops.
 ///
-/// `command` is the CLI's command name (`"config set"`, …) for `--when.commands`; every verb
-/// but the config verbs (Story 9.28) passes `None`, a state the CLI itself produces before a
-/// subcommand is known. Returns the descriptions of the migrations applied too — what the CLI
-/// prints as "Deprecated … config" warnings ([`deprecation_warnings`]).
+/// `command` is the CLI's command name for `--when.commands` — the call's
+/// [`crate::cli_command`] entry (Story 9.41); [`crate::cli_command::NO_COMMAND`] for a call no CLI
+/// command corresponds to, a state the CLI itself produces before a subcommand is known. Returns
+/// the descriptions of the migrations applied too — what the CLI prints as "Deprecated … config"
+/// warnings ([`deprecation_warnings`]).
 ///
 /// # Errors
 ///
@@ -1001,7 +1011,7 @@ pub(crate) fn resolve_raw(
     env: &ConfigEnv,
     workspace: Option<WorkspacePaths<'_>>,
     raw: &StackedConfig,
-    command: Option<&str>,
+    command: CliCommand,
 ) -> Result<(StackedConfig, Deprecations), ConfigError> {
     let context = ConfigResolutionContext {
         home_dir: env.home_dir.as_deref(),
@@ -1014,6 +1024,18 @@ pub(crate) fn resolve_raw(
     let mut config = resolve(raw, &context).map_err(|e| value_error(&e))?;
     let deprecations = migrate(&mut config)?;
     Ok((config, deprecations))
+}
+
+/// Whether two resolved stacks are the same: as many layers, and each pair the same `Arc` or
+/// equal in source, path and text (Story 9.41). jj-lib's `resolve` keeps an unscoped layer's
+/// `Arc`, but only the jj-lib and jj-cli default layers (`StackedConfig::with_defaults`,
+/// `CLI_DEFAULTS`) are shared between loads and compare by pointer; Zanshin's builtin layer, the
+/// env base/override layers and the per-file layers are rebuilt per load and compare by text.
+pub(crate) fn same_resolution(a: &StackedConfig, b: &StackedConfig) -> bool {
+    a.layers().len() == b.layers().len()
+        && a.layers().iter().zip(b.layers()).all(|(x, y)| {
+            Arc::ptr_eq(x, y) || (x.source == y.source && x.path == y.path && x.data.to_string() == y.data.to_string())
+        })
 }
 
 /// The migrations a resolved stack went through: each rewritten layer's source and the
@@ -1125,7 +1147,8 @@ pub(crate) fn deprecation_warnings(deprecations: Deprecations) -> Vec<crate::War
         .collect()
 }
 
-/// Loads `repo`'s effective jj config stack. Re-read on every call — never cached.
+/// Loads `repo`'s effective jj config stack, resolved for the CLI command its current call plays
+/// ([`crate::Repo`]'s call start records it, Story 9.41). Re-read on every call — never cached.
 ///
 /// While the call runs with the start-up `trunk()` fallback (Story 9.56, see
 /// [`crate::Repo`]'s precondition), the stack carries one more, topmost layer setting
@@ -1148,12 +1171,26 @@ pub(crate) fn load(repo: &Repo) -> Result<StackedConfig, ConfigError> {
 ///
 /// As [`load`].
 pub(crate) fn load_migrated(repo: &Repo) -> Result<(StackedConfig, Deprecations), ConfigError> {
+    load_migrated_for(repo, repo.command())
+}
+
+/// [`load`] resolved for `command` — for a `&self` read outside a call, which names the CLI
+/// command whose output it replaces (Story 9.41).
+///
+/// # Errors
+///
+/// As [`load`].
+pub(crate) fn load_for(repo: &Repo, command: CliCommand) -> Result<StackedConfig, ConfigError> {
+    load_migrated_for(repo, command).map(|(config, _)| config)
+}
+
+fn load_migrated_for(repo: &Repo, command: CliCommand) -> Result<(StackedConfig, Deprecations), ConfigError> {
     let workspace = repo.workspace();
     let paths = WorkspacePaths {
         repo_path: workspace.repo_path(),
         workspace_root: workspace.workspace_root(),
     };
-    let (mut config, deprecations) = load_with_migrated(&ConfigEnv::from_env(), Some(paths))?;
+    let (mut config, deprecations) = load_with_migrated(&ConfigEnv::from_env(), Some(paths), command)?;
     if repo.trunk_fallback() {
         config.add_layer(trunk_fallback_layer());
     }
@@ -1196,7 +1233,8 @@ pub(crate) fn settings_from(env: &ConfigEnv, config: StackedConfig) -> Result<Us
     UserSettings::from_config_and_home_dir(config, env.home_dir.clone()).map_err(|e| value_error(&e))
 }
 
-/// The `UserSettings` an EXISTING workspace is opened with: its full effective stack.
+/// The `UserSettings` an EXISTING workspace is opened with: its full effective stack, resolved
+/// for `command` (Story 9.41).
 ///
 /// Takes the loader, not a `Workspace`, because the settings must exist BEFORE the workspace
 /// is loaded — this is `Workspace::load`'s own body split in two (`workspace.rs:410-419`), and
@@ -1206,13 +1244,16 @@ pub(crate) fn settings_from(env: &ConfigEnv, config: StackedConfig) -> Result<Us
 ///
 /// - [`ConfigError::Load`] — a stack file is unreadable or not valid TOML, a `config-id` is
 ///   malformed, or a value has the wrong type; the path or key is named.
-pub(crate) fn user_settings_for(loader: &dyn WorkspaceLoader) -> Result<UserSettings, ConfigError> {
+pub(crate) fn user_settings_for(
+    loader: &dyn WorkspaceLoader,
+    command: CliCommand,
+) -> Result<UserSettings, ConfigError> {
     let paths = WorkspacePaths {
         repo_path: loader.repo_path(),
         workspace_root: loader.workspace_root(),
     };
     let env = ConfigEnv::from_env();
-    settings_from(&env, load_with(&env, Some(paths))?)
+    settings_from(&env, load_with(&env, Some(paths), command)?)
 }
 
 /// The CLI's start-up config check, run FIRST by every creation path (`init`, `clone`,
@@ -1232,12 +1273,19 @@ pub(crate) fn user_settings_for(loader: &dyn WorkspaceLoader) -> Result<UserSett
 /// ([`user_settings_for_new_workspace`], the conversions' snapshot) stay silent: the CLI prints
 /// them once per command.
 ///
+/// `command` is the creation's CLI command (`"git init"`, `"git clone"`; Story 9.41): its
+/// `--when.commands` scopes apply to the start-up stack, as the CLI names the command before
+/// this resolution (`cli_util.rs:4701`).
+///
 /// # Errors
 ///
 /// - [`ConfigError::Load`] — as [`user_settings_for`].
-pub(crate) fn check_startup_stack(sink: &mut crate::warning::Warnings) -> Result<StackedConfig, ConfigError> {
+pub(crate) fn check_startup_stack(
+    command: CliCommand,
+    sink: &mut crate::warning::Warnings,
+) -> Result<StackedConfig, ConfigError> {
     let env = ConfigEnv::from_env();
-    let (config, deprecations) = load_with_migrated(&env, None)?;
+    let (config, deprecations) = load_with_migrated(&env, None, command)?;
     sink.extend(deprecation_warnings(deprecations));
     settings_from(&env, config.clone())?;
     Ok(config)
@@ -1251,18 +1299,23 @@ pub(crate) fn check_startup_stack(sink: &mut crate::warning::Warnings) -> Result
 /// yet; whatever is there is read, exactly as the CLI's reload reads it.
 ///
 /// Runs once the creation's root is known — after [`check_startup_stack`], as the CLI runs it
-/// after its start-up.
+/// after its start-up. Resolved for the creation's `command`, as the CLI's
+/// `settings_for_new_workspace` clones its start-up `ConfigEnv`, command name included
+/// (`cli_util.rs:378-394` @ v0.46.0; Story 9.41).
 ///
 /// # Errors
 ///
 /// - [`ConfigError::Load`] — as [`user_settings_for`].
-pub(crate) fn user_settings_for_new_workspace(workspace_root: &Path) -> Result<UserSettings, ConfigError> {
+pub(crate) fn user_settings_for_new_workspace(
+    workspace_root: &Path,
+    command: CliCommand,
+) -> Result<UserSettings, ConfigError> {
     let paths = WorkspacePaths {
         repo_path: &workspace_root.join(".jj").join("repo"),
         workspace_root,
     };
     let env = ConfigEnv::from_env();
-    settings_from(&env, load_with(&env, Some(paths))?)
+    settings_from(&env, load_with(&env, Some(paths), command)?)
 }
 
 /// The first `ConfigGetError` down `err`'s `source()` chain, as a [`ConfigError`].
@@ -1416,20 +1469,20 @@ pub(crate) fn stack_fingerprint(repo_path: &Path, workspace_root: &Path) -> Resu
 ///
 /// [`load`] is the usual entry point; this exists because `Repo::clone` must read the
 /// effective config of the workspace it just initialised, several steps BEFORE that workspace
-/// is wrapped in a [`Repo`].
+/// is wrapped in a [`Repo`]. Resolved for the creation's `command` (Story 9.41).
 ///
 /// # Errors
 ///
 /// - [`ConfigError::Load`] — a config file is unreadable or not valid TOML, a `config-id`
 ///   is malformed, or a `--when`/`[[--scope]]` condition has the wrong type.
-pub(crate) fn load_for_workspace(workspace: &Workspace) -> Result<StackedConfig, ConfigError> {
+pub(crate) fn load_for_workspace(workspace: &Workspace, command: CliCommand) -> Result<StackedConfig, ConfigError> {
     // `repo_path()` is jj-lib's already-resolved `.jj/repo` — it follows the FILE
     // indirection a secondary workspace uses.
     let paths = WorkspacePaths {
         repo_path: workspace.repo_path(),
         workspace_root: workspace.workspace_root(),
     };
-    load_with(&ConfigEnv::from_env(), Some(paths))
+    load_with(&ConfigEnv::from_env(), Some(paths), command)
 }
 
 /// Reads the four effective `jj log` defaults out of a loaded stack.
@@ -2417,6 +2470,7 @@ mod tests {
         split_legacy_bookmark_behavior, stamp, system_config_paths, ui_movement_edit, user_config_paths, user_email,
         ConfigEnv, SecureLayer, WorkspacePaths, BUILTIN_CONFIG_TOML, CLI_DEFAULTS,
     };
+    use crate::cli_command::NO_COMMAND;
     use jj_lib::config::{ConfigFile, ConfigLayer, ConfigSource, StackedConfig};
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
@@ -2523,7 +2577,7 @@ mod tests {
     fn every_jj_cli_default_layer_sits_below_the_builtin_layer() {
         assert_eq!(CLI_DEFAULTS.len(), jj_cli::config::default_config_layers().len());
         assert!(CLI_DEFAULTS.iter().all(|layer| layer.source == ConfigSource::Default));
-        let config = load_with(&bare_env(), None).expect("loads");
+        let config = load_with(&bare_env(), None, NO_COMMAND).expect("loads");
         let layers = config.layers();
         let builtin = layers
             .iter()
@@ -2579,7 +2633,7 @@ mod tests {
     /// Story 9.51: `revsets.short-prefixes` falls back to `revsets.log` only when ABSENT.
     #[test]
     fn short_prefixes_falls_back_to_the_log_revset_only_when_absent() {
-        let mut config = load_with(&bare_env(), None).expect("loads");
+        let mut config = load_with(&bare_env(), None, NO_COMMAND).expect("loads");
         assert_eq!(
             super::revsets_short_prefixes(&config).expect("string"),
             "present(@) | ancestors(immutable_heads().., 2) | trunk()"
@@ -2636,7 +2690,7 @@ mod tests {
 
     /// The builtin stack with `toml` layered on top as the user layer.
     fn stack_with(toml: &str) -> StackedConfig {
-        let mut config = load_with(&bare_env(), None).expect("the bare stack loads");
+        let mut config = load_with(&bare_env(), None, NO_COMMAND).expect("the bare stack loads");
         config.add_layer(ConfigLayer::parse(ConfigSource::User, toml).expect("valid test TOML"));
         config
     }
@@ -2646,7 +2700,7 @@ mod tests {
     #[test]
     fn bookmark_knobs_default_to_the_cli_builtins_and_read_the_user_layer() {
         use crate::bookmarks::BookmarkSortKey as K;
-        let config = load_with(&bare_env(), None).expect("the bare stack loads");
+        let config = load_with(&bare_env(), None, NO_COMMAND).expect("the bare stack loads");
         assert_eq!(super::revsets_bookmark_advance_to(&config).expect("builtin"), "@");
         assert_eq!(
             super::revsets_bookmark_advance_from(&config).expect("builtin"),
@@ -2700,7 +2754,7 @@ mod tests {
 
     #[test]
     fn snapshot_knobs_default_to_the_cli_builtins() {
-        let config = load_with(&bare_env(), None).expect("the bare stack loads");
+        let config = load_with(&bare_env(), None, NO_COMMAND).expect("the bare stack loads");
         assert_eq!(snapshot_max_new_file_size(&config).expect("builtin size"), 1024 * 1024);
         assert_eq!(snapshot_auto_track(&config).expect("builtin fileset"), "all()");
     }
@@ -2734,7 +2788,7 @@ mod tests {
     /// `false` wins, and a wrong type refuses naming the key.
     #[test]
     fn split_legacy_bookmark_behavior_defaults_true_and_reads_the_user_layer() {
-        let config = load_with(&bare_env(), None).expect("the bare stack loads");
+        let config = load_with(&bare_env(), None, NO_COMMAND).expect("the bare stack loads");
         assert!(split_legacy_bookmark_behavior(&config).expect("builtin bool"));
         let off = stack_with("split.legacy-bookmark-behavior = false");
         assert!(!split_legacy_bookmark_behavior(&off).expect("user bool"));
@@ -2747,7 +2801,7 @@ mod tests {
     /// wrong type refuses naming the key.
     #[test]
     fn ui_movement_edit_defaults_false_and_reads_the_user_layer() {
-        let config = load_with(&bare_env(), None).expect("the bare stack loads");
+        let config = load_with(&bare_env(), None, NO_COMMAND).expect("the bare stack loads");
         assert!(!ui_movement_edit(&config).expect("jj-cli's default bool"));
         assert!(ui_movement_edit(&stack_with("ui.movement.edit = true")).expect("user bool"));
         let wrong = stack_with("ui.movement.edit = \"yes\"");
@@ -2759,7 +2813,7 @@ mod tests {
     /// wrong type refuses naming the key.
     #[test]
     fn advance_branches_default_empty_and_read_the_user_layer() {
-        let config = load_with(&bare_env(), None).expect("the bare stack loads");
+        let config = load_with(&bare_env(), None, NO_COMMAND).expect("the bare stack loads");
         assert_eq!(
             super::advance_branches(&config).expect("builtin lists"),
             (vec![], vec![])
@@ -3118,7 +3172,8 @@ mod tests {
             config_dir: Some(cfg.path().to_owned()),
             ..bare_env()
         };
-        let config = load_with(&env, Some(paths(&repo_path, repo_root.path()))).expect("the stack must load");
+        let config =
+            load_with(&env, Some(paths(&repo_path, repo_root.path())), NO_COMMAND).expect("the stack must load");
 
         assert_eq!(
             config.get::<String>("revsets.log").unwrap(),
@@ -3168,7 +3223,7 @@ mod tests {
             system_config_dir: Some(sys.path().to_owned()),
             ..bare_env()
         };
-        let config = load_with(&env, None).expect("the stack must load");
+        let config = load_with(&env, None, NO_COMMAND).expect("the stack must load");
         assert_eq!(config.get::<String>("user.name").unwrap(), "user", "User beats System");
         assert_eq!(
             config.get::<String>("user.email").unwrap(),
@@ -3187,7 +3242,7 @@ mod tests {
             system_config_dir: Some(sys.path().to_owned()),
             ..bare_env()
         };
-        let err = load_with(&env, None).expect_err("invalid TOML must refuse");
+        let err = load_with(&env, None, NO_COMMAND).expect_err("invalid TOML must refuse");
         assert!(err.to_string().contains("config.toml"), "got: {err}");
     }
 
@@ -3289,7 +3344,8 @@ mod tests {
             username: Some("whoami-user".to_owned()),
             ..env_with(&[("JJ_EMAIL", "env@example.com")])
         };
-        let with_repo = load_with(&env, Some(paths(&repo_path, repo_root.path()))).expect("the stack must load");
+        let with_repo =
+            load_with(&env, Some(paths(&repo_path, repo_root.path())), NO_COMMAND).expect("the stack must load");
         assert_eq!(
             with_repo.get::<String>("operation.hostname").unwrap(),
             "from-user-file",
@@ -3307,7 +3363,7 @@ mod tests {
             "EnvOverrides beat the repo layer"
         );
 
-        let without = load_with(&env, None).expect("the start-up stack must load");
+        let without = load_with(&env, None, NO_COMMAND).expect("the start-up stack must load");
         assert_eq!(
             without.get::<String>("user.name").unwrap(),
             "",
@@ -3329,14 +3385,75 @@ mod tests {
             hostname: hostname.map(ToOwned::to_owned),
             ..bare_env()
         };
-        let on_box = load_with(&env(Some("box")), None).expect("loads");
+        let on_box = load_with(&env(Some("box")), None, NO_COMMAND).expect("loads");
         assert_eq!(on_box.get::<String>("user.name").unwrap(), "scoped");
-        let unknown = load_with(&env(None), None).expect("loads");
+        let unknown = load_with(&env(None), None, NO_COMMAND).expect("loads");
         assert_eq!(
             unknown.get::<String>("user.name").unwrap(),
             "",
             "no hostname resolves as \"\""
         );
+    }
+
+    /// Story 9.41: a `--when.commands` scope applies to its command and every subcommand of it
+    /// (jj-lib's whole-word prefix), never to another command or to no command at all.
+    #[test]
+    fn a_commands_scope_matches_its_command_by_whole_word_prefix() {
+        use crate::cli_command::{GIT_FETCH, GIT_INIT, LOG};
+        let cfg = tempfile::tempdir().unwrap();
+        let user_file = cfg.path().join("user.toml");
+        std::fs::write(
+            &user_file,
+            "[[--scope]]\n--when.commands = [\"git f\", \"git fetch\"]\n[--scope.user]\nname = \"scoped\"\n",
+        )
+        .unwrap();
+        let env = ConfigEnv {
+            jj_config: Some(user_file.into_os_string()),
+            ..bare_env()
+        };
+        let name = |command| {
+            load_with(&env, None, command)
+                .expect("loads")
+                .get::<String>("user.name")
+                .unwrap()
+        };
+        assert_eq!(name(GIT_FETCH), "scoped");
+        assert_eq!(name(Some("git fetch now")), "scoped", "a subcommand matches its prefix");
+        assert_eq!(name(GIT_INIT), "", "`git f` is no whole-word prefix of `git init`");
+        assert_eq!(name(LOG), "");
+        assert_eq!(name(NO_COMMAND), "", "a commands scope never matches no command");
+    }
+
+    /// Story 9.41: two resolutions of the same files are the same — the static layers by pointer,
+    /// the per-file layers by text — and a scope that flattens for one command only, or any
+    /// edited layer, makes them differ.
+    #[test]
+    fn same_resolution_tells_equal_stacks_from_scoped_and_edited_ones() {
+        use super::same_resolution;
+        use crate::cli_command::DESCRIBE;
+        let cfg = tempfile::tempdir().unwrap();
+        let user_file = cfg.path().join("user.toml");
+        std::fs::write(
+            &user_file,
+            "[user]\nname = \"base\"\n[[--scope]]\n--when.commands = [\"describe\"]\n[--scope.user]\nname = \"scoped\"\n",
+        )
+        .unwrap();
+        let env = ConfigEnv {
+            jj_config: Some(user_file.into_os_string()),
+            ..bare_env()
+        };
+        let a = load_with(&env, None, NO_COMMAND).expect("loads");
+        let b = load_with(&env, None, NO_COMMAND).expect("loads again");
+        assert!(same_resolution(&a, &b), "two loads of the same files resolve the same");
+        assert!(same_resolution(&a, &a));
+        let scoped = load_with(&env, None, DESCRIBE).expect("loads for describe");
+        assert!(!same_resolution(&a, &scoped), "the scope adds a layer");
+
+        let mut edited = b.clone();
+        edited.add_layer(ConfigLayer::parse(ConfigSource::User, "[user]\nname = \"x\"\n").unwrap());
+        let mut other = b;
+        other.add_layer(ConfigLayer::parse(ConfigSource::User, "[user]\nname = \"y\"\n").unwrap());
+        assert!(!same_resolution(&edited, &other), "same layer count, different text");
     }
 
     #[test]
@@ -3947,7 +4064,7 @@ fetch-bookmarks = \"main\"
     /// the CLI's; unset, each falls back to jj-lib's own default and reads fine.
     #[test]
     fn git_import_options_type_check_every_git_settings_key() {
-        let defaults = git_import_options(&load_with(&bare_env(), None).expect("the bare stack loads"))
+        let defaults = git_import_options(&load_with(&bare_env(), None, NO_COMMAND).expect("the bare stack loads"))
             .expect("jj-lib's defaults read");
         assert!(defaults.abandon_unreachable_commits);
         for (toml, key) in [
@@ -4169,7 +4286,7 @@ fetch-bookmarks = \"main\"
 
     #[test]
     fn git_object_hash_reads_both_hashes_and_refuses_another() {
-        let builtin = load_with(&bare_env(), None).expect("the bare stack loads");
+        let builtin = load_with(&bare_env(), None, NO_COMMAND).expect("the bare stack loads");
         assert!(matches!(super::git_object_hash(&builtin), Ok(crate::ObjectHash::Sha1)));
         let sha256 = stack_with("git.object-hash = \"sha256\"\n");
         assert!(matches!(super::git_object_hash(&sha256), Ok(crate::ObjectHash::Sha256)));
@@ -4179,7 +4296,7 @@ fetch-bookmarks = \"main\"
 
     #[test]
     fn git_push_remotes_reads_a_list_a_string_or_nothing() {
-        let unset = load_with(&bare_env(), None).expect("the bare stack loads");
+        let unset = load_with(&bare_env(), None, NO_COMMAND).expect("the bare stack loads");
         assert_eq!(super::git_push_remotes(&unset).unwrap(), None);
         let list = stack_with("git.push = [\"a\", \"b\"]\n");
         assert_eq!(
@@ -4196,7 +4313,7 @@ fetch-bookmarks = \"main\"
 
     #[test]
     fn git_fetch_remotes_reads_a_list_a_string_or_nothing() {
-        let unset = load_with(&bare_env(), None).expect("the bare stack loads");
+        let unset = load_with(&bare_env(), None, NO_COMMAND).expect("the bare stack loads");
         assert_eq!(super::git_fetch_remotes(&unset).unwrap(), None);
         let list = stack_with("git.fetch = [\"up\", \"origin\"]\n");
         assert_eq!(
