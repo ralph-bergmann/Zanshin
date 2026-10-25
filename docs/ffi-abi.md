@@ -37,7 +37,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 109
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 111
 exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -324,9 +324,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Seventy-two of the 109 exported symbols take their arguments as a **FlatBuffers
+Seventy-four of the 111 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Sixty use the handle-scoped three-parameter shape:
+strings. Sixty-two use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -537,7 +537,7 @@ request table is therefore `kind: RequestKind`, and every reader refuses a buffe
 whose tag is not its own — row 3 of the ladder above, before any other field is
 read and before the handle is borrowed.
 
-The tag is per-**wrapper**, not per-table. For 47 tables the variant name plus
+The tag is per-**wrapper**, not per-table. For 49 tables the variant name plus
 `Request` is the table name; `ChangeIdList` carries **three** kinds, `NewChange`,
 `Abandon` and `Parallelize` (Story 9.16), because a per-table tag would have left the sharpest collision
 unrefused — a buffer meant as `parents` abandoning those commits instead. Only
@@ -588,7 +588,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **109** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **111** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -685,6 +685,8 @@ or no `# Errors` block.
 | `zanshin_file_track` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileTrackRequest` | `TrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_file_untrack` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileUntrackRequest` | `UntrackResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.config_error`, `jj.no_working_copy`, `jj.concurrent_working_copy`, `jj.path_not_ignored`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.22 |
 | `zanshin_file_chmod` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileChmodRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.13 |
+| `zanshin_file_edit` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileEditRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.44 |
+| `zanshin_file_delete` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FileDeleteRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.44 |
 | `zanshin_snapshot` | `(uint64_t handle)` | — | — (no-payload success; the report is `Envelope.precondition`) | `ffi.invalid_handle`, `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error` | 9.26 |
 | `zanshin_git_fetch` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitFetchRequest` (+ `cancel_token`, see § Cancel) | `GitFetchResult` (see § `GitFetchResult` payload) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.not_a_git_repo`, `jj.config_error`, `jj.remote_not_found`, `jj.network_error`, `jj.cancelled`, `jj.stale_working_copy`, `jj.jj_lib_error` | 6.5 (domain side + `Progress`: 6.4a; `cancel_token`: 9.52; request + `GitFetchResult`: 9.30) |
 | `zanshin_git_remote_changes` | `(uint64_t handle, const char *remote_name, uint64_t cancel_token)` | — | `RemoteChanges` (the refs that moved, are new or were deleted upstream; empty = nothing new) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.remote_not_found`, `jj.not_a_git_repo`, `jj.config_error`, `jj.invalid_input`, `jj.network_error`, `jj.cancelled`, `jj.jj_lib_error` | 9.24, 9.30 |
@@ -1771,6 +1773,36 @@ empty `paths`, `rename`'s empty `new_name`, `remove`'s empty `names` (all `jj.in
 - `WorkspaceRenameRequest`: `new_name`; returns `MutationResult` (`Renamed workspace '<old>' to
   '<new>'`, no finish: no export, no identity warning). The handle then runs as the renamed
   workspace.
+
+---
+
+## zanshin_file_edit, zanshin_file_delete (Story 9.44)
+
+The two wrappers port `jj file edit` and `jj file delete` at v0.46.0 (both new in jj 0.46). Each
+rewrites one revision's tree without checking it out; both return `MutationResult`, and a tree
+that comes out unchanged writes no operation (`new_op_id` is the pre-call head) — after the
+rewritability check, so an immutable revision refuses `jj.immutable` even then. Descendants are
+rebased, or reparented with their content kept when `restore_descendants` is set.
+
+- `FileEditRequest`: `revision` absent is `-r`'s default `@`; `path` one path, parsed as the CLI
+  parses it from the workspace root (`""` the root); `content` the new bytes — the GUI's buffer in place of the CLI's
+  editor (ADR-0003). An ABSENT `path` or `content` is `jj.invalid_input` before the pre-verb
+  snapshot; an EMPTY `content` is an empty file. The verb runs the CLI's mechanism: a temporary
+  sparse working copy holding only `path`, checked out from the revision (a conflict materialized
+  in `ui.conflict-marker-style`, the text `zanshin_file_show` returns), `content` written,
+  snapshotted. So an absent path is created non-executable, a file keeps its executable bit, and
+  conflict markers parse back: an edited side stays conflicted, a marker-free buffer resolves the
+  file. A directory, a symlink or submodule, and a conflict with a non-file side refuse with the
+  CLI's text. The operation is `edit file <path> in commit <hex>`.
+  **Deliberate divergence:** a path below an existing non-directory refuses with Zanshin's own
+  text, "Failed to edit file: '<ancestor>' is not a directory" — there the CLI's editor either
+  cannot save (no change) or, creating the directory, makes jj-lib replace that file with a
+  directory. Missing parent directories are created, as a directory-creating editor would; an
+  existing entry is never replaced.
+- `FileDeleteRequest`: `revision` and `restore_descendants` as above, `paths` as
+  `FileTrackRequest`'s (EMPTY or ABSENT is `jj.invalid_input` before the snapshot, clap's
+  `required`). Every matching entry is removed, conflicts included; an unmatched path warns
+  `jj.paths_unmatched`. The operation is `delete paths in commit <hex>`.
 
 ---
 

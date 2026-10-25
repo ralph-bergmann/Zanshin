@@ -1228,6 +1228,26 @@ fn file_chmod_and_workspace_ops_surface_resolves() {
     ) { (r.mutation, r.git_worktrees_removed, r.directories_removed) };
 }
 
+/// Story 9.44: `file edit` / `file delete` reuse `MutationResult`.
+#[test]
+fn file_edit_and_file_delete_surface_resolves() {
+    _ = zanshin_jj::Repo::file_edit
+        as fn(
+            &mut zanshin_jj::Repo,
+            Option<&zanshin_jj::ChangeId>,
+            bool,
+            &str,
+            &[u8],
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::file_delete
+        as fn(
+            &mut zanshin_jj::Repo,
+            Option<&zanshin_jj::ChangeId>,
+            bool,
+            &[String],
+        ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
+}
+
 // squash / split (Story 9.15)
 type _SquashOptions = zanshin_jj::SquashOptions;
 type _SquashPlan = zanshin_jj::SquashPlan;

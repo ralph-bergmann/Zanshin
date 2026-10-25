@@ -4365,6 +4365,100 @@ impl Repo {
         })
     }
 
+    /// Replaces one file's content in one revision without touching the working copy (Story
+    /// 9.44) — the CLI's `jj file edit [-r] [--restore-descendants] <path>`
+    /// (`cli/src/commands/file/edit.rs` @ v0.46.0), with `content` in place of the editor's saved
+    /// buffer (ADR-0003).
+    ///
+    /// `revision` is the CLI's `-r`, a change id; `None` is its default `@`. `path` is parsed as
+    /// the CLI's `parse_file_path` parses it with the working directory at the WORKSPACE ROOT
+    /// (`dir/`, `a//b` and an absolute path inside the workspace normalise; a path escaping the
+    /// workspace is refused; `""` is the root). The verb runs the CLI's own
+    /// mechanism: a temporary sparse working copy holding only `path`, checked out from the
+    /// revision's tree (a conflict materialized in the effective `ui.conflict-marker-style` — the
+    /// text [`Repo::file_show`] returns), `content` written there, then snapshotted. So an absent
+    /// path becomes a new non-executable file, an existing file keeps its executable bit, a conflict buffer with its markers edited stays
+    /// conflicted and one without markers resolves it, and an empty `content` is an empty file. A
+    /// tree that comes out unchanged writes NO operation ("Nothing changed."; `new_op_id` is the
+    /// pre-call head). Otherwise the revision is rewritten, its descendants rebased — or, with
+    /// `restore_descendants`, reparented with their content kept — as `edit file <path> in commit
+    /// <hex>`; the working copy changes only when `@` was rewritten, by the normal checkout.
+    ///
+    /// **Divergence (deliberate):** a path below an existing entry that is not a directory is
+    /// refused ("Failed to edit file: '<ancestor>' is not a directory") — Zanshin's text, not the
+    /// CLI's. There the CLI's editor either cannot save (no change) or, creating the directory,
+    /// makes jj-lib replace that file with a directory. Missing parent directories are created,
+    /// as a directory-creating editor would, but an existing entry is never replaced.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `path` is malformed or escapes the workspace; it
+    ///   names a directory ("Path is a directory: <path>"), a symlink or submodule ("Path
+    ///   '<path>' is not a regular file"), or a conflict with a side that is neither a file nor
+    ///   absent ("Path '<path>' has a non-file conflict and cannot be edited") — the CLI's texts;
+    ///   or it lies below an existing non-directory (Zanshin's divergence above).
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, absent, only-hidden or
+    ///   divergent; [`crate::MutateError::RevsetResolutionError`] — `None` in a workspace with no
+    ///   working-copy commit.
+    /// - [`crate::MutateError::Immutable`] — the revision is immutable (the root included), even
+    ///   when nothing would change.
+    /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb start-up or snapshot failed, a
+    ///   `ui.conflict-marker-style` that is not a style name included (its `Config`, the key named).
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib or temporary-directory failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn file_edit(
+        &mut self,
+        revision: Option<&crate::ChangeId>,
+        restore_descendants: bool,
+        path: &str,
+        content: &[u8],
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        self.with_verb(cli_command::FILE_EDIT, |repo, ctx| {
+            crate::wc_ops::file_edit(repo.workspace_mut(), ctx, revision, restore_descendants, path, content)
+        })
+    }
+
+    /// Removes the entries matching `paths` from one revision (Story 9.44) — the CLI's `jj file
+    /// delete [-r] [--restore-descendants] <paths>` (`cli/src/commands/file/delete.rs` @ v0.46.0).
+    ///
+    /// `revision` is the CLI's `-r`, a change id; `None` is its default `@`. `paths` are parsed as
+    /// [`Repo::file_chmod`]'s (at least one, PREFIXES, no fileset DSL); a path that matches nothing
+    /// in the revision warns `jj.paths_unmatched`. Every matching entry is removed, conflicts
+    /// included. A tree that comes out unchanged writes NO operation ("Nothing changed.";
+    /// `new_op_id` is the pre-call head). Otherwise the revision is rewritten, its descendants
+    /// rebased — or, with `restore_descendants`, reparented with their content kept — as `delete
+    /// paths in commit <hex>`.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::InvalidInput`] — `paths` is empty (before the pre-verb snapshot,
+    ///   clap's `required`), or an entry is empty or escapes the workspace.
+    /// - [`crate::MutateError::ChangeNotFound`] — `revision` is malformed, absent, only-hidden or
+    ///   divergent; [`crate::MutateError::RevsetResolutionError`] — `None` in a workspace with no
+    ///   working-copy commit.
+    /// - [`crate::MutateError::Immutable`] — the revision is immutable (the root included), even
+    ///   when nothing would change.
+    /// - [`crate::MutateError::Config`] — the `immutable_heads()` alias does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed.
+    /// - [`crate::MutateError::Backend`] — an underlying jj-lib failure.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn file_delete(
+        &mut self,
+        revision: Option<&crate::ChangeId>,
+        restore_descendants: bool,
+        paths: &[String],
+    ) -> Result<crate::MutationResult, crate::MutateError> {
+        let args = if paths.is_empty() {
+            Err(crate::MutateError::invalid("file delete requires at least one path"))
+        } else {
+            Ok(())
+        };
+        self.with_checked_verb(cli_command::FILE_DELETE, args, |repo, ctx| {
+            crate::wc_ops::file_delete(repo.workspace_mut(), ctx, revision, restore_descendants, paths)
+        })
+    }
+
     /// Opens an existing jj workspace rooted at `path`.
     ///
     /// # Errors
@@ -4997,6 +5091,8 @@ mod tests {
         records!(repo, FILE_TRACK, file_track(&names, false));
         records!(repo, FILE_UNTRACK, file_untrack(&names));
         records!(repo, FILE_CHMOD, file_chmod(true, Some(&none()), &names));
+        records!(repo, FILE_EDIT, file_edit(Some(&none()), false, "nope", b""));
+        records!(repo, FILE_DELETE, file_delete(Some(&none()), false, &names));
         records!(repo, NEXT, movement_targets(&next));
         records!(repo, PREV, movement_targets(&prev));
         records!(repo, NEXT, move_working_copy(&next));

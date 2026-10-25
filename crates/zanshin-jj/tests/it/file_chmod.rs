@@ -17,14 +17,15 @@ use zanshin_jj::{Backend, ChangeId, MutateError, Repo, WarningKind};
 
 /// A repo whose `@-` (`b`) holds `dir/a.txt`, `dir/b.txt`, `top.txt` and the symlink `link`, with
 /// an empty `@` on it.
-struct Fx {
+/// Shared with `file_edit` / `file_delete` (Story 9.44).
+pub(crate) struct Fx {
     _tmp: TempDir,
-    root: PathBuf,
-    repo: Repo,
-    b: ChangeId,
+    pub(crate) root: PathBuf,
+    pub(crate) repo: Repo,
+    pub(crate) b: ChangeId,
 }
 
-fn fx() -> Fx {
+pub(crate) fn fx() -> Fx {
     test_helpers::pin_test_env();
     let tmp = TempDir::new().expect("tempdir");
     let root = Repo::init(&zanshin_jj::InitOptions {
@@ -54,7 +55,7 @@ fn fx() -> Fx {
     }
 }
 
-fn head(root: &Path) -> std::sync::Arc<jj_lib::repo::ReadonlyRepo> {
+pub(crate) fn head(root: &Path) -> std::sync::Arc<jj_lib::repo::ReadonlyRepo> {
     let workspace = jj_lib::workspace::Workspace::load(
         &test_helpers::test_settings(),
         root,
@@ -65,14 +66,14 @@ fn head(root: &Path) -> std::sync::Arc<jj_lib::repo::ReadonlyRepo> {
     pollster::block_on(workspace.repo_loader().load_at_head()).expect("head")
 }
 
-fn at(root: &Path) -> jj_lib::commit::Commit {
+pub(crate) fn at(root: &Path) -> jj_lib::commit::Commit {
     let repo = head(root);
     let id = repo.view().get_wc_commit_id(WorkspaceName::DEFAULT).expect("@").clone();
     repo.store().get_commit(&id).expect("@ commit")
 }
 
 /// The executable bit of `path` in `commit`'s tree.
-fn executable(commit: &jj_lib::commit::Commit, path: &str) -> bool {
+pub(crate) fn executable(commit: &jj_lib::commit::Commit, path: &str) -> bool {
     let value = pollster::block_on(
         commit
             .tree()
@@ -87,7 +88,7 @@ fn executable(commit: &jj_lib::commit::Commit, path: &str) -> bool {
         .expect("present")
 }
 
-fn op_description(root: &Path) -> String {
+pub(crate) fn op_description(root: &Path) -> String {
     head(root).operation().metadata().description.clone()
 }
 
@@ -208,7 +209,7 @@ fn no_path_is_refused_before_the_snapshot() {
 
 /// A merge of `parents` (hex commit ids) with jj-lib's merged tree, added as a head; returns its
 /// change id.
-fn merge_of(root: &Path, parents: &[String]) -> ChangeId {
+pub(crate) fn merge_of(root: &Path, parents: &[String]) -> ChangeId {
     let repo = head(root);
     let commits: Vec<jj_lib::commit::Commit> = parents
         .iter()
@@ -228,7 +229,7 @@ fn merge_of(root: &Path, parents: &[String]) -> ChangeId {
 }
 
 /// The head commit described `merge` (the merge after its rewrite).
-fn merge_commit(root: &Path) -> jj_lib::commit::Commit {
+pub(crate) fn merge_commit(root: &Path) -> jj_lib::commit::Commit {
     let repo = head(root);
     repo.view()
         .heads()

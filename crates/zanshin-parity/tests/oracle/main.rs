@@ -323,6 +323,28 @@ parity!(
     file_chmod_immutable_root,
     file_chmod_symlink_refused,
     file_chmod_no_paths_dirty_wc,
+    file_edit_at,
+    file_edit_revision,
+    file_edit_restore_descendants,
+    file_edit_new_file,
+    file_edit_nested_new_file,
+    file_edit_unchanged,
+    file_edit_directory_refused,
+    file_edit_immutable_root,
+    file_edit_conflict_unchanged,
+    file_edit_conflict_resolved,
+    file_edit_symlink_refused,
+    file_edit_executable_kept,
+    file_edit_empty_content,
+    file_delete_at,
+    file_delete_revision,
+    file_delete_restore_descendants,
+    file_delete_unmatched,
+    file_delete_immutable_root,
+    file_delete_directory_prefix,
+    file_delete_conflict,
+    file_delete_several_one_unmatched,
+    file_delete_no_paths_dirty_wc,
     workspace_forget_other,
     workspace_forget_current,
     workspace_forget_two,
@@ -503,7 +525,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 433);
+    assert_eq!(SCENARIO_IDS.len(), 455);
 }
 
 #[test]

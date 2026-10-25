@@ -47,6 +47,8 @@ mod diffedit;
 mod drop_actions;
 mod duplicate;
 mod file_chmod;
+mod file_delete;
+mod file_edit;
 mod file_reads;
 mod file_track_home_git_ignore;
 mod file_track_untrack;

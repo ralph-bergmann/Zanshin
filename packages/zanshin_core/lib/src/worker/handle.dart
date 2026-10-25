@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:typed_data';
+
 import '../ffi/bookmarks.dart' show Bookmark, BookmarkSortKey;
 import '../ffi/change.dart' show Change;
 import '../ffi/commit_contents.dart' show CommitContent;
@@ -2582,6 +2584,67 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.fileChmod(_handleId, paths, executable: executable, revision: revision);
+  }
+
+  /// Replace the content of [path] in one revision with [content] without
+  /// touching the working copy (Story 9.44) — the CLI's `jj file edit`, with
+  /// [content] in place of the editor's saved buffer.
+  ///
+  /// A `null` [revision] is the CLI's `-r` default `@`; otherwise a jj
+  /// reverse-hex change id. [path] is one workspace-root-relative repo path. An
+  /// absent path becomes a new non-executable file, a file keeps its executable
+  /// bit, and a conflict's buffer is the text `fileShow` returns (an edited side
+  /// stays conflicted, a marker-free buffer resolves it). An unchanged buffer
+  /// writes no operation (`newOpId` is the pre-call head); otherwise the
+  /// revision is rewritten and its descendants rebased — or, with
+  /// [restoreDescendants], reparented with their content kept.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — a directory, symlink, submodule, non-file conflict or
+  /// a path below a file — `jj.change_not_found`, `jj.revset_resolution_error`,
+  /// `jj.immutable`, `jj.config_error`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
+  Future<MutationResult> fileEdit(
+    String path,
+    Uint8List content, {
+    String? revision,
+    bool restoreDescendants = false,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.fileEdit(
+      _handleId,
+      path,
+      content,
+      revision: revision,
+      restoreDescendants: restoreDescendants,
+    );
+  }
+
+  /// Remove the entries matching [paths] from one revision (Story 9.44) — the
+  /// CLI's `jj file delete`.
+  ///
+  /// A `null` [revision] is the CLI's `-r` default `@`; otherwise a jj
+  /// reverse-hex change id. [paths] are repo-relative PREFIXES (at least one); a
+  /// path matching nothing warns `jj.paths_unmatched`. Every matching entry is
+  /// removed, conflicts included. An unchanged tree writes no operation;
+  /// otherwise the revision is rewritten and its descendants rebased — or, with
+  /// [restoreDescendants], reparented with their content kept.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed];
+  /// throws [ArgumentError] on an interior NUL (U+0000); throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.invalid_input` — no path — `jj.change_not_found`,
+  /// `jj.revset_resolution_error`, `jj.immutable`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<MutationResult> fileDelete(List<String> paths, {String? revision, bool restoreDescendants = false}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.fileDelete(_handleId, paths, revision: revision, restoreDescendants: restoreDescendants);
   }
 
   /// Snapshot the working copy right now — and, in a colocated workspace, import

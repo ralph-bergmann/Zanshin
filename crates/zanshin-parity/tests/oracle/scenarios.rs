@@ -3009,6 +3009,9 @@ pub fn scenarios() -> Vec<Scenario> {
     .chain(bookmark_rename_scenarios())
     .chain(bookmark_set_scenarios())
     .chain(file_chmod_scenarios())
+    .chain(file_edit_scenarios())
+    .chain(file_edit_content_scenarios())
+    .chain(file_delete_scenarios())
     .chain(workspace_ops_scenarios())
     .chain(simplify_parents_scenarios())
     .chain(resolve_scenarios())
@@ -4953,6 +4956,285 @@ fn file_chmod_scenarios() -> Vec<Scenario> {
                 "file_chmod_no_paths_dirty_wc",
                 |repo, _, _| chmod_outcome(repo, true, None, &[]),
                 |_| args(&["file", "chmod", "x"]),
+            )
+        },
+    ]
+}
+
+// ── Story 9.44: file edit / file delete ───────────────────────────────────────────
+
+/// `ui.editor` = a script that saves `new` + newline (creating missing parent directories) —
+/// the CLI's editor run by a user who replaces the buffer, the bytes Zanshin's `file_edit`
+/// takes as `content`.
+const WRITE_NEW_EDITOR_STEP: Step = Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "ui.editor",
+    r#"["sh", "-c", "mkdir -p \"$(dirname \"$1\")\" && echo new > \"$1\"", "sh", "$path"]"#,
+]);
+
+/// [`WRITE_NEW_EDITOR_STEP`].
+const WRITE_NEW_EDITOR: &[Step] = &[WRITE_NEW_EDITOR_STEP];
+
+/// `x/new.txt` in `@` (so `x` is a directory), then [`WRITE_NEW_EDITOR_STEP`] stays set.
+const DIRECTORY_X: &[Step] = &[WRITE_NEW_EDITOR_STEP, Step::Jj(&["file", "edit", "x/new.txt"])];
+
+/// `x/new.txt` and `x/y/new.txt` in `@`: a directory prefix with several entries.
+const DIRECTORY_X_TWO_FILES: &[Step] = &[
+    WRITE_NEW_EDITOR_STEP,
+    Step::Jj(&["file", "edit", "x/new.txt"]),
+    Step::Jj(&["file", "edit", "x/y/new.txt"]),
+];
+
+/// `ui.editor` = a script that truncates the file — the CLI's editor run by a user who empties
+/// the buffer.
+const TRUNCATE_EDITOR_STEP: Step = Step::Jj(&[
+    "config",
+    "set",
+    "--repo",
+    "ui.editor",
+    r#"["sh", "-c", ": > \"$1\"", "sh", "$path"]"#,
+]);
+
+/// `@` = the conflicted merge of [`CONFLICTED_AT`] (without its merge tool), then `step`'s editor.
+macro_rules! conflicted_at_with {
+    ($step:expr) => {
+        &[
+            Step::Jj(&["new", "@--", "-m", "D"]),
+            Step::Write("c.txt", "c from D\n"),
+            Step::Jj(&["new", "-m", "M", "description(substring:\"C\")", "@"]),
+            $step,
+        ]
+    };
+}
+
+/// The bytes [`WRITE_NEW_EDITOR_STEP`] saves.
+const NEW: &[u8] = b"new\n";
+
+/// `Repo::file_edit` of `c.txt` in `@` with the buffer `file_show` returns — the CLI's editor
+/// saving the materialized conflict unchanged.
+fn edit_unchanged_conflict_outcome(repo: &mut zanshin_jj::Repo) -> Outcome {
+    let shown = repo.file_show(None, &args(&["c.txt"])).expect("file show");
+    let text = shown.files.into_iter().next().expect("c.txt is shown").content;
+    edit_outcome(repo, None, false, "c.txt", &text)
+}
+
+/// `Repo::file_edit`.
+fn edit_outcome(
+    repo: &mut zanshin_jj::Repo,
+    revision: Option<&zanshin_jj::ChangeId>,
+    restore_descendants: bool,
+    path: &str,
+    content: &[u8],
+) -> Outcome {
+    let result = repo.file_edit(revision, restore_descendants, path, content);
+    zanshin_outcome(repo, &result)
+}
+
+/// `Repo::file_delete`.
+fn delete_outcome(
+    repo: &mut zanshin_jj::Repo,
+    revision: Option<&zanshin_jj::ChangeId>,
+    restore_descendants: bool,
+    paths: &[&str],
+) -> Outcome {
+    let result = repo.file_delete(revision, restore_descendants, &args(paths));
+    zanshin_outcome(repo, &result)
+}
+
+/// `file edit` on BASE (`@` = C): `@`, `-r A` with and without `--restore-descendants`, a new
+/// file and a new file in a new directory, an unchanged buffer (editor `true`), a directory and
+/// the immutable root.
+fn file_edit_scenarios() -> Vec<Scenario> {
+    vec![
+        Scenario {
+            setup: WRITE_NEW_EDITOR,
+            ..simple(
+                "file_edit_at",
+                |repo, _, _| edit_outcome(repo, None, false, "c.txt", NEW),
+                |_| args(&["file", "edit", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: WRITE_NEW_EDITOR,
+            ..simple(
+                "file_edit_revision",
+                |repo, _, s| edit_outcome(repo, Some(&s.change("A")), false, "a.txt", NEW),
+                |s| {
+                    let mut argv = args(&["file", "edit", "a.txt", "-r"]);
+                    argv.push(s.change_arg("A"));
+                    argv
+                },
+            )
+        },
+        Scenario {
+            setup: WRITE_NEW_EDITOR,
+            ..simple(
+                "file_edit_restore_descendants",
+                |repo, _, s| edit_outcome(repo, Some(&s.change("A")), true, "a.txt", NEW),
+                |s| {
+                    let mut argv = args(&["file", "edit", "a.txt", "--restore-descendants", "-r"]);
+                    argv.push(s.change_arg("A"));
+                    argv
+                },
+            )
+        },
+        Scenario {
+            setup: WRITE_NEW_EDITOR,
+            ..simple(
+                "file_edit_new_file",
+                |repo, _, _| edit_outcome(repo, None, false, "new.txt", NEW),
+                |_| args(&["file", "edit", "new.txt"]),
+            )
+        },
+        Scenario {
+            setup: WRITE_NEW_EDITOR,
+            ..simple(
+                "file_edit_nested_new_file",
+                |repo, _, _| edit_outcome(repo, None, false, "x/y/new.txt", NEW),
+                |_| args(&["file", "edit", "x/y/new.txt"]),
+            )
+        },
+        Scenario {
+            setup: EDITOR,
+            ..simple(
+                "file_edit_unchanged",
+                |repo, _, _| edit_outcome(repo, None, false, "c.txt", b"c\n"),
+                |_| args(&["file", "edit", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: DIRECTORY_X,
+            ..simple(
+                "file_edit_directory_refused",
+                |repo, _, _| edit_outcome(repo, None, false, "x", NEW),
+                |_| args(&["file", "edit", "x"]),
+            )
+        },
+        Scenario {
+            setup: WRITE_NEW_EDITOR,
+            ..simple(
+                "file_edit_immutable_root",
+                |repo, _, s| edit_outcome(repo, Some(&s.change("root")), false, "c.txt", NEW),
+                |_| args(&["file", "edit", "c.txt", "-r", "root()"]),
+            )
+        },
+    ]
+}
+
+/// `file edit` of what the buffer holds: a conflict left unchanged (editor `true`) and resolved,
+/// a symlink, an executable file and an emptied buffer.
+fn file_edit_content_scenarios() -> Vec<Scenario> {
+    vec![
+        Scenario {
+            setup: conflicted_at_with!(EDITOR_STEP),
+            ..simple(
+                "file_edit_conflict_unchanged",
+                |repo, _, _| edit_unchanged_conflict_outcome(repo),
+                |_| args(&["file", "edit", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: conflicted_at_with!(WRITE_NEW_EDITOR_STEP),
+            ..simple(
+                "file_edit_conflict_resolved",
+                |repo, _, _| edit_outcome(repo, None, false, "c.txt", NEW),
+                |_| args(&["file", "edit", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: &[Step::Symlink("c.txt", "link"), Step::Jj(&["status"])],
+            ..simple(
+                "file_edit_symlink_refused",
+                |repo, _, _| edit_outcome(repo, None, false, "link", NEW),
+                |_| args(&["file", "edit", "link"]),
+            )
+        },
+        Scenario {
+            setup: &[Step::Jj(&["file", "chmod", "x", "c.txt"]), WRITE_NEW_EDITOR_STEP],
+            extra: Some(executable_files_read_back),
+            ..simple(
+                "file_edit_executable_kept",
+                |repo, _, _| edit_outcome(repo, None, false, "c.txt", NEW),
+                |_| args(&["file", "edit", "c.txt"]),
+            )
+        },
+        Scenario {
+            setup: &[TRUNCATE_EDITOR_STEP],
+            ..simple(
+                "file_edit_empty_content",
+                |repo, _, _| edit_outcome(repo, None, false, "c.txt", b""),
+                |_| args(&["file", "edit", "c.txt"]),
+            )
+        },
+    ]
+}
+
+/// `file delete` on BASE (`@` = C): `@`, `-r A` with and without `--restore-descendants`, an
+/// unmatched path (nothing changes) and the immutable root.
+fn file_delete_scenarios() -> Vec<Scenario> {
+    vec![
+        simple(
+            "file_delete_at",
+            |repo, _, _| delete_outcome(repo, None, false, &["c.txt"]),
+            |_| args(&["file", "delete", "c.txt"]),
+        ),
+        simple(
+            "file_delete_revision",
+            |repo, _, s| delete_outcome(repo, Some(&s.change("A")), false, &["a.txt"]),
+            |s| {
+                let mut argv = args(&["file", "delete", "a.txt", "-r"]);
+                argv.push(s.change_arg("A"));
+                argv
+            },
+        ),
+        simple(
+            "file_delete_restore_descendants",
+            |repo, _, s| delete_outcome(repo, Some(&s.change("A")), true, &["a.txt"]),
+            |s| {
+                let mut argv = args(&["file", "delete", "a.txt", "--restore-descendants", "-r"]);
+                argv.push(s.change_arg("A"));
+                argv
+            },
+        ),
+        simple(
+            "file_delete_unmatched",
+            |repo, _, _| delete_outcome(repo, None, false, &["nope"]),
+            |_| args(&["file", "delete", "nope"]),
+        ),
+        simple(
+            "file_delete_immutable_root",
+            |repo, _, s| delete_outcome(repo, Some(&s.change("root")), false, &["c.txt"]),
+            |_| args(&["file", "delete", "c.txt", "-r", "root()"]),
+        ),
+        Scenario {
+            setup: DIRECTORY_X_TWO_FILES,
+            ..simple(
+                "file_delete_directory_prefix",
+                |repo, _, _| delete_outcome(repo, None, false, &["x"]),
+                |_| args(&["file", "delete", "x"]),
+            )
+        },
+        Scenario {
+            setup: CONFLICTED_AT,
+            ..simple(
+                "file_delete_conflict",
+                |repo, _, _| delete_outcome(repo, None, false, &["c.txt"]),
+                |_| args(&["file", "delete", "c.txt"]),
+            )
+        },
+        simple(
+            "file_delete_several_one_unmatched",
+            |repo, _, _| delete_outcome(repo, None, false, &["a.txt", "nope", "c.txt"]),
+            |_| args(&["file", "delete", "a.txt", "nope", "c.txt"]),
+        ),
+        Scenario {
+            files: &[("c.txt", "c, edited before a clap refusal\n")],
+            ..simple(
+                "file_delete_no_paths_dirty_wc",
+                |repo, _, _| delete_outcome(repo, None, false, &[]),
+                |_| args(&["file", "delete"]),
             )
         },
     ]

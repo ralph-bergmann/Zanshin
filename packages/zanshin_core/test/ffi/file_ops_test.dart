@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 // Wire-shape, decoder and guard tests for Story 9.22's two working-copy
-// tracking adapters (and Story 9.13's fileChmod adapter), using synthetic FlatBuffers buffers built via the
+// tracking adapters (and Story 9.13's fileChmod and Story 9.44's fileEdit / fileDelete adapters), using synthetic FlatBuffers buffers built via the
 // generated `*ObjectBuilder`s. No real cdylib required — these pin the
 // request encoding, BOTH `UntrackedReason` union arms through the decoder, and
 // the adapters' NUL backstop, mirroring crates/zanshin-ffi/src/file_ops.rs.
@@ -233,6 +233,61 @@ void main() {
         () => zanshinFileChmod(0, ['a'], executable: true, revision: 'q$nul'),
         throwsA(isA<ArgumentError>().having((e) => e.name, 'name', 'revision')),
       );
+    });
+  });
+
+  group('Story 9.44 file edit / file delete', () {
+    test('FileEditRequest: absent revision is `@`, an empty content is present, every field crosses', () {
+      final req = fbs.FileEditRequest(
+        fbs.FileEditRequestObjectBuilder(
+          kind: fbs.RequestKind.FileEdit,
+          path: 'a.txt',
+          content: Uint8List(0),
+        ).toBytes(),
+      );
+      expect(req.kind, fbs.RequestKind.FileEdit);
+      expect(req.revision, isNull, reason: 'null-for-absence: absent means `@`');
+      expect(req.restoreDescendants, isFalse);
+      expect(req.path, 'a.txt');
+      expect(req.content, isNotNull, reason: 'an empty buffer is a value, not an absence');
+      expect(req.content, isEmpty);
+      final named = fbs.FileEditRequest(
+        fbs.FileEditRequestObjectBuilder(
+          kind: fbs.RequestKind.FileEdit,
+          revision: 'qpvuntsm',
+          restoreDescendants: true,
+          path: 'b',
+          content: [0, 255, 10],
+        ).toBytes(),
+      );
+      expect((named.revision, named.restoreDescendants), ('qpvuntsm', true));
+      expect(named.content, [0, 255, 10]);
+    });
+
+    test('FileDeleteRequest: absent revision is `@`, every field crosses', () {
+      final req = fbs.FileDeleteRequest(
+        fbs.FileDeleteRequestObjectBuilder(kind: fbs.RequestKind.FileDelete, paths: ['b', 'a']).toBytes(),
+      );
+      expect(req.kind, fbs.RequestKind.FileDelete);
+      expect((req.revision, req.restoreDescendants), (null, false));
+      expect(req.paths, ['b', 'a']);
+      final named = fbs.FileDeleteRequest(
+        fbs.FileDeleteRequestObjectBuilder(
+          kind: fbs.RequestKind.FileDelete,
+          revision: 'qpvuntsm',
+          restoreDescendants: true,
+        ).toBytes(),
+      );
+      expect((named.revision, named.restoreDescendants, named.paths), ('qpvuntsm', true, null));
+    });
+
+    test('zanshinFileEdit and zanshinFileDelete reject an interior NUL', () {
+      final nul = String.fromCharCode(0);
+      Matcher argument(String name) => throwsA(isA<ArgumentError>().having((e) => e.name, 'name', name));
+      expect(() => zanshinFileEdit(0, 'a${nul}b', Uint8List(0)), argument('path'));
+      expect(() => zanshinFileEdit(0, 'a', Uint8List(0), revision: 'q$nul'), argument('revision'));
+      expect(() => zanshinFileDelete(0, ['a${nul}b']), argument('paths'));
+      expect(() => zanshinFileDelete(0, ['a'], revision: 'q$nul'), argument('revision'));
     });
   });
 }

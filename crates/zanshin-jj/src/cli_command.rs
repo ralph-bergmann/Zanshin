@@ -91,6 +91,10 @@ cli_commands! {
     FILE_ANNOTATE = "file annotate";
     /// `Repo::file_chmod`.
     FILE_CHMOD = "file chmod";
+    /// `Repo::file_delete`.
+    FILE_DELETE = "file delete";
+    /// `Repo::file_edit`.
+    FILE_EDIT = "file edit";
     /// `Repo::file_list`.
     FILE_LIST = "file list";
     /// `Repo::file_search`.

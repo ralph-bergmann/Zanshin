@@ -22,7 +22,9 @@ use flatbuffers::root as fb_root;
 use tempfile::TempDir;
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
-use zanshin_ffi::file_ops::{zanshin_file_chmod, zanshin_file_track, zanshin_file_untrack};
+use zanshin_ffi::file_ops::{
+    zanshin_file_chmod, zanshin_file_delete, zanshin_file_edit, zanshin_file_track, zanshin_file_untrack,
+};
 use zanshin_ffi::op_log::zanshin_op_log;
 use zanshin_ffi::repo::{zanshin_repo_close, zanshin_repo_open};
 use zanshin_ffi::{
@@ -536,6 +538,278 @@ fn chmod_refusals_cross_the_wire() {
     // SAFETY: a null request pointer is the case under test.
     let null = unsafe { read_and_free(zanshin_file_chmod(handle, std::ptr::null(), 0)) };
     assert_eq!(code(&null).as_deref(), Some(FFI_NULL_POINTER));
+    assert_eq!(head_op(handle).0, before, "no refusal writes an operation");
+    close_handle(handle);
+}
+
+// ── Story 9.44: file edit, file delete ────────────────────────────────────────
+
+/// The error code of a refused envelope.
+fn error_code(bytes: &[u8]) -> Option<String> {
+    parse_envelope(bytes)
+        .error()
+        .and_then(|e| e.code())
+        .map(ToOwned::to_owned)
+}
+
+/// A `FileEditRequest`; `None` leaves `revision` / `path` / `content` genuinely ABSENT.
+fn edit_request_bytes(
+    kind: fbs::RequestKind,
+    revision: Option<&str>,
+    restore_descendants: bool,
+    path: Option<&str>,
+    content: Option<&[u8]>,
+) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
+    let revision = revision.map(|r| b.create_string(r));
+    let path = path.map(|p| b.create_string(p));
+    let content = content.map(|c| b.create_vector(c));
+    let req = fbs::FileEditRequest::create(
+        &mut b,
+        &fbs::FileEditRequestArgs {
+            kind,
+            revision,
+            restore_descendants,
+            path,
+            content,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// A `FileDeleteRequest`; `None` leaves `revision` / `paths` genuinely ABSENT.
+fn delete_request_bytes(
+    kind: fbs::RequestKind,
+    revision: Option<&str>,
+    restore_descendants: bool,
+    paths: Option<&[&str]>,
+) -> Vec<u8> {
+    let mut b = flatbuffers::FlatBufferBuilder::with_capacity(128);
+    let revision = revision.map(|r| b.create_string(r));
+    let paths = paths.map(|paths| {
+        let offsets: Vec<_> = paths.iter().map(|p| b.create_string(p)).collect();
+        b.create_vector(&offsets)
+    });
+    let req = fbs::FileDeleteRequest::create(
+        &mut b,
+        &fbs::FileDeleteRequestArgs {
+            kind,
+            revision,
+            restore_descendants,
+            paths,
+        },
+    );
+    b.finish(req, None);
+    b.finished_data().to_vec()
+}
+
+/// [`untrack_fixture`] with a new empty `@` on top: returns the root and the PARENT's change id
+/// (the commit holding `d.txt`, which `@` inherits).
+fn parent_with_child_fixture() -> (PathBuf, String) {
+    let root = untrack_fixture();
+    let mut repo = Repo::open(&root).expect("open");
+    let parent = zanshin_jj::resolve_revset(&repo, "@").expect("resolve")[0].clone();
+    repo.new_change(std::slice::from_ref(&parent), &[], &[]).expect("new @");
+    (root, parent.0)
+}
+
+/// `d.txt` in `revision` (`None` = `@`), or `None` when the revision has no such file.
+fn d_txt(root: &Path, revision: Option<&str>) -> Option<Vec<u8>> {
+    let mut repo = Repo::open(root).expect("open");
+    let revision = revision.map(|r| zanshin_jj::ChangeId(r.to_owned()));
+    let path = ["d.txt".to_owned()];
+    if repo.file_list(revision.clone(), &path).expect("file list").is_empty() {
+        return None;
+    }
+    let shown = repo.file_show(revision, &path).expect("file show");
+    shown.files.into_iter().next().map(|file| file.content)
+}
+
+/// `edit -r <parent> --restore-descendants` over the wire: the parent changes, the child keeps
+/// its content (and so does the working copy).
+#[test]
+fn edit_with_restore_descendants_keeps_the_childs_content() {
+    let (root, parent) = parent_with_child_fixture();
+    let handle = open_handle(&root);
+    let req = edit_request_bytes(
+        fbs::RequestKind::FileEdit,
+        Some(&parent),
+        true,
+        Some("d.txt"),
+        Some(b"new\n"),
+    );
+    let bytes = call(zanshin_file_edit, handle, &req);
+    assert!(
+        parse_envelope(&bytes).ok(),
+        "{:?}",
+        parse_envelope(&bytes).error().and_then(|e| e.context())
+    );
+    close_handle(handle);
+    assert_eq!(d_txt(&root, Some(&parent)).as_deref(), Some(&b"new\n"[..]));
+    assert_eq!(
+        d_txt(&root, None).as_deref(),
+        Some(&b"text"[..]),
+        "the child kept its content"
+    );
+    assert_eq!(fs::read(root.join("d.txt")).expect("read"), b"text");
+}
+
+/// `delete -r <parent> --restore-descendants` over the wire: the parent loses the file, the
+/// child keeps it.
+#[test]
+fn delete_with_restore_descendants_keeps_the_childs_content() {
+    let (root, parent) = parent_with_child_fixture();
+    let handle = open_handle(&root);
+    let req = delete_request_bytes(fbs::RequestKind::FileDelete, Some(&parent), true, Some(&["d.txt"]));
+    let bytes = call(zanshin_file_delete, handle, &req);
+    assert!(
+        parse_envelope(&bytes).ok(),
+        "{:?}",
+        parse_envelope(&bytes).error().and_then(|e| e.context())
+    );
+    close_handle(handle);
+    assert_eq!(d_txt(&root, Some(&parent)), None, "the parent lost d.txt");
+    assert_eq!(
+        d_txt(&root, None).as_deref(),
+        Some(&b"text"[..]),
+        "the child kept its content"
+    );
+    assert!(root.join("d.txt").exists());
+}
+
+/// `edit` over the wire: the path and the bytes cross (an absent revision = `@`), the operation
+/// names `@`'s commit and the working copy follows.
+#[test]
+fn edit_round_trips_through_mutation_result() {
+    let root = untrack_fixture();
+    let handle = open_handle(&root);
+    let req = edit_request_bytes(fbs::RequestKind::FileEdit, None, false, Some("d.txt"), Some(b"new\n"));
+    let bytes = call(zanshin_file_edit, handle, &req);
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    assert_eq!(env.data_type(), fbs::Payload::MutationResult);
+    let result = env.data_as_mutation_result().expect("payload");
+    let (head, description) = head_op(handle);
+    assert_eq!(result.new_op_id(), Some(head.as_str()));
+    assert!(description.starts_with("edit file d.txt in commit "), "{description}");
+    assert!(env.precondition().is_some());
+    assert_eq!(fs::read(root.join("d.txt")).expect("read"), b"new\n");
+
+    // An EMPTY content vector is an empty file, not an absent field.
+    let req = edit_request_bytes(fbs::RequestKind::FileEdit, None, true, Some("d.txt"), Some(b""));
+    let env_bytes = call(zanshin_file_edit, handle, &req);
+    assert!(parse_envelope(&env_bytes).ok());
+    assert_eq!(fs::read(root.join("d.txt")).expect("read"), b"");
+    close_handle(handle);
+}
+
+/// Absent `path` / `content` refuse before the snapshot; a directory crosses as the CLI's
+/// refusal; a malformed revision, a zero handle, a null buffer and a buffer of another kind are
+/// refused. None writes an operation.
+#[test]
+fn edit_refusals_cross_the_wire() {
+    let root = untrack_fixture();
+    let handle = open_handle(&root);
+    let (before, _) = head_op(handle);
+    let edit = |revision, path, content: Option<&[u8]>| {
+        edit_request_bytes(fbs::RequestKind::FileEdit, revision, false, path, content)
+    };
+    for req in [edit(None, None, Some(b"x")), edit(None, Some("d.txt"), None)] {
+        let bytes = call(zanshin_file_edit, handle, &req);
+        assert_eq!(error_code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
+        assert!(
+            parse_envelope(&bytes).precondition().is_none(),
+            "refused before the snapshot"
+        );
+    }
+    let bytes = call(zanshin_file_edit, handle, &edit(None, Some(""), Some(b"x")));
+    assert_eq!(error_code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
+    assert_eq!(
+        parse_envelope(&bytes).error().and_then(|e| e.context()),
+        Some("Path is a directory: .")
+    );
+    let req = edit(Some("zzzz-not-hex"), Some("d.txt"), Some(b"x"));
+    assert_eq!(
+        error_code(&call(zanshin_file_edit, handle, &req)).as_deref(),
+        Some(JJ_CHANGE_NOT_FOUND)
+    );
+    let req = edit_request_bytes(fbs::RequestKind::FileChmod, None, false, Some("d.txt"), Some(b"x"));
+    assert_eq!(
+        error_code(&call(zanshin_file_edit, handle, &req)).as_deref(),
+        Some(FFI_INVALID_ARGUMENT)
+    );
+    assert_eq!(
+        error_code(&call(zanshin_file_edit, 0, &edit(None, Some("d.txt"), Some(b"x")))).as_deref(),
+        Some(FFI_INVALID_HANDLE)
+    );
+    // SAFETY: a null request pointer is the case under test.
+    let null = unsafe { read_and_free(zanshin_file_edit(handle, std::ptr::null(), 0)) };
+    assert_eq!(error_code(&null).as_deref(), Some(FFI_NULL_POINTER));
+    assert_eq!(head_op(handle).0, before, "no refusal writes an operation");
+    close_handle(handle);
+}
+
+/// `delete` over the wire: the paths cross (an absent revision = `@`), the unmatched path's
+/// warning rides the ok envelope, the operation names `@`'s commit and the file leaves the disk.
+#[test]
+fn delete_round_trips_through_mutation_result() {
+    let root = untrack_fixture();
+    let handle = open_handle(&root);
+    let req = delete_request_bytes(fbs::RequestKind::FileDelete, None, false, Some(&["d.txt", "nope"]));
+    let bytes = call(zanshin_file_delete, handle, &req);
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "{:?}", env.error().and_then(|e| e.context()));
+    assert_eq!(env.data_type(), fbs::Payload::MutationResult);
+    let result = env.data_as_mutation_result().expect("payload");
+    let (head, description) = head_op(handle);
+    assert_eq!(result.new_op_id(), Some(head.as_str()));
+    assert!(description.starts_with("delete paths in commit "), "{description}");
+    let warnings = env.warnings().expect("warnings");
+    assert_eq!(warnings.get(0).code(), Some(JJ_PATHS_UNMATCHED));
+    assert!(!root.join("d.txt").exists());
+    close_handle(handle);
+}
+
+/// Absent and empty `paths` refuse before the snapshot; a malformed revision, a zero handle, a
+/// null buffer and a buffer of another kind are refused. None writes an operation.
+#[test]
+fn delete_refusals_cross_the_wire() {
+    let root = untrack_fixture();
+    let handle = open_handle(&root);
+    let (before, _) = head_op(handle);
+    for paths in [None, Some(&[][..])] {
+        let req = delete_request_bytes(fbs::RequestKind::FileDelete, None, false, paths);
+        let bytes = call(zanshin_file_delete, handle, &req);
+        assert_eq!(error_code(&bytes).as_deref(), Some(JJ_INVALID_INPUT));
+        assert!(
+            parse_envelope(&bytes).precondition().is_none(),
+            "refused before the snapshot"
+        );
+    }
+    let req = delete_request_bytes(
+        fbs::RequestKind::FileDelete,
+        Some("zzzz-not-hex"),
+        false,
+        Some(&["d.txt"]),
+    );
+    assert_eq!(
+        error_code(&call(zanshin_file_delete, handle, &req)).as_deref(),
+        Some(JJ_CHANGE_NOT_FOUND)
+    );
+    let req = delete_request_bytes(fbs::RequestKind::FileEdit, None, false, Some(&["d.txt"]));
+    assert_eq!(
+        error_code(&call(zanshin_file_delete, handle, &req)).as_deref(),
+        Some(FFI_INVALID_ARGUMENT)
+    );
+    let req = delete_request_bytes(fbs::RequestKind::FileDelete, None, false, Some(&["d.txt"]));
+    assert_eq!(
+        error_code(&call(zanshin_file_delete, 0, &req)).as_deref(),
+        Some(FFI_INVALID_HANDLE)
+    );
+    // SAFETY: a null request pointer is the case under test.
+    let null = unsafe { read_and_free(zanshin_file_delete(handle, std::ptr::null(), 0)) };
+    assert_eq!(error_code(&null).as_deref(), Some(FFI_NULL_POINTER));
     assert_eq!(head_op(handle).0, before, "no refusal writes an operation");
     close_handle(handle);
 }

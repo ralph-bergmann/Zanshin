@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! `zanshin_file_track` / `zanshin_file_untrack` — the two working-copy tracking wrappers
-//! (Story 9.22) — and `zanshin_file_chmod` (Story 9.13).
+//! (Story 9.22) — `zanshin_file_chmod` (Story 9.13), and `zanshin_file_edit` /
+//! `zanshin_file_delete` (Story 9.44).
 //!
 //! Each calls the matching `zanshin_jj::Repo` method and serialises the result into a
 //! `FlatBuffers` `Envelope`. The handle is borrowed (not consumed). Split from `file.rs` — the
@@ -17,8 +18,8 @@ use tracing::debug;
 use zanshin_jj::{SnapshotStats, TrackResult, UntrackResult, UntrackedReason};
 
 use crate::envelope::{
-    build_mutation_result, catch, expect_request_kind, finish_envelope, invalid_request, ok_mutation_result,
-    precondition_envelope, reject_null_request, session_from_handle, FfiErrorObj,
+    build_mutation_result, catch, expect_request_kind, finish_envelope, invalid_request, missing_field,
+    ok_mutation_result, precondition_envelope, reject_null_request, session_from_handle, FfiErrorObj,
 };
 use crate::fbs;
 use crate::ffi_strings::{vec_into_token, ZanshinBuf};
@@ -108,6 +109,65 @@ fn read_file_chmod_request(data: *const u8, len: usize) -> Result<FileChmodReque
     Ok(FileChmodRequestOwned {
         executable: req.executable(),
         revision: req.revision().map(|r| zanshin_jj::ChangeId(r.to_owned())),
+        paths: req.paths().into_iter().flatten().map(ToOwned::to_owned).collect(),
+    })
+}
+
+/// Owned Rust form of a `FileEditRequest` buffer (Story 9.44). `revision` ABSENT is the CLI's
+/// `-r` default `@`.
+struct FileEditRequestOwned {
+    revision: Option<zanshin_jj::ChangeId>,
+    restore_descendants: bool,
+    path: String,
+    content: Vec<u8>,
+}
+
+/// Parse a `FileEditRequest` buffer into an owned [`FileEditRequestOwned`].
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileEditRequest` buffer, or its
+///   `kind` is not `FileEdit`.
+/// - `jj.invalid_input` — `path` or `content` is absent (an empty `content` is an empty file).
+fn read_file_edit_request(data: *const u8, len: usize) -> Result<FileEditRequestOwned, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only.
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::FileEditRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::FileEdit)?;
+    Ok(FileEditRequestOwned {
+        revision: req.revision().map(|r| zanshin_jj::ChangeId(r.to_owned())),
+        restore_descendants: req.restore_descendants(),
+        path: req.path().ok_or_else(|| missing_field("path"))?.to_owned(),
+        content: req.content().ok_or_else(|| missing_field("content"))?.bytes().to_vec(),
+    })
+}
+
+/// Owned Rust form of a `FileDeleteRequest` buffer (Story 9.44). `revision` ABSENT is the CLI's
+/// `-r` default `@`; an absent `paths` vector becomes an empty `Vec`, which the jj layer refuses.
+struct FileDeleteRequestOwned {
+    revision: Option<zanshin_jj::ChangeId>,
+    restore_descendants: bool,
+    paths: Vec<String>,
+}
+
+/// Parse a `FileDeleteRequest` buffer into an owned [`FileDeleteRequestOwned`].
+///
+/// # Errors
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileDeleteRequest` buffer, or its
+///   `kind` is not `FileDelete`.
+fn read_file_delete_request(data: *const u8, len: usize) -> Result<FileDeleteRequestOwned, FfiErrorObj> {
+    reject_null_request(data)?;
+    // SAFETY: caller-owned, borrowed for this call only.
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    let req = flatbuffers::root_with_opts::<fbs::FileDeleteRequest>(&VerifierOptions::default(), bytes)
+        .map_err(|e| invalid_request(&e))?;
+    expect_request_kind(req.kind(), fbs::RequestKind::FileDelete)?;
+    Ok(FileDeleteRequestOwned {
+        revision: req.revision().map(|r| zanshin_jj::ChangeId(r.to_owned())),
+        restore_descendants: req.restore_descendants(),
         paths: req.paths().into_iter().flatten().map(ToOwned::to_owned).collect(),
     })
 }
@@ -362,6 +422,119 @@ pub unsafe extern "C" fn zanshin_file_chmod(handle: u64, data: *const u8, len: u
         let result = session
             .repo
             .file_chmod(req.executable, req.revision.as_ref(), &req.paths);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
+    });
+    vec_into_token(buf)
+}
+
+/// Replace one file's content in one revision of the repo referenced by `handle`, without
+/// touching the working copy — the CLI's `jj file edit [-r] [--restore-descendants] <path>`
+/// (Story 9.44), with the request's `content` in place of the editor's saved buffer.
+///
+/// The arguments cross as a `FileEditRequest` `FlatBuffers` request buffer: `revision` absent is
+/// `-r`'s default `@`, else a reverse-hex change id; `path` one path, parsed as the CLI parses it
+/// from the workspace root (`""` the root); `content` the new bytes (empty = an empty file). The
+/// CLI's mechanism runs: a temporary sparse working copy holding only `path`, checked out from
+/// the revision (a conflict materialized in `ui.conflict-marker-style`), `content` written,
+/// snapshotted — an absent path becomes a new non-executable file, a file keeps its executable
+/// bit, conflict markers parse back. An unchanged tree writes no operation (`new_op_id` is the
+/// pre-call head); otherwise the revision is rewritten (descendants rebased, or reparented with
+/// `restore_descendants`) as `edit file <path> in commit <hex>`.
+///
+/// Deliberate divergence: a path below an existing non-directory is refused with Zanshin's own
+/// text, where the CLI's editor either cannot save (no change) or, creating the directory, makes
+/// jj-lib replace that file with a directory. Missing parent directories are created, as a
+/// directory-creating editor would; an existing entry is never replaced.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileEditRequest` buffer, or its `kind`
+///   is not `FileEdit`, i.e. the buffer was built for a different wrapper.
+/// - `jj.invalid_input` — `path` or `content` is absent (`<field> is required`, before the
+///   pre-verb snapshot), `path` is malformed or escapes the workspace, or names a directory
+///   ("Path is a directory: <path>"), a symlink or submodule ("Path '<path>' is not a regular
+///   file") or a conflict with a non-file side ("Path '<path>' has a non-file conflict and cannot
+///   be edited") — the CLI's texts — or lies below an existing non-directory ("Failed to edit
+///   file: '<ancestor>' is not a directory", the divergence above); nothing is written.
+/// - `jj.change_not_found` — `revision` is malformed, absent, only-hidden or divergent.
+/// - `jj.revset_resolution_error` — no `revision` in a workspace without a working-copy commit
+///   ("Workspace `<name>` doesn't have a working-copy commit").
+/// - `jj.immutable` — the revision is immutable (the root included), even when nothing would
+///   change; hints as for every rewrite.
+/// - `jj.config_error` — the effective config no longer reads, `ui.conflict-marker-style` is not
+///   a style name, or `immutable_heads()` does not resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib or temporary-directory failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_file_track`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.FileEditRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_file_edit(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_file_edit", handle);
+    let buf = catch(|| {
+        let req = read_file_edit_request(data, len)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session
+            .repo
+            .file_edit(req.revision.as_ref(), req.restore_descendants, &req.path, &req.content);
+        precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
+    });
+    vec_into_token(buf)
+}
+
+/// Remove the entries matching the requested prefixes from one revision of the repo referenced
+/// by `handle` — the CLI's `jj file delete [-r] [--restore-descendants] <paths>` (Story 9.44).
+///
+/// The arguments cross as a `FileDeleteRequest` `FlatBuffers` request buffer: `revision` and
+/// `restore_descendants` as for `zanshin_file_edit`, `paths` as for `zanshin_file_track`. Every
+/// matching entry is removed, conflicts included; a path that matches nothing warns
+/// `jj.paths_unmatched`. An unchanged tree writes no operation (`new_op_id` is the pre-call
+/// head); otherwise the revision is rewritten (descendants rebased, or reparented with
+/// `restore_descendants`) as `delete paths in commit <hex>`.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `MutationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `ffi.null_pointer` — `data` is a null pointer.
+/// - `ffi.invalid_argument` — `data` does not verify as a `FileDeleteRequest` buffer, or its
+///   `kind` is not `FileDelete`, i.e. the buffer was built for a different wrapper.
+/// - `jj.invalid_input` — `paths` is empty or absent (before the pre-verb snapshot), or an entry
+///   is the empty string or escapes the workspace; nothing is written.
+/// - `jj.change_not_found` — `revision` is malformed, absent, only-hidden or divergent.
+/// - `jj.revset_resolution_error` — no `revision` in a workspace without a working-copy commit
+///   ("Workspace `<name>` doesn't have a working-copy commit").
+/// - `jj.immutable` — the revision is immutable (the root included), even when nothing would
+///   change; hints as for every rewrite.
+/// - `jj.config_error` — the effective config no longer reads, or `immutable_heads()` does not
+///   resolve.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_file_track`.
+/// `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed
+/// by Dart (`fbs.FileDeleteRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+/// duration of the call.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_file_delete(handle: u64, data: *const u8, len: usize) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_file_delete", handle);
+    let buf = catch(|| {
+        let req = read_file_delete_request(data, len)?;
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session
+            .repo
+            .file_delete(req.revision.as_ref(), req.restore_descendants, &req.paths);
         precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
     });
     vec_into_token(buf)

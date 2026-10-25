@@ -194,13 +194,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 70;
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 72;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 71] = [
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 73] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -272,6 +272,8 @@ pub mod zanshin {
             RequestKind::Revert,
             RequestKind::RevsetCounts,
             RequestKind::FindChanges,
+            RequestKind::FileEdit,
+            RequestKind::FileDelete,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -375,9 +377,11 @@ pub mod zanshin {
             pub const Revert: Self = Self(68);
             pub const RevsetCounts: Self = Self(69);
             pub const FindChanges: Self = Self(70);
+            pub const FileEdit: Self = Self(71);
+            pub const FileDelete: Self = Self(72);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 70;
+            pub const ENUM_MAX: u8 = 72;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -450,6 +454,8 @@ pub mod zanshin {
                 Self::Revert,
                 Self::RevsetCounts,
                 Self::FindChanges,
+                Self::FileEdit,
+                Self::FileDelete,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -525,6 +531,8 @@ pub mod zanshin {
                     Self::Revert => Some("Revert"),
                     Self::RevsetCounts => Some("RevsetCounts"),
                     Self::FindChanges => Some("FindChanges"),
+                    Self::FileEdit => Some("FileEdit"),
+                    Self::FileDelete => Some("FileDelete"),
                     _ => None,
                 }
             }
@@ -15822,6 +15830,397 @@ pub mod zanshin {
                 ds.field("kind", &self.kind());
                 ds.field("executable", &self.executable());
                 ds.field("revision", &self.revision());
+                ds.field("paths", &self.paths());
+                ds.finish()
+            }
+        }
+        pub enum FileEditRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_file_edit` (Story 9.44) — the CLI's `jj file edit [-r]
+        /// [--restore-descendants] <path>`, with `content` in place of the editor's saved buffer.
+        ///
+        /// `revision` ABSENT is the CLI's `-r` default `@`; present it is a jj reverse-hex CHANGE ID.
+        /// `restore_descendants` is `--restore-descendants` (ABSENT = false). `path` is one
+        /// workspace-root-relative repo path, parsed as FileShowRequest's (`""` is the root). `content`
+        /// is the file's NEW bytes; an EMPTY vector is an empty file. An ABSENT `path` or `content` is
+        /// refused with `jj.invalid_input` before the pre-verb snapshot.
+        pub struct FileEditRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileEditRequest<'a> {
+            type Inner = FileEditRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileEditRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_RESTORE_DESCENDANTS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PATH: ::flatbuffers::VOffsetT = 10;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileEditRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileEditRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileEditRequest<'bldr>> {
+                let mut builder = FileEditRequestBuilder::new(_fbb);
+                if let Some(x) = args.content {
+                    builder.add_content(x);
+                }
+                if let Some(x) = args.path {
+                    builder.add_path(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.add_restore_descendants(args.restore_descendants);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(FileEditRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileEditRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn restore_descendants(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(FileEditRequest::VT_RESTORE_DESCENDANTS, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileEditRequest::VT_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn content(&self) -> Option<::flatbuffers::Vector<'a, u8>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(
+                            FileEditRequest::VT_CONTENT,
+                            None,
+                        )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileEditRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+                    .visit_field::<bool>("restore_descendants", Self::VT_RESTORE_DESCENDANTS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>(
+                        "content",
+                        Self::VT_CONTENT,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FileEditRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub restore_descendants: bool,
+            pub path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub content: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
+        }
+        impl<'a> Default for FileEditRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileEditRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revision: None,
+                    restore_descendants: false,
+                    path: None,
+                    content: None,
+                }
+            }
+        }
+
+        pub struct FileEditRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileEditRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(FileEditRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileEditRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_restore_descendants(&mut self, restore_descendants: bool) {
+                self.fbb_
+                    .push_slot::<bool>(FileEditRequest::VT_RESTORE_DESCENDANTS, restore_descendants, false);
+            }
+            #[inline]
+            pub fn add_path(&mut self, path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileEditRequest::VT_PATH, path);
+            }
+            #[inline]
+            pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u8>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileEditRequest::VT_CONTENT, content);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileEditRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileEditRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileEditRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileEditRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileEditRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revision", &self.revision());
+                ds.field("restore_descendants", &self.restore_descendants());
+                ds.field("path", &self.path());
+                ds.field("content", &self.content());
+                ds.finish()
+            }
+        }
+        pub enum FileDeleteRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_file_delete` (Story 9.44) — the CLI's `jj file delete [-r]
+        /// [--restore-descendants] <paths>`.
+        ///
+        /// `revision` and `restore_descendants` as in FileEditRequest. `paths` exactly as in
+        /// FileTrackRequest: an EMPTY or ABSENT vector is refused with `jj.invalid_input` before the
+        /// pre-verb snapshot (clap's `required`).
+        pub struct FileDeleteRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FileDeleteRequest<'a> {
+            type Inner = FileDeleteRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FileDeleteRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REVISION: ::flatbuffers::VOffsetT = 6;
+            pub const VT_RESTORE_DESCENDANTS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PATHS: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FileDeleteRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FileDeleteRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FileDeleteRequest<'bldr>> {
+                let mut builder = FileDeleteRequestBuilder::new(_fbb);
+                if let Some(x) = args.paths {
+                    builder.add_paths(x);
+                }
+                if let Some(x) = args.revision {
+                    builder.add_revision(x);
+                }
+                builder.add_restore_descendants(args.restore_descendants);
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(FileDeleteRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn revision(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FileDeleteRequest::VT_REVISION, None)
+                }
+            }
+            #[inline]
+            pub fn restore_descendants(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(FileDeleteRequest::VT_RESTORE_DESCENDANTS, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn paths(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(FileDeleteRequest::VT_PATHS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FileDeleteRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("revision", Self::VT_REVISION, false)?
+     .visit_field::<bool>("restore_descendants", Self::VT_RESTORE_DESCENDANTS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("paths", Self::VT_PATHS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct FileDeleteRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub revision: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub restore_descendants: bool,
+            pub paths:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for FileDeleteRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FileDeleteRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    revision: None,
+                    restore_descendants: false,
+                    paths: None,
+                }
+            }
+        }
+
+        pub struct FileDeleteRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FileDeleteRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(FileDeleteRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_revision(&mut self, revision: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileDeleteRequest::VT_REVISION, revision);
+            }
+            #[inline]
+            pub fn add_restore_descendants(&mut self, restore_descendants: bool) {
+                self.fbb_
+                    .push_slot::<bool>(FileDeleteRequest::VT_RESTORE_DESCENDANTS, restore_descendants, false);
+            }
+            #[inline]
+            pub fn add_paths(
+                &mut self,
+                paths: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FileDeleteRequest::VT_PATHS, paths);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FileDeleteRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FileDeleteRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FileDeleteRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FileDeleteRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FileDeleteRequest");
+                ds.field("kind", &self.kind());
+                ds.field("revision", &self.revision());
+                ds.field("restore_descendants", &self.restore_descendants());
                 ds.field("paths", &self.paths());
                 ds.finish()
             }

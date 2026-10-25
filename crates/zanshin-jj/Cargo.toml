@@ -27,6 +27,7 @@ rand_chacha = { workspace = true }  # WHY: one call site — `config.rs::SecureL
 regex = { workspace = true }  # WHY: two ports — `metaedit.rs`'s `parse_author` and `fix.rs`'s `$variable` interpolation, the CLI's own expressions
 serde = { workspace = true }  # WHY: one call site — `fix.rs` deserializes `fix.tools.<name>` into the CLI's `RawToolConfig`
 shlex = { workspace = true }  # WHY: one call site — `fix.rs`'s port of `CommandNameAndArgs::split_name_and_args`
+tempfile = { workspace = true }  # WHY: one call site — `wc_ops.rs::file_edit`'s temporary sparse working copy, as in `cmd_file_edit`
 thiserror = { workspace = true }
 tracing = { workspace = true }
 whoami = { workspace = true }  # WHY: `config.rs`'s EnvBase layer + resolution-context hostname, exactly as the CLI's `ConfigEnv::from_environment`
@@ -46,7 +47,6 @@ libc = { workspace = true }
 # putting it in `[dependencies]`, or in the `test-helpers` workspace member, would enable
 # it for `cargo build --workspace` too.
 jj-lib = { workspace = true, features = ["testing"] }
-tempfile = { workspace = true }
 test-helpers = { path = "../test-helpers", version = "0.1.0" }
 
 # WHY: harness = false — the graph blueprint times manually (libtest `#[bench]` is

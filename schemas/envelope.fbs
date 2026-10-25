@@ -226,7 +226,9 @@ enum RequestKind : ubyte {
   Diffedit,
   Revert,
   RevsetCounts,
-  FindChanges
+  FindChanges,
+  FileEdit,
+  FileDelete
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -1175,6 +1177,35 @@ table FileChmodRequest {
   kind: RequestKind;
   executable: bool;
   revision: string;
+  paths: [string];
+}
+
+/// Arguments of `zanshin_file_edit` (Story 9.44) — the CLI's `jj file edit [-r]
+/// [--restore-descendants] <path>`, with `content` in place of the editor's saved buffer.
+///
+/// `revision` ABSENT is the CLI's `-r` default `@`; present it is a jj reverse-hex CHANGE ID.
+/// `restore_descendants` is `--restore-descendants` (ABSENT = false). `path` is one
+/// workspace-root-relative repo path, parsed as FileShowRequest's (`""` is the root). `content`
+/// is the file's NEW bytes; an EMPTY vector is an empty file. An ABSENT `path` or `content` is
+/// refused with `jj.invalid_input` before the pre-verb snapshot.
+table FileEditRequest {
+  kind: RequestKind;
+  revision: string;
+  restore_descendants: bool;
+  path: string;
+  content: [ubyte];
+}
+
+/// Arguments of `zanshin_file_delete` (Story 9.44) — the CLI's `jj file delete [-r]
+/// [--restore-descendants] <paths>`.
+///
+/// `revision` and `restore_descendants` as in FileEditRequest. `paths` exactly as in
+/// FileTrackRequest: an EMPTY or ABSENT vector is refused with `jj.invalid_input` before the
+/// pre-verb snapshot (clap's `required`).
+table FileDeleteRequest {
+  kind: RequestKind;
+  revision: string;
+  restore_descendants: bool;
   paths: [string];
 }
 

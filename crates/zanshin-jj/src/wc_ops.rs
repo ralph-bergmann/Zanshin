@@ -3,7 +3,8 @@
 //! `wc_ops.rs` — the two working-copy tracking verbs, `file track` and `file untrack`
 //! (Story 9.22), and the snapshot primitives they share with the pre-verb snapshot
 //! ([`crate::snapshot`], Story 9.26). `file chmod` ([`file_chmod`], Story 9.13) lives here too:
-//! it parses its paths as these two do.
+//! it parses its paths as these two do — and so do `file edit` / `file delete` ([`file_edit`],
+//! [`file_delete`], Story 9.44), which rewrite one revision's tree as `file chmod` does.
 //!
 //! Both verbs are step-for-step ports of `cmd_file_track` / `cmd_file_untrack`
 //! (`cli/src/commands/file/{track,untrack}.rs` @ v0.44.0): lock the working copy through
@@ -29,17 +30,21 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use jj_lib::backend::{MergedTreeValue, TreeValue};
+use jj_lib::backend::{MergedTreeValue, MergedTreeValueExt as _, TreeValue};
 use jj_lib::commit::Commit;
 use jj_lib::config::StackedConfig;
 use jj_lib::fileset::{self, FilesetAliasesMap, FilesetDiagnostics, FilesetParseContext};
+use jj_lib::fsmonitor::FsmonitorSettings;
 use jj_lib::git;
 use jj_lib::git_backend::GitRepoAtWorkdirError;
 use jj_lib::gitignore::GitIgnoreFile;
-use jj_lib::matchers::{Matcher, NothingMatcher, PrefixMatcher};
+use jj_lib::local_working_copy::{EolConversionMode, ExecChangeSetting, TreeState, TreeStateSettings};
+use jj_lib::matchers::{EverythingMatcher, Matcher, NothingMatcher, PrefixMatcher};
 use jj_lib::merge::Merge;
+use jj_lib::merged_tree::MergedTree;
 use jj_lib::merged_tree_builder::MergedTreeBuilder;
 use jj_lib::object_id::ObjectId as _;
+use jj_lib::repo::Repo as _;
 use jj_lib::repo_path::{RepoPath, RepoPathBuf};
 use jj_lib::transaction::Transaction;
 use jj_lib::ui_path::{parse_fs_path, RepoPathUiConverter};
@@ -651,6 +656,182 @@ pub(crate) fn file_chmod(
     Ok(mutate::mutation_result(&finish, Vec::new(), Vec::new()))
 }
 
+/// The tail `cmd_file_edit` and `cmd_file_delete` share (`file/{edit,delete}.rs` @ v0.46.0): an
+/// unchanged tree is "Nothing changed." — no operation, the pre-call head — else `commit` takes
+/// `new_tree`, its descendants are rebased or, with `restore_descendants`, reparented
+/// (`rebase_or_reparent_descendants`, `cli_util.rs:3418-3440`), and the operation is
+/// `description`.
+fn finish_tree_rewrite(
+    workspace: &mut Workspace,
+    ctx: &mut VerbContext,
+    mut tx: Transaction,
+    commit: &Commit,
+    new_tree: MergedTree,
+    restore_descendants: bool,
+    description: &str,
+) -> Result<MutationResult, MutateError> {
+    if new_tree.tree_ids() == commit.tree_ids() {
+        let readonly = tx.base_repo().clone();
+        drop(tx);
+        return mutate::no_op_result(workspace.workspace_name(), &readonly);
+    }
+    pollster::block_on(tx.repo_mut().rewrite_commit(commit).set_tree(new_tree).write()).map_err(be)?;
+    if restore_descendants {
+        pollster::block_on(tx.repo_mut().reparent_descendants()).map_err(be)?;
+    } else {
+        pollster::block_on(tx.repo_mut().rebase_descendants()).map_err(be)?;
+    }
+    let finish = mutate::finish_verb(workspace, tx, description, ctx)?;
+    Ok(mutate::mutation_result(&finish, Vec::new(), Vec::new()))
+}
+
+/// Why `file edit` refuses `value` (`edit.rs:89-108` @ v0.46.0), in the CLI's text: a directory,
+/// a symlink or submodule, or a conflict with a side that is neither a file nor absent. `None`
+/// when it may be edited — absent, a file, or a file conflict.
+fn edit_refusal(value: MergedTreeValue, ui_path: &str) -> Option<String> {
+    match value.into_resolved() {
+        Ok(None | Some(TreeValue::File { .. })) => None,
+        Ok(Some(TreeValue::Tree(_))) => Some(format!("Path is a directory: {ui_path}")),
+        Ok(Some(TreeValue::Symlink(_) | TreeValue::GitSubmodule(_))) => {
+            Some(format!("Path '{ui_path}' is not a regular file"))
+        }
+        Err(conflict) => conflict
+            .to_file_merge()
+            .is_none()
+            .then(|| format!("Path '{ui_path}' has a non-file conflict and cannot be edited")),
+    }
+}
+
+/// The first proper ancestor of `path` that `tree` holds as something other than a directory —
+/// Zanshin's own refusal, a deliberate divergence (spec 9.44, Design Notes): the CLI's editor
+/// either cannot save there (no change) or, creating the directory, makes jj-lib replace that
+/// entry with a directory. Missing parents are created as a directory-creating editor would; an
+/// existing entry is never replaced.
+fn non_directory_ancestor(tree: &MergedTree, path: &RepoPath) -> Result<Option<RepoPathBuf>, MutateError> {
+    for ancestor in path.ancestors().skip(1).filter(|p| !p.is_root()) {
+        let value = pollster::block_on(tree.path_value(ancestor)).map_err(be)?;
+        if value.adds().flatten().any(|v| !matches!(v, TreeValue::Tree(_))) {
+            return Ok(Some(ancestor.to_owned()));
+        }
+    }
+    Ok(None)
+}
+
+/// Writes `content` as `path`'s new bytes in `tree` and returns the resulting tree — the
+/// mechanism of `cmd_file_edit` (`edit.rs:110-160` @ v0.46.0) with the GUI's buffer where the
+/// editor would save: a temporary sparse working copy holding only `path`, checked out from
+/// `tree` (a conflict materialized with `conflict_marker_style`), written, then snapshotted.
+fn edit_in_sparse_copy(
+    store: &Arc<jj_lib::store::Store>,
+    tree: &MergedTree,
+    path: &RepoPath,
+    content: &[u8],
+    conflict_marker_style: jj_lib::conflicts::ConflictMarkerStyle,
+) -> Result<MergedTree, MutateError> {
+    let temp_dir = tempfile::Builder::new().prefix("jj-file-edit-").tempdir().map_err(be)?;
+    let wc_path = temp_dir.path().join("wc");
+    let state_dir = temp_dir.path().join("state");
+    std::fs::create_dir(&wc_path).map_err(be)?;
+    std::fs::create_dir(&state_dir).map_err(be)?;
+    let settings = TreeStateSettings {
+        conflict_marker_style,
+        eol_conversion_mode: EolConversionMode::None,
+        exec_change_setting: ExecChangeSetting::Auto,
+        fsmonitor_settings: FsmonitorSettings::None,
+    };
+    let mut tree_state = TreeState::init(store.clone(), wc_path, state_dir, &settings).map_err(be)?;
+    tree_state.set_sparse_patterns(vec![path.to_owned()]).map_err(be)?;
+    tree_state.check_out(tree).map_err(be)?;
+    let file_path = path
+        .to_fs_path(tree_state.working_copy_path())
+        .map_err(|e| MutateError::invalid(flatten_chain(&e)))?;
+    let write = |file: &Path| -> std::io::Result<()> {
+        if let Some(parent) = file.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(file, content)
+    };
+    write(&file_path).map_err(|e| MutateError::Backend(format!("Failed to edit file: {e}")))?;
+    pollster::block_on(tree_state.snapshot(&SnapshotOptions {
+        base_ignores: GitIgnoreFile::empty(),
+        progress: None,
+        start_tracking_matcher: &EverythingMatcher,
+        force_tracking_matcher: &NothingMatcher,
+        max_new_file_size: u64::MAX,
+    }))
+    .map_err(be)?;
+    Ok(tree_state.current_tree().clone())
+}
+
+/// Replaces the content of `path` in `revision` (default `@`) with `content` — the port of
+/// `cmd_file_edit` (`cli/src/commands/file/edit.rs` @ v0.46.0; Story 9.44) with the GUI's buffer
+/// in place of the editor. See [`crate::Repo::file_edit`] for the contract.
+pub(crate) fn file_edit(
+    workspace: &mut Workspace,
+    ctx: &mut VerbContext,
+    revision: Option<&crate::ChangeId>,
+    restore_descendants: bool,
+    path: &str,
+    content: &[u8],
+) -> Result<MutationResult, MutateError> {
+    let conflict_marker_style = crate::config::conflict_marker_style(&ctx.config).map_err(cfg)?;
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
+    let tx = start_repo_transaction(&readonly, workspace.workspace_name());
+    let commit = mutate::resolve_or_wc(tx.repo(), workspace.workspace_name(), revision)?;
+    mutate::guard_rewritable(&tx, &ctx.templates(workspace), std::slice::from_ref(commit.id()))?;
+    let root = workspace.workspace_root();
+    // `parse_file_path` from the workspace root, as `parse_paths` parses each entry — but `""`
+    // stays the root (refused below as a directory), as in the CLI.
+    let repo_path = parse_fs_path(root, root, path)
+        .map_err(|e| MutateError::invalid(format!("invalid path: {}", flatten_chain(&e))))?;
+    let tree = commit.tree();
+    let value = pollster::block_on(tree.path_value(&repo_path)).map_err(be)?;
+    if let Some(reason) = edit_refusal(value, &warning::ui_path(root, &repo_path)) {
+        return Err(MutateError::invalid(reason));
+    }
+    if let Some(ancestor) = non_directory_ancestor(&tree, &repo_path)? {
+        return Err(MutateError::invalid(format!(
+            "Failed to edit file: '{}' is not a directory",
+            warning::ui_path(root, &ancestor)
+        )));
+    }
+    let new_tree = edit_in_sparse_copy(readonly.store(), &tree, &repo_path, content, conflict_marker_style)?;
+    let description = format!(
+        "edit file {} in commit {}",
+        repo_path.as_internal_file_string(),
+        commit.id().hex()
+    );
+    finish_tree_rewrite(workspace, ctx, tx, &commit, new_tree, restore_descendants, &description)
+}
+
+/// Removes every entry matching `paths` from `revision` (default `@`) — the port of
+/// `cmd_file_delete` (`cli/src/commands/file/delete.rs` @ v0.46.0; Story 9.44). See
+/// [`crate::Repo::file_delete`] for the contract.
+pub(crate) fn file_delete(
+    workspace: &mut Workspace,
+    ctx: &mut VerbContext,
+    revision: Option<&crate::ChangeId>,
+    restore_descendants: bool,
+    paths: &[String],
+) -> Result<MutationResult, MutateError> {
+    let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
+    let tx = start_repo_transaction(&readonly, workspace.workspace_name());
+    let commit = mutate::resolve_or_wc(tx.repo(), workspace.workspace_name(), revision)?;
+    mutate::guard_rewritable(&tx, &ctx.templates(workspace), std::slice::from_ref(commit.id()))?;
+    let paths = parse_paths(workspace, paths, "file delete")?;
+    let tree = commit.tree();
+    warning::warn_unmatched_paths(&mut ctx.warnings, workspace.workspace_root(), &paths, &[&tree]).map_err(be)?;
+
+    let matcher = prefix_matcher(&paths);
+    let mut builder = MergedTreeBuilder::new(tree.clone());
+    for (path, _value) in tree.entries_matching(matcher.as_ref()) {
+        builder.set_or_remove(path, Merge::absent());
+    }
+    let new_tree = pollster::block_on(builder.write_tree()).map_err(be)?;
+    let description = format!("delete paths in commit {}", commit.id().hex());
+    finish_tree_rewrite(workspace, ctx, tx, &commit, new_tree, restore_descendants, &description)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
@@ -771,6 +952,46 @@ mod tests {
         assert_eq!(
             chmod_refusal(&Merge::from_vec(vec![file(), None, link()])),
             Some("Some of the sides of the conflict are not files")
+        );
+    }
+
+    /// `file edit`'s classifier (`edit.rs:89-108` @ v0.46.0): absent, a file and a file conflict
+    /// pass; a directory, a symlink, a submodule and a conflict with a non-file side refuse with
+    /// the CLI's texts.
+    #[test]
+    fn edit_refuses_what_the_cli_refuses() {
+        use jj_lib::backend::{CommitId, CopyId, FileId, SymlinkId, TreeId, TreeValue};
+        use jj_lib::merge::Merge;
+
+        use super::edit_refusal;
+
+        let file = || {
+            Some(TreeValue::File {
+                id: FileId::new(vec![1]),
+                executable: false,
+                copy_id: CopyId::placeholder(),
+            })
+        };
+        let link = || Some(TreeValue::Symlink(SymlinkId::new(vec![2])));
+        assert_eq!(edit_refusal(Merge::absent(), "p"), None);
+        assert_eq!(edit_refusal(Merge::resolved(file()), "p"), None);
+        assert_eq!(edit_refusal(Merge::from_vec(vec![file(), None, file()]), "p"), None);
+        assert_eq!(
+            edit_refusal(Merge::resolved(Some(TreeValue::Tree(TreeId::new(vec![3])))), "d"),
+            Some("Path is a directory: d".to_owned())
+        );
+        let not_regular = Some("Path 'p' is not a regular file".to_owned());
+        assert_eq!(edit_refusal(Merge::resolved(link()), "p"), not_regular);
+        assert_eq!(
+            edit_refusal(
+                Merge::resolved(Some(TreeValue::GitSubmodule(CommitId::new(vec![4])))),
+                "p"
+            ),
+            not_regular
+        );
+        assert_eq!(
+            edit_refusal(Merge::from_vec(vec![file(), None, link()]), "p"),
+            Some("Path 'p' has a non-file conflict and cannot be edited".to_owned())
         );
     }
 }

@@ -17,7 +17,8 @@ import 'warning.dart';
 // the request builders and adapters (fileTrack / fileUntrack), the payload models
 // (TrackResult, UntrackResult and the SnapshotStats shape both share, which Story
 // 9.26's pre-verb snapshot report reuses) and their decoders — and Story 9.13's
-// fileChmod adapter (its result is the shared MutationResult). `dart:ffi` stays inside
+// fileChmod adapter and Story 9.44's fileEdit / fileDelete adapters (their result is
+// the shared MutationResult). `dart:ffi` stays inside
 // `ffi/` — only the worker isolate calls these adapters.
 //
 // The shared `rejectInteriorNuls` calls below are the DIRECT-CALLER backstop: the
@@ -70,6 +71,47 @@ Uint8List zanshinFileChmod(int rawHandle, List<String> paths, {required bool exe
     paths: paths,
   ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_file_chmod(rawHandle, ptr, len));
+}
+
+/// Call `zanshin_file_edit` with the raw `u64` handle and a `FileEditRequest`
+/// request buffer (Story 9.44), and return the FlatBuffers `Envelope` bytes — the
+/// CLI's `jj file edit`, with [content] (the file's NEW bytes; empty = an empty
+/// file) in place of the editor's saved buffer. [path] is one
+/// workspace-root-relative repo path; a `null` [revision] applies the CLI's `-r`
+/// default `@`; [restoreDescendants] is `--restore-descendants`.
+Uint8List zanshinFileEdit(
+  int rawHandle,
+  String path,
+  Uint8List content, {
+  String? revision,
+  bool restoreDescendants = false,
+}) {
+  rejectInteriorNul(path, 'path');
+  rejectInteriorNul(revision, 'revision');
+  final Uint8List request = fbs.FileEditRequestObjectBuilder(
+    kind: fbs.RequestKind.FileEdit,
+    revision: revision,
+    restoreDescendants: restoreDescendants,
+    path: path,
+    content: content,
+  ).toBytes();
+  return callWithRequest(request, (ptr, len) => zanshin_file_edit(rawHandle, ptr, len));
+}
+
+/// Call `zanshin_file_delete` with the raw `u64` handle and a `FileDeleteRequest`
+/// request buffer (Story 9.44), and return the FlatBuffers `Envelope` bytes — the
+/// CLI's `jj file delete`. [paths] as for [zanshinFileTrack]; [revision] and
+/// [restoreDescendants] as for [zanshinFileEdit].
+Uint8List zanshinFileDelete(int rawHandle, List<String> paths, {String? revision, bool restoreDescendants = false}) {
+  rejectInteriorNuls(paths, 'paths');
+  rejectInteriorNul(revision, 'revision');
+  final Uint8List request = fbs.FileDeleteRequestObjectBuilder(
+    kind: fbs.RequestKind.FileDelete,
+    revision: revision,
+    restoreDescendants: restoreDescendants,
+    paths: paths,
+  ).toBytes();
+  return callWithRequest(request, (ptr, len) => zanshin_file_delete(rawHandle, ptr, len));
 }
 
 // ── Dart models ──────────────────────────────────────────────────────────────

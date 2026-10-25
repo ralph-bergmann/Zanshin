@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 // Worker round-trip tests for Story 9.22's two working-copy tracking verbs
-// (fileTrack / fileUntrack) and Story 9.13's fileChmod on both [ZanshinWorker]
-// and [RepoHandle].
+// (fileTrack / fileUntrack), Story 9.13's fileChmod and Story 9.44's fileEdit /
+// fileDelete on both [ZanshinWorker] and [RepoHandle].
 //
 // These tests boot the REAL Isolate.spawn flow against the REAL compiled cdylib
 // via @ffi.Native native assets. No mocked isolates, no mocked FFI
 // (project-context: "Worker / isolate testing"). They are also what credits
-// zanshin_file_track, zanshin_file_untrack and zanshin_file_chmod in the coverage ratchet's
+// zanshin_file_track, zanshin_file_untrack, zanshin_file_chmod, zanshin_file_edit and
+// zanshin_file_delete in the coverage ratchet's
 // extern-fn guard: cargo-llvm-cov does not attribute a #[no_mangle] extern fn
 // hit from a Rust integration test to the cdylib, so each extern fn needs a
 // packages/zanshin_core test calling it through the library
@@ -19,6 +20,7 @@
 // file cannot ignore them.
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/file.dart' show FileEntry;
@@ -279,6 +281,130 @@ void main() {
       expect(() => handle.fileChmod(['a'], executable: true), throwsA(isA<StateError>()));
       await expectLater(
         worker.fileChmod(9999, ['a'], executable: true),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+    });
+  });
+
+  group('ZanshinWorker file edit / file delete (real cdylib)', () {
+    late ZanshinWorker worker;
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = Directory.systemTemp.createTempSync('zanshin_file_edit_test_');
+      worker = await ZanshinWorker.start();
+    });
+
+    tearDown(() async {
+      await worker.close();
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('edit_round_trips_and_refuses', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final file = File('${tempDir.path}/zanshin_edit_me.txt')..writeAsStringSync('old\n');
+      final String at = (await handle.status()).workingCopyChangeId!;
+
+      final MutationResult result = await handle.fileEdit(
+        'zanshin_edit_me.txt',
+        Uint8List.fromList('new\n'.codeUnits),
+      );
+      final (String head, String description) = await headOp(handle);
+      expect(result.newOpId, head);
+      expect(description, startsWith('edit file zanshin_edit_me.txt in commit '));
+      expect(file.readAsStringSync(), 'new\n', reason: 'the checkout wrote the new content');
+
+      // `revision` and `restoreDescendants` cross; an empty buffer is an empty file.
+      await handle.fileEdit('zanshin_edit_me.txt', Uint8List(0), revision: at, restoreDescendants: true);
+      expect(file.readAsStringSync(), isEmpty);
+
+      await expectLater(
+        handle.fileEdit('', Uint8List(0)),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.invalid_input')
+              .having((e) => e.context, 'context', 'Path is a directory: .'),
+        ),
+      );
+      await expectLater(
+        handle.fileEdit('x', Uint8List(0), revision: 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz'),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.immutable')),
+      );
+      await handle.close();
+    });
+
+    test('delete_round_trips_and_refuses', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final file = File('${tempDir.path}/zanshin_delete_me.txt')..writeAsStringSync('gone\n');
+      final String at = (await handle.status()).workingCopyChangeId!;
+
+      final MutationResult result = await handle.fileDelete(
+        ['zanshin_delete_me.txt', 'nope'],
+        revision: at,
+        restoreDescendants: true,
+      );
+      final (String head, String description) = await headOp(handle);
+      expect(result.newOpId, head);
+      expect(description, startsWith('delete paths in commit '));
+      expect(result.warnings.map((w) => w.code), ['jj.paths_unmatched']);
+      expect(file.existsSync(), isFalse, reason: 'the checkout removed the file');
+
+      await expectLater(
+        handle.fileDelete(const []),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+      await handle.close();
+    });
+
+    // `revision` and `restoreDescendants` cross for both verbs: the parent changes, its child
+    // (the working copy, inheriting the file) keeps its content.
+    test('edit_and_delete_in_a_parent_with_restore_descendants_keep_the_childs_content', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final file = File('${tempDir.path}/zanshin_parent.txt')..writeAsStringSync('old\n');
+      final String parent = (await handle.status()).workingCopyChangeId!;
+      await handle.newChange([parent]);
+      Future<String> parentContent() async => String.fromCharCodes(
+        (await handle.fileShow(paths: ['zanshin_parent.txt'], revision: parent)).files.single.content,
+      );
+
+      await handle.fileEdit(
+        'zanshin_parent.txt',
+        Uint8List.fromList('new\n'.codeUnits),
+        revision: parent,
+        restoreDescendants: true,
+      );
+      expect(await parentContent(), 'new\n');
+      expect(file.readAsStringSync(), 'old\n', reason: 'the child kept its content');
+
+      await handle.fileDelete(['zanshin_parent.txt'], revision: parent, restoreDescendants: true);
+      expect(
+        await handle.fileList(revision: parent, paths: ['zanshin_parent.txt']),
+        isEmpty,
+        reason: 'the parent lost the file',
+      );
+      expect(file.readAsStringSync(), 'old\n', reason: 'the child kept its content');
+      await handle.close();
+    });
+
+    test('edit_and_delete_guard_a_closed_handle_an_unknown_one_and_a_nul', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+      final nul = String.fromCharCode(0);
+      Matcher argument(String name) => throwsA(isA<ArgumentError>().having((e) => e.name, 'name', name));
+      expect(() => handle.fileEdit('a${nul}b', Uint8List(0)), argument('path'));
+      expect(() => handle.fileEdit('a', Uint8List(0), revision: 'q$nul'), argument('revision'));
+      expect(() => handle.fileDelete(['a${nul}b']), argument('paths'));
+      expect(() => handle.fileDelete(['a'], revision: 'q$nul'), argument('revision'));
+      await handle.close();
+      expect(() => handle.fileEdit('a', Uint8List(0)), throwsA(isA<StateError>()));
+      expect(() => handle.fileDelete(['a']), throwsA(isA<StateError>()));
+      await expectLater(
+        worker.fileEdit(9999, 'a', Uint8List(0)),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+      );
+      await expectLater(
+        worker.fileDelete(9999, ['a']),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
       );
     });

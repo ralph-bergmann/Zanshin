@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+import 'dart:typed_data';
+
 import '../ffi/bookmarks.dart' show BookmarkSortKey;
 import '../ffi/commit_views.dart' show ChangeIdRef, CommitIdRef, RevisionRef;
 import '../ffi/config.dart' show ConfigScope, ConfigTarget;
@@ -1761,6 +1763,69 @@ final class FileChmodCommand extends WorkerCommand implements HandleScopedComman
 
   /// jj reverse-hex change id of the revision; `null` = `@`.
   final String? revision;
+}
+
+/// Replace the content of [path] in one revision of the repo identified by
+/// [handleId] with [content] (Story 9.44) — the CLI's `jj file edit`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinFileEdit(raw, …)`, and replies with a `BufferResult` carrying
+/// the FlatBuffers `Envelope<MutationResult>` bytes.
+final class FileEditCommand extends WorkerCommand implements HandleScopedCommand {
+  const FileEditCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.path,
+    required this.content,
+    required this.revision,
+    required this.restoreDescendants,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// One workspace-root-relative repo path.
+  final String path;
+
+  /// The file's new bytes (copied across the isolate boundary); empty = an
+  /// empty file.
+  final Uint8List content;
+
+  /// jj reverse-hex change id of the revision; `null` = `@`.
+  final String? revision;
+
+  /// `--restore-descendants`: descendants keep their content, not their diff.
+  final bool restoreDescendants;
+}
+
+/// Remove the entries matching [paths] from one revision of the repo identified
+/// by [handleId] (Story 9.44) — the CLI's `jj file delete`.
+///
+/// The worker looks up the raw handle in its Model-A table (read — never remove),
+/// calls `zanshinFileDelete(raw, …)`, and replies with a `BufferResult` carrying
+/// the FlatBuffers `Envelope<MutationResult>` bytes.
+final class FileDeleteCommand extends WorkerCommand implements HandleScopedCommand {
+  const FileDeleteCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.paths,
+    required this.revision,
+    required this.restoreDescendants,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// Repo-relative PREFIXES; an empty list is refused (`jj.invalid_input`).
+  final List<String> paths;
+
+  /// jj reverse-hex change id of the revision; `null` = `@`.
+  final String? revision;
+
+  /// `--restore-descendants`: descendants keep their content, not their diff.
+  final bool restoreDescendants;
 }
 
 /// Snapshot the working copy of the repo identified by [handleId] right now —

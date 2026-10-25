@@ -3298,6 +3298,70 @@ class ZanshinWorker {
     return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
   }
 
+  /// Replace the content of [path] in one revision of the repo identified by
+  /// [handleId] with [content] (Story 9.44) — the CLI's `jj file edit`. See
+  /// [RepoHandle.fileEdit].
+  ///
+  /// Sends a [FileEditCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if [path] or [revision] contains an interior NUL
+  /// (U+0000). Throws [ZanshinFfiException] on FFI errors. Completes with a
+  /// [StateError] after [close].
+  Future<repo_ffi_mutate.MutationResult> fileEdit(
+    int handleId,
+    String path,
+    Uint8List content, {
+    String? revision,
+    bool restoreDescendants = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNul(path, 'path');
+    rejectInteriorNul(revision, 'revision');
+    final Uint8List bytes = await send(
+      FileEditCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        path: path,
+        content: content,
+        revision: revision,
+        restoreDescendants: restoreDescendants,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
+  /// Remove the entries matching [paths] from one revision of the repo
+  /// identified by [handleId] (Story 9.44) — the CLI's `jj file delete`. See
+  /// [RepoHandle.fileDelete].
+  ///
+  /// Sends a [FileDeleteCommand] via [send] and decodes the returned FlatBuffers
+  /// `Envelope<MutationResult>` bytes.
+  ///
+  /// Throws [ArgumentError] if a path or [revision] contains an interior NUL
+  /// (U+0000). Throws [ZanshinFfiException] on FFI errors. Completes with a
+  /// [StateError] after [close].
+  Future<repo_ffi_mutate.MutationResult> fileDelete(
+    int handleId,
+    List<String> paths, {
+    String? revision,
+    bool restoreDescendants = false,
+  }) async {
+    // See [bookmarkCreate] for why this guard is on the calling side.
+    rejectInteriorNuls(paths, 'paths');
+    rejectInteriorNul(revision, 'revision');
+    final Uint8List bytes = await send(
+      FileDeleteCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        paths: paths,
+        revision: revision,
+        restoreDescendants: restoreDescendants,
+      ),
+    );
+    return repo_ffi_mutate.decodeMutationResultEnvelopeInternal(bytes);
+  }
+
   /// Snapshot the working copy of the repo identified by [handleId] right now —
   /// and, in a colocated workspace, import the Git HEAD and refs (Story 9.26) —
   /// the CLI's `jj util snapshot`.
@@ -5049,6 +5113,50 @@ void _workerEntry(_WorkerInit init) {
               paths,
               executable: executable,
               revision: revision,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case FileEditCommand(
+          :final int handleId,
+          :final String path,
+          :final Uint8List content,
+          :final String? revision,
+          :final bool restoreDescendants,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: FileEditCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_file_ops.zanshinFileEdit(
+              raw,
+              path,
+              content,
+              revision: revision,
+              restoreDescendants: restoreDescendants,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case FileDeleteCommand(
+          :final int handleId,
+          :final List<String> paths,
+          :final String? revision,
+          :final bool restoreDescendants,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: FileDeleteCommand for unknown handleId $handleId');
+            final Uint8List errorBytes = _invalidHandleEnvelope(handleId);
+            responseSP.send((commandId, BufferResult(errorBytes)));
+          } else {
+            final Uint8List bytes = repo_ffi_file_ops.zanshinFileDelete(
+              raw,
+              paths,
+              revision: revision,
+              restoreDescendants: restoreDescendants,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }

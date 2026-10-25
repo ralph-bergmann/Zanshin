@@ -202,7 +202,9 @@ enum RequestKind {
   Diffedit(67),
   Revert(68),
   RevsetCounts(69),
-  FindChanges(70);
+  FindChanges(70),
+  FileEdit(71),
+  FileDelete(72);
 
   final int value;
   const RequestKind(this.value);
@@ -351,6 +353,10 @@ enum RequestKind {
         return RequestKind.RevsetCounts;
       case 70:
         return RequestKind.FindChanges;
+      case 71:
+        return RequestKind.FileEdit;
+      case 72:
+        return RequestKind.FileDelete;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -359,7 +365,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 70;
+  static const int maxValue = 72;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -8807,6 +8813,235 @@ class FileChmodRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addUint8(0, _kind?.value);
     fbBuilder.addBool(1, _executable);
     fbBuilder.addOffset(2, revisionOffset);
+    fbBuilder.addOffset(3, pathsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_file_edit` (Story 9.44) — the CLI's `jj file edit [-r]
+///  [--restore-descendants] <path>`, with `content` in place of the editor's saved buffer.
+///
+///  `revision` ABSENT is the CLI's `-r` default `@`; present it is a jj reverse-hex CHANGE ID.
+///  `restore_descendants` is `--restore-descendants` (ABSENT = false). `path` is one
+///  workspace-root-relative repo path, parsed as FileShowRequest's (`""` is the root). `content`
+///  is the file's NEW bytes; an EMPTY vector is an empty file. An ABSENT `path` or `content` is
+///  refused with `jj.invalid_input` before the pre-verb snapshot.
+class FileEditRequest {
+  FileEditRequest._(this._bc, this._bcOffset);
+  factory FileEditRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileEditRequest> reader = _FileEditRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  bool get restoreDescendants => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+  String? get path => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  List<int>? get content => const fb.Uint8ListReader().vTableGetNullable(_bc, _bcOffset, 12);
+
+  @override
+  String toString() {
+    return 'FileEditRequest{kind: ${kind}, revision: ${revision}, restoreDescendants: ${restoreDescendants}, path: ${path}, content: ${content}}';
+  }
+}
+
+class _FileEditRequestReader extends fb.TableReader<FileEditRequest> {
+  const _FileEditRequestReader();
+
+  @override
+  FileEditRequest createObject(fb.BufferContext bc, int offset) => FileEditRequest._(bc, offset);
+}
+
+class FileEditRequestBuilder {
+  FileEditRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRestoreDescendants(bool? restoreDescendants) {
+    fbBuilder.addBool(2, restoreDescendants);
+    return fbBuilder.offset;
+  }
+
+  int addPathOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addContentOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileEditRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _revision;
+  final bool? _restoreDescendants;
+  final String? _path;
+  final List<int>? _content;
+
+  FileEditRequestObjectBuilder({
+    RequestKind? kind,
+    String? revision,
+    bool? restoreDescendants,
+    String? path,
+    List<int>? content,
+  }) : _kind = kind,
+       _revision = revision,
+       _restoreDescendants = restoreDescendants,
+       _path = path,
+       _content = content;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    final int? pathOffset = _path == null ? null : fbBuilder.writeString(_path!);
+    final int? contentOffset = _content == null ? null : fbBuilder.writeListUint8(_content!);
+    fbBuilder.startTable(5);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionOffset);
+    fbBuilder.addBool(2, _restoreDescendants);
+    fbBuilder.addOffset(3, pathOffset);
+    fbBuilder.addOffset(4, contentOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_file_delete` (Story 9.44) — the CLI's `jj file delete [-r]
+///  [--restore-descendants] <paths>`.
+///
+///  `revision` and `restore_descendants` as in FileEditRequest. `paths` exactly as in
+///  FileTrackRequest: an EMPTY or ABSENT vector is refused with `jj.invalid_input` before the
+///  pre-verb snapshot (clap's `required`).
+class FileDeleteRequest {
+  FileDeleteRequest._(this._bc, this._bcOffset);
+  factory FileDeleteRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FileDeleteRequest> reader = _FileDeleteRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get revision => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  bool get restoreDescendants => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+  List<String>? get paths => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'FileDeleteRequest{kind: ${kind}, revision: ${revision}, restoreDescendants: ${restoreDescendants}, paths: ${paths}}';
+  }
+}
+
+class _FileDeleteRequestReader extends fb.TableReader<FileDeleteRequest> {
+  const _FileDeleteRequestReader();
+
+  @override
+  FileDeleteRequest createObject(fb.BufferContext bc, int offset) => FileDeleteRequest._(bc, offset);
+}
+
+class FileDeleteRequestBuilder {
+  FileDeleteRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addRevisionOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addRestoreDescendants(bool? restoreDescendants) {
+    fbBuilder.addBool(2, restoreDescendants);
+    return fbBuilder.offset;
+  }
+
+  int addPathsOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FileDeleteRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _revision;
+  final bool? _restoreDescendants;
+  final List<String>? _paths;
+
+  FileDeleteRequestObjectBuilder({
+    RequestKind? kind,
+    String? revision,
+    bool? restoreDescendants,
+    List<String>? paths,
+  }) : _kind = kind,
+       _revision = revision,
+       _restoreDescendants = restoreDescendants,
+       _paths = paths;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? revisionOffset = _revision == null ? null : fbBuilder.writeString(_revision!);
+    final int? pathsOffset = _paths == null ? null : fbBuilder.writeList(_paths!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, revisionOffset);
+    fbBuilder.addBool(2, _restoreDescendants);
     fbBuilder.addOffset(3, pathsOffset);
     return fbBuilder.endTable();
   }
