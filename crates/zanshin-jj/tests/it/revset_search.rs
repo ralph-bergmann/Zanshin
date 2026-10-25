@@ -33,7 +33,7 @@ fn topology(repo: &mut Repo, revset: &str, short_prefixes: &str) -> zanshin_jj::
     topology
 }
 
-fn counts(repo: &Repo, op: &OperationId, expressions: &[&str], cap: u64) -> Vec<Result<RevsetCount, RevsetError>> {
+fn counts(repo: &mut Repo, op: &OperationId, expressions: &[&str], cap: u64) -> Vec<Result<RevsetCount, RevsetError>> {
     let expressions: Vec<String> = expressions.iter().map(|&e| e.to_owned()).collect();
     repo.revset_counts(op, &expressions, cap).unwrap().counts
 }
@@ -79,7 +79,7 @@ fn every_count_matches_the_topology_at_that_operation() {
         r#"files(glob:"commit-1?.txt")"#,
     ] {
         let topology = topology(&mut repo, expr, DEFAULT_LOG_REVSET);
-        let counts = counts(&repo, &topology.operation_id, &[expr], CAP);
+        let counts = counts(&mut repo, &topology.operation_id, &[expr], CAP);
         assert!(!topology.nodes.is_empty(), "{expr} must match something");
         assert_eq!(
             counts[0].as_ref().unwrap(),
@@ -98,10 +98,10 @@ fn a_cap_stops_the_count_and_a_zero_cap_only_parses_and_resolves() {
     let op = topology(&mut repo, "@", DEFAULT_LOG_REVSET).operation_id;
 
     assert_eq!(
-        counts(&repo, &op, &["all()"], 5)[0].as_ref().unwrap(),
+        counts(&mut repo, &op, &["all()"], 5)[0].as_ref().unwrap(),
         &RevsetCount { n: 5, capped: true }
     );
-    let zero = counts(&repo, &op, &["all()", "bogus(", "nonexistent_bookmark"], 0);
+    let zero = counts(&mut repo, &op, &["all()", "bogus(", "nonexistent_bookmark"], 0);
     assert_eq!(zero[0].as_ref().unwrap(), &RevsetCount { n: 0, capped: false });
     assert!(matches!(zero[1], Err(RevsetError::ParseError { .. })), "{:?}", zero[1]);
     assert!(
@@ -117,7 +117,7 @@ fn a_failing_entry_fails_only_itself() {
     let all = topology(&mut repo, "all()", DEFAULT_LOG_REVSET);
 
     let counts = counts(
-        &repo,
+        &mut repo,
         &all.operation_id,
         &["all()", "nonexistent_bookmark", r#"description(regex:"(")"#],
         CAP,
@@ -150,7 +150,7 @@ fn counts_resolve_with_the_effective_short_prefixes_context() {
     let op = topology(&mut repo, "@", DEFAULT_LOG_REVSET).operation_id;
     let tip = repo.find_changes(&op, "tip", 1, "").unwrap().entries.remove(0);
     let prefix = &tip.change_id.0[..1];
-    let ambiguous = counts(&repo, &op, &[prefix], CAP);
+    let ambiguous = counts(&mut repo, &op, &[prefix], CAP);
     assert!(
         matches!(&ambiguous[0], Err(e) if detail(e).kind == RevsetErrorKind::AmbiguousChangeIdPrefix),
         "{ambiguous:?}"
@@ -161,9 +161,9 @@ fn counts_resolve_with_the_effective_short_prefixes_context() {
         "[revsets]\nshort-prefixes = \"tip\"\n",
     )
     .unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     assert_eq!(
-        counts(&repo, &op, &[prefix], CAP)[0].as_ref().unwrap(),
+        counts(&mut repo, &op, &[prefix], CAP)[0].as_ref().unwrap(),
         &RevsetCount { n: 1, capped: false }
     );
 }
@@ -203,7 +203,7 @@ fn a_bad_effective_short_prefixes_is_a_call_level_config_error() {
         "[revset-aliases]\n'bad(' = 'x'\n[revsets]\nshort-prefixes = \"bogus(\"\n",
     )
     .unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let err = repo.revset_counts(&op, &["all()".to_owned()], CAP).unwrap_err();
 
@@ -251,7 +251,7 @@ fn both_searches_on_a_dirty_working_copy_write_nothing() {
 
 #[test]
 fn an_unknown_or_malformed_operation_is_a_call_level_fault() {
-    let (_fx, repo) = medium();
+    let (_fx, mut repo) = medium();
     // All zeros is the root operation; all `f`s is in no store.
     let unknown = OperationId("f".repeat(128));
 

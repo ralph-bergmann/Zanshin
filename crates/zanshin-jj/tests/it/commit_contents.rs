@@ -120,7 +120,7 @@ fn commit_contents_answers_in_request_order_with_the_full_description() {
 fn commit_contents_of_an_empty_list_is_empty() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     assert!(repo.commit_contents(&head(&fx.path), &[]).unwrap().is_empty());
 }
 
@@ -130,7 +130,7 @@ fn commit_contents_of_an_empty_list_is_empty() {
 fn commit_contents_refuses_an_empty_or_non_hex_operation_id_with_the_cli_text() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     assert_eq!(
         invalid_input(repo.commit_contents(&OperationId(String::new()), &[])),
         r#"Operation ID "" is not a valid hexadecimal prefix"#
@@ -145,7 +145,7 @@ fn commit_contents_refuses_an_empty_or_non_hex_operation_id_with_the_cli_text() 
 fn commit_contents_refuses_an_operation_id_prefix_without_resolving_it() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let op = head(&fx.path).0;
 
     let prefix = &op[..12];
@@ -164,7 +164,7 @@ fn commit_contents_refuses_an_operation_id_prefix_without_resolving_it() {
 fn commit_contents_reports_an_unknown_operation_as_not_found() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let unknown = "ab".repeat(64);
 
     let err = repo.commit_contents(&OperationId(unknown.clone()), &[]).unwrap_err();
@@ -193,7 +193,7 @@ fn commit_contents_reports_a_vanished_older_operation_as_not_found() {
             .join(&older.0),
     )
     .unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let err = repo.commit_contents(&older, &[]).unwrap_err();
 
@@ -244,7 +244,7 @@ fn commit_contents_accepts_an_uppercase_commit_id_and_answers_in_lowercase() {
 fn commit_contents_reports_an_unindexed_commit_id_as_not_found() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let pinned = head(&fx.path);
     let later = add_commit_off_root(&fx.path, "created after the pinned operation");
     let absent = "0123456789abcdef0123456789abcdef01234567".to_owned();
@@ -262,7 +262,7 @@ fn commit_contents_reports_an_unindexed_commit_id_as_not_found() {
 fn commit_contents_checks_the_operation_first_and_every_id_format_before_the_index() {
     test_helpers::pin_test_env();
     let fx = extract_fixture("tiny-3-commits").unwrap();
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let absent = CommitId("0123456789abcdef0123456789abcdef01234567".to_owned());
     let malformed = CommitId("zz".to_owned());
 
@@ -289,7 +289,7 @@ fn commit_contents_reports_an_unloadable_indexed_commit_and_its_child_as_backend
         )
     };
     // A fresh handle: its store has never read c2, so the deletion is observable.
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
     let objects = fx
         .path
         .join(".jj")
@@ -399,7 +399,7 @@ fn commit_contents_leaves_divergent_op_heads_unreconciled() {
     expected.sort();
     assert_eq!(op_heads(&fx.path), expected, "two sibling op heads");
     let operations = listing(&fx.path, &["op_store", "operations"]);
-    let repo = Repo::open(&fx.path).unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
 
     let at_h1 = repo.commit_contents(&h1, &[CommitId(a.clone())]).unwrap();
     let at_h2 = repo.commit_contents(&h2, &[CommitId(b.clone())]).unwrap();

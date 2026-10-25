@@ -446,6 +446,171 @@ fn enable_in_a_child_workspace_with_an_existing_dot_git_refuses() {
     assert!(!store(&fx.root).join("git").join("worktrees").exists());
 }
 
+// ── sibling handles ──────────────────────────────────────────────────────────────
+// Another handle's toggle changes `store/git_target` and moves the Git directory on disk, the
+// same files `jj git colocation enable|disable` in a terminal changes.
+
+fn same_dir(a: &Path, b: &Path) {
+    assert_eq!(fs::canonicalize(a).expect("a"), fs::canonicalize(b).expect("b"));
+}
+
+/// Commits `name.txt` as `name` in the workspace of `repo`.
+fn commit_file(repo: &mut Repo, name: &str) {
+    fs::write(repo.workspace_root().join(format!("{name}.txt")), name).expect("write");
+    repo.commit(&CommitOptions {
+        message: vec![name.to_owned()],
+        ..CommitOptions::default()
+    })
+    .expect("commit");
+}
+
+/// Whether the Git repository at `git_dir` holds the commit object `id`.
+fn has_object(git_dir: &Path, id: &str) -> bool {
+    Command::new("git")
+        .args(["--git-dir", &git_dir.to_string_lossy(), "cat-file", "-e", id])
+        .status()
+        .expect("spawn git")
+        .success()
+}
+
+#[test]
+fn a_sibling_default_handle_follows_an_enable() {
+    let (fx, mut a) = repo(false, true);
+    let mut b = Repo::open(&fx.root).expect("open b");
+    assert!(a.git_colocation_enable().expect("enable").converted);
+    let status = b.git_colocation_status().expect("b's status");
+    assert!(status.colocated);
+    same_dir(&status.git_repo_path, &fx.root.join(".git"));
+    assert_eq!(status, status_of(&fx.root));
+    assert!(b.git_colocation_disable().expect("b disables").converted);
+    assert!(!status_of(&fx.root).colocated);
+    assert_eq!(git_target(&fx.root), "git");
+}
+
+#[test]
+fn a_sibling_default_handle_follows_a_disable() {
+    let (fx, mut a) = repo(true, true);
+    let mut b = Repo::open(&fx.root).expect("open b");
+    assert!(a.git_colocation_disable().expect("disable").converted);
+    let status = b.git_colocation_status().expect("b's status");
+    assert!(!status.colocated);
+    assert_eq!(status.git_repo_path, store(&fx.root).join("git"));
+    assert_eq!(status, status_of(&fx.root));
+}
+
+/// The toggling handle records the bytes its own toggle wrote, so a sibling toggling BACK
+/// (restoring the bytes it was opened with) still reloads it.
+#[test]
+fn the_toggling_handle_follows_a_sibling_toggling_back() {
+    let (fx, mut a) = repo(false, true);
+    let mut b = Repo::open(&fx.root).expect("open b");
+    assert!(a.git_colocation_enable().expect("a enables").converted);
+    assert!(b.git_colocation_disable().expect("b disables").converted);
+    let status = a.git_colocation_status().expect("a's status");
+    assert!(!status.colocated);
+    assert_eq!(status, status_of(&fx.root));
+    commit_file(&mut a, "c2");
+    assert!(has_object(
+        &store(&fx.root).join("git"),
+        &wc_parent(&fx.root, "default")
+    ));
+}
+
+#[test]
+fn a_child_handle_follows_the_default_workspace_enabling() {
+    let (fx, mut ws2) = child(false);
+    let mut main = Repo::open(&fx.root).expect("open main");
+    assert!(main.git_colocation_enable().expect("enable").converted);
+    let status = ws2.git_colocation_status().expect("ws2's status");
+    same_dir(&status.git_repo_path, &fx.root.join(".git"));
+    assert_eq!(status, status_of(&fx.ws2()));
+    commit_file(&mut ws2, "c2");
+    assert!(has_object(&fx.root.join(".git"), &wc_parent(&fx.ws2(), "ws2")));
+}
+
+#[test]
+fn a_child_handle_follows_the_default_workspace_disabling() {
+    let (fx, mut ws2) = child(false);
+    let mut main = Repo::open(&fx.root).expect("open main");
+    assert!(main.git_colocation_enable().expect("enable").converted);
+    ws2.git_colocation_status().expect("ws2 on the colocated layout");
+    assert!(main.git_colocation_disable().expect("disable").converted);
+    let status = ws2.git_colocation_status().expect("ws2's status");
+    assert!(!status.colocated);
+    same_dir(&status.git_repo_path, &store(&fx.root).join("git"));
+    assert_eq!(status, status_of(&fx.ws2()));
+    commit_file(&mut ws2, "c2");
+    assert!(has_object(&store(&fx.root).join("git"), &wc_parent(&fx.ws2(), "ws2")));
+}
+
+/// An open handle's next mutation writes through the Git directory now on disk: its commit is
+/// exported to the moved repository, HEAD included.
+#[test]
+fn an_open_handle_writes_through_a_git_repo_moved_behind_it() {
+    let (fx, mut b) = repo(false, true);
+    Repo::open(&fx.root)
+        .expect("open a")
+        .git_colocation_enable()
+        .expect("enable");
+    commit_file(&mut b, "c2");
+    assert_eq!(git(&["rev-parse", "HEAD"], &fx.root), wc_parent(&fx.root, "default"));
+}
+
+/// The op-pinned reads follow the Git directory too: a commit written to the moved repository
+/// after the toggle is readable through handles opened before it.
+#[test]
+fn op_pinned_reads_on_a_sibling_follow_a_toggle() {
+    let (fx, mut a) = repo(false, true);
+    let mut contents = Repo::open(&fx.root).expect("open");
+    let mut counts = Repo::open(&fx.root).expect("open");
+    let mut finds = Repo::open(&fx.root).expect("open");
+    assert!(a.git_colocation_enable().expect("enable").converted);
+    commit_file(&mut a, "c2");
+    let op = zanshin_jj::OperationId(head_op(&fx.root));
+    let c2 = wc_parent(&fx.root, "default");
+
+    let read = contents
+        .commit_contents(&op, &[zanshin_jj::CommitId(c2.clone())])
+        .expect("commit_contents");
+    assert_eq!(read[0].description, "c2\n");
+    // `description()` loads every commit object, the moved one included.
+    let counted = counts
+        .revset_counts(&op, &[r#"description(substring:"c2")"#.to_owned()], 10)
+        .expect("revset_counts");
+    assert_eq!(counted.counts[0].as_ref().expect("count").n, 1);
+    let found = finds
+        .find_changes(&op, r#"description(substring:"c2")"#, 1, "")
+        .expect("find_changes");
+    assert_eq!(found.entries[0].commit_id.0, c2);
+}
+
+/// A `git_target` that no longer loads fails the op-pinned reads first — before the operation id
+/// is checked — with the reload's jj-lib reason, prefixed once.
+#[test]
+fn op_pinned_reads_report_a_git_target_that_no_longer_loads() {
+    let (fx, mut repo) = repo(false, true);
+    fs::write(store(&fx.root).join("git_target"), "nope").expect("break git_target");
+    let malformed = zanshin_jj::OperationId("zz".to_owned());
+    let backend = |reason: &str| assert!(!reason.is_empty() && !reason.starts_with("jj-lib error"), "{reason}");
+
+    match repo.commit_contents(&malformed, &[]) {
+        Err(zanshin_jj::CommitContentError::Backend(reason)) => backend(&reason),
+        other => panic!("{other:?}"),
+    }
+    let err = repo.revset_counts(&malformed, &[], 1).expect_err("revset_counts");
+    assert!(err.warnings.is_empty());
+    match err.value {
+        zanshin_jj::RevsetSearchError::Backend(reason) => backend(&reason),
+        other => panic!("{other:?}"),
+    }
+    let err = repo.find_changes(&malformed, "all()", 1, "").expect_err("find_changes");
+    assert!(err.warnings.is_empty());
+    match err.value {
+        zanshin_jj::RevsetSearchError::Backend(reason) => backend(&reason),
+        other => panic!("{other:?}"),
+    }
+}
+
 // ── backends ─────────────────────────────────────────────────────────────────────
 
 #[test]

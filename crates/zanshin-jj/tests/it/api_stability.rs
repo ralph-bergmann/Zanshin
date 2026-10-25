@@ -660,7 +660,7 @@ fn graph_topology_surface_resolves() {
         ) -> Result<zanshin_jj::GraphTopology, zanshin_jj::RevsetError>;
     _ = zanshin_jj::Repo::commit_contents
         as fn(
-            &zanshin_jj::Repo,
+            &mut zanshin_jj::Repo,
             &zanshin_jj::OperationId,
             &[zanshin_jj::CommitId],
         ) -> Result<Vec<zanshin_jj::CommitContent>, zanshin_jj::CommitContentError>;
@@ -2765,14 +2765,14 @@ fn graph_search_surface_resolves() {
     _ = zanshin_jj::RevsetSearchError::Revset(zanshin_jj::RevsetError::JjLibError(String::new()));
     _ = zanshin_jj::Repo::revset_counts
         as fn(
-            &zanshin_jj::Repo,
+            &mut zanshin_jj::Repo,
             &zanshin_jj::OperationId,
             &[String],
             u64,
         ) -> Result<zanshin_jj::RevsetCounts, zanshin_jj::Warned<zanshin_jj::RevsetSearchError>>;
     _ = zanshin_jj::Repo::find_changes
         as fn(
-            &zanshin_jj::Repo,
+            &mut zanshin_jj::Repo,
             &zanshin_jj::OperationId,
             &str,
             u64,

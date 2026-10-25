@@ -83,13 +83,13 @@ fn bench_expressions(store: &str, root: &Path, op: &OperationId, index: &str) {
     eprintln!("[{store}, {index}] Repo::open alone: min {min:?} / med {med:?}");
     for expr in EXPRESSIONS {
         let expressions = [expr.to_owned()];
-        let repo = Repo::open(root).expect("open");
+        let mut repo = Repo::open(root).expect("open");
         let n = repo.revset_counts(op, &expressions, CAP).expect("counts").counts[0]
             .as_ref()
             .map(|c| c.n)
             .expect("count");
         let (min, med) = measure(|| {
-            let fresh = Repo::open(root).expect("open");
+            let mut fresh = Repo::open(root).expect("open");
             std::hint::black_box(fresh.revset_counts(op, &expressions, CAP).expect("counts"));
         });
         eprintln!("[{store}, {index}] {expr} = {n}: min {min:?} / med {med:?}");

@@ -160,9 +160,10 @@ repo.commit_contents(&operation_id, &commit_ids) -> Result<Vec<CommitContent>, C
   commits can yield more nodes), per anchor the node indices it selects,
   and the `operation_id` the call loaded. `with_timestamps` loads each non-root commit for
   its committer timestamp (epoch ms) — the one per-node load, per call, never cached.
-- **`commit_contents`** (`&self`) is the continuation of that `jj log` — its per-row
+- **`commit_contents`** (`&mut self`) is the continuation of that `jj log` — its per-row
   commit load — pinned to the returned operation (`load_operation` + `load_at`, never
-  `load_at_head`): no precondition, no config load, no operation or op head written.
+  `load_at_head`): no precondition, no config load, no operation or op head written; a
+  changed `store/git_target` (a colocation toggle elsewhere) reloads the workspace first.
   `CommitContent` is the object half (author, committer timestamp, FULL description,
   conflict, empty), one entry per id in request order. Ids are full hex only; the error
   ladder is bad id → `InvalidInput`, vanished operation → `OperationNotFound`, id not in
