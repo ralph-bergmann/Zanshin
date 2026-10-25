@@ -19,6 +19,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/duplicate.rs:115 (plan_duplicate_ids), crates/zanshin-jj/src/revert.rs:103 (plan_revert)
     severity: low
+    resolved: >-
+      2026-10-25 — fixed (spec-9-17-staleness-followup-duplicate-revert-root-merge, commit 67d64ec): the plans no longer refuse the root merge; `duplicate` / `revert` refuse it after their template render, right before the first write, the `Duplicate` / `Revert` rows right after the plan; oracle `refusal_order.rs` witnesses both against the pinned CLI.
   - summary: >-
       `diffedit`'s `right` comes from a separate `show` read, so a GUI that re-reads `show` between `select_tree` and `diffedit` can pick up an autosave the selection never saw and lose it again.
     evidence: |-
