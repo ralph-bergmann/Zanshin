@@ -4802,6 +4802,212 @@ mod tests {
         );
     }
 
+    /// Story 9.41's per-call-site witness: every `&mut self` verb records the CLI command its config
+    /// resolves for — the table entry the story's Design Notes assign — whatever its arguments and
+    /// on a refusal too ([`Repo::refresh_settings`] records it first). A call site swapped to
+    /// another entry fails here, naming the verb. Mostly refusing arguments (unknown ids, missing
+    /// remotes) keep it fast; some calls still act on the fixture (`snapshot`, `git_import`, a
+    /// default `rebase` / `bookmark_move`, the movements) — harmless, as only the recorded command
+    /// is asserted. A new verb adds its line here.
+    #[test]
+    #[allow(clippy::too_many_lines)] // WHY: one flat line per verb reads better than split tests
+    fn every_verb_resolves_for_its_cli_command() {
+        use std::ops::ControlFlow;
+
+        use crate::{ChangeId, Direction, MovementOptions, RevisionRef};
+
+        /// Calls `repo.<call>` with the command reset to a sentinel; asserts the recorded entry.
+        macro_rules! records {
+            ($repo:ident, $expected:ident, $($call:tt)+) => {{
+                $repo.command = Some("zanshin test sentinel");
+                let _ = $repo.$($call)+;
+                assert_eq!(
+                    $repo.command(),
+                    cli_command::$expected,
+                    "`{}` must resolve for `{}`",
+                    stringify!($($call)+),
+                    stringify!($expected)
+                );
+            }};
+        }
+
+        let (_fx, mut repo) = open_fixture();
+        assert_eq!(repo.command(), cli_command::NO_COMMAND, "Repo::open");
+        // Not `zzzzzzzz`: that prefix is the root commit's change id.
+        let none = || ChangeId("xyxyxyxy".to_owned());
+        let names = ["nope".to_owned()];
+        let progress = |_: crate::ProgressEvent| {};
+        let next = MovementOptions::default();
+        let prev = MovementOptions {
+            direction: Direction::Prev,
+            ..MovementOptions::default()
+        };
+
+        records!(repo, UTIL_SNAPSHOT, snapshot());
+        records!(repo, STATUS, status());
+        records!(repo, SHOW, get_change(&none()));
+        records!(repo, OPERATION_LOG, op_log(Some(1)));
+        records!(
+            repo,
+            BOOKMARK_LIST,
+            list_bookmarks(&crate::BookmarkListOptions::default())
+        );
+        records!(repo, TAG_LIST, list_tags());
+        records!(repo, LOG, list_heads());
+        records!(repo, WORKSPACE_LIST, list_working_copies());
+        records!(repo, GIT_REMOTE_LIST, list_remotes());
+        records!(repo, GIT_PUSH, git_push_remotes());
+        records!(repo, GIT_FETCH, git_fetch_remotes());
+        records!(repo, FILE_LIST, file_list(Some(none()), &[]));
+        records!(repo, FILE_SHOW, file_show(Some(none()), &names));
+        records!(repo, FILE_ANNOTATE, file_annotate(Some(none()), "nope"));
+        records!(repo, FILE_SEARCH, file_search(Some(none()), "nope", &[], false));
+        records!(repo, LOG, walk_graph("none()", "", "", |_| ControlFlow::Continue(())));
+        records!(repo, LOG, graph_topology("none()", "", "", &[], false));
+        records!(repo, LOG, eval_revset("none()", |_| ControlFlow::Continue(())));
+        records!(repo, DESCRIBE, describe(none(), "x"));
+        records!(repo, NEW, new_change(&[none()], &[], &[]));
+        records!(repo, EDIT, edit(none()));
+        records!(repo, ABANDON, abandon(&[none()]));
+        records!(repo, OPERATION_SHOW, op_show("zzzzzzzz", None));
+        records!(repo, OPERATION_DIFF, op_diff(&crate::OpDiffOptions::default()));
+        records!(repo, OPERATION_ABANDON, op_abandon("zzzzzzzz"));
+        records!(repo, OPERATION_RESTORE, op_restore("zzzzzzzz", &[]));
+        records!(repo, OPERATION_REVERT, op_revert("zzzzzzzz", &[]));
+        records!(repo, OPERATION_INTEGRATE, op_integrate("zzzzzzzz"));
+        let push = crate::GitPushArgs {
+            remotes: Some(names.to_vec()),
+            ..crate::GitPushArgs::default()
+        };
+        records!(repo, GIT_PUSH, git_push(&push, &progress, None));
+        let fetch = crate::GitFetchArgs {
+            remotes: crate::FetchRemotes::Named(names.to_vec()),
+            ..crate::GitFetchArgs::default()
+        };
+        records!(repo, GIT_FETCH, git_fetch(&fetch, &progress, None));
+        records!(repo, GIT_FETCH, remote_changes("nope", None));
+        records!(repo, GIT_IMPORT, git_import());
+        records!(repo, GIT_REMOTE_ADD, git_remote_add("git", "/nowhere", None));
+        records!(repo, GIT_REMOTE_REMOVE, git_remote_remove("nope"));
+        records!(repo, GIT_REMOTE_RENAME, git_remote_rename("nope", "other"));
+        records!(
+            repo,
+            GIT_REMOTE_SET_URL,
+            git_remote_set_url("nope", Some("/nowhere"), None)
+        );
+        records!(repo, SHOW, show(Some("xyxyxyxy"), Some(1)));
+        records!(repo, EVOLOG, evolog(Some("xyxyxyxy"), Some(1)));
+        records!(
+            repo,
+            INTERDIFF,
+            interdiff(Some(RevisionRef::ChangeId(none())), None, &[])
+        );
+        records!(repo, WORKSPACE_LIST, list_workspaces());
+        records!(repo, WORKSPACE_ROOT, resolve_workspace_root(None));
+        records!(repo, WORKSPACE_ROOT, resolve_workspace_root(Some("nope")));
+        records!(repo, WORKSPACE_UPDATE_STALE, workspace_update_stale());
+        records!(
+            repo,
+            WORKSPACE_ADD,
+            workspace_add(
+                "nope",
+                Some("default"),
+                &[],
+                &[],
+                None,
+                crate::SparseInheritance::default()
+            )
+        );
+        records!(repo, WORKSPACE_FORGET, workspace_forget(&names));
+        records!(repo, WORKSPACE_RENAME, workspace_rename(""));
+        records!(repo, WORKSPACE_REMOVE, workspace_remove(&[]));
+        records!(repo, BOOKMARK_CREATE, bookmark_create(&names, Some(&none())));
+        records!(repo, BOOKMARK_DELETE, bookmark_delete(&names));
+        records!(
+            repo,
+            BOOKMARK_MOVE,
+            bookmark_move(&crate::BookmarkMoveOptions::default())
+        );
+        records!(repo, BOOKMARK_ADVANCE, bookmark_advance(&names, Some(&none())));
+        records!(repo, BOOKMARK_RENAME, bookmark_rename("nope", "other", false));
+        records!(repo, BOOKMARK_SET, bookmark_set(&names, Some(&none()), false));
+        records!(repo, BOOKMARK_FORGET, bookmark_forget(&names, false));
+        records!(repo, BOOKMARK_TRACK, bookmark_track(&names, &names));
+        records!(repo, BOOKMARK_UNTRACK, bookmark_untrack(&names, &names));
+        records!(repo, RESTORE, restore(Some(none()), None, None, &[], false));
+        records!(repo, ABSORB, absorb(Some(none()), None, &[]));
+        let squash = crate::SquashOptions {
+            revision: Some(none()),
+            ..crate::SquashOptions::default()
+        };
+        records!(repo, SQUASH, squash(&squash));
+        records!(repo, SQUASH, squash_plan(&squash));
+        records!(repo, NO_COMMAND, drop_actions(&crate::DropSource::Change(none()), &[]));
+        records!(repo, NO_COMMAND, change_actions(&none()));
+        let split = crate::SplitOptions {
+            revision: Some(none()),
+            ..crate::SplitOptions::default()
+        };
+        records!(repo, SPLIT, split(&split));
+        records!(repo, REBASE, rebase(&crate::RebaseOptions::default()));
+        records!(repo, PARALLELIZE, parallelize(&[none()]));
+        let arrange = crate::ArrangeOptions {
+            revisions: vec![none()],
+            ..crate::ArrangeOptions::default()
+        };
+        records!(repo, ARRANGE, arrange(&arrange));
+        let simplify = crate::SimplifyParentsOptions {
+            revisions: vec![none()],
+            ..crate::SimplifyParentsOptions::default()
+        };
+        records!(repo, SIMPLIFY_PARENTS, simplify_parents(&simplify));
+        let metaedit = crate::MetaeditOptions {
+            revisions: vec![none()],
+            ..crate::MetaeditOptions::default()
+        };
+        records!(repo, METAEDIT, metaedit(&metaedit));
+        let duplicate = crate::DuplicateOptions {
+            revisions: vec![none()],
+            ..crate::DuplicateOptions::default()
+        };
+        records!(repo, DUPLICATE, duplicate(&duplicate));
+        let revert = crate::RevertOptions {
+            revisions: vec![none()],
+            onto: vec![none()],
+            ..crate::RevertOptions::default()
+        };
+        records!(repo, REVERT, revert(&revert));
+        let select = crate::SelectTreeOptions {
+            revision: Some(none()),
+            ..crate::SelectTreeOptions::default()
+        };
+        records!(repo, NO_COMMAND, select_tree(&select));
+        records!(repo, RESOLVE, resolve_list(&crate::ResolveListOptions::default()));
+        let resolve = crate::ResolveOptions {
+            revision: Some(none()),
+            paths: Vec::new(),
+            tool: crate::ResolveTool::Ours,
+        };
+        records!(repo, RESOLVE, resolve(&resolve));
+        let diffedit = crate::DiffeditOptions {
+            revision: Some(none()),
+            ..crate::DiffeditOptions::default()
+        };
+        records!(repo, DIFFEDIT, diffedit(&diffedit));
+        records!(repo, FILE_TRACK, file_track(&names, false));
+        records!(repo, FILE_UNTRACK, file_untrack(&names));
+        records!(repo, FILE_CHMOD, file_chmod(true, Some(&none()), &names));
+        records!(repo, NEXT, movement_targets(&next));
+        records!(repo, PREV, movement_targets(&prev));
+        records!(repo, NEXT, move_working_copy(&next));
+        records!(repo, PREV, move_working_copy(&prev));
+        records!(repo, FIX, fix(&crate::FixOptions::default(), None));
+        records!(repo, GIT_EXPORT, git_export());
+        records!(repo, COMMIT, commit(&crate::CommitOptions::default()));
+        records!(repo, UNDO, undo(false));
+        records!(repo, REDO, redo(false));
+    }
+
     #[test]
     fn refresh_reports_a_workspace_that_no_longer_loads_as_backend() {
         let (fx, mut repo) = open_fixture();

@@ -51,11 +51,20 @@ fn run_scenario(scenario: &Scenario) -> Vec<Divergence> {
         std::fs::write(root_a.join(path), text).expect("write into repo A");
         std::fs::write(root_b.join(path), text).expect("write into repo B");
     }
+    // The user config only around the operation: the setup and the captures run under the pinned
+    // empty one, as every other scenario's.
+    let config_dir = empty_dir();
+    if let Some(text) = scenario.user_config {
+        set_user_config(&config_dir.path().join("user.toml"), text);
+    }
 
     let zanshin = (scenario.zanshin)(&mut repo_a, &root_a, &before_a);
     let argv = (scenario.cli)(&before_b);
     let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
     let cli = cli_outcome(&jj(&root_b, &argv));
+    if scenario.user_config.is_some() {
+        set_jj_config(std::ffi::OsStr::new(""));
+    }
 
     let after_a = capture(&root_a, Some(&before_a));
     let after_b = capture(&root_b, Some(&before_b));

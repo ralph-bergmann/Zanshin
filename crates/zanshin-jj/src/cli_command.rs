@@ -11,7 +11,9 @@
 //! a prefix by whole words; a scope with `--when.commands` never matches [`NO_COMMAND`]).
 //!
 //! The unit test below walks the pinned jj-cli's clap tree (`jj_cli::commands::default_app()`), so
-//! a pin bump that renames a command fails here.
+//! a pin bump that renames a command fails here. Which entry each call site takes is witnessed
+//! elsewhere: a new `Repo` verb adds its line to `repo.rs`'s `every_verb_resolves_for_its_cli_command`,
+//! a new config verb to `tests/it/when_commands.rs`' `every_config_verb_resolves_for_its_cli_command`.
 
 /// The CLI command a call resolves its config stack for — [`NO_COMMAND`] for a call no CLI
 /// command corresponds to.

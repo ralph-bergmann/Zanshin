@@ -313,7 +313,29 @@ pub const CREATION_SCENARIOS: &[CreationScenario] = &[
         zanshin: |dir| init(dir.to_owned(), None),
         user_config: Some(WHEN_GIT_CLONE_NO_COLOCATE),
     },
+    // Story 9.41 closing run: both conversions play `jj git init`, so a refs-step fault scoped to
+    // it refuses them after `init_external_git`, as the CLI's `--colocate` / `--git-repo`.
+    CreationScenario {
+        id: "convert_colocated_when_commands_refs_fault",
+        prep: GIT_HERE,
+        target: "",
+        cli: &["git", "init", "--colocate"],
+        zanshin: |dir| zanshin_jj::convert_colocated(dir),
+        user_config: Some(WHEN_GIT_INIT_BROKEN_AUTO_TRACK),
+    },
+    CreationScenario {
+        id: "convert_import_when_commands_refs_fault",
+        prep: SOURCE,
+        target: "dest",
+        cli: &["git", "init", "--git-repo", "src", "dest"],
+        zanshin: |dir| zanshin_jj::convert_import(&dir.join("src"), &dir.join("dest")),
+        user_config: Some(WHEN_GIT_INIT_BROKEN_AUTO_TRACK),
+    },
 ];
+
+/// [`BROKEN_AUTO_TRACK`], scoped to `jj git init`.
+const WHEN_GIT_INIT_BROKEN_AUTO_TRACK: &str =
+    "[[--scope]]\n--when.commands = [\"git init\"]\n[--scope.remotes.origin]\nauto-track-bookmarks = \"glob:(\"\n";
 
 /// `git.colocate = false`, scoped to `jj git init`.
 const WHEN_GIT_INIT_NO_COLOCATE: &str =
@@ -408,6 +430,7 @@ fn push(
         zanshin,
         cli,
         extra: Some(push_read_back),
+        user_config: None,
     }
 }
 

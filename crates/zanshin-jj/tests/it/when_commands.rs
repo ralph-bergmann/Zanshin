@@ -17,7 +17,12 @@ use std::process::Command;
 use jj_lib::default_backend_factories::{default_backend_factories, default_working_copy_factories};
 use jj_lib::repo::Repo as _;
 use jj_lib::workspace::Workspace;
-use zanshin_jj::{resolve_revset, Backend, ChangeId, InitOptions, MutateError, PreconditionError, Repo, RepoError};
+use zanshin_jj::{
+    config_file_read, config_file_write, config_gc_delete, config_gc_list, config_get, config_list, config_path,
+    config_set, config_unset, resolve_revset, Backend, ChangeId, ConfigListQuery, ConfigScope, ConfigTarget,
+    InitOptions, MutateError, PreconditionError, Repo, RepoError, RevsetSearchError, UntrackedReason, Warning,
+    WarningKind,
+};
 
 /// Sets (or, for `None`, removes) one process environment variable.
 fn set_env(name: &str, value: Option<&str>) {
@@ -165,8 +170,8 @@ fn a_git_scope_reaches_git_fetch_remotes_and_a_git_push_scope_does_not() {
 }
 
 /// The `&self` reads that replace `jj log`'s output resolve for `log` — not for the verb that ran
-/// before them: a `["describe"]` scope does not reach `log_defaults` / `resolve_revset` after a
-/// `describe`, a `["log"]` scope does.
+/// before them: a `["describe"]` scope does not reach `log_defaults` / `resolve_revset` /
+/// `revset_counts` / `find_changes` after a `describe`, a `["log"]` scope does.
 #[test]
 fn the_log_reads_resolve_for_log_whatever_ran_before() {
     test_helpers::own_process!("the_log_reads_resolve_for_log_whatever_ran_before");
@@ -179,7 +184,10 @@ fn the_log_reads_resolve_for_log_whatever_ran_before() {
              [--scope.revset-aliases]\n'scoped_at()' = '@'\n"
         )
     };
+    let expressions = ["scoped_at()".to_owned()];
 
+    // Before the describe, so `describe` is the last verb the reads follow; `@`'s change id stays.
+    let op = repo.op_log(Some(1)).expect("op log").remove(0).id;
     fs::write(&user_file, scoped("describe")).unwrap();
     let at = wc(&repo);
     repo.describe(at, "x").expect("describe");
@@ -188,6 +196,13 @@ fn the_log_reads_resolve_for_log_whatever_ran_before() {
         resolve_revset(&repo, "scoped_at()").is_err(),
         "the describe-scoped alias is not `log`'s"
     );
+    let counts = repo.revset_counts(&op, &expressions, 10).expect("counts").counts;
+    assert!(counts[0].is_err(), "not `revset_counts`' either: {counts:?}");
+    let found = repo.find_changes(&op, "scoped_at()", 10, "").map_err(|w| w.value);
+    assert!(
+        matches!(found, Err(RevsetSearchError::Revset(_))),
+        "nor `find_changes`': {found:?}"
+    );
 
     fs::write(&user_file, scoped("log")).unwrap();
     assert_eq!(repo.log_defaults().expect("log defaults").log, "scoped");
@@ -195,6 +210,67 @@ fn the_log_reads_resolve_for_log_whatever_ran_before() {
         resolve_revset(&repo, "scoped_at()").expect("the log-scoped alias"),
         [wc(&repo)]
     );
+    let counts = repo.revset_counts(&op, &expressions, 10).expect("counts").counts;
+    assert_eq!(counts[0].as_ref().expect("the log-scoped alias").n, 1);
+    let found = repo
+        .find_changes(&op, "scoped_at()", 10, "")
+        .expect("the log-scoped alias");
+    assert_eq!(
+        found.entries.iter().map(|e| e.change_id.clone()).collect::<Vec<_>>(),
+        [wc(&repo)]
+    );
+}
+
+/// One config verb call, returning its warnings.
+type ConfigCall<'a> = &'a dyn Fn() -> Vec<Warning>;
+
+/// The free config verbs resolve their start-up for their own CLI command: a deprecated key in a
+/// scope for that command warns `ConfigDeprecated` (the start-up's migration), one in a
+/// `["describe"]` scope does not. The verb's own result does not matter.
+#[test]
+fn every_config_verb_resolves_for_its_cli_command() {
+    test_helpers::own_process!("every_config_verb_resolves_for_its_cli_command");
+    let tmp = tempfile::tempdir().unwrap();
+    let user_file = isolate(tmp.path());
+    let scoped = |command: &str| {
+        format!(
+            "[[--scope]]\n--when.commands = [\"{command}\"]\n\
+             [--scope.fix.tools.t]\nline-range-arg = \"--l\"\n"
+        )
+    };
+    let user = ConfigTarget::Scope(ConfigScope::User);
+    let rewrite = || fs::read_to_string(&user_file).unwrap();
+    let verbs: [(&str, &str, ConfigCall); 9] = [
+        ("config_list", "config list", &|| {
+            config_list(None, &ConfigListQuery::default()).warnings
+        }),
+        ("config_get", "config get", &|| config_get(None, "nope").warnings),
+        ("config_path", "config path", &|| {
+            config_path(None, ConfigScope::User).warnings
+        }),
+        ("config_set", "config set", &|| {
+            config_set(None, &user, "test.x", "1").warnings
+        }),
+        ("config_unset", "config unset", &|| {
+            config_unset(None, &user, "nope").warnings
+        }),
+        ("config_file_read", "config edit", &|| {
+            config_file_read(None, &user).warnings
+        }),
+        ("config_file_write", "config edit", &|| {
+            config_file_write(None, &user_file, &rewrite()).warnings
+        }),
+        ("config_gc_list", "config gc", &|| config_gc_list().warnings),
+        ("config_gc_delete", "config gc", &|| config_gc_delete(&[]).warnings),
+    ];
+    for (verb, command, call) in verbs {
+        let deprecates = |scope: &str| {
+            fs::write(&user_file, scoped(scope)).unwrap();
+            call().iter().any(|w| w.kind == WarningKind::ConfigDeprecated)
+        };
+        assert!(deprecates(command), "`{verb}` must resolve for `{command}`");
+        assert!(!deprecates("describe"), "`{verb}` must not resolve for `describe`");
+    }
 }
 
 /// Run a git command in `dir`; panics on non-zero exit. Fixture setup only.
@@ -288,4 +364,101 @@ fn a_wrong_typed_scoped_value_refuses_only_its_verb() {
         "got {err:?}"
     );
     repo.status().expect("an open repo's verbs still run");
+}
+
+/// `config set user.name` snapshots for its working-copy author check inside `jj config set`, so a
+/// `["config set"]`-scoped `snapshot.max-new-file-size` reaches that snapshot; a `["describe"]`
+/// one does not.
+#[test]
+fn the_config_set_author_check_snapshots_for_config_set() {
+    test_helpers::own_process!("the_config_set_author_check_snapshots_for_config_set");
+    let tmp = tempfile::tempdir().unwrap();
+    let user_file = isolate(tmp.path());
+    let repo = init_repo(tmp.path());
+    let root = repo.workspace_root().to_owned();
+    drop(repo);
+    fs::write(root.join("big.txt"), "big\n").unwrap();
+    let repo_target = ConfigTarget::Scope(ConfigScope::Repo);
+    let too_large = |command: &str| {
+        fs::write(
+            &user_file,
+            format!("[[--scope]]\n--when.commands = [\"{command}\"]\n[--scope.snapshot]\nmax-new-file-size = 1\n"),
+        )
+        .unwrap();
+        let outcome = config_set(Some(&root), &repo_target, "user.name", "X");
+        let report = outcome.precondition.expect("the author check snapshotted");
+        report
+            .snapshot_stats
+            .untracked
+            .iter()
+            .any(|u| u.path == "big.txt" && matches!(u.reason, UntrackedReason::FileTooLarge { .. }))
+    };
+    assert!(too_large("config set"), "the `config set` scope reaches the snapshot");
+    assert!(!too_large("describe"), "a `describe` scope does not");
+}
+
+/// A Git repository at `dir` with one commit.
+fn git_repo(dir: &Path) {
+    fs::create_dir_all(dir).unwrap();
+    git(&["init", "--initial-branch=main"], dir);
+    git(&["config", "user.email", "test@zanshin.test"], dir);
+    git(&["config", "user.name", "Fixture"], dir);
+    fs::write(dir.join("README.md"), "hello").unwrap();
+    git(&["add", "."], dir);
+    git(&["commit", "-m", "initial"], dir);
+}
+
+/// Both conversions play `jj git init` at every site that resolves the config: the start-up check
+/// (it refuses a scoped fault before the path checks — a plain directory would otherwise refuse
+/// "not a Git repo") and the new workspace's settings (a scoped operation user signs the
+/// conversion). The refs step's site is the oracle's (`convert_*_when_commands_refs_fault`).
+#[test]
+fn the_conversions_resolve_for_git_init() {
+    test_helpers::own_process!("the_conversions_resolve_for_git_init");
+    let tmp = tempfile::tempdir().unwrap();
+    let user_file = isolate(tmp.path());
+    let plain = tmp.path().join("plain");
+    fs::create_dir_all(&plain).unwrap();
+    for command in ["git init", "git clone"] {
+        fs::write(
+            &user_file,
+            format!("[[--scope]]\n--when.commands = [\"{command}\"]\n[--scope.user]\nname = 1\n"),
+        )
+        .unwrap();
+        let scoped = command == "git init";
+        for (verb, err) in [
+            ("convert_colocated", zanshin_jj::convert_colocated(&plain).result.err()),
+            (
+                "convert_import",
+                zanshin_jj::convert_import(&plain, &tmp.path().join("dest"))
+                    .result
+                    .err(),
+            ),
+        ] {
+            let err = err.unwrap_or_else(|| panic!("{verb} refuses"));
+            assert_eq!(
+                matches!(&err, RepoError::Config { reason } if reason.contains("user.name")),
+                scoped,
+                "`{verb}` under a `{command}` scope: {err:?}"
+            );
+        }
+    }
+
+    fs::write(
+        &user_file,
+        format!("{BASE_IDENTITY}[[--scope]]\n--when.commands = [\"git init\"]\n[--scope.operation]\nusername = \"converter\"\n"),
+    )
+    .unwrap();
+    let colocated = tmp.path().join("colocated");
+    git_repo(&colocated);
+    let repo = zanshin_jj::convert_colocated(&colocated)
+        .result
+        .expect("convert_colocated");
+    assert_eq!(head_facts(repo.workspace_root()).1, "converter", "convert_colocated");
+    let src = tmp.path().join("src");
+    git_repo(&src);
+    let repo = zanshin_jj::convert_import(&src, &tmp.path().join("imported"))
+        .result
+        .expect("convert_import");
+    assert_eq!(head_facts(repo.workspace_root()).1, "converter", "convert_import");
 }

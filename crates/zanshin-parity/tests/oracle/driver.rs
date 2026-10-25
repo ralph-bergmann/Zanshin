@@ -33,8 +33,9 @@ impl CliRun {
 ///   test's temp dir, never in `~/.config/jj`. WHY `pin_test_env()` here too: a test that
 ///   forgets to call it must not fall back to the developer's real config (it is idempotent);
 /// - the test binary's `JJ_CONFIG` in place of the pinned `""` — identical in the shared
-///   process, and the user config a creation scenario runs under in a process of its own
-///   (Story 9.57), the same file `zanshin-jj` then reads in-process;
+///   process, and the user config a creation scenario (Story 9.57) or an operation scenario
+///   (Story 9.41) runs under in a process of its own, the same file `zanshin-jj` then reads
+///   in-process;
 /// - `LLVM_PROFILE_FILE=/dev/null`: under `cargo llvm-cov` this binary is instrumented too, and
 ///   every one of the oracle's hundreds of `jj` exits would otherwise merge a profile into
 ///   `target/`. Its coverage is not measured anyway (`crates/zanshin-parity/` is excluded).

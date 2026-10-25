@@ -87,6 +87,11 @@ pub struct Scenario {
     pub cli: fn(&State) -> Vec<String>,
     /// A scenario-specific read of both repos after the operation, compared as `extra`.
     pub extra: Option<fn(&Path) -> String>,
+    /// A user config file both operations run under (`JJ_CONFIG`, Story 9.41), or `None` for the
+    /// pinned empty one. A scenario with one changes the process environment, so it runs in a
+    /// process of its own (`main.rs`'s `own_process` list); the setup, the captures and the
+    /// read-back run without it.
+    pub user_config: Option<&'static str>,
 }
 
 fn args(items: &[&str]) -> Vec<String> {
@@ -107,6 +112,7 @@ fn simple(
         zanshin,
         cli,
         extra: None,
+        user_config: None,
     }
 }
 
@@ -1173,6 +1179,22 @@ pub fn scenarios() -> Vec<Scenario> {
             ])],
             ..simple(
                 "describe_commit_trailers",
+                |repo, _, s| {
+                    let result = repo.describe(s.change("@"), "T\n");
+                    zanshin_outcome(repo, &result)
+                },
+                |_| args(&["describe", "-m", "T"]),
+            )
+        },
+        // Story 9.41 closing run: a trailer template scoped to `jj describe` reaches the describe
+        // — the CLI names its command before its start-up resolution.
+        Scenario {
+            user_config: Some(
+                "[[--scope]]\n--when.commands = [\"describe\"]\n\
+                 [--scope.templates]\ncommit_trailers = \"format_signed_off_by_trailer(self)\"\n",
+            ),
+            ..simple(
+                "describe_when_commands_trailers",
                 |repo, _, s| {
                     let result = repo.describe(s.change("@"), "T\n");
                     zanshin_outcome(repo, &result)

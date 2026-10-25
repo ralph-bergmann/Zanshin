@@ -25,8 +25,8 @@ mod state;
 /// One `#[test]` per scenario id, so they run in parallel and fail individually. The same id
 /// lists also yield `SCENARIO_IDS`, so a table entry without a test cannot slip through.
 ///
-/// The ids after `own_process:` change the process environment (a creation scenario's user
-/// config, Story 9.57), so each runs as the only test of a child process of this binary
+/// The ids after `own_process:` change the process environment (a scenario's user config —
+/// creation scenarios since Story 9.57, operation scenarios since Story 9.41), so each runs as the only test of a child process of this binary
 /// (`test_helpers::reran_in_own_process` — `own_process!` takes a literal, not `stringify!`).
 macro_rules! parity {
     ($($id:ident),* $(,)?; own_process: $($own:ident),* $(,)?) => {
@@ -485,6 +485,9 @@ parity!(
     clone_unresolvable_immutable,
     init_when_commands_no_colocate,
     init_when_commands_other_command,
+    describe_when_commands_trailers,
+    convert_colocated_when_commands_refs_fault,
+    convert_import_when_commands_refs_fault,
 );
 
 /// Every scenario id the table and the creation list define.
@@ -499,7 +502,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 430);
+    assert_eq!(SCENARIO_IDS.len(), 433);
 }
 
 #[test]
