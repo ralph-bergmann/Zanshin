@@ -37,6 +37,8 @@ deferred:
     location: >-
       _bmad-output/implementation-artifacts/sprint-status.yaml 9-38-edit-current-at-is-noop
     severity: low
+    resolved: >-
+      2026-10-25 — fixed (spec-9-38-edit-current-at-is-noop, commit ad7348c): sprint-status and epics.md Story 9.38 describe the discardable case and the early return, citing v0.46.0.
 ---
 
 <intent-contract>

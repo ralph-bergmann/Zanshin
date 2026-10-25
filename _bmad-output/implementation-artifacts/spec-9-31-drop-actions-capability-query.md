@@ -32,6 +32,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/mutate.rs plan_edit
     severity: low
+    resolved: >-
+      2026-10-25 — fixed (spec-9-38-edit-current-at-is-noop, commit 5b71805): the card's `edit` row takes `no_op` from `plan_edit`, which reports "already `@`" after the rewritability check.
   - summary: >-
       The rebase dry run still writes git commit objects, refs/jj/keep refs and extra-metadata entries for every commit it rebases, on every hover (signing is dropped).
     evidence: |-
