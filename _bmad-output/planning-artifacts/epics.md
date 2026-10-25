@@ -7245,6 +7245,8 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Related:** 4.12 (`zanshin_graph_topology`), 9.41 (the topology's CLI command name is `log`).
 
+**Update 2026-10-25 (done).** The seam is jj-lib's `ResolvedRevset`: the set is evaluated with its `evaluate()` (merged index), its `into_inner()` keeps the resolved expression plus the `at_operation()` repos for the topology's `ParentCount` passes (`evaluate_unoptimized` against the merge, only when there are any); prioritize = `prioritize ∩ revset.within_visibility(head)`. A merge outside the head index reports `empty: false` (the CLI renders an inline template error). Witnesses: `crates/zanshin-parity/tests/oracle/log_at_operation.rs` against the pinned `jj log`. Open (deferred-work.md "Surfaced in Story 9.42"): `commit_contents` refuses those rows' ids.
+
 ### Story 9.43: `converge` — resolve divergent changes (jj 0.45) [M] — *product decision pending (Ralph)*
 *(Added 2026-10-08, console session — new CLI verb since jj 0.45, surfaced by the 0.46 bump. Whether Zanshin offers it at all is Ralph's call; this entry records what a port means.)*
 
