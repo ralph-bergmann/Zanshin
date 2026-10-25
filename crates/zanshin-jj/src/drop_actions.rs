@@ -438,10 +438,11 @@ impl Rows<'_> {
                 let duplicate = self.row(ctx, |tx, ctx| {
                     let plan = plan_duplicate(tx, &ctx.templates(self.workspace), std::slice::from_ref(change), &args)?;
                     // The verb refuses a root merge at its write (after the template); rows keep it.
-                    // This row always has `-o`, so the plan has a location.
-                    if let Some((parents, _)) = &plan.location {
-                        refuse_git_root_merge(tx.repo().store(), parents)?;
-                    }
+                    // Always `-o`, so never `None`: the Revert row's `Option` form gives that dead case no line.
+                    plan.location
+                        .as_ref()
+                        .map(|(parents, _)| refuse_git_root_merge(tx.repo().store(), parents))
+                        .transpose()?;
                     // Every duplicate writes, so the CLI's `tx.finish` resolves the immutable set
                     // (Story 9.56). Rows never parse the description template, so with a broken
                     // template the verb's refusal (template parse) differs.
