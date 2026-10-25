@@ -571,7 +571,7 @@ _Ralph showed a mockup of the main view (commit cards at (row, lane), elbow line
   "Pull" has no jj verb: `jj git fetch` plus a rebase is not one command, so it needs a decision under the CLI-parity rule. Severity low.
 - **The graph view supersedes the mock UI** [`app/lib/src/features/commits/commit_card.dart` (`BranchPanel`, a `ListView`), `app/lib/src/features/history/history_column.dart` (a `ListView` with lane dots), `app/lib/src/features/branches/branches_panel.dart`, `app/lib/src/shared/data/mock_data.dart`, and `AppShell`'s branch columns (`app/lib/src/features/shell/app_shell.dart:144-164`)] — retiring these is Ralph's call. 10.8 builds a real-data panel modelled on the mock `commit_detail.dart` / `diff_block.dart`, which stay. Severity none.
 - **Ralph's own note (2026-09-26): clean up the demo entry points** [`app/lib/main2.dart`, `main3.dart`, `main4.dart` (the graph POC)] — 10.1 needs one fake-data demo host for visual review, and which file hosts it is part of that cleanup. Severity none.
-- **Story 9.25's backend item 1 is stale** [epics.md Story 9.25 item 1; `packages/zanshin_core/lib/src/worker/isolate.dart:1537-1543`] — it says "No generic repo-config writer exists yet", but Story 9.28 shipped `configSet(ConfigScope.repo, …)`, which 10.7's Save uses. Re-scope 9.25 when it is refined. Severity low.
+- ~~**Story 9.25's backend item 1 is stale**~~ — REJECTED 2026-10-25 (spec-9-25-graph-search-backend-revset-counts-change-search): no longer applies — the 2026-10-14 refinement dropped the `revsets.log` writer and names 9.28's `configSet`; the one stale mention in Story 9.28 got a dated note. [epics.md Story 9.25 item 1; `packages/zanshin_core/lib/src/worker/isolate.dart:1537-1543`] — it says "No generic repo-config writer exists yet", but Story 9.28 shipped `configSet(ConfigScope.repo, …)`, which 10.7's Save uses. Re-scope 9.25 when it is refined. Severity low.
 - ~~**No capability query without a drop target**~~ — RESOLVED 2026-10-21 (spec-9-31-drop-actions-capability-query, commit 708deda, I2): `Repo::change_actions(X)` / `zanshin_change_actions` / `RepoHandle.changeActions` answer 10.15's seven card-menu rows (new onto / -A / -B, edit, describe, squash -r with the combined-description flag, abandon) from the verbs' own plan fns. [epics.md Story 9.31, Non-goals] — the target-less "what can I do with S" query is marked "own story if wanted". Without it, 10.6's context menu cannot grey out verbs with the CLI's reason. Severity low. **Update 2026-10-14:** severity raised to medium. 10.15's card menu now exists, and its recommended tooltips (a disabled row shows the backend's refusal reason) need this query; 9.31's dated note proposes it as a variant.
 - **No identity-remedy UI** — a `jj.identity_missing` warning ("set your identity", 9.32's motivating example) has no story. 10.9 only surfaces warnings. Severity low.
 - **No golden-test setup** — the repo has no golden tests, and Inter / JetBrainsMono would need to load in tests. Epic 10's visual review is therefore manual, in the demo host. Add a golden setup only if Ralph wants one. Severity none.
@@ -658,7 +658,7 @@ _Added the same day after Ralph's answers and his near-final HTML design (`_bmad
   - App's own Esc handler (APP:2263-2271), which clears the selection of the old column view. That view is no longer mounted (APP:2484).
 
   The graph's global Esc (GV:541-548) is prototype defect 11, owned by 10.6. This extends the 2026-09-26 bullet "the mockup's window chrome has no story".
-- **The planned revset Save lost its only UI consumer** [Story 9.25; Story 9.28's `configSet(ConfigScope.repo, 'revsets.log', …)`; design GV:240-276]. Low.
+- ~~**The planned revset Save lost its only UI consumer**~~ — REJECTED 2026-10-25 (spec-9-25-graph-search-backend-revset-counts-change-search): no longer applies — the 2026-10-14 refinement dropped 9.25's presets, Apply and Save (decision (g)). [Story 9.25; Story 9.28's `configSet(ConfigScope.repo, 'revsets.log', …)`; design GV:240-276]. Low.
   - The design's revset control has exactly two presets (`jj log`, `all()`), with no free-text field and no Apply/Save.
   - The first Epic 10 plan's Save to `revsets.log`, and 9.25's presets, Apply and Save, have no UI consumer until Ralph answers 10.7 design question (a).
   - **Follow-up:** re-scope 9.25 accordingly.
@@ -690,7 +690,7 @@ _Ralph decided to run the commit-graph layout in Dart on the worker isolate (`sp
   - `jj_dump.rs` calls `Repo::walk_graph` and computes the `priority` stand-in itself (`assign_priorities`, `rust-inputs/src/input.rs:147`).
   - 10.1 records its layouts from these dumps until 10.12, and 4.11's end-to-end tests compare the Dart input builder against them.
   - **Follow-up:** 4.11 item 10. The dumper calls `Repo::graph_topology` (+ `commit_contents` for the sidecar) and computes the classes from its anchors exactly as SPEC §11.2 (amended) and 4.11 item 6 do. Re-record 10.1's recordings after the switch.
-- **Story 9.25 builds on `graphSlice`.** Low.
+- ~~**Story 9.25 builds on `graphSlice`.**~~ — RESOLVED 2026-10-25 (spec-9-25-graph-search-backend-revset-counts-change-search, commit b6da7c2): the refined 9.25 counts through its own `revset_counts` call, tested against the topology's node count; 4.12's leftover line got a dated settle note. Low.
   - Evidence: epics.md Story 9.25, Apply evaluates via `graphSlice` and has an "N revisions" line; its open question says Apply "should" reuse `graphSlice` directly.
   - If 4.12 removes the slice path, Apply evaluates through the topology call and uses its node count.
   - **Follow-up:** re-scope 9.25 when it is refined.
@@ -739,6 +739,7 @@ _Ralph used the spike viewer (`spikes/graph-layout-ab/viewer/`) on a copy of the
   - In the product, full ids resolve through 4.12's lookups, but descriptions are lazy content (10.11). A description search over the whole revset would load every commit: the same object loads as the timestamps, 6.7 ms on the real repo, 33.6 ms on a packed 10k and ~1.2 s on the loose-object 10k fixture.
   - CLI parity suggests resolving the input on the worker the way the CLI resolves `-r` (id prefixes with jj's refusal of an ambiguous prefix, bookmarks, `description(...)`), then revealing the result.
   - **Follow-up:** a backend story once 10.6 (d) is decided. The UI passes the input through and never composes the revset itself (ADR-0003).
+  - **2026-10-25, Story 9.25:** the backend path is built — `find_changes` resolves `change_id(x)` / `commit_id(x)` / `description(…)` / `subject(…)` / bookmarks like the CLI's `-r`, with jj's ambiguous-prefix refusal verbatim (commit b6da7c2); left: 10.21 resolves the input in the view.
 - **With Free as the default, every layout loads every timestamp.** Low; it weighs on 4.10 open question 1. **Free became the default on 2026-09-27 (Ralph)**, so this now applies; 10.13's default is decided, and 4.10's cache question remains.
   - Compact needs no timestamps; Time and Free need all of them before layout (4.10 item 4).
   - The default view would pay that on every operation, and Free's buses behind cards (D8; 11–15 horizontal runs on the real `all()`) would become a default-view issue.
@@ -860,7 +861,7 @@ _The spec (`spec-4-12-graph-topology-wire-lazy-dart-view.md`) carries all three 
 - **`graph_ids_test.dart`'s `large-10k` case costs ~80–90 s of the `zanshin_core` suite.** Low.
   - The id-encoding pin compares every node's formatted ids with the display strings `show(revset: 'all()')` returns, as the spec prescribes; `show` computes every commit's file changes, ~80 s for the 10k fixture's loose store (release cdylib). The test's timeout is 10 minutes for the coverage-instrumented run. `tiny` and `medium` take ~1 s together.
   - **Follow-up:** if the gate time bites, drop the 10k case (medium already covers 1,002 ids of both alphabets) or pin the ids against a cheaper Rust display source — not a test-only extern (the spec forbids one).
-- **Story 9.25 still says "Apply = evaluate via `graphSlice`".** Low; found in review.
+- ~~**Story 9.25 still says "Apply = evaluate via `graphSlice`".**~~ — RESOLVED 2026-10-25 (spec-9-25-graph-search-backend-revset-counts-change-search, commit b6da7c2): the refined 9.25 texts no longer say it; 4.12's remaining pointers got dated settle notes. Low; found in review.
   - The `9-25-…` comment in `sprint-status.yaml` ends "Apply = evaluate via graphSlice, Save = persist", and epics.md Story 9.25 lists the same consumer. `graphSlice` was removed in this story; the Apply path is now `RepoHandle.graphTopology`, and its "N revisions" line is `GraphTopologyView.nodeCount`.
   - Story 4.12's intent forbids editing the 9.25 text ("settled when 9.25 is refined").
   - **Follow-up:** re-point both when Ralph refines 9.25.
@@ -990,7 +991,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
 
 ### Search
 
-- **The search matches text over every change.** None; a record.
+- ~~**The search matches text over every change.**~~ — RESOLVED 2026-10-25 (spec-9-25-graph-search-backend-revset-counts-change-search, commit b6da7c2): `find_changes` over `description(substring-i:)` / `subject()` searches every change at the shown operation. None; a record.
   - 10.21's Change scope and Any's Changes group match subjects and descriptions across all changes (SR:94-126), while 10.11 loads content only for the visible range.
   - **Follow-up:** covered: 9.25 item 2 (`find_changes` over `description(substring-i:)` / `subject()`) is the backend path.
 - **Path suggestions see only `@`'s files.** Low.
@@ -1005,6 +1006,7 @@ _Ralph re-downloaded the Claude Design export (`e74ced3`): the reference is now 
   - Without a changed-path index, a single `files()` count diffs every commit. At 100k it can hold the serial worker for seconds and delay a reload queued behind it.
   - The cap bounds dense matches only.
   - **Follow-up:** measure 9.25's counts on large-10k (loose and packed) and on the synthetic inputs once 9.25 lands. If they are too slow: count File rows only when they are highlighted, or rely on the changed-path index where the repo has one.
+  - **2026-10-25, Story 9.25:** measured (`crates/zanshin-jj/benches/revset_counts.rs`, commit b6da7c2) — at 10k, commit-loading functions ~1.2 s loose / ~33 ms packed, `files()` ~2.4 s loose / ~55 ms packed and ~2 ms with jj's changed-path index; the synthetic inputs have no repository, so nothing can be counted there; left: choosing a mitigation (10.21 / Ralph).
 - **Global configurations name one repository's paths and people.** Low.
   - Decision (g) keeps configurations and the default search global, as designed (RC:23, :40). A `files()` or author rule names one repository; in another it matches nothing.
   - A configuration chosen as the default search then opens other repositories on an empty graph, and ✕ leads back to it.

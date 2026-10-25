@@ -46,6 +46,8 @@ deferred:
     location: >-
       _bmad-output/implementation-artifacts/sprint-status.yaml (9-25 entry), _bmad-output/planning-artifacts/epics.md (Story 9.25)
     severity: low
+    resolved: >-
+      2026-10-25 — fixed (spec-9-25-graph-search-backend-revset-counts-change-search, commit b6da7c2): the refined 9.25 texts no longer say it; 4.12's remaining pointers got dated settle notes.
 ---
 
 <intent-contract>
