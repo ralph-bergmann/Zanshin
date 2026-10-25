@@ -18,7 +18,7 @@ import '../ffi/drop_actions.dart'
 import '../ffi/fetch.dart' show DefaultFetchRefs, DefaultFetchRemotes, FetchRefs, FetchRemotes, GitFetchResult;
 import '../ffi/file.dart' show AnnotationLine, FileContents, FileEntry, FileSearch;
 import '../ffi/file_ops.dart' show TrackResult, UntrackResult;
-import '../ffi/git.dart' show GitExportResult, GitImportResult;
+import '../ffi/git.dart' show GitColocationResult, GitColocationStatus, GitExportResult, GitImportResult;
 import '../ffi/graph.dart'
     show GraphTopologyView, defaultGraphAnchors, defaultGraphPrioritize, defaultLogRevset, defaultShortPrefixes;
 import '../ffi/log_defaults.dart' show LogDefaults;
@@ -1842,6 +1842,60 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.gitExport(_handleId);
+  }
+
+  /// Report whether this workspace shares its working copy with Git (Story
+  /// 9.45) — the CLI's `jj git colocation status`, its lines as facts and its
+  /// hint line as `hints`. Runs the pre-verb snapshot; writes no operation.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
+  Future<GitColocationStatus> gitColocationStatus() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.gitColocationStatus(_handleId);
+  }
+
+  /// Convert this workspace into a colocated Jujutsu/Git workspace (Story 9.45)
+  /// — the CLI's `jj git colocation enable`.
+  ///
+  /// Already colocated: `converted` is false and nothing is written. The default
+  /// workspace's Git repository moves from `.jj/repo/store/git` to `<root>/.git`;
+  /// a child workspace gets a Git worktree. Git HEAD is then reset to `@`'s
+  /// parent as `set git head to working copy parent`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.not_a_git_repo`, `jj.no_working_copy`, `jj.invalid_input`,
+  /// `jj.git_worktree_failed`, `jj.config_error`, `jj.stale_working_copy`,
+  /// `jj.jj_lib_error`).
+  Future<GitColocationResult> gitColocationEnable() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.gitColocationEnable(_handleId);
+  }
+
+  /// Convert this workspace into a non-colocated Jujutsu/Git workspace (Story
+  /// 9.45) — the CLI's `jj git colocation disable`.
+  ///
+  /// Not colocated: `converted` is false and nothing is written. The default
+  /// workspace's `<root>/.git` moves to `.jj/repo/store/git`; a child workspace's
+  /// Git worktree is unlinked (`gitWorktreeRemoved`). The view's Git HEAD is then
+  /// cleared as `remove git head reference`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed]; throws
+  /// [ZanshinFfiException] on FFI errors (`ffi.invalid_handle`,
+  /// `jj.not_a_git_repo`, `jj.invalid_input`, `jj.config_error`,
+  /// `jj.stale_working_copy`, `jj.jj_lib_error`).
+  Future<GitColocationResult> gitColocationDisable() {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.gitColocationDisable(_handleId);
   }
 
   /// Register a new git remote (Story 9.5) — the CLI's `jj git remote add`.

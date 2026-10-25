@@ -145,8 +145,12 @@ fn ids_to_fbs<'a>(
     b.create_vector(&offs)
 }
 
-/// Builds one `OpRefTarget` table.
-fn ref_target_to_fbs<'a>(b: &mut FlatBufferBuilder<'a>, target: &OpRefTarget) -> WIPOffset<fbs::OpRefTarget<'a>> {
+/// Builds one `OpRefTarget` table. `pub(crate)` since Story 9.45, whose `GitColocationStatus`
+/// carries the Git HEAD in the same shape.
+pub(crate) fn ref_target_to_fbs<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    target: &OpRefTarget,
+) -> WIPOffset<fbs::OpRefTarget<'a>> {
     let adds = ids_to_fbs(b, &target.adds);
     let removes = ids_to_fbs(b, &target.removes);
     fbs::OpRefTarget::create(

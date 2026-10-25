@@ -109,6 +109,12 @@ cli_commands! {
     FIX = "fix";
     /// `Repo::clone` — every load of the creation.
     GIT_CLONE = "git clone";
+    /// `Repo::git_colocation_disable`.
+    GIT_COLOCATION_DISABLE = "git colocation disable";
+    /// `Repo::git_colocation_enable`.
+    GIT_COLOCATION_ENABLE = "git colocation enable";
+    /// `Repo::git_colocation_status`.
+    GIT_COLOCATION_STATUS = "git colocation status";
     /// `Repo::git_export`.
     GIT_EXPORT = "git export";
     /// `Repo::git_fetch`; `Repo::git_fetch_remotes` (the remotes it fetches by default) and

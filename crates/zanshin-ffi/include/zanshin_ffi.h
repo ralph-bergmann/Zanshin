@@ -1886,6 +1886,87 @@ ZanshinBuf *zanshin_git_remote_set_url(uint64_t handle,
                                        uintptr_t len);
 
 /**
+ * Report whether the workspace referenced by `handle` shares its working copy with Git — the
+ * CLI's `jj git colocation status` (Story 9.45).
+ *
+ * Takes no arguments (the CLI's own args are empty). Runs the pre-verb snapshot and writes no
+ * operation of its own.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `GitColocationStatus` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+ * - `jj.config_error` — the effective jj config does not read (the pre-verb refresh or snapshot).
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale; nothing is
+ *   written.
+ * - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+ *
+ * # Safety
+ * Same handle contract as `zanshin_git_import`.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_git_colocation_status(uint64_t handle);
+
+/**
+ * Convert the workspace referenced by `handle` into a colocated Jujutsu/Git workspace — the
+ * CLI's `jj git colocation enable` (Story 9.45).
+ *
+ * Takes no arguments. An already colocated workspace writes nothing (`converted` false). The
+ * default workspace's Git repository moves from `.jj/repo/store/git` to `<root>/.git`; a child
+ * workspace gets a Git worktree. Then `.jj/.gitignore` is written, the handle's workspace is
+ * reloaded, and Git HEAD is reset to `@`'s parent as `set git head to working copy parent` (no
+ * operation when nothing changed). A failure after the move leaves the disk as the CLI leaves it.
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `GitColocationResult` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+ * - `jj.no_working_copy` — the workspace has no working-copy commit; nothing is written.
+ * - `jj.invalid_input` — `<root>/.git` already exists ("A .git directory already exists in the
+ *   workspace root. Cannot colocate."), the workspace is backed by an external Git repository,
+ *   the move failed, `core.bare` could not be set, or `.jj/.gitignore` could not be written.
+ * - `jj.git_worktree_failed` — a child workspace's Git worktree could not be created.
+ * - `jj.config_error` — `git.executable-path` or the immutable set does not read, or the
+ *   pre-verb refresh / snapshot failed on config.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+ * - `jj.jj_lib_error` — the reload, the Git HEAD reset or another jj-lib step failed.
+ *
+ * # Safety
+ * Same handle contract as `zanshin_git_import`.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_git_colocation_enable(uint64_t handle);
+
+/**
+ * Convert the workspace referenced by `handle` into a non-colocated Jujutsu/Git workspace — the
+ * CLI's `jj git colocation disable` (Story 9.45).
+ *
+ * Takes no arguments. A non-colocated workspace writes nothing (`converted` false). The default
+ * workspace's `<root>/.git` moves to `.jj/repo/store/git`; a child workspace's Git worktree is
+ * unlinked (`git_worktree_removed`; a failure warns `jj.git_worktree_unlink_failed`). Then
+ * `.jj/.gitignore` is removed, the handle's workspace is reloaded, and the view's Git HEAD is
+ * cleared as `remove git head reference` (no operation when it was absent).
+ *
+ * Returns a `FlatBuffers` `Envelope` carrying a `GitColocationResult` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+ * - `jj.invalid_input` — the move failed, or the Git config could not be made bare.
+ * - `jj.config_error` — `git.executable-path` or the immutable set does not read, or the
+ *   pre-verb refresh / snapshot failed on config.
+ * - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+ * - `jj.jj_lib_error` — the reload or another jj-lib step failed.
+ *
+ * # Safety
+ * Same handle contract as `zanshin_git_import`.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_git_colocation_disable(uint64_t handle);
+
+/**
  * Return the whole revset's index-only graph topology in the repo referenced by `handle`
  * (Story 4.12; the verb is Story 4.10's `Repo::graph_topology`): every node in `jj log` order
  * with its ids, flags, prefix lengths, change offset, parent count, jj's edges verbatim (CSR),

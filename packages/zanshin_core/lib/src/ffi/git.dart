@@ -10,6 +10,7 @@ import '../worker/responses.dart';
 import 'bindings.dart';
 import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'mutate.dart' show MutationResult, decodeMutationResultEnvelopeInternal, decodeMutationResultInternal;
+import 'op_log.dart' show OpRefTarget, decodeOpRefTargetInternal;
 import 'precondition.dart' show decodeEnvelopeErrorInternal;
 import 'request_bytes.dart';
 import 'warning.dart';
@@ -126,6 +127,18 @@ Uint8List zanshinGitRemoteSetUrl(int rawHandle, {required String name, String? u
   ).toBytes();
   return callWithRequest(request, (ptr, len) => zanshin_git_remote_set_url(rawHandle, ptr, len));
 }
+
+/// Call `zanshin_git_colocation_status` with the raw `u64` handle and return the
+/// FlatBuffers `Envelope` bytes (Story 9.45) — the CLI's `jj git colocation status`.
+Uint8List zanshinGitColocationStatus(int rawHandle) => readToken(zanshin_git_colocation_status(rawHandle));
+
+/// Call `zanshin_git_colocation_enable` with the raw `u64` handle and return the
+/// FlatBuffers `Envelope` bytes (Story 9.45) — the CLI's `jj git colocation enable`.
+Uint8List zanshinGitColocationEnable(int rawHandle) => readToken(zanshin_git_colocation_enable(rawHandle));
+
+/// Call `zanshin_git_colocation_disable` with the raw `u64` handle and return the
+/// FlatBuffers `Envelope` bytes (Story 9.45) — the CLI's `jj git colocation disable`.
+Uint8List zanshinGitColocationDisable(int rawHandle) => readToken(zanshin_git_colocation_disable(rawHandle));
 
 // ── Dart models ──────────────────────────────────────────────────────────────
 
@@ -258,6 +271,72 @@ final class GitExportResult {
   final List<ZanshinWarning> warnings;
 }
 
+/// What `gitColocationStatus` read (mirrors `zanshin_jj::GitColocationStatus`,
+/// Story 9.45) — `jj git colocation status`' lines as facts.
+final class GitColocationStatus {
+  const GitColocationStatus({
+    required this.colocated,
+    required this.workspaceName,
+    required this.gitHead,
+    required this.gitRepoPath,
+    required this.externalGitRepo,
+    required this.hints,
+    this.warnings = const [],
+  });
+
+  /// Whether the workspace shares its working copy with Git.
+  final bool colocated;
+
+  /// This workspace's name.
+  final String workspaceName;
+
+  /// The view's Git HEAD of this workspace ("Last imported/exported Git HEAD");
+  /// absent in a non-colocated workspace.
+  final OpRefTarget gitHead;
+
+  /// The backing Git repository's path — in a child workspace the MAIN
+  /// repository's Git dir, not the child's `.git` gitlink.
+  final String gitRepoPath;
+
+  /// Whether the workspace is backed by an external Git repository (`jj git init
+  /// --git-repo=…`), so colocation cannot be enabled.
+  final bool externalGitRepo;
+
+  /// The CLI's one hint line, without `Hint: `.
+  final List<String> hints;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order.
+  final List<ZanshinWarning> warnings;
+}
+
+/// Outcome of a successful `gitColocationEnable` / `gitColocationDisable`
+/// (mirrors `zanshin_jj::GitColocationResult`, Story 9.45).
+final class GitColocationResult {
+  const GitColocationResult({
+    required this.mutation,
+    required this.converted,
+    required this.gitWorktreeRemoved,
+    this.warnings = const [],
+  });
+
+  /// The call's operation (`set git head to working copy parent` / `remove git
+  /// head reference`), or the pre-call head when nothing changed or nothing was
+  /// converted.
+  final MutationResult mutation;
+
+  /// Whether the workspace was converted; `false` is the CLI's "Workspace is
+  /// already (not) colocated with Git.".
+  final bool converted;
+
+  /// Whether disable unlinked a child workspace's Git worktree ("Removed Git
+  /// worktree for …"); always `false` for enable.
+  final bool gitWorktreeRemoved;
+
+  /// The call's warnings (Story 9.32), in the CLI's print order. The nested
+  /// [mutation] carries none of its own.
+  final List<ZanshinWarning> warnings;
+}
+
 // ── Decoder ──────────────────────────────────────────────────────────────────
 
 /// Decode a `GitImportResult` `Envelope` buffer into a [GitImportResult].
@@ -315,6 +394,53 @@ GitExportResult _decodeGitExportResultEnvelope(Uint8List bytes) {
     mutation: decodeMutationResultInternal(payload.mutation),
     failedBookmarks: decodeExportFailuresInternal(payload.failedBookmarks),
     failedTags: decodeExportFailuresInternal(payload.failedTags),
+    warnings: decodeEnvelopeWarningsInternal(env),
+  );
+}
+
+/// Decode a `GitColocationStatus` `Envelope` buffer into a [GitColocationStatus].
+@visibleForTesting
+GitColocationStatus decodeGitColocationStatusEnvelope(Uint8List bytes) => _decodeGitColocationStatusEnvelope(bytes);
+
+/// Internal decoder used by production code in `isolate.dart`.
+GitColocationStatus decodeGitColocationStatusEnvelopeInternal(Uint8List bytes) =>
+    _decodeGitColocationStatusEnvelope(bytes);
+
+GitColocationStatus _decodeGitColocationStatusEnvelope(Uint8List bytes) {
+  final fbs.Envelope env = _okEnvelope(bytes);
+  final Object? payload = env.data;
+  if (payload is! fbs.GitColocationStatus) {
+    throw ZanshinFfiException('ffi.unknown', 'expected GitColocationStatus payload, got ${env.dataType}');
+  }
+  return GitColocationStatus(
+    colocated: payload.colocated,
+    workspaceName: payload.workspaceName ?? '',
+    gitHead: decodeOpRefTargetInternal(payload.gitHead),
+    gitRepoPath: payload.gitRepoPath ?? '',
+    externalGitRepo: payload.externalGitRepo,
+    hints: payload.hints?.toList() ?? const [],
+    warnings: decodeEnvelopeWarningsInternal(env),
+  );
+}
+
+/// Decode a `GitColocationResult` `Envelope` buffer into a [GitColocationResult].
+@visibleForTesting
+GitColocationResult decodeGitColocationResultEnvelope(Uint8List bytes) => _decodeGitColocationResultEnvelope(bytes);
+
+/// Internal decoder used by production code in `isolate.dart`.
+GitColocationResult decodeGitColocationResultEnvelopeInternal(Uint8List bytes) =>
+    _decodeGitColocationResultEnvelope(bytes);
+
+GitColocationResult _decodeGitColocationResultEnvelope(Uint8List bytes) {
+  final fbs.Envelope env = _okEnvelope(bytes);
+  final Object? payload = env.data;
+  if (payload is! fbs.GitColocationResult) {
+    throw ZanshinFfiException('ffi.unknown', 'expected GitColocationResult payload, got ${env.dataType}');
+  }
+  return GitColocationResult(
+    mutation: decodeMutationResultInternal(payload.mutation),
+    converted: payload.converted,
+    gitWorktreeRemoved: payload.gitWorktreeRemoved,
     warnings: decodeEnvelopeWarningsInternal(env),
   );
 }

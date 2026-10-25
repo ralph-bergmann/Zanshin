@@ -1907,7 +1907,9 @@ enum PayloadTypeId {
   SimplifyParentsResult(56),
   ResolveList(57),
   RevsetCounts(58),
-  FoundChanges(59);
+  FoundChanges(59),
+  GitColocationStatus(60),
+  GitColocationResult(61);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -2034,6 +2036,10 @@ enum PayloadTypeId {
         return PayloadTypeId.RevsetCounts;
       case 59:
         return PayloadTypeId.FoundChanges;
+      case 60:
+        return PayloadTypeId.GitColocationStatus;
+      case 61:
+        return PayloadTypeId.GitColocationResult;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -2042,7 +2048,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 59;
+  static const int maxValue = 61;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -23674,6 +23680,236 @@ class FoundChangesObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  `zanshin_git_colocation_status`' answer (Story 9.45) — `jj git colocation status`' lines as
+///  facts. `colocated`: the workspace shares its working copy with Git. `workspace_name`: this
+///  workspace's name. `git_head`: the view's Git HEAD of this workspace ("Last imported/exported
+///  Git HEAD"), in the `OpRefTarget` shape (`adds` empty = absent, as in a non-colocated
+///  workspace). `git_repo_path`: the backing Git repository's path (in a child workspace the MAIN
+///  repository's, not the child's `.git` gitlink). `external_git_repo`: not
+///  colocated, not a child workspace and no `.jj/repo/store/git` — the workspace is backed by an
+///  external Git repository, so colocation cannot be enabled. `hints`: the CLI's one hint line,
+///  without `Hint: `.
+class GitColocationStatus {
+  GitColocationStatus._(this._bc, this._bcOffset);
+  factory GitColocationStatus(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitColocationStatus> reader = _GitColocationStatusReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  bool get colocated => const fb.BoolReader().vTableGet(_bc, _bcOffset, 4, false);
+  String? get workspaceName => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  OpRefTarget? get gitHead => OpRefTarget.reader.vTableGetNullable(_bc, _bcOffset, 8);
+  String? get gitRepoPath => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 10);
+  bool get externalGitRepo => const fb.BoolReader().vTableGet(_bc, _bcOffset, 12, false);
+  List<String>? get hints => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 14);
+
+  @override
+  String toString() {
+    return 'GitColocationStatus{colocated: ${colocated}, workspaceName: ${workspaceName}, gitHead: ${gitHead}, gitRepoPath: ${gitRepoPath}, externalGitRepo: ${externalGitRepo}, hints: ${hints}}';
+  }
+}
+
+class _GitColocationStatusReader extends fb.TableReader<GitColocationStatus> {
+  const _GitColocationStatusReader();
+
+  @override
+  GitColocationStatus createObject(fb.BufferContext bc, int offset) => GitColocationStatus._(bc, offset);
+}
+
+class GitColocationStatusBuilder {
+  GitColocationStatusBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(6);
+  }
+
+  int addColocated(bool? colocated) {
+    fbBuilder.addBool(0, colocated);
+    return fbBuilder.offset;
+  }
+
+  int addWorkspaceNameOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addGitHeadOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addGitRepoPathOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int addExternalGitRepo(bool? externalGitRepo) {
+    fbBuilder.addBool(4, externalGitRepo);
+    return fbBuilder.offset;
+  }
+
+  int addHintsOffset(int? offset) {
+    fbBuilder.addOffset(5, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitColocationStatusObjectBuilder extends fb.ObjectBuilder {
+  final bool? _colocated;
+  final String? _workspaceName;
+  final OpRefTargetObjectBuilder? _gitHead;
+  final String? _gitRepoPath;
+  final bool? _externalGitRepo;
+  final List<String>? _hints;
+
+  GitColocationStatusObjectBuilder({
+    bool? colocated,
+    String? workspaceName,
+    OpRefTargetObjectBuilder? gitHead,
+    String? gitRepoPath,
+    bool? externalGitRepo,
+    List<String>? hints,
+  }) : _colocated = colocated,
+       _workspaceName = workspaceName,
+       _gitHead = gitHead,
+       _gitRepoPath = gitRepoPath,
+       _externalGitRepo = externalGitRepo,
+       _hints = hints;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? workspaceNameOffset = _workspaceName == null ? null : fbBuilder.writeString(_workspaceName!);
+    final int? gitHeadOffset = _gitHead?.getOrCreateOffset(fbBuilder);
+    final int? gitRepoPathOffset = _gitRepoPath == null ? null : fbBuilder.writeString(_gitRepoPath!);
+    final int? hintsOffset = _hints == null ? null : fbBuilder.writeList(_hints!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(6);
+    fbBuilder.addBool(0, _colocated);
+    fbBuilder.addOffset(1, workspaceNameOffset);
+    fbBuilder.addOffset(2, gitHeadOffset);
+    fbBuilder.addOffset(3, gitRepoPathOffset);
+    fbBuilder.addBool(4, _externalGitRepo);
+    fbBuilder.addOffset(5, hintsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Outcome of a successful `zanshin_git_colocation_enable` / `zanshin_git_colocation_disable`
+///  (Story 9.45) — the CLI's status lines as facts. `mutation` is the call's operation (`set git
+///  head to working copy parent` / `remove git head reference`), or the pre-call head when nothing
+///  changed or nothing was converted. `converted`: false is the CLI's "Workspace is already
+///  (not) colocated with Git.". `git_worktree_removed`: disable unlinked a child workspace's Git
+///  worktree ("Removed Git worktree for …"); always false for enable.
+class GitColocationResult {
+  GitColocationResult._(this._bc, this._bcOffset);
+  factory GitColocationResult(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<GitColocationResult> reader = _GitColocationResultReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  MutationResult? get mutation => MutationResult.reader.vTableGetNullable(_bc, _bcOffset, 4);
+  bool get converted => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
+  bool get gitWorktreeRemoved => const fb.BoolReader().vTableGet(_bc, _bcOffset, 8, false);
+
+  @override
+  String toString() {
+    return 'GitColocationResult{mutation: ${mutation}, converted: ${converted}, gitWorktreeRemoved: ${gitWorktreeRemoved}}';
+  }
+}
+
+class _GitColocationResultReader extends fb.TableReader<GitColocationResult> {
+  const _GitColocationResultReader();
+
+  @override
+  GitColocationResult createObject(fb.BufferContext bc, int offset) => GitColocationResult._(bc, offset);
+}
+
+class GitColocationResultBuilder {
+  GitColocationResultBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addMutationOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addConverted(bool? converted) {
+    fbBuilder.addBool(1, converted);
+    return fbBuilder.offset;
+  }
+
+  int addGitWorktreeRemoved(bool? gitWorktreeRemoved) {
+    fbBuilder.addBool(2, gitWorktreeRemoved);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class GitColocationResultObjectBuilder extends fb.ObjectBuilder {
+  final MutationResultObjectBuilder? _mutation;
+  final bool? _converted;
+  final bool? _gitWorktreeRemoved;
+
+  GitColocationResultObjectBuilder({
+    MutationResultObjectBuilder? mutation,
+    bool? converted,
+    bool? gitWorktreeRemoved,
+  }) : _mutation = mutation,
+       _converted = converted,
+       _gitWorktreeRemoved = gitWorktreeRemoved;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? mutationOffset = _mutation?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(3);
+    fbBuilder.addOffset(0, mutationOffset);
+    fbBuilder.addBool(1, _converted);
+    fbBuilder.addBool(2, _gitWorktreeRemoved);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  One warning the call produced (Story 9.32) — the jj CLI's `ui.warning_*` output as a coded
 ///  fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
 ///  Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
@@ -23929,6 +24165,10 @@ class Envelope {
         return RevsetCounts.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 59:
         return FoundChanges.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 60:
+        return GitColocationStatus.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 61:
+        return GitColocationResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

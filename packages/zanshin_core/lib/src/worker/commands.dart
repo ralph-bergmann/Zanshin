@@ -1036,6 +1036,45 @@ final class GitExportCommand extends WorkerCommand implements HandleScopedComman
   final int handleId;
 }
 
+/// Report whether the workspace identified by [handleId] is colocated with Git
+/// (Story 9.45) — the CLI's `jj git colocation status`.
+///
+/// The worker calls `zanshinGitColocationStatus(raw)` and replies with a
+/// `BufferResult` carrying the `Envelope<GitColocationStatus>` bytes.
+final class GitColocationStatusCommand extends WorkerCommand implements HandleScopedCommand {
+  const GitColocationStatusCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+}
+
+/// Convert the workspace identified by [handleId] into a colocated one (Story
+/// 9.45) — the CLI's `jj git colocation enable`.
+///
+/// The worker calls `zanshinGitColocationEnable(raw)` and replies with a
+/// `BufferResult` carrying the `Envelope<GitColocationResult>` bytes.
+final class GitColocationEnableCommand extends WorkerCommand implements HandleScopedCommand {
+  const GitColocationEnableCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+}
+
+/// Convert the workspace identified by [handleId] into a non-colocated one
+/// (Story 9.45) — the CLI's `jj git colocation disable`.
+///
+/// The worker calls `zanshinGitColocationDisable(raw)` and replies with a
+/// `BufferResult` carrying the `Envelope<GitColocationResult>` bytes.
+final class GitColocationDisableCommand extends WorkerCommand implements HandleScopedCommand {
+  const GitColocationDisableCommand({required super.commandId, required this.handleId});
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+}
+
 /// Register a new git remote in the repo identified by [handleId] (Story 9.5) —
 /// the CLI's `jj git remote add`.
 ///

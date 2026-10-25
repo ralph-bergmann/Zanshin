@@ -345,6 +345,18 @@ parity!(
     file_delete_conflict,
     file_delete_several_one_unmatched,
     file_delete_no_paths_dirty_wc,
+    git_colocation_status_colocated,
+    git_colocation_status_not_colocated,
+    git_colocation_enable,
+    git_colocation_enable_empty,
+    git_colocation_enable_already,
+    git_colocation_enable_git_dir_exists,
+    git_colocation_disable,
+    git_colocation_disable_not_colocated,
+    git_colocation_disable_after_cli_enable,
+    git_colocation_enable_child,
+    git_colocation_disable_child,
+    git_colocation_enable_child_git_dir_exists,
     workspace_forget_other,
     workspace_forget_current,
     workspace_forget_two,
@@ -525,7 +537,7 @@ fn defined_ids() -> BTreeSet<&'static str> {
 #[test]
 fn every_scenario_has_a_test() {
     assert_eq!(SCENARIO_IDS.iter().copied().collect::<BTreeSet<_>>(), defined_ids());
-    assert_eq!(SCENARIO_IDS.len(), 455);
+    assert_eq!(SCENARIO_IDS.len(), 467);
 }
 
 #[test]

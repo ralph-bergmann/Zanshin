@@ -600,6 +600,9 @@ OpDiff _mapDiff(fbs.OpDiff d) {
 RefDistance _mapDistance(fbs.RefDistance? d) =>
     d == null ? const RefDistance(lower: 0, upper: 0) : RefDistance(lower: d.lower, upper: d.hasUpper ? d.upper : null);
 
+/// Rebuild an [OpRefTarget] — shared with `git.dart`'s `GitColocationStatus.gitHead` (Story 9.45).
+OpRefTarget decodeOpRefTargetInternal(fbs.OpRefTarget? t) => _mapTarget(t);
+
 OpRefTarget _mapTarget(fbs.OpRefTarget? t) =>
     OpRefTarget(adds: t?.adds ?? const [], removes: t?.removes ?? const [], conflicted: t?.conflicted ?? false);
 

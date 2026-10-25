@@ -178,10 +178,10 @@ fn a_failed_worktree_unlink_warns() {
 
 /// A directory made read-only for the test's duration; writable again on drop, so the tempdir
 /// can be removed.
-struct ReadOnlyDir(PathBuf);
+pub(crate) struct ReadOnlyDir(PathBuf);
 
 impl ReadOnlyDir {
-    fn new(dir: &Path) -> Self {
+    pub(crate) fn new(dir: &Path) -> Self {
         fs::set_permissions(dir, fs::Permissions::from_mode(0o555)).expect("chmod");
         Self(dir.to_owned())
     }

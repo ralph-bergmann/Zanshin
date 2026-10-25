@@ -92,7 +92,7 @@ fn description(verb: &str, names: &[WorkspaceNameBuf]) -> String {
 ///
 /// - [`MutateError::Config`] — `git.executable-path` does not read (the CLI's
 ///   `GitSubprocessOptions::from_settings` `?`).
-fn unlink_worktrees(
+pub(crate) fn unlink_worktrees(
     workspace: &Workspace,
     store: &Store,
     paths: &[PathBuf],

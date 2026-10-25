@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! Integration tests for Story 9.5's six `zanshin_git_*` wrappers (`zanshin_git_import`,
-//! `_export`, `_remote_add`, `_remote_remove`, `_remote_rename`, `_remote_set_url`).
+//! `_export`, `_remote_add`, `_remote_remove`, `_remote_rename`, `_remote_set_url`) and Story
+//! 9.45's three `zanshin_git_colocation_*` wrappers.
 //!
 //! Every buffer is read through the `FlatBuffers` generated typed accessors and the
 //! Verifier — a wrong-shape payload is a compile error, not a runtime assert. Every token is
@@ -23,8 +24,9 @@ use flatbuffers::root as fb_root;
 use zanshin_ffi::fbs;
 use zanshin_ffi::ffi_strings::{zanshin_buffer_free_token, ZanshinBuf};
 use zanshin_ffi::git::{
-    zanshin_git_export, zanshin_git_import, zanshin_git_remote_add, zanshin_git_remote_remove,
-    zanshin_git_remote_rename, zanshin_git_remote_set_url,
+    zanshin_git_colocation_disable, zanshin_git_colocation_enable, zanshin_git_colocation_status, zanshin_git_export,
+    zanshin_git_import, zanshin_git_remote_add, zanshin_git_remote_remove, zanshin_git_remote_rename,
+    zanshin_git_remote_set_url,
 };
 use zanshin_ffi::remotes::zanshin_remotes;
 use zanshin_ffi::repo::zanshin_repo_close;
@@ -921,4 +923,133 @@ unsafe fn repo_init(path: &std::ffi::CString, backend: i32) -> *mut zanshin_ffi:
     let bytes = b.finished_data();
     // SAFETY: `bytes` is a live, caller-owned request buffer for the duration of the call.
     unsafe { zanshin_ffi::repo::zanshin_repo_init(bytes.as_ptr(), bytes.len()) }
+}
+
+// ── zanshin_git_colocation_* (Story 9.45) ─────────────────────────────────────
+
+/// `zanshin_git_colocation_status` on `handle`: `(colocated, workspace_name, external, hints,
+/// git_repo_path, git_head.adds)`.
+fn colocation_status(handle: u64) -> (bool, String, bool, Vec<String>, String, Vec<String>) {
+    // SAFETY: handle is live for the duration of the call.
+    let bytes = unsafe { read_and_free(zanshin_git_colocation_status(handle)) };
+    let env = parse_envelope(&bytes);
+    assert!(env.ok(), "status failed: {:?}", env.error().and_then(|e| e.code()));
+    assert_eq!(env.data_type(), fbs::Payload::GitColocationStatus);
+    let p = env
+        .data_as_git_colocation_status()
+        .expect("GitColocationStatus payload");
+    let head = p.git_head().expect("git_head present");
+    assert!(!head.conflicted());
+    (
+        p.colocated(),
+        p.workspace_name().unwrap_or_default().to_owned(),
+        p.external_git_repo(),
+        p.hints()
+            .map(|v| v.iter().map(str::to_owned).collect())
+            .unwrap_or_default(),
+        p.git_repo_path().unwrap_or_default().to_owned(),
+        head.adds()
+            .map(|v| v.iter().map(str::to_owned).collect())
+            .unwrap_or_default(),
+    )
+}
+
+/// One `zanshin_git_colocation_enable` / `_disable` call: `(converted, git_worktree_removed,
+/// new_op_id)`.
+fn colocation_convert(bytes: &[u8]) -> (bool, bool, String) {
+    let env = parse_envelope(bytes);
+    assert!(env.ok(), "convert failed: {:?}", env.error().and_then(|e| e.code()));
+    assert_eq!(env.data_type(), fbs::Payload::GitColocationResult);
+    let p = env
+        .data_as_git_colocation_result()
+        .expect("GitColocationResult payload");
+    let op = p
+        .mutation()
+        .and_then(|m| m.new_op_id())
+        .expect("the nested MutationResult carries the op id")
+        .to_owned();
+    (p.converted(), p.git_worktree_removed(), op)
+}
+
+#[test]
+fn git_colocation_status_enable_and_disable_round_trip_across_the_boundary() {
+    test_helpers::pin_test_env();
+    let tmp = tempfile::TempDir::new().unwrap();
+    close_handle(init_handle(tmp.path(), 1));
+    // One commit, so `@-` is not the root and enable's Git HEAD is a commit.
+    let parent = {
+        let mut repo = Repo::open(tmp.path()).expect("open");
+        fs::write(tmp.path().join("f.txt"), "f").expect("write");
+        repo.commit(&zanshin_jj::CommitOptions {
+            message: vec!["c1".to_owned()],
+            ..Default::default()
+        })
+        .expect("commit");
+        let mut parent = String::new();
+        let _ = repo
+            .eval_revset("@-", |change| {
+                parent = change.commit_id.0;
+                std::ops::ControlFlow::Break(())
+            })
+            .expect("@-");
+        parent
+    };
+    let handle = init_handle_by_open(tmp.path());
+
+    let (colocated, name, external, hints, path, head) = colocation_status(handle);
+    assert!(!colocated);
+    assert_eq!(name, "default");
+    assert!(!external);
+    assert_eq!(hints, ["To enable colocation, run: `jj git colocation enable`"]);
+    assert!(path.ends_with("store/git"), "{path}");
+    assert!(head.is_empty(), "no Git HEAD in a non-colocated workspace");
+
+    // SAFETY: handle is live for the duration of the call.
+    let (converted, removed, op) = colocation_convert(&unsafe { read_and_free(zanshin_git_colocation_enable(handle)) });
+    assert!(converted);
+    assert!(!removed);
+    assert!(!op.is_empty());
+    assert!(tmp.path().join(".git").is_dir());
+    let (colocated, _, _, hints, _, head) = colocation_status(handle);
+    assert!(colocated);
+    assert_eq!(hints, ["To disable colocation, run: `jj git colocation disable`"]);
+    assert_eq!(head, [parent], "the Git HEAD is `@-`");
+
+    // SAFETY: handle is live for the duration of the call.
+    let (converted, _, _) = colocation_convert(&unsafe { read_and_free(zanshin_git_colocation_enable(handle)) });
+    assert!(!converted, "already colocated");
+
+    // SAFETY: handle is live for the duration of the call.
+    let (converted, removed, _) = colocation_convert(&unsafe { read_and_free(zanshin_git_colocation_disable(handle)) });
+    assert!(converted);
+    assert!(!removed);
+    assert!(!tmp.path().join(".git").exists());
+    assert!(git_store(tmp.path()).is_dir());
+    assert!(!colocation_status(handle).0);
+
+    close_handle(handle);
+}
+
+#[test]
+fn git_colocation_refusals_cross_the_boundary_with_their_codes() {
+    test_helpers::pin_test_env();
+    // SAFETY: 0 is the documented null handle; every wrapper detects it.
+    let status = unsafe { read_and_free(zanshin_git_colocation_status(0)) };
+    assert_eq!(error_code(&status), FFI_INVALID_HANDLE);
+    // SAFETY: see above.
+    let enable = unsafe { read_and_free(zanshin_git_colocation_enable(0)) };
+    assert_eq!(error_code(&enable), FFI_INVALID_HANDLE);
+    // SAFETY: see above.
+    let disable = unsafe { read_and_free(zanshin_git_colocation_disable(0)) };
+    assert_eq!(error_code(&disable), FFI_INVALID_HANDLE);
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let handle = init_handle(tmp.path(), 1);
+    fs::create_dir(tmp.path().join(".git")).expect("mkdir .git");
+    fs::write(tmp.path().join(".git").join("x"), "x").expect("fill .git");
+    // SAFETY: handle is live for the duration of the call.
+    let bytes = unsafe { read_and_free(zanshin_git_colocation_enable(handle)) };
+    assert_eq!(error_code(&bytes), JJ_INVALID_INPUT);
+    assert!(git_store(tmp.path()).is_dir(), "the store is untouched");
+    close_handle(handle);
 }

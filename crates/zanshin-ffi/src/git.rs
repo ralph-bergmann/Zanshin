@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 //! `zanshin_git_*` — the six `jj git` sync + remote-config wrappers (Story 9.5):
-//! `import`, `export`, and `remote add`/`remove`/`rename`/`set-url`.
+//! `import`, `export`, and `remote add`/`remove`/`rename`/`set-url` — plus `colocation
+//! status`/`enable`/`disable` (Story 9.45), handle-only like `import`/`export`.
 //!
 //! Each calls the matching `zanshin_jj::Repo` method and serialises the result into a
 //! `FlatBuffers` `Envelope`. The handle is borrowed (not consumed). Mirrors the noun-module
@@ -18,7 +19,10 @@
 
 use flatbuffers::{FlatBufferBuilder, VerifierOptions};
 use tracing::debug;
-use zanshin_jj::{GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate, GitRefUpdateKind};
+use zanshin_jj::{
+    GitColocationResult, GitColocationStatus, GitExportFailure, GitExportResult, GitImportResult, GitRefUpdate,
+    GitRefUpdateKind,
+};
 
 use crate::envelope::{
     build_mutation_result, catch, expect_request_kind, finish_envelope, invalid_request, missing_field,
@@ -547,6 +551,176 @@ pub unsafe extern "C" fn zanshin_git_remote_set_url(handle: u64, data: *const u8
             .repo
             .git_remote_set_url(&req.name, req.url.as_deref(), req.push_url.as_deref());
         precondition_envelope(&mut session.repo, result, map_mutate_err, ok_mutation_result)
+    });
+    vec_into_token(buf)
+}
+
+// ── git colocation (Story 9.45) ──────────────────────────────────────────────
+
+/// Serialise a [`GitColocationStatus`] into a finished `Envelope<GitColocationStatus>` buffer.
+fn git_colocation_status_to_envelope(s: &GitColocationStatus, report: &crate::envelope::CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(512);
+    let workspace_name = b.create_string(&s.workspace_name);
+    let git_head = crate::op_log::ref_target_to_fbs(&mut b, &s.git_head);
+    // `to_string_lossy` is the crate's path→wire rule (`workspace.rs`).
+    let git_repo_path = b.create_string(&s.git_repo_path.to_string_lossy());
+    let hint_offs: Vec<_> = s.hints.iter().map(|h| b.create_string(h)).collect();
+    let hints = b.create_vector(&hint_offs);
+    let table = fbs::GitColocationStatus::create(
+        &mut b,
+        &fbs::GitColocationStatusArgs {
+            colocated: s.colocated,
+            workspace_name: Some(workspace_name),
+            git_head: Some(git_head),
+            git_repo_path: Some(git_repo_path),
+            external_git_repo: s.external_git_repo,
+            hints: Some(hints),
+        },
+    );
+    finish_envelope(
+        b,
+        fbs::Payload::GitColocationStatus,
+        Some(table.as_union_value()),
+        report,
+    )
+}
+
+/// Serialise a [`GitColocationResult`] into a finished `Envelope<GitColocationResult>` buffer.
+fn git_colocation_result_to_envelope(r: &GitColocationResult, report: &crate::envelope::CallReport) -> Vec<u8> {
+    let mut b = FlatBufferBuilder::with_capacity(512);
+    let mutation = build_mutation_result(&mut b, &r.mutation);
+    let table = fbs::GitColocationResult::create(
+        &mut b,
+        &fbs::GitColocationResultArgs {
+            mutation: Some(mutation),
+            converted: r.converted,
+            git_worktree_removed: r.git_worktree_removed,
+        },
+    );
+    finish_envelope(
+        b,
+        fbs::Payload::GitColocationResult,
+        Some(table.as_union_value()),
+        report,
+    )
+}
+
+/// Report whether the workspace referenced by `handle` shares its working copy with Git — the
+/// CLI's `jj git colocation status` (Story 9.45).
+///
+/// Takes no arguments (the CLI's own args are empty). Runs the pre-verb snapshot and writes no
+/// operation of its own.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `GitColocationStatus` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.config_error` — the effective jj config does not read (the pre-verb refresh or snapshot).
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale; nothing is
+///   written.
+/// - `jj.jj_lib_error` — an underlying jj-lib failure; detail in `context`.
+///
+/// # Safety
+/// Same handle contract as `zanshin_git_import`.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_git_colocation_status(handle: u64) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_git_colocation_status", handle);
+    let buf = catch(|| {
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.git_colocation_status();
+        precondition_envelope(
+            &mut session.repo,
+            result,
+            map_mutate_err,
+            git_colocation_status_to_envelope,
+        )
+    });
+    vec_into_token(buf)
+}
+
+/// Convert the workspace referenced by `handle` into a colocated Jujutsu/Git workspace — the
+/// CLI's `jj git colocation enable` (Story 9.45).
+///
+/// Takes no arguments. An already colocated workspace writes nothing (`converted` false). The
+/// default workspace's Git repository moves from `.jj/repo/store/git` to `<root>/.git`; a child
+/// workspace gets a Git worktree. Then `.jj/.gitignore` is written, the handle's workspace is
+/// reloaded, and Git HEAD is reset to `@`'s parent as `set git head to working copy parent` (no
+/// operation when nothing changed). A failure after the move leaves the disk as the CLI leaves it.
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `GitColocationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.no_working_copy` — the workspace has no working-copy commit; nothing is written.
+/// - `jj.invalid_input` — `<root>/.git` already exists ("A .git directory already exists in the
+///   workspace root. Cannot colocate."), the workspace is backed by an external Git repository,
+///   the move failed, `core.bare` could not be set, or `.jj/.gitignore` could not be written.
+/// - `jj.git_worktree_failed` — a child workspace's Git worktree could not be created.
+/// - `jj.config_error` — `git.executable-path` or the immutable set does not read, or the
+///   pre-verb refresh / snapshot failed on config.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — the reload, the Git HEAD reset or another jj-lib step failed.
+///
+/// # Safety
+/// Same handle contract as `zanshin_git_import`.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_git_colocation_enable(handle: u64) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_git_colocation_enable", handle);
+    let buf = catch(|| {
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.git_colocation_enable();
+        precondition_envelope(
+            &mut session.repo,
+            result,
+            map_mutate_err,
+            git_colocation_result_to_envelope,
+        )
+    });
+    vec_into_token(buf)
+}
+
+/// Convert the workspace referenced by `handle` into a non-colocated Jujutsu/Git workspace — the
+/// CLI's `jj git colocation disable` (Story 9.45).
+///
+/// Takes no arguments. A non-colocated workspace writes nothing (`converted` false). The default
+/// workspace's `<root>/.git` moves to `.jj/repo/store/git`; a child workspace's Git worktree is
+/// unlinked (`git_worktree_removed`; a failure warns `jj.git_worktree_unlink_failed`). Then
+/// `.jj/.gitignore` is removed, the handle's workspace is reloaded, and the view's Git HEAD is
+/// cleared as `remove git head reference` (no operation when it was absent).
+///
+/// Returns a `FlatBuffers` `Envelope` carrying a `GitColocationResult` payload on success.
+///
+/// # Errors
+/// - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+/// - `jj.not_a_git_repo` — the open workspace has no git backend; no `context`.
+/// - `jj.invalid_input` — the move failed, or the Git config could not be made bare.
+/// - `jj.config_error` — `git.executable-path` or the immutable set does not read, or the
+///   pre-verb refresh / snapshot failed on config.
+/// - `jj.stale_working_copy` — the pre-verb snapshot found the working copy stale.
+/// - `jj.jj_lib_error` — the reload or another jj-lib step failed.
+///
+/// # Safety
+/// Same handle contract as `zanshin_git_import`.
+/// The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+#[no_mangle]
+pub unsafe extern "C" fn zanshin_git_colocation_disable(handle: u64) -> *mut ZanshinBuf {
+    debug!(fn_name = "zanshin_git_colocation_disable", handle);
+    let buf = catch(|| {
+        // SAFETY: see `session_from_handle`.
+        let session = unsafe { session_from_handle(handle) }?;
+        let result = session.repo.git_colocation_disable();
+        precondition_envelope(
+            &mut session.repo,
+            result,
+            map_mutate_err,
+            git_colocation_result_to_envelope,
+        )
     });
     vec_into_token(buf)
 }

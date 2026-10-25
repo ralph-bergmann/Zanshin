@@ -3012,6 +3012,7 @@ pub fn scenarios() -> Vec<Scenario> {
     .chain(file_edit_scenarios())
     .chain(file_edit_content_scenarios())
     .chain(file_delete_scenarios())
+    .chain(git_colocation_scenarios())
     .chain(workspace_ops_scenarios())
     .chain(simplify_parents_scenarios())
     .chain(resolve_scenarios())
@@ -5237,6 +5238,233 @@ fn file_delete_scenarios() -> Vec<Scenario> {
                 |_| args(&["file", "delete"]),
             )
         },
+    ]
+}
+
+// ── Story 9.45: git colocation status / enable / disable ─────────────────────────
+
+/// The kind of the entry at `path`: `dir`, `file` or `none`.
+fn entry_kind(path: &Path) -> &'static str {
+    match std::fs::metadata(path) {
+        Ok(meta) if meta.is_dir() => "dir",
+        Ok(_) => "file",
+        Err(_) => "none",
+    }
+}
+
+/// `text` with every full 40-hex commit id replaced by its commit's label in the repo at `root`
+/// (the state's normalization labels only PREFIXES).
+fn label_full_ids(root: &Path, text: &str) -> String {
+    let (_, repo) = load_workspace(root);
+    text.split(' ')
+        .map(|word| {
+            let hex = word.trim_end_matches(',');
+            match CommitId::try_from_hex(hex).filter(|_| hex.len() == 40) {
+                Some(id) => word.replacen(hex, &commit_label(&repo, &id), 1),
+                None => word.to_owned(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The pinned CLI's `jj git colocation status` stdout in `dir` (it reads the result of the
+/// operation, whichever side wrote it), ids labelled.
+fn cli_colocation_status(dir: &Path) -> String {
+    let run = jj(dir, &["git", "colocation", "status"]);
+    format!("ok={} {:?}", run.success, label_full_ids(dir, run.stdout.trim_end()))
+}
+
+/// The colocation layout of the default workspace and, when present, of `../ws2`: the `.git`
+/// kinds, `store/git_target`, `core.bare` from the Git config file in use, `.jj/.gitignore`, the
+/// number of the Git repository's worktree entries, and the CLI's `git colocation status` in each
+/// root.
+fn colocation_read_back(root: &Path) -> String {
+    let store = root.join(".jj").join("repo").join("store");
+    let git_dir = if root.join(".git").is_dir() {
+        root.join(".git")
+    } else {
+        store.join("git")
+    };
+    let read = |path: &Path| std::fs::read_to_string(path).ok();
+    let bare = read(&git_dir.join("config")).and_then(|text| {
+        text.lines()
+            .map(str::trim)
+            .find(|l| l.starts_with("bare"))
+            .map(str::to_owned)
+    });
+    // A count: jj-lib names a worktree it adds to a populated directory after a random temp dir.
+    let worktrees = std::fs::read_dir(git_dir.join("worktrees")).map_or(0, Iterator::count);
+    let mut parts = vec![format!(
+        "root: .git={} git_target={:?} {bare:?} worktrees={worktrees} .gitignore={:?} status={}",
+        entry_kind(&root.join(".git")),
+        read(&store.join("git_target")),
+        read(&root.join(".jj").join(".gitignore")),
+        cli_colocation_status(root)
+    )];
+    let ws2 = root.join("..").join("ws2");
+    if ws2.join(".jj").exists() {
+        parts.push(format!(
+            "ws2: .git={} .gitignore={:?} status={}",
+            entry_kind(&ws2.join(".git")),
+            read(&ws2.join(".jj").join(".gitignore")),
+            cli_colocation_status(&ws2)
+        ));
+    }
+    parts.join(" | ")
+}
+
+/// Which `jj git colocation` verb a scenario runs.
+#[derive(Clone, Copy)]
+enum Colocation {
+    Status,
+    Enable,
+    Disable,
+}
+
+/// `verb` through Zanshin on `repo`.
+fn colocation_outcome(repo: &mut zanshin_jj::Repo, verb: Colocation) -> Outcome {
+    match verb {
+        Colocation::Status => {
+            let result = repo.git_colocation_status();
+            zanshin_outcome(repo, &result)
+        }
+        Colocation::Enable => {
+            let result = repo.git_colocation_enable();
+            zanshin_outcome(repo, &result)
+        }
+        Colocation::Disable => {
+            let result = repo.git_colocation_disable();
+            zanshin_outcome(repo, &result)
+        }
+    }
+}
+
+/// `verb` through Zanshin on a handle at `../ws2` — the CLI's `-R ../ws2`.
+fn ws2_colocation_outcome(root: &Path, verb: Colocation) -> Outcome {
+    let ws2 = root.join("..").join("ws2").canonicalize().expect("../ws2 exists");
+    let mut repo = zanshin_jj::Repo::open(&ws2).expect("Zanshin opens ../ws2");
+    colocation_outcome(&mut repo, verb)
+}
+
+/// A colocation scenario: `init`, `setup`, read back through [`colocation_read_back`].
+fn colocation_scenario(
+    id: &'static str,
+    init: &'static [&'static str],
+    setup: &'static [Step],
+    zanshin: fn(&mut zanshin_jj::Repo, &Path, &State) -> Outcome,
+    cli: fn(&State) -> Vec<String>,
+) -> Scenario {
+    Scenario {
+        init,
+        setup,
+        extra: Some(colocation_read_back),
+        ..simple(id, zanshin, cli)
+    }
+}
+
+/// `@` on the root commit, so enable's Git HEAD reset changes nothing (the CLI's empty repo).
+const NEW_ON_ROOT: &[Step] = &[Step::Jj(&["new", "root()"])];
+/// An unrelated, non-empty `.git` in the workspace root.
+const GIT_DIR_IN_ROOT: &[Step] = &[Step::Git(&["init", "-q"])];
+/// The CLI converts the repo first; Zanshin disables what the CLI enabled.
+const CLI_ENABLE: &[Step] = &[Step::Jj(&["git", "colocation", "enable"])];
+/// `../ws2` plus an unrelated Git repository already in it.
+const ADD_WS2_WITH_GIT_DIR: &[Step] = &[
+    Step::Jj(&["workspace", "add", "../ws2"]),
+    Step::Git(&["init", "-q", "../ws2"]),
+];
+
+/// `jj git colocation status|enable|disable` (Story 9.45) on BASE: both statuses, the default
+/// workspace's conversions and refusals, a disable of what the CLI enabled, and the child
+/// workspace's worktree arms (`-R ../ws2`). An external-Git repo (`--git-repo`) cannot be built
+/// by the scenario steps (`init` runs first); its rows are Rust witnesses only.
+fn git_colocation_scenarios() -> Vec<Scenario> {
+    vec![
+        colocation_scenario(
+            "git_colocation_status_colocated",
+            GIT_INIT,
+            &[],
+            |repo, _, _| colocation_outcome(repo, Colocation::Status),
+            |_| args(&["git", "colocation", "status"]),
+        ),
+        colocation_scenario(
+            "git_colocation_status_not_colocated",
+            NO_COLOCATE,
+            &[],
+            |repo, _, _| colocation_outcome(repo, Colocation::Status),
+            |_| args(&["git", "colocation", "status"]),
+        ),
+        colocation_scenario(
+            "git_colocation_enable",
+            NO_COLOCATE,
+            &[],
+            |repo, _, _| colocation_outcome(repo, Colocation::Enable),
+            |_| args(&["git", "colocation", "enable"]),
+        ),
+        colocation_scenario(
+            "git_colocation_enable_empty",
+            NO_COLOCATE,
+            NEW_ON_ROOT,
+            |repo, _, _| colocation_outcome(repo, Colocation::Enable),
+            |_| args(&["git", "colocation", "enable"]),
+        ),
+        colocation_scenario(
+            "git_colocation_enable_already",
+            GIT_INIT,
+            &[],
+            |repo, _, _| colocation_outcome(repo, Colocation::Enable),
+            |_| args(&["git", "colocation", "enable"]),
+        ),
+        colocation_scenario(
+            "git_colocation_enable_git_dir_exists",
+            NO_COLOCATE,
+            GIT_DIR_IN_ROOT,
+            |repo, _, _| colocation_outcome(repo, Colocation::Enable),
+            |_| args(&["git", "colocation", "enable"]),
+        ),
+        colocation_scenario(
+            "git_colocation_disable",
+            GIT_INIT,
+            &[],
+            |repo, _, _| colocation_outcome(repo, Colocation::Disable),
+            |_| args(&["git", "colocation", "disable"]),
+        ),
+        colocation_scenario(
+            "git_colocation_disable_not_colocated",
+            NO_COLOCATE,
+            &[],
+            |repo, _, _| colocation_outcome(repo, Colocation::Disable),
+            |_| args(&["git", "colocation", "disable"]),
+        ),
+        colocation_scenario(
+            "git_colocation_disable_after_cli_enable",
+            NO_COLOCATE,
+            CLI_ENABLE,
+            |repo, _, _| colocation_outcome(repo, Colocation::Disable),
+            |_| args(&["git", "colocation", "disable"]),
+        ),
+        colocation_scenario(
+            "git_colocation_enable_child",
+            NO_COLOCATE,
+            ADD_WS2,
+            |_, root, _| ws2_colocation_outcome(root, Colocation::Enable),
+            |_| args(&["-R", "../ws2", "git", "colocation", "enable"]),
+        ),
+        colocation_scenario(
+            "git_colocation_disable_child",
+            GIT_INIT,
+            ADD_WS2,
+            |_, root, _| ws2_colocation_outcome(root, Colocation::Disable),
+            |_| args(&["-R", "../ws2", "git", "colocation", "disable"]),
+        ),
+        colocation_scenario(
+            "git_colocation_enable_child_git_dir_exists",
+            NO_COLOCATE,
+            ADD_WS2_WITH_GIT_DIR,
+            |_, root, _| ws2_colocation_outcome(root, Colocation::Enable),
+            |_| args(&["-R", "../ws2", "git", "colocation", "enable"]),
+        ),
     ]
 }
 

@@ -252,4 +252,78 @@ void main() {
       expect(() => zanshinGitRemoteSetUrl(0, name: 'origin', pushUrl: '/tmp$_nul/y'), throwsArgumentError);
     });
   });
+
+  group('git colocation decode contract (Story 9.45)', () {
+    test('decodes a GitColocationStatus with its Git HEAD and hint', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.GitColocationStatus,
+        data: fbs.GitColocationStatusObjectBuilder(
+          colocated: true,
+          workspaceName: 'default',
+          gitHead: fbs.OpRefTargetObjectBuilder(adds: ['abc123'], removes: const <String>[], conflicted: false),
+          gitRepoPath: '/r/.git',
+          externalGitRepo: false,
+          hints: ['To disable colocation, run: `jj git colocation disable`'],
+        ),
+      ).toBytes();
+
+      final GitColocationStatus status = decodeGitColocationStatusEnvelope(bytes);
+      expect(status.colocated, isTrue);
+      expect(status.workspaceName, equals('default'));
+      expect(status.gitHead.adds, equals(['abc123']));
+      expect(status.gitHead.isAbsent, isFalse);
+      expect(status.gitRepoPath, equals('/r/.git'));
+      expect(status.externalGitRepo, isFalse);
+      expect(status.hints, equals(['To disable colocation, run: `jj git colocation disable`']));
+      expect(status.warnings, isEmpty);
+    });
+
+    test('decodes a GitColocationResult with its nested mutation', () {
+      final Uint8List bytes = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.GitColocationResult,
+        data: fbs.GitColocationResultObjectBuilder(
+          mutation: fbs.MutationResultObjectBuilder(
+            newOpId: 'op99',
+            newChangeIds: const <String>[],
+            abandonedChangeIds: const <String>[],
+            workingCopyChangeId: 'qpvuntsm',
+          ),
+          converted: true,
+          gitWorktreeRemoved: true,
+        ),
+      ).toBytes();
+
+      final GitColocationResult result = decodeGitColocationResultEnvelope(bytes);
+      expect(result.mutation.newOpId, equals('op99'));
+      expect(result.converted, isTrue);
+      expect(result.gitWorktreeRemoved, isTrue);
+    });
+
+    test('both decoders refuse an error envelope and a foreign payload', () {
+      final Uint8List error = fbs.EnvelopeObjectBuilder(
+        ok: false,
+        error: fbs.FfiErrorObjectBuilder(code: 'jj.invalid_input'),
+      ).toBytes();
+      final Uint8List foreign = fbs.EnvelopeObjectBuilder(
+        ok: true,
+        dataType: fbs.PayloadTypeId.RepoHandle,
+        data: fbs.RepoHandleObjectBuilder(handle: 0),
+      ).toBytes();
+      for (final Object Function(Uint8List) decode in [
+        decodeGitColocationStatusEnvelope,
+        decodeGitColocationResultEnvelope,
+      ]) {
+        expect(
+          () => decode(error),
+          throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+        );
+        expect(
+          () => decode(foreign),
+          throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.unknown')),
+        );
+      }
+    });
+  });
 }

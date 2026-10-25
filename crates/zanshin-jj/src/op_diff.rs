@@ -358,7 +358,7 @@ fn commits_diff(
 }
 
 /// A ref target as the CLI's `write_ref_target_summary` (`diff.rs:641-690`) shows it.
-fn ref_target(target: &RefTarget) -> OpRefTarget {
+pub(crate) fn ref_target(target: &RefTarget) -> OpRefTarget {
     if target.is_resolved() {
         OpRefTarget {
             adds: target.as_normal().map(commit_id).into_iter().collect(),

@@ -1457,6 +1457,8 @@ table FindChangesRequest {
 //                SplitResult nests it)
 //   Story 9-31 : DropActions ✓, ChangeActions ✓ (a row's refusal is the shipped FfiError)
 //   Story 9-25 : RevsetCounts ✓, FoundChanges ✓ (a count's error is the shipped FfiError)
+//   Story 9-45 : GitColocationStatus ✓ (reuses OpRefTarget), GitColocationResult ✓ (nests
+//                MutationResult)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -3008,6 +3010,36 @@ table FoundChanges {
   truncated: bool;
 }
 
+/// `zanshin_git_colocation_status`' answer (Story 9.45) — `jj git colocation status`' lines as
+/// facts. `colocated`: the workspace shares its working copy with Git. `workspace_name`: this
+/// workspace's name. `git_head`: the view's Git HEAD of this workspace ("Last imported/exported
+/// Git HEAD"), in the `OpRefTarget` shape (`adds` empty = absent, as in a non-colocated
+/// workspace). `git_repo_path`: the backing Git repository's path (in a child workspace the MAIN
+/// repository's, not the child's `.git` gitlink). `external_git_repo`: not
+/// colocated, not a child workspace and no `.jj/repo/store/git` — the workspace is backed by an
+/// external Git repository, so colocation cannot be enabled. `hints`: the CLI's one hint line,
+/// without `Hint: `.
+table GitColocationStatus {
+  colocated: bool;
+  workspace_name: string;
+  git_head: OpRefTarget;
+  git_repo_path: string;
+  external_git_repo: bool;
+  hints: [string];
+}
+
+/// Outcome of a successful `zanshin_git_colocation_enable` / `zanshin_git_colocation_disable`
+/// (Story 9.45) — the CLI's status lines as facts. `mutation` is the call's operation (`set git
+/// head to working copy parent` / `remove git head reference`), or the pre-call head when nothing
+/// changed or nothing was converted. `converted`: false is the CLI's "Workspace is already
+/// (not) colocated with Git.". `git_worktree_removed`: disable unlinked a child workspace's Git
+/// worktree ("Removed Git worktree for …"); always false for enable.
+table GitColocationResult {
+  mutation: MutationResult;
+  converted: bool;
+  git_worktree_removed: bool;
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -3069,6 +3101,8 @@ union Payload {
   ResolveList,
   RevsetCounts,
   FoundChanges,
+  GitColocationStatus,
+  GitColocationResult,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────

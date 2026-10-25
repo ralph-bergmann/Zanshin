@@ -274,6 +274,85 @@ void main() {
       expect(() => handle.gitRemoteRemove('origin'), throwsStateError);
       expect(() => handle.gitRemoteRename('origin', 'upstream'), throwsStateError);
       expect(() => handle.gitRemoteSetUrl(name: 'origin', url: remoteDir.path), throwsStateError);
+      expect(handle.gitColocationStatus, throwsStateError);
+      expect(handle.gitColocationEnable, throwsStateError);
+      expect(handle.gitColocationDisable, throwsStateError);
+    });
+
+    // Story 9.45: enable, status, disable on ONE handle — the handle runs on the
+    // reloaded workspace after each conversion, so status agrees without a reopen.
+    test('gitColocation_enable_status_disable_round_trip_on_one_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
+
+      final GitColocationStatus before = await handle.gitColocationStatus();
+      expect(before.colocated, isFalse);
+      expect(before.workspaceName, equals('default'));
+      expect(before.externalGitRepo, isFalse);
+      expect(before.gitHead.isAbsent, isTrue);
+      expect(before.hints, equals(['To enable colocation, run: `jj git colocation enable`']));
+
+      final GitColocationResult enabled = await handle.gitColocationEnable();
+      expect(enabled.converted, isTrue);
+      expect(enabled.gitWorktreeRemoved, isFalse);
+      expect(enabled.mutation.newOpId, isNotEmpty);
+      expect(Directory('${tempDir.path}/.git').existsSync(), isTrue);
+
+      final GitColocationStatus between = await handle.gitColocationStatus();
+      expect(between.colocated, isTrue);
+      expect(between.hints, equals(['To disable colocation, run: `jj git colocation disable`']));
+
+      final GitColocationResult disabled = await handle.gitColocationDisable();
+      expect(disabled.converted, isTrue);
+      expect(Directory('${tempDir.path}/.git').existsSync(), isFalse);
+      expect((await handle.gitColocationStatus()).colocated, isFalse);
+
+      await handle.close();
+    });
+
+    test('gitColocationEnable_with_an_existing_dot_git_surfaces_jj_invalid_input', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
+      File('${tempDir.path}/.git/x').createSync(recursive: true);
+
+      await expectLater(
+        handle.gitColocationEnable(),
+        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.invalid_input')),
+      );
+
+      await handle.close();
+    });
+
+    test('gitColocation_on_a_native_workspace_surfaces_jj_not_a_git_repo', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 0);
+
+      for (final Future<Object> Function() call in [
+        handle.gitColocationStatus,
+        handle.gitColocationEnable,
+        handle.gitColocationDisable,
+      ]) {
+        await expectLater(
+          call(),
+          throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.not_a_git_repo')),
+        );
+      }
+
+      await handle.close();
+    });
+
+    test('gitColocation_on_a_closed_handle_surfaces_ffi_invalid_handle', () async {
+      final RepoHandle handle = await worker.initRepo(tempDir.path, backend: 1, noColocate: true);
+      final int handleId = handle.handleId;
+      await handle.close();
+
+      for (final Future<Object> Function(int) call in [
+        worker.gitColocationStatus,
+        worker.gitColocationEnable,
+        worker.gitColocationDisable,
+      ]) {
+        await expectLater(
+          call(handleId),
+          throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'ffi.invalid_handle')),
+        );
+      }
     });
   });
 }

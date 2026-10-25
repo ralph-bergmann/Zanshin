@@ -3910,13 +3910,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 59;
+        pub const ENUM_MAX_PAYLOAD: u8 = 61;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 60] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 62] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -3977,6 +3977,8 @@ pub mod zanshin {
             Payload::ResolveList,
             Payload::RevsetCounts,
             Payload::FoundChanges,
+            Payload::GitColocationStatus,
+            Payload::GitColocationResult,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -4044,9 +4046,11 @@ pub mod zanshin {
             pub const ResolveList: Self = Self(57);
             pub const RevsetCounts: Self = Self(58);
             pub const FoundChanges: Self = Self(59);
+            pub const GitColocationStatus: Self = Self(60);
+            pub const GitColocationResult: Self = Self(61);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 59;
+            pub const ENUM_MAX: u8 = 61;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -4108,6 +4112,8 @@ pub mod zanshin {
                 Self::ResolveList,
                 Self::RevsetCounts,
                 Self::FoundChanges,
+                Self::GitColocationStatus,
+                Self::GitColocationResult,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -4172,6 +4178,8 @@ pub mod zanshin {
                     Self::ResolveList => Some("ResolveList"),
                     Self::RevsetCounts => Some("RevsetCounts"),
                     Self::FoundChanges => Some("FoundChanges"),
+                    Self::GitColocationStatus => Some("GitColocationStatus"),
+                    Self::GitColocationResult => Some("GitColocationResult"),
                     _ => None,
                 }
             }
@@ -40486,6 +40494,406 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum GitColocationStatusOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_git_colocation_status`' answer (Story 9.45) — `jj git colocation status`' lines as
+        /// facts. `colocated`: the workspace shares its working copy with Git. `workspace_name`: this
+        /// workspace's name. `git_head`: the view's Git HEAD of this workspace ("Last imported/exported
+        /// Git HEAD"), in the `OpRefTarget` shape (`adds` empty = absent, as in a non-colocated
+        /// workspace). `git_repo_path`: the backing Git repository's path (in a child workspace the MAIN
+        /// repository's, not the child's `.git` gitlink). `external_git_repo`: not
+        /// colocated, not a child workspace and no `.jj/repo/store/git` — the workspace is backed by an
+        /// external Git repository, so colocation cannot be enabled. `hints`: the CLI's one hint line,
+        /// without `Hint: `.
+        pub struct GitColocationStatus<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitColocationStatus<'a> {
+            type Inner = GitColocationStatus<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitColocationStatus<'a> {
+            pub const VT_COLOCATED: ::flatbuffers::VOffsetT = 4;
+            pub const VT_WORKSPACE_NAME: ::flatbuffers::VOffsetT = 6;
+            pub const VT_GIT_HEAD: ::flatbuffers::VOffsetT = 8;
+            pub const VT_GIT_REPO_PATH: ::flatbuffers::VOffsetT = 10;
+            pub const VT_EXTERNAL_GIT_REPO: ::flatbuffers::VOffsetT = 12;
+            pub const VT_HINTS: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitColocationStatus { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitColocationStatusArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitColocationStatus<'bldr>> {
+                let mut builder = GitColocationStatusBuilder::new(_fbb);
+                if let Some(x) = args.hints {
+                    builder.add_hints(x);
+                }
+                if let Some(x) = args.git_repo_path {
+                    builder.add_git_repo_path(x);
+                }
+                if let Some(x) = args.git_head {
+                    builder.add_git_head(x);
+                }
+                if let Some(x) = args.workspace_name {
+                    builder.add_workspace_name(x);
+                }
+                builder.add_external_git_repo(args.external_git_repo);
+                builder.add_colocated(args.colocated);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn colocated(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(GitColocationStatus::VT_COLOCATED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn workspace_name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitColocationStatus::VT_WORKSPACE_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn git_head(&self) -> Option<OpRefTarget<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<OpRefTarget>>(GitColocationStatus::VT_GIT_HEAD, None)
+                }
+            }
+            #[inline]
+            pub fn git_repo_path(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GitColocationStatus::VT_GIT_REPO_PATH, None)
+                }
+            }
+            #[inline]
+            pub fn external_git_repo(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(GitColocationStatus::VT_EXTERNAL_GIT_REPO, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn hints(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(GitColocationStatus::VT_HINTS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitColocationStatus<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<bool>("colocated", Self::VT_COLOCATED, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("workspace_name", Self::VT_WORKSPACE_NAME, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<OpRefTarget>>("git_head", Self::VT_GIT_HEAD, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("git_repo_path", Self::VT_GIT_REPO_PATH, false)?
+     .visit_field::<bool>("external_git_repo", Self::VT_EXTERNAL_GIT_REPO, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("hints", Self::VT_HINTS, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct GitColocationStatusArgs<'a> {
+            pub colocated: bool,
+            pub workspace_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub git_head: Option<::flatbuffers::WIPOffset<OpRefTarget<'a>>>,
+            pub git_repo_path: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub external_git_repo: bool,
+            pub hints:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for GitColocationStatusArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitColocationStatusArgs {
+                    colocated: false,
+                    workspace_name: None,
+                    git_head: None,
+                    git_repo_path: None,
+                    external_git_repo: false,
+                    hints: None,
+                }
+            }
+        }
+
+        pub struct GitColocationStatusBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitColocationStatusBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_colocated(&mut self, colocated: bool) {
+                self.fbb_
+                    .push_slot::<bool>(GitColocationStatus::VT_COLOCATED, colocated, false);
+            }
+            #[inline]
+            pub fn add_workspace_name(&mut self, workspace_name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    GitColocationStatus::VT_WORKSPACE_NAME,
+                    workspace_name,
+                );
+            }
+            #[inline]
+            pub fn add_git_head(&mut self, git_head: ::flatbuffers::WIPOffset<OpRefTarget<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<OpRefTarget>>(
+                    GitColocationStatus::VT_GIT_HEAD,
+                    git_head,
+                );
+            }
+            #[inline]
+            pub fn add_git_repo_path(&mut self, git_repo_path: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    GitColocationStatus::VT_GIT_REPO_PATH,
+                    git_repo_path,
+                );
+            }
+            #[inline]
+            pub fn add_external_git_repo(&mut self, external_git_repo: bool) {
+                self.fbb_
+                    .push_slot::<bool>(GitColocationStatus::VT_EXTERNAL_GIT_REPO, external_git_repo, false);
+            }
+            #[inline]
+            pub fn add_hints(
+                &mut self,
+                hints: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GitColocationStatus::VT_HINTS, hints);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitColocationStatusBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitColocationStatusBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitColocationStatus<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitColocationStatus<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitColocationStatus");
+                ds.field("colocated", &self.colocated());
+                ds.field("workspace_name", &self.workspace_name());
+                ds.field("git_head", &self.git_head());
+                ds.field("git_repo_path", &self.git_repo_path());
+                ds.field("external_git_repo", &self.external_git_repo());
+                ds.field("hints", &self.hints());
+                ds.finish()
+            }
+        }
+        pub enum GitColocationResultOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Outcome of a successful `zanshin_git_colocation_enable` / `zanshin_git_colocation_disable`
+        /// (Story 9.45) — the CLI's status lines as facts. `mutation` is the call's operation (`set git
+        /// head to working copy parent` / `remove git head reference`), or the pre-call head when nothing
+        /// changed or nothing was converted. `converted`: false is the CLI's "Workspace is already
+        /// (not) colocated with Git.". `git_worktree_removed`: disable unlinked a child workspace's Git
+        /// worktree ("Removed Git worktree for …"); always false for enable.
+        pub struct GitColocationResult<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for GitColocationResult<'a> {
+            type Inner = GitColocationResult<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> GitColocationResult<'a> {
+            pub const VT_MUTATION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CONVERTED: ::flatbuffers::VOffsetT = 6;
+            pub const VT_GIT_WORKTREE_REMOVED: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                GitColocationResult { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args GitColocationResultArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GitColocationResult<'bldr>> {
+                let mut builder = GitColocationResultBuilder::new(_fbb);
+                if let Some(x) = args.mutation {
+                    builder.add_mutation(x);
+                }
+                builder.add_git_worktree_removed(args.git_worktree_removed);
+                builder.add_converted(args.converted);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn mutation(&self) -> Option<MutationResult<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<MutationResult>>(GitColocationResult::VT_MUTATION, None)
+                }
+            }
+            #[inline]
+            pub fn converted(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(GitColocationResult::VT_CONVERTED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn git_worktree_removed(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(GitColocationResult::VT_GIT_WORKTREE_REMOVED, Some(false))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for GitColocationResult<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<MutationResult>>(
+                        "mutation",
+                        Self::VT_MUTATION,
+                        false,
+                    )?
+                    .visit_field::<bool>("converted", Self::VT_CONVERTED, false)?
+                    .visit_field::<bool>("git_worktree_removed", Self::VT_GIT_WORKTREE_REMOVED, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct GitColocationResultArgs<'a> {
+            pub mutation: Option<::flatbuffers::WIPOffset<MutationResult<'a>>>,
+            pub converted: bool,
+            pub git_worktree_removed: bool,
+        }
+        impl<'a> Default for GitColocationResultArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                GitColocationResultArgs {
+                    mutation: None,
+                    converted: false,
+                    git_worktree_removed: false,
+                }
+            }
+        }
+
+        pub struct GitColocationResultBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GitColocationResultBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_mutation(&mut self, mutation: ::flatbuffers::WIPOffset<MutationResult<'b>>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<MutationResult>>(
+                    GitColocationResult::VT_MUTATION,
+                    mutation,
+                );
+            }
+            #[inline]
+            pub fn add_converted(&mut self, converted: bool) {
+                self.fbb_
+                    .push_slot::<bool>(GitColocationResult::VT_CONVERTED, converted, false);
+            }
+            #[inline]
+            pub fn add_git_worktree_removed(&mut self, git_worktree_removed: bool) {
+                self.fbb_.push_slot::<bool>(
+                    GitColocationResult::VT_GIT_WORKTREE_REMOVED,
+                    git_worktree_removed,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GitColocationResultBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                GitColocationResultBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GitColocationResult<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for GitColocationResult<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("GitColocationResult");
+                ds.field("mutation", &self.mutation());
+                ds.field("converted", &self.converted());
+                ds.field("git_worktree_removed", &self.git_worktree_removed());
+                ds.finish()
+            }
+        }
         pub enum WarningOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -41645,6 +42053,36 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_git_colocation_status(&self) -> Option<GitColocationStatus<'a>> {
+                if self.data_type() == Payload::GitColocationStatus {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { GitColocationStatus::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_git_colocation_result(&self) -> Option<GitColocationResult<'a>> {
+                if self.data_type() == Payload::GitColocationResult {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { GitColocationResult::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -41717,6 +42155,8 @@ pub mod zanshin {
           Payload::ResolveList => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ResolveList>>("Payload::ResolveList", pos),
           Payload::RevsetCounts => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<RevsetCounts>>("Payload::RevsetCounts", pos),
           Payload::FoundChanges => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<FoundChanges>>("Payload::FoundChanges", pos),
+          Payload::GitColocationStatus => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitColocationStatus>>("Payload::GitColocationStatus", pos),
+          Payload::GitColocationResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<GitColocationResult>>("Payload::GitColocationResult", pos),
           _ => Ok(()),
         }
      })?
@@ -42221,6 +42661,20 @@ pub mod zanshin {
                     }
                     Payload::FoundChanges => {
                         if let Some(x) = self.data_as_found_changes() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::GitColocationStatus => {
+                        if let Some(x) = self.data_as_git_colocation_status() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::GitColocationResult => {
+                        if let Some(x) = self.data_as_git_colocation_result() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")

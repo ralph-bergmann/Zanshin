@@ -37,7 +37,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 111
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 114
 exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -324,7 +324,7 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Seventy-four of the 111 exported symbols take their arguments as a **FlatBuffers
+Seventy-four of the 114 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
 strings. Sixty-two use the handle-scoped three-parameter shape:
 
@@ -588,7 +588,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **111** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **114** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -693,6 +693,9 @@ or no `# Errors` block.
 | `zanshin_git_push` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitPushRequest` (+ `cancel_token`, see § Cancel) | `GitPushResult` (see § `GitPushResult` payload; a cancel is `failure.kind = Cancelled`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.bookmark_exists`, `jj.bookmark_tracked_remote_exists`, `jj.push_ref_refused`, `jj.push_commit_rejected`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.20 (+`Progress`) |
 | `zanshin_git_import` | `(uint64_t handle)` | — | `GitImportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_export` | `(uint64_t handle)` | — | `GitExportResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
+| `zanshin_git_colocation_status` | `(uint64_t handle)` | — | `GitColocationStatus` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.45 |
+| `zanshin_git_colocation_enable` | `(uint64_t handle)` | — | `GitColocationResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.no_working_copy`, `jj.invalid_input`, `jj.git_worktree_failed`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.45 |
+| `zanshin_git_colocation_disable` | `(uint64_t handle)` | — | `GitColocationResult` | `ffi.invalid_handle`, `jj.not_a_git_repo`, `jj.invalid_input`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.45 |
 | `zanshin_git_remote_add` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GitRemoteAddRequest` | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.remote_exists`, `jj.not_a_git_repo`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_remote_remove` | `(uint64_t handle, const char *name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.remote_not_found`, `jj.remote_nonstandard_config`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
 | `zanshin_git_remote_rename` | `(uint64_t handle, const char *old_name, const char *new_name)` | — | `MutationResult` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.utf8_error`, `jj.config_error`, `jj.invalid_input`, `jj.remote_not_found`, `jj.remote_exists`, `jj.remote_nonstandard_config`, `jj.not_a_git_repo`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.5 |
@@ -1803,6 +1806,44 @@ rebased, or reparented with their content kept when `restore_descendants` is set
   `FileTrackRequest`'s (EMPTY or ABSENT is `jj.invalid_input` before the snapshot, clap's
   `required`). Every matching entry is removed, conflicts included; an unmatched path warns
   `jj.paths_unmatched`. The operation is `delete paths in commit <hex>`.
+
+---
+
+## zanshin_git_colocation_status, _enable, _disable (Story 9.45)
+
+The three wrappers port `jj git colocation status | enable | disable` at v0.46.0, for the default
+workspace and, since jj 0.46, for child workspaces. All three take only the handle and run the
+pre-verb snapshot first.
+
+- `zanshin_git_colocation_status` answers `GitColocationStatus`: the CLI's two stdout lines as
+  `colocated`, `workspace_name` and `git_head` (the view's Git HEAD of this workspace in the
+  `OpRefTarget` shape; absent in a non-colocated workspace), plus `git_repo_path` (in a child
+  workspace the MAIN repository's Git dir, not the child's `.git` gitlink),
+  `external_git_repo` (not colocated, not a child workspace, no `.jj/repo/store/git` — `jj git
+  init --git-repo=…`) and `hints`, the CLI's one hint line without `Hint: `. It writes no
+  operation.
+- `zanshin_git_colocation_enable` answers `GitColocationResult`. Already colocated:
+  `converted = false`, no operation. Default workspace: `.jj/repo/store/git` moves to
+  `<root>/.git`, `store/git_target` becomes `../../../.git`, `core.bare = false`; a `<root>/.git`
+  that exists refuses `jj.invalid_input` ("A .git directory already exists in the workspace root.
+  Cannot colocate."), an external Git repository too ("Cannot colocate a workspace backed by an
+  external Git repository at <path>"). Child workspace: a Git worktree is created
+  (`jj.git_worktree_failed` when that fails, e.g. an existing `.git`). Then the handle's workspace
+  is reloaded from disk, `.jj/.gitignore` is written (`jj.invalid_input` "Failed to write
+  .jj/.gitignore file: …" when it cannot be), and Git HEAD is reset to `@`'s parent as
+  `set git head to working copy parent` — the colocated finish exports the refs; no operation when
+  nothing changed (an empty repo).
+- `zanshin_git_colocation_disable` answers `GitColocationResult`. Not colocated:
+  `converted = false`, no operation. Default workspace: `<root>/.git` moves to
+  `.jj/repo/store/git`, `core.bare = true`, `store/git_target` becomes `git`. Child workspace: its
+  Git worktree is unlinked (`git_worktree_removed`; a failure only warns
+  `jj.git_worktree_unlink_failed`). Then `.jj/.gitignore` is removed, the handle's workspace is
+  reloaded, and the view's Git HEAD is cleared as `remove git head reference` (no operation when
+  it was absent).
+
+A failure after the move leaves the disk as the CLI leaves it — no rollback — and the handle is
+still reloaded onto the moved repository. The CLI's status
+lines are typed facts, never text.
 
 ---
 

@@ -2432,6 +2432,42 @@ class ZanshinWorker {
     return repo_ffi_git.decodeGitExportResultEnvelopeInternal(bytes);
   }
 
+  /// Report whether the workspace identified by [handleId] is colocated with Git
+  /// (Story 9.45) — see [RepoHandle.gitColocationStatus].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.not_a_git_repo`). Completes with a [StateError] after [close].
+  Future<repo_ffi_git.GitColocationStatus> gitColocationStatus(int handleId) async {
+    final Uint8List bytes = await send(
+      GitColocationStatusCommand(commandId: _correlator.allocateId(), handleId: handleId),
+    );
+    return repo_ffi_git.decodeGitColocationStatusEnvelopeInternal(bytes);
+  }
+
+  /// Convert the workspace identified by [handleId] into a colocated one (Story
+  /// 9.45) — see [RepoHandle.gitColocationEnable].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.invalid_input`). Completes with a [StateError] after [close].
+  Future<repo_ffi_git.GitColocationResult> gitColocationEnable(int handleId) async {
+    final Uint8List bytes = await send(
+      GitColocationEnableCommand(commandId: _correlator.allocateId(), handleId: handleId),
+    );
+    return repo_ffi_git.decodeGitColocationResultEnvelopeInternal(bytes);
+  }
+
+  /// Convert the workspace identified by [handleId] into a non-colocated one
+  /// (Story 9.45) — see [RepoHandle.gitColocationDisable].
+  ///
+  /// Throws [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.invalid_input`). Completes with a [StateError] after [close].
+  Future<repo_ffi_git.GitColocationResult> gitColocationDisable(int handleId) async {
+    final Uint8List bytes = await send(
+      GitColocationDisableCommand(commandId: _correlator.allocateId(), handleId: handleId),
+    );
+    return repo_ffi_git.decodeGitColocationResultEnvelopeInternal(bytes);
+  }
+
   /// Register a new git remote in the repo identified by [handleId] (Story 9.5).
   ///
   /// Sends a [GitRemoteAddCommand] via [send] and decodes the returned FlatBuffers
@@ -4704,6 +4740,33 @@ void _workerEntry(_WorkerInit init) {
           } else {
             final Uint8List bytes = repo_ffi_git.zanshinGitExport(raw);
             responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case GitColocationStatusCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitColocationStatusCommand for unknown handleId $handleId');
+            responseSP.send((commandId, BufferResult(_invalidHandleEnvelope(handleId))));
+          } else {
+            responseSP.send((commandId, BufferResult(repo_ffi_git.zanshinGitColocationStatus(raw))));
+          }
+
+        case GitColocationEnableCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitColocationEnableCommand for unknown handleId $handleId');
+            responseSP.send((commandId, BufferResult(_invalidHandleEnvelope(handleId))));
+          } else {
+            responseSP.send((commandId, BufferResult(repo_ffi_git.zanshinGitColocationEnable(raw))));
+          }
+
+        case GitColocationDisableCommand(:final int handleId):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: GitColocationDisableCommand for unknown handleId $handleId');
+            responseSP.send((commandId, BufferResult(_invalidHandleEnvelope(handleId))));
+          } else {
+            responseSP.send((commandId, BufferResult(repo_ffi_git.zanshinGitColocationDisable(raw))));
           }
 
         case GitRemoteAddCommand(

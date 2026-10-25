@@ -2086,6 +2086,80 @@ impl Repo {
         })
     }
 
+    /// Reports whether this workspace shares its working copy with Git (Story 9.45) — the CLI's
+    /// `jj git colocation status` (`cli/src/commands/git/colocation.rs` @ v0.46.0), its status
+    /// lines as [`crate::GitColocationStatus`]'s facts and its hint line as `hints`.
+    ///
+    /// Runs the pre-verb snapshot and writes no operation of its own.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no Git backend.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed.
+    /// - [`crate::MutateError::Backend`] — the head could not be loaded.
+    pub fn git_colocation_status(&mut self) -> Result<crate::GitColocationStatus, crate::MutateError> {
+        self.with_verb(cli_command::GIT_COLOCATION_STATUS, |repo, ctx| {
+            crate::colocation::status(repo.workspace(), ctx)
+        })
+    }
+
+    /// Converts this workspace into a colocated Jujutsu/Git workspace (Story 9.45) — the CLI's
+    /// `jj git colocation enable` (`cli/src/commands/git/colocation.rs` @ v0.46.0).
+    ///
+    /// An already colocated workspace writes nothing (`converted: false`, the CLI's "Workspace is
+    /// already colocated with Git."). The default workspace's Git repository moves from
+    /// `.jj/repo/store/git` to `<root>/.git` (`store/git_target` = `../../../.git`, `core.bare =
+    /// false`); a child workspace gets a Git worktree. Then `.jj/.gitignore` is written, the
+    /// handle's workspace is reloaded from disk, Git HEAD is reset to `@`'s parent and the
+    /// colocated finish exports the refs, as `set git head to working copy parent` — no operation
+    /// when nothing changed (an empty repo). A failure after the move leaves the disk as the CLI
+    /// leaves it.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no Git backend.
+    /// - [`crate::MutateError::NoWorkingCopy`] — the workspace has no working-copy commit.
+    /// - [`crate::MutateError::InvalidInput`] — `<root>/.git` already exists, the workspace is
+    ///   backed by an external Git repository, the move failed, `core.bare` could not be set, or
+    ///   `.jj/.gitignore` could not be written.
+    /// - [`crate::MutateError::GitWorktree`] — a child workspace's Git worktree could not be
+    ///   created.
+    /// - [`crate::MutateError::Config`] — `git.executable-path` does not read, or the immutable
+    ///   set does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed.
+    /// - [`crate::MutateError::Backend`] — the reload, the Git HEAD reset ("Failed to reset Git
+    ///   HEAD state: …") or any other jj-lib step failed.
+    pub fn git_colocation_enable(&mut self) -> Result<crate::GitColocationResult, crate::MutateError> {
+        self.with_verb(cli_command::GIT_COLOCATION_ENABLE, |repo, ctx| {
+            crate::colocation::enable(repo.workspace_mut(), ctx)
+        })
+    }
+
+    /// Converts this workspace into a non-colocated Jujutsu/Git workspace (Story 9.45) — the
+    /// CLI's `jj git colocation disable` (`cli/src/commands/git/colocation.rs` @ v0.46.0).
+    ///
+    /// A non-colocated workspace writes nothing (`converted: false`, the CLI's "Workspace is
+    /// already not colocated with Git."). The default workspace's `<root>/.git` moves to
+    /// `.jj/repo/store/git` (`core.bare = true`, `store/git_target` = `git`); a child workspace's
+    /// Git worktree is unlinked (`git_worktree_removed`; a failure warns
+    /// `jj.git_worktree_unlink_failed`). Then `.jj/.gitignore` is removed, the handle's workspace
+    /// is reloaded from disk and the view's Git HEAD of this workspace is cleared, as `remove git
+    /// head reference` — no operation when it was absent already.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::MutateError::NotAGitRepo`] — the workspace has no Git backend.
+    /// - [`crate::MutateError::InvalidInput`] — the move failed, or `core.bare` could not be set.
+    /// - [`crate::MutateError::Config`] — `git.executable-path` does not read, or the immutable
+    ///   set does not resolve.
+    /// - [`crate::MutateError::Precondition`] — the pre-verb snapshot failed.
+    /// - [`crate::MutateError::Backend`] — the reload or any other jj-lib step failed.
+    pub fn git_colocation_disable(&mut self) -> Result<crate::GitColocationResult, crate::MutateError> {
+        self.with_verb(cli_command::GIT_COLOCATION_DISABLE, |repo, ctx| {
+            crate::colocation::disable(repo.workspace_mut(), ctx)
+        })
+    }
+
     /// Writes jj's bookmarks and tags back to the backing git repo (Story 9.5) — the CLI's
     /// `jj git export`.
     ///
@@ -5102,6 +5176,9 @@ mod tests {
         records!(repo, COMMIT, commit(&crate::CommitOptions::default()));
         records!(repo, UNDO, undo(false));
         records!(repo, REDO, redo(false));
+        records!(repo, GIT_COLOCATION_STATUS, git_colocation_status());
+        records!(repo, GIT_COLOCATION_ENABLE, git_colocation_enable());
+        records!(repo, GIT_COLOCATION_DISABLE, git_colocation_disable());
     }
 
     #[test]

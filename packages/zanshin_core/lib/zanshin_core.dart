@@ -55,6 +55,7 @@ export 'src/ffi/fetch.dart'
         PatternFetchRefs,
         TrackedFetchRefs;
 export 'src/ffi/file_ops.dart' show FileNotAutoTracked, FileTooLarge, SnapshotStats, UntrackedPath, UntrackedReason;
+export 'src/ffi/git.dart' show GitColocationResult, GitColocationStatus;
 export 'src/ffi/graph.dart' show GraphTopologyView, TopologyRef, TopologyRefKind;
 export 'src/ffi/log_forwarder.dart' show forwardLogRecord, initLogForwarding;
 export 'src/ffi/metaedit_duplicate_fix.dart' show FixResult, FixToolStderr;

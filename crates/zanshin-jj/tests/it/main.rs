@@ -54,6 +54,7 @@ mod file_track_home_git_ignore;
 mod file_track_untrack;
 mod find_repo_root;
 mod fix;
+mod git_colocation;
 mod git_fetch_parity;
 mod git_remotes;
 mod git_sync;

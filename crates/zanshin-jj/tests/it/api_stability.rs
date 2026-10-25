@@ -1248,6 +1248,38 @@ fn file_edit_and_file_delete_surface_resolves() {
         ) -> Result<zanshin_jj::MutationResult, zanshin_jj::MutateError>;
 }
 
+/// Story 9.45: `git colocation status` returns `GitColocationStatus`, `enable` / `disable` a
+/// `GitColocationResult` (the CLI's status lines as facts).
+#[test]
+fn git_colocation_surface_resolves() {
+    _ = zanshin_jj::Repo::git_colocation_status
+        as fn(&mut zanshin_jj::Repo) -> Result<zanshin_jj::GitColocationStatus, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::git_colocation_enable
+        as fn(&mut zanshin_jj::Repo) -> Result<zanshin_jj::GitColocationResult, zanshin_jj::MutateError>;
+    _ = zanshin_jj::Repo::git_colocation_disable
+        as fn(&mut zanshin_jj::Repo) -> Result<zanshin_jj::GitColocationResult, zanshin_jj::MutateError>;
+    let _ = |s: zanshin_jj::GitColocationStatus| -> (
+        bool,
+        String,
+        zanshin_jj::OpRefTarget,
+        std::path::PathBuf,
+        bool,
+        Vec<String>,
+    ) {
+        (
+            s.colocated,
+            s.workspace_name,
+            s.git_head,
+            s.git_repo_path,
+            s.external_git_repo,
+            s.hints,
+        )
+    };
+    let _ = |r: zanshin_jj::GitColocationResult| -> (zanshin_jj::MutationResult, bool, bool) {
+        (r.mutation, r.converted, r.git_worktree_removed)
+    };
+}
+
 // squash / split (Story 9.15)
 type _SquashOptions = zanshin_jj::SquashOptions;
 type _SquashPlan = zanshin_jj::SquashPlan;
