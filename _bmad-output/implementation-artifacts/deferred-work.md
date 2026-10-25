@@ -2050,3 +2050,9 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
 - **`render_span` reads the span back out of pest's rendered error text.** Low.
   - A jj-lib or pest bump could change that text without any build error. jj-lib 0.46 keeps the pest error private (`revset_parser.rs:155-161`), so only the unit tests in `crates/zanshin-jj/src/revset.rs` pin the format.
   - **Follow-up:** add "re-verify `render_span` (or switch to a span accessor if jj-lib exposes one)" to the jj pin-bump steps in project-context.md § zanshin-jj.
+
+## Surfaced in the closing run of Story 9.25 (bmad-build-auto, 2026-10-25)
+
+- **`interdiff`'s `from`/`to` prefixes and the change-id currency still resolve without the id-prefix context.** Low.
+  - `op_support::resolve_commit_id_prefix` (a bare full-index lookup, a deliberate Epic 9 follow-up I divergence) and `op_support::resolve_commit` take no `revsets.short-prefixes` context; the CLI's `jj interdiff --from/--to` goes through `resolve_single_rev` → `attach_revset_evaluator` (`cli/src/cli_util.rs:1905-1921` @ v0.46.0), so a prefix unique within the set but ambiguous repo-wide resolves there and refuses in Zanshin. GUI callers pass full ids, so only a hand-typed short prefix meets it. Pre-existing; outside the closing run's three items.
+  - **Follow-up:** resolve `RevisionRef` prefixes through the call's `TemplateStartup::id_prefix_context()` (keeping the hidden-commit fallback the index lookup gives), with an oracle scenario for `interdiff --from <prefix>`; or leave it.
