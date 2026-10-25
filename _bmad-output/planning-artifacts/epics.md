@@ -7192,6 +7192,8 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Scope.** The same early return after the immutability check and before the transaction, returning the house no-op result (`new_op_id` = the pre-call head); an immutable current `@` still refuses as `jj.immutable` (the CLI checks first); witnesses for both plus the unchanged op count. The implicit snapshot (9.26) still runs first, as in the CLI.
 
+**Update 2026-10-25 (done, re-read at v0.46.0 — `edit.rs` unchanged in substance).** Since Story 9.40's `finish_verb` gate a NON-discardable current `@` already wrote nothing; what remained was a DISCARDABLE `@` (empty, undescribed, unreferenced), which jj-lib's `MutableRepo::edit` abandons and re-adds, so `edit commit <id>` was written. `plan_edit` now reports whether the target already is `@` after the rewritability guard; `edit` returns the no-op result before calling jj-lib, and the card menu's `edit` row for `@` is `NoOp` (Story 9.31's row). Oracle scenarios `edit_wc`, `edit_discardable_wc`, `edit_immutable_wc`.
+
 ### Story 9.39: `undo` = the v0.44.0 undo stack — a repeated `undo` goes further back [M]
 *(Added 2026-09-24, Ralph — pre-existing divergence found by the 9.26 follow-up review. Related to 9.21 (`redo`) and 9.40 (no-change gate).)*
 
