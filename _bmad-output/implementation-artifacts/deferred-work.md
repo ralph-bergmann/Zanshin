@@ -2030,3 +2030,21 @@ Spec: spec-loop-9-40-9-16-fixup-deny-ctutils (commit cc5e816). Both pre-existing
   - `select_tree` does not return the target's tree it selected in (`crates/zanshin-jj/src/select_tree.rs`, `SelectedTreeId`); the decided source is `ShowEntry.tree_ids` (`crates/zanshin-jj/src/diffedit.rs`, `DiffeditOptions.right`). The natural flow (diff from one `show`, `left` and `right` from that same `show`) is safe; only a `show` re-read between `select_tree` and `diffedit` reopens the loss.
   - **Follow-up:** the UI story that calls `diffedit` takes `left` and `right` from the one `show` it diffed; optionally `select_tree` could also return the target's tree ids (new surface, Ralph's call), or leave it.
   - **2026-10-25, console session:** the UI rule is in epics.md Story 9.17's staleness note; the optional `select_tree` return stays Ralph's call.
+
+## Surfaced in Story 9.25 (bmad-build-auto, 2026-10-25)
+
+- **Only `revset_counts` / `find_changes` resolve revset symbols with the id-prefix context; `graph_topology` and every mutating verb still resolve without it.** Medium (CLI parity).
+  - The CLI's `default_symbol_resolver` (`cli/src/revset_util.rs:197-203` @ v0.46.0) resolves every command's revsets with `SymbolResolver::with_id_prefix_context` over `revsets.short-prefixes`, so a short prefix unique within that set but ambiguous in the full index resolves in the CLI. Zanshin's shared `crate::revset::resolve_for_evaluation` (`crates/zanshin-jj/src/revset.rs`) takes the context as an argument; only `crates/zanshin-jj/src/revset_search.rs` passes one. Every other read and verb passes `None`, so such a prefix refuses `jj.revset_resolution_error` (ambiguous) there.
+  - **Follow-up:** a story that passes the effective `revsets.short-prefixes` context (the topology call: its `short_prefixes` argument) at every `resolve_for_evaluation` / `resolve_expression` call site, with oracle scenarios; it touches every verb.
+- **A call-level failure of `revset_counts` / `find_changes` drops the warnings collected before it** (the alias load's, and `find_changes`' `short_prefixes` diagnostics). Low.
+  - The two calls take `&self` and return their warnings in the answer (`RevsetCounts.warnings` / `FoundChanges.warnings`, `crates/zanshin-jj/src/revset_search.rs`); on an `Err` they are logged (`warning::log_dropped`) and the error envelope carries none, unlike the Story 9.32 rule for verbs that keep warnings on error envelopes.
+  - **Follow-up:** carry the warnings on `RevsetSearchError` (or return `Warned<…>` on both arms) and write them onto the error envelope, or leave it.
+- **`RevsetSpan` offsets are UTF-8 bytes, while Dart strings are UTF-16.** Low.
+  - The story requires byte offsets. `packages/zanshin_core/lib/src/ffi/revset_search.dart` (`RevsetSpan`) exposes them unconverted, so a highlighter would put the mark in the wrong place for a non-ASCII expression such as `author("Jörg")`.
+  - **Follow-up:** 10.21 / 10.22 convert byte offsets to UTF-16 when they highlight, or `zanshin_core` gets a small conversion helper next to the model.
+- **The CLI's revset hint lines reach only some calls.** Low.
+  - They reach the `MutateError` verbs, `graph_topology` and the two new calls. `commit_views.rs::rev` (show/evolog), `bookmarks.rs::rev` and `op_diff.rs::resolve_both` match `{ reason, .. }` and drop `detail.hints`. The CLI prints the hints there too, e.g. for `jj show descripton(x)`.
+  - **Follow-up:** map `detail.hints` onto those calls' error envelopes, the way `crates/zanshin-jj/src/mutate.rs::rev` does.
+- **`render_span` reads the span back out of pest's rendered error text.** Low.
+  - A jj-lib or pest bump could change that text without any build error. jj-lib 0.46 keeps the pest error private (`revset_parser.rs:155-161`), so only the unit tests in `crates/zanshin-jj/src/revset.rs` pin the format.
+  - **Follow-up:** add "re-verify `render_span` (or switch to a span accessor if jj-lib exposes one)" to the jj pin-bump steps in project-context.md § zanshin-jj.
