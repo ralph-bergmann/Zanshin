@@ -7276,6 +7276,8 @@ So both calls are op-pinned, take no snapshot, and are batched or limited. The U
 
 **Related:** 9.13 / 9.23 (the 0.46 workspace model), 2.12 / 2.13 conversions (`convert.rs`, which already detects linked worktrees).
 
+**Update 2026-10-25 (done).** `Repo::git_colocation_status()` returns `GitColocationStatus { colocated, workspace_name, git_head, git_repo_path, external_git_repo, hints }` (the CLI's two status lines and its hint; `git_repo_path` is the backing Git repository, the main one for a child workspace); `Repo::git_colocation_enable()` / `git_colocation_disable()` return `GitColocationResult { mutation, converted, git_worktree_removed }` — "already (not) colocated" is `converted: false` with no operation. The default workspace's Git repo moves between `.jj/repo/store/git` and `<root>/.git` (`git_target`, `core.bare`, `.jj/.gitignore` as the CLI writes them), a child workspace's Git worktree is created / unlinked; the handle's workspace is reloaded (also after a failure following the move), then `set git head to working copy parent` / `remove git head reference`. Witnesses: 12 `git_colocation_*` scenarios in `crates/zanshin-parity/tests/oracle/scenarios.rs` (the CLI's `jj git colocation status` reads Zanshin's result); the external-Git rows only in `crates/zanshin-jj/tests/it/git_colocation.rs`. Spec `spec-9-45-git-colocation-status-enable-disable`.
+
 ### Story 9.46: v0.44 → v0.46 parity audit of the already-ported verbs [M/R]
 *(Added 2026-10-08, console session, Ralph — from `deferred-work.md` "Surfaced 2026-10-08": the jj-lib 0.44 → 0.46 bump only covered what the compiler and the gate surfaced.)*
 
