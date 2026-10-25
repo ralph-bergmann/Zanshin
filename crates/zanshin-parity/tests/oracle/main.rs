@@ -17,6 +17,7 @@ mod git_scenarios;
 mod harness;
 mod hints;
 mod ledger;
+mod log_at_operation;
 mod prompt;
 mod refusal_order;
 mod scenarios;

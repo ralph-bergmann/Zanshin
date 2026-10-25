@@ -11,7 +11,7 @@
 use std::ops::ControlFlow;
 use std::path::Path;
 
-use test_helpers::{add_commit_with_files, extract_fixture};
+use test_helpers::{add_commit_with_files, add_unpublished_op, extract_fixture};
 use zanshin_jj::{
     resolve_revset, Change, CommitContent, CommitMeta, GraphEdgeKind, GraphNode, GraphTopology, Repo, RevsetError,
     TopologyMeta, WarningKind, DEFAULT_GRAPH_PRIORITIZE, DEFAULT_LOG_REVSET,
@@ -474,6 +474,69 @@ fn graph_topology_passes_prioritize_and_short_prefixes_through_without_a_default
             node.commit_id.0
         );
     }
+}
+
+/// Story 9.42: `at_operation()` of an operation that is no ancestor of the head — the topology's
+/// nodes are `walk_graph`'s rows in its order, its own commits hidden, and the merge's
+/// `ParentCount` passes (evaluated against the merged index) report its two parents.
+#[test]
+fn graph_topology_at_operation_of_a_sibling_op_matches_walk_graph_and_counts_its_merge() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let (op, sibling) = add_unpublished_op(&fx.path, "sibling");
+    let revset = format!("at_operation({op}, all())");
+
+    let walked = walk(&mut repo, &revset, DEFAULT_GRAPH_PRIORITIZE);
+    let topology = repo
+        .graph_topology(&revset, DEFAULT_GRAPH_PRIORITIZE, SHORT, &default_anchors(), false)
+        .unwrap();
+
+    let topo_ids: Vec<&str> = topology.nodes.iter().map(|n| n.commit_id.0.as_str()).collect();
+    let walk_ids: Vec<&str> = walked.iter().map(|n| n.id.0.as_str()).collect();
+    assert_eq!(topo_ids, walk_ids, "same rows, same order");
+    for node in &topology.nodes {
+        let id = node.commit_id.0.as_str();
+        assert_eq!(node.meta.hidden, sibling.iter().any(|s| s == id), "{id}");
+        // The sibling merge has two parents, the root none, every other commit one.
+        let expected_parents = if id == sibling[2] {
+            2
+        } else {
+            u32::from(!node.meta.root)
+        };
+        assert_eq!(node.meta.parent_count, expected_parents, "{id}");
+    }
+
+    let timed = repo
+        .graph_topology(&revset, DEFAULT_GRAPH_PRIORITIZE, SHORT, &default_anchors(), true)
+        .unwrap();
+    for node in &timed.nodes {
+        assert_eq!(
+            node.committer_timestamp_ms.is_some(),
+            !node.meta.root,
+            "{}: every non-root node has a timestamp",
+            node.commit_id.0
+        );
+    }
+}
+
+#[test]
+fn graph_topology_at_operation_of_an_unknown_op_returns_resolution_error() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+
+    let result = repo.graph_topology(
+        "at_operation(ffffffffffff, all())",
+        DEFAULT_GRAPH_PRIORITIZE,
+        SHORT,
+        &default_anchors(),
+        false,
+    );
+    assert!(
+        matches!(result, Err(RevsetError::ResolutionError { .. })),
+        "an unknown operation must return ResolutionError, got: {result:?}"
+    );
 }
 
 /// An anchor's parse diagnostics reach `take_warnings()` under the CLI's context line, like the

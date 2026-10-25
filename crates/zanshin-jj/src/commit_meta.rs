@@ -93,7 +93,9 @@ pub struct CommitMeta {
     pub immutable: bool,
     /// The commit's tree has unresolved conflicts.
     pub conflict: bool,
-    /// The tree equals the merged parent trees (description is not considered).
+    /// The tree equals the merged parent trees (description is not considered). For a merge
+    /// outside the head's index (an `at_operation()` commit), jj-lib cannot compute it and
+    /// `false` stands for the CLI's inline template error.
     pub empty: bool,
     /// The commit is not visible (reachable only when the revset names hidden ids).
     pub hidden: bool,
@@ -259,7 +261,23 @@ pub(crate) fn object_half(
         // WHY: `Commit::is_empty` is jj-lib's only emptiness check and it is async;
         // pollster drives it here exactly as the rest of this crate drives jj-lib's
         // futures (the crate's public API stays sync — project-context § zanshin-jj).
-        empty: pollster::block_on(commit.is_empty(repo_dyn))?,
+        empty: is_empty(repo_dyn, commit)?,
+    })
+}
+
+/// `Commit::is_empty` against `repo_dyn`, except for a merge outside its index (one an
+/// `at_operation()` of a non-ancestor operation brought in, Story 9.42): jj-lib cannot answer
+/// there (the merge's common-ancestor lookup), and `jj log` @ v0.46.0 renders the keyword as an
+/// inline template error and still prints the row, without "(empty)" — so `false`. Any other
+/// failure (a non-merge, an indexed commit, unreadable index membership) stays an error.
+fn is_empty(repo_dyn: &dyn jj_lib::repo::Repo, commit: &Commit) -> jj_lib::backend::BackendResult<bool> {
+    pollster::block_on(async {
+        match commit.is_empty(repo_dyn).await {
+            Err(_) if commit.parent_ids().len() > 1 && !repo_dyn.index().has_id(commit.id()).await.unwrap_or(true) => {
+                Ok(false)
+            }
+            result => result,
+        }
     })
 }
 

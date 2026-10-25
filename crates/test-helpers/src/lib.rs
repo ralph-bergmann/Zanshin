@@ -242,6 +242,40 @@ pub fn add_commit_off_root(workspace_root: &Path, description: &str) -> String {
     commit.id().hex()
 }
 
+/// Writes, from the head of the workspace at `workspace_root`, an operation that is never
+/// published — no head of the op log, so never an ancestor of any head (a sibling of later
+/// operations) — holding two commits off root (`"<description> left"` / `"… right"`) and their
+/// merge (`"… merge"`). Returns the operation's hex id and `[left, right, merge]`'s hex commit
+/// ids; none of them is in any head's index.
+///
+/// # Panics
+/// Panics on any jj-lib failure — a failure here is a broken fixture.
+#[must_use = "the operation and commit ids are what the at_operation() assertions use"]
+pub fn add_unpublished_op(workspace_root: &Path, description: &str) -> (String, Vec<String>) {
+    let (_workspace, repo) = load(workspace_root);
+    let root_commit = repo.store().root_commit();
+    let root_id = root_commit.id().clone();
+
+    let mut tx = repo.start_transaction();
+    let mut write = |parents: Vec<CommitId>, side: &str| {
+        pollster::block_on(
+            tx.repo_mut()
+                .new_commit(parents, root_commit.tree())
+                .set_description(format!("{description} {side}"))
+                .write(),
+        )
+        .unwrap()
+    };
+    let left = write(vec![root_id.clone()], "left");
+    let right = write(vec![root_id], "right");
+    let merge = write(vec![left.id().clone(), right.id().clone()], "merge");
+    pollster::block_on(tx.repo_mut().add_head(&merge)).unwrap();
+    let unpublished = pollster::block_on(tx.write("test: unpublished operation")).unwrap();
+    let op_id = unpublished.operation().id().hex();
+    let _ = unpublished.leave_unpublished();
+    (op_id, [left, right, merge].iter().map(|c| c.id().hex()).collect())
+}
+
 /// Builds jj's changed-path index for every commit at the head operation of the workspace at
 /// `root` — the CLI's `jj debug index-changed-paths` (`cli/src/commands/debug/
 /// index_changed_paths.rs` @ v0.44.0, jj-lib `DefaultIndexStore::build_changed_path_index_at_operation`).

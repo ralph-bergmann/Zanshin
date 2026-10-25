@@ -2,7 +2,7 @@
 
 //! The index-only graph topology of a whole revset (Story 4.10).
 //!
-//! [`graph_topology`] is the CLI's one `jj log` (`cli/src/commands/log.rs` @ v0.44.0) split
+//! [`graph_topology`] is the CLI's one `jj log` (`cli/src/commands/log.rs` @ v0.46.0) split
 //! along "index/View-derived" vs "object-derived": it runs [`crate::graph::walk_graph`]'s
 //! parse → load → `TopoGroupedGraph` + `prioritize_branch` pipeline, but reads nothing per node
 //! that needs the commit object. Per node it carries the commit id, jj's edges verbatim (targets
@@ -18,8 +18,8 @@ use std::sync::Arc;
 use futures::{StreamExt as _, TryStreamExt as _};
 use jj_lib::backend::{ChangeId as JjChangeId, CommitId as JjCommitId};
 use jj_lib::object_id::ObjectId as _;
-use jj_lib::repo::Repo as _;
-use jj_lib::revset::{ResolvedRevsetExpression, RevsetFilterPredicate};
+use jj_lib::repo::{ReadonlyRepo, Repo as _};
+use jj_lib::revset::{optimize, ResolvedRevsetExpression, RevsetFilterPredicate};
 
 use crate::graph::{edge_kind, LogParse};
 use crate::revset::{evaluate_revset, parse_revset_with};
@@ -170,7 +170,7 @@ pub(crate) fn graph_topology(
     // (3) + (4) Index-only per-call passes.
     let change_ids: HashMap<JjCommitId, JjChangeId> =
         pollster::block_on(setup.set.commit_change_ids().try_collect()).map_err(jj)?;
-    let merge_counts = parent_counts(repo_dyn, &setup.resolved)?;
+    let merge_counts = parent_counts(repo_dyn, &setup.resolved, &setup.other_repos)?;
 
     // (5) The `jj log` stream.
     let root_id = store.root_commit_id();
@@ -237,15 +237,25 @@ pub(crate) fn graph_topology(
 /// tests only the previous pass's set (`ParentCount` reads the index entry). Commits absent from
 /// the map have fewer than two parents.
 ///
+/// With `other_repos` (the operations the revset's `at_operation()`s brought in), every pass
+/// evaluates against the head's index merged with theirs, as the set itself was
+/// (`ResolvedRevset::evaluate`); jj-lib's only public door to that merge builds it per pass.
+///
 /// # Errors
 ///
 /// - [`RevsetError::JjLibError`] — an evaluation or stream failure.
 fn parent_counts(
     repo_dyn: &dyn jj_lib::repo::Repo,
     resolved: &Arc<ResolvedRevsetExpression>,
+    other_repos: &[Arc<ReadonlyRepo>],
 ) -> Result<HashMap<JjCommitId, u32>, RevsetError> {
     let ids_of = |expr: Arc<ResolvedRevsetExpression>| -> Result<Vec<JjCommitId>, RevsetError> {
-        let set = expr.evaluate(repo_dyn).map_err(jj)?;
+        let set = if other_repos.is_empty() {
+            expr.evaluate(repo_dyn)
+        } else {
+            optimize(expr).evaluate_unoptimized(repo_dyn, other_repos)
+        }
+        .map_err(jj)?;
         pollster::block_on(set.stream().try_collect()).map_err(jj)
     };
     let merges = ids_of(resolved.filtered(RevsetFilterPredicate::ParentCount(2..u32::MAX)))?;

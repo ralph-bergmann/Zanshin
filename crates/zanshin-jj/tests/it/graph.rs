@@ -10,8 +10,8 @@ use std::collections::HashSet;
 use std::ops::ControlFlow;
 
 use test_helpers::{
-    abandon_commit, add_commit_off_root, add_conflicted_merge_off_root, add_divergent_twin, add_workspace,
-    describe_commit, extract_fixture, set_local_bookmark, set_remote_bookmark, set_tag,
+    abandon_commit, add_commit_off_root, add_conflicted_merge_off_root, add_divergent_twin, add_unpublished_op,
+    add_workspace, describe_commit, extract_fixture, set_local_bookmark, set_remote_bookmark, set_tag,
 };
 use zanshin_jj::{
     resolve_revset, CommitMeta, CommitRef, GraphEdgeKind, GraphNode, Repo, RevsetError, DEFAULT_GRAPH_PRIORITIZE,
@@ -1321,5 +1321,70 @@ fn walk_graph_rederives_metadata_so_an_external_describe_is_visible_on_the_next_
         node_of(&after, &rewritten).meta.description_first_line,
         "Rewritten by an external op",
         "only the FIRST line rides the log row (get_change owns the full text)"
+    );
+}
+
+// ── at_operation() over a sibling operation (Story 9.42) ─────────────────────
+
+/// `at_operation()` of an operation that is no ancestor of the head: its commits are in no head
+/// index, so the set is evaluated against the merged index as `jj log` does — every row of that
+/// operation's `all()`, its own commits hidden at the head, the merge's two edges intact.
+#[test]
+fn walk_graph_at_operation_of_a_sibling_op_returns_its_rows_with_its_commits_hidden() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+    let head_all: HashSet<String> = collect_nodes(&mut repo, "all()", "none()")
+        .into_iter()
+        .map(|n| n.id.0)
+        .collect();
+    let (op, sibling) = add_unpublished_op(&fx.path, "sibling");
+
+    let nodes = collect_nodes(
+        &mut repo,
+        &format!("at_operation({op}, all())"),
+        DEFAULT_GRAPH_PRIORITIZE,
+    );
+
+    let ids: HashSet<String> = nodes.iter().map(|n| n.id.0.clone()).collect();
+    let expected: HashSet<String> = head_all.iter().chain(&sibling).cloned().collect();
+    assert_eq!(
+        ids, expected,
+        "the sibling op's all() = the head's commits + its own three"
+    );
+    assert_eq!(nodes.len(), expected.len(), "every node once");
+    for node in &nodes {
+        assert_eq!(
+            node.meta.hidden,
+            sibling.contains(&node.id.0),
+            "{} is hidden iff it exists only at the sibling op",
+            node.id.0
+        );
+    }
+    let merge = node_of(&nodes, &sibling[2]);
+    let targets: HashSet<&str> = merge.parents.iter().map(|e| e.target.0.as_str()).collect();
+    assert_eq!(targets, HashSet::from([sibling[0].as_str(), sibling[1].as_str()]));
+    assert!(merge.parents.iter().all(|e| e.kind == GraphEdgeKind::Direct));
+    // The CLI prints "(empty)" for the two root children, and for the merge — whose emptiness
+    // jj-lib cannot compute in the head's index — an inline template error instead.
+    assert!(node_of(&nodes, &sibling[0]).meta.empty && node_of(&nodes, &sibling[1]).meta.empty);
+    assert!(!merge.meta.empty);
+}
+
+#[test]
+fn walk_graph_at_operation_of_an_unknown_op_returns_resolution_error() {
+    test_helpers::pin_test_env();
+    let fx = extract_fixture("tiny-3-commits").unwrap();
+    let mut repo = Repo::open(&fx.path).unwrap();
+
+    let result = repo.walk_graph(
+        "at_operation(ffffffffffff, all())",
+        DEFAULT_GRAPH_PRIORITIZE,
+        SHORT,
+        |_| ControlFlow::Continue(()),
+    );
+    assert!(
+        matches!(result, Err(RevsetError::ResolutionError { .. })),
+        "an unknown operation must return ResolutionError, got: {result:?}"
     );
 }

@@ -6,7 +6,7 @@
 //! its FFI slice are gone. `walk_graph` stays as the `jj log`-faithful read and the oracle of
 //! Story 4.10's topology call, which the graph wire now carries.)*
 //!
-//! [`walk_graph`] reproduces the `jj log` pipeline at v0.42.0 (`cli/src/commands/log.rs`):
+//! [`walk_graph`] reproduces the `jj log` pipeline at v0.46.0 (`cli/src/commands/log.rs`):
 //! `TopoGroupedGraph::new(revset.stream_graph(), |id| id)` prioritised by the
 //! `revsets.log-graph-prioritize` mechanics, so the visit order is the order `jj log
 //! -r <revset>` prints (NFR-R-2, ADR-0003). The graph is re-derived from the head
@@ -26,13 +26,13 @@ use jj_lib::graph::{GraphEdge as JjGraphEdge, GraphEdgeType, GraphNode as JjGrap
 use jj_lib::id_prefix::{IdPrefixContext, IdPrefixIndex};
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::ref_name::WorkspaceName;
-use jj_lib::repo::Repo as _;
+use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::revset::{ResolvedRevsetExpression, Revset, RevsetEvaluationError, RevsetExtensions, UserRevsetExpression};
 
 use crate::commit_meta::LogMetaIndex;
 use crate::revset::{
     evaluate_revset, immutable_expression, parse_diagnosed, parse_revset_with, parse_short_prefixes,
-    resolve_expression, revset_config, RevsetConfig, IN_SHORT_PREFIXES,
+    resolve_for_evaluation, revset_config, RevsetConfig, IN_SHORT_PREFIXES,
 };
 use crate::warning::{self, WarningKind, Warnings};
 use crate::{CommitId, CommitMeta, Repo, RevsetError};
@@ -183,8 +183,9 @@ pub(crate) struct LogParse {
     short: Option<Arc<UserRevsetExpression>>,
     /// The caller's `revset`.
     pub(crate) log: Arc<UserRevsetExpression>,
-    /// `prioritize ∩ revset`, intersected as user expressions before resolution.
-    prio: Arc<UserRevsetExpression>,
+    /// The caller's `prioritize`; [`Self::evaluate`] intersects it with `revset` in the CLI's
+    /// separate visibility scope.
+    prioritize: Arc<UserRevsetExpression>,
 }
 
 impl LogParse {
@@ -234,15 +235,13 @@ impl LogParse {
             .transpose()
             .map_err(RevsetError::without_span)?;
         let log = parse_revset_with(repo, &parse_config, revset, sink)?;
-        let prio = parse_revset_with(repo, &parse_config, prioritize, sink)
-            .map_err(RevsetError::without_span)?
-            .intersection(&log);
+        let prioritize = parse_revset_with(repo, &parse_config, prioritize, sink).map_err(RevsetError::without_span)?;
         Ok(Self {
             config: parse_config,
             immutable,
             short,
             log,
-            prio,
+            prioritize,
         })
     }
 
@@ -251,6 +250,14 @@ impl LogParse {
     /// `default_symbol_resolver`); the prioritised commit ids are materialised (they are a tiny
     /// set).
     ///
+    /// As `jj log` @ v0.46.0 (`cli/src/commands/log.rs:161-193`): `revset` is evaluated through
+    /// jj-lib's `ResolvedRevset::evaluate`, against an index merged with every operation an
+    /// `at_operation()` brings in (a non-ancestor operation's commits are not in `repo_dyn`'s
+    /// own index); and the prioritised set is `prioritize ∩ revset.within_visibility(repo_dyn)`
+    /// — the query resolved in a scope of its own, so the ids and `at_operation()`s of
+    /// `prioritize` cannot widen it. The intersection keeps every prioritised id inside the set
+    /// (an out-of-set one would make `TopoGroupedGraph` panic).
+    ///
     /// # Errors
     ///
     /// - [`RevsetError::ResolutionError`] — a symbol in `revset` or `prioritize` cannot be
@@ -258,13 +265,16 @@ impl LogParse {
     /// - [`RevsetError::JjLibError`] — evaluation failed.
     pub(crate) fn evaluate<'r>(&self, repo_dyn: &'r dyn jj_lib::repo::Repo) -> Result<LogSetup<'r>, RevsetError> {
         let prefix_ctx = prefix_context(self.short.as_ref());
-        let resolved = resolve_expression(repo_dyn, &self.log, Some(&prefix_ctx))?;
-        let set = resolved.clone().evaluate(repo_dyn).map_err(jj)?;
-        let prio_set = evaluate_revset(repo_dyn, &self.prio, Some(&prefix_ctx))?;
+        let resolved = resolve_for_evaluation(repo_dyn, &self.log, Some(&prefix_ctx))?;
+        let set = resolved.evaluate().map_err(jj)?;
+        let (resolved, other_repos) = resolved.into_inner();
+        let prio = self.prioritize.intersection(&self.log.within_visibility(repo_dyn));
+        let prio_set = evaluate_revset(repo_dyn, &prio, Some(&prefix_ctx))?;
         let prio_ids: Vec<JjCommitId> = pollster::block_on(prio_set.stream().try_collect()).map_err(jj)?;
         let immutable_set = evaluate_revset(repo_dyn, &self.immutable, Some(&prefix_ctx))?;
         Ok(LogSetup {
             resolved,
+            other_repos,
             set,
             prio_ids,
             prefix_ctx,
@@ -278,7 +288,10 @@ impl LogParse {
 pub(crate) struct LogSetup<'r> {
     /// The caller's `revset`, resolved once — what the topology's index-only passes refine.
     pub(crate) resolved: Arc<ResolvedRevsetExpression>,
-    /// The caller's `revset`, evaluated.
+    /// The repos `revset`'s `at_operation()`s brought in — what [`Self::resolved`] must be
+    /// evaluated against, merged with the head's index, when it is not empty.
+    pub(crate) other_repos: Vec<Arc<ReadonlyRepo>>,
+    /// The caller's `revset`, evaluated (against that merged index).
     pub(crate) set: Box<dyn Revset + 'r>,
     prio_ids: Vec<JjCommitId>,
     /// The call's id-prefix context — what every symbol of the call resolves through.
@@ -318,13 +331,13 @@ impl<'r> LogSetup<'r> {
 /// Streams the commit graph of `revset` in `jj log` order through `visit`, each node
 /// carrying its `jj log`-parity metadata.
 ///
-/// Pipeline (jj CLI v0.42.0 `cli/src/commands/log.rs`): parse every expression against ONE
+/// Pipeline (jj CLI v0.46.0 `cli/src/commands/log.rs`): parse every expression against ONE
 /// builtin-alias map — `short_prefixes` first, where the CLI parses `revsets.short-prefixes`
 /// (its command environment, before the command's own revsets), each parse's diagnostics
-/// warning under the CLI's context line (Story 9.32) — intersect `prioritize` with `revset` as
-/// user expressions BEFORE
-/// resolution (an out-of-set prioritised id would make `TopoGroupedGraph` panic), evaluate
-/// against the head-resolved repo, build the per-call metadata indexes, then
+/// warning under the CLI's context line (Story 9.32) — evaluate `revset` against the
+/// head-resolved repo (merged with the operations its `at_operation()`s bring in) and
+/// `prioritize ∩ revset.within_visibility(head)` in the CLI's two visibility scopes (see
+/// [`LogParse::evaluate`]), build the per-call metadata indexes against the head, then
 /// `TopoGroupedGraph::new(set.stream_graph(), |id| id)` with `prioritize_branch` for every
 /// prioritised commit id, driven lazily into `visit` — one `store.get_commit_async` per
 /// node, exactly as the CLI's render loop does.
