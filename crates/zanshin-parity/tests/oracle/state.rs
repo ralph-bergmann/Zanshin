@@ -88,6 +88,15 @@ impl State {
     pub fn change_arg(&self, label: &str) -> String {
         self.change(label).0
     }
+
+    /// The commit id (hex) of the commit labelled `label`, as a CLI revision argument.
+    pub fn commit_arg(&self, label: &str) -> String {
+        self.labels
+            .of_commit
+            .iter()
+            .find(|(_, candidate)| candidate.as_str() == label)
+            .map_or_else(|| panic!("no commit labelled {label:?}"), |(commit, _)| commit.clone())
+    }
 }
 
 /// The state of the repo at `root`. With `before`, the operation aspects cover only the

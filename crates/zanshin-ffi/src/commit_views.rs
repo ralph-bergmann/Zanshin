@@ -36,18 +36,18 @@ use crate::status::file_changes_vector;
 ///
 /// Every variant lands on an ALREADY-REGISTERED code — Story 9.6 mints none.
 fn map_commit_view_err(e: CommitViewError) -> FfiErrorObj {
-    let (code, context) = match e {
+    let (code, context, hints) = match e {
         CommitViewError::Precondition(e) => return map_precondition_err(e),
-        CommitViewError::ChangeNotFound { id } => (JJ_CHANGE_NOT_FOUND, id),
-        CommitViewError::InvalidInput { reason } => (JJ_INVALID_INPUT, reason),
-        CommitViewError::RevsetParseError { reason } => (JJ_REVSET_PARSE_ERROR, reason),
-        CommitViewError::RevsetResolutionError { reason } => (JJ_REVSET_RESOLUTION_ERROR, reason),
-        CommitViewError::Config { reason } => (JJ_CONFIG_ERROR, reason),
-        CommitViewError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
+        CommitViewError::ChangeNotFound { id } => (JJ_CHANGE_NOT_FOUND, id, Vec::new()),
+        CommitViewError::InvalidInput { reason } => (JJ_INVALID_INPUT, reason, Vec::new()),
+        CommitViewError::RevsetParseError { reason, hints } => (JJ_REVSET_PARSE_ERROR, reason, hints),
+        CommitViewError::RevsetResolutionError { reason, hints } => (JJ_REVSET_RESOLUTION_ERROR, reason, hints),
+        CommitViewError::Config { reason } => (JJ_CONFIG_ERROR, reason, Vec::new()),
+        CommitViewError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason, Vec::new()),
     };
     FfiErrorObj {
         report: None,
-        hints: Vec::new(),
+        hints,
         code: code.to_owned(),
         context: Some(context),
     }
@@ -529,6 +529,7 @@ mod tests {
             (
                 map_commit_view_err(CommitViewError::RevsetParseError {
                     reason: "syntax error".to_owned(),
+                    hints: Vec::new(),
                 }),
                 JJ_REVSET_PARSE_ERROR,
                 "syntax error",
@@ -536,6 +537,7 @@ mod tests {
             (
                 map_commit_view_err(CommitViewError::RevsetResolutionError {
                     reason: "no such bookmark".to_owned(),
+                    hints: Vec::new(),
                 }),
                 JJ_REVSET_RESOLUTION_ERROR,
                 "no such bookmark",
@@ -565,6 +567,22 @@ mod tests {
             assert_eq!(obj.code, code, "code for {context}");
             assert_eq!(obj.context.as_deref(), Some(context), "context is never in the code");
         }
+    }
+
+    /// Story 9.25 closing run: a revset refusal's CLI hints reach `FfiError.hints`, verbatim.
+    #[test]
+    fn map_commit_view_err_carries_the_revset_hints() {
+        let hints = || vec!["Did you mean `description`?".to_owned()];
+        let parse = map_commit_view_err(CommitViewError::RevsetParseError {
+            reason: "r".to_owned(),
+            hints: hints(),
+        });
+        assert_eq!(parse.hints, hints());
+        let resolution = map_commit_view_err(CommitViewError::RevsetResolutionError {
+            reason: "r".to_owned(),
+            hints: hints(),
+        });
+        assert_eq!(resolution.hints, hints());
     }
 
     #[test]

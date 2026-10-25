@@ -194,7 +194,9 @@ envelope: the op-pinned read loads no config and runs no snapshot, so it has not
 about (Dart still returns a `WarnedList`, always empty). The op-pinned searches
 `zanshin_revset_counts` / `zanshin_find_changes` (Story 9.25) load the config, so their ok
 envelope carries the alias load's warnings and the parse diagnostics (`jj.revset_diagnostic`,
-in expression order); their call-level error envelopes carry none.
+in expression order); their call-level error envelopes carry the warnings collected before the
+fault, in order — the CLI prints them before it fails *(2026-10-25, Story 9.25 closing run; they
+carried none before)*.
 
 **The start-up secure-config fix-up (Story 9.37).** At the start of every command the jj CLI
 runs jj-lib's `SecureConfig::maybe_load_config` for the repo, then the workspace config
@@ -1220,6 +1222,10 @@ request is read BEFORE the handle is borrowed). Every argument is a caller pass-
   only fail while LOADING the disambiguation index — symbol resolution included — is a
   `jj.short_prefixes_failed` warning and degrades to full-index prefixes, as the CLI does
   (`cli/tests/test_log_command.rs::test_log_bad_short_prefixes` @ v0.44.0).
+  *(2026-10-25, Story 9.25 closing run: the set also disambiguates the SYMBOLS of `revset`,
+  `prioritize` and every anchor — one id-prefix context per call, as the CLI's
+  `default_symbol_resolver` — so a short id prefix unique within it resolves; a set that fails
+  to load then refuses an id-prefix-shaped symbol with `jj.revset_resolution_error`.)*
 - `anchors` — an ordered list of revsets, each intersected with `revset` and evaluated
   once; the layout's priority rule reads the node indices each selects. An ABSENT vector is
   the empty list. The editable pre-fill is the Dart constant `defaultGraphAnchors`
@@ -1333,7 +1339,7 @@ native bytes before it frees them. See `docs/graph-layout.md` §13.)*
 | `ffi.invalid_argument`       | `data` does not verify as a `GraphTopologyRequest`, or its `kind` is not `GraphTopology`. |
 | `jj.invalid_input`           | `revset`, `prioritize` or `short_prefixes` is absent (`<field> is required`). |
 | `jj.revset_parse_error`      | An expression or an anchor is syntactically invalid / an unknown function (incl. a blank `prioritize`; an EMPTY `short_prefixes` is NOT an error). Reason in `context`. |
-| `jj.revset_resolution_error` | `revset`, `prioritize` or an anchor names a symbol that cannot be resolved. NOT raised for `short_prefixes` (it warns and degrades). |
+| `jj.revset_resolution_error` | `revset`, `prioritize` or an anchor names a symbol that cannot be resolved. NOT raised for `short_prefixes` itself (it warns and degrades) — but a set that fails to load refuses an id-prefix-shaped symbol of the other texts (2026-10-25). |
 | `jj.stale_working_copy`      | The pre-verb snapshot found the working copy stale (Story 9.26); nothing is written. |
 | `jj.config_error`            | The repo's effective jj config is unreadable, not valid TOML, has a malformed `config-id`, or a wrong-typed value; the file path or key in `context`. A single bad `[revset-aliases]` entry only warns. |
 | `jj.jj_lib_error`            | A jj-lib load, evaluation, index or (with `with_timestamps`) commit-load failure, a failed snapshot backend, or an id the encoder refuses; detail in `context`. |
@@ -1636,7 +1642,14 @@ handle's workspace), and symbols resolve with the id-prefix context, as the CLI'
 `default_symbol_resolver`. The ok envelope carries the alias load's warnings and the parse
 diagnostics (`jj.revset_diagnostic`, in expression order); `zanshin_find_changes` also warns
 `jj.short_prefixes_failed` when its prefix index fails to load and the lengths fall back to the
-full index, as `zanshin_graph_topology` does.
+full index, as `zanshin_graph_topology` does. *(2026-10-25, Story 9.25 closing run: a call-level
+error envelope carries the warnings collected before the fault, in order — Dart's
+`ZanshinFfiException.warnings` — e.g. a bad alias entry's `jj.config_alias_invalid` before a
+`revsets.short-prefixes` that does not parse, or `short_prefixes`' diagnostics before a bad
+`expression`. The id-prefix context is no longer search-only: every Zanshin read and verb that
+resolves a user or config revset uses the effective one, the topology its `short_prefixes` —
+except the immutable set, the `trunk()` check and `op diff`'s `--show-changes-in`, which resolve
+without one, as the CLI.)*
 
 **`zanshin_revset_counts`** — `RevsetCountsRequest { kind: RevsetCounts, operation_id,
 expressions, cap }`. The id-prefix context is the effective `revsets.short-prefixes` (a value that

@@ -6,8 +6,9 @@
 //! answers into `FlatBuffers` `Envelope<RevsetCounts>` / `Envelope<FoundChanges>`. Both are pinned
 //! reads like `commit_contents.rs`: they run no pre-verb snapshot, write no operation and no op
 //! head, and their envelopes carry NO `precondition` — but they do carry `warnings` (the parse
-//! diagnostics, on the ok arm). A count that fails carries its own `FfiError` (code, context,
-//! hints and the structured `revset` detail); only call-level faults fail the envelope.
+//! diagnostics), on both arms: a call-level fault keeps the warnings collected before it. A count
+//! that fails carries its own `FfiError` (code, context, hints and the structured `revset`
+//! detail); only call-level faults fail the envelope.
 //!
 //! The arguments cross as request buffers (ADR-0001 composite-input pattern). Same reader
 //! discipline as `commit_contents.rs`: `data`/`len` describe a caller-owned buffer Dart builds and
@@ -17,7 +18,7 @@
 
 use flatbuffers::{FlatBufferBuilder, VerifierOptions};
 use tracing::debug;
-use zanshin_jj::{ConfigError, FoundChanges, OperationId, RevsetCounts, RevsetSearchError};
+use zanshin_jj::{ConfigError, FoundChanges, OperationId, RevsetCounts, RevsetSearchError, Warned};
 
 use crate::envelope::{
     build_ffi_error, catch, expect_request_kind, finish_envelope, invalid_request, missing_field, reject_null_request,
@@ -45,6 +46,12 @@ fn map_search_err(e: RevsetSearchError) -> FfiErrorObj {
         code: code.to_owned(),
         context: Some(context),
     }
+}
+
+/// [`map_search_err`] with the warnings collected before the fault on the error envelope — the
+/// CLI prints them before it fails (Story 9.32).
+fn map_warned_err(w: Warned<RevsetSearchError>) -> FfiErrorObj {
+    map_search_err(w.value).with_report(CallReport::warnings(w.warnings))
 }
 
 // ── Request-buffer readers ───────────────────────────────────────────────────
@@ -205,7 +212,7 @@ fn found_changes_to_envelope(answer: FoundChanges) -> Vec<u8> {
 /// only. Every expression gets its own `RevsetCount` in request order; one that does not parse or
 /// resolve carries its own `error` (`jj.revset_parse_error` / `jj.revset_resolution_error`, with
 /// `hints` and `revset`) and fails nothing else. The parse diagnostics are the envelope's
-/// `warnings`, in expression order.
+/// `warnings`, in expression order — on a call-level failure too, as far as the call got.
 ///
 /// The arguments cross as a `RevsetCountsRequest` `FlatBuffers` request buffer. Returns a
 /// `FlatBuffers` `Envelope` carrying a `RevsetCounts` payload on success.
@@ -241,7 +248,7 @@ pub unsafe extern "C" fn zanshin_revset_counts(handle: u64, data: *const u8, len
         let answer = session
             .repo
             .revset_counts(&req.operation_id, &req.expressions, req.cap)
-            .map_err(map_search_err)?;
+            .map_err(map_warned_err)?;
         Ok(revset_counts_to_envelope(answer))
     });
     vec_into_token(buf)
@@ -255,7 +262,8 @@ pub unsafe extern "C" fn zanshin_revset_counts(handle: u64, data: *const u8, len
 /// index disambiguates the expression's symbols AND gives the prefix lengths; empty disables
 /// disambiguation (the full index), as in `zanshin_graph_topology`. At most `limit + 1` commits
 /// are read; `truncated` says there were more. An ambiguous prefix is a resolution error; an
-/// unmatched one finds nothing. The parse diagnostics are the envelope's `warnings`.
+/// unmatched one finds nothing. The parse diagnostics are the envelope's `warnings` — on a failure
+/// too, as far as the call got (a bad `expression` keeps `short_prefixes`' diagnostics).
 ///
 /// The arguments cross as a `FindChangesRequest` `FlatBuffers` request buffer. Returns a
 /// `FlatBuffers` `Envelope` carrying a `FoundChanges` payload on success.
@@ -296,7 +304,7 @@ pub unsafe extern "C" fn zanshin_find_changes(handle: u64, data: *const u8, len:
         let answer = session
             .repo
             .find_changes(&req.operation_id, &req.expression, req.limit, &req.short_prefixes)
-            .map_err(map_search_err)?;
+            .map_err(map_warned_err)?;
         Ok(found_changes_to_envelope(answer))
     });
     vec_into_token(buf)
@@ -307,10 +315,10 @@ mod tests {
     use flatbuffers::root;
     use zanshin_jj::{
         ChangeId, CommitId, ConfigError, FoundChange, FoundChanges, RevsetCount, RevsetCounts, RevsetError,
-        RevsetErrorDetail, RevsetErrorKind, RevsetSearchError, RevsetSpan, Warning, WarningKind,
+        RevsetErrorDetail, RevsetErrorKind, RevsetSearchError, RevsetSpan, Warned, Warning, WarningKind,
     };
 
-    use super::{found_changes_to_envelope, map_search_err, revset_counts_to_envelope};
+    use super::{found_changes_to_envelope, map_search_err, map_warned_err, revset_counts_to_envelope};
     use crate::envelope::{
         JJ_CONFIG_ERROR, JJ_INVALID_INPUT, JJ_JJ_LIB_ERROR, JJ_OPERATION_NOT_FOUND, JJ_REVSET_PARSE_ERROR,
         JJ_REVSET_RESOLUTION_ERROR,
@@ -450,5 +458,27 @@ mod tests {
             revset.report.and_then(|r| r.revset),
             Some(detail(RevsetErrorKind::SyntaxError))
         );
+    }
+
+    /// A call-level fault keeps the warnings collected before it, and a revset fault its detail.
+    #[test]
+    fn a_warned_fault_carries_its_warnings_and_keeps_the_revset_detail() {
+        let config = map_warned_err(Warned {
+            value: RevsetSearchError::Config(ConfigError::Load { reason: "c".to_owned() }),
+            warnings: vec![warning()],
+        });
+        assert_eq!(config.code, JJ_CONFIG_ERROR);
+        assert_eq!(config.report.expect("report").warnings, [warning()]);
+        let revset = map_warned_err(Warned {
+            value: RevsetSearchError::Revset(RevsetError::ParseError {
+                reason: "p".to_owned(),
+                detail: Box::new(detail(RevsetErrorKind::SyntaxError)),
+            }),
+            warnings: vec![warning()],
+        });
+        assert_eq!(revset.code, JJ_REVSET_PARSE_ERROR);
+        let report = revset.report.expect("report");
+        assert_eq!(report.warnings, [warning()]);
+        assert_eq!(report.revset, Some(detail(RevsetErrorKind::SyntaxError)));
     }
 }

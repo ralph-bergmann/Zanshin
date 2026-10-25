@@ -26,17 +26,17 @@ use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 /// snapshot goes through the shared [`map_precondition_err`]. Story 9.19 adds the four arms of
 /// the list arguments, all onto codes `map_mutate_err` / `map_topology_err` already emit.
 fn map_bookmarks_err(e: BookmarkError) -> FfiErrorObj {
-    let (code, reason) = match e {
+    let (code, reason, hints) = match e {
         BookmarkError::Precondition(e) => return map_precondition_err(e),
-        BookmarkError::InvalidInput { reason } => (JJ_INVALID_INPUT, reason),
-        BookmarkError::RevsetParseError { reason } => (JJ_REVSET_PARSE_ERROR, reason),
-        BookmarkError::RevsetResolutionError { reason } => (JJ_REVSET_RESOLUTION_ERROR, reason),
-        BookmarkError::Config(ConfigError::Load { reason }) => (JJ_CONFIG_ERROR, reason),
-        BookmarkError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason),
+        BookmarkError::InvalidInput { reason } => (JJ_INVALID_INPUT, reason, Vec::new()),
+        BookmarkError::RevsetParseError { reason, hints } => (JJ_REVSET_PARSE_ERROR, reason, hints),
+        BookmarkError::RevsetResolutionError { reason, hints } => (JJ_REVSET_RESOLUTION_ERROR, reason, hints),
+        BookmarkError::Config(ConfigError::Load { reason }) => (JJ_CONFIG_ERROR, reason, Vec::new()),
+        BookmarkError::Backend(reason) => (JJ_JJ_LIB_ERROR, reason, Vec::new()),
     };
     FfiErrorObj {
         report: None,
-        hints: Vec::new(),
+        hints,
         code: code.to_owned(),
         context: Some(reason),
     }
@@ -341,27 +341,42 @@ mod tests {
         assert_eq!(obj.context, Some("boom".to_owned()), "context must be forwarded");
     }
 
-    /// Story 9.19: the four list-argument arms map onto the registered codes, reason in context.
+    /// Story 9.19: the four list-argument arms map onto the registered codes, reason in context;
+    /// the revset arms carry their CLI hints (Story 9.25 closing run).
     #[test]
     fn map_bookmarks_err_maps_the_list_argument_refusals() {
-        for (e, code) in [
-            (BookmarkError::InvalidInput { reason: "r".into() }, JJ_INVALID_INPUT),
+        let hints = || vec!["Did you mean `description`?".to_owned()];
+        for (e, code, expected_hints) in [
             (
-                BookmarkError::RevsetParseError { reason: "r".into() },
-                JJ_REVSET_PARSE_ERROR,
+                BookmarkError::InvalidInput { reason: "r".into() },
+                JJ_INVALID_INPUT,
+                vec![],
             ),
             (
-                BookmarkError::RevsetResolutionError { reason: "r".into() },
+                BookmarkError::RevsetParseError {
+                    reason: "r".into(),
+                    hints: hints(),
+                },
+                JJ_REVSET_PARSE_ERROR,
+                hints(),
+            ),
+            (
+                BookmarkError::RevsetResolutionError {
+                    reason: "r".into(),
+                    hints: hints(),
+                },
                 JJ_REVSET_RESOLUTION_ERROR,
+                hints(),
             ),
             (
                 BookmarkError::Config(ConfigError::Load { reason: "r".into() }),
                 JJ_CONFIG_ERROR,
+                vec![],
             ),
         ] {
             let obj = map_bookmarks_err(e);
             assert_eq!((obj.code.as_str(), obj.context.as_deref()), (code, Some("r")));
-            assert!(obj.hints.is_empty());
+            assert_eq!(obj.hints, expected_hints);
         }
     }
 

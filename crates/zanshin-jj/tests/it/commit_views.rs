@@ -528,7 +528,7 @@ fn show_is_per_commit_and_refuses_a_bare_divergent_change_id() {
         .show(Some(&change.0), None)
         .expect_err("a bare divergent change-id symbol does not resolve");
     assert!(
-        matches!(&err, CommitViewError::RevsetResolutionError { reason } if reason.contains("divergent")),
+        matches!(&err, CommitViewError::RevsetResolutionError { reason, .. } if reason.contains("divergent")),
         "unexpected error: {err:?}"
     );
     assert_eq!(head_op_id(&mut repo), before, "a refusal must not write an operation");
@@ -628,7 +628,14 @@ fn show_refuses_a_malformed_or_unresolvable_revset_without_writing_an_operation(
 
     let err = repo.show(Some("::("), None).expect_err("a syntax error is refused");
     assert!(
-        matches!(&err, CommitViewError::RevsetParseError { reason } if !reason.is_empty()),
+        matches!(&err, CommitViewError::RevsetParseError { reason, .. } if !reason.is_empty()),
+        "unexpected error: {err:?}"
+    );
+    // The CLI's revset hints ride along (Story 9.25 closing run).
+    let err = repo.show(Some("descripton(x)"), None).expect_err("an unknown function");
+    assert!(
+        matches!(&err, CommitViewError::RevsetParseError { hints, .. }
+            if hints.iter().any(|h| h.starts_with("Did you mean") && h.contains("description"))),
         "unexpected error: {err:?}"
     );
 
@@ -636,7 +643,7 @@ fn show_refuses_a_malformed_or_unresolvable_revset_without_writing_an_operation(
         .show(Some("nosuchbookmark"), None)
         .expect_err("an unknown symbol is refused");
     assert!(
-        matches!(&err, CommitViewError::RevsetResolutionError { reason } if !reason.is_empty()),
+        matches!(&err, CommitViewError::RevsetResolutionError { reason, .. } if !reason.is_empty()),
         "unexpected error: {err:?}"
     );
 
@@ -648,7 +655,7 @@ fn show_refuses_a_malformed_or_unresolvable_revset_without_writing_an_operation(
         .show(Some(""), None)
         .expect_err("an empty revset is a VALUE, not an absence");
     assert!(
-        matches!(&err, CommitViewError::RevsetParseError { reason } if !reason.is_empty()),
+        matches!(&err, CommitViewError::RevsetParseError { reason, .. } if !reason.is_empty()),
         "unexpected error: {err:?}"
     );
 
@@ -822,7 +829,15 @@ fn evolog_refuses_a_malformed_revset_without_writing_an_operation() {
 
     let err = repo.evolog(Some("::("), None).expect_err("a syntax error is refused");
     assert!(
-        matches!(&err, CommitViewError::RevsetParseError { reason } if !reason.is_empty()),
+        matches!(&err, CommitViewError::RevsetParseError { reason, .. } if !reason.is_empty()),
+        "unexpected error: {err:?}"
+    );
+    let err = repo
+        .evolog(Some("descripton(x)"), None)
+        .expect_err("an unknown function");
+    assert!(
+        matches!(&err, CommitViewError::RevsetParseError { hints, .. }
+            if hints.iter().any(|h| h.starts_with("Did you mean") && h.contains("description"))),
         "unexpected error: {err:?}"
     );
 
@@ -1306,7 +1321,7 @@ fn interdiff_refuses_a_malformed_ambiguous_or_unknown_commit_id_on_either_side()
                 }
                 ("not hex", CommitViewError::InvalidInput { reason }) => reason.contains(&hex),
                 ("unknown", CommitViewError::ChangeNotFound { id }) => *id == hex,
-                ("ambiguous", CommitViewError::RevsetResolutionError { reason }) => {
+                ("ambiguous", CommitViewError::RevsetResolutionError { reason, .. }) => {
                     reason.contains(&hex) && reason.contains("ambiguous")
                 }
                 _ => false,

@@ -643,7 +643,8 @@ pub(crate) fn r#move(
         let expression =
             crate::revset::parse_union_diagnosed(workspace, &parse_config, &options.from, &mut ctx.warnings)
                 .map_err(mutate::rev)?;
-        Some(crate::revset::evaluate_revset(readonly.as_ref(), &expression).map_err(mutate::rev)?)
+        let prefixes = ctx.template_startup.id_prefix_context();
+        Some(crate::revset::evaluate_revset(readonly.as_ref(), &expression, Some(&prefixes)).map_err(mutate::rev)?)
     };
     let expression = exact_names(&options.names);
     let names = matching_locals(&readonly, &expression.to_matcher(), source.as_deref())?;
@@ -692,7 +693,8 @@ fn advance_target(
     )
     .map_err(mutate::rev)
     .map_err(with_advance_hint)?;
-    crate::push::single_commit(readonly, &expression, &text).map_err(with_advance_hint)
+    let prefixes = ctx.template_startup.id_prefix_context();
+    crate::push::single_commit(readonly, &expression, &text, &prefixes).map_err(with_advance_hint)
 }
 
 /// Advances the closest bookmarks to a revision (Story 9.19) — the CLI's `jj bookmark advance`
@@ -738,7 +740,9 @@ pub(crate) fn advance(
             &mut ctx.warnings,
         )
         .map_err(mutate::rev)?;
-        let source = crate::revset::evaluate_revset(readonly.as_ref(), &expression).map_err(mutate::rev)?;
+        let prefixes = ctx.template_startup.id_prefix_context();
+        let source =
+            crate::revset::evaluate_revset(readonly.as_ref(), &expression, Some(&prefixes)).map_err(mutate::rev)?;
         matching_locals(&readonly, &StringMatcher::all(), Some(source.as_ref()))?
     } else {
         let expression = exact_names(names);

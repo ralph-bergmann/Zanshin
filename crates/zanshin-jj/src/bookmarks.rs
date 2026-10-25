@@ -28,6 +28,7 @@ use std::sync::Arc;
 use futures::TryStreamExt as _;
 use jj_lib::backend::{self, CommitId};
 use jj_lib::config::StackedConfig;
+use jj_lib::id_prefix::IdPrefixContext;
 use jj_lib::op_store::{LocalRemoteRefTarget, RefTarget, RemoteRef};
 use jj_lib::ref_name::{RefName, RemoteName};
 use jj_lib::repo::Repo as _;
@@ -207,12 +208,16 @@ pub enum BookmarkError {
     RevsetParseError {
         /// Human-readable parse failure from jj-lib.
         reason: String,
+        /// The CLI's hint lines for the error, verbatim and in the CLI's order.
+        hints: Vec<String>,
     },
     /// A `revisions` text names a symbol that does not resolve (Story 9.19).
     #[error("cannot resolve revset: {reason}")]
     RevsetResolutionError {
         /// Human-readable resolution failure from jj-lib.
         reason: String,
+        /// The CLI's hint lines for the error, verbatim and in the CLI's order.
+        hints: Vec<String>,
     },
     /// The effective config could not be read (Story 9.19): `ui.bookmark-list-sort-keys` is not
     /// an array of the CLI's key names, or the revset aliases do not load.
@@ -232,8 +237,14 @@ fn be<E: std::fmt::Display>(e: E) -> BookmarkError {
 /// Classifies a [`RevsetError`] of the `revisions` argument.
 fn rev(e: RevsetError) -> BookmarkError {
     match e {
-        RevsetError::ParseError { reason, .. } => BookmarkError::RevsetParseError { reason },
-        RevsetError::ResolutionError { reason, .. } => BookmarkError::RevsetResolutionError { reason },
+        RevsetError::ParseError { reason, detail } => BookmarkError::RevsetParseError {
+            reason,
+            hints: detail.hints,
+        },
+        RevsetError::ResolutionError { reason, detail } => BookmarkError::RevsetResolutionError {
+            reason,
+            hints: detail.hints,
+        },
         RevsetError::Config(inner) => BookmarkError::Config(inner),
         RevsetError::Precondition(inner) => BookmarkError::Precondition(inner),
         e @ (RevsetError::JjLibError(_) | RevsetError::DanglingEdge { .. }) => be(e),
@@ -469,7 +480,8 @@ pub(crate) fn warn_unmatched(sink: &mut Warnings, view: &jj_lib::view::View, exp
 /// per item as the CLI prints them: the primary, then its tracked remote rows; items in name
 /// order (each name's local item, then its untracked remote items), then sorted by `sort` or
 /// `ui.bookmark-list-sort-keys` (read from `config`). An exact name that matches no local or
-/// remote bookmark warns `jj.bookmark_names_unmatched` into `sink`, after the rows.
+/// remote bookmark warns `jj.bookmark_names_unmatched` into `sink`, after the rows. `revisions`
+/// resolve through `prefixes`, the call's start-up id-prefix context.
 ///
 /// Re-resolves to the head operation every call (ADR-0002). Read-only.
 ///
@@ -488,6 +500,7 @@ pub(crate) fn list_bookmarks(
     config: &StackedConfig,
     sink: &mut Warnings,
     options: &BookmarkListOptions,
+    prefixes: &IdPrefixContext,
 ) -> Result<Vec<Bookmark>, BookmarkError> {
     let readonly = crate::snapshot::reload_head(workspace).map_err(be)?;
     let view = readonly.view();
@@ -508,7 +521,7 @@ pub(crate) fn list_bookmarks(
         let expression = crate::revset::parse_union_diagnosed(workspace, &parse_config, &options.revisions, sink)
             .map_err(rev)?
             .intersection(&RevsetExpression::bookmarks(StringExpression::all()));
-        let revset = crate::revset::evaluate_revset(readonly.as_ref(), &expression).map_err(rev)?;
+        let revset = crate::revset::evaluate_revset(readonly.as_ref(), &expression, Some(prefixes)).map_err(rev)?;
         pollster::block_on(revset.stream().try_collect::<HashSet<CommitId>>()).map_err(be)?
     };
 
@@ -672,6 +685,7 @@ mod tests {
             &config,
             &mut crate::warning::Warnings::default(),
             &BookmarkListOptions::default(),
+            &crate::graph::prefix_context(None),
         );
         assert!(matches!(result, Err(BookmarkError::Backend(_))), "{result:?}");
     }
@@ -725,19 +739,25 @@ mod tests {
         use crate::RevsetError as R;
         use crate::RevsetErrorKind as K;
         let r = || "r".to_owned();
+        let hinted = |kind| {
+            Box::new(D {
+                hints: vec!["h".to_owned()],
+                ..D::bare(kind)
+            })
+        };
         assert!(matches!(
             rev(R::ParseError {
                 reason: r(),
-                detail: Box::new(D::bare(K::SyntaxError))
+                detail: hinted(K::SyntaxError)
             }),
-            BookmarkError::RevsetParseError { reason } if reason == "r"
+            BookmarkError::RevsetParseError { reason, hints } if reason == "r" && hints == ["h"]
         ));
         assert!(matches!(
             rev(R::ResolutionError {
                 reason: r(),
-                detail: Box::new(D::bare(K::NoSuchRevision))
+                detail: hinted(K::NoSuchRevision)
             }),
-            BookmarkError::RevsetResolutionError { reason } if reason == "r"
+            BookmarkError::RevsetResolutionError { reason, hints } if reason == "r" && hints == ["h"]
         ));
         assert!(matches!(
             rev(R::Config(crate::ConfigError::Load { reason: r() })),

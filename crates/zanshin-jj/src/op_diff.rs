@@ -261,7 +261,9 @@ fn resolve_both(
     to_repo: &Arc<ReadonlyRepo>,
 ) -> Result<(Arc<ResolvedRevsetExpression>, Arc<ResolvedRevsetExpression>), String> {
     let resolve = |repo: &Arc<ReadonlyRepo>| {
-        crate::revset::resolve_expression(repo.as_ref(), changes_in).map_err(|e| match e {
+        // WHY no id-prefix context: the CLI resolves both sides with a plain
+        // `SymbolResolver::new` (`diff.rs:251-252` @ v0.46.0).
+        crate::revset::resolve_expression(repo.as_ref(), changes_in, None).map_err(|e| match e {
             crate::RevsetError::ResolutionError { reason, .. } => reason,
             other => other.to_string(),
         })

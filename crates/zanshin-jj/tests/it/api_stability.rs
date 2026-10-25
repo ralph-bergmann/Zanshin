@@ -813,10 +813,12 @@ fn commit_views_surface_resolves() {
     );
     let parse = zanshin_jj::CommitViewError::RevsetParseError {
         reason: "syntax error".to_owned(),
+        hints: Vec::new(),
     };
     assert_eq!(parse.to_string(), "invalid revset: syntax error");
     let resolution = zanshin_jj::CommitViewError::RevsetResolutionError {
         reason: "no such bookmark".to_owned(),
+        hints: Vec::new(),
     };
     assert_eq!(resolution.to_string(), "cannot resolve revset: no such bookmark");
     let config = zanshin_jj::CommitViewError::Config {
@@ -1020,8 +1022,14 @@ fn bookmark_move_and_list_surface_resolves() {
 
     let errors = [
         zanshin_jj::BookmarkError::InvalidInput { reason: "i".to_owned() },
-        zanshin_jj::BookmarkError::RevsetParseError { reason: "p".to_owned() },
-        zanshin_jj::BookmarkError::RevsetResolutionError { reason: "r".to_owned() },
+        zanshin_jj::BookmarkError::RevsetParseError {
+            reason: "p".to_owned(),
+            hints: Vec::new(),
+        },
+        zanshin_jj::BookmarkError::RevsetResolutionError {
+            reason: "r".to_owned(),
+            hints: Vec::new(),
+        },
         zanshin_jj::BookmarkError::Config(zanshin_jj::ConfigError::Load { reason: "c".to_owned() }),
     ];
     let shown: Vec<String> = errors.iter().map(ToString::to_string).collect();
@@ -2709,7 +2717,7 @@ fn graph_search_surface_resolves() {
             &zanshin_jj::OperationId,
             &[String],
             u64,
-        ) -> Result<zanshin_jj::RevsetCounts, zanshin_jj::RevsetSearchError>;
+        ) -> Result<zanshin_jj::RevsetCounts, zanshin_jj::Warned<zanshin_jj::RevsetSearchError>>;
     _ = zanshin_jj::Repo::find_changes
         as fn(
             &zanshin_jj::Repo,
@@ -2717,5 +2725,5 @@ fn graph_search_surface_resolves() {
             &str,
             u64,
             &str,
-        ) -> Result<zanshin_jj::FoundChanges, zanshin_jj::RevsetSearchError>;
+        ) -> Result<zanshin_jj::FoundChanges, zanshin_jj::Warned<zanshin_jj::RevsetSearchError>>;
 }

@@ -246,8 +246,10 @@ impl LogParse {
         })
     }
 
-    /// Resolves and evaluates the parsed expressions against the loaded `repo_dyn`; the
-    /// prioritised commit ids are materialised (they are a tiny set).
+    /// Resolves and evaluates the parsed expressions against the loaded `repo_dyn`, every
+    /// symbol through ONE id-prefix context disambiguated within `short_prefixes` (the CLI's
+    /// `default_symbol_resolver`); the prioritised commit ids are materialised (they are a tiny
+    /// set).
     ///
     /// # Errors
     ///
@@ -255,16 +257,17 @@ impl LogParse {
     ///   resolved.
     /// - [`RevsetError::JjLibError`] — evaluation failed.
     pub(crate) fn evaluate<'r>(&self, repo_dyn: &'r dyn jj_lib::repo::Repo) -> Result<LogSetup<'r>, RevsetError> {
-        let resolved = resolve_expression(repo_dyn, &self.log)?;
+        let prefix_ctx = prefix_context(self.short.as_ref());
+        let resolved = resolve_expression(repo_dyn, &self.log, Some(&prefix_ctx))?;
         let set = resolved.clone().evaluate(repo_dyn).map_err(jj)?;
-        let prio_set = evaluate_revset(repo_dyn, &self.prio)?;
+        let prio_set = evaluate_revset(repo_dyn, &self.prio, Some(&prefix_ctx))?;
         let prio_ids: Vec<JjCommitId> = pollster::block_on(prio_set.stream().try_collect()).map_err(jj)?;
-        let immutable_set = evaluate_revset(repo_dyn, &self.immutable)?;
+        let immutable_set = evaluate_revset(repo_dyn, &self.immutable, Some(&prefix_ctx))?;
         Ok(LogSetup {
             resolved,
             set,
             prio_ids,
-            prefix_ctx: prefix_context(self.short.as_ref()),
+            prefix_ctx,
             immutable_set,
         })
     }
@@ -278,7 +281,8 @@ pub(crate) struct LogSetup<'r> {
     /// The caller's `revset`, evaluated.
     pub(crate) set: Box<dyn Revset + 'r>,
     prio_ids: Vec<JjCommitId>,
-    prefix_ctx: IdPrefixContext,
+    /// The call's id-prefix context — what every symbol of the call resolves through.
+    pub(crate) prefix_ctx: IdPrefixContext,
     immutable_set: Box<dyn Revset + 'r>,
 }
 

@@ -87,7 +87,9 @@ pub(crate) fn resolve_immutable(
     repo: &dyn jj_lib::repo::Repo,
     expr: &Arc<UserRevsetExpression>,
 ) -> Result<Arc<ResolvedRevsetExpression>, MutateError> {
-    resolve_expression(repo, expr).map_err(|e| MutateError::Config {
+    // WHY no id-prefix context: the CLI resolves this with an EMPTY `IdPrefixContext`
+    // (`cli_util.rs:1156-1159` @ v0.46.0) — never disambiguated against an arbitrary repo.
+    resolve_expression(repo, expr, None).map_err(|e| MutateError::Config {
         reason: format!("Invalid `revset-aliases.immutable_heads()`: {e}"),
     })
 }

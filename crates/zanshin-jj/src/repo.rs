@@ -684,7 +684,8 @@ impl Repo {
             return Err(refusal);
         }
         self.with_verb(|repo, ctx| {
-            crate::bookmarks::list_bookmarks(repo.workspace(), &ctx.config, &mut ctx.warnings, options)
+            let prefixes = ctx.template_startup.id_prefix_context();
+            crate::bookmarks::list_bookmarks(repo.workspace(), &ctx.config, &mut ctx.warnings, options, &prefixes)
         })
     }
 
@@ -1043,7 +1044,9 @@ impl Repo {
     /// `"none()"` is the canonical "no prioritization" value; an empty/blank `prioritize` is a
     /// [`crate::RevsetError::ParseError`], as the CLI fails on an empty config value. An EMPTY
     /// `short_prefixes` instead DISABLES prefix disambiguation (full-index prefix lengths) —
-    /// the CLI's `revsets.short-prefixes` toggle semantic. The
+    /// the CLI's `revsets.short-prefixes` toggle semantic. A non-empty one also disambiguates the
+    /// SYMBOLS of every expression of the call, as the CLI's `default_symbol_resolver`: a short
+    /// id prefix resolves within it first. The
     /// prioritized set (`prioritize ∩ revset`) is materialized before streaming — keep it small
     /// (the CLI default `present(@)` is one commit; `all()` would materialize every id). The
     /// `jj log` order parity holds for the CLI's graph mode without `--reversed`/`--limit`
@@ -1061,7 +1064,8 @@ impl Repo {
     ///   one refuses earlier, at start-up).
     /// - [`crate::RevsetError::ResolutionError`] — a symbol in `revset` or `prioritize`
     ///   cannot be resolved. An unresolvable `short_prefixes` is NOT an error: like the
-    ///   CLI, it warns and degrades to full-index prefix lengths.
+    ///   CLI, it warns and degrades to full-index prefix lengths — only an id-prefix-shaped symbol
+    ///   (commit or change id) then refuses (jj-lib's resolver cannot disambiguate it).
     /// - [`crate::RevsetError::Config`] — the repo's effective jj config is malformed or
     ///   unreadable. A single bad `[revset-aliases]` entry is NOT an error: like the CLI, it
     ///   warns and is skipped.
@@ -1110,7 +1114,8 @@ impl Repo {
     ///   override that differs from the effective text (the effective one refuses earlier, at
     ///   start-up).
     /// - [`crate::RevsetError::ResolutionError`] — a symbol in `revset`, `prioritize` or an
-    ///   anchor cannot be resolved. An unresolvable `short_prefixes` only warns and degrades.
+    ///   anchor cannot be resolved. An unresolvable `short_prefixes` only warns and degrades (an
+    ///   id-prefix-shaped symbol — commit or change id — then refuses, as in [`Repo::walk_graph`]).
     /// - [`crate::RevsetError::Config`] — the repo's effective jj config is malformed or
     ///   unreadable.
     /// - [`crate::RevsetError::DanglingEdge`] — an edge names a target outside the node set
@@ -1189,7 +1194,8 @@ impl Repo {
     ///
     /// # Errors
     ///
-    /// Call-level faults only:
+    /// Call-level faults only, each a [`crate::Warned`] carrying the warnings collected before it
+    /// (in order — the CLI prints them before it fails):
     /// - [`crate::RevsetSearchError::InvalidInput`] — `operation_id` is empty, not hex, or not a
     ///   full operation id.
     /// - [`crate::RevsetSearchError::OperationNotFound`] — the operation is not in the operation
@@ -1203,7 +1209,7 @@ impl Repo {
         operation_id: &crate::OperationId,
         expressions: &[String],
         cap: u64,
-    ) -> Result<crate::RevsetCounts, crate::RevsetSearchError> {
+    ) -> Result<crate::RevsetCounts, crate::Warned<crate::RevsetSearchError>> {
         crate::revset_search::revset_counts(self, operation_id, expressions, cap)
     }
 
@@ -1219,6 +1225,8 @@ impl Repo {
     ///
     /// # Errors
     ///
+    /// Each a [`crate::Warned`] carrying the warnings collected before it, as
+    /// [`Repo::revset_counts`]:
     /// - [`crate::RevsetSearchError::InvalidInput`] / [`crate::RevsetSearchError::OperationNotFound`]
     ///   — as [`Repo::revset_counts`].
     /// - [`crate::RevsetSearchError::Revset`] — `short_prefixes` or `expression` does not parse,
@@ -1233,7 +1241,7 @@ impl Repo {
         expression: &str,
         limit: u64,
         short_prefixes: &str,
-    ) -> Result<crate::FoundChanges, crate::RevsetSearchError> {
+    ) -> Result<crate::FoundChanges, crate::Warned<crate::RevsetSearchError>> {
         crate::revset_search::find_changes(self, operation_id, expression, limit, short_prefixes)
     }
 
@@ -1245,7 +1253,8 @@ impl Repo {
     /// the repo's effective jj config, builtin defaults included, so a user's
     /// `[revset-aliases]` override of `trunk()` changes the denoted set exactly as it does in
     /// their CLI. The config is re-read per call and never cached; the repo is re-resolved to
-    /// the head operation per call (ADR-0002).
+    /// the head operation per call (ADR-0002). Short id prefixes resolve within the effective
+    /// `revsets.short-prefixes` first, as the CLI's.
     ///
     /// The walk is LAZY and the set is never materialized: `visit` returning
     /// [`ControlFlow::Break`] stops it and the result is `Ok(Break)`, while `Ok(Continue)` means
@@ -1284,7 +1293,10 @@ impl Repo {
         revset: &str,
         visit: impl FnMut(crate::Change) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, crate::RevsetError> {
-        self.with_verb(|repo, ctx| crate::revset::eval_revset(repo, &mut ctx.warnings, revset, visit))
+        self.with_verb(|repo, ctx| {
+            let prefixes = ctx.template_startup.id_prefix_context();
+            crate::revset::eval_revset(repo, &mut ctx.warnings, revset, &prefixes, visit)
+        })
     }
 
     /// Rewrites `change_id`'s description to `description` (FR-JJ-10a).
@@ -2244,7 +2256,10 @@ impl Repo {
         revset: Option<&str>,
         limit: Option<usize>,
     ) -> Result<Vec<crate::ShowEntry>, crate::CommitViewError> {
-        self.with_verb(|repo, ctx| crate::commit_views::show(repo, &mut ctx.warnings, revset, limit))
+        self.with_verb(|repo, ctx| {
+            let prefixes = ctx.template_startup.id_prefix_context();
+            crate::commit_views::show(repo, &mut ctx.warnings, revset, limit, &prefixes)
+        })
     }
 
     /// Walks the evolution of the changes `revset` denotes (Story 9.6) — the CLI's `jj evolog`.
@@ -2287,7 +2302,10 @@ impl Repo {
         revset: Option<&str>,
         limit: Option<usize>,
     ) -> Result<Vec<crate::EvologEntry>, crate::CommitViewError> {
-        self.with_verb(|repo, ctx| crate::commit_views::evolog(repo, &mut ctx.warnings, revset, limit))
+        self.with_verb(|repo, ctx| {
+            let prefixes = ctx.template_startup.id_prefix_context();
+            crate::commit_views::evolog(repo, &mut ctx.warnings, revset, limit, &prefixes)
+        })
     }
 
     /// Compares what two revisions each CHANGE, with the parent difference factored out

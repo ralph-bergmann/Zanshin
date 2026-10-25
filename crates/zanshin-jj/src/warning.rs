@@ -314,7 +314,8 @@ pub struct Warning {
 }
 
 /// A value and the warnings the call that produced it collected, in the CLI's print order —
-/// the return shape of the handle-less verbs that can warn (Story 9.32).
+/// the return shape of the handle-less verbs that can warn (Story 9.32), and the error type of
+/// [`crate::Repo::revset_counts`] / [`crate::Repo::find_changes`] (Story 9.25).
 #[derive(Debug)]
 pub struct Warned<T> {
     /// The call's result.

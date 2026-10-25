@@ -1081,6 +1081,17 @@ fn list_refusals() {
     };
     let err = repo.list_bookmarks(&parse).expect_err("parse");
     assert!(matches!(&err, BookmarkError::RevsetParseError { .. }), "{err:?}");
+    // The CLI's revset hints ride along (Story 9.25 closing run).
+    let hinted = BookmarkListOptions {
+        revisions: strings(&["descripton(x)"]),
+        ..Default::default()
+    };
+    let err = repo.list_bookmarks(&hinted).expect_err("an unknown function");
+    assert!(
+        matches!(&err, BookmarkError::RevsetParseError { hints, .. }
+            if hints.iter().any(|h| h.starts_with("Did you mean") && h.contains("description"))),
+        "{err:?}"
+    );
     let resolve = BookmarkListOptions {
         revisions: strings(&["no-such-bookmark"]),
         ..Default::default()

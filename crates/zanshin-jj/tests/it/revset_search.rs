@@ -192,13 +192,15 @@ fn counts_report_parse_diagnostics_as_warnings_in_expression_order() {
     assert!(answer.warnings[1].message.contains(r#"diff_contains("b")"#));
 }
 
+/// The call-level fault keeps the warnings collected before it — the alias load's here — as the
+/// CLI prints them before it fails (Story 9.25 closing run).
 #[test]
 fn a_bad_effective_short_prefixes_is_a_call_level_config_error() {
     let (fx, mut repo) = medium();
     let op = topology(&mut repo, "@", DEFAULT_LOG_REVSET).operation_id;
     std::fs::write(
         fx.path.join(".jj").join("repo").join("config.toml"),
-        "[revsets]\nshort-prefixes = \"bogus(\"\n",
+        "[revset-aliases]\n'bad(' = 'x'\n[revsets]\nshort-prefixes = \"bogus(\"\n",
     )
     .unwrap();
     let repo = Repo::open(&fx.path).unwrap();
@@ -206,9 +208,11 @@ fn a_bad_effective_short_prefixes_is_a_call_level_config_error() {
     let err = repo.revset_counts(&op, &["all()".to_owned()], CAP).unwrap_err();
 
     assert!(
-        matches!(&err, RevsetSearchError::Config(e) if e.to_string().contains("Invalid `revsets.short-prefixes`")),
+        matches!(&err.value, RevsetSearchError::Config(e) if e.to_string().contains("Invalid `revsets.short-prefixes`")),
         "{err:?}"
     );
+    let kinds: Vec<WarningKind> = err.warnings.iter().map(|w| w.kind).collect();
+    assert_eq!(kinds, [WarningKind::ConfigAliasInvalid], "{err:?}");
 }
 
 // ── The pinned reads write nothing ────────────────────────────────────────────
@@ -252,24 +256,28 @@ fn an_unknown_or_malformed_operation_is_a_call_level_fault() {
     let unknown = OperationId("f".repeat(128));
 
     let err = repo.revset_counts(&unknown, &[], CAP).unwrap_err();
+    assert!(err.warnings.is_empty(), "nothing ran before the load");
+    let err = err.value;
     assert!(
         matches!(&err, RevsetSearchError::OperationNotFound(id) if *id == unknown.0),
         "{err:?}"
     );
     assert_eq!(err.to_string(), format!(r#"No operation ID matching "{}""#, unknown.0));
-    let err = repo.find_changes(&unknown, "all()", 1, "").unwrap_err();
+    let err = repo.find_changes(&unknown, "all()", 1, "").unwrap_err().value;
     assert!(matches!(err, RevsetSearchError::OperationNotFound(_)), "{err:?}");
 
     let err = repo
         .revset_counts(&OperationId("xyz".to_owned()), &[], CAP)
-        .unwrap_err();
+        .unwrap_err()
+        .value;
     assert!(
         matches!(&err, RevsetSearchError::InvalidInput(text) if text == r#"Operation ID "xyz" is not a valid hexadecimal prefix"#),
         "{err:?}"
     );
     let err = repo
         .find_changes(&OperationId("abc".to_owned()), "all()", 1, "")
-        .unwrap_err();
+        .unwrap_err()
+        .value;
     assert!(matches!(err, RevsetSearchError::InvalidInput(_)), "{err:?}");
 }
 
@@ -335,7 +343,7 @@ fn find_resolves_a_prefix_within_its_short_prefixes() {
     let tip = repo.find_changes(&op, "tip", 1, "").unwrap().entries.remove(0);
     let prefix = &tip.change_id.0[..1];
 
-    let err = repo.find_changes(&op, prefix, 10, "").unwrap_err();
+    let err = repo.find_changes(&op, prefix, 10, "").unwrap_err().value;
     assert!(
         matches!(&err, RevsetSearchError::Revset(e) if detail(e).kind == RevsetErrorKind::AmbiguousChangeIdPrefix),
         "{err:?}"
@@ -379,7 +387,7 @@ fn an_ambiguous_prefix_is_a_resolution_error_and_an_unmatched_one_finds_nothing(
     let (_fx, mut repo) = medium();
     let op = topology(&mut repo, "@", DEFAULT_LOG_REVSET).operation_id;
 
-    let err = repo.find_changes(&op, "change_id(k)", 10, "").unwrap_err();
+    let err = repo.find_changes(&op, "change_id(k)", 10, "").unwrap_err().value;
     let RevsetSearchError::Revset(e @ RevsetError::ResolutionError { reason, .. }) = &err else {
         panic!("{err:?}");
     };
@@ -403,7 +411,7 @@ fn find_reports_a_bad_short_prefixes_or_expression_as_its_revset_error() {
     // Only the expression's own error carries a span: one in `short_prefixes` would point into
     // the other text.
     for (expression, short, has_span) in [("all()", "bogus(", false), ("bogus(", "", true)] {
-        let err = repo.find_changes(&op, expression, 1, short).unwrap_err();
+        let err = repo.find_changes(&op, expression, 1, short).unwrap_err().value;
         let RevsetSearchError::Revset(e @ RevsetError::ParseError { .. }) = &err else {
             panic!("{err:?}");
         };
@@ -417,13 +425,23 @@ fn find_reports_a_bad_short_prefixes_or_expression_as_its_revset_error() {
         "{}",
         found.warnings[0].message
     );
+
+    // A bad expression after a warning keeps it on the error (Story 9.25 closing run).
+    let err = repo
+        .find_changes(&op, "bogus(", 1, r#"diff_contains("x")"#)
+        .unwrap_err();
+    assert!(
+        matches!(err.value, RevsetSearchError::Revset(RevsetError::ParseError { .. })),
+        "{err:?}"
+    );
+    assert_eq!(err.warnings, found.warnings);
 }
 
 // ── Structured revset errors ───────────────────────────────────────────────────
 
 /// The parse error of `expr` from find, counts and the topology — the three must agree.
 fn parse_detail(repo: &mut Repo, op: &OperationId, expr: &str) -> zanshin_jj::RevsetErrorDetail {
-    let RevsetSearchError::Revset(found) = repo.find_changes(op, expr, 1, "").unwrap_err() else {
+    let RevsetSearchError::Revset(found) = repo.find_changes(op, expr, 1, "").unwrap_err().value else {
         panic!("find: not a revset error");
     };
     let counted = repo

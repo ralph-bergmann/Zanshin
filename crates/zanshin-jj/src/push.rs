@@ -44,6 +44,7 @@ use jj_lib::backend::CommitId as JjCommitId;
 use jj_lib::commit::Commit;
 use jj_lib::config::StackedConfig;
 use jj_lib::git::{GitPushError, GitPushOptions, GitPushRefTargets, GitPushStats};
+use jj_lib::id_prefix::IdPrefixContext;
 use jj_lib::merge::Diff;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::RefTarget;
@@ -508,15 +509,17 @@ impl<'r, 't> CommitsValidator<'r, 't> {
             .flat_map(|(_, old_head)| old_head.target.present_adds())
             .cloned()
             .collect();
-        // The CLI resolves with a bare `.resolve()?` here, no config-error wrapping
-        // (`cli/src/commands/git/push.rs:803-805` @ v0.46.0).
-        let immutable_heads = crate::revset::resolve_expression(base, planner.immutable_heads).map_err(cfg)?;
+        // The CLI resolves with a bare `.resolve()?` here, no config-error wrapping, through
+        // `attach_revset_evaluator`'s id-prefix context (`cli/src/commands/git/push.rs:803-811` @
+        // v0.46.0), as `git.private-commits` below.
+        let immutable_heads =
+            crate::revset::resolve_expression(base, planner.immutable_heads, Some(&planner.prefixes)).map_err(cfg)?;
         let private_commits = if planner.args.allow_private {
             None
         } else {
             let text = crate::config::git_private_commits(planner.config).map_err(cfg)?;
             let expression = planner.parse(&text)?;
-            let set = crate::revset::evaluate_revset(base, &expression).map_err(rev)?;
+            let set = crate::revset::evaluate_revset(base, &expression, Some(&planner.prefixes)).map_err(rev)?;
             Some((text, set.containing_fn()))
         };
         Ok(Self {
@@ -714,6 +717,8 @@ struct Planner<'a> {
     /// The start-up environment's template half — the template language's alias map and
     /// short-prefixes expression.
     template_startup: &'a TemplateStartup,
+    /// The id-prefix context every user and config revset of the call resolves through.
+    prefixes: IdPrefixContext,
     immutable_heads: &'a Arc<UserRevsetExpression>,
     sink: &'a mut Warnings,
     /// Whether the plan stops at the first explicit refusal (a real push) or records it (a dry
@@ -730,7 +735,7 @@ impl Planner<'_> {
     /// A user revset's commits against `base`, in stream order.
     fn commit_ids(&mut self, base: &ReadonlyRepo, text: &str) -> Result<Vec<JjCommitId>, MutateError> {
         let expression = self.parse(text)?;
-        collect_ids(base, &expression)
+        collect_ids(base, &expression, &self.prefixes)
     }
 
     fn warn(&mut self, kind: WarningKind, message: String) {
@@ -738,12 +743,13 @@ impl Planner<'_> {
     }
 }
 
-/// Every commit id of `expression` against `repo`.
+/// Every commit id of `expression` against `repo`, its symbols resolved through `prefixes`.
 fn collect_ids(
     repo: &dyn jj_lib::repo::Repo,
     expression: &Arc<UserRevsetExpression>,
+    prefixes: &IdPrefixContext,
 ) -> Result<Vec<JjCommitId>, MutateError> {
-    let set = crate::revset::evaluate_revset(repo, expression).map_err(rev)?;
+    let set = crate::revset::evaluate_revset(repo, expression, Some(prefixes)).map_err(rev)?;
     pollster::block_on(async {
         let mut ids = Vec::new();
         let mut stream = set.stream();
@@ -985,12 +991,13 @@ fn ensure_new_bookmark_name(repo: &dyn jj_lib::repo::Repo, name: &RefName) -> Re
 /// (`cli_util.rs:1830-1841`, refusals `revset_util.rs:277-331` @ v0.46.0).
 fn resolve_single(planner: &mut Planner<'_>, base: &ReadonlyRepo, revision: &str) -> Result<Commit, MutateError> {
     let expression = planner.parse(revision)?;
-    single_commit(base, &expression, revision)
+    single_commit(base, &expression, revision, &planner.prefixes)
 }
 
-/// The single commit the parsed `expression` (the text `revision`) denotes against `base`, with
-/// `resolve_single_rev`'s refusals (`revset_util.rs:277-331` @ v0.46.0) — shared with `bookmark
-/// advance`'s default target (Story 9.19).
+/// The single commit the parsed `expression` (the text `revision`) denotes against `base`, its
+/// symbols resolved through `prefixes`, with `resolve_single_rev`'s refusals
+/// (`revset_util.rs:277-331` @ v0.46.0) — shared with `bookmark advance`'s default target (Story
+/// 9.19).
 ///
 /// # Errors
 ///
@@ -1001,8 +1008,9 @@ pub(crate) fn single_commit(
     base: &ReadonlyRepo,
     expression: &Arc<UserRevsetExpression>,
     revision: &str,
+    prefixes: &IdPrefixContext,
 ) -> Result<Commit, MutateError> {
-    let ids = collect_ids(base, expression)?;
+    let ids = collect_ids(base, expression, prefixes)?;
     match ids.as_slice() {
         [id] => base.store().get_commit(id).map_err(be),
         [] => Err(MutateError::RevsetResolutionError {
@@ -1152,7 +1160,7 @@ fn default_targets(
         planner.sink,
     )
     .map_err(rev)?;
-    let ids = collect_ids(base, &expression.intersection(&refs_expression()))?;
+    let ids = collect_ids(base, &expression.intersection(&refs_expression()), &planner.prefixes)?;
     if ids.is_empty() {
         planner.warn(
             WarningKind::PushRevsetEmpty,
@@ -1171,7 +1179,7 @@ fn revision_targets(planner: &mut Planner<'_>, base: &ReadonlyRepo) -> Result<Ha
     let mut ids = HashSet::new();
     for revision in &planner.args.revisions {
         let expression = planner.parse(revision)?;
-        let found = collect_ids(base, &expression.intersection(&refs_expression()))?;
+        let found = collect_ids(base, &expression.intersection(&refs_expression()), &planner.prefixes)?;
         if found.is_empty() {
             planner.warn(
                 WarningKind::PushRevisionsEmpty,
@@ -1373,6 +1381,7 @@ pub(crate) fn plan_push(
         config,
         parse_config,
         immutable,
+        prefixes: template_startup.id_prefix_context(),
         template_startup,
         immutable_heads: &immutable_heads,
         sink,
@@ -1600,10 +1609,11 @@ fn ready_to_push(base: &ReadonlyRepo, plan: &RemotePlan) -> Arc<UserRevsetExpres
 /// The CLI's `sign_commits_before_push` (`push.rs:912-1038`): the commits to push that need a
 /// signature signed (`SignBehavior::Own`) and their descendants rebased, in `tx`; immutable ones
 /// skipped with a warning (each listed through `templates.commit_summary` over the base repo);
-/// every remote's new targets remapped.
+/// every remote's new targets remapped. The sets resolve through `prefixes`, as the CLI's
+/// `attach_revset_evaluator` (`push.rs:934`, `:959`).
 fn sign_before_push(
     tx: &mut Transaction,
-    templates: &Templates<'_>,
+    (templates, prefixes): (&Templates<'_>, &IdPrefixContext),
     plans: &mut [RemotePlan],
     sink: &mut Warnings,
 ) -> Result<Option<PushSigning>, MutateError> {
@@ -1613,7 +1623,7 @@ fn sign_before_push(
     sign_settings.behavior = SignBehavior::Own;
     let needs_signing = |commit: &Commit| !commit.is_signed() && sign_settings.should_sign(commit.store_commit());
     let commits_of = |expression: &Arc<UserRevsetExpression>| -> Result<Vec<Commit>, MutateError> {
-        collect_ids(base.as_ref(), expression)?
+        collect_ids(base.as_ref(), expression, prefixes)?
             .iter()
             .map(|id| base.store().get_commit(id).map_err(be))
             .collect()
@@ -1884,7 +1894,8 @@ pub(crate) fn git_push(
 
     if crate::config::git_sign_on_push(&ctx.config).map_err(cfg)? {
         let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, repo.workspace());
-        outcome.signing = sign_before_push(&mut tx, &templates, &mut plan.remotes, &mut ctx.warnings)?;
+        let prefixes = ctx.template_startup.id_prefix_context();
+        outcome.signing = sign_before_push(&mut tx, (&templates, &prefixes), &mut plan.remotes, &mut ctx.warnings)?;
     }
     let pushed = push_remotes(&mut tx, &readonly, &plan.remotes, (args, progress, cancel), ctx)?;
     outcome.hints.extend(pushed.hints);

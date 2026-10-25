@@ -13,7 +13,8 @@
 // crates/zanshin-ffi/tests/it/revset_search_ffi.rs). What these tests own is
 // the DART half: the request fields cross the buffer, the payloads decode, a
 // failed count carries its own exception with its revsetError, call-level
-// errors throw, and lastPrecondition stays unchanged.
+// errors throw with the warnings collected before them, and lastPrecondition
+// stays unchanged.
 
 import 'dart:io';
 
@@ -21,6 +22,7 @@ import 'package:test/test.dart';
 import 'package:zanshin_core/src/ffi/graph.dart';
 import 'package:zanshin_core/src/ffi/precondition.dart';
 import 'package:zanshin_core/src/ffi/revset_search.dart';
+import 'package:zanshin_core/src/ffi/warning.dart';
 import 'package:zanshin_core/src/worker/handle.dart';
 import 'package:zanshin_core/src/worker/isolate.dart';
 import 'package:zanshin_core/src/worker/responses.dart';
@@ -179,6 +181,41 @@ void main() {
       );
       final FoundChanges found = await handle.findChanges(view.operationId, prefix, limit: 10, shortPrefixes: 'tip');
       expect(found.entries.map((e) => (e.commitId, e.changePrefixLen)), [(tip.commitId, 1)]);
+      await handle.close();
+    });
+
+    test('a_call_level_failure_keeps_the_warnings_collected_before_it', () async {
+      final RepoHandle handle = await medium();
+      final GraphTopologyView view = await handle.graphTopology(
+        revset: 'all()',
+        anchors: const [],
+        withTimestamps: false,
+      );
+
+      await expectLater(
+        handle.findChanges(view.operationId, 'bogus(', limit: 1, shortPrefixes: 'diff_contains("x")'),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.revset_parse_error')
+              .having((e) => e.revsetError?.kind, 'kind', RevsetErrorKind.syntaxError)
+              .having((e) => e.warnings.map((w) => w.code), 'warnings', [ZanshinWarningCode.revsetDiagnostic])
+              .having((e) => e.warnings.single.message, 'message', startsWith('In `revsets.short-prefixes`\n')),
+        ),
+      );
+
+      File('${tempDir.path}/.jj/repo/config.toml').writeAsStringSync(
+        "[revset-aliases]\n'bad(' = 'x'\n[revsets]\nshort-prefixes = \"bogus(\"\n",
+      );
+      await expectLater(
+        handle.revsetCounts(view.operationId, const ['all()'], cap: 1),
+        throwsA(
+          isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.config_error').having(
+            (e) => e.warnings.map((w) => w.code),
+            'warnings',
+            [ZanshinWarningCode.configAliasInvalid],
+          ),
+        ),
+      );
       await handle.close();
     });
 

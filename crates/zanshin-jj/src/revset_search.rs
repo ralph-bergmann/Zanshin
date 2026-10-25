@@ -12,6 +12,10 @@
 //! with the id-prefix context as the CLI's `default_symbol_resolver`
 //! (`cli/src/revset_util.rs:197-203` @ v0.46.0). Counting iterates the evaluated stream; it never
 //! trusts `count_estimate`.
+//!
+//! Warnings ride both arms: the answer's `warnings` field on success, a [`Warned`] error on a
+//! call-level fault — everything collected before it, in order, as the CLI prints them before
+//! it fails.
 
 use futures::{StreamExt as _, TryStreamExt as _};
 use jj_lib::backend::{ChangeId as JjChangeId, CommitId as JjCommitId};
@@ -25,7 +29,7 @@ use crate::graph::{prefix_context, short_prefix_index};
 use crate::revset::{
     parse_diagnosed, resolve_for_evaluation, revset_config, RevsetConfig, IN_REVSET_EXPRESSION, IN_SHORT_PREFIXES,
 };
-use crate::warning::{Warning, Warnings};
+use crate::warning::{Warned, Warning, Warnings};
 use crate::{ChangeId, CommitContentError, CommitId, OperationId, Repo, RevsetError};
 
 /// One expression's count in [`RevsetCounts`].
@@ -44,7 +48,8 @@ pub struct RevsetCounts {
     /// resolution error.
     pub counts: Vec<Result<RevsetCount, RevsetError>>,
     /// The call's warnings — the alias load's and each expression's parse diagnostics (under "In
-    /// revset expression"), in expression order.
+    /// revset expression"), in expression order. A call-level fault carries those collected
+    /// before it in its [`Warned`] instead.
     pub warnings: Vec<Warning>,
 }
 
@@ -70,7 +75,8 @@ pub struct FoundChanges {
     pub truncated: bool,
     /// The call's warnings — the alias load's, the parse diagnostics of `short_prefixes` and the
     /// expression, and `jj.short_prefixes_failed` when the prefix index fails to load (the lengths
-    /// then fall back to the full index, as in the topology).
+    /// then fall back to the full index, as in the topology). A call-level fault carries those
+    /// collected before it in its [`Warned`] instead.
     pub warnings: Vec<Warning>,
 }
 
@@ -184,8 +190,8 @@ pub(crate) fn revset_counts(
     operation_id: &OperationId,
     expressions: &[String],
     cap: u64,
-) -> Result<RevsetCounts, RevsetSearchError> {
-    let readonly = load_pinned(repo.workspace(), operation_id)?;
+) -> Result<RevsetCounts, Warned<RevsetSearchError>> {
+    let readonly = load_pinned(repo.workspace(), operation_id).map_err(unwarned)?;
     let mut sink = Warnings::default();
     let result = (|| -> Result<Vec<_>, RevsetSearchError> {
         let config = crate::config::load(repo)?;
@@ -226,8 +232,8 @@ pub(crate) fn find_changes(
     expression: &str,
     limit: u64,
     short_prefixes: &str,
-) -> Result<FoundChanges, RevsetSearchError> {
-    let readonly = load_pinned(repo.workspace(), operation_id)?;
+) -> Result<FoundChanges, Warned<RevsetSearchError>> {
+    let readonly = load_pinned(repo.workspace(), operation_id).map_err(unwarned)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let mut sink = Warnings::default();
     let result = (|| -> Result<_, RevsetSearchError> {
@@ -277,18 +283,25 @@ pub(crate) fn find_changes(
     })
 }
 
-/// Hands the collected warnings to the answer; a failed call has no warning channel, so they are
-/// logged and dropped.
+/// A fault before any warning was collected (the pinned load).
+fn unwarned(e: CommitContentError) -> Warned<RevsetSearchError> {
+    Warned {
+        value: e.into(),
+        warnings: Vec::new(),
+    }
+}
+
+/// Hands the collected warnings to the answer, or to the call-level fault.
 fn finish<T, R>(
     result: Result<T, RevsetSearchError>,
     mut sink: Warnings,
     build: impl FnOnce(T, Vec<Warning>) -> R,
-) -> Result<R, RevsetSearchError> {
+) -> Result<R, Warned<RevsetSearchError>> {
     match result {
         Ok(value) => Ok(build(value, sink.take())),
-        Err(e) => {
-            crate::warning::log_dropped("revset_search", sink.take());
-            Err(e)
-        }
+        Err(value) => Err(Warned {
+            value,
+            warnings: sink.take(),
+        }),
     }
 }

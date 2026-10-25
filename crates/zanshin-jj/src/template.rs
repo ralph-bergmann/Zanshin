@@ -79,6 +79,15 @@ pub(crate) struct TemplateStartup {
     pub(crate) short_prefixes: Option<Arc<UserRevsetExpression>>,
 }
 
+impl TemplateStartup {
+    /// The id-prefix context disambiguated within [`Self::short_prefixes`] — what the CLI's
+    /// `default_symbol_resolver` resolves every user or config revset of the command through
+    /// (`cli_util.rs:1905-1921` @ v0.46.0).
+    pub(crate) fn id_prefix_context(&self) -> IdPrefixContext {
+        crate::graph::prefix_context(self.short_prefixes.as_ref())
+    }
+}
+
 /// The CLI's `load_template_aliases` (`cli_util.rs:3518-3524` @ v0.46.0): the
 /// `[template-aliases]` map, its entry warnings recorded once per call ([`Load::TemplateAliases`]).
 ///

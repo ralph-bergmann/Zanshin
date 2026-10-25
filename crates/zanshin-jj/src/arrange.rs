@@ -297,7 +297,8 @@ pub(crate) fn target_expression(
         &mut ctx.warnings,
     )
     .map_err(rev)?;
-    crate::revset::resolve_expression(tx.base_repo().as_ref(), &expression).map_err(rev)
+    let prefixes = ctx.template_startup.id_prefix_context();
+    crate::revset::resolve_expression(tx.base_repo().as_ref(), &expression, Some(&prefixes)).map_err(rev)
 }
 
 /// The commits `expression` holds in `repo`, in revset order.

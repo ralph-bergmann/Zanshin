@@ -2065,6 +2065,7 @@ pub(crate) fn absorb(
     let workspace_name = workspace.workspace_name().to_owned();
 
     let mut tx = start_repo_transaction(&readonly, &workspace_name);
+    let prefixes = ctx.template_startup.id_prefix_context();
     let AbsorbPlan {
         source,
         target_commits,
@@ -2074,7 +2075,7 @@ pub(crate) fn absorb(
         workspace,
         ctx,
         from,
-        |repo| resolve_expression(repo, destinations).map_err(rev),
+        |repo| resolve_expression(repo, destinations, Some(&prefixes)).map_err(rev),
         paths,
     )?;
 

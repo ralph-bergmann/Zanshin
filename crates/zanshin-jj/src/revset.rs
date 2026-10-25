@@ -210,6 +210,8 @@ pub struct RevsetErrorDetail {
 /// parse diagnostics (`jj.revset_diagnostic`) are only logged (`tracing::warn!`) and dropped.
 /// [`crate::Repo::eval_revset`] reports them.
 ///
+/// Short id prefixes resolve within the effective `revsets.short-prefixes` set first, as the CLI's.
+///
 /// # Errors
 ///
 /// - [`RevsetError::ParseError`] — syntactically invalid expression or unknown function
@@ -218,7 +220,8 @@ pub struct RevsetErrorDetail {
 ///   (`nonexistent-branch`), no working-copy commit for `@`, or an unmatched/ambiguous id.
 /// - [`RevsetError::Config`] — the repo's effective jj config is malformed or unreadable,
 ///   or a layer's `revset-aliases` is not a table. A single bad alias ENTRY is not an
-///   error: like the CLI, it warns (see above) and is skipped.
+///   error: like the CLI, it warns (see above) and is skipped. Also an effective
+///   `revsets.short-prefixes` that is not a string or does not parse.
 /// - [`RevsetError::JjLibError`] — an internal jj-lib evaluation or backend failure.
 #[must_use = "the resolved change ids are the result of this call"]
 pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetError> {
@@ -226,13 +229,14 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
     let readonly = crate::snapshot::reload_head(repo.workspace()).map_err(RevsetError::JjLibError)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
 
-    // 2. Parse → resolve → evaluate (shared with the graph walk in `graph.rs`). This oracle
-    //    has no warning channel, so its parse warnings are logged and dropped.
+    // 2. Parse → resolve → evaluate (shared with the graph walk in `graph.rs`), symbols through
+    //    the effective `revsets.short-prefixes` id-prefix context as the CLI's. This oracle has
+    //    no warning channel, so its parse warnings are logged and dropped.
     let mut sink = Warnings::default();
-    let parsed = parse_revset(repo, expr, &mut sink);
+    let parsed = parse_with_prefixes(repo, expr, &mut sink);
     crate::warning::log_dropped("resolve_revset", sink.take());
-    let parsed = parsed?;
-    let set = evaluate_revset(repo_dyn, &parsed)?;
+    let (parsed, prefixes) = parsed?;
+    let set = evaluate_revset(repo_dyn, &parsed, Some(&prefixes))?;
 
     // 3. Collect the change-id stream (0.42: `commit_change_ids` returns a Stream — drive it
     //    synchronously via pollster, mirroring the head load above), then
@@ -250,6 +254,26 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
     Ok(out)
 }
 
+/// [`resolve_revset`]'s parse: the effective config loaded once, `revsets.short-prefixes` parsed
+/// into the id-prefix context first (the CLI's start-up order), then `expr`.
+fn parse_with_prefixes(
+    repo: &Repo,
+    expr: &str,
+    sink: &mut Warnings,
+) -> Result<(Arc<UserRevsetExpression>, IdPrefixContext), RevsetError> {
+    let config = crate::config::load(repo)?;
+    let parse_config = revset_config(&config, sink)?;
+    let workspace = repo.workspace();
+    let short = crate::template::load_short_prefixes(
+        (workspace.workspace_root(), workspace.workspace_name()),
+        &parse_config,
+        &config,
+        sink,
+    )?;
+    let parsed = parse_revset_with(repo, &parse_config, expr, sink)?;
+    Ok((parsed, crate::graph::prefix_context(short.as_ref())))
+}
+
 /// Streams the commits `revset` denotes through `visit`, one [`Change`] at a time.
 ///
 /// The generic read primitive of ADR-0003 §5: the commit stream is driven item by item and is
@@ -263,6 +287,9 @@ pub fn resolve_revset(repo: &Repo, expr: &str) -> Result<Vec<ChangeId>, RevsetEr
 /// One row per COMMIT, not per change: unlike [`resolve_revset`], nothing is deduplicated, so a
 /// divergent change contributes one row per visible commit — each carrying the same
 /// [`Change::id`] with `divergent` set. A caller keying rows by change id must handle that.
+///
+/// Symbols resolve through `prefixes`, the call's start-up id-prefix context (the CLI's
+/// `default_symbol_resolver`).
 ///
 /// The five phases mirror [`crate::graph::walk_graph`]: load the effective config once, build
 /// the alias map, parse (no loaded operation needed, so a syntax error costs no head load
@@ -285,6 +312,7 @@ pub(crate) fn eval_revset(
     repo: &Repo,
     sink: &mut Warnings,
     revset: &str,
+    prefixes: &IdPrefixContext,
     mut visit: impl FnMut(Change) -> ControlFlow<()>,
 ) -> Result<ControlFlow<()>, RevsetError> {
     // 1. Effective config ONCE per walk (never cached — Story 4.9), then parse against the
@@ -300,7 +328,7 @@ pub(crate) fn eval_revset(
 
     // 3. Evaluate to a lazy revset borrowing `readonly`. The stream is never returned — items
     //    leave through `visit` — which is what keeps that borrow local.
-    let set = evaluate_revset(repo_dyn, &parsed)?;
+    let set = evaluate_revset(repo_dyn, &parsed, Some(prefixes))?;
 
     // 4. Drive the lazy stream into the visitor; stop at the first `Break`. The order is the
     //    RAW revset order (topological, children before parents) — `jj log`'s printed order is
@@ -860,6 +888,8 @@ fn resolution_hints(err: &RevsetResolutionError) -> Vec<String> {
 /// callers that need the expression itself — not the commits it denotes — stop here instead
 /// of going through [`evaluate_revset`].
 ///
+/// `prefixes` as in [`resolve_for_evaluation`].
+///
 /// # Errors
 ///
 /// - [`RevsetError::ResolutionError`] — a symbol cannot be resolved (unknown bookmark/tag,
@@ -867,11 +897,12 @@ fn resolution_hints(err: &RevsetResolutionError) -> Vec<String> {
 pub(crate) fn resolve_expression(
     repo_dyn: &dyn jj_lib::repo::Repo,
     expr: &Arc<UserRevsetExpression>,
+    prefixes: Option<&IdPrefixContext>,
 ) -> Result<Arc<ResolvedRevsetExpression>, RevsetError> {
     // WHY drop the other repos: the CLI's `RevsetExpressionEvaluator::resolve`
     // (`cli/src/revset_util.rs:118-121` @ v0.46.0) does the same — only `evaluate` needs the
     // index `at_operation()` merges in.
-    let (expression, _other_repos) = resolve_for_evaluation(repo_dyn, expr, None)?.into_inner();
+    let (expression, _other_repos) = resolve_for_evaluation(repo_dyn, expr, prefixes)?.into_inner();
     Ok(expression)
 }
 
@@ -880,8 +911,11 @@ pub(crate) fn resolve_expression(
 /// in `repo_dyn`'s index.
 ///
 /// With `prefixes`, short id prefixes resolve within its disambiguation set first — the CLI's
-/// `SymbolResolver::with_id_prefix_context` (`cli/src/revset_util.rs:197-203` @ v0.46.0). Only
-/// the Story 9.25 searches pass one; every other read and verb resolves without it.
+/// `SymbolResolver::with_id_prefix_context` (`cli/src/revset_util.rs:197-203` @ v0.46.0), which
+/// every user or config revset the CLI evaluates goes through (`attach_revset_evaluator` →
+/// `default_symbol_resolver`, `cli/src/cli_util.rs:1905-1921`). `None` only where the CLI uses a
+/// plain resolver; a set that fails to populate refuses only an id-prefix-shaped symbol (commit
+/// or change id; jj-lib's `RevsetResolutionError::Other`).
 pub(crate) fn resolve_for_evaluation<'r>(
     repo_dyn: &'r dyn jj_lib::repo::Repo,
     expr: &Arc<UserRevsetExpression>,
@@ -901,7 +935,8 @@ pub(crate) fn resolve_for_evaluation<'r>(
 }
 
 /// Resolves the symbols of a parsed expression against `repo_dyn` (a head-resolved
-/// `ReadonlyRepo`, ADR-0002) and evaluates it to a lazy revset borrowing that repo.
+/// `ReadonlyRepo`, ADR-0002) and evaluates it to a lazy revset borrowing that repo. `prefixes` as
+/// in [`resolve_for_evaluation`].
 ///
 /// # Errors
 ///
@@ -911,11 +946,12 @@ pub(crate) fn resolve_for_evaluation<'r>(
 pub(crate) fn evaluate_revset<'r>(
     repo_dyn: &'r dyn jj_lib::repo::Repo,
     expr: &Arc<UserRevsetExpression>,
+    prefixes: Option<&IdPrefixContext>,
 ) -> Result<Box<dyn Revset + 'r>, RevsetError> {
     // `ResolvedRevset::evaluate`, as the CLI's `RevsetExpressionEvaluator::evaluate`
     // (`cli/src/revset_util.rs:134-139` @ v0.46.0): it evaluates against an index merged with
     // the repos an `at_operation()` brought in.
-    resolve_for_evaluation(repo_dyn, expr, None)?
+    resolve_for_evaluation(repo_dyn, expr, prefixes)?
         .evaluate()
         .map_err(|e| RevsetError::JjLibError(e.to_string()))
 }
@@ -1052,7 +1088,9 @@ pub(crate) fn trunk_resolution_error(
         &mut RevsetDiagnostics::new(),
     )
     .ok()?;
-    match resolve_expression(repo, &expression) {
+    // WHY no id-prefix context: `try_resolve_trunk_alias` resolves with a plain
+    // `SymbolResolver::new` (`cli/src/revset_util.rs:237` @ v0.46.0).
+    match resolve_expression(repo, &expression, None) {
         Err(RevsetError::ResolutionError { reason, .. }) => Some(reason),
         _ => None,
     }

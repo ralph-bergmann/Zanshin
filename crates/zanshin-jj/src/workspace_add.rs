@@ -308,9 +308,10 @@ fn resolve_some_revsets(
     revisions: &[String],
 ) -> Result<Vec<JjCommitId>, MutateError> {
     let mut ids: Vec<JjCommitId> = Vec::new();
+    let prefixes = ctx.template_startup.id_prefix_context();
     for revision in revisions {
         let expression = crate::revset::parse_revset(repo, revision, &mut ctx.warnings).map_err(rev)?;
-        let set = crate::revset::evaluate_revset(old_repo.as_ref(), &expression).map_err(rev)?;
+        let set = crate::revset::evaluate_revset(old_repo.as_ref(), &expression, Some(&prefixes)).map_err(rev)?;
         pollster::block_on(async {
             let mut stream = set.stream();
             while let Some(id) = stream.next().await {

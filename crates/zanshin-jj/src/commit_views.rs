@@ -50,6 +50,7 @@ use std::sync::Arc;
 use futures::{StreamExt as _, TryStreamExt as _};
 use jj_lib::commit::Commit;
 use jj_lib::copies::{CopyOperation, CopyRecords};
+use jj_lib::id_prefix::IdPrefixContext;
 use jj_lib::matchers::{EverythingMatcher, Matcher};
 use jj_lib::merged_tree::MergedTree;
 use jj_lib::object_id::ObjectId;
@@ -197,6 +198,8 @@ pub enum CommitViewError {
     RevsetParseError {
         /// Human-readable parse failure from jj-lib.
         reason: String,
+        /// The CLI's hint lines for the error, verbatim and in the CLI's order.
+        hints: Vec<String>,
     },
     /// A revset expression is well-formed but a symbol could not be resolved (unknown
     /// bookmark/tag, missing `@`, unmatched id).
@@ -204,6 +207,10 @@ pub enum CommitViewError {
     RevsetResolutionError {
         /// Human-readable resolution failure from jj-lib.
         reason: String,
+        /// The CLI's hint lines for the error, verbatim and in the CLI's order; empty for the
+        /// change/commit-id resolutions and the missing working copy
+        /// (`ResolveError::NoWorkingCopy`), which have none.
+        hints: Vec<String>,
     },
     /// The repo's effective jj config is unreadable or malformed, so the revset aliases
     /// [`show`]/[`evolog`] parse against could not be built. Reported separately from
@@ -230,8 +237,14 @@ fn be<E: std::fmt::Display>(e: E) -> CommitViewError {
 /// the mutation side.
 fn rev(e: crate::RevsetError) -> CommitViewError {
     match e {
-        crate::RevsetError::ParseError { reason, .. } => CommitViewError::RevsetParseError { reason },
-        crate::RevsetError::ResolutionError { reason, .. } => CommitViewError::RevsetResolutionError { reason },
+        crate::RevsetError::ParseError { reason, detail } => CommitViewError::RevsetParseError {
+            reason,
+            hints: detail.hints,
+        },
+        crate::RevsetError::ResolutionError { reason, detail } => CommitViewError::RevsetResolutionError {
+            reason,
+            hints: detail.hints,
+        },
         crate::RevsetError::Config(inner) => CommitViewError::Config {
             reason: inner.to_string(),
         },
@@ -249,7 +262,10 @@ fn res(e: ResolveError, id: Option<&ChangeId>) -> CommitViewError {
         ResolveError::NotFound => CommitViewError::ChangeNotFound {
             id: id.map(|i| i.0.clone()).unwrap_or_default(),
         },
-        ResolveError::NoWorkingCopy(reason) => CommitViewError::RevsetResolutionError { reason },
+        ResolveError::NoWorkingCopy(reason) => CommitViewError::RevsetResolutionError {
+            reason,
+            hints: Vec::new(),
+        },
         ResolveError::Backend(reason) => CommitViewError::Backend(reason),
     }
 }
@@ -274,6 +290,7 @@ fn res_commit(e: CommitPrefixError, id: &CommitId) -> CommitViewError {
         // prefix is echoed back as the caller wrote it.
         CommitPrefixError::Ambiguous => CommitViewError::RevsetResolutionError {
             reason: jj_lib::revset::RevsetResolutionError::AmbiguousCommitIdPrefix(id.0.clone()).to_string(),
+            hints: Vec::new(),
         },
         CommitPrefixError::NotFound => CommitViewError::ChangeNotFound { id: id.0.clone() },
         CommitPrefixError::Backend(reason) => CommitViewError::Backend(reason),
@@ -406,6 +423,8 @@ async fn copy_records_over_all_parents(store: &Arc<Store>, commit: &Commit) -> R
 /// short of them and errors without one. That is the price of the early stop, and [`evolog`]'s
 /// `take` has carried the same property since Story 9.6.
 ///
+/// `revset`'s symbols resolve through `prefixes`, the call's start-up id-prefix context.
+///
 /// # Errors
 ///
 /// - [`CommitViewError::RevsetParseError`] — `revset` is syntactically invalid; raised before
@@ -419,6 +438,7 @@ pub(crate) fn show(
     sink: &mut crate::warning::Warnings,
     revset: Option<&str>,
     limit: Option<usize>,
+    prefixes: &IdPrefixContext,
 ) -> Result<Vec<ShowEntry>, CommitViewError> {
     // Parse first: a syntax error costs no head-load I/O (the `eval_revset` ordering).
     let parsed = crate::revset::parse_revset(repo, revset.unwrap_or("@"), sink).map_err(rev)?;
@@ -427,7 +447,7 @@ pub(crate) fn show(
     let readonly = crate::snapshot::reload_head(repo.workspace()).map_err(be)?;
     let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
     let store = readonly.store();
-    let set = crate::revset::evaluate_revset(repo_dyn, &parsed).map_err(rev)?;
+    let set = crate::revset::evaluate_revset(repo_dyn, &parsed, Some(prefixes)).map_err(rev)?;
 
     let mut out = Vec::new();
     pollster::block_on(async {
@@ -466,7 +486,7 @@ pub(crate) fn show(
 /// Ports `cli/src/commands/evolog.rs::cmd_evolog` @ v0.44.0 in its `--no-graph` shape: the
 /// start set is the UNION of the CLI's `-r` revsets (default `@`) evaluated to commit ids, and
 /// `limit` is `take(limit)` applied in walk order — the CLI limits BEFORE reversing, and the
-/// reversal itself is rendering.
+/// reversal itself is rendering. `revset`'s symbols resolve through `prefixes`, as in [`show`].
 ///
 /// # Errors
 ///
@@ -481,6 +501,7 @@ pub(crate) fn evolog(
     sink: &mut crate::warning::Warnings,
     revset: Option<&str>,
     limit: Option<usize>,
+    prefixes: &IdPrefixContext,
 ) -> Result<Vec<EvologEntry>, CommitViewError> {
     let parsed = crate::revset::parse_revset(repo, revset.unwrap_or("@"), sink).map_err(rev)?;
     let readonly = crate::snapshot::reload_head(repo.workspace()).map_err(be)?;
@@ -489,7 +510,7 @@ pub(crate) fn evolog(
     // commit id, and a change's predecessors all share its change id anyway.
     let start_ids: Vec<jj_lib::backend::CommitId> = {
         let repo_dyn: &dyn jj_lib::repo::Repo = readonly.as_ref();
-        let set = crate::revset::evaluate_revset(repo_dyn, &parsed).map_err(rev)?;
+        let set = crate::revset::evaluate_revset(repo_dyn, &parsed, Some(prefixes)).map_err(rev)?;
         pollster::block_on(set.stream().try_collect()).map_err(be)?
     };
 
@@ -630,19 +651,25 @@ mod tests {
     /// fixture provokes deterministically.
     #[test]
     fn rev_preserves_the_three_stage_revset_taxonomy() {
+        let hinted = |kind| {
+            Box::new(crate::revset::RevsetErrorDetail {
+                hints: vec!["h".to_owned()],
+                ..crate::revset::RevsetErrorDetail::bare(kind)
+            })
+        };
         assert!(matches!(
             rev(RevsetError::ParseError {
                 reason: "bad".to_owned(),
-                detail: Box::new(crate::revset::RevsetErrorDetail::bare(crate::RevsetErrorKind::SyntaxError)),
+                detail: hinted(crate::RevsetErrorKind::SyntaxError),
             }),
-            CommitViewError::RevsetParseError { reason } if reason == "bad"
+            CommitViewError::RevsetParseError { reason, hints } if reason == "bad" && hints == ["h"]
         ));
         assert!(matches!(
             rev(RevsetError::ResolutionError {
                 reason: "no such bookmark".to_owned(),
-                detail: Box::new(crate::revset::RevsetErrorDetail::bare(crate::RevsetErrorKind::NoSuchRevision)),
+                detail: hinted(crate::RevsetErrorKind::NoSuchRevision),
             }),
-            CommitViewError::RevsetResolutionError { reason } if reason == "no such bookmark"
+            CommitViewError::RevsetResolutionError { reason, hints } if reason == "no such bookmark" && hints == ["h"]
         ));
         assert!(matches!(
             rev(RevsetError::Config(ConfigError::Load {
@@ -703,8 +730,8 @@ mod tests {
         ));
         assert!(matches!(
             res_commit(CommitPrefixError::Ambiguous, &id),
-            CommitViewError::RevsetResolutionError { reason }
-                if reason.contains("abc") && reason.contains("ambiguous")
+            CommitViewError::RevsetResolutionError { reason, hints }
+                if reason.contains("abc") && reason.contains("ambiguous") && hints.is_empty()
         ));
         assert!(matches!(
             res_commit(CommitPrefixError::NotFound, &id),

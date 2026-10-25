@@ -243,7 +243,7 @@ fn an_omitted_revision_without_a_working_copy_commit_is_the_clis_user_error() {
         other => panic!("file list: expected InvalidInput, got {other:?}"),
     }
     match repo.interdiff(Some(RevisionRef::ChangeId(ChangeId(a.0.clone()))), None, &[]) {
-        Err(CommitViewError::RevsetResolutionError { reason }) => assert_eq!(reason, NO_WC, "interdiff"),
+        Err(CommitViewError::RevsetResolutionError { reason, .. }) => assert_eq!(reason, NO_WC, "interdiff"),
         other => panic!("interdiff: expected RevsetResolutionError, got {other:?}"),
     }
     let message = MetaeditOptions {

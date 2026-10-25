@@ -3066,6 +3066,59 @@ fn bookmark_move_scenarios() -> Vec<Scenario> {
                 },
             )
         },
+        // `--from` B's one-hex-char commit-id prefix, unique within `revsets.short-prefixes =
+        // b-mark` but ambiguous in the full index (Story 9.25 closing run). Ids are random per
+        // repo, so the index gets 256 HIDDEN commits (duplicated, then abandoned): a commit-id
+        // prefix resolves over every indexed commit, and the chance none shares B's first hex
+        // char is (15/16)^256 ≈ 7e-8. Hidden commits get no labels, so they cannot clash.
+        Scenario {
+            setup: &[
+                Step::Jj(&["config", "set", "--repo", "revsets.short-prefixes", "b-mark"]),
+                Step::Jj(&["new", "--no-edit", "root()", "-m", "E"]),
+                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+                Step::Jj(&["duplicate", r#"subject(exact:"E")"#]),
+                Step::Jj(&["abandon", r#"subject(exact:"E")"#]),
+            ],
+            ..simple(
+                "bookmark_move_from_short_prefix",
+                |repo, root, s| {
+                    let b = s.commit_arg("B");
+                    let prefix = &b[..1];
+                    let (_, readonly) = load_workspace(root);
+                    let hex = jj_lib::object_id::HexPrefix::try_from_hex(prefix).expect("hex");
+                    assert_eq!(
+                        pollster::block_on(readonly.index().resolve_commit_id_prefix(&hex)).expect("index"),
+                        jj_lib::object_id::PrefixResolution::AmbiguousMatch,
+                        "B's prefix {prefix} must be ambiguous in the full index"
+                    );
+                    let options = BookmarkMoveOptions {
+                        from: vec![prefix.to_owned()],
+                        to: Some(s.change("C")),
+                        ..Default::default()
+                    };
+                    let result = repo.bookmark_move(&options);
+                    // Both sides refusing "ambiguous" would compare equal: the witness is the move.
+                    assert!(result.is_ok(), "the prefix must resolve within the context: {result:?}");
+                    zanshin_outcome(repo, &result)
+                },
+                |s| {
+                    vec![
+                        "bookmark".into(),
+                        "move".into(),
+                        "--from".into(),
+                        s.commit_arg("B")[..1].to_owned(),
+                        "--to".into(),
+                        s.change_arg("C"),
+                    ]
+                },
+            )
+        },
         // Names AND `--from`: `a-mark` is named but not on B, so only `b-mark` moves.
         Scenario {
             setup: &[

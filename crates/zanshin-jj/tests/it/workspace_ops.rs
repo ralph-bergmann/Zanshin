@@ -111,7 +111,7 @@ fn forget_the_current_workspace_then_at_defaults_refuse_with_the_clis_text() {
     let root = RevisionRef::ChangeId(ChangeId("z".repeat(32)));
     let err = repo.interdiff(Some(root), None, &[]).expect_err("no @");
     assert!(
-        matches!(&err, CommitViewError::RevsetResolutionError { reason } if reason == NO_WC),
+        matches!(&err, CommitViewError::RevsetResolutionError { reason, .. } if reason == NO_WC),
         "{err:?}"
     );
 }

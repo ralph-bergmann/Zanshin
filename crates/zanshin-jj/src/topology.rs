@@ -161,7 +161,7 @@ pub(crate) fn graph_topology(
     let anchor_ids = anchor_exprs
         .iter()
         .map(|expr| {
-            let set = evaluate_revset(repo_dyn, expr)?;
+            let set = evaluate_revset(repo_dyn, expr, Some(&setup.prefix_ctx))?;
             pollster::block_on(set.stream().try_collect::<Vec<_>>()).map_err(jj)
         })
         .collect::<Result<Vec<_>, RevsetError>>()?;
