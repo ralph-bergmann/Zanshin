@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../ffi/precondition.dart' show Precondition;
+import '../ffi/revset_search.dart' show RevsetErrorDetail, RevsetSpan;
 import '../ffi/warning.dart' show ZanshinWarning;
 import '../graph_layout/layout_request.dart' show LayoutContractException;
 
@@ -106,7 +107,8 @@ final class ZanshinFfiException implements Exception {
     : precondition = null,
       warnings = const [],
       hints = const [],
-      leftBehind = const [];
+      leftBehind = const [],
+      revsetError = null;
 
   /// An exception with a report — the shape every error envelope decodes to,
   /// the worker-built ones (`ffi.invalid_handle`, `internal.dispatch_error`)
@@ -114,8 +116,9 @@ final class ZanshinFfiException implements Exception {
   /// in wire order (the CLI's print order), empty when there were none, and
   /// the error's [hints] (Story 9.56), empty when it has none, and what a
   /// failed creation left on disk ([leftBehind], Stories 9.57/9.58), empty
-  /// otherwise. Keeps the [warnings], [hints] and [leftBehind] lists it is
-  /// given as is.
+  /// otherwise, and a revset error's structured [revsetError] (Story 9.25),
+  /// `null` otherwise. Keeps the [warnings], [hints] and [leftBehind] lists it
+  /// is given as is.
   const ZanshinFfiException.withReport(
     this.code,
     this.context, {
@@ -123,6 +126,7 @@ final class ZanshinFfiException implements Exception {
     required this.warnings,
     this.hints = const [],
     this.leftBehind = const [],
+    this.revsetError,
   });
 
   /// Machine-readable error code, e.g. `jj.repo_not_found`.
@@ -167,6 +171,12 @@ final class ZanshinFfiException implements Exception {
   /// envelope.
   final List<String> leftBehind;
 
+  /// The structured form of a `jj.revset_parse_error` /
+  /// `jj.revset_resolution_error` (Story 9.25) — kind, byte span, the named
+  /// symbol and jj-lib's similar names — from `graphTopology`, `findChanges`
+  /// and a `revsetCounts` entry's own error; `null` for every other error.
+  final RevsetErrorDetail? revsetError;
+
   @override
   String toString() {
     final buf = StringBuffer('ZanshinFfiException($code');
@@ -178,6 +188,17 @@ final class ZanshinFfiException implements Exception {
     }
     if (leftBehind.isNotEmpty) {
       buf.write('; left behind: ${leftBehind.join(' | ')}');
+    }
+    final RevsetErrorDetail? revset = revsetError;
+    if (revset != null) {
+      buf.write('; revset: ${revset.kind.name}');
+      final RevsetSpan? span = revset.span;
+      if (span != null) {
+        buf.write(' at ${span.offset}+${span.length ?? '?'}');
+      }
+      if (revset.symbol != null) {
+        buf.write(' `${revset.symbol}`');
+      }
     }
     buf.write(')');
     return buf.toString();

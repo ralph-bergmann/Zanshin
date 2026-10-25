@@ -63,6 +63,7 @@ pub mod remotes;
 pub mod repo;
 pub mod resolve;
 pub mod revert;
+pub mod revset_search;
 pub mod select_tree;
 pub mod snapshot;
 pub mod squash_split;

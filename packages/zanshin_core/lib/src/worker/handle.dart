@@ -29,6 +29,7 @@ import '../ffi/push.dart' show GitPushResult;
 import '../ffi/rebase.dart' show ArrangeAction, SimplifyParentsResult, SwapDownAction, SwapUpAction;
 import '../ffi/remotes.dart' show Remote, RemoteRefChange;
 import '../ffi/resolve.dart' show ResolveFiles, ResolveList, ResolveOurs, ResolveTheirs, ResolveTool;
+import '../ffi/revset_search.dart' show FoundChanges, RevsetCount, RevsetCounts;
 import '../ffi/select_tree.dart' show FileSelection, SelectedTree, SourceTree, TreeSelection;
 import '../ffi/squash_split.dart' show SplitResult, SquashPlan;
 import '../ffi/status.dart' show WorkingCopyStatus;
@@ -87,7 +88,8 @@ final class RepoHandle {
   /// handle that carried one — ok OR error — or `null` before the first.
   ///
   /// Every snapshotting verb (all reads and mutations except [logDefaults],
-  /// [workspaceRoot] and the op-pinned [commitContents], Story 4.10) first
+  /// [workspaceRoot], the op-pinned [commitContents], Story 4.10, and the
+  /// op-pinned searches [revsetCounts] / [findChanges], Story 9.25) first
   /// snapshots the working copy and, in a colocated
   /// workspace, imports the Git HEAD and refs, exactly as each jj CLI command
   /// does. That can write operations the caller did not ask for; this is where
@@ -434,6 +436,68 @@ final class RepoHandle {
       throw StateError('RepoHandle is already closed');
     }
     return _worker.commitContents(_handleId, operationId: operationId, commitIds: commitIds);
+  }
+
+  /// Count the commits each revset in [expressions] denotes at the PINNED
+  /// [operationId], each capped at [cap] (Story 9.25) — the graph search's
+  /// "N changes".
+  ///
+  /// Pass the `operationId` the shown topology carries. Like [commitContents]
+  /// it runs no pre-verb snapshot, so [lastPrecondition] is left unchanged, and
+  /// writes no operation. Each expression parses as every revset here and
+  /// resolves with the effective `revsets.short-prefixes`, as the CLI. With
+  /// `cap > 0` each count reads at most `cap + 1` commits (`n` at most [cap],
+  /// `capped` when there were more); `cap == 0` parses and resolves only. An
+  /// expression that does not parse or resolve carries its own
+  /// [RevsetCount.error] (with `hints` and `revsetError`) and fails nothing
+  /// else; the parse diagnostics are the result's `warnings`.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ArgumentError] if a string contains an interior NUL (U+0000) or
+  /// [cap] is negative. Throws [ZanshinFfiException] on call-level faults
+  /// (`ffi.invalid_handle`, `jj.invalid_input`, `jj.operation_not_found`,
+  /// `jj.config_error`, `jj.jj_lib_error`).
+  Future<RevsetCounts> revsetCounts(String operationId, List<String> expressions, {required int cap}) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.revsetCounts(_handleId, operationId: operationId, expressions: expressions, cap: cap);
+  }
+
+  /// List at most [limit] commits [expression] denotes at the PINNED
+  /// [operationId], in the revset's iteration order (`jj log --no-graph`'s),
+  /// each with its commit and change id and both shortest-prefix lengths
+  /// (Story 9.25) — the graph search's go-to beyond the view.
+  ///
+  /// [shortPrefixes] is a pass-through: it disambiguates the expression's
+  /// symbols AND gives the prefix lengths; empty disables disambiguation (the
+  /// full index), as in [graphTopology]. `truncated` says there were more than
+  /// [limit]. An ambiguous prefix throws `jj.revset_resolution_error`; an
+  /// unmatched one finds nothing. Runs no pre-verb snapshot, so
+  /// [lastPrecondition] is left unchanged.
+  ///
+  /// Throws [StateError] synchronously if the handle is already [_closed].
+  /// Throws [ArgumentError] if a string contains an interior NUL (U+0000) or
+  /// [limit] is negative. Throws [ZanshinFfiException] on FFI errors
+  /// (`ffi.invalid_handle`, `jj.invalid_input`, `jj.operation_not_found`,
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error` — both with
+  /// `revsetError` — `jj.config_error`, `jj.jj_lib_error`).
+  Future<FoundChanges> findChanges(
+    String operationId,
+    String expression, {
+    required int limit,
+    required String shortPrefixes,
+  }) {
+    if (_closed) {
+      throw StateError('RepoHandle is already closed');
+    }
+    return _worker.findChanges(
+      _handleId,
+      operationId: operationId,
+      expression: expression,
+      limit: limit,
+      shortPrefixes: shortPrefixes,
+    );
   }
 
   /// Rewrite the description of [changeId] to [description] (Story 6.5). The

@@ -293,7 +293,7 @@ impl CommitMeta {
 }
 
 /// Narrows a jj-lib prefix length to the wire's `u32`.
-fn prefix_len<E: std::fmt::Display>(len: Result<usize, E>) -> Result<u32, RevsetError> {
+pub(crate) fn prefix_len<E: std::fmt::Display>(len: Result<usize, E>) -> Result<u32, RevsetError> {
     let len = len.map_err(jj)?;
     // A hex id is at most 64 chars, so this conversion cannot fail in practice; a
     // saturating fallback keeps the row renderable instead of failing the whole call.

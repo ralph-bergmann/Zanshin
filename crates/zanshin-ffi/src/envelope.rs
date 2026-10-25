@@ -541,6 +541,9 @@ pub struct CallReport {
     /// The paths a failed init or conversion created and left, outermost first; empty (every
     /// other call) writes no `left_behind` vector.
     pub left_behind: Vec<String>,
+    /// The structured detail of a revset parse or resolution error (Story 9.25), written as
+    /// `FfiError.revset` by the error writer only; `None` (no field) everywhere else.
+    pub revset: Option<zanshin_jj::RevsetErrorDetail>,
 }
 
 impl CallReport {
@@ -559,6 +562,16 @@ impl CallReport {
             precondition: repo.take_precondition(),
             warnings: repo.take_warnings(),
             left_behind: Vec::new(),
+            revset: None,
+        }
+    }
+
+    /// The report of an error that carries only a revset error's detail (Story 9.25).
+    #[must_use]
+    pub fn revset(detail: zanshin_jj::RevsetErrorDetail) -> Self {
+        Self {
+            revset: Some(detail),
+            ..Self::default()
         }
     }
 }
@@ -581,9 +594,13 @@ pub struct FfiErrorObj {
 }
 
 impl FfiErrorObj {
-    /// Attaches the report the failed verb left behind (Stories 9.26 and 9.32).
+    /// Attaches the report the failed verb left behind (Stories 9.26 and 9.32). A revset detail
+    /// the error's mapper already set (Story 9.25) is kept.
     #[must_use]
-    pub fn with_report(mut self, report: CallReport) -> Self {
+    pub fn with_report(mut self, mut report: CallReport) -> Self {
+        if let Some(previous) = self.report.take() {
+            report.revset = report.revset.or(previous.revset);
+        }
         self.report = Some(Box::new(report));
         self
     }
@@ -1229,7 +1246,7 @@ fn build_action_outcome<'a>(
     let refusal = outcome
         .refusal
         .as_ref()
-        .map(|e| build_ffi_error(b, &e.code, e.context.as_deref(), &e.hints, &[]));
+        .map(|e| build_ffi_error(b, &e.code, e.context.as_deref(), &e.hints, &[], None));
     fbs::ActionOutcome::create(
         b,
         &fbs::ActionOutcomeArgs {
@@ -1391,18 +1408,21 @@ fn build_warnings<'a>(
 
 /// Builds one `FfiError` table. `hints` empty writes no `hints` vector (Story 9.56: absent =
 /// none) and `left_behind` empty no `left_behind` vector (Story 9.57), so an error with neither
-/// keeps its pre-9.56 bytes — [`PANIC_FALLBACK_ENVELOPE`] included.
-fn build_ffi_error<'a>(
+/// keeps its pre-9.56 bytes — [`PANIC_FALLBACK_ENVELOPE`] included. `revset` `None` writes no
+/// `revset` table (Story 9.25).
+pub(crate) fn build_ffi_error<'a>(
     b: &mut FlatBufferBuilder<'a>,
     code: &str,
     context: Option<&str>,
     hints: &[String],
     left_behind: &[String],
+    revset: Option<&zanshin_jj::RevsetErrorDetail>,
 ) -> flatbuffers::WIPOffset<fbs::FfiError<'a>> {
     let code = b.create_string(code);
     let context = context.map(|c| b.create_string(c));
     let hints = build_strings(b, hints);
     let left_behind = build_strings(b, left_behind);
+    let revset = revset.map(|detail| build_revset_detail(b, detail));
     fbs::FfiError::create(
         b,
         &fbs::FfiErrorArgs {
@@ -1410,8 +1430,67 @@ fn build_ffi_error<'a>(
             context,
             hints,
             left_behind,
+            revset,
         },
     )
+}
+
+/// Builds one `RevsetErrorDetail` table (Story 9.25).
+fn build_revset_detail<'a>(
+    b: &mut FlatBufferBuilder<'a>,
+    detail: &zanshin_jj::RevsetErrorDetail,
+) -> flatbuffers::WIPOffset<fbs::RevsetErrorDetail<'a>> {
+    let span = detail.span.map(|span| {
+        let length = span.length.map(fbs::RevsetSpanLength::new);
+        fbs::RevsetSpan::create(
+            b,
+            &fbs::RevsetSpanArgs {
+                offset: span.offset,
+                length: length.as_ref(),
+            },
+        )
+    });
+    let symbol = detail.symbol.as_deref().map(|s| b.create_string(s));
+    let candidates = build_strings(b, &detail.candidates);
+    fbs::RevsetErrorDetail::create(
+        b,
+        &fbs::RevsetErrorDetailArgs {
+            kind: revset_error_kind(detail.kind),
+            span,
+            symbol,
+            candidates,
+        },
+    )
+}
+
+/// The wire form of a [`zanshin_jj::RevsetErrorKind`], one to one.
+fn revset_error_kind(kind: zanshin_jj::RevsetErrorKind) -> fbs::RevsetErrorKind {
+    use fbs::RevsetErrorKind as W;
+    use zanshin_jj::RevsetErrorKind as K;
+    match kind {
+        K::SyntaxError => W::SyntaxError,
+        K::NotPrefixOperator => W::NotPrefixOperator,
+        K::NotPostfixOperator => W::NotPostfixOperator,
+        K::NotInfixOperator => W::NotInfixOperator,
+        K::NoSuchFunction => W::NoSuchFunction,
+        K::InvalidFunctionArguments => W::InvalidFunctionArguments,
+        K::FsPathWithoutWorkspace => W::FsPathWithoutWorkspace,
+        K::WorkingCopyWithoutWorkspace => W::WorkingCopyWithoutWorkspace,
+        K::RedefinedFunctionParameter => W::RedefinedFunctionParameter,
+        K::Expression => W::Expression,
+        K::InAliasExpansion => W::InAliasExpansion,
+        K::InParameterExpansion => W::InParameterExpansion,
+        K::RecursiveAlias => W::RecursiveAlias,
+        K::NoSuchRevision => W::NoSuchRevision,
+        K::WorkspaceMissingWorkingCopy => W::WorkspaceMissingWorkingCopy,
+        K::EmptyString => W::EmptyString,
+        K::AmbiguousCommitIdPrefix => W::AmbiguousCommitIdPrefix,
+        K::AmbiguousChangeIdPrefix => W::AmbiguousChangeIdPrefix,
+        K::DivergentChangeId => W::DivergentChangeId,
+        K::ConflictedRef => W::ConflictedRef,
+        K::Backend => W::Backend,
+        K::Other => W::Other,
+    }
 }
 
 /// A `[string]` vector of `strings`, in order; `None` (no field) when there are none.
@@ -1447,7 +1526,8 @@ pub fn err(code: &str, context: Option<&str>) -> Vec<u8> {
 pub fn err_with_report(code: &str, context: Option<&str>, hints: &[String], report: Option<&CallReport>) -> Vec<u8> {
     let mut b = FlatBufferBuilder::with_capacity(256);
     let left_behind = report.map_or(&[][..], |r| r.left_behind.as_slice());
-    let error = build_ffi_error(&mut b, code, context, hints, left_behind);
+    let revset = report.and_then(|r| r.revset.as_ref());
+    let error = build_ffi_error(&mut b, code, context, hints, left_behind, revset);
     let precondition = report
         .and_then(|r| r.precondition.as_ref())
         .map(|p| crate::snapshot::build_precondition(&mut b, p));
@@ -1563,6 +1643,7 @@ mod tests {
                 warning(zanshin_jj::WarningKind::IdentityMissing, "identity"),
             ],
             left_behind: Vec::new(),
+            revset: None,
         };
         let buf = ok_repo_handle(1, 2, &report);
         let env = verified_envelope(&buf);
@@ -1664,6 +1745,7 @@ mod tests {
                 warning(zanshin_jj::WarningKind::IdentityMissing, "second"),
             ],
             left_behind: Vec::new(),
+            revset: None,
         };
         let buf = ok_mutation_result(&sample_mutation_result(), &report);
         let env = verified_envelope(&buf);
@@ -2488,6 +2570,98 @@ mod tests {
         assert_eq!(left, ["/w", "/w/.jj"]);
         let hints: Vec<&str> = error.hints().expect("hints").iter().collect();
         assert_eq!(hints, ["h"], "the hints ride beside it untouched");
+    }
+
+    /// Story 9.25: a revset detail rides as `FfiError.revset` with every kind one to one, and
+    /// `with_report` keeps the detail the mapper set; no detail writes no field.
+    #[test]
+    fn a_revset_detail_rides_the_error_and_survives_the_verbs_report() {
+        use zanshin_jj::RevsetErrorKind as K;
+        let detail = |kind| zanshin_jj::RevsetErrorDetail {
+            kind,
+            span: Some(zanshin_jj::RevsetSpan {
+                offset: 1,
+                length: Some(2),
+            }),
+            symbol: None,
+            candidates: Vec::new(),
+            hints: Vec::new(),
+        };
+        let kinds = [
+            (K::SyntaxError, fbs::RevsetErrorKind::SyntaxError),
+            (K::NotPrefixOperator, fbs::RevsetErrorKind::NotPrefixOperator),
+            (K::NotPostfixOperator, fbs::RevsetErrorKind::NotPostfixOperator),
+            (K::NotInfixOperator, fbs::RevsetErrorKind::NotInfixOperator),
+            (K::NoSuchFunction, fbs::RevsetErrorKind::NoSuchFunction),
+            (
+                K::InvalidFunctionArguments,
+                fbs::RevsetErrorKind::InvalidFunctionArguments,
+            ),
+            (K::FsPathWithoutWorkspace, fbs::RevsetErrorKind::FsPathWithoutWorkspace),
+            (
+                K::WorkingCopyWithoutWorkspace,
+                fbs::RevsetErrorKind::WorkingCopyWithoutWorkspace,
+            ),
+            (
+                K::RedefinedFunctionParameter,
+                fbs::RevsetErrorKind::RedefinedFunctionParameter,
+            ),
+            (K::Expression, fbs::RevsetErrorKind::Expression),
+            (K::InAliasExpansion, fbs::RevsetErrorKind::InAliasExpansion),
+            (K::InParameterExpansion, fbs::RevsetErrorKind::InParameterExpansion),
+            (K::RecursiveAlias, fbs::RevsetErrorKind::RecursiveAlias),
+            (K::NoSuchRevision, fbs::RevsetErrorKind::NoSuchRevision),
+            (
+                K::WorkspaceMissingWorkingCopy,
+                fbs::RevsetErrorKind::WorkspaceMissingWorkingCopy,
+            ),
+            (K::EmptyString, fbs::RevsetErrorKind::EmptyString),
+            (
+                K::AmbiguousCommitIdPrefix,
+                fbs::RevsetErrorKind::AmbiguousCommitIdPrefix,
+            ),
+            (
+                K::AmbiguousChangeIdPrefix,
+                fbs::RevsetErrorKind::AmbiguousChangeIdPrefix,
+            ),
+            (K::DivergentChangeId, fbs::RevsetErrorKind::DivergentChangeId),
+            (K::ConflictedRef, fbs::RevsetErrorKind::ConflictedRef),
+            (K::Backend, fbs::RevsetErrorKind::Backend),
+            (K::Other, fbs::RevsetErrorKind::Other),
+        ];
+        for (kind, wire) in kinds {
+            let buf = err_with_report("jj.x", None, &[], Some(&CallReport::revset(detail(kind))));
+            let revset = verified_envelope(&buf)
+                .error()
+                .expect("error")
+                .revset()
+                .expect("revset");
+            assert_eq!(revset.kind(), wire);
+            let span = revset.span().expect("span");
+            assert_eq!(
+                (span.offset(), span.length().map(fbs::RevsetSpanLength::value)),
+                (1, Some(2))
+            );
+        }
+
+        let mapped = FfiErrorObj {
+            code: "jj.x".to_owned(),
+            context: None,
+            report: Some(Box::new(CallReport::revset(detail(K::Other)))),
+            hints: Vec::new(),
+        }
+        .with_report(CallReport::warnings(vec![zanshin_jj::Warning {
+            kind: zanshin_jj::WarningKind::RevsetDiagnostic,
+            message: "w".to_owned(),
+        }]));
+        let report = mapped.report.expect("report");
+        assert_eq!(report.revset, Some(detail(K::Other)), "kept");
+        assert_eq!(report.warnings.len(), 1, "the verb's report attached");
+        assert!(verified_envelope(&err("jj.x", None))
+            .error()
+            .expect("error")
+            .revset()
+            .is_none());
     }
 
     /// `catch` writes an `FfiErrorObj`'s hints on its error envelope (Story 9.56).

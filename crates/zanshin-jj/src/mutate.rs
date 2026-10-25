@@ -610,8 +610,14 @@ pub(crate) fn cfg<E: std::fmt::Display>(e: E) -> MutateError {
 /// failure the same way this module classifies `resolve_expression`'s.
 pub(crate) fn rev(e: crate::RevsetError) -> MutateError {
     match e {
-        crate::RevsetError::ParseError { reason } => MutateError::RevsetParseError { reason, hints: vec![] },
-        crate::RevsetError::ResolutionError { reason } => MutateError::RevsetResolutionError { reason, hints: vec![] },
+        crate::RevsetError::ParseError { reason, detail } => MutateError::RevsetParseError {
+            reason,
+            hints: detail.hints,
+        },
+        crate::RevsetError::ResolutionError { reason, detail } => MutateError::RevsetResolutionError {
+            reason,
+            hints: detail.hints,
+        },
         crate::RevsetError::Config(inner) => cfg(inner),
         crate::RevsetError::JjLibError(reason) => MutateError::Backend(reason),
         crate::RevsetError::Precondition(inner) => MutateError::Precondition(inner),
@@ -2269,11 +2275,20 @@ mod tests {
     #[test]
     fn rev_preserves_the_three_stage_revset_taxonomy() {
         assert!(matches!(
-            rev(RevsetError::ParseError { reason: "p".to_owned() }),
-            MutateError::RevsetParseError { reason, hints } if reason == "p" && hints.is_empty()
+            rev(RevsetError::ParseError {
+                reason: "p".to_owned(),
+                detail: Box::new(crate::revset::RevsetErrorDetail {
+                    hints: vec!["h".to_owned()],
+                    ..crate::revset::RevsetErrorDetail::bare(crate::RevsetErrorKind::SyntaxError)
+                }),
+            }),
+            MutateError::RevsetParseError { reason, hints } if reason == "p" && hints == ["h"]
         ));
         assert!(matches!(
-            rev(RevsetError::ResolutionError { reason: "r".to_owned() }),
+            rev(RevsetError::ResolutionError {
+                reason: "r".to_owned(),
+                detail: Box::new(crate::revset::RevsetErrorDetail::bare(crate::RevsetErrorKind::NoSuchRevision)),
+            }),
             MutateError::RevsetResolutionError { reason, hints } if reason == "r" && hints.is_empty()
         ));
         assert!(matches!(

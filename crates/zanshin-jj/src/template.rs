@@ -503,7 +503,7 @@ pub(crate) fn write_hidden(builder: &DetachedCommitBuilder) -> Result<Commit, Mu
 /// The reason of a failed revset parse, without [`crate::RevsetError`]'s own prefix.
 pub(crate) fn parse_reason(error: crate::RevsetError) -> String {
     match error {
-        crate::RevsetError::ParseError { reason } => reason,
+        crate::RevsetError::ParseError { reason, .. } => reason,
         other => other.to_string(),
     }
 }

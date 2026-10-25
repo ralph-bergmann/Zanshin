@@ -51,6 +51,7 @@ import '../ffi/repo_detect.dart' as repo_ffi_detect;
 import '../ffi/request_bytes.dart';
 import '../ffi/resolve.dart' as repo_ffi_resolve;
 import '../ffi/revert.dart' as repo_ffi_revert;
+import '../ffi/revset_search.dart' as repo_ffi_revset_search;
 import '../ffi/select_tree.dart' as repo_ffi_select_tree;
 import '../ffi/squash_split.dart' as repo_ffi_squash_split;
 import '../ffi/status.dart' as repo_ffi_status;
@@ -2865,6 +2866,78 @@ class ZanshinWorker {
     return repo_ffi_commit_contents.decodeCommitContentsEnvelopeInternal(bytes);
   }
 
+  /// Count each revset in [expressions] at the PINNED operation [operationId],
+  /// capped at [cap], in the repo identified by [handleId] (Story 9.25).
+  ///
+  /// Runs no pre-verb snapshot (so `lastPrecondition` is untouched) and writes
+  /// no operation. An expression that does not parse or resolve carries its
+  /// own `RevsetCount.error`; only call-level faults throw.
+  ///
+  /// Throws [ArgumentError] if [operationId] or an expression contains an
+  /// interior NUL (U+0000), or if [cap] is negative. Throws
+  /// [ZanshinFfiException] on FFI errors (e.g. `ffi.invalid_handle`,
+  /// `jj.invalid_input`, `jj.operation_not_found`, `jj.config_error`,
+  /// `jj.jj_lib_error`). Completes with a [StateError] after [close].
+  Future<repo_ffi_revset_search.RevsetCounts> revsetCounts(
+    int handleId, {
+    required String operationId,
+    required List<String> expressions,
+    required int cap,
+  }) async {
+    // WHY here: a throw in the worker isolate comes back as
+    // `internal.dispatch_error`, not as the documented [ArgumentError].
+    rejectInteriorNul(operationId, 'operationId');
+    rejectInteriorNuls(expressions, 'expressions');
+    RangeError.checkNotNegative(cap, 'cap');
+    final Uint8List bytes = await send(
+      RevsetCountsCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        operationId: operationId,
+        expressions: expressions,
+        cap: cap,
+      ),
+    );
+    return repo_ffi_revset_search.decodeRevsetCountsEnvelopeInternal(bytes);
+  }
+
+  /// List at most [limit] commits [expression] denotes at the PINNED operation
+  /// [operationId], in the revset's iteration order, in the repo identified by
+  /// [handleId] (Story 9.25). [shortPrefixes] disambiguates the symbols and
+  /// gives the prefix lengths; empty = none.
+  ///
+  /// Runs no pre-verb snapshot (so `lastPrecondition` is untouched) and writes
+  /// no operation.
+  ///
+  /// Throws [ArgumentError] if a string contains an interior NUL (U+0000), or
+  /// if [limit] is negative. Throws [ZanshinFfiException] on FFI errors (e.g.
+  /// `ffi.invalid_handle`, `jj.invalid_input`, `jj.operation_not_found`,
+  /// `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`,
+  /// `jj.jj_lib_error`). Completes with a [StateError] after [close].
+  Future<repo_ffi_revset_search.FoundChanges> findChanges(
+    int handleId, {
+    required String operationId,
+    required String expression,
+    required int limit,
+    required String shortPrefixes,
+  }) async {
+    rejectInteriorNul(operationId, 'operationId');
+    rejectInteriorNul(expression, 'expression');
+    rejectInteriorNul(shortPrefixes, 'shortPrefixes');
+    RangeError.checkNotNegative(limit, 'limit');
+    final Uint8List bytes = await send(
+      FindChangesCommand(
+        commandId: _correlator.allocateId(),
+        handleId: handleId,
+        operationId: operationId,
+        expression: expression,
+        limit: limit,
+        shortPrefixes: shortPrefixes,
+      ),
+    );
+    return repo_ffi_revset_search.decodeFoundChangesEnvelopeInternal(bytes);
+  }
+
   /// Create local bookmarks pointing at one revision, in the repo identified by
   /// [handleId] (Story 9.8) — the CLI's `jj bookmark create`.
   ///
@@ -4760,6 +4833,48 @@ void _workerEntry(_WorkerInit init) {
               raw,
               operationId: operationId,
               commitIds: commitIds,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case RevsetCountsCommand(
+          :final int handleId,
+          :final String operationId,
+          :final List<String> expressions,
+          :final int cap,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: RevsetCountsCommand for unknown handleId $handleId');
+            responseSP.send((commandId, BufferResult(_invalidHandleEnvelope(handleId))));
+          } else {
+            final Uint8List bytes = repo_ffi_revset_search.zanshinRevsetCounts(
+              raw,
+              operationId: operationId,
+              expressions: expressions,
+              cap: cap,
+            );
+            responseSP.send((commandId, BufferResult(bytes)));
+          }
+
+        case FindChangesCommand(
+          :final int handleId,
+          :final String operationId,
+          :final String expression,
+          :final int limit,
+          :final String shortPrefixes,
+        ):
+          final int? raw = handles[handleId]; // lookup — never remove
+          if (raw == null) {
+            log.warning('Worker: FindChangesCommand for unknown handleId $handleId');
+            responseSP.send((commandId, BufferResult(_invalidHandleEnvelope(handleId))));
+          } else {
+            final Uint8List bytes = repo_ffi_revset_search.zanshinFindChanges(
+              raw,
+              operationId: operationId,
+              expression: expression,
+              limit: limit,
+              shortPrefixes: shortPrefixes,
             );
             responseSP.send((commandId, BufferResult(bytes)));
           }

@@ -1174,6 +1174,69 @@ impl Repo {
         crate::commit_content::commit_contents(&self.workspace, operation_id, commit_ids)
     }
 
+    /// Counts the commits each of `expressions` denotes at the PINNED `operation_id`, capped at
+    /// `cap` (Story 9.25) — the graph search's "N changes".
+    ///
+    /// An op-pinned read like [`Repo::commit_contents`]: `load_operation` + `load_at`, no
+    /// pre-verb snapshot, no operation, no op head; [`Repo::take_precondition`] /
+    /// [`Repo::take_warnings`] stay untouched. Each expression parses as every Zanshin revset and
+    /// resolves with the id-prefix context of the effective `revsets.short-prefixes`, as the CLI.
+    /// Counting iterates the stream: with `cap > 0` at most `cap + 1` entries are read (`n` is at
+    /// most `cap`, `capped` says there were more); `cap == 0` parses and resolves only (`n = 0`).
+    /// Every expression gets its own entry — a count, or its own
+    /// [`crate::RevsetError::ParseError`] / [`crate::RevsetError::ResolutionError`]; the parse
+    /// diagnostics become the answer's warnings, in expression order.
+    ///
+    /// # Errors
+    ///
+    /// Call-level faults only:
+    /// - [`crate::RevsetSearchError::InvalidInput`] — `operation_id` is empty, not hex, or not a
+    ///   full operation id.
+    /// - [`crate::RevsetSearchError::OperationNotFound`] — the operation is not in the operation
+    ///   store.
+    /// - [`crate::RevsetSearchError::Config`] — the effective config is malformed or unreadable,
+    ///   or its `revsets.short-prefixes` is not a string or does not parse.
+    /// - [`crate::RevsetSearchError::Backend`] — loading, evaluating or iterating failed.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn revset_counts(
+        &self,
+        operation_id: &crate::OperationId,
+        expressions: &[String],
+        cap: u64,
+    ) -> Result<crate::RevsetCounts, crate::RevsetSearchError> {
+        crate::revset_search::revset_counts(self, operation_id, expressions, cap)
+    }
+
+    /// Lists the commits `expression` denotes at the PINNED `operation_id`, at most `limit`, in
+    /// the revset's iteration order (`jj log --no-graph`'s), each with its commit and change id
+    /// and both shortest-prefix lengths (Story 9.25) — the graph search's go-to beyond the view.
+    ///
+    /// An op-pinned read like [`Repo::revset_counts`]. `short_prefixes` is a caller pass-through
+    /// (FR-JJ-17): its index disambiguates the expression's symbols AND gives the prefix lengths;
+    /// empty means no disambiguation (the full index), as in [`Repo::graph_topology`]. At most
+    /// `limit + 1` entries are read; `truncated` says there were more. An ambiguous prefix is a
+    /// resolution error; an unmatched one finds nothing.
+    ///
+    /// # Errors
+    ///
+    /// - [`crate::RevsetSearchError::InvalidInput`] / [`crate::RevsetSearchError::OperationNotFound`]
+    ///   — as [`Repo::revset_counts`].
+    /// - [`crate::RevsetSearchError::Revset`] — `short_prefixes` or `expression` does not parse,
+    ///   or `expression` does not resolve.
+    /// - [`crate::RevsetSearchError::Config`] — the effective config is malformed or unreadable.
+    /// - [`crate::RevsetSearchError::Backend`] — loading, evaluating, iterating or a prefix lookup
+    ///   failed.
+    #[must_use = "the Result must be used; drop it explicitly if intentional"]
+    pub fn find_changes(
+        &self,
+        operation_id: &crate::OperationId,
+        expression: &str,
+        limit: u64,
+        short_prefixes: &str,
+    ) -> Result<crate::FoundChanges, crate::RevsetSearchError> {
+        crate::revset_search::find_changes(self, operation_id, expression, limit, short_prefixes)
+    }
+
     /// Streams the commits `revset` denotes through `visit`, one [`crate::Change`] per commit
     /// (ADR-0003 §5's generic read primitive).
     ///

@@ -639,6 +639,30 @@ fn graph_topology_bogus_expressions_return_jj_revset_parse_error() {
     unsafe { close(handle) };
 }
 
+/// Story 9.25: the parse error carries its structured detail as `FfiError.revset`, beside the
+/// precondition the snapshot left.
+#[test]
+fn graph_topology_parse_error_carries_the_revset_detail() {
+    test_helpers::pin_test_env();
+    let (_fx, handle) = unsafe { open_fixture("tiny-3-commits") };
+
+    let bytes = unsafe { call(handle, &req("fooo()")) };
+
+    assert_error_after_snapshot(&bytes, JJ_REVSET_PARSE_ERROR);
+    let revset = parse_envelope(&bytes)
+        .error()
+        .and_then(|e| e.revset())
+        .expect("the revset detail");
+    assert_eq!(revset.kind(), fbs::RevsetErrorKind::NoSuchFunction);
+    assert_eq!(revset.symbol(), Some("fooo"));
+    let span = revset.span().expect("span");
+    assert_eq!(
+        (span.offset(), span.length().map(fbs::RevsetSpanLength::value)),
+        (0, Some(4))
+    );
+    unsafe { close(handle) };
+}
+
 #[test]
 fn graph_topology_unknown_bookmark_returns_jj_revset_resolution_error() {
     test_helpers::pin_test_env();

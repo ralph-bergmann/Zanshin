@@ -6,17 +6,21 @@ use std::path::Path;
 use std::sync::Arc;
 
 use futures::{StreamExt as _, TryStreamExt as _};
+use jj_lib::backend::CommitId as JjCommitId;
 use jj_lib::config::{ConfigSource, StackedConfig};
 use jj_lib::dsl_util::{AliasDeclarationParser, AliasesMap};
-use jj_lib::fileset::FilesetAliasesMap;
+use jj_lib::fileset::{FilePatternParseError, FilesetAliasesMap, FilesetParseError};
+use jj_lib::id_prefix::IdPrefixContext;
 use jj_lib::ref_name::WorkspaceName;
 use jj_lib::repo::Repo as _;
+use jj_lib::repo_path::RepoPathBuf;
 use jj_lib::revset::{
     self, ResolvedRevset, ResolvedRevsetExpression, Revset, RevsetAliasesMap, RevsetDiagnostics, RevsetExpression,
-    RevsetExtensions, RevsetParseContext, RevsetStreamExt as _, RevsetWorkspaceContext, SymbolResolver,
-    UserRevsetExpression,
+    RevsetExtensions, RevsetParseContext, RevsetParseError, RevsetParseErrorKind, RevsetResolutionError,
+    RevsetStreamExt as _, RevsetWorkspaceContext, SymbolResolver, UserRevsetExpression,
 };
-use jj_lib::ui_path::RepoPathUiConverter;
+use jj_lib::str_util::StringPatternParseError;
+use jj_lib::ui_path::{RepoPathUiConverter, UiPathParseError};
 use jj_lib::workspace::Workspace;
 
 use crate::change::change_from_commit;
@@ -46,6 +50,9 @@ pub enum RevsetError {
     ParseError {
         /// Human-readable parse failure from jj-lib.
         reason: String,
+        /// The structured failure (Story 9.25): kind, span into the caller's text, the named
+        /// symbol, its similar names and the CLI's hint lines.
+        detail: Box<RevsetErrorDetail>,
     },
     /// The expression is well-formed but a symbol could not be resolved
     /// (unknown bookmark/tag, missing working copy, ambiguous/divergent id).
@@ -53,6 +60,8 @@ pub enum RevsetError {
     ResolutionError {
         /// Human-readable resolution failure from jj-lib.
         reason: String,
+        /// The structured failure (Story 9.25); a resolution error has no span.
+        detail: Box<RevsetErrorDetail>,
     },
     /// An underlying jj-lib failure (evaluation/backend), opaque-string-wrapped
     /// so no `jj_lib` type escapes the public API (FR-JJ-16).
@@ -70,6 +79,121 @@ pub enum RevsetError {
         /// Hex commit id of the edge's target.
         target: String,
     },
+}
+
+impl RevsetError {
+    /// The CLI's hint lines for a parse or resolution error (`revset_parse_error_hint` /
+    /// `revset_resolution_error_hints`, `cli/src/command_error.rs:892-977` @ v0.46.0), in the
+    /// CLI's order; empty for every other variant.
+    #[must_use]
+    pub fn hints(&self) -> Vec<String> {
+        match self {
+            Self::ParseError { detail, .. } | Self::ResolutionError { detail, .. } => detail.hints.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// This error with its parse span dropped — for a failing text that is not the call's primary
+    /// expression, whose span a UI would otherwise underline in the wrong text.
+    pub(crate) fn without_span(mut self) -> Self {
+        if let Self::ParseError { detail, .. } = &mut self {
+            detail.span = None;
+        }
+        self
+    }
+}
+
+/// Which jj-lib revset failure a [`RevsetErrorDetail`] describes (Story 9.25) — jj-lib's
+/// `RevsetParseErrorKind` variants, then its `RevsetResolutionError` variants, one to one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RevsetErrorKind {
+    /// A syntax error.
+    SyntaxError,
+    /// An operator used as a prefix operator that is none (`:x`).
+    NotPrefixOperator,
+    /// An operator used as a postfix operator that is none (`x^`).
+    NotPostfixOperator,
+    /// An operator used as an infix operator that is none.
+    NotInfixOperator,
+    /// An unknown function; `symbol` is its name, `candidates` jj-lib's similar names.
+    NoSuchFunction,
+    /// A function called with invalid arguments; `symbol` is its name.
+    InvalidFunctionArguments,
+    /// A file pattern without a workspace.
+    FsPathWithoutWorkspace,
+    /// `@` without a workspace.
+    WorkingCopyWithoutWorkspace,
+    /// A function parameter defined twice.
+    RedefinedFunctionParameter,
+    /// Some other expression error (an invalid string or date pattern, …).
+    Expression,
+    /// A failure inside an alias's expansion; `symbol` is the alias.
+    InAliasExpansion,
+    /// A failure inside a function parameter's expansion; `symbol` is the parameter.
+    InParameterExpansion,
+    /// An alias that expands into itself; `symbol` is the alias.
+    RecursiveAlias,
+    /// An unknown revision; `symbol` is the name, `candidates` jj-lib's similar names.
+    NoSuchRevision,
+    /// A workspace without a working-copy commit; `symbol` is the workspace.
+    WorkspaceMissingWorkingCopy,
+    /// An empty string as a revision.
+    EmptyString,
+    /// An ambiguous commit id prefix; `symbol` is the prefix.
+    AmbiguousCommitIdPrefix,
+    /// An ambiguous change id prefix; `symbol` is the prefix.
+    AmbiguousChangeIdPrefix,
+    /// A divergent change id; `symbol` is the id.
+    DivergentChangeId,
+    /// A conflicted bookmark or tag; `symbol` is its name.
+    ConflictedRef,
+    /// A commit-backend failure during resolution.
+    Backend,
+    /// Any other resolution failure.
+    Other,
+}
+
+impl RevsetErrorDetail {
+    /// A detail of `kind` with no span, symbol, candidates or hints — for tests that build a
+    /// [`RevsetError`] by hand.
+    #[cfg(test)]
+    pub(crate) fn bare(kind: RevsetErrorKind) -> Self {
+        Self {
+            kind,
+            span: None,
+            symbol: None,
+            candidates: Vec::new(),
+            hints: Vec::new(),
+        }
+    }
+}
+
+/// Where a parse error points in the caller's expression (Story 9.25), in BYTES.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RevsetSpan {
+    /// Byte offset of the span's start.
+    pub offset: u32,
+    /// Byte length; `0` for a position, `None` when it is unknown: the span crosses lines, or
+    /// pest's render cannot tell an empty span from a one-char one.
+    pub length: Option<u32>,
+}
+
+/// The structured form of a revset parse or resolution error (Story 9.25) — what the UI needs to
+/// point at the failing part of an expression without parsing the message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevsetErrorDetail {
+    /// The top-level error's kind (inside an alias: the alias expansion).
+    pub kind: RevsetErrorKind,
+    /// The top-level error's span in the call's primary expression (the topology's `revset`, a
+    /// search's `expression`); `None` for a resolution error and for an error in any other text
+    /// of the call (`prioritize`, `short_prefixes`, an anchor).
+    pub span: Option<RevsetSpan>,
+    /// The function, revision, alias, operator or prefix the error names, if any.
+    pub symbol: Option<String>,
+    /// jj-lib's similar names (or the suggested operator); empty when it has none.
+    pub candidates: Vec<String>,
+    /// The CLI's hint lines for the error, verbatim and in the CLI's order.
+    pub hints: Vec<String>,
 }
 
 /// Resolve a jj revset expression to a deduplicated, fully materialized list of change ids.
@@ -495,7 +619,234 @@ fn parse_revset_in(
     // "Caused by:" lines; jj-lib's `Display` shows only the outermost error.
     revset::parse(diagnostics, expr, &context).map_err(|e| RevsetError::ParseError {
         reason: crate::mutate::flatten_chain(&e),
+        detail: Box::new(parse_detail(expr, &e)),
     })
+}
+
+/// The [`RevsetErrorDetail`] of a parse error of `expr`: the top-level error's kind, span and
+/// named symbol, and the CLI's hint (which reads the BOTTOM error of the alias chain).
+fn parse_detail(expr: &str, e: &RevsetParseError) -> RevsetErrorDetail {
+    use RevsetErrorKind as K;
+    use RevsetParseErrorKind as P;
+    let (kind, symbol, candidates) = match e.kind() {
+        P::SyntaxError => (K::SyntaxError, None, Vec::new()),
+        P::NotPrefixOperator { op, similar_op, .. } => (K::NotPrefixOperator, Some(op), vec![similar_op.clone()]),
+        P::NotPostfixOperator { op, similar_op, .. } => (K::NotPostfixOperator, Some(op), vec![similar_op.clone()]),
+        P::NotInfixOperator { op, similar_op, .. } => (K::NotInfixOperator, Some(op), vec![similar_op.clone()]),
+        P::NoSuchFunction { name, candidates } => (K::NoSuchFunction, Some(name), candidates.clone()),
+        P::InvalidFunctionArguments { name, .. } => (K::InvalidFunctionArguments, Some(name), Vec::new()),
+        P::FsPathWithoutWorkspace => (K::FsPathWithoutWorkspace, None, Vec::new()),
+        P::WorkingCopyWithoutWorkspace => (K::WorkingCopyWithoutWorkspace, None, Vec::new()),
+        P::RedefinedFunctionParameter => (K::RedefinedFunctionParameter, None, Vec::new()),
+        P::Expression(_) => (K::Expression, None, Vec::new()),
+        P::InAliasExpansion(name) => (K::InAliasExpansion, Some(name), Vec::new()),
+        P::InParameterExpansion(name) => (K::InParameterExpansion, Some(name), Vec::new()),
+        P::RecursiveAlias(name) => (K::RecursiveAlias, Some(name), Vec::new()),
+    };
+    RevsetErrorDetail {
+        kind,
+        span: render_span(expr, &e.to_string()),
+        symbol: symbol.cloned(),
+        candidates,
+        hints: parse_hint(e).into_iter().collect(),
+    }
+}
+
+/// The [`RevsetErrorDetail`] of a resolution error, with the CLI's hint lines.
+fn resolution_detail(e: &RevsetResolutionError) -> RevsetErrorDetail {
+    use RevsetErrorKind as K;
+    use RevsetResolutionError as R;
+    let (kind, symbol, candidates) = match e {
+        R::NoSuchRevision { name, candidates } => (K::NoSuchRevision, Some(name.clone()), candidates.clone()),
+        R::WorkspaceMissingWorkingCopy { name } => (
+            K::WorkspaceMissingWorkingCopy,
+            Some(name.as_symbol().to_string()),
+            Vec::new(),
+        ),
+        R::EmptyString => (K::EmptyString, None, Vec::new()),
+        R::AmbiguousCommitIdPrefix(prefix) => (K::AmbiguousCommitIdPrefix, Some(prefix.clone()), Vec::new()),
+        R::AmbiguousChangeIdPrefix(prefix) => (K::AmbiguousChangeIdPrefix, Some(prefix.clone()), Vec::new()),
+        R::DivergentChangeId { symbol, .. } => (K::DivergentChangeId, Some(symbol.clone()), Vec::new()),
+        R::ConflictedRef { symbol, .. } => (K::ConflictedRef, Some(symbol.clone()), Vec::new()),
+        R::Backend(_) => (K::Backend, None, Vec::new()),
+        R::Other(_) => (K::Other, None, Vec::new()),
+    };
+    RevsetErrorDetail {
+        kind,
+        span: None,
+        symbol,
+        candidates,
+        hints: resolution_hints(e),
+    }
+}
+
+/// Reads the span of a jj-lib parse error out of its `Display` text, pest's render: the header
+/// ` --> L:C` (1-based line, 1-based CHAR column) gives the start, the one-line render's
+/// underline the length (`^---` a position, `^^` two chars, `^-…-^` n). A lone `^` is `None`:
+/// pest draws it for an empty span and for a one-char span alike. A render whose span crosses
+/// lines has no one-line underline: `length` is `None` too. Offsets and lengths are converted to
+/// bytes of `expr`; `None` when the render does not fit `expr`.
+///
+/// shortcut: parses pest's render because jj-lib 0.46 keeps the span private; replace when jj-lib exposes it
+fn render_span(expr: &str, render: &str) -> Option<RevsetSpan> {
+    let mut lines = render.lines();
+    let (line, column) = lines.next()?.trim_start().strip_prefix("--> ")?.split_once(':')?;
+    let (line, column): (usize, usize) = (line.parse().ok()?, column.parse().ok()?);
+    let line_start: usize = expr.split('\n').take(line.checked_sub(1)?).map(|l| l.len() + 1).sum();
+    let tail = expr.get(line_start..)?;
+    let char_end = |n: usize| tail.char_indices().map(|(i, _)| i).chain([tail.len()]).nth(n);
+    let start = char_end(column.checked_sub(1)?)?;
+    // Skip the empty gutter line and the source line; then either `  | <underline>` (one line)
+    // or `L | <continued line>` (the span crosses lines).
+    let (gutter, underline) = lines.nth(2)?.split_once('|')?;
+    let marks = underline.trim_start_matches([' ', '\t']);
+    // WHY a lone `^` has no length: pest renders an empty span and a one-char span the same.
+    let length = if gutter.trim().is_empty() && marks.starts_with('^') && marks != "^" {
+        let chars = if marks == "^---" { 0 } else { marks.chars().count() };
+        Some(u32::try_from(char_end(column - 1 + chars)? - start).ok()?)
+    } else {
+        // A line number, or the `...` of a span that skips lines.
+        None
+    };
+    Some(RevsetSpan {
+        offset: u32::try_from(line_start + start).ok()?,
+        length,
+    })
+}
+
+/// The CLI's `format_similarity_hint` (`cli/src/command_error.rs:227` @ v0.46.0).
+fn similarity_hint(candidates: &[String]) -> Option<String> {
+    if candidates.is_empty() {
+        return None;
+    }
+    let quoted: Vec<String> = candidates.iter().map(|c| format!("`{c}`")).collect();
+    Some(format!("Did you mean {}?", quoted.join(", ")))
+}
+
+/// The CLI's revset-syntax hint.
+const REVSET_SYNTAX_HINT: &str = "See https://docs.jj-vcs.dev/latest/revsets/ or use `jj help -k revsets` for revsets \
+                                  syntax and how to quote symbols.";
+
+/// The CLI's `revset_parse_error_hint` (`cli/src/command_error.rs:892-923` @ v0.46.0): only for
+/// the bottom error of the alias chain, usually the root cause.
+fn parse_hint(err: &RevsetParseError) -> Option<String> {
+    use RevsetParseErrorKind as P;
+    let bottom = std::iter::successors(Some(err), |e| e.origin()).last()?;
+    match bottom.kind() {
+        P::SyntaxError => Some(REVSET_SYNTAX_HINT.to_owned()),
+        P::NotPrefixOperator {
+            similar_op,
+            description,
+            ..
+        }
+        | P::NotPostfixOperator {
+            similar_op,
+            description,
+            ..
+        }
+        | P::NotInfixOperator {
+            similar_op,
+            description,
+            ..
+        } => Some(format!("Did you mean `{similar_op}` for {description}?")),
+        P::NoSuchFunction { candidates, .. } => similarity_hint(candidates),
+        P::InvalidFunctionArguments { .. } | P::Expression(_) => source_hint(bottom),
+        _ => None,
+    }
+}
+
+/// The CLI's `find_source_parse_error_hint` (`cli/src/command_error.rs:789-815` @ v0.46.0) for
+/// the sources a revset parse error carries: a fileset, file-pattern or string-pattern error.
+/// The CLI also checks bookmark-name, config, tag-name, template and resolution sources, which
+/// no revset parse error carries.
+fn source_hint(err: &dyn std::error::Error) -> Option<String> {
+    let source = err.source()?;
+    if let Some(e) = source.downcast_ref::<FilePatternParseError>() {
+        file_pattern_hint(e)
+    } else if let Some(e) = source.downcast_ref::<FilesetParseError>() {
+        fileset_hint(e)
+    } else if let Some(e) = source.downcast_ref::<StringPatternParseError>() {
+        matches!(e, StringPatternParseError::InvalidKind(_)).then(|| {
+            "Try prefixing with one of `exact:`, `glob:`, `regex:`, `substring:`, or one of these with `-i` suffix \
+             added (e.g. `glob-i:`) for case-insensitive matching"
+                .to_owned()
+        })
+    } else {
+        None
+    }
+}
+
+/// The CLI's `file_pattern_parse_error_hint` (`cli/src/command_error.rs:840-855` @ v0.46.0).
+fn file_pattern_hint(err: &FilePatternParseError) -> Option<String> {
+    match err {
+        FilePatternParseError::InvalidKind(_) => Some(
+            "See https://docs.jj-vcs.dev/latest/filesets/#file-patterns or `jj help -k filesets` for valid prefixes."
+                .to_owned(),
+        ),
+        FilePatternParseError::UiPath(UiPathParseError::Fs(e)) => RepoPathBuf::from_relative_path(&e.input)
+            .ok()
+            .map(|path| format!("Consider using root:{path:?} to specify repo-relative path")),
+        FilePatternParseError::RelativePath(_) | FilePatternParseError::GlobPattern(_) => None,
+    }
+}
+
+/// The CLI's `fileset_parse_error_hint` (`cli/src/command_error.rs:857-873` @ v0.46.0).
+fn fileset_hint(err: &FilesetParseError) -> Option<String> {
+    use jj_lib::fileset::FilesetParseErrorKind as F;
+    match err.kind() {
+        F::SyntaxError => Some(
+            "See https://docs.jj-vcs.dev/latest/filesets/ or use `jj help -k filesets` for filesets syntax and how to \
+             match file paths."
+                .to_owned(),
+        ),
+        F::NoSuchFunction { candidates, .. } => similarity_hint(candidates),
+        F::InvalidArguments { .. } | F::Expression(_) => source_hint(err),
+        F::RedefinedFunctionParameter | F::InAliasExpansion(_) | F::InParameterExpansion(_) | F::RecursiveAlias(_) => {
+            None
+        }
+    }
+}
+
+/// The CLI's `revset_resolution_error_hints` (`cli/src/command_error.rs:925-977` @ v0.46.0).
+fn resolution_hints(err: &RevsetResolutionError) -> Vec<String> {
+    use RevsetResolutionError as R;
+    let multiple_targets_hint = |targets: &[JjCommitId]| {
+        let ids: Vec<String> = targets.iter().map(|id| format!("{id:.12}")).collect();
+        format!("Use commit ID to select single revision from: {}", ids.join(", "))
+    };
+    match err {
+        R::NoSuchRevision { candidates, .. } => similarity_hint(candidates).into_iter().collect(),
+        R::DivergentChangeId {
+            symbol,
+            visible_targets,
+        } => {
+            let offsets: Vec<String> = visible_targets
+                .iter()
+                .map(|(offset, _)| format!("{symbol}/{offset}"))
+                .collect();
+            vec![
+                format!("Use change offset to select single revision: {}", offsets.join(", ")),
+                format!("Use `change_id({symbol})` to select all revisions"),
+                "To abandon unneeded revisions, run `jj abandon <commit_id>`".to_owned(),
+            ]
+        }
+        R::ConflictedRef {
+            kind: "bookmark",
+            symbol,
+            targets,
+        } => vec![
+            multiple_targets_hint(targets),
+            format!("Use `bookmarks({symbol})` to select all revisions"),
+            format!("To set which revision the bookmark points to, run `jj bookmark set {symbol} -r <REVISION>`"),
+        ],
+        R::ConflictedRef { targets, .. } => vec![multiple_targets_hint(targets)],
+        R::EmptyString
+        | R::WorkspaceMissingWorkingCopy { .. }
+        | R::AmbiguousCommitIdPrefix(_)
+        | R::AmbiguousChangeIdPrefix(_)
+        | R::Backend(_)
+        | R::Other(_) => Vec::new(),
+    }
 }
 
 /// Resolves the symbols of a parsed expression against `repo_dyn` without evaluating it.
@@ -520,21 +871,33 @@ pub(crate) fn resolve_expression(
     // WHY drop the other repos: the CLI's `RevsetExpressionEvaluator::resolve`
     // (`cli/src/revset_util.rs:118-121` @ v0.46.0) does the same — only `evaluate` needs the
     // index `at_operation()` merges in.
-    let (expression, _other_repos) = resolve_for_evaluation(repo_dyn, expr)?.into_inner();
+    let (expression, _other_repos) = resolve_for_evaluation(repo_dyn, expr, None)?.into_inner();
     Ok(expression)
 }
 
 /// [`resolve_expression`] keeping what jj-lib needs to EVALUATE the result: the repos an
 /// `at_operation()` brings into context, whose commits a non-ancestor operation may not have
 /// in `repo_dyn`'s index.
-fn resolve_for_evaluation<'r>(
+///
+/// With `prefixes`, short id prefixes resolve within its disambiguation set first — the CLI's
+/// `SymbolResolver::with_id_prefix_context` (`cli/src/revset_util.rs:197-203` @ v0.46.0). Only
+/// the Story 9.25 searches pass one; every other read and verb resolves without it.
+pub(crate) fn resolve_for_evaluation<'r>(
     repo_dyn: &'r dyn jj_lib::repo::Repo,
     expr: &Arc<UserRevsetExpression>,
+    prefixes: Option<&IdPrefixContext>,
 ) -> Result<ResolvedRevset<'r>, RevsetError> {
     let extensions = RevsetExtensions::default();
     let symbol_resolver = SymbolResolver::new(repo_dyn, extensions.symbol_resolvers());
+    let symbol_resolver = match prefixes {
+        Some(context) => symbol_resolver.with_id_prefix_context(context),
+        None => symbol_resolver,
+    };
     expr.resolve_user_expression(repo_dyn, &symbol_resolver)
-        .map_err(|e| RevsetError::ResolutionError { reason: e.to_string() })
+        .map_err(|e| RevsetError::ResolutionError {
+            reason: e.to_string(),
+            detail: Box::new(resolution_detail(&e)),
+        })
 }
 
 /// Resolves the symbols of a parsed expression against `repo_dyn` (a head-resolved
@@ -552,7 +915,7 @@ pub(crate) fn evaluate_revset<'r>(
     // `ResolvedRevset::evaluate`, as the CLI's `RevsetExpressionEvaluator::evaluate`
     // (`cli/src/revset_util.rs:134-139` @ v0.46.0): it evaluates against an index merged with
     // the repos an `at_operation()` brought in.
-    resolve_for_evaluation(repo_dyn, expr)?
+    resolve_for_evaluation(repo_dyn, expr, None)?
         .evaluate()
         .map_err(|e| RevsetError::JjLibError(e.to_string()))
 }
@@ -690,7 +1053,7 @@ pub(crate) fn trunk_resolution_error(
     )
     .ok()?;
     match resolve_expression(repo, &expression) {
-        Err(RevsetError::ResolutionError { reason }) => Some(reason),
+        Err(RevsetError::ResolutionError { reason, .. }) => Some(reason),
         _ => None,
     }
 }
@@ -825,5 +1188,194 @@ mod tests {
         let mut sink = Warnings::default();
         assert!(immutable_heads_expression(repo.workspace(), &parse_config, &mut sink).is_ok());
         assert!(immutable_expression(repo.workspace(), &parse_config, &mut sink).is_ok());
+    }
+
+    // ── Story 9.25: span and hints ───────────────────────────────────────────
+
+    use jj_lib::backend::CommitId;
+    use jj_lib::revset::RevsetResolutionError as R;
+
+    use super::{render_span, resolution_hints, RevsetErrorDetail, RevsetErrorKind as K, RevsetSpan};
+
+    /// The span `render` names in `expr`, as `(offset, length)`.
+    fn spanned(expr: &str, render: &str) -> (u32, Option<u32>) {
+        let RevsetSpan { offset, length } = render_span(expr, render).expect("a span");
+        (offset, length)
+    }
+
+    #[test]
+    fn a_position_is_a_zero_length_span() {
+        let render = " --> 1:15\n  |\n1 | description(\"x\n  |               ^---\n  |\n  = expected x";
+        assert_eq!(spanned("description(\"x", render), (14, Some(0)));
+    }
+
+    #[test]
+    fn one_two_and_n_char_spans_read_their_underline() {
+        let one = " --> 1:3\n  |\n1 | a|b\n  |   ^\n  |\n  = m";
+        assert_eq!(
+            spanned("a|b", one),
+            (2, None),
+            "a lone `^` is an empty or a one-char span"
+        );
+        let two = " --> 1:1\n  |\n1 | ab\n  | ^^\n  |\n  = m";
+        assert_eq!(spanned("ab", two), (0, Some(2)));
+        let four = " --> 1:1\n  |\n1 | fooo()\n  | ^--^\n  |\n  = m";
+        assert_eq!(spanned("fooo()", four), (0, Some(4)));
+        let tabbed = " --> 1:2\n  |\n1 | \tfooo()\n  | \t^--^\n  |\n  = m";
+        assert_eq!(spanned("\tfooo()", tabbed), (1, Some(4)));
+    }
+
+    #[test]
+    fn columns_count_chars_and_the_span_is_in_bytes() {
+        // `äö | ` is 5 chars but 7 bytes; `fööo` 4 chars but 6 bytes.
+        let render = " --> 1:6\n  |\n1 | äö | fööo()\n  |      ^--^\n  |\n  = m";
+        assert_eq!(spanned("äö | fööo()", render), (7, Some(6)));
+    }
+
+    #[test]
+    fn a_span_on_a_later_line_counts_the_earlier_lines() {
+        let render = " --> 2:3\n  |\n2 | xyfooo\n  |   ^--^\n  |\n  = m";
+        assert_eq!(spanned("ab\nxyfooo", render), (5, Some(4)));
+    }
+
+    #[test]
+    fn a_span_across_lines_has_no_length() {
+        let two = " --> 1:1\n  |\n1 | a\n2 | b\n  | ^^\n  |\n  = m";
+        assert_eq!(spanned("a\nb", two), (0, None));
+        let gap = " --> 1:1\n  |\n1 | a\n  | ...\n3 | c\n  | ^^\n  |\n  = m";
+        assert_eq!(spanned("a\nb\nc", gap), (0, None));
+    }
+
+    #[test]
+    fn a_render_that_does_not_fit_the_text_has_no_span() {
+        assert_eq!(render_span("x", "no header"), None);
+        assert_eq!(render_span("x", " --> 9:1\n  |\n9 | x\n  | ^\n"), None);
+        assert_eq!(render_span("x", " --> 1:9\n  |\n1 | x\n  | ^\n"), None);
+    }
+
+    /// The parse detail of `expr`.
+    fn parse_detail(parse_config: &RevsetConfig, repo: &crate::Repo, expr: &str) -> RevsetErrorDetail {
+        let workspace = repo.workspace();
+        let Err(crate::RevsetError::ParseError { detail, .. }) = super::parse_revset_in(
+            (workspace.workspace_root(), workspace.workspace_name()),
+            parse_config,
+            expr,
+            &[],
+            &mut jj_lib::revset::RevsetDiagnostics::new(),
+        ) else {
+            panic!("{expr} parses");
+        };
+        *detail
+    }
+
+    /// Real jj-lib renders: an empty span, a non-ASCII text, a span on a later line and one that
+    /// crosses lines.
+    #[test]
+    fn jj_lib_parse_errors_read_back_their_spans() {
+        let (_tmp, repo, parse_config) = repo_with("");
+        let span = |expr| {
+            let detail = parse_detail(&parse_config, &repo, expr);
+            detail.span.map(|s| (s.offset, s.length))
+        };
+        assert_eq!(span("author()"), Some((7, None)), "the empty argument list");
+        assert_eq!(
+            span("author(\"Jörg\") & fooo()"),
+            Some((18, Some(4))),
+            "bytes, not chars"
+        );
+        assert_eq!(span("all() &\nfooo()"), Some((8, Some(4))), "on the second line");
+        assert_eq!(span("author(a,\nb)"), Some((7, None)), "the arguments, across lines");
+    }
+
+    #[test]
+    fn parse_hints_follow_the_clis_per_kind_rules() {
+        let (_tmp, repo, parse_config) = repo_with("");
+        let detail = |expr| parse_detail(&parse_config, &repo, expr);
+
+        let syntax = detail("(");
+        assert_eq!((syntax.kind, syntax.hints.len()), (K::SyntaxError, 1));
+        let postfix = detail("foo^");
+        assert_eq!(postfix.kind, K::NotPostfixOperator);
+        assert_eq!(postfix.symbol.as_deref(), Some("^"));
+        assert_eq!(postfix.hints, ["Did you mean `-` for parents?"]);
+        assert_eq!(detail(":foo").hints, ["Did you mean `::` for ancestors?"]);
+        let infix = detail("foo + bar");
+        assert_eq!(infix.kind, K::NotInfixOperator);
+        assert_eq!(infix.candidates, ["|"]);
+        assert_eq!(infix.hints, ["Did you mean `|` for union?"]);
+        let similar = detail("descripton(x)");
+        assert!(
+            similar.hints.len() == 1 && similar.hints[0].contains("`description`"),
+            "{similar:?}"
+        );
+        let arguments = detail("author(a, b)");
+        assert_eq!(arguments.kind, K::InvalidFunctionArguments);
+        assert_eq!(arguments.symbol.as_deref(), Some("author"));
+        assert!(arguments.hints.is_empty());
+        assert!(detail(r#"description(bogus:"x")"#).hints[0].starts_with("Try prefixing with one of `exact:`"));
+        assert!(detail(r#"files(bogus:"x")"#).hints[0].contains("filesets/#file-patterns"));
+        assert!(detail("files(a::)").hints[0].contains("filesets syntax"));
+    }
+
+    #[test]
+    fn resolution_hints_follow_the_clis_per_kind_rules() {
+        let id = CommitId::from_hex("0123456789abcdef0123456789abcdef01234567");
+        assert_eq!(
+            resolution_hints(&R::NoSuchRevision {
+                name: "x".to_owned(),
+                candidates: vec!["a".to_owned(), "b".to_owned()],
+            }),
+            ["Did you mean `a`, `b`?"]
+        );
+        assert!(resolution_hints(&R::NoSuchRevision {
+            name: "x".to_owned(),
+            candidates: Vec::new(),
+        })
+        .is_empty());
+        assert_eq!(
+            resolution_hints(&R::DivergentChangeId {
+                symbol: "k".to_owned(),
+                visible_targets: vec![(0, id.clone()), (2, id.clone())],
+            }),
+            [
+                "Use change offset to select single revision: k/0, k/2",
+                "Use `change_id(k)` to select all revisions",
+                "To abandon unneeded revisions, run `jj abandon <commit_id>`",
+            ]
+        );
+        let targets = vec![id.clone(), id];
+        assert_eq!(
+            resolution_hints(&R::ConflictedRef {
+                kind: "bookmark",
+                symbol: "main".to_owned(),
+                targets: targets.clone(),
+            }),
+            [
+                "Use commit ID to select single revision from: 0123456789ab, 0123456789ab",
+                "Use `bookmarks(main)` to select all revisions",
+                "To set which revision the bookmark points to, run `jj bookmark set main -r <REVISION>`",
+            ]
+        );
+        assert_eq!(
+            resolution_hints(&R::ConflictedRef {
+                kind: "tag",
+                symbol: "v1".to_owned(),
+                targets,
+            }),
+            ["Use commit ID to select single revision from: 0123456789ab, 0123456789ab"]
+        );
+        assert!(resolution_hints(&R::AmbiguousChangeIdPrefix("k".to_owned())).is_empty());
+        assert!(resolution_hints(&R::EmptyString).is_empty());
+    }
+
+    #[test]
+    fn resolution_details_name_their_symbol() {
+        let detail = super::resolution_detail(&R::AmbiguousCommitIdPrefix("ab".to_owned()));
+        assert_eq!(
+            (detail.kind, detail.symbol.as_deref(), detail.span),
+            (K::AmbiguousCommitIdPrefix, Some("ab"), None)
+        );
+        let empty = super::resolution_detail(&R::EmptyString);
+        assert_eq!((empty.kind, empty.symbol), (K::EmptyString, None));
     }
 }

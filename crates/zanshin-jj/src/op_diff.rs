@@ -262,7 +262,7 @@ fn resolve_both(
 ) -> Result<(Arc<ResolvedRevsetExpression>, Arc<ResolvedRevsetExpression>), String> {
     let resolve = |repo: &Arc<ReadonlyRepo>| {
         crate::revset::resolve_expression(repo.as_ref(), changes_in).map_err(|e| match e {
-            crate::RevsetError::ResolutionError { reason } => reason,
+            crate::RevsetError::ResolutionError { reason, .. } => reason,
             other => other.to_string(),
         })
     };

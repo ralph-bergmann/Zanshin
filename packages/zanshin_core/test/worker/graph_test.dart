@@ -28,6 +28,7 @@ import 'package:zanshin_core/src/ffi/commit_contents.dart' show CommitContent;
 import 'package:zanshin_core/src/ffi/ffi_buffer.dart';
 import 'package:zanshin_core/src/ffi/graph.dart';
 import 'package:zanshin_core/src/ffi/op_log.dart' show Operation;
+import 'package:zanshin_core/src/ffi/revset_search.dart' show RevsetErrorKind;
 import 'package:zanshin_core/src/ffi/warning.dart' show WarnedList;
 import 'package:zanshin_core/src/worker/commands.dart';
 import 'package:zanshin_core/src/worker/handle.dart';
@@ -179,6 +180,17 @@ void main() {
       await expectLater(
         handle.graphTopology(revset: 'all()', anchors: ['nonexistent-bookmark-xyz'], withTimestamps: false),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.revset_resolution_error')),
+      );
+      // Story 9.25: the structured detail rides the exception.
+      await expectLater(
+        handle.graphTopology(revset: 'fooo()', anchors: defaultGraphAnchors, withTimestamps: false),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.revsetError?.kind, 'kind', RevsetErrorKind.noSuchFunction)
+              .having((e) => e.revsetError?.symbol, 'symbol', 'fooo')
+              .having((e) => e.revsetError?.span?.offset, 'offset', 0)
+              .having((e) => e.revsetError?.span?.length, 'length', 4),
+        ),
       );
       await expectLater(
         handle.graphTopology(

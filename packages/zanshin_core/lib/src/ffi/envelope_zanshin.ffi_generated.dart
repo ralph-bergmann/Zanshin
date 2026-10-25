@@ -7,6 +7,105 @@ import 'dart:typed_data' show Uint8List;
 
 import 'package:flat_buffers/flat_buffers.dart' as fb;
 
+///  Which jj-lib revset failure a `RevsetErrorDetail` describes (Story 9.25): jj-lib's
+///  `RevsetParseErrorKind` variants, then its `RevsetResolutionError` variants. Member order IS
+///  the wire value — APPEND only.
+enum RevsetErrorKind {
+  SyntaxError(0),
+  NotPrefixOperator(1),
+  NotPostfixOperator(2),
+  NotInfixOperator(3),
+  NoSuchFunction(4),
+  InvalidFunctionArguments(5),
+  FsPathWithoutWorkspace(6),
+  WorkingCopyWithoutWorkspace(7),
+  RedefinedFunctionParameter(8),
+  Expression(9),
+  InAliasExpansion(10),
+  InParameterExpansion(11),
+  RecursiveAlias(12),
+  NoSuchRevision(13),
+  WorkspaceMissingWorkingCopy(14),
+  EmptyString(15),
+  AmbiguousCommitIdPrefix(16),
+  AmbiguousChangeIdPrefix(17),
+  DivergentChangeId(18),
+  ConflictedRef(19),
+  Backend(20),
+  Other(21);
+
+  final int value;
+  const RevsetErrorKind(this.value);
+
+  factory RevsetErrorKind.fromValue(int value) {
+    switch (value) {
+      case 0:
+        return RevsetErrorKind.SyntaxError;
+      case 1:
+        return RevsetErrorKind.NotPrefixOperator;
+      case 2:
+        return RevsetErrorKind.NotPostfixOperator;
+      case 3:
+        return RevsetErrorKind.NotInfixOperator;
+      case 4:
+        return RevsetErrorKind.NoSuchFunction;
+      case 5:
+        return RevsetErrorKind.InvalidFunctionArguments;
+      case 6:
+        return RevsetErrorKind.FsPathWithoutWorkspace;
+      case 7:
+        return RevsetErrorKind.WorkingCopyWithoutWorkspace;
+      case 8:
+        return RevsetErrorKind.RedefinedFunctionParameter;
+      case 9:
+        return RevsetErrorKind.Expression;
+      case 10:
+        return RevsetErrorKind.InAliasExpansion;
+      case 11:
+        return RevsetErrorKind.InParameterExpansion;
+      case 12:
+        return RevsetErrorKind.RecursiveAlias;
+      case 13:
+        return RevsetErrorKind.NoSuchRevision;
+      case 14:
+        return RevsetErrorKind.WorkspaceMissingWorkingCopy;
+      case 15:
+        return RevsetErrorKind.EmptyString;
+      case 16:
+        return RevsetErrorKind.AmbiguousCommitIdPrefix;
+      case 17:
+        return RevsetErrorKind.AmbiguousChangeIdPrefix;
+      case 18:
+        return RevsetErrorKind.DivergentChangeId;
+      case 19:
+        return RevsetErrorKind.ConflictedRef;
+      case 20:
+        return RevsetErrorKind.Backend;
+      case 21:
+        return RevsetErrorKind.Other;
+      default:
+        throw StateError('Invalid value $value for bit flag enum');
+    }
+  }
+
+  static RevsetErrorKind? _createOrNull(int? value) => value == null ? null : RevsetErrorKind.fromValue(value);
+
+  static const int minValue = 0;
+  static const int maxValue = 21;
+  static const fb.Reader<RevsetErrorKind> reader = _RevsetErrorKindReader();
+}
+
+class _RevsetErrorKindReader extends fb.Reader<RevsetErrorKind> {
+  const _RevsetErrorKindReader();
+
+  @override
+  int get size => 1;
+
+  @override
+  RevsetErrorKind read(fb.BufferContext bc, int offset) =>
+      RevsetErrorKind.fromValue(const fb.Uint8Reader().read(bc, offset));
+}
+
 ///  Which `extern "C"` wrapper a request buffer was built FOR.
 ///
 ///  Every request table carries this as field 0, and every wrapper refuses a buffer whose
@@ -23,7 +122,7 @@ import 'package:flat_buffers/flat_buffers.dart' as fb;
 ///  parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 ///  `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 ///  very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-///  squash, never a different verb. For the other 47 tables the variant name plus `Request` IS
+///  squash, never a different verb. For the other 63 tables the variant name plus `Request` IS
 ///  the table name.
 ///
 ///  `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -101,7 +200,9 @@ enum RequestKind {
   ResolveList(65),
   Resolve(66),
   Diffedit(67),
-  Revert(68);
+  Revert(68),
+  RevsetCounts(69),
+  FindChanges(70);
 
   final int value;
   const RequestKind(this.value);
@@ -246,6 +347,10 @@ enum RequestKind {
         return RequestKind.Diffedit;
       case 68:
         return RequestKind.Revert;
+      case 69:
+        return RequestKind.RevsetCounts;
+      case 70:
+        return RequestKind.FindChanges;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -254,7 +359,7 @@ enum RequestKind {
   static RequestKind? _createOrNull(int? value) => value == null ? null : RequestKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 68;
+  static const int maxValue = 70;
   static const fb.Reader<RequestKind> reader = _RequestKindReader();
 }
 
@@ -1793,7 +1898,9 @@ enum PayloadTypeId {
   MovementTargets(54),
   WorkspaceRemoveResult(55),
   SimplifyParentsResult(56),
-  ResolveList(57);
+  ResolveList(57),
+  RevsetCounts(58),
+  FoundChanges(59);
 
   final int value;
   const PayloadTypeId(this.value);
@@ -1916,6 +2023,10 @@ enum PayloadTypeId {
         return PayloadTypeId.SimplifyParentsResult;
       case 57:
         return PayloadTypeId.ResolveList;
+      case 58:
+        return PayloadTypeId.RevsetCounts;
+      case 59:
+        return PayloadTypeId.FoundChanges;
       default:
         throw StateError('Invalid value $value for bit flag enum');
     }
@@ -1924,7 +2035,7 @@ enum PayloadTypeId {
   static PayloadTypeId? _createOrNull(int? value) => value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 57;
+  static const int maxValue = 59;
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 }
 
@@ -1960,6 +2071,11 @@ class _PayloadTypeIdReader extends fb.Reader<PayloadTypeId> {
 ///  it is not listed. A `watcher.io_error` comes after a successful creation and
 ///  carries none: the repository is complete. Absent = none — every other error, and the
 ///  `internal.panic` fallback, writes no field.
+///
+///  revset (Story 9.25): the structured form of a `jj.revset_parse_error` /
+///  `jj.revset_resolution_error` from `zanshin_graph_topology`, `zanshin_revset_counts` (per count)
+///  and `zanshin_find_changes` — see `RevsetErrorDetail`. Absent = none: every other error, and
+///  those codes from every other symbol, write no field.
 class FfiError {
   FfiError._(this._bc, this._bcOffset);
   factory FfiError(List<int> bytes) {
@@ -1976,10 +2092,11 @@ class FfiError {
   String? get context => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
   List<String>? get hints => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
   List<String>? get leftBehind => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+  RevsetErrorDetail? get revset => RevsetErrorDetail.reader.vTableGetNullable(_bc, _bcOffset, 12);
 
   @override
   String toString() {
-    return 'FfiError{code: ${code}, context: ${context}, hints: ${hints}, leftBehind: ${leftBehind}}';
+    return 'FfiError{code: ${code}, context: ${context}, hints: ${hints}, leftBehind: ${leftBehind}, revset: ${revset}}';
   }
 }
 
@@ -1996,7 +2113,7 @@ class FfiErrorBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(4);
+    fbBuilder.startTable(5);
   }
 
   int addCodeOffset(int? offset) {
@@ -2019,6 +2136,11 @@ class FfiErrorBuilder {
     return fbBuilder.offset;
   }
 
+  int addRevsetOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
   int finish() {
     return fbBuilder.endTable();
   }
@@ -2029,16 +2151,19 @@ class FfiErrorObjectBuilder extends fb.ObjectBuilder {
   final String? _context;
   final List<String>? _hints;
   final List<String>? _leftBehind;
+  final RevsetErrorDetailObjectBuilder? _revset;
 
   FfiErrorObjectBuilder({
     String? code,
     String? context,
     List<String>? hints,
     List<String>? leftBehind,
+    RevsetErrorDetailObjectBuilder? revset,
   }) : _code = code,
        _context = context,
        _hints = hints,
-       _leftBehind = leftBehind;
+       _leftBehind = leftBehind,
+       _revset = revset;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -2049,11 +2174,274 @@ class FfiErrorObjectBuilder extends fb.ObjectBuilder {
     final int? leftBehindOffset = _leftBehind == null
         ? null
         : fbBuilder.writeList(_leftBehind!.map(fbBuilder.writeString).toList());
-    fbBuilder.startTable(4);
+    final int? revsetOffset = _revset?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(5);
     fbBuilder.addOffset(0, codeOffset);
     fbBuilder.addOffset(1, contextOffset);
     fbBuilder.addOffset(2, hintsOffset);
     fbBuilder.addOffset(3, leftBehindOffset);
+    fbBuilder.addOffset(4, revsetOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `RevsetSpan.length`'s value. WHY a struct: an optional scalar is not supported by
+///  `flatc --dart` (see `MovementOffset`); an absent struct field is null.
+class RevsetSpanLength {
+  RevsetSpanLength._(this._bc, this._bcOffset);
+
+  static const fb.Reader<RevsetSpanLength> reader = _RevsetSpanLengthReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get value => const fb.Uint32Reader().read(_bc, _bcOffset + 0);
+
+  @override
+  String toString() {
+    return 'RevsetSpanLength{value: ${value}}';
+  }
+}
+
+class _RevsetSpanLengthReader extends fb.StructReader<RevsetSpanLength> {
+  const _RevsetSpanLengthReader();
+
+  @override
+  int get size => 4;
+
+  @override
+  RevsetSpanLength createObject(fb.BufferContext bc, int offset) => RevsetSpanLength._(bc, offset);
+}
+
+class RevsetSpanLengthBuilder {
+  RevsetSpanLengthBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  int finish(int value) {
+    fbBuilder.putUint32(value);
+    return fbBuilder.offset;
+  }
+}
+
+class RevsetSpanLengthObjectBuilder extends fb.ObjectBuilder {
+  final int _value;
+
+  RevsetSpanLengthObjectBuilder({
+    required int value,
+  }) : _value = value;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    fbBuilder.putUint32(_value);
+    return fbBuilder.offset;
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Where a revset parse error points in the caller's expression (Story 9.25), in BYTES of its
+///  UTF-8 text. `length` is `0` for a position and ABSENT when it is unknown: the span crosses
+///  lines, or pest's render cannot tell an empty span from a one-char one (a lone `^`).
+class RevsetSpan {
+  RevsetSpan._(this._bc, this._bcOffset);
+  factory RevsetSpan(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RevsetSpan> reader = _RevsetSpanReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get offset => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  RevsetSpanLength? get length => RevsetSpanLength.reader.vTableGetNullable(_bc, _bcOffset, 6);
+
+  @override
+  String toString() {
+    return 'RevsetSpan{offset: ${offset}, length: ${length}}';
+  }
+}
+
+class _RevsetSpanReader extends fb.TableReader<RevsetSpan> {
+  const _RevsetSpanReader();
+
+  @override
+  RevsetSpan createObject(fb.BufferContext bc, int offset) => RevsetSpan._(bc, offset);
+}
+
+class RevsetSpanBuilder {
+  RevsetSpanBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addOffset(int? offset) {
+    fbBuilder.addUint32(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLength(int offset) {
+    fbBuilder.addStruct(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RevsetSpanObjectBuilder extends fb.ObjectBuilder {
+  final int? _offset;
+  final RevsetSpanLengthObjectBuilder? _length;
+
+  RevsetSpanObjectBuilder({
+    int? offset,
+    RevsetSpanLengthObjectBuilder? length,
+  }) : _offset = offset,
+       _length = length;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    fbBuilder.startTable(2);
+    fbBuilder.addUint32(0, _offset);
+    if (_length != null) {
+      fbBuilder.addStruct(1, _length!.finish(fbBuilder));
+    }
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  The structured form of a revset parse or resolution error (Story 9.25), beside the error's
+///  verbatim `context` and its CLI `hints`.
+///
+///    kind        the top-level error's kind (inside an alias: the alias expansion)
+///    span        the top-level error's span in the call's PRIMARY expression (the topology's
+///                `revset`, a search's `expression`); ABSENT for a resolution error and for an
+///                error in any other text of the call (`prioritize`, `short_prefixes`, an anchor)
+///    symbol      the function, revision, alias, operator or prefix the error names; ABSENT = none
+///    candidates  jj-lib's similar names (or the suggested operator); ABSENT = none
+class RevsetErrorDetail {
+  RevsetErrorDetail._(this._bc, this._bcOffset);
+  factory RevsetErrorDetail(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RevsetErrorDetail> reader = _RevsetErrorDetailReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RevsetErrorKind get kind => RevsetErrorKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  RevsetSpan? get span => RevsetSpan.reader.vTableGetNullable(_bc, _bcOffset, 6);
+  String? get symbol => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  List<String>? get candidates => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 10);
+
+  @override
+  String toString() {
+    return 'RevsetErrorDetail{kind: ${kind}, span: ${span}, symbol: ${symbol}, candidates: ${candidates}}';
+  }
+}
+
+class _RevsetErrorDetailReader extends fb.TableReader<RevsetErrorDetail> {
+  const _RevsetErrorDetailReader();
+
+  @override
+  RevsetErrorDetail createObject(fb.BufferContext bc, int offset) => RevsetErrorDetail._(bc, offset);
+}
+
+class RevsetErrorDetailBuilder {
+  RevsetErrorDetailBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addKind(RevsetErrorKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addSpanOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addSymbolOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCandidatesOffset(int? offset) {
+    fbBuilder.addOffset(3, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RevsetErrorDetailObjectBuilder extends fb.ObjectBuilder {
+  final RevsetErrorKind? _kind;
+  final RevsetSpanObjectBuilder? _span;
+  final String? _symbol;
+  final List<String>? _candidates;
+
+  RevsetErrorDetailObjectBuilder({
+    RevsetErrorKind? kind,
+    RevsetSpanObjectBuilder? span,
+    String? symbol,
+    List<String>? candidates,
+  }) : _kind = kind,
+       _span = span,
+       _symbol = symbol,
+       _candidates = candidates;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? spanOffset = _span?.getOrCreateOffset(fbBuilder);
+    final int? symbolOffset = _symbol == null ? null : fbBuilder.writeString(_symbol!);
+    final int? candidatesOffset = _candidates == null
+        ? null
+        : fbBuilder.writeList(_candidates!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, spanOffset);
+    fbBuilder.addOffset(2, symbolOffset);
+    fbBuilder.addOffset(3, candidatesOffset);
     return fbBuilder.endTable();
   }
 
@@ -10152,6 +10540,232 @@ class GraphTopologyRequestObjectBuilder extends fb.ObjectBuilder {
     fbBuilder.addOffset(3, shortPrefixesOffset);
     fbBuilder.addOffset(4, anchorsOffset);
     fbBuilder.addBool(5, _withTimestamps);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_revset_counts` (Story 9.25) — the op-pinned count of each revset.
+///  `operation_id` is required: the FULL hex id of the operation the shown topology was read at
+///  (absent = `jj.invalid_input` "operation_id is required"). `expressions` are counted in order;
+///  an absent or empty list is a valid, empty request. `cap` bounds each count (at most `cap + 1`
+///  commits are read); `0` parses and resolves only.
+class RevsetCountsRequest {
+  RevsetCountsRequest._(this._bc, this._bcOffset);
+  factory RevsetCountsRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RevsetCountsRequest> reader = _RevsetCountsRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get operationId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  List<String>? get expressions => const fb.ListReader<String>(fb.StringReader()).vTableGetNullable(_bc, _bcOffset, 8);
+  int get cap => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 10, 0);
+
+  @override
+  String toString() {
+    return 'RevsetCountsRequest{kind: ${kind}, operationId: ${operationId}, expressions: ${expressions}, cap: ${cap}}';
+  }
+}
+
+class _RevsetCountsRequestReader extends fb.TableReader<RevsetCountsRequest> {
+  const _RevsetCountsRequestReader();
+
+  @override
+  RevsetCountsRequest createObject(fb.BufferContext bc, int offset) => RevsetCountsRequest._(bc, offset);
+}
+
+class RevsetCountsRequestBuilder {
+  RevsetCountsRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addOperationIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addExpressionsOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCap(int? cap) {
+    fbBuilder.addUint64(3, cap);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RevsetCountsRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _operationId;
+  final List<String>? _expressions;
+  final int? _cap;
+
+  RevsetCountsRequestObjectBuilder({
+    RequestKind? kind,
+    String? operationId,
+    List<String>? expressions,
+    int? cap,
+  }) : _kind = kind,
+       _operationId = operationId,
+       _expressions = expressions,
+       _cap = cap;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? operationIdOffset = _operationId == null ? null : fbBuilder.writeString(_operationId!);
+    final int? expressionsOffset = _expressions == null
+        ? null
+        : fbBuilder.writeList(_expressions!.map(fbBuilder.writeString).toList());
+    fbBuilder.startTable(4);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, operationIdOffset);
+    fbBuilder.addOffset(2, expressionsOffset);
+    fbBuilder.addUint64(3, _cap);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  Arguments of `zanshin_find_changes` (Story 9.25) — the op-pinned change search.
+///  `operation_id`, `expression` and `short_prefixes` are required (absent = `jj.invalid_input`
+///  "<field> is required"); an empty `short_prefixes` disables disambiguation, as in
+///  `GraphTopologyRequest`. `limit` bounds the answer (at most `limit + 1` commits are read).
+class FindChangesRequest {
+  FindChangesRequest._(this._bc, this._bcOffset);
+  factory FindChangesRequest(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FindChangesRequest> reader = _FindChangesRequestReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  RequestKind get kind => RequestKind.fromValue(const fb.Uint8Reader().vTableGet(_bc, _bcOffset, 4, 0));
+  String? get operationId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  String? get expression => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 8);
+  int get limit => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 10, 0);
+  String? get shortPrefixes => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 12);
+
+  @override
+  String toString() {
+    return 'FindChangesRequest{kind: ${kind}, operationId: ${operationId}, expression: ${expression}, limit: ${limit}, shortPrefixes: ${shortPrefixes}}';
+  }
+}
+
+class _FindChangesRequestReader extends fb.TableReader<FindChangesRequest> {
+  const _FindChangesRequestReader();
+
+  @override
+  FindChangesRequest createObject(fb.BufferContext bc, int offset) => FindChangesRequest._(bc, offset);
+}
+
+class FindChangesRequestBuilder {
+  FindChangesRequestBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(5);
+  }
+
+  int addKind(RequestKind? kind) {
+    fbBuilder.addUint8(0, kind?.value);
+    return fbBuilder.offset;
+  }
+
+  int addOperationIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addExpressionOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int addLimit(int? limit) {
+    fbBuilder.addUint64(3, limit);
+    return fbBuilder.offset;
+  }
+
+  int addShortPrefixesOffset(int? offset) {
+    fbBuilder.addOffset(4, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FindChangesRequestObjectBuilder extends fb.ObjectBuilder {
+  final RequestKind? _kind;
+  final String? _operationId;
+  final String? _expression;
+  final int? _limit;
+  final String? _shortPrefixes;
+
+  FindChangesRequestObjectBuilder({
+    RequestKind? kind,
+    String? operationId,
+    String? expression,
+    int? limit,
+    String? shortPrefixes,
+  }) : _kind = kind,
+       _operationId = operationId,
+       _expression = expression,
+       _limit = limit,
+       _shortPrefixes = shortPrefixes;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? operationIdOffset = _operationId == null ? null : fbBuilder.writeString(_operationId!);
+    final int? expressionOffset = _expression == null ? null : fbBuilder.writeString(_expression!);
+    final int? shortPrefixesOffset = _shortPrefixes == null ? null : fbBuilder.writeString(_shortPrefixes!);
+    fbBuilder.startTable(5);
+    fbBuilder.addUint8(0, _kind?.value);
+    fbBuilder.addOffset(1, operationIdOffset);
+    fbBuilder.addOffset(2, expressionOffset);
+    fbBuilder.addUint64(3, _limit);
+    fbBuilder.addOffset(4, shortPrefixesOffset);
     return fbBuilder.endTable();
   }
 
@@ -22464,6 +23078,366 @@ class ResolveListObjectBuilder extends fb.ObjectBuilder {
   }
 }
 
+///  One expression's entry in `RevsetCounts` (Story 9.25): its count — `n` at most the call's
+///  `cap`, `capped` when the revset denotes more — or, when `error` is PRESENT, its own
+///  `jj.revset_parse_error` / `jj.revset_resolution_error` (code, jj-lib's text in `context`, the
+///  CLI's `hints`, the structured `revset` detail); `n` and `capped` are then `0` / `false`.
+class RevsetCount {
+  RevsetCount._(this._bc, this._bcOffset);
+  factory RevsetCount(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RevsetCount> reader = _RevsetCountReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  int get n => const fb.Uint64Reader().vTableGet(_bc, _bcOffset, 4, 0);
+  bool get capped => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
+  FfiError? get error => FfiError.reader.vTableGetNullable(_bc, _bcOffset, 8);
+
+  @override
+  String toString() {
+    return 'RevsetCount{n: ${n}, capped: ${capped}, error: ${error}}';
+  }
+}
+
+class _RevsetCountReader extends fb.TableReader<RevsetCount> {
+  const _RevsetCountReader();
+
+  @override
+  RevsetCount createObject(fb.BufferContext bc, int offset) => RevsetCount._(bc, offset);
+}
+
+class RevsetCountBuilder {
+  RevsetCountBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(3);
+  }
+
+  int addN(int? n) {
+    fbBuilder.addUint64(0, n);
+    return fbBuilder.offset;
+  }
+
+  int addCapped(bool? capped) {
+    fbBuilder.addBool(1, capped);
+    return fbBuilder.offset;
+  }
+
+  int addErrorOffset(int? offset) {
+    fbBuilder.addOffset(2, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RevsetCountObjectBuilder extends fb.ObjectBuilder {
+  final int? _n;
+  final bool? _capped;
+  final FfiErrorObjectBuilder? _error;
+
+  RevsetCountObjectBuilder({
+    int? n,
+    bool? capped,
+    FfiErrorObjectBuilder? error,
+  }) : _n = n,
+       _capped = capped,
+       _error = error;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? errorOffset = _error?.getOrCreateOffset(fbBuilder);
+    fbBuilder.startTable(3);
+    fbBuilder.addUint64(0, _n);
+    fbBuilder.addBool(1, _capped);
+    fbBuilder.addOffset(2, errorOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_revset_counts`' answer (Story 9.25): one entry per requested expression, in order.
+class RevsetCounts {
+  RevsetCounts._(this._bc, this._bcOffset);
+  factory RevsetCounts(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<RevsetCounts> reader = _RevsetCountsReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<RevsetCount>? get counts =>
+      const fb.ListReader<RevsetCount>(RevsetCount.reader).vTableGetNullable(_bc, _bcOffset, 4);
+
+  @override
+  String toString() {
+    return 'RevsetCounts{counts: ${counts}}';
+  }
+}
+
+class _RevsetCountsReader extends fb.TableReader<RevsetCounts> {
+  const _RevsetCountsReader();
+
+  @override
+  RevsetCounts createObject(fb.BufferContext bc, int offset) => RevsetCounts._(bc, offset);
+}
+
+class RevsetCountsBuilder {
+  RevsetCountsBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(1);
+  }
+
+  int addCountsOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class RevsetCountsObjectBuilder extends fb.ObjectBuilder {
+  final List<RevsetCountObjectBuilder>? _counts;
+
+  RevsetCountsObjectBuilder({
+    List<RevsetCountObjectBuilder>? counts,
+  }) : _counts = counts;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? countsOffset = _counts == null
+        ? null
+        : fbBuilder.writeList(_counts!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(1);
+    fbBuilder.addOffset(0, countsOffset);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  One change `zanshin_find_changes` found (Story 9.25): the full hex commit id, the change id
+///  (jj reverse hex) and both shortest-prefix lengths within the call's `short_prefixes`.
+class FoundChange {
+  FoundChange._(this._bc, this._bcOffset);
+  factory FoundChange(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FoundChange> reader = _FoundChangeReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  String? get commitId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get changeId => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 6);
+  int get commitPrefixLen => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 8, 0);
+  int get changePrefixLen => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 10, 0);
+
+  @override
+  String toString() {
+    return 'FoundChange{commitId: ${commitId}, changeId: ${changeId}, commitPrefixLen: ${commitPrefixLen}, changePrefixLen: ${changePrefixLen}}';
+  }
+}
+
+class _FoundChangeReader extends fb.TableReader<FoundChange> {
+  const _FoundChangeReader();
+
+  @override
+  FoundChange createObject(fb.BufferContext bc, int offset) => FoundChange._(bc, offset);
+}
+
+class FoundChangeBuilder {
+  FoundChangeBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(4);
+  }
+
+  int addCommitIdOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addChangeIdOffset(int? offset) {
+    fbBuilder.addOffset(1, offset);
+    return fbBuilder.offset;
+  }
+
+  int addCommitPrefixLen(int? commitPrefixLen) {
+    fbBuilder.addUint32(2, commitPrefixLen);
+    return fbBuilder.offset;
+  }
+
+  int addChangePrefixLen(int? changePrefixLen) {
+    fbBuilder.addUint32(3, changePrefixLen);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FoundChangeObjectBuilder extends fb.ObjectBuilder {
+  final String? _commitId;
+  final String? _changeId;
+  final int? _commitPrefixLen;
+  final int? _changePrefixLen;
+
+  FoundChangeObjectBuilder({
+    String? commitId,
+    String? changeId,
+    int? commitPrefixLen,
+    int? changePrefixLen,
+  }) : _commitId = commitId,
+       _changeId = changeId,
+       _commitPrefixLen = commitPrefixLen,
+       _changePrefixLen = changePrefixLen;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? commitIdOffset = _commitId == null ? null : fbBuilder.writeString(_commitId!);
+    final int? changeIdOffset = _changeId == null ? null : fbBuilder.writeString(_changeId!);
+    fbBuilder.startTable(4);
+    fbBuilder.addOffset(0, commitIdOffset);
+    fbBuilder.addOffset(1, changeIdOffset);
+    fbBuilder.addUint32(2, _commitPrefixLen);
+    fbBuilder.addUint32(3, _changePrefixLen);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
+///  `zanshin_find_changes`' answer (Story 9.25): at most `limit` entries in the revset's iteration
+///  order (`jj log --no-graph`'s); `truncated` when it denotes more.
+class FoundChanges {
+  FoundChanges._(this._bc, this._bcOffset);
+  factory FoundChanges(List<int> bytes) {
+    final rootRef = fb.BufferContext.fromBytes(bytes);
+    return reader.read(rootRef, 0);
+  }
+
+  static const fb.Reader<FoundChanges> reader = _FoundChangesReader();
+
+  final fb.BufferContext _bc;
+  final int _bcOffset;
+
+  List<FoundChange>? get entries =>
+      const fb.ListReader<FoundChange>(FoundChange.reader).vTableGetNullable(_bc, _bcOffset, 4);
+  bool get truncated => const fb.BoolReader().vTableGet(_bc, _bcOffset, 6, false);
+
+  @override
+  String toString() {
+    return 'FoundChanges{entries: ${entries}, truncated: ${truncated}}';
+  }
+}
+
+class _FoundChangesReader extends fb.TableReader<FoundChanges> {
+  const _FoundChangesReader();
+
+  @override
+  FoundChanges createObject(fb.BufferContext bc, int offset) => FoundChanges._(bc, offset);
+}
+
+class FoundChangesBuilder {
+  FoundChangesBuilder(this.fbBuilder);
+
+  final fb.Builder fbBuilder;
+
+  void begin() {
+    fbBuilder.startTable(2);
+  }
+
+  int addEntriesOffset(int? offset) {
+    fbBuilder.addOffset(0, offset);
+    return fbBuilder.offset;
+  }
+
+  int addTruncated(bool? truncated) {
+    fbBuilder.addBool(1, truncated);
+    return fbBuilder.offset;
+  }
+
+  int finish() {
+    return fbBuilder.endTable();
+  }
+}
+
+class FoundChangesObjectBuilder extends fb.ObjectBuilder {
+  final List<FoundChangeObjectBuilder>? _entries;
+  final bool? _truncated;
+
+  FoundChangesObjectBuilder({
+    List<FoundChangeObjectBuilder>? entries,
+    bool? truncated,
+  }) : _entries = entries,
+       _truncated = truncated;
+
+  /// Finish building, and store into the [fbBuilder].
+  @override
+  int finish(fb.Builder fbBuilder) {
+    final int? entriesOffset = _entries == null
+        ? null
+        : fbBuilder.writeList(_entries!.map((b) => b.getOrCreateOffset(fbBuilder)).toList());
+    fbBuilder.startTable(2);
+    fbBuilder.addOffset(0, entriesOffset);
+    fbBuilder.addBool(1, _truncated);
+    return fbBuilder.endTable();
+  }
+
+  /// Convenience method to serialize to byte list.
+  @override
+  Uint8List toBytes([String? fileIdentifier]) {
+    final fbBuilder = fb.Builder(deduplicateTables: false);
+    fbBuilder.finish(finish(fbBuilder), fileIdentifier);
+    return fbBuilder.buffer;
+  }
+}
+
 ///  One warning the call produced (Story 9.32) — the jj CLI's `ui.warning_*` output as a coded
 ///  fact. `code` is a registered `jj.*` warning code (`docs/rust-error-codes.md`, "Warning
 ///  Codes"), the thing a UI switches on. `message` is the CLI's text block for it (the warning
@@ -22568,6 +23542,7 @@ class WarningObjectBuilder extends fb.ObjectBuilder {
 ///  before the verb ran (a null pointer, an invalid handle, a request buffer that fails
 ///  validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/detect/close,
 ///  `zanshin_workspace_root`, `zanshin_log_defaults`, `zanshin_commit_contents`, `zanshin_op_abandon`,
+///  the op-pinned searches `zanshin_revset_counts` / `zanshin_find_changes` (Story 9.25),
 ///  events, and every
 ///  `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
 ///  working-copy check ran the snapshot (Story 9.28). `zanshin_repo_convert` carries the
@@ -22714,6 +23689,10 @@ class Envelope {
         return SimplifyParentsResult.reader.vTableGetNullable(_bc, _bcOffset, 10);
       case 57:
         return ResolveList.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 58:
+        return RevsetCounts.reader.vTableGetNullable(_bc, _bcOffset, 10);
+      case 59:
+        return FoundChanges.reader.vTableGetNullable(_bc, _bcOffset, 10);
       default:
         return null;
     }

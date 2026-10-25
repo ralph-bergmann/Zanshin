@@ -37,7 +37,7 @@ by contract (three compile-time constants plus one path resolution with a temp
 fallback), so it carries no `# Errors` block and answers `ok == true` for every
 input — the `internal.panic` backstop below is its only `ok == false` arm. It
 is on the token path purely because its result is composite. "Infallible" in this
-document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 107
+document means *has no `# Errors` block in `zanshin_ffi.h`* — eleven of the 109
 exported symbols, these ten plus `zanshin_diagnostics`.
 
 `zanshin_buffer_free_token` frees **two** allocations: the payload the token
@@ -66,14 +66,14 @@ Envelope {
   warnings:     [Warning]?     // the call's CLI warnings (Story 9.32), ok OR error
 }
 
-FfiError { code: string; context: string?; hints: [string]?; left_behind: [string]?; }
+FfiError { code: string; context: string?; hints: [string]?; left_behind: [string]?; revset: RevsetErrorDetail?; }
 Warning { code: string; message: string; }
 ```
 
 **Success:** `ok = true`, `data` holds the concrete payload variant.  
 **Error:** `ok = false`, `error.code` holds the dotted AR-P-4 code, `error.context`
 holds human-readable detail, `error.hints` the CLI's hint lines, `error.left_behind` what a
-failed init or conversion left on disk. See `docs/rust-error-codes.md` for the full registry.
+failed init or conversion left on disk, `error.revset` a revset error's structured detail. See `docs/rust-error-codes.md` for the full registry.
 
 ### `FfiError.left_behind` — what a failed init or conversion left on disk (Stories 9.57, 9.58)
 
@@ -123,6 +123,34 @@ per code in `docs/rust-error-codes.md`. On the Dart side the thrown `ZanshinFfiE
 decodes both. A hint the UI shows as part of a successful verb's result travels in its payload
 instead (e.g. `GitFetchResult.hints`, `GitPushResult.hints`).
 
+### `FfiError.revset` — the structured revset error (Story 9.25)
+
+A `jj.revset_parse_error` / `jj.revset_resolution_error` from `zanshin_graph_topology`,
+`zanshin_find_changes` and each failed entry of `zanshin_revset_counts` carries a
+`RevsetErrorDetail` beside its verbatim `context` (jj-lib's `Display` text) and its CLI `hints`
+(`revset_parse_error_hint` / `revset_resolution_error_hints` @ v0.46.0, ported):
+
+- `kind` — `RevsetErrorKind`, one to one with jj-lib's `RevsetParseErrorKind` then its
+  `RevsetResolutionError` variants (append-only). It is the TOP-LEVEL error's kind: inside an
+  alias it is `InAliasExpansion` (the hint comes from the bottom error, as the CLI's).
+- `span` — parse errors only: `offset` and `length` in BYTES of the call's PRIMARY UTF-8
+  expression (the topology's `revset`, a search's `expression`); `length` is `0` for a position
+  and ABSENT when it is unknown — the span crosses lines, or pest's lone `^` underline, which it
+  draws for an empty span and a one-char span alike. It points into the caller's text even inside
+  an alias expansion. jj-lib 0.46 keeps the span private, so Rust reads it back out of jj-lib's
+  pest render (` --> L:C` + the underline) — a documented shortcut until jj-lib exposes it.
+  ABSENT for a resolution error, and for an error in any other text of the call (`prioritize`,
+  `short_prefixes`, an anchor), whose span would index into that other text.
+- `symbol` — the function, revision, alias, operator or prefix the error names (`fooo` for
+  `fooo()`, `k` for an ambiguous `change_id(k)`); ABSENT = none.
+- `candidates` — jj-lib's similar names (or the suggested operator); ABSENT = none.
+
+The table is **absent** on every other error, and on these codes from every other symbol (their
+verbs keep only `context` + `hints`), so every other error and `PANIC_FALLBACK_ENVELOPE` keep their
+bytes. It is sourced from the FFI `CallReport.revset`, which `precondition_envelope` keeps when it
+attaches the verb's report. On the Dart side the thrown `ZanshinFfiException.revsetError`
+(`RevsetErrorDetail?`, `null` when absent) carries it; a counts entry's own exception does too.
+
 ### `warnings` — the CLI's `Warning:` blocks as coded facts (Story 9.32)
 
 Every envelope-returning symbol may carry `Envelope.warnings`: the jj CLI @ v0.44.0's
@@ -163,7 +191,10 @@ key, the file is not rewritten. The creation paths (`zanshin_repo_init`, `zanshi
 `zanshin_repo_convert`) warn it first, at their start-up check, on the ok and the error envelope.
 `zanshin_commit_contents` (Story 4.10) never carries the vector, on the ok or the error
 envelope: the op-pinned read loads no config and runs no snapshot, so it has nothing to warn
-about (Dart still returns a `WarnedList`, always empty).
+about (Dart still returns a `WarnedList`, always empty). The op-pinned searches
+`zanshin_revset_counts` / `zanshin_find_changes` (Story 9.25) load the config, so their ok
+envelope carries the alias load's warnings and the parse diagnostics (`jj.revset_diagnostic`,
+in expression order); their call-level error envelopes carry none.
 
 **The start-up secure-config fix-up (Story 9.37).** At the start of every command the jj CLI
 runs jj-lib's `SecureConfig::maybe_load_config` for the repo, then the workspace config
@@ -185,7 +216,8 @@ notices are one-shot — the next call finds nothing left to fix.
 Like every jj CLI command, every handle-scoped symbol except `zanshin_repo_close`,
 `zanshin_log_defaults`, `zanshin_workspace_root` (the CLI's command start-up only; with a `name`
 also `workspace_helper_no_snapshot`'s), `zanshin_commit_contents` (the
-continuation of the topology call's `jj log`, Story 4.10), `zanshin_op_abandon` (the CLI's
+continuation of the topology call's `jj log`, Story 4.10), the op-pinned searches
+`zanshin_revset_counts` / `zanshin_find_changes` (Story 9.25), `zanshin_op_abandon` (the CLI's
 `load_workspace`, Story 9.21), `zanshin_op_integrate` (the CLI's `workspace_helper_no_snapshot`,
 Story 9.12) and
 `zanshin_workspace_update_stale` (the recovery itself, see below) first runs the CLI's
@@ -204,7 +236,7 @@ notes — `@` was immutable, `.jjconflict` files present, a failed Git HEAD rese
 are not fields: they are `Envelope.warnings` (Story 9.32). On an error it is PARTIAL — every field
 up to the failing step. The field is **absent** on every other symbol (open,
 init, clone, detect, close, `zanshin_log_defaults`,
-`zanshin_workspace_root`, `zanshin_commit_contents`, `zanshin_git_remote_changes` (Story 9.24), `zanshin_op_abandon` (Story 9.21), `zanshin_op_integrate` (Story 9.12), the infrastructure symbols, async events, and every
+`zanshin_workspace_root`, `zanshin_commit_contents`, `zanshin_revset_counts`, `zanshin_find_changes` (Story 9.25), `zanshin_git_remote_changes` (Story 9.24), `zanshin_op_abandon` (Story 9.21), `zanshin_op_integrate` (Story 9.12), the infrastructure symbols, async events, and every
 `zanshin_config_*` symbol but one) and whenever
 the call was refused before the verb ran (`ffi.null_pointer`, `ffi.invalid_handle`,
 a request buffer that fails validation, and a `jj.invalid_input` that the CLI's clap refuses —
@@ -290,9 +322,9 @@ a blanket guarantee that no panic ever crosses the boundary.
 
 ## Request-buffer contract
 
-Seventy of the 107 exported symbols take their arguments as a **FlatBuffers
+Seventy-two of the 109 exported symbols take their arguments as a **FlatBuffers
 request buffer** — the ADR-0001 composite-input pattern — rather than as C
-strings. Fifty-eight use the handle-scoped three-parameter shape:
+strings. Sixty use the handle-scoped three-parameter shape:
 
 ```c
 ZanshinBuf* zanshin_<verb>(uint64_t handle, const uint8_t* data, uintptr_t len);
@@ -451,14 +483,16 @@ wire-level hazard, not a value-level one.)
 
 ### The request tables
 
-`schemas/envelope.fbs` declares **52** request tables. They are **not** members of
+`schemas/envelope.fbs` declares **66** request tables. They are **not** members of
 the `Payload` union (that union is response-only). Field order IS the wire
 contract: field ids are assigned by declaration order and baked into both
 committed codegen sides. `kind` is **always field 0**; any other change to a
 request table's field order is an in-place WIP edit that MUST regenerate BOTH
 committed codegen sides in the same commit.
 
-Three tables are shared: `ChangeIdList` by three symbols (`zanshin_new_change`'s
+Five tables are shared: `BookmarkTrackRequest` by `zanshin_bookmark_track` and
+`zanshin_bookmark_untrack`, `WorkspaceNamesRequest` by `zanshin_workspace_forget` and
+`zanshin_workspace_remove`, `ChangeIdList` by three symbols (`zanshin_new_change`'s
 `parents`, `zanshin_abandon`'s `change_ids` and `zanshin_parallelize`'s revisions, Story
 9.16; its `insert_after` / `insert_before` lists — `jj new -A` / `-B`, Story 9.48 — are
 read only by `zanshin_new_change`, the other two ignore them) and `SquashRequest` by two
@@ -466,8 +500,9 @@ read only by `zanshin_new_change`, the other two ignore them) and `SquashRequest
 squash its caller is about to run, with the same arguments) and `MovementRequest` by two
 (`zanshin_move_working_copy` and `zanshin_movement_targets`, Story 9.10 — the targets call lists
 the candidates of the move its caller is about to run). Every other table has
-exactly one caller, and no table is orphaned. 53 tables + 4 shared reuses = the 57
-request-buffer symbols (Story 9.20 adds `GitPushRequest`, `RepoCloneRequest` and
+exactly one caller, and no table is orphaned. 66 tables + 6 shared reuses = the 72
+request-buffer symbols (Story 9.25 adds `RevsetCountsRequest` and `FindChangesRequest`; Story
+9.20 adds `GitPushRequest`, `RepoCloneRequest` and
 `RepoInitRequest` — `zanshin_repo_init` / `zanshin_repo_clone` took two C strings / a string and
 an `int32_t` backend before; Story 9.30 adds `GitFetchRequest` — `zanshin_git_fetch` took a
 remote name and a cancel token before; Story 9.31 adds `DropActionsRequest`; Story 9.16 adds `RebaseRequest` and
@@ -551,7 +586,7 @@ Order must stay identical to `zanshin_jj::RepoKind` and `fbs::RepoKind`
 
 ## Symbol index
 
-The cdylib exports **107** `extern "C"` functions. Every one has a row here; the
+The cdylib exports **109** `extern "C"` functions. Every one has a row here; the
 list is derived from `crates/zanshin-ffi/include/zanshin_ffi.h` and kept in sync
 by `crates/zanshin-ffi/tests/it/ffi_abi_doc_sync.rs`, which fails if a header symbol
 appears in neither a heading nor a first table cell of this file.
@@ -584,6 +619,8 @@ or no `# Errors` block.
 | `zanshin_log_defaults` | `(uint64_t handle)` | — | `LogDefaults` | `ffi.invalid_handle`, `jj.config_error` | 4.9 |
 | `zanshin_graph_topology` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `GraphTopologyRequest` | `GraphTopology` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.stale_working_copy`, `jj.config_error`, `jj.jj_lib_error`, `graph.dangling_edge` | 4.12 |
 | `zanshin_commit_contents` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `CommitContentsRequest` | `CommitContents` (no `precondition`, no `warnings`) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.operation_not_found`, `jj.change_not_found`, `jj.jj_lib_error` | 4.10 |
+| `zanshin_revset_counts` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `RevsetCountsRequest` | `RevsetCounts` (no `precondition`; a count's own `FfiError`, see § Graph search) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.operation_not_found`, `jj.config_error`, `jj.jj_lib_error` | 9.25 |
+| `zanshin_find_changes` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `FindChangesRequest` | `FoundChanges` (no `precondition`, see § Graph search) | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.operation_not_found`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.jj_lib_error` | 9.25 |
 | `zanshin_show` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `ShowRequest` | `ShowView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.6 |
 | `zanshin_evolog` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `EvologRequest` | `EvologView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.revset_parse_error`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.6 |
 | `zanshin_interdiff` | `(uint64_t handle, const uint8_t *data, uintptr_t len)` | `InterdiffRequest` | `InterdiffView` | `ffi.invalid_handle`, `ffi.null_pointer`, `ffi.invalid_argument`, `jj.invalid_input`, `jj.change_not_found`, `jj.revset_resolution_error`, `jj.config_error`, `jj.stale_working_copy`, `jj.jj_lib_error` | 9.6 |
@@ -1580,6 +1617,53 @@ parents and, for a merge, merges their trees.
 - `defaultGraphAnchors` (`['trunk()', 'present(@)']`, `lib/src/ffi/graph.dart`) is the
   editable pre-fill for the topology call's required `anchors`
   (`RepoHandle.graphTopology`, Story 4.12); nothing applies it on its own.
+
+## Graph search — `zanshin_revset_counts`, `zanshin_find_changes` (Story 9.25)
+
+```c
+ZanshinBuf* zanshin_revset_counts(uint64_t handle, const uint8_t* data, uintptr_t len);
+ZanshinBuf* zanshin_find_changes(uint64_t handle, const uint8_t* data, uintptr_t len);
+```
+
+The graph search's two reads — "N changes" per revset and go-to beyond the shown view — are
+**pinned reads** like `zanshin_commit_contents`: both answer at the caller's FULL hex
+`operation_id` (the shown topology's `GraphTopology.operation_id`) via `load_operation` +
+`load_at`, run NO pre-verb snapshot, write no operation and no op head, carry NO `precondition`
+and leave `RepoHandle.lastPrecondition` untouched. Unlike `zanshin_commit_contents` they load the
+effective config: every expression parses as every Zanshin revset (the effective
+`[revset-aliases]`, `user.email` for `mine()`, the workspace root as cwd for `files()`, `@` as the
+handle's workspace), and symbols resolve with the id-prefix context, as the CLI's
+`default_symbol_resolver`. The ok envelope carries the alias load's warnings and the parse
+diagnostics (`jj.revset_diagnostic`, in expression order).
+
+**`zanshin_revset_counts`** — `RevsetCountsRequest { kind: RevsetCounts, operation_id,
+expressions, cap }`. The id-prefix context is the effective `revsets.short-prefixes` (a value that
+is not a string or does not parse: `jj.config_error` for the whole call). Counting iterates the
+evaluated stream (never `count_estimate`): `cap > 0` reads at most `cap + 1` commits per
+expression (`n = min(len, cap)`, `capped = len > cap`); `cap == 0` parses and resolves only
+(`n = 0`). The answer is `RevsetCounts { counts: [RevsetCount { n, capped, error }] }`, one entry
+per expression in request order; an expression that does not parse or resolve gets its own
+`error` (`jj.revset_parse_error` / `jj.revset_resolution_error` with `context`, `hints` and
+`revset`, § `FfiError.revset`) and fails nothing else. Only call-level faults fail the envelope:
+the request, the operation (`jj.invalid_input`, `jj.operation_not_found`), the config
+(`jj.config_error`) or the backend (`jj.jj_lib_error`).
+
+**`zanshin_find_changes`** — `FindChangesRequest { kind: FindChanges, operation_id, expression,
+limit, short_prefixes }`, all strings required. `short_prefixes` is a pass-through: its index
+disambiguates the expression's symbols AND gives the prefix lengths; empty disables
+disambiguation (the full index), as in `zanshin_graph_topology`. It reads at most `limit + 1`
+commits in the revset's iteration order (`jj log --no-graph`'s) and answers `FoundChanges {
+entries: [FoundChange { commit_id, change_id, commit_prefix_len, change_prefix_len }], truncated
+}`. An ambiguous prefix refuses `jj.revset_resolution_error` (``Change ID prefix `k` is
+ambiguous``); an unmatched one finds nothing. A bad `short_prefixes` or `expression` refuses
+`jj.revset_parse_error`.
+
+**Dart worker integration:** `RevsetCountsCommand` / `FindChangesCommand` →
+`zanshinRevsetCounts` / `zanshinFindChanges` (`lib/src/ffi/revset_search.dart`) →
+`RepoHandle.revsetCounts(operationId, expressions, cap:)` (a `WarnedList<RevsetCount>`, each
+`RevsetCount { n, capped, error }` with `error` a `ZanshinFfiException?`) and
+`RepoHandle.findChanges(operationId, expression, limit:, shortPrefixes:)` (`FoundChanges {
+entries, truncated, warnings }`). Interior-NUL guards run on the calling side (`ArgumentError`).
 
 ## `Bookmarks` payload and `zanshin_bookmarks` (Stories 9.29 and 9.19)
 

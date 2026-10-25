@@ -717,6 +717,7 @@ fn creation_envelope_for(outcome: CreationOutcome, session_id: u64) -> Result<Ve
             .iter()
             .map(|path| path.to_string_lossy().into_owned())
             .collect(),
+        revset: None,
     };
     let armed = outcome
         .result
@@ -954,9 +955,10 @@ pub unsafe extern "C" fn zanshin_repo_clone(data: *const u8, len: usize) -> *mut
 /// single-isolate), but the Dart worker's Model-A `handleId` table (Story 3.9) removes
 /// the mapping on close, so a stale handle never reaches Rust. The repo handle is a warm
 /// loader, not a state cache — reads re-resolve to head (ADR-0002).
-/// *(2026-09-30, Story 4.10: `zanshin_commit_contents` is the one pinned read — it answers at
+/// *(2026-09-30, Story 4.10: `zanshin_commit_contents` is a pinned read — it answers at
 /// the caller-supplied operation and returns commit-intrinsic values only; see the ADR-0002
-/// Addendum 2026-09-30.)*
+/// Addendum 2026-09-30. 2026-10-25, Story 9.25: so are `zanshin_revset_counts` and
+/// `zanshin_find_changes`, which answer at the operation the shown topology was read at.)*
 /// The returned token must be freed via `zanshin_buffer_free_token`.
 #[no_mangle]
 pub unsafe extern "C" fn zanshin_repo_close(handle: u64) -> *mut ZanshinBuf {

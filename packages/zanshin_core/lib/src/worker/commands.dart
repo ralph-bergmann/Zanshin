@@ -1400,6 +1400,70 @@ final class CommitContentsCommand extends WorkerCommand implements HandleScopedC
   final List<String> commitIds;
 }
 
+/// Count each revset in [expressions] at the pinned operation [operationId],
+/// capped at [cap], in the repo identified by [handleId] (Story 9.25).
+///
+/// The worker looks up the raw handle (read — never remove), calls
+/// `zanshinRevsetCounts(raw, …)`, and replies with a `BufferResult` carrying
+/// the `Envelope<RevsetCounts>` bytes. It runs no pre-verb snapshot, so
+/// `lastPrecondition` is left untouched.
+final class RevsetCountsCommand extends WorkerCommand implements HandleScopedCommand {
+  const RevsetCountsCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.operationId,
+    required this.expressions,
+    required this.cap,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The FULL hex id of the operation the shown topology was read at.
+  final String operationId;
+
+  /// The revsets to count, in answer order.
+  final List<String> expressions;
+
+  /// The per-expression cap; `0` parses and resolves only.
+  final int cap;
+}
+
+/// List at most [limit] commits [expression] denotes at the pinned operation
+/// [operationId], in the repo identified by [handleId] (Story 9.25).
+///
+/// The worker looks up the raw handle (read — never remove), calls
+/// `zanshinFindChanges(raw, …)`, and replies with a `BufferResult` carrying
+/// the `Envelope<FoundChanges>` bytes. It runs no pre-verb snapshot, so
+/// `lastPrecondition` is left untouched.
+final class FindChangesCommand extends WorkerCommand implements HandleScopedCommand {
+  const FindChangesCommand({
+    required super.commandId,
+    required this.handleId,
+    required this.operationId,
+    required this.expression,
+    required this.limit,
+    required this.shortPrefixes,
+  });
+
+  /// Opaque dense handle id assigned by the worker on open/init/clone.
+  @override
+  final int handleId;
+
+  /// The FULL hex id of the operation the shown topology was read at.
+  final String operationId;
+
+  /// The revset to search.
+  final String expression;
+
+  /// The most entries to answer with.
+  final int limit;
+
+  /// The disambiguation revset; empty = none (the full index).
+  final String shortPrefixes;
+}
+
 /// Create local bookmarks pointing at one revision, in the repo identified by
 /// [handleId] (Story 9.8) — the CLI's `jj bookmark create`.
 ///

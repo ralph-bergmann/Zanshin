@@ -230,8 +230,8 @@ fn be<E: std::fmt::Display>(e: E) -> CommitViewError {
 /// the mutation side.
 fn rev(e: crate::RevsetError) -> CommitViewError {
     match e {
-        crate::RevsetError::ParseError { reason } => CommitViewError::RevsetParseError { reason },
-        crate::RevsetError::ResolutionError { reason } => CommitViewError::RevsetResolutionError { reason },
+        crate::RevsetError::ParseError { reason, .. } => CommitViewError::RevsetParseError { reason },
+        crate::RevsetError::ResolutionError { reason, .. } => CommitViewError::RevsetResolutionError { reason },
         crate::RevsetError::Config(inner) => CommitViewError::Config {
             reason: inner.to_string(),
         },
@@ -631,12 +631,16 @@ mod tests {
     #[test]
     fn rev_preserves_the_three_stage_revset_taxonomy() {
         assert!(matches!(
-            rev(RevsetError::ParseError { reason: "bad".to_owned() }),
+            rev(RevsetError::ParseError {
+                reason: "bad".to_owned(),
+                detail: Box::new(crate::revset::RevsetErrorDetail::bare(crate::RevsetErrorKind::SyntaxError)),
+            }),
             CommitViewError::RevsetParseError { reason } if reason == "bad"
         ));
         assert!(matches!(
             rev(RevsetError::ResolutionError {
-                reason: "no such bookmark".to_owned()
+                reason: "no such bookmark".to_owned(),
+                detail: Box::new(crate::revset::RevsetErrorDetail::bare(crate::RevsetErrorKind::NoSuchRevision)),
             }),
             CommitViewError::RevsetResolutionError { reason } if reason == "no such bookmark"
         ));

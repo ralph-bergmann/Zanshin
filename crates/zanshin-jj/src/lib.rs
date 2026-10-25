@@ -64,6 +64,7 @@ mod repo;
 pub(crate) mod resolve;
 pub(crate) mod revert;
 pub(crate) mod revset;
+pub(crate) mod revset_search;
 pub(crate) mod select_tree;
 pub(crate) mod simplify_parents;
 pub(crate) mod snapshot;
@@ -132,7 +133,8 @@ pub use resolve::{
     ConflictHunk, ConflictedFile, ResolveList, ResolveListOptions, ResolveOptions, ResolveTool, ResolvedFile,
 };
 pub use revert::RevertOptions;
-pub use revset::{resolve_revset, RevsetError, DEFAULT_LOG_REVSET};
+pub use revset::{resolve_revset, RevsetError, RevsetErrorDetail, RevsetErrorKind, RevsetSpan, DEFAULT_LOG_REVSET};
+pub use revset_search::{FoundChange, FoundChanges, RevsetCount, RevsetCounts, RevsetSearchError};
 pub use select_tree::{
     FileChoice, FileSelection, HunkKey, SelectTreeOptions, SelectedTreeId, SourceTree, TreeSelection,
 };

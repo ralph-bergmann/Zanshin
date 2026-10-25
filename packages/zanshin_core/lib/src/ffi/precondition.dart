@@ -10,6 +10,7 @@ import 'envelope_zanshin.ffi_generated.dart' as fbs;
 import 'file_ops.dart' show SnapshotStats, decodeSnapshotStatsInternal;
 import 'git.dart' show GitExportFailure, GitImportResult, decodeExportFailuresInternal, decodeGitImportResultInternal;
 import 'request_bytes.dart';
+import 'revset_search.dart' show decodeRevsetErrorDetailInternal;
 import 'warning.dart';
 import 'workspace.dart' show StaleRecovery, decodeStaleRecoveryInternal;
 
@@ -191,6 +192,7 @@ ZanshinFfiException decodeEnvelopeErrorInternal(fbs.Envelope env) {
     warnings: decodeEnvelopeWarningsInternal(env),
     hints: decodeErrorHintsInternal(e),
     leftBehind: _decodeStrings(e?.leftBehind),
+    revsetError: decodeRevsetErrorDetailInternal(e?.revset),
   );
 }
 

@@ -39,11 +39,75 @@ namespace zanshin.ffi;
 /// it is not listed. A `watcher.io_error` comes after a successful creation and
 /// carries none: the repository is complete. Absent = none — every other error, and the
 /// `internal.panic` fallback, writes no field.
+///
+/// revset (Story 9.25): the structured form of a `jj.revset_parse_error` /
+/// `jj.revset_resolution_error` from `zanshin_graph_topology`, `zanshin_revset_counts` (per count)
+/// and `zanshin_find_changes` — see `RevsetErrorDetail`. Absent = none: every other error, and
+/// those codes from every other symbol, write no field.
 table FfiError {
   code: string;
   context: string;
   hints: [string];
   left_behind: [string];
+  revset: RevsetErrorDetail;
+}
+
+/// Which jj-lib revset failure a `RevsetErrorDetail` describes (Story 9.25): jj-lib's
+/// `RevsetParseErrorKind` variants, then its `RevsetResolutionError` variants. Member order IS
+/// the wire value — APPEND only.
+enum RevsetErrorKind : ubyte {
+  SyntaxError,
+  NotPrefixOperator,
+  NotPostfixOperator,
+  NotInfixOperator,
+  NoSuchFunction,
+  InvalidFunctionArguments,
+  FsPathWithoutWorkspace,
+  WorkingCopyWithoutWorkspace,
+  RedefinedFunctionParameter,
+  Expression,
+  InAliasExpansion,
+  InParameterExpansion,
+  RecursiveAlias,
+  NoSuchRevision,
+  WorkspaceMissingWorkingCopy,
+  EmptyString,
+  AmbiguousCommitIdPrefix,
+  AmbiguousChangeIdPrefix,
+  DivergentChangeId,
+  ConflictedRef,
+  Backend,
+  Other
+}
+
+/// `RevsetSpan.length`'s value. WHY a struct: an optional scalar is not supported by
+/// `flatc --dart` (see `MovementOffset`); an absent struct field is null.
+struct RevsetSpanLength {
+  value: uint;
+}
+
+/// Where a revset parse error points in the caller's expression (Story 9.25), in BYTES of its
+/// UTF-8 text. `length` is `0` for a position and ABSENT when it is unknown: the span crosses
+/// lines, or pest's render cannot tell an empty span from a one-char one (a lone `^`).
+table RevsetSpan {
+  offset: uint;
+  length: RevsetSpanLength;
+}
+
+/// The structured form of a revset parse or resolution error (Story 9.25), beside the error's
+/// verbatim `context` and its CLI `hints`.
+///
+///   kind        the top-level error's kind (inside an alias: the alias expansion)
+///   span        the top-level error's span in the call's PRIMARY expression (the topology's
+///               `revset`, a search's `expression`); ABSENT for a resolution error and for an
+///               error in any other text of the call (`prioritize`, `short_prefixes`, an anchor)
+///   symbol      the function, revision, alias, operator or prefix the error names; ABSENT = none
+///   candidates  jj-lib's similar names (or the suggested operator); ABSENT = none
+table RevsetErrorDetail {
+  kind: RevsetErrorKind;
+  span: RevsetSpan;
+  symbol: string;
+  candidates: [string];
 }
 
 // ── Request-only tables ─────────────────────────────────────────────────────────
@@ -82,7 +146,7 @@ table FfiError {
 /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
 /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
 /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-/// squash, never a different verb. For the other 47 tables the variant name plus `Request` IS
+/// squash, never a different verb. For the other 63 tables the variant name plus `Request` IS
 /// the table name.
 ///
 /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -160,7 +224,9 @@ enum RequestKind : ubyte {
   ResolveList,
   Resolve,
   Diffedit,
-  Revert
+  Revert,
+  RevsetCounts,
+  FindChanges
 }
 
 /// A list of jj change ids (reverse-hex), passed by value for `zanshin_new_change`'s
@@ -1301,6 +1367,30 @@ table GraphTopologyRequest {
   with_timestamps: bool;
 }
 
+/// Arguments of `zanshin_revset_counts` (Story 9.25) — the op-pinned count of each revset.
+/// `operation_id` is required: the FULL hex id of the operation the shown topology was read at
+/// (absent = `jj.invalid_input` "operation_id is required"). `expressions` are counted in order;
+/// an absent or empty list is a valid, empty request. `cap` bounds each count (at most `cap + 1`
+/// commits are read); `0` parses and resolves only.
+table RevsetCountsRequest {
+  kind: RequestKind;
+  operation_id: string;
+  expressions: [string];
+  cap: ulong;
+}
+
+/// Arguments of `zanshin_find_changes` (Story 9.25) — the op-pinned change search.
+/// `operation_id`, `expression` and `short_prefixes` are required (absent = `jj.invalid_input`
+/// "<field> is required"); an empty `short_prefixes` disables disambiguation, as in
+/// `GraphTopologyRequest`. `limit` bounds the answer (at most `limit + 1` commits are read).
+table FindChangesRequest {
+  kind: RequestKind;
+  operation_id: string;
+  expression: string;
+  limit: ulong;
+  short_prefixes: string;
+}
+
 // ── Payload union ─────────────────────────────────────────────────────────────
 // Closed registry of composite FFI return types.
 // Extend this union — and regenerate both sides — as each noun lands:
@@ -1335,6 +1425,7 @@ table GraphTopologyRequest {
 //   Story 9-15 : SquashPlan ✓, SplitResult ✓ (zanshin_squash reuses MutationResult;
 //                SplitResult nests it)
 //   Story 9-31 : DropActions ✓, ChangeActions ✓ (a row's refusal is the shipped FfiError)
+//   Story 9-25 : RevsetCounts ✓, FoundChanges ✓ (a count's error is the shipped FfiError)
 
 /// Opaque handle to an open repo session.
 /// `handle` is the Rust `*mut RepoSession` reinterpreted as an unsigned integer;
@@ -2854,6 +2945,37 @@ table ResolveList {
   files: [ConflictedFile];
 }
 
+/// One expression's entry in `RevsetCounts` (Story 9.25): its count — `n` at most the call's
+/// `cap`, `capped` when the revset denotes more — or, when `error` is PRESENT, its own
+/// `jj.revset_parse_error` / `jj.revset_resolution_error` (code, jj-lib's text in `context`, the
+/// CLI's `hints`, the structured `revset` detail); `n` and `capped` are then `0` / `false`.
+table RevsetCount {
+  n: ulong;
+  capped: bool;
+  error: FfiError;
+}
+
+/// `zanshin_revset_counts`' answer (Story 9.25): one entry per requested expression, in order.
+table RevsetCounts {
+  counts: [RevsetCount];
+}
+
+/// One change `zanshin_find_changes` found (Story 9.25): the full hex commit id, the change id
+/// (jj reverse hex) and both shortest-prefix lengths within the call's `short_prefixes`.
+table FoundChange {
+  commit_id: string;
+  change_id: string;
+  commit_prefix_len: uint;
+  change_prefix_len: uint;
+}
+
+/// `zanshin_find_changes`' answer (Story 9.25): at most `limit` entries in the revset's iteration
+/// order (`jj log --no-graph`'s); `truncated` when it denotes more.
+table FoundChanges {
+  entries: [FoundChange];
+  truncated: bool;
+}
+
 union Payload {
   RepoHandle,
   Diagnostics,
@@ -2913,6 +3035,8 @@ union Payload {
   WorkspaceRemoveResult,
   SimplifyParentsResult,
   ResolveList,
+  RevsetCounts,
+  FoundChanges,
 }
 
 // ── Envelope ──────────────────────────────────────────────────────────────────
@@ -2944,6 +3068,7 @@ table Warning {
 /// before the verb ran (a null pointer, an invalid handle, a request buffer that fails
 /// validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/detect/close,
 /// `zanshin_workspace_root`, `zanshin_log_defaults`, `zanshin_commit_contents`, `zanshin_op_abandon`,
+/// the op-pinned searches `zanshin_revset_counts` / `zanshin_find_changes` (Story 9.25),
 /// events, and every
 /// `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
 /// working-copy check ran the snapshot (Story 9.28). `zanshin_repo_convert` carries the

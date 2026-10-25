@@ -65,5 +65,12 @@ harness = false
 name = "show_limit"
 harness = false
 
+# WHY: harness = false — same reason as above. `revset_counts` measures Story 9.25's I7 (the
+# graph search's per-expression count cost); it asserts nothing about wall-clock. Run with
+# `cargo bench -p zanshin-jj --bench revset_counts`.
+[[bench]]
+name = "revset_counts"
+harness = false
+
 [lints]
 workspace = true

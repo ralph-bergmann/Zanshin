@@ -232,8 +232,8 @@ fn be<E: std::fmt::Display>(e: E) -> BookmarkError {
 /// Classifies a [`RevsetError`] of the `revisions` argument.
 fn rev(e: RevsetError) -> BookmarkError {
     match e {
-        RevsetError::ParseError { reason } => BookmarkError::RevsetParseError { reason },
-        RevsetError::ResolutionError { reason } => BookmarkError::RevsetResolutionError { reason },
+        RevsetError::ParseError { reason, .. } => BookmarkError::RevsetParseError { reason },
+        RevsetError::ResolutionError { reason, .. } => BookmarkError::RevsetResolutionError { reason },
         RevsetError::Config(inner) => BookmarkError::Config(inner),
         RevsetError::Precondition(inner) => BookmarkError::Precondition(inner),
         e @ (RevsetError::JjLibError(_) | RevsetError::DanglingEdge { .. }) => be(e),
@@ -721,13 +721,22 @@ mod tests {
     /// failures are `Backend`.
     #[test]
     fn rev_keeps_the_revset_taxonomy() {
+        use crate::revset::RevsetErrorDetail as D;
         use crate::RevsetError as R;
+        use crate::RevsetErrorKind as K;
         let r = || "r".to_owned();
-        assert!(
-            matches!(rev(R::ParseError { reason: r() }), BookmarkError::RevsetParseError { reason } if reason == "r")
-        );
         assert!(matches!(
-            rev(R::ResolutionError { reason: r() }),
+            rev(R::ParseError {
+                reason: r(),
+                detail: Box::new(D::bare(K::SyntaxError))
+            }),
+            BookmarkError::RevsetParseError { reason } if reason == "r"
+        ));
+        assert!(matches!(
+            rev(R::ResolutionError {
+                reason: r(),
+                detail: Box::new(D::bare(K::NoSuchRevision))
+            }),
             BookmarkError::RevsetResolutionError { reason } if reason == "r"
         ));
         assert!(matches!(

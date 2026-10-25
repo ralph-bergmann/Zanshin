@@ -164,11 +164,13 @@ pub unsafe extern "C" fn zanshin_snapshot(handle: u64) -> *mut ZanshinBuf {
                 precondition: Some(precondition),
                 warnings,
                 left_behind: Vec::new(),
+                revset: None,
             })),
             Err(e) => Err(map_precondition_err(e).with_report(CallReport {
                 precondition: session.repo.take_precondition(),
                 warnings,
                 left_behind: Vec::new(),
+                revset: None,
             })),
         }
     });
@@ -354,6 +356,7 @@ mod tests {
             precondition: Some(full_precondition()),
             warnings: Vec::new(),
             left_behind: Vec::new(),
+            revset: None,
         };
 
         let ok = finish_envelope(FlatBufferBuilder::with_capacity(256), fbs::Payload::NONE, None, &report);

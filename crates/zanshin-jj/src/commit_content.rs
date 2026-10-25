@@ -15,7 +15,9 @@
 use jj_lib::backend::CommitId as JjCommitId;
 use jj_lib::object_id::ObjectId as _;
 use jj_lib::op_store::{OpStoreError, OperationId as JjOperationId};
-use jj_lib::repo::Repo as _;
+use std::sync::Arc;
+
+use jj_lib::repo::{ReadonlyRepo, Repo as _};
 use jj_lib::workspace::Workspace;
 
 use crate::commit_meta::object_half;
@@ -125,6 +127,28 @@ fn parse_commit_id(id: &str, hex_len: usize) -> Result<JjCommitId, CommitContent
     }
 }
 
+/// Loads the repo at the pinned `operation_id` — `load_operation` + `load_at`, never
+/// `load_at_head` — after checking the id's format (shared with the Story 9.25 searches).
+///
+/// # Errors
+///
+/// - [`CommitContentError::InvalidInput`] — the id is empty, not hex, or not a full id.
+/// - [`CommitContentError::OperationNotFound`] — the operation is not in the operation store.
+/// - [`CommitContentError::Backend`] — loading the operation or its repo failed.
+pub(crate) fn load_pinned(
+    workspace: &Workspace,
+    operation_id: &OperationId,
+) -> Result<Arc<ReadonlyRepo>, CommitContentError> {
+    let loader = workspace.repo_loader();
+    let op_hex_len = loader.op_store().root_operation_id().as_bytes().len() * 2;
+    let op_id = parse_operation_id(&operation_id.0, op_hex_len)?;
+    let operation = pollster::block_on(loader.load_operation(&op_id)).map_err(|e| match e {
+        OpStoreError::ObjectNotFound { .. } => CommitContentError::OperationNotFound(operation_id.0.clone()),
+        other => be(other),
+    })?;
+    pollster::block_on(loader.load_at(&operation)).map_err(be)
+}
+
 /// Reads the object half of every commit in `commit_ids`, in request order, at the pinned
 /// `operation_id` (see the module doc for the framing).
 ///
@@ -147,16 +171,8 @@ pub(crate) fn commit_contents(
     operation_id: &OperationId,
     commit_ids: &[CommitId],
 ) -> Result<Vec<CommitContent>, CommitContentError> {
-    let loader = workspace.repo_loader();
-
     // (a) + (b): the pinned operation and its repo.
-    let op_hex_len = loader.op_store().root_operation_id().as_bytes().len() * 2;
-    let op_id = parse_operation_id(&operation_id.0, op_hex_len)?;
-    let operation = pollster::block_on(loader.load_operation(&op_id)).map_err(|e| match e {
-        OpStoreError::ObjectNotFound { .. } => CommitContentError::OperationNotFound(operation_id.0.clone()),
-        other => be(other),
-    })?;
-    let repo = pollster::block_on(loader.load_at(&operation)).map_err(be)?;
+    let repo = load_pinned(workspace, operation_id)?;
     let store = repo.store();
 
     // (c) FIRST pass: every id's format, then every id's presence in the pinned index.

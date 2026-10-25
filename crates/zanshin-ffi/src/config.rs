@@ -607,6 +607,7 @@ pub unsafe extern "C" fn zanshin_config_set(data: *const u8, len: usize) -> *mut
             precondition: outcome.precondition,
             warnings: outcome.warnings,
             left_behind: Vec::new(),
+            revset: None,
         };
         match outcome.result {
             Ok(r) => Ok(set_to_envelope(&r, &report)),

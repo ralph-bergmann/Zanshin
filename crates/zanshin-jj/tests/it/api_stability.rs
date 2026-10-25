@@ -2633,3 +2633,89 @@ fn remote_changes_surface_resolves() {
     _ = zanshin_jj::RemoteRefChangeKind::New;
     _ = zanshin_jj::RemoteRefChangeKind::Deleted;
 }
+
+/// Graph search backend (Story 9.25): the structured revset error, the two op-pinned searches and
+/// their answers.
+#[test]
+fn graph_search_surface_resolves() {
+    use zanshin_jj::RevsetErrorKind as K;
+    let detail = zanshin_jj::RevsetErrorDetail {
+        kind: K::NoSuchFunction,
+        span: Some(zanshin_jj::RevsetSpan {
+            offset: 0u32,
+            length: Some(4u32),
+        }),
+        symbol: Some(String::new()),
+        candidates: Vec::<String>::new(),
+        hints: Vec::<String>::new(),
+    };
+    let parse = zanshin_jj::RevsetError::ParseError {
+        reason: String::new(),
+        detail: Box::new(detail.clone()),
+    };
+    _ = zanshin_jj::RevsetError::ResolutionError {
+        reason: String::new(),
+        detail: Box::new(detail),
+    };
+    _ = parse.hints() as Vec<String>;
+    for kind in [
+        K::SyntaxError,
+        K::NotPrefixOperator,
+        K::NotPostfixOperator,
+        K::NotInfixOperator,
+        K::NoSuchFunction,
+        K::InvalidFunctionArguments,
+        K::FsPathWithoutWorkspace,
+        K::WorkingCopyWithoutWorkspace,
+        K::RedefinedFunctionParameter,
+        K::Expression,
+        K::InAliasExpansion,
+        K::InParameterExpansion,
+        K::RecursiveAlias,
+        K::NoSuchRevision,
+        K::WorkspaceMissingWorkingCopy,
+        K::EmptyString,
+        K::AmbiguousCommitIdPrefix,
+        K::AmbiguousChangeIdPrefix,
+        K::DivergentChangeId,
+        K::ConflictedRef,
+        K::Backend,
+        K::Other,
+    ] {
+        _ = kind;
+    }
+    _ = zanshin_jj::RevsetCounts {
+        counts: vec![Ok(zanshin_jj::RevsetCount { n: 0u64, capped: false }), Err(parse)],
+        warnings: Vec::<zanshin_jj::Warning>::new(),
+    };
+    _ = zanshin_jj::FoundChanges {
+        entries: vec![zanshin_jj::FoundChange {
+            commit_id: zanshin_jj::CommitId(String::new()),
+            change_id: zanshin_jj::ChangeId(String::new()),
+            commit_prefix_len: 0u32,
+            change_prefix_len: 0u32,
+        }],
+        truncated: false,
+        warnings: Vec::<zanshin_jj::Warning>::new(),
+    };
+    _ = zanshin_jj::RevsetSearchError::InvalidInput(String::new());
+    _ = zanshin_jj::RevsetSearchError::OperationNotFound(String::new());
+    _ = zanshin_jj::RevsetSearchError::Config(zanshin_jj::ConfigError::Load { reason: String::new() });
+    _ = zanshin_jj::RevsetSearchError::Backend(String::new());
+    _ = zanshin_jj::RevsetSearchError::Revset(zanshin_jj::RevsetError::JjLibError(String::new()));
+    _ = zanshin_jj::Repo::revset_counts
+        as fn(
+            &zanshin_jj::Repo,
+            &zanshin_jj::OperationId,
+            &[String],
+            u64,
+        ) -> Result<zanshin_jj::RevsetCounts, zanshin_jj::RevsetSearchError>;
+    _ = zanshin_jj::Repo::find_changes
+        as fn(
+            &zanshin_jj::Repo,
+            &zanshin_jj::OperationId,
+            &str,
+            u64,
+            &str,
+        ) -> Result<zanshin_jj::FoundChanges, zanshin_jj::RevsetSearchError>;
+}

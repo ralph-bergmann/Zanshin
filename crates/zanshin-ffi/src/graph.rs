@@ -32,19 +32,22 @@ use crate::ffi_strings::{vec_into_token, ZanshinBuf};
 // ── Error mapping ─────────────────────────────────────────────────────────────
 
 /// Maps a [`RevsetError`] onto its AR-P-4 code; the reason (or the dangling target) rides in
-/// `context`. A failed pre-verb snapshot goes through the shared [`map_precondition_err`].
-fn map_topology_err(e: RevsetError) -> FfiErrorObj {
-    let (code, context) = match e {
+/// `context`. A parse or resolution error also carries the CLI's hints and its structured detail
+/// (Story 9.25, `FfiError.revset`). A failed pre-verb snapshot goes through the shared
+/// [`map_precondition_err`]. Shared with `revset_search.rs`.
+pub(crate) fn map_topology_err(e: RevsetError) -> FfiErrorObj {
+    let hints = e.hints();
+    let (code, context, revset) = match e {
         RevsetError::Precondition(e) => return map_precondition_err(e),
-        RevsetError::ParseError { reason } => (JJ_REVSET_PARSE_ERROR, reason),
-        RevsetError::ResolutionError { reason } => (JJ_REVSET_RESOLUTION_ERROR, reason),
-        RevsetError::JjLibError(reason) => (JJ_JJ_LIB_ERROR, reason),
-        RevsetError::Config(ConfigError::Load { reason }) => (JJ_CONFIG_ERROR, reason),
-        RevsetError::DanglingEdge { target } => (GRAPH_DANGLING_EDGE, target),
+        RevsetError::ParseError { reason, detail } => (JJ_REVSET_PARSE_ERROR, reason, Some(*detail)),
+        RevsetError::ResolutionError { reason, detail } => (JJ_REVSET_RESOLUTION_ERROR, reason, Some(*detail)),
+        RevsetError::JjLibError(reason) => (JJ_JJ_LIB_ERROR, reason, None),
+        RevsetError::Config(ConfigError::Load { reason }) => (JJ_CONFIG_ERROR, reason, None),
+        RevsetError::DanglingEdge { target } => (GRAPH_DANGLING_EDGE, target, None),
     };
     FfiErrorObj {
-        report: None,
-        hints: Vec::new(),
+        report: revset.map(|detail| Box::new(CallReport::revset(detail))),
+        hints,
         code: code.to_owned(),
         context: Some(context),
     }
@@ -829,6 +832,7 @@ mod tests {
                 message: "index".to_owned(),
             }],
             left_behind: Vec::new(),
+            revset: None,
         };
         let buf = envelope(&topology(), false, &report);
         let (env, _) = verified(&buf);
@@ -931,21 +935,39 @@ mod tests {
     /// `context`. `graph.dangling_edge` is unreachable through jj-lib, so this pins that arm.
     #[test]
     fn map_topology_err_maps_every_variant() {
-        let cases = [
+        let detail = |kind| zanshin_jj::RevsetErrorDetail {
+            kind,
+            span: None,
+            symbol: Some("x".to_owned()),
+            candidates: Vec::new(),
+            hints: vec!["hint".to_owned()],
+        };
+        for (error, code, kind) in [
             (
                 RevsetError::ParseError {
                     reason: "bad syntax".to_owned(),
+                    detail: Box::new(detail(zanshin_jj::RevsetErrorKind::SyntaxError)),
                 },
                 JJ_REVSET_PARSE_ERROR,
-                "bad syntax",
+                zanshin_jj::RevsetErrorKind::SyntaxError,
             ),
             (
                 RevsetError::ResolutionError {
                     reason: "no such bookmark".to_owned(),
+                    detail: Box::new(detail(zanshin_jj::RevsetErrorKind::NoSuchRevision)),
                 },
                 JJ_REVSET_RESOLUTION_ERROR,
-                "no such bookmark",
+                zanshin_jj::RevsetErrorKind::NoSuchRevision,
             ),
+        ] {
+            let mapped = map_topology_err(error);
+            assert_eq!(mapped.code, code);
+            assert_eq!(mapped.hints, ["hint"], "the CLI's hints");
+            let report = mapped.report.expect("the detail rides the report");
+            assert_eq!(report.revset, Some(detail(kind)));
+            assert!(report.precondition.is_none() && report.warnings.is_empty());
+        }
+        let cases = [
             (RevsetError::JjLibError("boom".to_owned()), JJ_JJ_LIB_ERROR, "boom"),
             (
                 RevsetError::Config(ConfigError::Load {

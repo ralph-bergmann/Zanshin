@@ -82,6 +82,7 @@ mod repo;
 mod resolve;
 mod revert;
 mod revset;
+mod revset_search;
 mod secure_config_fixups;
 mod secure_config_fixups_user;
 mod select_tree;

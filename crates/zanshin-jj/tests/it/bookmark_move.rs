@@ -550,8 +550,10 @@ fn advance_bad_default_target_carries_the_config_hint() {
     set_repo_config(&fx.root, "revsets.bookmark-advance-to", "\"(\"");
     fx.reopen();
     let err = fx.repo.bookmark_advance(&[], None).expect_err("parse");
+    // The revset's own syntax hint first, then the command's (Story 9.25), as the CLI prints them.
     assert!(
-        matches!(&err, MutateError::RevsetParseError { hints, .. } if hints == &[HINT]),
+        matches!(&err, MutateError::RevsetParseError { hints, .. }
+            if hints.len() == 2 && hints[0].contains("revsets syntax") && hints[1] == HINT),
         "{err:?}"
     );
 

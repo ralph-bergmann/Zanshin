@@ -129,7 +129,7 @@ fn to_node(id: &JjCommitId, edges: Vec<JjGraphEdge<JjCommitId>>, meta: CommitMet
 /// "In template expression" context line, "Failed to load short-prefixes index" and the
 /// failure's source chain. One deviation remains: the CLI also renders the template position
 /// (the `-->` span over the template text); Zanshin renders no template, so there is none.
-fn short_prefix_index<'c>(
+pub(crate) fn short_prefix_index<'c>(
     ctx: &'c IdPrefixContext,
     repo_dyn: &dyn jj_lib::repo::Repo,
     sink: &mut Warnings,
@@ -153,7 +153,7 @@ fn short_prefix_index<'c>(
 /// An EMPTY expression disables disambiguation (full-index prefixes) — the CLI's
 /// `revsets.short-prefixes` toggle semantic, deliberately unlike `prioritize`, where a
 /// blank value is a parse error.
-fn prefix_context(short: Option<&Arc<UserRevsetExpression>>) -> IdPrefixContext {
+pub(crate) fn prefix_context(short: Option<&Arc<UserRevsetExpression>>) -> IdPrefixContext {
     let ctx = IdPrefixContext::new(Arc::new(RevsetExtensions::default()));
     match short {
         Some(expr) => ctx.disambiguate_within(expr.clone()),
@@ -231,9 +231,12 @@ impl LogParse {
                     )
                 }
             })
-            .transpose()?;
+            .transpose()
+            .map_err(RevsetError::without_span)?;
         let log = parse_revset_with(repo, &parse_config, revset, sink)?;
-        let prio = parse_revset_with(repo, &parse_config, prioritize, sink)?.intersection(&log);
+        let prio = parse_revset_with(repo, &parse_config, prioritize, sink)
+            .map_err(RevsetError::without_span)?
+            .intersection(&log);
         Ok(Self {
             config: parse_config,
             immutable,

@@ -147,7 +147,10 @@ pub(crate) fn graph_topology(
     let parsed = LogParse::new(repo, sink, revset, prioritize, short_prefixes)?;
     let anchor_exprs = anchors
         .iter()
-        .map(|anchor| Ok(parse_revset_with(repo, &parsed.config, anchor, sink)?.intersection(&parsed.log)))
+        .map(|anchor| {
+            let expr = parse_revset_with(repo, &parsed.config, anchor, sink).map_err(RevsetError::without_span)?;
+            Ok(expr.intersection(&parsed.log))
+        })
         .collect::<Result<Vec<_>, RevsetError>>()?;
 
     // (2) Reload to head (ADR-0002), evaluate, resolve the anchors once.

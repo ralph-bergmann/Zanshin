@@ -2986,9 +2986,10 @@ ZanshinBuf *zanshin_repo_clone(const uint8_t *data, uintptr_t len);
  * single-isolate), but the Dart worker's Model-A `handleId` table (Story 3.9) removes
  * the mapping on close, so a stale handle never reaches Rust. The repo handle is a warm
  * loader, not a state cache — reads re-resolve to head (ADR-0002).
- * *(2026-09-30, Story 4.10: `zanshin_commit_contents` is the one pinned read — it answers at
+ * *(2026-09-30, Story 4.10: `zanshin_commit_contents` is a pinned read — it answers at
  * the caller-supplied operation and returns commit-intrinsic values only; see the ADR-0002
- * Addendum 2026-09-30.)*
+ * Addendum 2026-09-30. 2026-10-25, Story 9.25: so are `zanshin_revset_counts` and
+ * `zanshin_find_changes`, which answer at the operation the shown topology was read at.)*
  * The returned token must be freed via `zanshin_buffer_free_token`.
  */
 ZanshinBuf *zanshin_repo_close(uint64_t handle);
@@ -3677,6 +3678,90 @@ ZanshinBuf *zanshin_resolve(uint64_t handle, const uint8_t *data, uintptr_t len)
 ZanshinBuf *zanshin_revert(uint64_t handle,
                            const uint8_t *data,
                            uintptr_t len);
+
+/**
+ * Count the commits each expression denotes at the PINNED operation `operation_id`, each capped at
+ * `cap` (Story 9.25) — the graph search's "N changes".
+ *
+ * A pinned read like `zanshin_commit_contents`: `load_operation` + `load_at`, no pre-verb
+ * snapshot, no operation, no op head; the envelope carries NO `precondition`. Each expression
+ * parses as every Zanshin revset and resolves with the effective `revsets.short-prefixes`'
+ * id-prefix context, as the CLI. With `cap > 0` at most `cap + 1` commits are read per
+ * expression (`n` at most `cap`, `capped` when there were more); `cap == 0` parses and resolves
+ * only. Every expression gets its own `RevsetCount` in request order; one that does not parse or
+ * resolve carries its own `error` (`jj.revset_parse_error` / `jj.revset_resolution_error`, with
+ * `hints` and `revset`) and fails nothing else. The parse diagnostics are the envelope's
+ * `warnings`, in expression order.
+ *
+ * The arguments cross as a `RevsetCountsRequest` `FlatBuffers` request buffer. Returns a
+ * `FlatBuffers` `Envelope` carrying a `RevsetCounts` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `RevsetCountsRequest` buffer, or its
+ *   `kind` is not `RevsetCounts`.
+ * - `jj.invalid_input` — `operation_id` is absent, empty, not hex or not a full id.
+ * - `jj.operation_not_found` — the operation is not in the operation store; `context` is the
+ *   CLI's `No operation ID matching "<id>"`.
+ * - `jj.config_error` — the effective config is malformed or unreadable, or its
+ *   `revsets.short-prefixes` is not a string or does not parse.
+ * - `jj.jj_lib_error` — loading, evaluating or iterating failed; detail in `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.RevsetCountsRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+ * duration of the call. The request is read BEFORE the handle is borrowed.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_revset_counts(uint64_t handle, const uint8_t *data, uintptr_t len);
+
+/**
+ * List the commits `expression` denotes at the PINNED operation `operation_id`, at most `limit`,
+ * in the revset's iteration order (`jj log --no-graph`'s), each with its commit and change id and
+ * both shortest-prefix lengths (Story 9.25) — the graph search's go-to beyond the view.
+ *
+ * A pinned read like `zanshin_revset_counts`. `short_prefixes` is a caller pass-through: its
+ * index disambiguates the expression's symbols AND gives the prefix lengths; empty disables
+ * disambiguation (the full index), as in `zanshin_graph_topology`. At most `limit + 1` commits
+ * are read; `truncated` says there were more. An ambiguous prefix is a resolution error; an
+ * unmatched one finds nothing. The parse diagnostics are the envelope's `warnings`.
+ *
+ * The arguments cross as a `FindChangesRequest` `FlatBuffers` request buffer. Returns a
+ * `FlatBuffers` `Envelope` carrying a `FoundChanges` payload on success.
+ *
+ * # Errors
+ * - `ffi.invalid_handle` — `handle` is `0` (null) or the borrow yields `None`.
+ * - `ffi.null_pointer` — `data` is a null pointer.
+ * - `ffi.invalid_argument` — `data` does not verify as a `FindChangesRequest` buffer, or its
+ *   `kind` is not `FindChanges`.
+ * - `jj.invalid_input` — `operation_id`, `expression` or `short_prefixes` is absent, or
+ *   `operation_id` is empty, not hex or not a full id.
+ * - `jj.operation_not_found` — the operation is not in the operation store; `context` is the
+ *   CLI's `No operation ID matching "<id>"`.
+ * - `jj.revset_parse_error` — `short_prefixes` or `expression` does not parse; `hints` and
+ *   `revset` are set.
+ * - `jj.revset_resolution_error` — a symbol in `expression` cannot be resolved; `hints` and
+ *   `revset` are set.
+ * - `jj.config_error` — the effective config is malformed or unreadable.
+ * - `jj.jj_lib_error` — loading, evaluating, iterating or a prefix lookup failed; detail in
+ *   `context`.
+ *
+ * # Safety
+ * `handle` must be a value returned by a successful `zanshin_repo_open`, `zanshin_repo_init`,
+ * `zanshin_repo_clone`, or `zanshin_repo_convert` that has not been closed. `0` is detected and
+ * returned as `ffi.invalid_handle`. A stale non-zero handle is undefined behaviour; the Dart
+ * worker's Model-A handle table (Story 3.9) makes a stale handle unreachable.
+ * `data` must be null or point to `len` bytes of a caller-owned buffer built and owned/freed by
+ * Dart (`fbs.FindChangesRequestObjectBuilder(...).toBytes()`); Rust only borrows it for the
+ * duration of the call. The request is read BEFORE the handle is borrowed.
+ * The returned token must be freed exactly once via `zanshin_buffer_free_token`.
+ */
+ZanshinBuf *zanshin_find_changes(uint64_t handle, const uint8_t *data, uintptr_t len);
 
 /**
  * Write the tree a hunk selection yields, in the repo identified by `handle` — the CLI's builtin

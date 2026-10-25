@@ -12,18 +12,195 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MIN_REQUEST_KIND: u8 = 0;
+        pub const ENUM_MIN_REVSET_ERROR_KIND: u8 = 0;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_REQUEST_KIND: u8 = 68;
+        pub const ENUM_MAX_REVSET_ERROR_KIND: u8 = 21;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 69] = [
+        pub const ENUM_VALUES_REVSET_ERROR_KIND: [RevsetErrorKind; 22] = [
+            RevsetErrorKind::SyntaxError,
+            RevsetErrorKind::NotPrefixOperator,
+            RevsetErrorKind::NotPostfixOperator,
+            RevsetErrorKind::NotInfixOperator,
+            RevsetErrorKind::NoSuchFunction,
+            RevsetErrorKind::InvalidFunctionArguments,
+            RevsetErrorKind::FsPathWithoutWorkspace,
+            RevsetErrorKind::WorkingCopyWithoutWorkspace,
+            RevsetErrorKind::RedefinedFunctionParameter,
+            RevsetErrorKind::Expression,
+            RevsetErrorKind::InAliasExpansion,
+            RevsetErrorKind::InParameterExpansion,
+            RevsetErrorKind::RecursiveAlias,
+            RevsetErrorKind::NoSuchRevision,
+            RevsetErrorKind::WorkspaceMissingWorkingCopy,
+            RevsetErrorKind::EmptyString,
+            RevsetErrorKind::AmbiguousCommitIdPrefix,
+            RevsetErrorKind::AmbiguousChangeIdPrefix,
+            RevsetErrorKind::DivergentChangeId,
+            RevsetErrorKind::ConflictedRef,
+            RevsetErrorKind::Backend,
+            RevsetErrorKind::Other,
+        ];
+
+        /// Which jj-lib revset failure a `RevsetErrorDetail` describes (Story 9.25): jj-lib's
+        /// `RevsetParseErrorKind` variants, then its `RevsetResolutionError` variants. Member order IS
+        /// the wire value — APPEND only.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct RevsetErrorKind(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl RevsetErrorKind {
+            pub const SyntaxError: Self = Self(0);
+            pub const NotPrefixOperator: Self = Self(1);
+            pub const NotPostfixOperator: Self = Self(2);
+            pub const NotInfixOperator: Self = Self(3);
+            pub const NoSuchFunction: Self = Self(4);
+            pub const InvalidFunctionArguments: Self = Self(5);
+            pub const FsPathWithoutWorkspace: Self = Self(6);
+            pub const WorkingCopyWithoutWorkspace: Self = Self(7);
+            pub const RedefinedFunctionParameter: Self = Self(8);
+            pub const Expression: Self = Self(9);
+            pub const InAliasExpansion: Self = Self(10);
+            pub const InParameterExpansion: Self = Self(11);
+            pub const RecursiveAlias: Self = Self(12);
+            pub const NoSuchRevision: Self = Self(13);
+            pub const WorkspaceMissingWorkingCopy: Self = Self(14);
+            pub const EmptyString: Self = Self(15);
+            pub const AmbiguousCommitIdPrefix: Self = Self(16);
+            pub const AmbiguousChangeIdPrefix: Self = Self(17);
+            pub const DivergentChangeId: Self = Self(18);
+            pub const ConflictedRef: Self = Self(19);
+            pub const Backend: Self = Self(20);
+            pub const Other: Self = Self(21);
+
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 21;
+            pub const ENUM_VALUES: &'static [Self] = &[
+                Self::SyntaxError,
+                Self::NotPrefixOperator,
+                Self::NotPostfixOperator,
+                Self::NotInfixOperator,
+                Self::NoSuchFunction,
+                Self::InvalidFunctionArguments,
+                Self::FsPathWithoutWorkspace,
+                Self::WorkingCopyWithoutWorkspace,
+                Self::RedefinedFunctionParameter,
+                Self::Expression,
+                Self::InAliasExpansion,
+                Self::InParameterExpansion,
+                Self::RecursiveAlias,
+                Self::NoSuchRevision,
+                Self::WorkspaceMissingWorkingCopy,
+                Self::EmptyString,
+                Self::AmbiguousCommitIdPrefix,
+                Self::AmbiguousChangeIdPrefix,
+                Self::DivergentChangeId,
+                Self::ConflictedRef,
+                Self::Backend,
+                Self::Other,
+            ];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::SyntaxError => Some("SyntaxError"),
+                    Self::NotPrefixOperator => Some("NotPrefixOperator"),
+                    Self::NotPostfixOperator => Some("NotPostfixOperator"),
+                    Self::NotInfixOperator => Some("NotInfixOperator"),
+                    Self::NoSuchFunction => Some("NoSuchFunction"),
+                    Self::InvalidFunctionArguments => Some("InvalidFunctionArguments"),
+                    Self::FsPathWithoutWorkspace => Some("FsPathWithoutWorkspace"),
+                    Self::WorkingCopyWithoutWorkspace => Some("WorkingCopyWithoutWorkspace"),
+                    Self::RedefinedFunctionParameter => Some("RedefinedFunctionParameter"),
+                    Self::Expression => Some("Expression"),
+                    Self::InAliasExpansion => Some("InAliasExpansion"),
+                    Self::InParameterExpansion => Some("InParameterExpansion"),
+                    Self::RecursiveAlias => Some("RecursiveAlias"),
+                    Self::NoSuchRevision => Some("NoSuchRevision"),
+                    Self::WorkspaceMissingWorkingCopy => Some("WorkspaceMissingWorkingCopy"),
+                    Self::EmptyString => Some("EmptyString"),
+                    Self::AmbiguousCommitIdPrefix => Some("AmbiguousCommitIdPrefix"),
+                    Self::AmbiguousChangeIdPrefix => Some("AmbiguousChangeIdPrefix"),
+                    Self::DivergentChangeId => Some("DivergentChangeId"),
+                    Self::ConflictedRef => Some("ConflictedRef"),
+                    Self::Backend => Some("Backend"),
+                    Self::Other => Some("Other"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for RevsetErrorKind {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for RevsetErrorKind {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
+
+        impl ::flatbuffers::Push for RevsetErrorKind {
+            type Output = RevsetErrorKind;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
+
+        impl ::flatbuffers::EndianScalar for RevsetErrorKind {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for RevsetErrorKind {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for RevsetErrorKind {}
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_REQUEST_KIND: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_REQUEST_KIND: u8 = 70;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_REQUEST_KIND: [RequestKind; 71] = [
             RequestKind::Unspecified,
             RequestKind::Restore,
             RequestKind::Absorb,
@@ -93,6 +270,8 @@ pub mod zanshin {
             RequestKind::Resolve,
             RequestKind::Diffedit,
             RequestKind::Revert,
+            RequestKind::RevsetCounts,
+            RequestKind::FindChanges,
         ];
 
         /// Which `extern "C"` wrapper a request buffer was built FOR.
@@ -111,7 +290,7 @@ pub mod zanshin {
         /// parents. `SquashRequest` is read by two wrappers as well — `zanshin_squash` and
         /// `zanshin_squash_plan` (Story 9.15) — but carries ONE kind, `Squash`: the plan previews the
         /// very squash its caller is about to run, so a mis-routed buffer runs or previews the same
-        /// squash, never a different verb. For the other 47 tables the variant name plus `Request` IS
+        /// squash, never a different verb. For the other 63 tables the variant name plus `Request` IS
         /// the table name.
         ///
         /// `Unspecified = 0` is `FlatBuffers`' default for an ABSENT field, so a buffer built by a
@@ -194,9 +373,11 @@ pub mod zanshin {
             pub const Resolve: Self = Self(66);
             pub const Diffedit: Self = Self(67);
             pub const Revert: Self = Self(68);
+            pub const RevsetCounts: Self = Self(69);
+            pub const FindChanges: Self = Self(70);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 68;
+            pub const ENUM_MAX: u8 = 70;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Unspecified,
                 Self::Restore,
@@ -267,6 +448,8 @@ pub mod zanshin {
                 Self::Resolve,
                 Self::Diffedit,
                 Self::Revert,
+                Self::RevsetCounts,
+                Self::FindChanges,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -340,6 +523,8 @@ pub mod zanshin {
                     Self::Resolve => Some("Resolve"),
                     Self::Diffedit => Some("Diffedit"),
                     Self::Revert => Some("Revert"),
+                    Self::RevsetCounts => Some("RevsetCounts"),
+                    Self::FindChanges => Some("FindChanges"),
                     _ => None,
                 }
             }
@@ -3716,13 +3901,13 @@ pub mod zanshin {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PAYLOAD: u8 = 57;
+        pub const ENUM_MAX_PAYLOAD: u8 = 59;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PAYLOAD: [Payload; 58] = [
+        pub const ENUM_VALUES_PAYLOAD: [Payload; 60] = [
             Payload::NONE,
             Payload::RepoHandle,
             Payload::Diagnostics,
@@ -3781,6 +3966,8 @@ pub mod zanshin {
             Payload::WorkspaceRemoveResult,
             Payload::SimplifyParentsResult,
             Payload::ResolveList,
+            Payload::RevsetCounts,
+            Payload::FoundChanges,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -3846,9 +4033,11 @@ pub mod zanshin {
             pub const WorkspaceRemoveResult: Self = Self(55);
             pub const SimplifyParentsResult: Self = Self(56);
             pub const ResolveList: Self = Self(57);
+            pub const RevsetCounts: Self = Self(58);
+            pub const FoundChanges: Self = Self(59);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 57;
+            pub const ENUM_MAX: u8 = 59;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::RepoHandle,
@@ -3908,6 +4097,8 @@ pub mod zanshin {
                 Self::WorkspaceRemoveResult,
                 Self::SimplifyParentsResult,
                 Self::ResolveList,
+                Self::RevsetCounts,
+                Self::FoundChanges,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -3970,6 +4161,8 @@ pub mod zanshin {
                     Self::WorkspaceRemoveResult => Some("WorkspaceRemoveResult"),
                     Self::SimplifyParentsResult => Some("SimplifyParentsResult"),
                     Self::ResolveList => Some("ResolveList"),
+                    Self::RevsetCounts => Some("RevsetCounts"),
+                    Self::FoundChanges => Some("FoundChanges"),
                     _ => None,
                 }
             }
@@ -4026,6 +4219,106 @@ pub mod zanshin {
 
         impl ::flatbuffers::SimpleToVerifyInSlice for Payload {}
         pub struct PayloadUnionTableOffset {}
+
+        /// `RevsetSpan.length`'s value. WHY a struct: an optional scalar is not supported by
+        /// `flatc --dart` (see `MovementOffset`); an absent struct field is null.
+        // struct RevsetSpanLength, aligned to 4
+        #[repr(transparent)]
+        #[derive(Clone, Copy, PartialEq)]
+        pub struct RevsetSpanLength(pub [u8; 4]);
+        impl Default for RevsetSpanLength {
+            fn default() -> Self {
+                Self([0; 4])
+            }
+        }
+        impl ::core::fmt::Debug for RevsetSpanLength {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                f.debug_struct("RevsetSpanLength")
+                    .field("value", &self.value())
+                    .finish()
+            }
+        }
+
+        impl ::flatbuffers::SimpleToVerifyInSlice for RevsetSpanLength {}
+        impl<'a> ::flatbuffers::Follow<'a> for RevsetSpanLength {
+            type Inner = &'a RevsetSpanLength;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                unsafe { <&'a RevsetSpanLength>::follow(buf, loc) }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for &'a RevsetSpanLength {
+            type Inner = &'a RevsetSpanLength;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                unsafe { ::flatbuffers::follow_cast_ref::<RevsetSpanLength>(buf, loc) }
+            }
+        }
+        impl<'b> ::flatbuffers::Push for RevsetSpanLength {
+            type Output = RevsetSpanLength;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                let src = unsafe {
+                    ::core::slice::from_raw_parts(
+                        self as *const RevsetSpanLength as *const u8,
+                        <Self as ::flatbuffers::Push>::size(),
+                    )
+                };
+                dst.copy_from_slice(src);
+            }
+            #[inline]
+            fn alignment() -> ::flatbuffers::PushAlignment {
+                ::flatbuffers::PushAlignment::new(4)
+            }
+        }
+
+        impl<'a> ::flatbuffers::Verifiable for RevsetSpanLength {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.in_buffer::<Self>(pos)
+            }
+        }
+
+        impl<'a> RevsetSpanLength {
+            #[allow(clippy::too_many_arguments)]
+            pub fn new(value: u32) -> Self {
+                let mut s = Self([0; 4]);
+                s.set_value(value);
+                s
+            }
+
+            pub fn value(&self) -> u32 {
+                let mut mem = ::core::mem::MaybeUninit::<<u32 as ::flatbuffers::EndianScalar>::Scalar>::uninit();
+                // Safety:
+                // Created from a valid Table for this object
+                // Which contains a valid value in this slot
+                ::flatbuffers::EndianScalar::from_little_endian(unsafe {
+                    ::core::ptr::copy_nonoverlapping(
+                        self.0[0..].as_ptr(),
+                        mem.as_mut_ptr() as *mut u8,
+                        ::core::mem::size_of::<<u32 as ::flatbuffers::EndianScalar>::Scalar>(),
+                    );
+                    mem.assume_init()
+                })
+            }
+
+            pub fn set_value(&mut self, x: u32) {
+                let x_le = ::flatbuffers::EndianScalar::to_little_endian(x);
+                // Safety:
+                // Created from a valid Table for this object
+                // Which contains a valid value in this slot
+                unsafe {
+                    ::core::ptr::copy_nonoverlapping(
+                        &x_le as *const _ as *const u8,
+                        self.0[0..].as_mut_ptr(),
+                        ::core::mem::size_of::<<u32 as ::flatbuffers::EndianScalar>::Scalar>(),
+                    );
+                }
+            }
+        }
 
         /// `MovementRequest.offset`'s value. WHY a struct: an optional scalar (`ulong = null`) is not
         /// supported by `flatc --dart`, and a struct field is ABSENT when not set — null for absence.
@@ -4149,6 +4442,11 @@ pub mod zanshin {
         /// it is not listed. A `watcher.io_error` comes after a successful creation and
         /// carries none: the repository is complete. Absent = none — every other error, and the
         /// `internal.panic` fallback, writes no field.
+        ///
+        /// revset (Story 9.25): the structured form of a `jj.revset_parse_error` /
+        /// `jj.revset_resolution_error` from `zanshin_graph_topology`, `zanshin_revset_counts` (per count)
+        /// and `zanshin_find_changes` — see `RevsetErrorDetail`. Absent = none: every other error, and
+        /// those codes from every other symbol, write no field.
         pub struct FfiError<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
@@ -4168,6 +4466,7 @@ pub mod zanshin {
             pub const VT_CONTEXT: ::flatbuffers::VOffsetT = 6;
             pub const VT_HINTS: ::flatbuffers::VOffsetT = 8;
             pub const VT_LEFT_BEHIND: ::flatbuffers::VOffsetT = 10;
+            pub const VT_REVSET: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -4179,6 +4478,9 @@ pub mod zanshin {
                 args: &'args FfiErrorArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<FfiError<'bldr>> {
                 let mut builder = FfiErrorBuilder::new(_fbb);
+                if let Some(x) = args.revset {
+                    builder.add_revset(x);
+                }
                 if let Some(x) = args.left_behind {
                     builder.add_left_behind(x);
                 }
@@ -4236,6 +4538,16 @@ pub mod zanshin {
                     >>(FfiError::VT_LEFT_BEHIND, None)
                 }
             }
+            #[inline]
+            pub fn revset(&self) -> Option<RevsetErrorDetail<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<RevsetErrorDetail>>(FfiError::VT_REVSET, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for FfiError<'_> {
@@ -4249,6 +4561,7 @@ pub mod zanshin {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("context", Self::VT_CONTEXT, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("hints", Self::VT_HINTS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("left_behind", Self::VT_LEFT_BEHIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<RevsetErrorDetail>>("revset", Self::VT_REVSET, false)?
      .finish();
                 Ok(())
             }
@@ -4260,6 +4573,7 @@ pub mod zanshin {
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
             pub left_behind:
                 Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub revset: Option<::flatbuffers::WIPOffset<RevsetErrorDetail<'a>>>,
         }
         impl<'a> Default for FfiErrorArgs<'a> {
             #[inline]
@@ -4269,6 +4583,7 @@ pub mod zanshin {
                     context: None,
                     hints: None,
                     left_behind: None,
+                    revset: None,
                 }
             }
         }
@@ -4307,6 +4622,11 @@ pub mod zanshin {
                     .push_slot_always::<::flatbuffers::WIPOffset<_>>(FfiError::VT_LEFT_BEHIND, left_behind);
             }
             #[inline]
+            pub fn add_revset(&mut self, revset: ::flatbuffers::WIPOffset<RevsetErrorDetail<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<RevsetErrorDetail>>(FfiError::VT_REVSET, revset);
+            }
+            #[inline]
             pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FfiErrorBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
                 FfiErrorBuilder {
@@ -4328,6 +4648,316 @@ pub mod zanshin {
                 ds.field("context", &self.context());
                 ds.field("hints", &self.hints());
                 ds.field("left_behind", &self.left_behind());
+                ds.field("revset", &self.revset());
+                ds.finish()
+            }
+        }
+        pub enum RevsetSpanOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Where a revset parse error points in the caller's expression (Story 9.25), in BYTES of its
+        /// UTF-8 text. `length` is `0` for a position and ABSENT when it is unknown: the span crosses
+        /// lines, or pest's render cannot tell an empty span from a one-char one (a lone `^`).
+        pub struct RevsetSpan<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RevsetSpan<'a> {
+            type Inner = RevsetSpan<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RevsetSpan<'a> {
+            pub const VT_OFFSET: ::flatbuffers::VOffsetT = 4;
+            pub const VT_LENGTH: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RevsetSpan { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RevsetSpanArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RevsetSpan<'bldr>> {
+                let mut builder = RevsetSpanBuilder::new(_fbb);
+                if let Some(x) = args.length {
+                    builder.add_length(x);
+                }
+                builder.add_offset(args.offset);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn offset(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u32>(RevsetSpan::VT_OFFSET, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn length(&self) -> Option<&'a RevsetSpanLength> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<RevsetSpanLength>(RevsetSpan::VT_LENGTH, None) }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RevsetSpan<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u32>("offset", Self::VT_OFFSET, false)?
+                    .visit_field::<RevsetSpanLength>("length", Self::VT_LENGTH, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RevsetSpanArgs<'a> {
+            pub offset: u32,
+            pub length: Option<&'a RevsetSpanLength>,
+        }
+        impl<'a> Default for RevsetSpanArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RevsetSpanArgs {
+                    offset: 0,
+                    length: None,
+                }
+            }
+        }
+
+        pub struct RevsetSpanBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RevsetSpanBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_offset(&mut self, offset: u32) {
+                self.fbb_.push_slot::<u32>(RevsetSpan::VT_OFFSET, offset, 0);
+            }
+            #[inline]
+            pub fn add_length(&mut self, length: &RevsetSpanLength) {
+                self.fbb_
+                    .push_slot_always::<&RevsetSpanLength>(RevsetSpan::VT_LENGTH, length);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RevsetSpanBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RevsetSpanBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RevsetSpan<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RevsetSpan<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RevsetSpan");
+                ds.field("offset", &self.offset());
+                ds.field("length", &self.length());
+                ds.finish()
+            }
+        }
+        pub enum RevsetErrorDetailOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// The structured form of a revset parse or resolution error (Story 9.25), beside the error's
+        /// verbatim `context` and its CLI `hints`.
+        ///
+        ///   kind        the top-level error's kind (inside an alias: the alias expansion)
+        ///   span        the top-level error's span in the call's PRIMARY expression (the topology's
+        ///               `revset`, a search's `expression`); ABSENT for a resolution error and for an
+        ///               error in any other text of the call (`prioritize`, `short_prefixes`, an anchor)
+        ///   symbol      the function, revision, alias, operator or prefix the error names; ABSENT = none
+        ///   candidates  jj-lib's similar names (or the suggested operator); ABSENT = none
+        pub struct RevsetErrorDetail<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RevsetErrorDetail<'a> {
+            type Inner = RevsetErrorDetail<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RevsetErrorDetail<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SPAN: ::flatbuffers::VOffsetT = 6;
+            pub const VT_SYMBOL: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CANDIDATES: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RevsetErrorDetail { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RevsetErrorDetailArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RevsetErrorDetail<'bldr>> {
+                let mut builder = RevsetErrorDetailBuilder::new(_fbb);
+                if let Some(x) = args.candidates {
+                    builder.add_candidates(x);
+                }
+                if let Some(x) = args.symbol {
+                    builder.add_symbol(x);
+                }
+                if let Some(x) = args.span {
+                    builder.add_span(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RevsetErrorKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RevsetErrorKind>(RevsetErrorDetail::VT_KIND, Some(RevsetErrorKind::SyntaxError))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn span(&self) -> Option<RevsetSpan<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<RevsetSpan>>(RevsetErrorDetail::VT_SPAN, None)
+                }
+            }
+            #[inline]
+            pub fn symbol(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RevsetErrorDetail::VT_SYMBOL, None)
+                }
+            }
+            #[inline]
+            pub fn candidates(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RevsetErrorDetail::VT_CANDIDATES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RevsetErrorDetail<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RevsetErrorKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<RevsetSpan>>("span", Self::VT_SPAN, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("symbol", Self::VT_SYMBOL, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("candidates", Self::VT_CANDIDATES, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct RevsetErrorDetailArgs<'a> {
+            pub kind: RevsetErrorKind,
+            pub span: Option<::flatbuffers::WIPOffset<RevsetSpan<'a>>>,
+            pub symbol: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub candidates:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+        }
+        impl<'a> Default for RevsetErrorDetailArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RevsetErrorDetailArgs {
+                    kind: RevsetErrorKind::SyntaxError,
+                    span: None,
+                    symbol: None,
+                    candidates: None,
+                }
+            }
+        }
+
+        pub struct RevsetErrorDetailBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RevsetErrorDetailBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RevsetErrorKind) {
+                self.fbb_
+                    .push_slot::<RevsetErrorKind>(RevsetErrorDetail::VT_KIND, kind, RevsetErrorKind::SyntaxError);
+            }
+            #[inline]
+            pub fn add_span(&mut self, span: ::flatbuffers::WIPOffset<RevsetSpan<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<RevsetSpan>>(RevsetErrorDetail::VT_SPAN, span);
+            }
+            #[inline]
+            pub fn add_symbol(&mut self, symbol: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RevsetErrorDetail::VT_SYMBOL, symbol);
+            }
+            #[inline]
+            pub fn add_candidates(
+                &mut self,
+                candidates: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RevsetErrorDetail::VT_CANDIDATES, candidates);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RevsetErrorDetailBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RevsetErrorDetailBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RevsetErrorDetail<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RevsetErrorDetail<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RevsetErrorDetail");
+                ds.field("kind", &self.kind());
+                ds.field("span", &self.span());
+                ds.field("symbol", &self.symbol());
+                ds.field("candidates", &self.candidates());
                 ds.finish()
             }
         }
@@ -18140,6 +18770,385 @@ pub mod zanshin {
                 ds.field("short_prefixes", &self.short_prefixes());
                 ds.field("anchors", &self.anchors());
                 ds.field("with_timestamps", &self.with_timestamps());
+                ds.finish()
+            }
+        }
+        pub enum RevsetCountsRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_revset_counts` (Story 9.25) — the op-pinned count of each revset.
+        /// `operation_id` is required: the FULL hex id of the operation the shown topology was read at
+        /// (absent = `jj.invalid_input` "operation_id is required"). `expressions` are counted in order;
+        /// an absent or empty list is a valid, empty request. `cap` bounds each count (at most `cap + 1`
+        /// commits are read); `0` parses and resolves only.
+        pub struct RevsetCountsRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RevsetCountsRequest<'a> {
+            type Inner = RevsetCountsRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RevsetCountsRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_OPERATION_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_EXPRESSIONS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CAP: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RevsetCountsRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RevsetCountsRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RevsetCountsRequest<'bldr>> {
+                let mut builder = RevsetCountsRequestBuilder::new(_fbb);
+                builder.add_cap(args.cap);
+                if let Some(x) = args.expressions {
+                    builder.add_expressions(x);
+                }
+                if let Some(x) = args.operation_id {
+                    builder.add_operation_id(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(RevsetCountsRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn operation_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RevsetCountsRequest::VT_OPERATION_ID, None)
+                }
+            }
+            #[inline]
+            pub fn expressions(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(RevsetCountsRequest::VT_EXPRESSIONS, None)
+                }
+            }
+            #[inline]
+            pub fn cap(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(RevsetCountsRequest::VT_CAP, Some(0)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RevsetCountsRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+     .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation_id", Self::VT_OPERATION_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("expressions", Self::VT_EXPRESSIONS, false)?
+     .visit_field::<u64>("cap", Self::VT_CAP, false)?
+     .finish();
+                Ok(())
+            }
+        }
+        pub struct RevsetCountsRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub operation_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub expressions:
+                Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
+            pub cap: u64,
+        }
+        impl<'a> Default for RevsetCountsRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RevsetCountsRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    operation_id: None,
+                    expressions: None,
+                    cap: 0,
+                }
+            }
+        }
+
+        pub struct RevsetCountsRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RevsetCountsRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(RevsetCountsRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_operation_id(&mut self, operation_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RevsetCountsRequest::VT_OPERATION_ID,
+                    operation_id,
+                );
+            }
+            #[inline]
+            pub fn add_expressions(
+                &mut self,
+                expressions: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RevsetCountsRequest::VT_EXPRESSIONS, expressions);
+            }
+            #[inline]
+            pub fn add_cap(&mut self, cap: u64) {
+                self.fbb_.push_slot::<u64>(RevsetCountsRequest::VT_CAP, cap, 0);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RevsetCountsRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RevsetCountsRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RevsetCountsRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RevsetCountsRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RevsetCountsRequest");
+                ds.field("kind", &self.kind());
+                ds.field("operation_id", &self.operation_id());
+                ds.field("expressions", &self.expressions());
+                ds.field("cap", &self.cap());
+                ds.finish()
+            }
+        }
+        pub enum FindChangesRequestOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// Arguments of `zanshin_find_changes` (Story 9.25) — the op-pinned change search.
+        /// `operation_id`, `expression` and `short_prefixes` are required (absent = `jj.invalid_input`
+        /// "<field> is required"); an empty `short_prefixes` disables disambiguation, as in
+        /// `GraphTopologyRequest`. `limit` bounds the answer (at most `limit + 1` commits are read).
+        pub struct FindChangesRequest<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FindChangesRequest<'a> {
+            type Inner = FindChangesRequest<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FindChangesRequest<'a> {
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_OPERATION_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_EXPRESSION: ::flatbuffers::VOffsetT = 8;
+            pub const VT_LIMIT: ::flatbuffers::VOffsetT = 10;
+            pub const VT_SHORT_PREFIXES: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FindChangesRequest { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FindChangesRequestArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FindChangesRequest<'bldr>> {
+                let mut builder = FindChangesRequestBuilder::new(_fbb);
+                builder.add_limit(args.limit);
+                if let Some(x) = args.short_prefixes {
+                    builder.add_short_prefixes(x);
+                }
+                if let Some(x) = args.expression {
+                    builder.add_expression(x);
+                }
+                if let Some(x) = args.operation_id {
+                    builder.add_operation_id(x);
+                }
+                builder.add_kind(args.kind);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn kind(&self) -> RequestKind {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<RequestKind>(FindChangesRequest::VT_KIND, Some(RequestKind::Unspecified))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn operation_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FindChangesRequest::VT_OPERATION_ID, None)
+                }
+            }
+            #[inline]
+            pub fn expression(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FindChangesRequest::VT_EXPRESSION, None)
+                }
+            }
+            #[inline]
+            pub fn limit(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(FindChangesRequest::VT_LIMIT, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn short_prefixes(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FindChangesRequest::VT_SHORT_PREFIXES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FindChangesRequest<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<RequestKind>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("operation_id", Self::VT_OPERATION_ID, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("expression", Self::VT_EXPRESSION, false)?
+                    .visit_field::<u64>("limit", Self::VT_LIMIT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "short_prefixes",
+                        Self::VT_SHORT_PREFIXES,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FindChangesRequestArgs<'a> {
+            pub kind: RequestKind,
+            pub operation_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub expression: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub limit: u64,
+            pub short_prefixes: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for FindChangesRequestArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FindChangesRequestArgs {
+                    kind: RequestKind::Unspecified,
+                    operation_id: None,
+                    expression: None,
+                    limit: 0,
+                    short_prefixes: None,
+                }
+            }
+        }
+
+        pub struct FindChangesRequestBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FindChangesRequestBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_kind(&mut self, kind: RequestKind) {
+                self.fbb_
+                    .push_slot::<RequestKind>(FindChangesRequest::VT_KIND, kind, RequestKind::Unspecified);
+            }
+            #[inline]
+            pub fn add_operation_id(&mut self, operation_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FindChangesRequest::VT_OPERATION_ID, operation_id);
+            }
+            #[inline]
+            pub fn add_expression(&mut self, expression: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FindChangesRequest::VT_EXPRESSION, expression);
+            }
+            #[inline]
+            pub fn add_limit(&mut self, limit: u64) {
+                self.fbb_.push_slot::<u64>(FindChangesRequest::VT_LIMIT, limit, 0);
+            }
+            #[inline]
+            pub fn add_short_prefixes(&mut self, short_prefixes: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    FindChangesRequest::VT_SHORT_PREFIXES,
+                    short_prefixes,
+                );
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FindChangesRequestBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FindChangesRequestBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FindChangesRequest<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FindChangesRequest<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FindChangesRequest");
+                ds.field("kind", &self.kind());
+                ds.field("operation_id", &self.operation_id());
+                ds.field("expression", &self.expression());
+                ds.field("limit", &self.limit());
+                ds.field("short_prefixes", &self.short_prefixes());
                 ds.finish()
             }
         }
@@ -38513,6 +39522,570 @@ pub mod zanshin {
                 ds.finish()
             }
         }
+        pub enum RevsetCountOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One expression's entry in `RevsetCounts` (Story 9.25): its count — `n` at most the call's
+        /// `cap`, `capped` when the revset denotes more — or, when `error` is PRESENT, its own
+        /// `jj.revset_parse_error` / `jj.revset_resolution_error` (code, jj-lib's text in `context`, the
+        /// CLI's `hints`, the structured `revset` detail); `n` and `capped` are then `0` / `false`.
+        pub struct RevsetCount<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RevsetCount<'a> {
+            type Inner = RevsetCount<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RevsetCount<'a> {
+            pub const VT_N: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CAPPED: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ERROR: ::flatbuffers::VOffsetT = 8;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RevsetCount { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RevsetCountArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RevsetCount<'bldr>> {
+                let mut builder = RevsetCountBuilder::new(_fbb);
+                builder.add_n(args.n);
+                if let Some(x) = args.error {
+                    builder.add_error(x);
+                }
+                builder.add_capped(args.capped);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn n(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(RevsetCount::VT_N, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn capped(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(RevsetCount::VT_CAPPED, Some(false)).unwrap() }
+            }
+            #[inline]
+            pub fn error(&self) -> Option<FfiError<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<FfiError>>(RevsetCount::VT_ERROR, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RevsetCount<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u64>("n", Self::VT_N, false)?
+                    .visit_field::<bool>("capped", Self::VT_CAPPED, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<FfiError>>("error", Self::VT_ERROR, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RevsetCountArgs<'a> {
+            pub n: u64,
+            pub capped: bool,
+            pub error: Option<::flatbuffers::WIPOffset<FfiError<'a>>>,
+        }
+        impl<'a> Default for RevsetCountArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RevsetCountArgs {
+                    n: 0,
+                    capped: false,
+                    error: None,
+                }
+            }
+        }
+
+        pub struct RevsetCountBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RevsetCountBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_n(&mut self, n: u64) {
+                self.fbb_.push_slot::<u64>(RevsetCount::VT_N, n, 0);
+            }
+            #[inline]
+            pub fn add_capped(&mut self, capped: bool) {
+                self.fbb_.push_slot::<bool>(RevsetCount::VT_CAPPED, capped, false);
+            }
+            #[inline]
+            pub fn add_error(&mut self, error: ::flatbuffers::WIPOffset<FfiError<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<FfiError>>(RevsetCount::VT_ERROR, error);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RevsetCountBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RevsetCountBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RevsetCount<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RevsetCount<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RevsetCount");
+                ds.field("n", &self.n());
+                ds.field("capped", &self.capped());
+                ds.field("error", &self.error());
+                ds.finish()
+            }
+        }
+        pub enum RevsetCountsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_revset_counts`' answer (Story 9.25): one entry per requested expression, in order.
+        pub struct RevsetCounts<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RevsetCounts<'a> {
+            type Inner = RevsetCounts<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RevsetCounts<'a> {
+            pub const VT_COUNTS: ::flatbuffers::VOffsetT = 4;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RevsetCounts { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RevsetCountsArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RevsetCounts<'bldr>> {
+                let mut builder = RevsetCountsBuilder::new(_fbb);
+                if let Some(x) = args.counts {
+                    builder.add_counts(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn counts(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RevsetCount<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RevsetCount>>,
+                    >>(RevsetCounts::VT_COUNTS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RevsetCounts<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<RevsetCount>>,
+                    >>("counts", Self::VT_COUNTS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RevsetCountsArgs<'a> {
+            pub counts: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RevsetCount<'a>>>>,
+            >,
+        }
+        impl<'a> Default for RevsetCountsArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RevsetCountsArgs { counts: None }
+            }
+        }
+
+        pub struct RevsetCountsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RevsetCountsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_counts(
+                &mut self,
+                counts: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<RevsetCount<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RevsetCounts::VT_COUNTS, counts);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RevsetCountsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RevsetCountsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RevsetCounts<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RevsetCounts<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RevsetCounts");
+                ds.field("counts", &self.counts());
+                ds.finish()
+            }
+        }
+        pub enum FoundChangeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// One change `zanshin_find_changes` found (Story 9.25): the full hex commit id, the change id
+        /// (jj reverse hex) and both shortest-prefix lengths within the call's `short_prefixes`.
+        pub struct FoundChange<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FoundChange<'a> {
+            type Inner = FoundChange<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FoundChange<'a> {
+            pub const VT_COMMIT_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_CHANGE_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_COMMIT_PREFIX_LEN: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CHANGE_PREFIX_LEN: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FoundChange { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FoundChangeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FoundChange<'bldr>> {
+                let mut builder = FoundChangeBuilder::new(_fbb);
+                builder.add_change_prefix_len(args.change_prefix_len);
+                builder.add_commit_prefix_len(args.commit_prefix_len);
+                if let Some(x) = args.change_id {
+                    builder.add_change_id(x);
+                }
+                if let Some(x) = args.commit_id {
+                    builder.add_commit_id(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn commit_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FoundChange::VT_COMMIT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn change_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FoundChange::VT_CHANGE_ID, None)
+                }
+            }
+            #[inline]
+            pub fn commit_prefix_len(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(FoundChange::VT_COMMIT_PREFIX_LEN, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn change_prefix_len(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(FoundChange::VT_CHANGE_PREFIX_LEN, Some(0))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FoundChange<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("commit_id", Self::VT_COMMIT_ID, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("change_id", Self::VT_CHANGE_ID, false)?
+                    .visit_field::<u32>("commit_prefix_len", Self::VT_COMMIT_PREFIX_LEN, false)?
+                    .visit_field::<u32>("change_prefix_len", Self::VT_CHANGE_PREFIX_LEN, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FoundChangeArgs<'a> {
+            pub commit_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub change_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub commit_prefix_len: u32,
+            pub change_prefix_len: u32,
+        }
+        impl<'a> Default for FoundChangeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FoundChangeArgs {
+                    commit_id: None,
+                    change_id: None,
+                    commit_prefix_len: 0,
+                    change_prefix_len: 0,
+                }
+            }
+        }
+
+        pub struct FoundChangeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FoundChangeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_commit_id(&mut self, commit_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FoundChange::VT_COMMIT_ID, commit_id);
+            }
+            #[inline]
+            pub fn add_change_id(&mut self, change_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FoundChange::VT_CHANGE_ID, change_id);
+            }
+            #[inline]
+            pub fn add_commit_prefix_len(&mut self, commit_prefix_len: u32) {
+                self.fbb_
+                    .push_slot::<u32>(FoundChange::VT_COMMIT_PREFIX_LEN, commit_prefix_len, 0);
+            }
+            #[inline]
+            pub fn add_change_prefix_len(&mut self, change_prefix_len: u32) {
+                self.fbb_
+                    .push_slot::<u32>(FoundChange::VT_CHANGE_PREFIX_LEN, change_prefix_len, 0);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FoundChangeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FoundChangeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FoundChange<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FoundChange<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FoundChange");
+                ds.field("commit_id", &self.commit_id());
+                ds.field("change_id", &self.change_id());
+                ds.field("commit_prefix_len", &self.commit_prefix_len());
+                ds.field("change_prefix_len", &self.change_prefix_len());
+                ds.finish()
+            }
+        }
+        pub enum FoundChangesOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        /// `zanshin_find_changes`' answer (Story 9.25): at most `limit` entries in the revset's iteration
+        /// order (`jj log --no-graph`'s); `truncated` when it denotes more.
+        pub struct FoundChanges<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for FoundChanges<'a> {
+            type Inner = FoundChanges<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> FoundChanges<'a> {
+            pub const VT_ENTRIES: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TRUNCATED: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FoundChanges { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FoundChangesArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FoundChanges<'bldr>> {
+                let mut builder = FoundChangesBuilder::new(_fbb);
+                if let Some(x) = args.entries {
+                    builder.add_entries(x);
+                }
+                builder.add_truncated(args.truncated);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn entries(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FoundChange<'a>>>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FoundChange>>,
+                    >>(FoundChanges::VT_ENTRIES, None)
+                }
+            }
+            #[inline]
+            pub fn truncated(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<bool>(FoundChanges::VT_TRUNCATED, Some(false)).unwrap() }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for FoundChanges<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FoundChange>>,
+                    >>("entries", Self::VT_ENTRIES, false)?
+                    .visit_field::<bool>("truncated", Self::VT_TRUNCATED, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FoundChangesArgs<'a> {
+            pub entries: Option<
+                ::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FoundChange<'a>>>>,
+            >,
+            pub truncated: bool,
+        }
+        impl<'a> Default for FoundChangesArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FoundChangesArgs {
+                    entries: None,
+                    truncated: false,
+                }
+            }
+        }
+
+        pub struct FoundChangesBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FoundChangesBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_entries(
+                &mut self,
+                entries: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<FoundChange<'b>>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(FoundChanges::VT_ENTRIES, entries);
+            }
+            #[inline]
+            pub fn add_truncated(&mut self, truncated: bool) {
+                self.fbb_
+                    .push_slot::<bool>(FoundChanges::VT_TRUNCATED, truncated, false);
+            }
+            #[inline]
+            pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FoundChangesBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FoundChangesBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FoundChanges<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for FoundChanges<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FoundChanges");
+                ds.field("entries", &self.entries());
+                ds.field("truncated", &self.truncated());
+                ds.finish()
+            }
+        }
         pub enum WarningOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -38665,6 +40238,7 @@ pub mod zanshin {
         /// before the verb ran (a null pointer, an invalid handle, a request buffer that fails
         /// validation) and on every symbol that runs no pre-verb snapshot (open/init/clone/detect/close,
         /// `zanshin_workspace_root`, `zanshin_log_defaults`, `zanshin_commit_contents`, `zanshin_op_abandon`,
+        /// the op-pinned searches `zanshin_revset_counts` / `zanshin_find_changes` (Story 9.25),
         /// events, and every
         /// `zanshin_config_*` symbol except `zanshin_config_set`). `zanshin_config_set` carries it iff its `user.name`/`user.email`
         /// working-copy check ran the snapshot (Story 9.28). `zanshin_repo_convert` carries the
@@ -39641,6 +41215,36 @@ pub mod zanshin {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_revset_counts(&self) -> Option<RevsetCounts<'a>> {
+                if self.data_type() == Payload::RevsetCounts {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { RevsetCounts::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn data_as_found_changes(&self) -> Option<FoundChanges<'a>> {
+                if self.data_type() == Payload::FoundChanges {
+                    self.data().map(|t| {
+                        // Safety:
+                        // Created from a valid Table for this object
+                        // Which contains a valid union in this slot
+                        unsafe { FoundChanges::init_from_table(t) }
+                    })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Envelope<'_> {
@@ -39711,6 +41315,8 @@ pub mod zanshin {
           Payload::WorkspaceRemoveResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<WorkspaceRemoveResult>>("Payload::WorkspaceRemoveResult", pos),
           Payload::SimplifyParentsResult => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<SimplifyParentsResult>>("Payload::SimplifyParentsResult", pos),
           Payload::ResolveList => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<ResolveList>>("Payload::ResolveList", pos),
+          Payload::RevsetCounts => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<RevsetCounts>>("Payload::RevsetCounts", pos),
+          Payload::FoundChanges => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<FoundChanges>>("Payload::FoundChanges", pos),
           _ => Ok(()),
         }
      })?
@@ -40201,6 +41807,20 @@ pub mod zanshin {
                     }
                     Payload::ResolveList => {
                         if let Some(x) = self.data_as_resolve_list() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::RevsetCounts => {
+                        if let Some(x) = self.data_as_revset_counts() {
+                            ds.field("data", &x)
+                        } else {
+                            ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
+                        }
+                    }
+                    Payload::FoundChanges => {
+                        if let Some(x) = self.data_as_found_changes() {
                             ds.field("data", &x)
                         } else {
                             ds.field("data", &"InvalidFlatbuffer: Union discriminant does not match value.")
