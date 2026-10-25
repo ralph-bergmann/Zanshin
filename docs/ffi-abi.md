@@ -1634,7 +1634,9 @@ effective config: every expression parses as every Zanshin revset (the effective
 `[revset-aliases]`, `user.email` for `mine()`, the workspace root as cwd for `files()`, `@` as the
 handle's workspace), and symbols resolve with the id-prefix context, as the CLI's
 `default_symbol_resolver`. The ok envelope carries the alias load's warnings and the parse
-diagnostics (`jj.revset_diagnostic`, in expression order).
+diagnostics (`jj.revset_diagnostic`, in expression order); `zanshin_find_changes` also warns
+`jj.short_prefixes_failed` when its prefix index fails to load and the lengths fall back to the
+full index, as `zanshin_graph_topology` does.
 
 **`zanshin_revset_counts`** — `RevsetCountsRequest { kind: RevsetCounts, operation_id,
 expressions, cap }`. The id-prefix context is the effective `revsets.short-prefixes` (a value that

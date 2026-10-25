@@ -179,9 +179,24 @@ void main() {
       );
       await expectLater(
         handle.graphTopology(revset: 'all()', anchors: ['nonexistent-bookmark-xyz'], withTimestamps: false),
-        throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.revset_resolution_error')),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.code, 'code', 'jj.revset_resolution_error')
+              .having((e) => e.revsetError?.kind, 'kind', RevsetErrorKind.noSuchRevision)
+              .having((e) => e.revsetError?.symbol, 'symbol', 'nonexistent-bookmark-xyz'),
+        ),
       );
-      // Story 9.25: the structured detail rides the exception.
+      // Story 9.25: the structured detail rides the exception, with jj-lib's
+      // candidates and the CLI's similarity hint.
+      await expectLater(
+        handle.graphTopology(revset: 'descripton(x)', anchors: defaultGraphAnchors, withTimestamps: false),
+        throwsA(
+          isA<ZanshinFfiException>()
+              .having((e) => e.revsetError?.kind, 'kind', RevsetErrorKind.noSuchFunction)
+              .having((e) => e.revsetError?.candidates, 'candidates', contains('description'))
+              .having((e) => e.hints, 'hints', contains(startsWith('Did you mean'))),
+        ),
+      );
       await expectLater(
         handle.graphTopology(revset: 'fooo()', anchors: defaultGraphAnchors, withTimestamps: false),
         throwsA(

@@ -62,6 +62,10 @@ void main() {
       );
       final Precondition? before = handle.lastPrecondition;
       File('${tempDir.path}/edited.txt').writeAsStringSync('not yet snapshotted');
+      List<String> listing(String dir) =>
+          Directory('${tempDir.path}/.jj/repo/$dir').listSync().map((e) => e.path).toList()..sort();
+      final List<String> opsBefore = listing('op_store/operations');
+      final List<String> headsBefore = listing('op_heads/heads');
 
       final RevsetCounts counts = await handle.revsetCounts(view.operationId, [
         'all()',
@@ -94,6 +98,10 @@ void main() {
       final RevsetCounts all = await handle.revsetCounts(view.operationId, ['all()'], cap: 100000);
       expect(all.single.n, view.nodeCount);
       expect(all.single.capped, isFalse);
+      await handle.findChanges(view.operationId, 'all()', limit: 3, shortPrefixes: '');
+      expect(listing('op_store/operations'), opsBefore, reason: 'no operation written');
+      expect(listing('op_heads/heads'), headsBefore, reason: 'op heads untouched');
+      expect(handle.lastPrecondition, same(before));
 
       // The next topology call still snapshots the edit.
       await handle.graphTopology(revset: 'all()', anchors: const [], withTimestamps: false);
@@ -141,6 +149,36 @@ void main() {
         handle.findChanges('f' * view.operationId.length, 'all()', limit: 3, shortPrefixes: ''),
         throwsA(isA<ZanshinFfiException>().having((e) => e.code, 'code', 'jj.operation_not_found')),
       );
+      await handle.close();
+    });
+
+    test('find_changes_passes_its_short_prefixes_through', () async {
+      final RepoHandle handle = await medium();
+      final GraphTopologyView view = await handle.graphTopology(
+        revset: 'all()',
+        anchors: const [],
+        withTimestamps: false,
+      );
+      final FoundChange tip = (await handle.findChanges(
+        view.operationId,
+        'tip',
+        limit: 1,
+        shortPrefixes: '',
+      )).entries.single;
+      final String prefix = tip.changeId.substring(0, 1);
+
+      await expectLater(
+        handle.findChanges(view.operationId, prefix, limit: 10, shortPrefixes: ''),
+        throwsA(
+          isA<ZanshinFfiException>().having(
+            (e) => e.revsetError?.kind,
+            'kind',
+            RevsetErrorKind.ambiguousChangeIdPrefix,
+          ),
+        ),
+      );
+      final FoundChanges found = await handle.findChanges(view.operationId, prefix, limit: 10, shortPrefixes: 'tip');
+      expect(found.entries.map((e) => (e.commitId, e.changePrefixLen)), [(tip.commitId, 1)]);
       await handle.close();
     });
 

@@ -68,8 +68,9 @@ pub struct FoundChanges {
     pub entries: Vec<FoundChange>,
     /// The revset denotes more than `limit` commits.
     pub truncated: bool,
-    /// The call's warnings — the alias load's and the parse diagnostics of `short_prefixes` and
-    /// the expression.
+    /// The call's warnings — the alias load's, the parse diagnostics of `short_prefixes` and the
+    /// expression, and `jj.short_prefixes_failed` when the prefix index fails to load (the lengths
+    /// then fall back to the full index, as in the topology).
     pub warnings: Vec<Warning>,
 }
 

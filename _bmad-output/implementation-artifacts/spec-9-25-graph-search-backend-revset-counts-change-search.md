@@ -5,7 +5,7 @@ created: '2026-10-25'
 status: 'done'
 baseline_revision: '9b65ca848ec464c432f6c52ce920af3453c6ecc2'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-9-context.md'
@@ -272,6 +272,32 @@ All paths are relative to `/Users/ralph.bergmann/development/projects/privat/Zan
   - `[low]` `[patch]` (blind) `ZanshinFfiException.toString()` omits `revsetError` — fixed: `toString()` now appends `; revset: <kind> at <offset>+<length|?> \`<symbol>\``; a decode test checks it.. The missing `==` / `toString` on the value classes and the list mutability are rejected: no consumer compares them yet, and adding them goes beyond a direct correction.
   - `[low]` `[patch]` (blind) The tracking docs are out of step: sprint-status `in-progress`, MCP/oracle skips not recorded, new deferrals not mirrored — the status is set to `done` at finalize; the skips are recorded under Auto Run Result; the deferrals are mirrored into `deferred-work.md`.
 
+### 2026-10-25 — Review pass (follow-up)
+- verdicts: 22 findings — high 0, medium 2, low 15, false 5, maybe-false 0
+- findings:
+  - `[medium]` `[reject]` (blind) `graph_topology` and the verbs still resolve without the id-prefix context, so a prefix `revsetCounts` counts can be refused by `graphTopology` — real, but the intent's Never list forbids changing how other verbs resolve symbols; it is already the first `deferred:` item (Design Notes) and mirrored in `deferred-work.md`.
+  - `[low]` `[defer]` (blind) Revset hints still dropped by show/evolog/bookmarks/op diff, and `render_span` missing from the pin-bump checklist — carried: same claims as the first pass's two deferred rows; the code still reads `{ reason, .. }` at those sites. Not deferred again.
+  - `[low]` `[reject]` (blind) A lone `^` gives `length: None` for one-char operator errors (`x + y`, `foo^`) whose length is knowable from the symbol — the offset is still exact and null length is documented as "unknown"; recovering it adds a symbol-matching heuristic branch for a cosmetic underline.
+  - `[low]` `[reject]` (blind) `RevsetErrorDetail` names no source text, so an anchor / `prioritize` resolution error looks like an expression error — those texts come from the app and the effective config, not the user's typing; the `reason` names the symbol; the fix adds a public field.
+  - `[low]` `[reject]` (blind) `FoundChange` carries no divergence data (change offset, hidden flag) — the intent fixes the entry's fields (ids + both prefix lengths); divergent hits are rare and the fix adds public surface.
+  - `[low]` `[patch]` (blind) `docs/rust-error-codes.md`'s `jj.invalid_input` row omits the two new externs — fixed: appended a Story 9.25 sentence (absent `operation_id` / `expression` / `short_prefixes`, a malformed or non-full operation id).
+  - `[low]` `[patch]` (blind) `find_changes`' `jj.short_prefixes_failed` warning is undocumented — fixed: the `FoundChanges.warnings` rustdoc, `docs/ffi-abi.md` § Graph search and the `jj.short_prefixes_failed` row in `docs/rust-error-codes.md` now name it.
+  - `[low]` `[reject]` (blind) epics.md 9.28's Motivation still says "`revsets.log` (9.25)" and 9.25 item 1 still shows `-> Vec<RevsetCount>` / "stops at `cap`" — the Motivation names the key's consumer, not a writer (the Scope line got the dated note); the planning text predates the build and this spec is the as-built record; nobody meets it in everyday use.
+  - `[false]` `[reject]` (blind) Struck-through REJECTED/RESOLVED ledger items in `deferred-work.md` still end with live follow-ups — each sits under a struck heading with its dated status first; keeping the original entry text below it is the file's convention (e.g. "MOOT … Original entry:").
+  - `[low]` `[reject]` (blind) The I/O matrix says a 40-hex unknown op is `jj.operation_not_found`, but a 40-hex id is refused `jj.invalid_input` — the code follows the Always rule ("a malformed one is the same invalid-input refusal `commit_contents` gives"); operation ids are 128 hex, and the only fix is editing this spec.
+  - `[false]` `[reject]` (blind) `limit == 0` evaluates while `cap == 0` does not, undocumented — `limit == 0` reads `limit + 1 = 1` commit exactly as the documented "reads at most `limit + 1`" rule says, and `truncated` keeps its meaning; nothing contradicts the docs.
+  - `[low]` `[patch]` (blind) The topology's resolution detail and the "Did you mean" hint are never checked through the cdylib — fixed: `test/worker/graph_test.dart` asserts the anchor refusal's `noSuchRevision` kind and symbol, and `descripton(x)`'s `noSuchFunction` with `description` among the candidates and a "Did you mean" hint.
+  - `[false]` `[reject]` (edge-case) `render_span` walks into a later line when the header column lies past its line's end — pest renders the same text the caller sent (the top-level error's span is in the caller's text, and `without_span` drops the others), so the column never exceeds the line length + 1; that position is the line's own `\n`.
+  - `[low]` `[reject]` (edge-case) `revset_counts` ignores a caller `short_prefixes` — carried: the first pass's reject row (follows the CLI's effective `revsets.short-prefixes`); the code is unchanged.
+  - `[low]` `[reject]` (edge-case) A bad `short_prefixes` in `find_changes` reports the same code, kind and symbol as an expression error — same root as the source-field row above: the view's `short_prefixes` already parsed for the topology it came from, so this refusal is practically unreachable; the fix adds a variant or field.
+  - `[low]` `[reject]` (edge-case) An unknown wire `RevsetErrorKind` throws while decoding — the Dart decoder and the cdylib are generated by the same `cargo make codegen` and ship together; a newer Rust kind with stale Dart cannot occur in a build; a fallback adds a branch.
+  - `[medium]` `[patch]` (verification-gap) `find_changes`' `short_prefixes` pass-through is never exercised with a non-empty value above zanshin-jj — fixed: `find_changes_passes_its_short_prefixes_through` in `test/worker/revset_search_test.dart` (real cdylib): `tip`'s one-char change-id prefix refuses `ambiguousChangeIdPrefix` with `''` and resolves to exactly `tip` with `changePrefixLen` 1 with `'tip'`.
+  - `[low]` `[patch]` (intent) A lone `^` gives `null` instead of the Design Notes' "`^` = 1" — carried: the first pass's patch row (empty and one-char spans render the same); not patched again.
+  - `[low]` `[reject]` (intent) Reading F: a 40-hex op id is not `jj.operation_not_found` — same as the blind matrix row above.
+  - `[false]` `[reject]` (intent) Resolution and the prefix lengths may use different index loads — both take the same `prefixes` `IdPrefixContext` (`revset_search.rs:244-254`), whose populated index is cached; a populate failure either refuses resolution or warns and falls back, as the topology does.
+  - `[low]` `[patch]` (intent) The Dart tests do not check the AC's "no operation file or op head changes" — fixed: the counts test lists `.jj/repo/op_store/operations` and `op_heads/heads` before the dirty-`@` reads and after `revsetCounts` + `findChanges`, and expects them equal; the remaining matrix rows stay at the Rust and FFI layers behind the one decode point.
+  - `[false]` `[reject]` (intent) The `MutateError` hints exceed the named surface and only a unit test pins them — task 3 asks for them, and `crates/zanshin-jj/tests/it/bookmark_move.rs` covers them end to end.
+
 ## Design Notes
 
 **Span.** jj-lib 0.46 keeps the pest error private; `RevsetParseError`'s `Display` is pest's render. Parse it:
@@ -312,6 +338,15 @@ All paths are relative to `/Users/ralph.bergmann/development/projects/privat/Zan
 - `test-core-format` — 0 changed.
 - `cargo bench -p zanshin-jj --bench revset_counts` — ran; numbers below.
 - Not run: the coverage ratchet and the 9.47 parity oracle (optional; no jj verb changed).
+
+**Verification notes (2026-10-25, follow-up review pass; the full gate deliberately not run, per the story loop's gate rule):**
+- `cargo make --allow-private test-core` (zanshin_core `dart test`, real cdylib, pinned env) — 1098 passed (the new `find_changes_passes_its_short_prefixes_through` plus the extended counts and topology-error tests).
+- `cargo make --allow-private test-core-analyze` — no issues.
+- `cargo make --allow-private test-core-format` — 0 changed.
+- `cargo clippy -p zanshin-jj --all-targets -- -D warnings` (a rustdoc edit) — clean.
+- `cargo fmt --all --check` — clean.
+- `cargo test -p zanshin-ffi --test it ffi_abi_doc_sync::` (`docs/ffi-abi.md` changed) — 17 passed.
+- Not run: codegen (no schema or FFI change), the parity oracle (no jj verb changed), coverage and the full gate (the loop's end).
 
 **Run constraints (story loop, Ralph 2026-10-20 / 2026-10-23):**
 - Do NOT run `cargo make test`, `cargo make test-full` or `cargo make coverage`. The loop runs the full gate once at its end; use the targeted commands below only.
@@ -434,3 +469,18 @@ Status: done. Implementation commit: `b6da7c21dcdda508b2e7c837236205c9a2268e80`.
 **Residual risks:**
 - The span is read back from pest's rendered text: a jj-lib or pest bump can change it silently (deferred).
 - The new Rust files' coverage is unmeasured until the loop's gate. A few backend-only error arms in `revset_search.rs` are not exercised.
+
+### Follow-up review pass (2026-10-25)
+
+Four layers (blind, edge-case, verification-gap, intent-alignment) reviewed the full diff since `9b65ca8`. 22 findings — high 0, medium 2, low 15, false 5, maybe-false 0.
+
+**Patched (5 entries; by verdict: medium 1, low 4; no code change, tests and docs only):**
+- `packages/zanshin_core/test/worker/revset_search_test.dart` — `find_changes_passes_its_short_prefixes_through` (medium: the `shortPrefixes` pass-through was untested above zanshin-jj); the counts test now also lists the op store and op heads around the dirty-`@` reads (the AC's "no operation file or op head changes" at the Dart surface).
+- `packages/zanshin_core/test/worker/graph_test.dart` — the topology's resolution detail (`noSuchRevision`, symbol) and `descripton(x)`'s candidates and "Did you mean" hint through the cdylib.
+- `crates/zanshin-jj/src/revset_search.rs` (`FoundChanges.warnings` rustdoc), `docs/ffi-abi.md` § Graph search and `docs/rust-error-codes.md` (`jj.invalid_input` and `jj.short_prefixes_failed` rows) — the new externs' invalid-input texts and `find_changes`' short-prefixes warning.
+
+**Deferred:** none new (the hints-on-other-reads and pin-bump-checklist rows were carried from the first pass); nothing added to `deferred-work.md`.
+
+**Rejected (with reasons in the triage log):** id-prefix context for the other verbs (the intent forbids it; already deferred); a lone `^` length heuristic; a source field on the detail (×2); divergence data on `FoundChange`; stale planning text in epics.md; the 40-hex matrix row (×2; only a spec edit); `revset_counts`' `short_prefixes` (carried); an unknown wire kind in Dart; and five false findings (struck ledger convention, `limit == 0`, `render_span` past line end, two index loads, `MutateError` hints coverage).
+
+**Follow-up review: not recommended (`false`).** A follow-up pass recommends another only when it patched a `high`; this one patched 1 medium and 4 low, all test or doc changes.
