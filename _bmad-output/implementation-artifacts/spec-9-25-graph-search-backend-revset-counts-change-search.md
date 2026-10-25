@@ -18,6 +18,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/revset.rs (resolve_for_evaluation call sites)
     severity: medium
+    resolved: >-
+      2026-10-25 — fixed (spec-9-25-closing-id-prefix-context-search-warnings-view-hints, commit 0bad054): every user and config revset (topology, eval/resolve_revset, show/evolog, bookmark list/move/advance, workspace add, absorb, arrange, push) resolves with the effective `revsets.short-prefixes` id-prefix context; the CLI's own no-context sites (immutable set, `trunk()` check, op diff) stay without.
   - summary: >-
       A call-level failure of revset_counts / find_changes drops the warnings collected before it.
     evidence: |-
@@ -25,6 +27,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/revset_search.rs (finish)
     severity: low
+    resolved: >-
+      2026-10-25 — fixed (spec-9-25-closing-id-prefix-context-search-warnings-view-hints, commit 0bad054): both calls return `Warned<RevsetSearchError>` on failure and the FFI writes those warnings onto the error envelope.
   - summary: >-
       RevsetSpan offsets are UTF-8 byte offsets; Dart strings are UTF-16, and no conversion helper exists for the 10.21/10.22 highlighters.
     evidence: |-
@@ -39,6 +43,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/commit_views.rs, bookmarks.rs, op_diff.rs
     severity: low
+    resolved: >-
+      2026-10-25 — fixed (spec-9-25-closing-id-prefix-context-search-warnings-view-hints, commit 0bad054): show/evolog and the bookmark list carry the hints to `FfiError.hints`; op diff rejected — the CLI prints no revset hints there (`operation/diff.rs:203-223`, `:280-310` @ v0.46.0).
   - summary: >-
       render_span parses pest's render; a jj-lib or pest bump can change it silently, and the pin-bump checklist does not name it.
     evidence: |-
