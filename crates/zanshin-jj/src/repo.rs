@@ -3632,7 +3632,8 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — `onto` with `insert_after`/`insert_before` (clap's
     ///   refusal: before the snapshot, so nothing is written); "Cannot duplicate the root commit";
     ///   a location that would create a loop or resolves no parent; or (Git backend) a merge with
-    ///   the root commit as a parent.
+    ///   the root commit as a parent — refused before anything is written, after the template is
+    ///   parsed (the CLI's order).
     /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
     ///   commit, or divergent.
     /// - [`crate::MutateError::RevsetResolutionError`] — the default `@` in a workspace with no
@@ -3679,7 +3680,8 @@ impl Repo {
     /// - [`crate::MutateError::InvalidInput`] — no revision, `onto` with
     ///   `insert_after`/`insert_before`, or none of the three location flags (clap's refusals:
     ///   before the snapshot, so nothing is written); a location that would create a loop or
-    ///   resolves no parent; or (Git backend) a merge with the root commit as a parent.
+    ///   resolves no parent; or (Git backend) a merge with the root commit as a parent — refused
+    ///   before anything is written, after the template is parsed (the CLI's order).
     /// - [`crate::MutateError::ChangeNotFound`] — an id is malformed, carried by no VISIBLE
     ///   commit, or divergent.
     /// - [`crate::MutateError::Immutable`] — a child `insert_after`/`insert_before` would rewrite

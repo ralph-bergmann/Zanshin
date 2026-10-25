@@ -1201,8 +1201,10 @@ pub(crate) const GIT_ROOT_MERGE: &str =
 
 /// Refuses, before anything is written, the merge the Git backend would refuse at its write: two
 /// or more `parents` with the root commit among them, on a Git-backed store (Story 9.31). The CLI
-/// reaches the same text from the backend's write error; the refusal up front keeps `new`'s plan
-/// and its execution in agreement.
+/// reaches the same text from the backend's write error. Each verb calls it after its template
+/// parse, the CLI's order: `new` before the template's hidden write or (empty template) its commit
+/// write, `duplicate` / `revert` before their first write. Their `drop_actions` rows call it right
+/// after the plan, so the previews refuse what the verbs refuse.
 pub(crate) fn refuse_git_root_merge(
     store: &Arc<jj_lib::store::Store>,
     parents: &[jj_lib::backend::CommitId],

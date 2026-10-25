@@ -326,8 +326,12 @@ impl Rows<'_> {
             // A row reverts exactly one resolved change, so `plan_revert` never returns `None`
             // here; the `Option` form keeps the CLI's rule (only a writing plan resolves the set)
             // without a branch no row can take.
+            // The verb refuses a root merge at its write (after the template); rows keep it.
             plan.as_ref()
-                .map(|_| resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable))
+                .map(|plan| {
+                    refuse_git_root_merge(tx.repo().store(), &plan.new_parent_ids)?;
+                    resolve_immutable(tx.base_repo().as_ref(), &ctx.immutable)
+                })
                 .transpose()?;
             Ok(Planned {
                 no_op: plan.is_none(),
@@ -432,7 +436,12 @@ impl Rows<'_> {
                 parents.push(change.clone());
                 rows.push((DropVerb::NewMerge, self.new_change(ctx, &parents, &[], &[])?));
                 let duplicate = self.row(ctx, |tx, ctx| {
-                    plan_duplicate(tx, &ctx.templates(self.workspace), std::slice::from_ref(change), &args)?;
+                    let plan = plan_duplicate(tx, &ctx.templates(self.workspace), std::slice::from_ref(change), &args)?;
+                    // The verb refuses a root merge at its write (after the template); rows keep it.
+                    // This row always has `-o`, so the plan has a location.
+                    if let Some((parents, _)) = &plan.location {
+                        refuse_git_root_merge(tx.repo().store(), parents)?;
+                    }
                     // Every duplicate writes, so the CLI's `tx.finish` resolves the immutable set
                     // (Story 9.56). Rows never parse the description template, so with a broken
                     // template the verb's refusal (template parse) differs.

@@ -220,6 +220,41 @@ fn a_broken_template_refuses_before_the_alias_unless_the_location_has_children()
     assert_config_class(&err, false, "only the alias broken");
 }
 
+/// A root merge is the Git backend's refusal at the duplicates' write, after the template parse
+/// (`duplicate.rs:178-199` @ v0.46.0): a broken template — alone or with the alias — names the
+/// template; a valid one, or only the alias broken, the backend. Nothing written either way.
+#[test]
+fn a_root_merge_is_refused_after_the_template_parse() {
+    let mut fx = base();
+    let (b, c, zero) = (fx.b.clone(), fx.c.clone(), fx.zero.clone());
+    let options = DuplicateOptions {
+        revisions: vec![b],
+        onto: vec![c, zero],
+        ..DuplicateOptions::default()
+    };
+    let broken_template = "[templates]\nduplicate_description = '\"x\" ++'\n";
+    for config in [
+        broken_template.to_owned(),
+        format!("{UNRESOLVABLE_ALIAS}{broken_template}"),
+    ] {
+        reconfigure(&mut fx, &config);
+        let err = refused(&mut fx, |repo| repo.duplicate(&options));
+        assert_config_class(&err, true, &config);
+    }
+    for config in [
+        "[templates]\nduplicate_description = '\"dup \" ++ description'\n",
+        UNRESOLVABLE_ALIAS,
+    ] {
+        reconfigure(&mut fx, config);
+        let err = refused(&mut fx, |repo| repo.duplicate(&options));
+        assert!(
+            matches!(&err, MutateError::InvalidInput { reason, .. }
+                if reason == "The Git backend does not support creating merge commits with the root commit as one of the parents."),
+            "{config}: {err:?}"
+        );
+    }
+}
+
 #[test]
 fn the_root_commit_and_onto_with_an_insert_are_refused() {
     let mut fx = base();

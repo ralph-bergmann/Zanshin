@@ -64,8 +64,8 @@ pub(crate) struct DuplicatePlan {
 /// # Errors
 ///
 /// - [`MutateError::ChangeNotFound`] — a revision or a location id does not resolve.
-/// - [`MutateError::InvalidInput`] — the root commit is among the revisions, a location refusal
-///   of `compute_commit_location`, or (Git backend) a root merge as the location's parents.
+/// - [`MutateError::InvalidInput`] — the root commit is among the revisions, or a location
+///   refusal of `compute_commit_location`.
 /// - [`MutateError::Immutable`] — a child the location would rewrite is immutable.
 /// - [`MutateError::Config`] — (a location with children) the `immutable_heads()` alias does not
 ///   resolve.
@@ -87,9 +87,10 @@ pub(crate) fn plan_duplicate(
 /// location (`"duplicated commits"`). The plan resolves the immutable set only where the CLI's
 /// `compute_commit_location` does: for a location with children, which it rewrites. Otherwise the
 /// verb parses `templates.duplicate_description` first and its finish resolves the set, the CLI's
-/// order (Story 9.18 closing run). Two or more location parents with the root among them
-/// refuse up front on a Git-backed store, with the backend's own text — the CLI reaches it at the
-/// duplicates' write.
+/// order (Story 9.18 closing run). The plan does not refuse a root merge (two or more location
+/// parents with the root among them, Git-backed store): the verb refuses it after its template
+/// parse, right before the duplicates' write where the CLI's backend does, and `drop_actions`'
+/// `duplicate` row right after this plan.
 ///
 /// # Errors
 ///
@@ -109,11 +110,7 @@ pub(crate) fn plan_duplicate_ids(
     }
     let has_location = !location.onto.is_empty() || location.inserts();
     let location = if has_location {
-        let (parents, children) = resolve_commit_location(tx, templates, location, "duplicated commits")?;
-        // The Git backend refuses the duplicates' write for a root merge; refused up front so the
-        // preview and the verb agree (Story 9.31).
-        refuse_git_root_merge(tx.repo().store(), &parents)?;
-        Some((parents, children))
+        Some(resolve_commit_location(tx, templates, location, "duplicated commits")?)
     } else {
         None
     };
@@ -219,13 +216,18 @@ pub(crate) fn duplicate(
     let new_descriptions: HashMap<CommitId, String> = plan.to_duplicate.iter().cloned().zip(descriptions).collect();
 
     let DuplicateCommitsStats { duplicated_commits, .. } = match &plan.location {
-        Some((parents, children)) => pollster::block_on(duplicate_commits(
-            tx.repo_mut(),
-            &plan.to_duplicate,
-            &new_descriptions,
-            parents,
-            children,
-        )),
+        Some((parents, children)) => {
+            // The Git backend refuses this write for a root merge; refused before it, after the
+            // template parse — the CLI's order.
+            refuse_git_root_merge(tx.repo().store(), parents)?;
+            pollster::block_on(duplicate_commits(
+                tx.repo_mut(),
+                &plan.to_duplicate,
+                &new_descriptions,
+                parents,
+                children,
+            ))
+        }
         None => pollster::block_on(duplicate_commits_onto_parents(
             tx.repo_mut(),
             &plan.to_duplicate,

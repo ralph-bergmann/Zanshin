@@ -467,6 +467,35 @@ fn a_change_dropped_onto_the_root_and_another_change_refuses_the_root_merge() {
     );
 }
 
+/// The `new` / `duplicate` / `revert` rows refuse the root merge before they resolve the
+/// immutable set, as the verbs do: with the `immutable_heads()` alias broken they still preview
+/// the Git backend's refusal.
+#[test]
+fn the_root_merge_rows_refuse_before_the_immutable_set_resolves() {
+    let mut fx = base(None);
+    fs::write(
+        fx.root.join(".jj").join("repo").join("config.toml"),
+        crate::revert::UNRESOLVABLE_ALIAS,
+    )
+    .expect("repo config");
+    fx.repo = Repo::open(&fx.root).expect("reopen");
+    let _ = fx.repo.take_warnings();
+    let (b, d, zero) = (fx.b.clone(), fx.d.clone(), fx.zero.clone());
+    let rows: Vec<_> = query(&mut fx, &change(&b), &[onto(&[&zero, &d])])
+        .into_iter()
+        .filter(|(verb, _, _)| matches!(verb, DropVerb::NewMerge | DropVerb::Duplicate | DropVerb::Revert))
+        .collect();
+    let root_merge = refused(&invalid(GIT_ROOT_MERGE));
+    assert_eq!(
+        rows,
+        vec![
+            (DropVerb::NewMerge, 0, root_merge.clone()),
+            (DropVerb::Duplicate, 0, root_merge.clone()),
+            (DropVerb::Revert, 0, root_merge),
+        ]
+    );
+}
+
 /// The plans of a squash row (unmatched path) and a split row (everything selected) record
 /// warnings; the query discards them, while the verbs with the same arguments report them.
 #[test]

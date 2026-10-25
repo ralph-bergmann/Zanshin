@@ -2105,8 +2105,8 @@ The CLI's `jj revert` at v0.46.0 (`cmd_revert`), answering the shared `MutationR
 - **Order**: clap's refusals first, before the snapshot (`jj.invalid_input`, no `precondition`):
   no revision ("revert requires at least one revision"), `onto` with an insert, no location. Then
   the revisions in reverse topological order, the location (`"reverted commits"`; `jj.immutable`
-  for a child `-A`/`-B` would rewrite; a root merge in a Git repo is `jj.invalid_input`), the
-  `templates.revert_description` parse (`jj.config_error`), the write.
+  for a child `-A`/`-B` would rewrite), the `templates.revert_description` parse
+  (`jj.config_error`), a root merge in a Git repo (`jj.invalid_input`), the write.
 - **Write**: per reverted revision, newest first, a new change whose tree is the 3-way merge of
   the destination, the reverted tree and its parents' tree, labelled `<…> (revert destination)` /
   `<…> (reverted revision)` / `<…> (parents of reverted revision)` as the CLI labels it; the first

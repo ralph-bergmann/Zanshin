@@ -4,8 +4,9 @@
 //! against the pinned CLI:
 //! with both an unresolvable `immutable_heads()` alias and an unparsable description template,
 //! the CLI parses the template before its `tx.finish` resolves the immutable set, unless the
-//! location has children, whose rewritability check resolves it first. A `new` merge with the root
-//! (`new @ root()`, staleness run) names the template too: the Git backend refuses it only at the
+//! location has children, whose rewritability check resolves it first. A merge with the root
+//! (`new @ root()`, staleness run; `revert -r @- -o @ -o root()` and `duplicate @- -o @ -o
+//! root()`, its follow-up) names the template too: the Git backend refuses it only at the first
 //! commit write, after the template. Each witness refuses
 //! through Zanshin and through the pinned `jj` on the SAME repo (a refusal writes no operation, so
 //! both see one state) and compares the refusal's class.
@@ -160,6 +161,8 @@ fn revert_parses_its_template_before_the_finish_resolves_the_immutable_set() {
             (&["revert", "-r", "@-", "-A", "@"], Class::Template),
             (&["revert", "-r", "@-", "-A", "@--"], Class::ImmutableSet),
             (&["revert", "-r", "@-", "-B", "@"], Class::ImmutableSet),
+            // A root merge: the Git backend refuses it at the first write, after the template.
+            (&["revert", "-r", "@-", "-o", "@", "-o", "root()"], Class::Template),
         ],
         |repo, ids, args| {
             let [onto, insert_after, insert_before] = location(ids, args);
@@ -182,6 +185,8 @@ fn duplicate_parses_its_template_before_the_finish_resolves_the_immutable_set() 
             (&["duplicate", "@-", "-A", "@"], Class::Template),
             (&["duplicate", "@-", "-A", "@--"], Class::ImmutableSet),
             (&["duplicate", "@-", "-B", "@"], Class::ImmutableSet),
+            // A root merge: the Git backend refuses it at the duplicates' write, after the template.
+            (&["duplicate", "@-", "-o", "@", "-o", "root()"], Class::Template),
         ],
         |repo, ids, args| {
             let [onto, insert_after, insert_before] = location(ids, args);

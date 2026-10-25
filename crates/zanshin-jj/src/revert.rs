@@ -70,15 +70,16 @@ pub(crate) struct RevertPlan {
 /// only where the CLI's `compute_commit_location` does: for a location with children, which it
 /// rewrites (the reverted commits themselves are never rewritten). Otherwise the verb parses
 /// `templates.revert_description` first and its finish resolves the set, the CLI's order (Story
-/// 9.18 closing run). Two or more location parents with the root among them refuse up
-/// front on a Git-backed store, with the backend's own text — the CLI reaches it at the first
-/// reverted commit's write.
+/// 9.18 closing run). The plan does not refuse a root merge (two or more location parents with
+/// the root among them, Git-backed store): the verb refuses it after its template parse, right
+/// before the first reverted commit's write where the CLI's backend does, and `drop_actions`'
+/// `revert` rows right after this plan.
 ///
 /// # Errors
 ///
 /// - [`MutateError::ChangeNotFound`] — a revision or a location id does not resolve.
 /// - [`MutateError::InvalidInput`] — a location refusal of `compute_commit_location` (the loop
-///   text among them), or (Git backend) a root merge as the location's parents.
+///   text among them).
 /// - [`MutateError::Immutable`] — a child the location would rewrite is immutable.
 /// - [`MutateError::Config`] — (a location with children) the `immutable_heads()` alias does not
 ///   resolve.
@@ -98,9 +99,6 @@ pub(crate) fn plan_revert(
         return Ok(None);
     }
     let (new_parent_ids, new_child_ids) = resolve_commit_location(tx, templates, location, "reverted commits")?;
-    // The Git backend refuses the first reverted commit's write for a root merge; refused up
-    // front so the preview and the verb agree (Story 9.31).
-    refuse_git_root_merge(tx.repo().store(), &new_parent_ids)?;
     Ok(Some(RevertPlan {
         to_revert,
         new_parent_ids,
@@ -262,6 +260,9 @@ pub(crate) fn revert(
         let templates = Templates::new(&ctx.config, &ctx.immutable, &ctx.template_startup, workspace);
         templates.revert_descriptions(tx.base_repo().as_ref(), &commits, &mut ctx.warnings)?
     };
+    // The Git backend refuses the first reverse commit's write for a root merge; refused before
+    // it, after the template parse — the CLI's order.
+    refuse_git_root_merge(tx.repo().store(), &plan.new_parent_ids)?;
 
     let (reverted, head_ids) = write_reverse_commits(&mut tx, &plan, &commits, &descriptions)?;
     rebase_new_children(&mut tx, &plan, &head_ids)?;
