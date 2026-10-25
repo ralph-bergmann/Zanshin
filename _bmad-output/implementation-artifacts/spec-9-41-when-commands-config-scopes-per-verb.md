@@ -24,6 +24,8 @@ deferred:
     location: >-
       crates/zanshin-jj/src/repo.rs call starts; crates/zanshin-parity/tests/oracle/scenarios.rs
     severity: low
+    resolved: >-
+      2026-10-25 — fixed (spec-9-41-closing-when-commands-witness-per-call-site, commit 4fddf6e): an inline test asserts the command every `Repo` verb and `Repo::open` records, scoped witnesses cover the `config_*` verbs, the author-check snapshot, both conversions and the `log` reads, and the oracle runs `describe`/`convert_*` scenarios under a scoped user config (all call sites were already right).
   - summary: >-
       project-context.md's jj pin-bump checklist does not name the new CLI command table.
     evidence: |-
